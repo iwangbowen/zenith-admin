@@ -13,6 +13,7 @@ import {
   Select,
   Tree,
   Spin,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import { IconSearch, IconPlus, IconEdit, IconDelete, IconRefresh, IconTreeTriangleRight } from '@douyinfe/semi-icons';
 import type { Role, Menu } from '@zenith/shared';
@@ -105,9 +106,9 @@ export default function RolesPage() {
   };
 
   const columns: ColumnProps<Role>[] = [
-    { title: '角色名称', dataIndex: 'name', width: 160 },
-    { title: '角色编码', dataIndex: 'code', width: 160 },
-    { title: '描述', dataIndex: 'description', render: (v) => v || '—' },
+    { title: '角色名称', dataIndex: 'name', width: 160, ellipsis: true },
+    { title: '角色编码', dataIndex: 'code', width: 160, ellipsis: true },
+    { title: '描述', dataIndex: 'description', ellipsis: true, render: (v) => v || '—' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -123,6 +124,7 @@ export default function RolesPage() {
       title: '创建时间',
       dataIndex: 'createdAt',
       width: 180,
+      ellipsis: true,
       render: (v) => new Date(v).toLocaleString('zh-CN'),
     },
     {
@@ -190,6 +192,7 @@ export default function RolesPage() {
 
       <Card>
         <Table
+          className="admin-table-nowrap"
           columns={columns}
           dataSource={filtered}
           rowKey="id"
@@ -205,6 +208,7 @@ export default function RolesPage() {
         onCancel={() => setModalVisible(false)}
         footer={null}
         width={480}
+        bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
           initValues={editingRole ?? { status: 'active' }}
@@ -235,19 +239,24 @@ export default function RolesPage() {
         okText="保存"
         cancelText="取消"
         width={480}
+        bodyStyle={{ paddingBottom: 24 }}
       >
         {menuLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
             <Spin />
           </div>
         ) : (
-          <Tree
-            treeData={menusToTreeData(allMenus)}
-            multiple
-            value={checkedMenuIds.map(String)}
-            onChange={(keys) => setCheckedMenuIds((keys as string[]).map(Number))}
-            style={{ maxHeight: 400, overflow: 'auto' }}
-          />
+          <Tooltip content="点击节点可选中/取消菜单权限；当前控件使用多选值模式展示。" position="topLeft">
+            <div>
+              <Tree
+                treeData={menusToTreeData(allMenus)}
+                multiple
+                value={checkedMenuIds.map(String)}
+                onChange={(keys) => setCheckedMenuIds((keys as string[]).map(Number))}
+                style={{ maxHeight: 400, overflow: 'auto' }}
+              />
+            </div>
+          </Tooltip>
         )}
       </Modal>
     </div>

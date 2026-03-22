@@ -53,6 +53,22 @@ async function seed() {
     { id: 7,  parentId: 0, title: '组件示例',   name: 'Components',    path: '/components',    icon: 'IconGridView',   type: 'menu' as const,      sort: 99, status: 'active' as const, visible: true },
   ];
   await db.insert(menus).values(menuRows).onConflictDoNothing({ target: menus.id });
+  await db
+    .update(menus)
+    .set({
+      parentId: 2,
+      title: '用户管理',
+      name: 'SystemUsers',
+      path: '/system/users',
+      icon: 'IconUser',
+      type: 'menu',
+      permission: 'system:user:list',
+      sort: 1,
+      status: 'active',
+      visible: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(menus.id, 3));
   await db.execute(sql`SELECT setval('menus_id_seq', GREATEST((SELECT MAX(id) FROM menus), 1))`);
   console.log('  ✔ Menus seeded (onConflictDoNothing)');
 

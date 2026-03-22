@@ -71,14 +71,9 @@ const menuGroups = [
     ],
   },
   {
-    label: '用户',
-    items: [
-      { path: '/users', text: '用户管理', icon: <IconUser />, end: false },
-    ],
-  },
-  {
     label: '系统',
     items: [
+      { path: '/system/users', text: '用户管理', icon: <IconUser />, end: false },
       { path: '/system/menus', text: '菜单管理', icon: <IconMenu />, end: false },
       { path: '/system/roles', text: '角色管理', icon: <IconBookStroked />, end: false },
       { path: '/system/dicts', text: '字典管理', icon: <IconPriceTag />, end: false },

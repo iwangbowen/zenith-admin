@@ -11,7 +11,17 @@ menusRouter.use('*', authMiddleware);
 
 function toMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> {
   return {
-    ...row,
+    id: row.id,
+    parentId: row.parentId,
+    title: row.title,
+    name: row.name ?? undefined,
+    path: row.path ?? undefined,
+    icon: row.icon ?? undefined,
+    type: row.type,
+    permission: row.permission ?? undefined,
+    sort: row.sort,
+    status: row.status,
+    visible: row.visible,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

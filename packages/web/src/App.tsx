@@ -37,7 +37,8 @@ export default function App() {
           element={user ? <AdminLayout user={user} onLogout={() => { logout(); }} /> : <Navigate to="/login" replace />}
         >
           <Route index element={<DashboardPage />} />
-          <Route path="users" element={<UsersPage />} />
+          <Route path="users" element={<Navigate to="/system/users" replace />} />
+          <Route path="system/users" element={<UsersPage />} />
           <Route path="components" element={<ComponentsPage />} />
           <Route path="profile" element={<ProfilePage user={user!} onUserUpdate={updateUser} />} />
           <Route path="system/menus" element={<MenusPage />} />

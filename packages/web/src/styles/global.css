@@ -85,6 +85,26 @@ body {
   border-radius: 8px;
 }
 
+.admin-table-nowrap .semi-table-thead > .semi-table-row > .semi-table-row-head {
+  white-space: nowrap;
+}
+
+.admin-table-nowrap .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
+  vertical-align: middle;
+}
+
+.table-cell-ellipsis {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-cell-placeholder {
+  color: var(--semi-color-text-2);
+}
+
 /* scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

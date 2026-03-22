@@ -131,6 +131,8 @@ export default function DictsPage() {
     {
       title: '字典名称',
       dataIndex: 'name',
+      width: 220,
+      ellipsis: { showTitle: false },
       render: (v, row) => (
         <button
           type="button"
@@ -138,11 +140,11 @@ export default function DictsPage() {
           onClick={() => selectDict(row)}
         >
           <IconList style={{ marginRight: 6, flexShrink: 0 }} />
-          {v}
+          <span className="table-cell-ellipsis" title={String(v)}>{v}</span>
         </button>
       ),
     },
-    { title: '字典编码', dataIndex: 'code', width: 160 },
+    { title: '字典编码', dataIndex: 'code', width: 160, ellipsis: true },
     {
       title: '状态',
       dataIndex: 'status',
@@ -182,8 +184,8 @@ export default function DictsPage() {
   ];
 
   const itemColumns: ColumnProps<DictItem>[] = [
-    { title: '标签', dataIndex: 'label', width: 160 },
-    { title: '键值', dataIndex: 'value', width: 160 },
+    { title: '标签', dataIndex: 'label', width: 160, ellipsis: true },
+    { title: '键值', dataIndex: 'value', width: 160, ellipsis: true },
     { title: '排序', dataIndex: 'sort', width: 70, align: 'center' },
     {
       title: '状态',
@@ -196,7 +198,7 @@ export default function DictsPage() {
         </Tag>
       ),
     },
-    { title: '备注', dataIndex: 'remark', render: (v) => v || '—' },
+    { title: '备注', dataIndex: 'remark', ellipsis: true, render: (v) => v || '—' },
     {
       title: '操作',
       width: 130,
@@ -254,6 +256,7 @@ export default function DictsPage() {
             </Button>
           </div>
           <Table
+            className="admin-table-nowrap"
             columns={dictColumns}
             dataSource={dicts}
             rowKey="id"
@@ -261,12 +264,12 @@ export default function DictsPage() {
             pagination={false}
             size="small"
             onRow={(row) => ({
-              onClick: () => row && selectDict(row as Dict),
-              style: { cursor: 'pointer' },
+              onClick: () => row && selectDict(row),
+              style: {
+                cursor: 'pointer',
+                background: row?.id === selectedDict?.id ? 'var(--semi-color-primary-light-default)' : undefined,
+              },
             })}
-            rowClassName={(row) =>
-              row && (row as Dict).id === selectedDict?.id ? 'dict-row--selected' : ''
-            }
           />
         </Card>
 
@@ -291,6 +294,7 @@ export default function DictsPage() {
                 </Space>
               </div>
               <Table
+                className="admin-table-nowrap"
                 columns={itemColumns}
                 dataSource={items}
                 rowKey="id"
@@ -317,6 +321,7 @@ export default function DictsPage() {
         onCancel={() => setDictModalVisible(false)}
         footer={null}
         width={480}
+        bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
           key={editingDict?.id ?? 'new-dict'}
@@ -346,6 +351,7 @@ export default function DictsPage() {
         onCancel={() => setItemModalVisible(false)}
         footer={null}
         width={480}
+        bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
           key={editingItem?.id ?? 'new-item'}

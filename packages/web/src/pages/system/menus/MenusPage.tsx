@@ -101,14 +101,16 @@ export default function MenusPage() {
     {
       title: '菜单名称',
       dataIndex: 'title',
+      width: 280,
+      ellipsis: { showTitle: false },
       render: (val, row) => (
-        <span style={{ paddingLeft: row.depth * 20 }}>
+        <span style={{ paddingLeft: row.depth * 20, display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {row.icon && (
             <code style={{ marginRight: 6, fontSize: 11, opacity: 0.6, background: 'var(--semi-color-fill-0)', padding: '1px 4px', borderRadius: 3 }}>
               {row.icon}
             </code>
           )}
-          {val}
+          <span className="table-cell-ellipsis" title={String(val)}>{val}</span>
         </span>
       ),
     },
@@ -124,13 +126,15 @@ export default function MenusPage() {
       title: '路由路径',
       dataIndex: 'path',
       width: 180,
-      render: (val) => val || <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
+      ellipsis: true,
+      render: (val) => val || '—',
     },
     {
       title: '权限标识',
       dataIndex: 'permission',
       width: 200,
-      render: (val) => val || <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
+      ellipsis: true,
+      render: (val) => val || '—',
     },
     {
       title: '排序',
@@ -190,6 +194,7 @@ export default function MenusPage() {
 
       <Card>
         <Table
+          className="admin-table-nowrap"
           columns={columns}
           dataSource={flatData}
           rowKey="id"
@@ -204,6 +209,7 @@ export default function MenusPage() {
         onCancel={() => setModalVisible(false)}
         footer={null}
         width={560}
+        bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
           initValues={

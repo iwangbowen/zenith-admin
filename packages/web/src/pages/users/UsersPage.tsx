@@ -14,7 +14,7 @@ import {
   Avatar,
 } from '@douyinfe/semi-ui';
 import { IconSearch, IconPlus, IconEdit, IconDelete, IconRefresh } from '@douyinfe/semi-icons';
-import type { User, PaginatedResponse, CreateUserInput } from '@zenith/shared';
+import type { User, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './UsersPage.css';
@@ -26,6 +26,19 @@ export default function UsersPage() {
   const [keyword, setKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  const formInitValues: Partial<CreateUserInput> = editingUser
+    ? {
+        username: editingUser.username,
+        nickname: editingUser.nickname,
+        email: editingUser.email,
+        role: editingUser.role,
+        status: editingUser.status,
+      }
+    : {
+        role: 'user',
+        status: 'active',
+      };
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -81,19 +94,25 @@ export default function UsersPage() {
     {
       title: '用户',
       dataIndex: 'nickname',
+      width: 260,
+      ellipsis: { showTitle: false },
       render: (_: unknown, record: User) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <Avatar size="extra-small" color="blue" style={{ fontSize: 11 }}>
             {record.nickname?.charAt(0)?.toUpperCase() || 'U'}
           </Avatar>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>{record.nickname}</div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{record.username}</div>
-          </div>
+          <span className="table-cell-ellipsis" title={`${record.nickname}（${record.username}）`}>
+            {record.nickname}（{record.username}）
+          </span>
         </div>
       ),
     },
-    { title: '邮箱', dataIndex: 'email', width: 220 },
+    {
+      title: '邮箱',
+      dataIndex: 'email',
+      width: 220,
+      ellipsis: true,
+    },
     {
       title: '角色',
       dataIndex: 'role',
@@ -118,6 +137,7 @@ export default function UsersPage() {
       title: '创建时间',
       dataIndex: 'createdAt',
       width: 170,
+      ellipsis: true,
       render: (t: string) => new Date(t).toLocaleString('zh-CN'),
     },
     {
@@ -173,6 +193,7 @@ export default function UsersPage() {
           </Space>
         </div>
         <Table
+          className="admin-table-nowrap"
           columns={columns}
           dataSource={data?.list || []}
           loading={loading}
@@ -201,12 +222,8 @@ export default function UsersPage() {
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
-          initValues={
-            editingUser
-              ? { username: editingUser.username, nickname: editingUser.nickname, email: editingUser.email, role: editingUser.role, status: editingUser.status }
-              : { role: 'user', status: 'active' }
-          }
-          onSubmit={(values) => editingUser ? handleUpdate(values) : handleCreate(values)}
+          initValues={formInitValues}
+          onSubmit={(values) => editingUser ? handleUpdate(values as UpdateUserInput) : handleCreate(values as CreateUserInput)}
           labelPosition="left"
           labelWidth={70}
         >

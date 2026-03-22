@@ -11,6 +11,10 @@ import type { JwtPayload } from '../middleware/auth';
 
 const auth = new Hono();
 
+function getAuthUser(c: { get: (key: 'user') => unknown }): JwtPayload {
+  return c.get('user') as JwtPayload;
+}
+
 auth.post('/login', async (c) => {
   const body = await c.req.json();
   const result = loginSchema.safeParse(body);
@@ -94,7 +98,7 @@ auth.post('/register', async (c) => {
 });
 
 auth.get('/me', authMiddleware, async (c) => {
-  const payload = c.get('user') as JwtPayload;
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
   if (!user) {
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
@@ -109,7 +113,7 @@ auth.get('/me', authMiddleware, async (c) => {
 
 // 修改个人资料
 auth.put('/profile', authMiddleware, async (c) => {
-  const payload = c.get('user') as JwtPayload;
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const body = await c.req.json();
   const result = updateProfileSchema.safeParse(body);
   if (!result.success) {
@@ -139,7 +143,7 @@ auth.put('/profile', authMiddleware, async (c) => {
 
 // 修改密码
 auth.put('/password', authMiddleware, async (c) => {
-  const payload = c.get('user') as JwtPayload;
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const body = await c.req.json();
   const result = changePasswordSchema.safeParse(body);
   if (!result.success) {

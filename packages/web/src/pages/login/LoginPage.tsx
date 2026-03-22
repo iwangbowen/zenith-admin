@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { IconUser, IconLock, IconMail, IconAt } from '@douyinfe/semi-icons';
+import type { RegisterInput } from '@zenith/shared';
 import './LoginPage.css';
 
 const { Title, Text } = Typography;
@@ -26,7 +27,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
     }
   };
 
-  const handleRegister = async (values: Record<string, string>) => {
+  const handleRegister = async (values: RegisterInput) => {
     setLoading(true);
     try {
       const res = await onRegister(values);
