@@ -1,12 +1,10 @@
-import { useState } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Avatar, Dropdown, Tooltip, Modal } from '@douyinfe/semi-ui';
+import { useEffect, useMemo, useState } from 'react';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Avatar, Dropdown, Tooltip, Modal, Nav } from '@douyinfe/semi-ui';
 import {
   IconHome,
   IconUser,
   IconGridView,
-  IconChevronLeft,
-  IconChevronRight,
   IconExit,
   IconSetting,
   IconMenu,
@@ -63,77 +61,89 @@ interface AdminLayoutProps {
   readonly onLogout: () => void;
 }
 
-const menuGroups = [
-  {
-    label: null,
-    items: [
-      { path: '/', text: '首页', icon: <IconHome />, end: true },
-    ],
-  },
-  {
-    label: '系统',
-    items: [
-      { path: '/system/users', text: '用户管理', icon: <IconUser />, end: false },
-      { path: '/system/menus', text: '菜单管理', icon: <IconMenu />, end: false },
-      { path: '/system/roles', text: '角色管理', icon: <IconBookStroked />, end: false },
-      { path: '/system/dicts', text: '字典管理', icon: <IconPriceTag />, end: false },
-    ],
-  },
-  {
-    label: '其他',
-    items: [
-      { path: '/components', text: '组件示例', icon: <IconGridView />, end: false },
-    ],
-  },
-];
+function getSectionKey(pathname: string) {
+  if (pathname.startsWith('/system/')) return 'system';
+  if (pathname.startsWith('/components')) return 'others';
+  return undefined;
+}
 
 export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { mode, setThemeMode } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentSectionKey = getSectionKey(location.pathname);
+  const [openKeys, setOpenKeys] = useState<string[]>(() => (currentSectionKey ? [currentSectionKey] : []));
+
+  useEffect(() => {
+    if (!collapsed && currentSectionKey) {
+      setOpenKeys((prev) => (prev.includes(currentSectionKey) ? prev : [...prev, currentSectionKey]));
+    }
+  }, [collapsed, currentSectionKey]);
+
+  const navItems = useMemo(
+    () => [
+      {
+        itemKey: '/',
+        text: '首页',
+        icon: <IconHome />,
+      },
+      {
+        itemKey: 'system',
+        text: '系统',
+        icon: <IconSetting />,
+        items: [
+          { itemKey: '/system/users', text: '用户管理', icon: <IconUser /> },
+          { itemKey: '/system/menus', text: '菜单管理', icon: <IconMenu /> },
+          { itemKey: '/system/roles', text: '角色管理', icon: <IconBookStroked /> },
+          { itemKey: '/system/dicts', text: '字典管理', icon: <IconPriceTag /> },
+        ],
+      },
+      {
+        itemKey: 'others',
+        text: '其他',
+        icon: <IconGridView />,
+        items: [
+          { itemKey: '/components', text: '组件示例', icon: <IconGridView /> },
+        ],
+      },
+    ],
+    []
+  );
 
   return (
     <div className="admin-layout">
       {/* Sidebar */}
       <aside className={`admin-sidebar${collapsed ? ' admin-sidebar--collapsed' : ''}`}>
-        <div className="admin-sidebar__header">
-          <div className="admin-sidebar__logo">Z</div>
-          {!collapsed && <span className="admin-sidebar__title">Zenith Admin</span>}
-        </div>
-
-        <nav className="admin-sidebar__nav">
-          {menuGroups.map((group) => (
-            <div key={group.label ?? group.items[0].path} className="admin-nav-group">
-              {group.label && !collapsed && (
-                <div className="admin-nav-group__label">{group.label}</div>
-              )}
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    `admin-nav-item${isActive ? ' admin-nav-item--active' : ''}`
-                  }
-                >
-                  <span className="admin-nav-item__icon">{item.icon}</span>
-                  {!collapsed && <span className="admin-nav-item__text">{item.text}</span>}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
-
-        <div className="admin-sidebar__footer">
-          <button
-            className="admin-collapse-btn"
-            onClick={() => setCollapsed(!collapsed)}
-            title={collapsed ? '展开侧边栏' : '收起侧边栏'}
-          >
-            {collapsed ? <IconChevronRight size="small" /> : <IconChevronLeft size="small" />}
-            {!collapsed && <span>收起侧边栏</span>}
-          </button>
-        </div>
+        <Nav
+          className="admin-sidebar__nav"
+          mode="vertical"
+          items={navItems}
+          style={{ height: '100%' }}
+          bodyStyle={{ paddingTop: 8 }}
+          isCollapsed={collapsed}
+          selectedKeys={location.pathname === '/users' ? ['/system/users'] : [location.pathname]}
+          openKeys={collapsed ? [] : openKeys}
+          onOpenChange={({ openKeys: nextOpenKeys }) => setOpenKeys((nextOpenKeys ?? []).map(String))}
+          onCollapseChange={setCollapsed}
+          header={{
+            logo: <div className="admin-sidebar__logo">Z</div>,
+            text: <span className="admin-sidebar__title">Zenith Admin</span>,
+          }}
+          footer={{
+            collapseButton: true,
+            collapseText: (isCollapsed) => (isCollapsed ? '展开侧边栏' : '收起侧边栏'),
+          }}
+          renderWrapper={({ itemElement, props }) => {
+            const itemKey = String(props.itemKey ?? '');
+            if (!itemKey.startsWith('/')) return itemElement;
+            return (
+              <NavLink to={itemKey} className="admin-nav-link-wrapper">
+                {itemElement}
+              </NavLink>
+            );
+          }}
+        />
       </aside>
 
       {/* Main area */}
