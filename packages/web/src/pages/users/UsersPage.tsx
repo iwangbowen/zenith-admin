@@ -183,7 +183,7 @@ export default function UsersPage() {
             onPageChange: setPage,
             showTotal: true,
             showSizeChanger: false,
-            style: { padding: '12px 16px' },
+            style: { padding: '12px 16px 16px' },
           }}
           rowKey="id"
           size="small"

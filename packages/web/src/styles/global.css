@@ -103,7 +103,7 @@ body {
 
 /* utility */
 .page-container {
-  padding: 20px;
+  padding: 12px 16px;
 }
 .page-header {
   display: flex;
