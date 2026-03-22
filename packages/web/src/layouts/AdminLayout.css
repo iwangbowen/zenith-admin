@@ -15,20 +15,21 @@
   flex-shrink: 0;
   transition: width 0.2s ease;
   overflow: hidden;
+  /* 用 border-right 替代依赖颜色对比的视觉分割，避免顶部割裂感 */
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .admin-sidebar--collapsed {
   width: var(--sidebar-collapsed-width);
 }
 
-/* Logo header */
+/* Logo header — 不加 border-bottom，避免与主 header 形成双线割裂 */
 .admin-sidebar__header {
   display: flex;
   align-items: center;
   gap: 10px;
   height: var(--header-height);
   padding: 0 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
 }
 

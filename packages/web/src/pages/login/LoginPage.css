@@ -48,11 +48,57 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-surface);
+  /* 登录页始终用浅色背景，避免深色模式下表单区域变暗 */
+  background: #ffffff;
+  min-width: 0;
+}
+
+[data-theme='dark'] .login-right {
+  background: #1e2130;
 }
 
 .login-form-wrapper {
   width: 380px;
+  max-width: 100%;
+  padding: 0 24px;
+}
+
+/* ===== 窄屏响应式 ===== */
+@media (max-width: 680px) {
+  .login-left {
+    display: none;
+  }
+
+  .login-page {
+    background: #ffffff;
+  }
+
+  [data-theme='dark'] .login-page {
+    background: #1e2130;
+  }
+
+  .login-right {
+    padding: 40px 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    overflow-y: auto;
+  }
+
+  /* 窄屏时在表单顶部显示简化品牌信息 */
+  .login-right::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #3370ff;
+    margin: 0 auto 24px;
+    flex-shrink: 0;
+  }
+
+  .login-form-wrapper {
+    width: 100%;
+  }
 }
 
 /* 保持 form item 紧凑 */
