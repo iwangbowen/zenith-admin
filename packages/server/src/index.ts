@@ -4,6 +4,9 @@ import { serve } from '@hono/node-server';
 import { config } from './config';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
+import menusRoutes from './routes/menus';
+import rolesRoutes from './routes/roles';
+import dictsRoutes from './routes/dicts';
 
 const app = new Hono();
 
@@ -11,6 +14,9 @@ app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 
 
 app.route('/api/auth', authRoutes);
 app.route('/api/users', usersRoutes);
+app.route('/api/menus', menusRoutes);
+app.route('/api/roles', rolesRoutes);
+app.route('/api/dicts', dictsRoutes);
 
 app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));
 

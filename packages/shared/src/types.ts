@@ -31,3 +31,58 @@ export interface LoginResponse {
   user: Omit<User, 'password'>;
   token: AuthTokens;
 }
+
+// ─── 菜单 ─────────────────────────────────────────────────────────────────────
+export type MenuType = 'directory' | 'menu' | 'button';
+
+export interface Menu {
+  id: number;
+  parentId: number;
+  title: string;
+  name?: string;
+  path?: string;
+  icon?: string;
+  type: MenuType;
+  permission?: string;
+  sort: number;
+  status: 'active' | 'disabled';
+  visible: boolean;
+  createdAt: string;
+  updatedAt: string;
+  children?: Menu[];
+}
+
+// ─── 角色 ─────────────────────────────────────────────────────────────────────
+export interface Role {
+  id: number;
+  name: string;
+  code: string;
+  description?: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
+  menuIds?: number[];
+}
+
+// ─── 字典 ─────────────────────────────────────────────────────────────────────
+export interface Dict {
+  id: number;
+  name: string;
+  code: string;
+  description?: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DictItem {
+  id: number;
+  dictId: number;
+  label: string;
+  value: string;
+  sort: number;
+  status: 'active' | 'disabled';
+  remark?: string;
+  createdAt: string;
+  updatedAt: string;
+}

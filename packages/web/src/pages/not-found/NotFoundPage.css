@@ -1,0 +1,21 @@
+.not-found-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  text-align: center;
+  padding: 40px;
+  background: var(--color-bg);
+}
+
+.not-found-code {
+  font-size: 120px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-primary);
+  opacity: 0.15;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -4px;
+  user-select: none;
+}

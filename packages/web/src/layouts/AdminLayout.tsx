@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { Avatar, Dropdown, Tooltip, Modal } from '@douyinfe/semi-ui';
 import {
   IconHome,
@@ -9,9 +9,13 @@ import {
   IconChevronRight,
   IconExit,
   IconSetting,
+  IconMenu,
+  IconPriceTag,
+  IconBookStroked,
 } from '@douyinfe/semi-icons';
 import type { User } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
+import NProgress from '../components/NProgress';
 import './AdminLayout.css';
 
 // 主题图标 — 内联 SVG 避免字体问题
@@ -59,15 +63,39 @@ interface AdminLayoutProps {
   readonly onLogout: () => void;
 }
 
-const menuItems = [
-  { path: '/', text: '首页', icon: <IconHome />, end: true },
-  { path: '/users', text: '用户管理', icon: <IconUser />, end: false },
-  { path: '/components', text: '组件示例', icon: <IconGridView />, end: false },
+const menuGroups = [
+  {
+    label: null,
+    items: [
+      { path: '/', text: '首页', icon: <IconHome />, end: true },
+    ],
+  },
+  {
+    label: '用户',
+    items: [
+      { path: '/users', text: '用户管理', icon: <IconUser />, end: false },
+    ],
+  },
+  {
+    label: '系统',
+    items: [
+      { path: '/system/menus', text: '菜单管理', icon: <IconMenu />, end: false },
+      { path: '/system/roles', text: '角色管理', icon: <IconBookStroked />, end: false },
+      { path: '/system/dicts', text: '字典管理', icon: <IconPriceTag />, end: false },
+    ],
+  },
+  {
+    label: '其他',
+    items: [
+      { path: '/components', text: '组件示例', icon: <IconGridView />, end: false },
+    ],
+  },
 ];
 
 export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { mode, setThemeMode } = useTheme();
+  const navigate = useNavigate();
 
   return (
     <div className="admin-layout">
@@ -79,18 +107,25 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
         </div>
 
         <nav className="admin-sidebar__nav">
-          {menuItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              className={({ isActive }) =>
-                `admin-nav-item${isActive ? ' admin-nav-item--active' : ''}`
-              }
-            >
-              <span className="admin-nav-item__icon">{item.icon}</span>
-              {!collapsed && <span className="admin-nav-item__text">{item.text}</span>}
-            </NavLink>
+          {menuGroups.map((group) => (
+            <div key={group.label ?? group.items[0].path} className="admin-nav-group">
+              {group.label && !collapsed && (
+                <div className="admin-nav-group__label">{group.label}</div>
+              )}
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    `admin-nav-item${isActive ? ' admin-nav-item--active' : ''}`
+                  }
+                >
+                  <span className="admin-nav-item__icon">{item.icon}</span>
+                  {!collapsed && <span className="admin-nav-item__text">{item.text}</span>}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -108,6 +143,7 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
 
       {/* Main area */}
       <div className="admin-main">
+        <NProgress />
         {/* Header */}
         <header className="admin-header">
           <div />
@@ -142,6 +178,7 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
               position="bottomRight"
               render={
                 <Dropdown.Menu>
+                  <Dropdown.Item icon={<IconUser />} onClick={() => navigate('/profile')}>个人中心</Dropdown.Item>
                   <Dropdown.Item icon={<IconSetting />}>设置</Dropdown.Item>
                   <Dropdown.Divider />
                   <Dropdown.Item

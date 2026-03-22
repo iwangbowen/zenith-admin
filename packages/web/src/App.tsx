@@ -6,9 +6,14 @@ import LoginPage from './pages/login/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import UsersPage from './pages/users/UsersPage';
 import ComponentsPage from './pages/components/ComponentsPage';
+import ProfilePage from './pages/profile/ProfilePage';
+import MenusPage from './pages/system/menus/MenusPage';
+import RolesPage from './pages/system/roles/RolesPage';
+import DictsPage from './pages/system/dicts/DictsPage';
+import NotFoundPage from './pages/not-found/NotFoundPage';
 
 export default function App() {
-  const { user, loading, login, register, logout } = useAuth();
+  const { user, loading, login, register, logout, updateUser } = useAuth();
 
   if (loading) {
     return (
@@ -34,8 +39,13 @@ export default function App() {
           <Route index element={<DashboardPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="components" element={<ComponentsPage />} />
+          <Route path="profile" element={<ProfilePage user={user!} onUserUpdate={updateUser} />} />
+          <Route path="system/menus" element={<MenusPage />} />
+          <Route path="system/roles" element={<RolesPage />} />
+          <Route path="system/dicts" element={<DictsPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   );

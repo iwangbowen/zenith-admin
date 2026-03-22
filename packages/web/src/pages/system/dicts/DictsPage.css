@@ -1,0 +1,90 @@
+.page-container {
+  padding: 24px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--semi-color-text-0);
+}
+
+.page-desc {
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+  margin: 0;
+}
+
+/* 主布局：左右分栏 */
+.dicts-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.dicts-left-card {
+  width: 420px;
+  flex-shrink: 0;
+}
+
+.dicts-right-card {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 面板工具栏 */
+.dicts-panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+/* 字典名称单元格 */
+.dict-name-cell {
+  display: inline-flex;
+  align-items: center;
+  color: var(--semi-color-text-0);
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: inherit;
+  font-family: inherit;
+  transition: color 0.15s;
+}
+
+.dict-name-cell:hover {
+  color: var(--semi-color-primary);
+}
+
+.dict-name-cell--active {
+  color: var(--semi-color-primary);
+  font-weight: 600;
+}
+
+/* 选中行高亮 */
+.dict-row--selected td {
+  background: var(--semi-color-primary-light-default) !important;
+}
+
+@media (max-width: 900px) {
+  .dicts-layout {
+    flex-direction: column;
+  }
+
+  .dicts-left-card {
+    width: 100%;
+  }
+}

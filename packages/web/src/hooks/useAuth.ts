@@ -58,5 +58,9 @@ export function useAuth() {
     setState({ user: null, loading: false });
   };
 
-  return { ...state, login, register, logout, refresh: fetchUser };
+  const updateUser = (user: Omit<User, 'password'>) => {
+    setState((prev) => ({ ...prev, user }));
+  };
+
+  return { ...state, login, register, logout, refresh: fetchUser, updateUser };
 }

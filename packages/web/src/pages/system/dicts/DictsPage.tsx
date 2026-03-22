@@ -1,0 +1,373 @@
+import { useState, useEffect, useCallback } from 'react';
+import {
+  Card,
+  Table,
+  Button,
+  Input,
+  Tag,
+  Space,
+  Modal,
+  Form,
+  Toast,
+  Popconfirm,
+  Select,
+  Empty,
+  Typography,
+} from '@douyinfe/semi-ui';
+import { IconSearch, IconPlus, IconEdit, IconDelete, IconRefresh, IconList } from '@douyinfe/semi-icons';
+import type { Dict, DictItem } from '@zenith/shared';
+import { request } from '../../../utils/request';
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import './DictsPage.css';
+
+const { Text } = Typography;
+
+export default function DictsPage() {
+  // ─── 字典列表 ──────────────────────────────────────────────────────────────
+  const [dicts, setDicts] = useState<Dict[]>([]);
+  const [dictsLoading, setDictsLoading] = useState(false);
+  const [keyword, setKeyword] = useState('');
+  const [dictModalVisible, setDictModalVisible] = useState(false);
+  const [editingDict, setEditingDict] = useState<Dict | null>(null);
+
+  // ─── 字典项列表 ────────────────────────────────────────────────────────────
+  const [selectedDict, setSelectedDict] = useState<Dict | null>(null);
+  const [items, setItems] = useState<DictItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemModalVisible, setItemModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<DictItem | null>(null);
+
+  // ─── 数据获取 ──────────────────────────────────────────────────────────────
+  const fetchDicts = useCallback(async () => {
+    setDictsLoading(true);
+    try {
+      const res = await request.get<Dict[]>(`/api/dicts?keyword=${encodeURIComponent(keyword)}`);
+      if (res.code === 0) {
+        setDicts(res.data);
+        // 若当前选中字典已被删除则清除
+        if (selectedDict && !res.data.some((d) => d.id === selectedDict.id)) {
+          setSelectedDict(null);
+          setItems([]);
+        }
+      }
+    } finally {
+      setDictsLoading(false);
+    }
+  }, [keyword, selectedDict]);
+
+  const fetchItems = useCallback(async (dictId: number) => {
+    setItemsLoading(true);
+    try {
+      const res = await request.get<DictItem[]>(`/api/dicts/${dictId}/items`);
+      if (res.code === 0) setItems(res.data);
+    } finally {
+      setItemsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchDicts(); }, [fetchDicts]);
+
+  const selectDict = (dict: Dict) => {
+    setSelectedDict(dict);
+    fetchItems(dict.id);
+  };
+
+  // ─── 字典 CRUD ─────────────────────────────────────────────────────────────
+  const handleDictSubmit = async (values: Partial<Dict>) => {
+    const res = editingDict
+      ? await request.put(`/api/dicts/${editingDict.id}`, values)
+      : await request.post('/api/dicts', values);
+    if (res.code === 0) {
+      Toast.success(editingDict ? '更新成功' : '创建成功');
+      setDictModalVisible(false);
+      fetchDicts();
+    } else {
+      Toast.error(res.message);
+    }
+  };
+
+  const handleDictDelete = async (id: number) => {
+    const res = await request.delete(`/api/dicts/${id}`);
+    if (res.code === 0) {
+      Toast.success('删除成功');
+      if (selectedDict?.id === id) {
+        setSelectedDict(null);
+        setItems([]);
+      }
+      fetchDicts();
+    } else {
+      Toast.error(res.message);
+    }
+  };
+
+  // ─── 字典项 CRUD ───────────────────────────────────────────────────────────
+  const handleItemSubmit = async (values: Partial<DictItem>) => {
+    if (!selectedDict) return;
+    const res = editingItem
+      ? await request.put(`/api/dicts/${selectedDict.id}/items/${editingItem.id}`, values)
+      : await request.post(`/api/dicts/${selectedDict.id}/items`, values);
+    if (res.code === 0) {
+      Toast.success(editingItem ? '更新成功' : '创建成功');
+      setItemModalVisible(false);
+      fetchItems(selectedDict.id);
+    } else {
+      Toast.error(res.message);
+    }
+  };
+
+  const handleItemDelete = async (id: number) => {
+    if (!selectedDict) return;
+    const res = await request.delete(`/api/dicts/${selectedDict.id}/items/${id}`);
+    if (res.code === 0) {
+      Toast.success('删除成功');
+      fetchItems(selectedDict.id);
+    } else {
+      Toast.error(res.message);
+    }
+  };
+
+  // ─── 表格列定义 ────────────────────────────────────────────────────────────
+  const dictColumns: ColumnProps<Dict>[] = [
+    {
+      title: '字典名称',
+      dataIndex: 'name',
+      render: (v, row) => (
+        <button
+          type="button"
+          className={`dict-name-cell${selectedDict?.id === row.id ? ' dict-name-cell--active' : ''}`}
+          onClick={() => selectDict(row)}
+        >
+          <IconList style={{ marginRight: 6, flexShrink: 0 }} />
+          {v}
+        </button>
+      ),
+    },
+    { title: '字典编码', dataIndex: 'code', width: 160 },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 80,
+      align: 'center',
+      render: (v) => (
+        <Tag color={v === 'active' ? 'green' : 'grey'} size="small">
+          {v === 'active' ? '启用' : '禁用'}
+        </Tag>
+      ),
+    },
+    {
+      title: '操作',
+      width: 140,
+      align: 'center',
+      render: (_v, row) => (
+        <Space>
+          <Button
+            size="small"
+            icon={<IconEdit />}
+            onClick={(e) => { e.stopPropagation(); setEditingDict(row); setDictModalVisible(true); }}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="确认删除此字典？"
+            content="字典下的所有字典项也将一并删除"
+            okText="删除"
+            okButtonProps={{ type: 'danger', theme: 'solid' }}
+            onConfirm={() => handleDictDelete(row.id)}
+          >
+            <Button size="small" type="danger" icon={<IconDelete />} onClick={(e) => e.stopPropagation()}>删除</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const itemColumns: ColumnProps<DictItem>[] = [
+    { title: '标签', dataIndex: 'label', width: 160 },
+    { title: '键值', dataIndex: 'value', width: 160 },
+    { title: '排序', dataIndex: 'sort', width: 70, align: 'center' },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 80,
+      align: 'center',
+      render: (v) => (
+        <Tag color={v === 'active' ? 'green' : 'grey'} size="small">
+          {v === 'active' ? '启用' : '禁用'}
+        </Tag>
+      ),
+    },
+    { title: '备注', dataIndex: 'remark', render: (v) => v || '—' },
+    {
+      title: '操作',
+      width: 130,
+      align: 'center',
+      render: (_v, row) => (
+        <Space>
+          <Button
+            size="small"
+            icon={<IconEdit />}
+            onClick={() => { setEditingItem(row); setItemModalVisible(true); }}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="确认删除此字典项？"
+            okText="删除"
+            okButtonProps={{ type: 'danger', theme: 'solid' }}
+            onConfirm={() => handleItemDelete(row.id)}
+          >
+            <Button size="small" type="danger" icon={<IconDelete />}>删除</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">字典管理</h2>
+          <p className="page-desc">管理系统数据字典及字典项</p>
+        </div>
+      </div>
+
+      <div className="dicts-layout">
+        {/* 左侧：字典列表 */}
+        <Card className="dicts-left-card">
+          <div className="dicts-panel-toolbar">
+            <Input
+              prefix={<IconSearch />}
+              placeholder="搜索字典名称/编码"
+              value={keyword}
+              onChange={(v) => setKeyword(v)}
+              showClear
+              style={{ flex: 1 }}
+            />
+            <Button icon={<IconRefresh />} onClick={fetchDicts} />
+            <Button
+              type="primary"
+              icon={<IconPlus />}
+              onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
+            >
+              新增
+            </Button>
+          </div>
+          <Table
+            columns={dictColumns}
+            dataSource={dicts}
+            rowKey="id"
+            loading={dictsLoading}
+            pagination={false}
+            size="small"
+            onRow={(row) => ({
+              onClick: () => row && selectDict(row as Dict),
+              style: { cursor: 'pointer' },
+            })}
+            rowClassName={(row) =>
+              row && (row as Dict).id === selectedDict?.id ? 'dict-row--selected' : ''
+            }
+          />
+        </Card>
+
+        {/* 右侧：字典项列表 */}
+        <Card className="dicts-right-card">
+          {selectedDict ? (
+            <>
+              <div className="dicts-panel-toolbar">
+                <Text strong style={{ fontSize: 14 }}>
+                  字典项：{selectedDict.name}
+                  <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
+                </Text>
+                <Space style={{ marginLeft: 'auto' }}>
+                  <Button icon={<IconRefresh />} onClick={() => fetchItems(selectedDict.id)} />
+                  <Button
+                    type="primary"
+                    icon={<IconPlus />}
+                    onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
+                  >
+                    新增字典项
+                  </Button>
+                </Space>
+              </div>
+              <Table
+                columns={itemColumns}
+                dataSource={items}
+                rowKey="id"
+                loading={itemsLoading}
+                pagination={false}
+                size="small"
+              />
+            </>
+          ) : (
+            <Empty
+              image={<IconList size="extra-large" style={{ color: 'var(--semi-color-text-2)' }} />}
+              title="请选择字典"
+              description="点击左侧字典查看其字典项"
+              style={{ padding: '60px 0' }}
+            />
+          )}
+        </Card>
+      </div>
+
+      {/* 字典创建/编辑 Modal */}
+      <Modal
+        title={editingDict ? '编辑字典' : '新增字典'}
+        visible={dictModalVisible}
+        onCancel={() => setDictModalVisible(false)}
+        footer={null}
+        width={480}
+      >
+        <Form
+          key={editingDict?.id ?? 'new-dict'}
+          initValues={editingDict ?? { status: 'active' }}
+          onSubmit={handleDictSubmit}
+          labelPosition="left"
+          labelWidth={80}
+        >
+          <Form.Input field="name" label="字典名称" rules={[{ required: true, message: '请输入字典名称' }]} />
+          <Form.Input field="code" label="字典编码" rules={[{ required: true, message: '请输入字典编码' }]} />
+          <Form.Input field="description" label="描述" />
+          <Form.Select field="status" label="状态">
+            <Select.Option value="active">启用</Select.Option>
+            <Select.Option value="disabled">禁用</Select.Option>
+          </Form.Select>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <Button onClick={() => setDictModalVisible(false)}>取消</Button>
+            <Button htmlType="submit" type="primary">确认</Button>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* 字典项创建/编辑 Modal */}
+      <Modal
+        title={editingItem ? '编辑字典项' : '新增字典项'}
+        visible={itemModalVisible}
+        onCancel={() => setItemModalVisible(false)}
+        footer={null}
+        width={480}
+      >
+        <Form
+          key={editingItem?.id ?? 'new-item'}
+          initValues={editingItem ?? { status: 'active', sort: 0 }}
+          onSubmit={handleItemSubmit}
+          labelPosition="left"
+          labelWidth={80}
+        >
+          <Form.Input field="label" label="标签" rules={[{ required: true, message: '请输入标签' }]} />
+          <Form.Input field="value" label="键值" rules={[{ required: true, message: '请输入键值' }]} />
+          <Form.InputNumber field="sort" label="排序" min={0} />
+          <Form.Select field="status" label="状态">
+            <Select.Option value="active">启用</Select.Option>
+            <Select.Option value="disabled">禁用</Select.Option>
+          </Form.Select>
+          <Form.Input field="remark" label="备注" />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <Button onClick={() => setItemModalVisible(false)}>取消</Button>
+            <Button htmlType="submit" type="primary">确认</Button>
+          </div>
+        </Form>
+      </Modal>
+    </div>
+  );
+}

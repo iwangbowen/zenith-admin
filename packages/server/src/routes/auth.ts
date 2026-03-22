@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { users } from '../db/schema';
 import { config } from '../config';
-import { loginSchema, registerSchema } from '@zenith/shared';
+import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
 
@@ -105,6 +105,61 @@ auth.get('/me', authMiddleware, async (c) => {
     message: 'ok',
     data: { ...userInfo, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
   });
+});
+
+// 修改个人资料
+auth.put('/profile', authMiddleware, async (c) => {
+  const payload = c.get('user') as JwtPayload;
+  const body = await c.req.json();
+  const result = updateProfileSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+  }
+
+  if (result.data.email) {
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, result.data.email)).limit(1);
+    if (existing && existing.id !== payload.userId) {
+      return c.json({ code: 400, message: '邮箱已被使用', data: null }, 400);
+    }
+  }
+
+  const [updated] = await db
+    .update(users)
+    .set({ ...result.data, updatedAt: new Date() })
+    .where(eq(users.id, payload.userId))
+    .returning();
+
+  const { password: _, ...userInfo } = updated;
+  return c.json({
+    code: 0,
+    message: '资料已更新',
+    data: { ...userInfo, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() },
+  });
+});
+
+// 修改密码
+auth.put('/password', authMiddleware, async (c) => {
+  const payload = c.get('user') as JwtPayload;
+  const body = await c.req.json();
+  const result = changePasswordSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+  }
+
+  const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
+  if (!user) {
+    return c.json({ code: 404, message: '用户不存在', data: null }, 404);
+  }
+
+  const valid = await bcrypt.compare(result.data.oldPassword, user.password);
+  if (!valid) {
+    return c.json({ code: 400, message: '原密码错误', data: null }, 400);
+  }
+
+  const hashed = await bcrypt.hash(result.data.newPassword, 10);
+  await db.update(users).set({ password: hashed, updatedAt: new Date() }).where(eq(users.id, payload.userId));
+
+  return c.json({ code: 0, message: '密码修改成功', data: null });
 });
 
 export default auth;

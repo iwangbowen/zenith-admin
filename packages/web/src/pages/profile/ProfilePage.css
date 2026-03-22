@@ -1,0 +1,46 @@
+.profile-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.profile-avatar-card {
+  width: 240px;
+  flex-shrink: 0;
+}
+
+.profile-avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  text-align: center;
+}
+
+.profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+  width: 100%;
+  text-align: left;
+}
+
+.profile-form-card {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-tab-content {
+  padding: 20px 0 8px;
+}
+
+@media (max-width: 768px) {
+  .profile-layout {
+    flex-direction: column;
+  }
+
+  .profile-avatar-card {
+    width: 100%;
+  }
+}

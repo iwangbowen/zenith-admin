@@ -8,6 +8,13 @@
       "when": 1774172948023,
       "tag": "0000_hard_nightcrawler",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1742601600000,
+      "tag": "0001_system_tables",
+      "breakpoints": true
     }
   ]
 }
