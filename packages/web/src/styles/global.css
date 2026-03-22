@@ -5,11 +5,13 @@
   --header-height: 52px;
   --color-bg: #f0f1f5;
   --color-surface: #ffffff;
-  --color-sidebar-bg: #1b1f29;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
-  --color-sidebar-active: rgba(255, 255, 255, 0.12);
-  --color-sidebar-text: rgba(255, 255, 255, 0.75);
-  --color-sidebar-text-active: #ffffff;
+  /* 侧边栏 — 浅色模式使用白色 */
+  --color-sidebar-bg: #ffffff;
+  --color-sidebar-hover: rgba(0, 0, 0, 0.04);
+  --color-sidebar-active: rgba(51, 112, 255, 0.1);
+  --color-sidebar-text: #646a73;
+  --color-sidebar-title: #1f2329;
+  --color-sidebar-text-active: #3370ff;
   --color-primary: #3370ff;
   --color-text: #1f2329;
   --color-text-secondary: #646a73;
@@ -25,6 +27,7 @@
   --color-sidebar-hover: rgba(255, 255, 255, 0.08);
   --color-sidebar-active: rgba(51, 112, 255, 0.25);
   --color-sidebar-text: rgba(255, 255, 255, 0.65);
+  --color-sidebar-title: #ffffff;
   --color-sidebar-text-active: #ffffff;
   --color-text: #e8eaed;
   --color-text-secondary: #8f96a3;

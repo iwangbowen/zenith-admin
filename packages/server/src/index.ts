@@ -14,6 +14,12 @@ app.route('/api/users', usersRoutes);
 
 app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));
 
+// 全局未捕获异常处理—统一返回标准错误格式
+app.onError((err, c) => {
+  console.error('[Unhandled Error]', err);
+  return c.json({ code: 500, message: '服务器内部错误', data: null }, 500);
+});
+
 console.log(`Server starting on port ${config.port}...`);
 serve({ fetch: app.fetch, port: config.port });
 console.log(`Server running at http://localhost:${config.port}`);

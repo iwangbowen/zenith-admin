@@ -19,12 +19,15 @@ class Request {
   }
 
   async request<T>(url: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    const res = await fetch(`${this.baseUrl}${url}`, {
-      ...options,
-      headers: { ...this.getHeaders(), ...options.headers },
-    });
-
-    const data: ApiResponse<T> = await res.json();
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${url}`, {
+        ...options,
+        headers: { ...this.getHeaders(), ...options.headers },
+      });
+    } catch {
+      return { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
+    }
 
     if (res.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
@@ -32,7 +35,12 @@ class Request {
       throw new Error('Unauthorized');
     }
 
-    return data;
+    try {
+      const data: ApiResponse<T> = await res.json();
+      return data;
+    } catch {
+      return { code: -1, message: '响应解析失败', data: null as unknown as T };
+    }
   }
 
   get<T>(url: string) {

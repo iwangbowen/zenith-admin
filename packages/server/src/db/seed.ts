@@ -7,8 +7,8 @@ async function seed() {
   console.log('Seeding database...');
 
   const existing = await db.select().from(users).where(eq(users.username, 'admin'));
+  const hashedPassword = await bcrypt.hash('123456', 10);
   if (existing.length === 0) {
-    const hashedPassword = await bcrypt.hash('admin123', 10);
     await db.insert(users).values({
       username: 'admin',
       nickname: '管理员',
@@ -17,9 +17,11 @@ async function seed() {
       role: 'admin',
       status: 'active',
     });
-    console.log('Admin user created: admin / admin123');
+    console.log('Admin user created: admin / 123456');
   } else {
-    console.log('Admin user already exists, skipping.');
+    // 密码变更时同步更新
+    await db.update(users).set({ password: hashedPassword }).where(eq(users.username, 'admin'));
+    console.log('Admin password reset to: admin / 123456');
   }
 
   console.log('Seed complete.');

@@ -143,7 +143,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
             type="tertiary"
             style={{ display: 'block', textAlign: 'center', marginTop: 20, fontSize: 12 }}
           >
-            默认账号：admin / admin123
+            默认账号：admin / 123456
           </Text>
         </div>
       </div>
