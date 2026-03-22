@@ -1,0 +1,155 @@
+/* ─── 触发器 ──────────────────────────────────────────────────────────────── */
+.icon-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-fill-0);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  user-select: none;
+  min-width: 0;
+  width: 100%;
+}
+
+.icon-picker-trigger:hover {
+  border-color: var(--semi-color-primary);
+}
+
+.icon-picker-trigger--open {
+  border-color: var(--semi-color-primary);
+  box-shadow: 0 0 0 2px var(--semi-color-primary-light-default);
+}
+
+.icon-picker-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
+  color: var(--semi-color-text-0);
+}
+
+.icon-picker-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--semi-color-text-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-picker-label--placeholder {
+  color: var(--semi-color-text-2);
+}
+
+.icon-picker-arrow {
+  font-size: 10px;
+  color: var(--semi-color-text-2);
+  flex-shrink: 0;
+}
+
+.icon-picker-arrow--clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--semi-color-text-2);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.icon-picker-arrow--clear:hover {
+  color: var(--semi-color-text-0);
+}
+
+/* ─── 面板 ──────────────────────────────────────────────────────────────────── */
+.icon-picker-panel {
+  width: 352px;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.icon-picker-search {
+  margin-bottom: 10px;
+}
+
+/* ─── 滚动容器（分类视图/搜索视图共用）───────────────────────────────────────── */
+.icon-picker-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.icon-picker-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.icon-picker-scroll::-webkit-scrollbar-thumb {
+  background: var(--semi-color-fill-2);
+  border-radius: 2px;
+}
+
+/* ─── 分类组 ────────────────────────────────────────────────────────────────── */
+.icon-picker-group {
+  margin-bottom: 6px;
+}
+
+.icon-picker-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--semi-color-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 2px 3px;
+}
+
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  border-radius: var(--semi-border-radius-small);
+}
+
+/* ─── 单个图标格 ─────────────────────────────────────────────────────────────── */
+.icon-picker-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: var(--semi-border-radius-small);
+  background: transparent;
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  padding: 0;
+  line-height: 1;
+}
+
+.icon-picker-cell:hover {
+  background: var(--semi-color-fill-1);
+  color: var(--semi-color-text-0);
+}
+
+.icon-picker-cell--active {
+  background: var(--semi-color-primary-light-default);
+  border-color: var(--semi-color-primary-light-active);
+  color: var(--semi-color-primary);
+}
+
+/* ─── 无结果 ─────────────────────────────────────────────────────────────────── */
+.icon-picker-empty-result {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 24px 0;
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}

@@ -15,6 +15,8 @@ import {
 import { IconPlus, IconEdit, IconDelete, IconRefresh } from '@douyinfe/semi-icons';
 import type { Menu, MenuType } from '@zenith/shared';
 import { request } from '../../../utils/request';
+import { renderLucideIcon } from '../../../utils/icons';
+import IconPicker from '../../../components/IconPicker';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './MenusPage.css';
 
@@ -30,6 +32,7 @@ export default function MenusPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
   const [parentId, setParentId] = useState<number | null>(null);
+  const [iconValue, setIconValue] = useState('');
 
   const fetchMenus = useCallback(async () => {
     setLoading(true);
@@ -64,17 +67,19 @@ export default function MenusPage() {
   const openCreate = (pid?: number) => {
     setEditingMenu(null);
     setParentId(pid ?? null);
+    setIconValue('');
     setModalVisible(true);
   };
 
   const openEdit = (menu: Menu) => {
     setEditingMenu(menu);
     setParentId(null);
+    setIconValue(menu.icon ?? '');
     setModalVisible(true);
   };
 
   const handleSubmit = async (values: Partial<Menu> & { parentId: number }) => {
-    const payload = { ...values, parentId: values.parentId ?? 0 };
+    const payload = { ...values, parentId: values.parentId ?? 0, icon: iconValue || undefined };
     const res = editingMenu
       ? await request.put(`/api/menus/${editingMenu.id}`, payload)
       : await request.post('/api/menus', payload);
@@ -106,9 +111,9 @@ export default function MenusPage() {
       render: (val, row) => (
         <span style={{ paddingLeft: row.depth * 20, display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {row.icon && (
-            <code style={{ marginRight: 6, fontSize: 11, opacity: 0.6, background: 'var(--semi-color-fill-0)', padding: '1px 4px', borderRadius: 3 }}>
-              {row.icon}
-            </code>
+            <span style={{ marginRight: 6, display: 'flex', alignItems: 'center', color: 'var(--semi-color-text-1)', flexShrink: 0 }}>
+              {renderLucideIcon(row.icon, 15)}
+            </span>
           )}
           <span className="table-cell-ellipsis" title={String(val)}>{val}</span>
         </span>
@@ -234,7 +239,9 @@ export default function MenusPage() {
           <Form.Input field="title" label="菜单名称" rules={[{ required: true, message: '请输入菜单名称' }]} />
           <Form.Input field="name" label="组件名" />
           <Form.Input field="path" label="路由路径" />
-          <Form.Input field="icon" label="图标" />
+          <Form.Slot label={{ text: '图标' }}>
+            <IconPicker value={iconValue} onChange={setIconValue} />
+          </Form.Slot>
           <Form.Input field="permission" label="权限标识" />
           <Form.InputNumber field="sort" label="排序" initValue={0} min={0} />
           <Form.Select field="status" label="状态">

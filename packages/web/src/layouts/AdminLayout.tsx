@@ -1,56 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Dropdown, Tooltip, Modal, Nav } from '@douyinfe/semi-ui';
-import {
-  IconHome,
-  IconUser,
-  IconGridView,
-  IconExit,
-  IconSetting,
-  IconMenu,
-  IconIdCard,
-  IconBookOpenStroked,
-  IconUpload,
-  IconFile,
-} from '@douyinfe/semi-icons';
+import { Sun, Moon, Monitor, User as UserIcon, Settings, LogOut } from 'lucide-react';
 import type { User, Menu } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
 import { request } from '../utils/request';
+import { renderLucideIcon } from '../utils/icons';
 import NProgress from '../components/NProgress';
 import './AdminLayout.css';
 
-// 主题图标 — 内联 SVG 避免字体问题
+// 主题图标
 function SunIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <circle cx="12" cy="12" r="5" />
-      <line x1="12" y1="2" x2="12" y2="4" />
-      <line x1="12" y1="20" x2="12" y2="22" />
-      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-      <line x1="2" y1="12" x2="4" y2="12" />
-      <line x1="20" y1="12" x2="22" y2="12" />
-      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-    </svg>
-  );
+  return <Sun size={16} strokeWidth={1.8} />;
 }
 
 function MoonIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
-    </svg>
-  );
+  return <Moon size={16} strokeWidth={1.8} />;
 }
 
 function MonitorIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <rect x="2" y="3" width="20" height="14" rx="2" />
-      <path d="M8 21h8M12 17v4" />
-    </svg>
-  );
+  return <Monitor size={16} strokeWidth={1.8} />;
 }
 
 const themeLabelMap: Record<ThemeMode, { label: string; icon: React.ReactNode }> = {
@@ -59,21 +28,9 @@ const themeLabelMap: Record<ThemeMode, { label: string; icon: React.ReactNode }>
   system: { label: '跟随系统', icon: <MonitorIcon /> },
 };
 
-const ICON_MAP: Record<string, React.ReactNode> = {
-  IconHome:           <IconHome />,
-  IconSetting:        <IconSetting />,
-  IconUser:           <IconUser />,
-  IconMenu:           <IconMenu />,
-  IconIdCard:         <IconIdCard />,
-  IconBookOpenStroked:<IconBookOpenStroked />,
-  IconUpload:         <IconUpload />,
-  IconFile:           <IconFile />,
-  IconGridView:       <IconGridView />,
-};
-
 function getMenuIcon(iconName?: string): React.ReactNode {
-  if (!iconName) return <IconGridView />;
-  return ICON_MAP[iconName] ?? <IconGridView />;
+  const icon = renderLucideIcon(iconName ?? 'LayoutGrid') ?? renderLucideIcon('LayoutGrid');
+  return <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>;
 }
 
 type NavItem = {
@@ -219,11 +176,11 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
               position="bottomRight"
               render={
                 <Dropdown.Menu>
-                  <Dropdown.Item icon={<IconUser />} onClick={() => navigate('/profile')}>个人中心</Dropdown.Item>
-                  <Dropdown.Item icon={<IconSetting />}>设置</Dropdown.Item>
+                  <Dropdown.Item icon={<UserIcon size={14} strokeWidth={1.8} />} onClick={() => navigate('/profile')}>个人中心</Dropdown.Item>
+                  <Dropdown.Item icon={<Settings size={14} strokeWidth={1.8} />}>设置</Dropdown.Item>
                   <Dropdown.Divider />
                   <Dropdown.Item
-                    icon={<IconExit />}
+                    icon={<LogOut size={14} strokeWidth={1.8} />}
                     onClick={() =>
                       Modal.confirm({
                         title: '确认退出',

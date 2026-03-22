@@ -9,9 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@zenith/shared": "workspace:*",
-    "@douyinfe/semi-ui": "^2.76.1",
     "@douyinfe/semi-icons": "^2.76.1",
+    "@douyinfe/semi-ui": "^2.76.1",
+    "@zenith/shared": "workspace:*",
+    "lucide-react": "^0.577.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.3.0"

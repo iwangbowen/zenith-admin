@@ -30,25 +30,25 @@ async function seed() {
 
   // ─── 2. 菜单数据 ──────────────────────────────────────────────────────────
   const menuRows = [
-    { id: 1,  parentId: 0, title: '控制台',    name: 'Dashboard',     path: '/',              icon: 'IconHome',       type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true },
-    { id: 2,  parentId: 0, title: '系统管理',   name: 'System',        path: undefined,        icon: 'IconSetting',    type: 'directory' as const, sort: 2,  status: 'active' as const, visible: true },
-    { id: 3,  parentId: 2, title: '用户管理',   name: 'SystemUsers',   path: '/system/users',  icon: 'IconUser',       type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true, permission: 'system:user:list' },
+    { id: 1,  parentId: 0, title: '控制台',    name: 'Dashboard',     path: '/',              icon: 'Home',           type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true },
+    { id: 2,  parentId: 0, title: '系统管理',   name: 'System',        path: undefined,        icon: 'Settings',       type: 'directory' as const, sort: 2,  status: 'active' as const, visible: true },
+    { id: 3,  parentId: 2, title: '用户管理',   name: 'SystemUsers',   path: '/system/users',  icon: 'UsersRound',     type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true, permission: 'system:user:list' },
     { id: 10, parentId: 3, title: '新增用户',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:user:create' },
     { id: 11, parentId: 3, title: '编辑用户',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:user:update' },
     { id: 12, parentId: 3, title: '删除用户',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:user:delete' },
-    { id: 4,  parentId: 2, title: '菜单管理',   name: 'SystemMenus',   path: '/system/menus',  icon: 'IconMenu',       type: 'menu' as const,      sort: 2,  status: 'active' as const, visible: true, permission: 'system:menu:list' },
+    { id: 4,  parentId: 2, title: '菜单管理',   name: 'SystemMenus',   path: '/system/menus',  icon: 'LayoutList',     type: 'menu' as const,      sort: 2,  status: 'active' as const, visible: true, permission: 'system:menu:list' },
     { id: 13, parentId: 4, title: '新增菜单',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:menu:create' },
     { id: 14, parentId: 4, title: '编辑菜单',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:menu:update' },
     { id: 15, parentId: 4, title: '删除菜单',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:menu:delete' },
-    { id: 5,  parentId: 2, title: '角色管理',   name: 'SystemRoles',   path: '/system/roles',  icon: 'IconIdCard',     type: 'menu' as const,      sort: 3,  status: 'active' as const, visible: true, permission: 'system:role:list' },
+    { id: 5,  parentId: 2, title: '角色管理',   name: 'SystemRoles',   path: '/system/roles',  icon: 'ShieldCheck',    type: 'menu' as const,      sort: 3,  status: 'active' as const, visible: true, permission: 'system:role:list' },
     { id: 16, parentId: 5, title: '新增角色',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:role:create' },
     { id: 17, parentId: 5, title: '编辑角色',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:role:update' },
     { id: 18, parentId: 5, title: '删除角色',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:role:delete' },
     { id: 19, parentId: 5, title: '分配菜单',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:role:assign' },
-    { id: 6,  parentId: 2, title: '字典管理',   name: 'SystemDicts',   path: '/system/dicts',  icon: 'IconBookOpenStroked', type: 'menu' as const, sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:list' },
-    { id: 8,  parentId: 2, title: '文件管理',   name: 'SystemFiles',   path: undefined,        icon: 'IconUpload',     type: 'directory' as const, sort: 5,  status: 'active' as const, visible: true, permission: 'system:file:list' },
-    { id: 24, parentId: 8, title: '文件配置',   name: 'SystemFileConfigs', path: '/system/file-configs', icon: 'IconSetting', type: 'menu' as const, sort: 1, status: 'active' as const, visible: true, permission: 'system:file:config' },
-    { id: 25, parentId: 8, title: '文件列表',   name: 'SystemFileList', path: '/system/files',  icon: 'IconFile',       type: 'menu' as const, sort: 2, status: 'active' as const, visible: true, permission: 'system:file:list' },
+    { id: 6,  parentId: 2, title: '字典管理',   name: 'SystemDicts',   path: '/system/dicts',  icon: 'NotepadText',    type: 'menu' as const, sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:list' },
+    { id: 8,  parentId: 2, title: '文件管理',   name: 'SystemFiles',   path: undefined,        icon: 'FolderOpen',     type: 'directory' as const, sort: 5,  status: 'active' as const, visible: true, permission: 'system:file:list' },
+    { id: 24, parentId: 8, title: '文件配置',   name: 'SystemFileConfigs', path: '/system/file-configs', icon: 'HardDriveUpload', type: 'menu' as const, sort: 1, status: 'active' as const, visible: true, permission: 'system:file:config' },
+    { id: 25, parentId: 8, title: '文件列表',   name: 'SystemFileList', path: '/system/files',  icon: 'Files',          type: 'menu' as const, sort: 2, status: 'active' as const, visible: true, permission: 'system:file:list' },
     { id: 26, parentId: 24, title: '新增配置',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:file:config:create' },
     { id: 27, parentId: 24, title: '编辑配置',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:file:config:update' },
     { id: 28, parentId: 24, title: '删除配置',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:file:config:delete' },
@@ -59,7 +59,7 @@ async function seed() {
     { id: 21, parentId: 6, title: '编辑字典',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:dict:update' },
     { id: 22, parentId: 6, title: '删除字典',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:dict:delete' },
     { id: 23, parentId: 6, title: '管理字典项',  name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:item' },
-    { id: 7,  parentId: 0, title: '组件示例',   name: 'Components',    path: '/components',    icon: 'IconGridView',   type: 'menu' as const,      sort: 99, status: 'active' as const, visible: true },
+    { id: 7,  parentId: 0, title: '组件示例',   name: 'Components',    path: '/components',    icon: 'Component',      type: 'menu' as const,      sort: 99, status: 'active' as const, visible: true },
   ];
   for (const row of menuRows) {
     await db
