@@ -126,6 +126,11 @@
   justify-content: center;
 }
 
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-sub,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-wrap {
+  margin-bottom: 0;
+}
+
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon,
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-icon {
   margin-right: 0;
