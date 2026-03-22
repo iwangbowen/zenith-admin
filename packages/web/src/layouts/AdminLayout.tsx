@@ -1,20 +1,17 @@
 import { useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Nav, Avatar, Dropdown, Button, Typography } from '@douyinfe/semi-ui';
+import { Outlet, NavLink } from 'react-router-dom';
+import { Avatar, Dropdown } from '@douyinfe/semi-ui';
 import {
   IconHome,
   IconUser,
   IconGridView,
-  IconShrinkScreenStroked,
-  IconExpand,
+  IconChevronLeft,
+  IconChevronRight,
   IconExit,
   IconSetting,
 } from '@douyinfe/semi-icons';
 import type { User } from '@zenith/shared';
 import './AdminLayout.css';
-
-const { Sider, Header, Content } = Layout;
-const { Text } = Typography;
 
 interface AdminLayoutProps {
   user: Omit<User, 'password'>;
@@ -22,77 +19,56 @@ interface AdminLayoutProps {
 }
 
 const menuItems = [
-  { itemKey: '/', text: '首页', icon: <IconHome /> },
-  { itemKey: '/users', text: '用户管理', icon: <IconUser /> },
-  { itemKey: '/components', text: '组件示例', icon: <IconGridView /> },
+  { path: '/', text: '首页', icon: <IconHome />, end: true },
+  { path: '/users', text: '用户管理', icon: <IconUser />, end: false },
+  { path: '/components', text: '组件示例', icon: <IconGridView />, end: false },
 ];
 
 export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const navigate = useNavigate();
-  const location = useLocation();
 
   return (
-    <Layout style={{ height: '100vh' }}>
-      <Sider
-        style={{
-          background: 'var(--color-sidebar-bg)',
-          overflow: 'auto',
-          transition: 'width .2s ease',
-        }}
-      >
-        <Nav
-          selectedKeys={[location.pathname]}
-          style={{ height: '100%' }}
-          isCollapsed={collapsed}
-          onSelect={({ itemKey }) => navigate(String(itemKey))}
-          items={menuItems}
-          header={{
-            logo: (
-              <div
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  background: 'var(--color-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  fontSize: 14,
-                  fontWeight: 700,
-                }}
-              >
-                Z
-              </div>
-            ),
-            text: 'Zenith Admin',
-          }}
-          footer={{
-            collapseButton: true,
-          }}
-          onCollapseChange={(isCollapsed) => setCollapsed(isCollapsed ?? false)}
-        />
-      </Sider>
-      <Layout>
-        <Header
-          style={{
-            height: 'var(--header-height)',
-            background: 'var(--color-surface)',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            padding: '0 20px',
-            gap: 12,
-          }}
-        >
-          <Button
-            theme="borderless"
-            icon={collapsed ? <IconExpand /> : <IconShrinkScreenStroked />}
+    <div className="admin-layout">
+      {/* Sidebar */}
+      <aside className={`admin-sidebar${collapsed ? ' admin-sidebar--collapsed' : ''}`}>
+        <div className="admin-sidebar__header">
+          <div className="admin-sidebar__logo">Z</div>
+          {!collapsed && <span className="admin-sidebar__title">Zenith Admin</span>}
+        </div>
+
+        <nav className="admin-sidebar__nav">
+          {menuItems.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.end}
+              className={({ isActive }) =>
+                `admin-nav-item${isActive ? ' admin-nav-item--active' : ''}`
+              }
+            >
+              <span className="admin-nav-item__icon">{item.icon}</span>
+              {!collapsed && <span className="admin-nav-item__text">{item.text}</span>}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="admin-sidebar__footer">
+          <button
+            className="admin-collapse-btn"
             onClick={() => setCollapsed(!collapsed)}
-            style={{ color: 'var(--color-text-secondary)' }}
-          />
+            title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+          >
+            {collapsed ? <IconChevronRight size="small" /> : <IconChevronLeft size="small" />}
+            {!collapsed && <span>收起侧边栏</span>}
+          </button>
+        </div>
+      </aside>
+
+      {/* Main area */}
+      <div className="admin-main">
+        {/* Header */}
+        <header className="admin-header">
+          <div />
           <Dropdown
             position="bottomRight"
             render={
@@ -105,15 +81,16 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
               </Dropdown.Menu>
             }
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <Avatar size="small" color="blue" style={{ fontSize: 12 }}>
+            <div className="admin-header__user">
+              <Avatar size="small" color="blue" style={{ fontSize: 12, flexShrink: 0 }}>
                 {user.nickname?.charAt(0)?.toUpperCase() || 'U'}
               </Avatar>
-              <Text style={{ fontSize: 13 }}>{user.nickname}</Text>
+              <span className="admin-header__username">{user.nickname}</span>
             </div>
           </Dropdown>
-        </Header>
-        <Content
+        </header>
+        <div
+          className="admin-content"
           style={{
             background: 'var(--color-bg)',
             overflow: 'auto',
@@ -121,8 +98,8 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
           }}
         >
           <Outlet />
-        </Content>
-      </Layout>
-    </Layout>
+        </div>
+      </div>
+    </div>
   );
 }

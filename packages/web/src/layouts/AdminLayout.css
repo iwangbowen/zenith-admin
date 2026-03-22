@@ -1,52 +1,184 @@
-/* AdminLayout — 飞书风格侧边栏 dark theme override */
+/* AdminLayout — 飞书风格自定义侧边栏 */
 
-/* Nav container */
-.semi-navigation {
-  background: var(--color-sidebar-bg) !important;
-  border-right: none !important;
+.admin-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
 }
-.semi-navigation-header {
+
+/* ===== Sidebar ===== */
+.admin-sidebar {
+  width: var(--sidebar-width);
+  background: var(--color-sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+  overflow: hidden;
+}
+
+.admin-sidebar--collapsed {
+  width: var(--sidebar-collapsed-width);
+}
+
+/* Logo header */
+.admin-sidebar__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--header-height);
+  padding: 0 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
 }
-.semi-navigation-header-logo {
-  margin-right: 8px;
+
+.admin-sidebar__logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
 }
-.semi-navigation-header-text {
-  color: #fff !important;
-  font-weight: 600;
+
+.admin-sidebar__title {
+  color: #fff;
   font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
-/* Nav items */
-.semi-navigation-item {
-  border-radius: 6px !important;
-  margin: 2px 8px !important;
-  color: var(--color-sidebar-text) !important;
-  height: 36px !important;
-  line-height: 36px !important;
+/* Nav */
+.admin-sidebar__nav {
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
-.semi-navigation-item:hover {
-  background: var(--color-sidebar-hover) !important;
-  color: var(--color-sidebar-text-active) !important;
+
+.admin-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--color-sidebar-text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.semi-navigation-item-selected {
-  background: var(--color-sidebar-active) !important;
-  color: var(--color-sidebar-text-active) !important;
+
+.admin-nav-item:hover {
+  background: var(--color-sidebar-hover);
+  color: var(--color-sidebar-text-active);
 }
-.semi-navigation-item .semi-icon {
-  color: inherit !important;
+
+.admin-nav-item--active {
+  background: var(--color-sidebar-active);
+  color: var(--color-sidebar-text-active);
 }
-.semi-navigation-item-text {
+
+.admin-nav-item__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.admin-nav-item__text {
   font-size: 13px;
+  font-weight: 400;
 }
 
-/* Collapse trigger */
-.semi-navigation-footer {
+/* Collapse footer */
+.admin-sidebar__footer {
+  padding: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
 }
-.semi-navigation-collapse-btn {
-  color: var(--color-sidebar-text) !important;
+
+.admin-collapse-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-sidebar-text);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
 }
-.semi-navigation-collapse-btn:hover {
-  background: var(--color-sidebar-hover) !important;
+
+.admin-collapse-btn:hover {
+  background: var(--color-sidebar-hover);
+  color: var(--color-sidebar-text-active);
 }
+
+/* ===== Main area ===== */
+.admin-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Header */
+.admin-header {
+  height: var(--header-height);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 20px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.admin-header__user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+
+.admin-header__user:hover {
+  background: var(--color-bg);
+}
+
+.admin-header__username {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+/* Content */
+.admin-content {
+  flex: 1;
+  background: var(--color-bg);
+  overflow: auto;
+  position: relative;
+}
+
