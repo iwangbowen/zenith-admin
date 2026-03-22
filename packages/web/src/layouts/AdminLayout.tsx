@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { Avatar, Dropdown, Tooltip } from '@douyinfe/semi-ui';
+import { Avatar, Dropdown, Tooltip, Modal } from '@douyinfe/semi-ui';
 import {
   IconHome,
   IconUser,
@@ -144,7 +144,19 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
                 <Dropdown.Menu>
                   <Dropdown.Item icon={<IconSetting />}>设置</Dropdown.Item>
                   <Dropdown.Divider />
-                  <Dropdown.Item icon={<IconExit />} onClick={onLogout}>
+                  <Dropdown.Item
+                    icon={<IconExit />}
+                    onClick={() =>
+                      Modal.confirm({
+                        title: '确认退出',
+                        content: '确定要退出登录吗？',
+                        okText: '退出',
+                        cancelText: '取消',
+                        okButtonProps: { type: 'danger', theme: 'solid' },
+                        onOk: onLogout,
+                      })
+                    }
+                  >
                     退出登录
                   </Dropdown.Item>
                 </Dropdown.Menu>

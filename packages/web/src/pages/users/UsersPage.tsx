@@ -11,7 +11,6 @@ import {
   Toast,
   Popconfirm,
   Select,
-  Typography,
   Avatar,
 } from '@douyinfe/semi-ui';
 import { IconSearch, IconPlus, IconEdit, IconDelete, IconRefresh } from '@douyinfe/semi-icons';
@@ -19,8 +18,6 @@ import type { User, PaginatedResponse, CreateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './UsersPage.css';
-
-const { Title } = Typography;
 
 export default function UsersPage() {
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
@@ -147,10 +144,6 @@ export default function UsersPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <Title heading={4} style={{ fontWeight: 600, margin: 0 }}>用户管理</Title>
-      </div>
-
       <Card className="users-card" bodyStyle={{ padding: 0 }}>
         <div className="users-toolbar">
           <Space>
@@ -205,6 +198,7 @@ export default function UsersPage() {
         footer={null}
         width={440}
         closeOnEsc
+        bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
           initValues={
