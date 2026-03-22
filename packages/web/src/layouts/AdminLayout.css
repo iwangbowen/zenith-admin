@@ -44,12 +44,19 @@
 
 .admin-sidebar__nav {
   height: 100%;
+  width: 100%;
 }
 
 .admin-sidebar__nav .semi-navigation {
   height: 100%;
+  width: 100%;
   background: transparent;
   border-right: none;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .admin-sidebar__nav .semi-navigation-header {
@@ -63,6 +70,8 @@
 }
 
 .admin-nav-link-wrapper {
+  display: block;
+  width: 100%;
   text-decoration: none;
   color: inherit;
 }
@@ -88,6 +97,79 @@
 
 .admin-sidebar__nav .semi-navigation-footer .semi-button {
   justify-content: flex-start;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-header {
+  padding: 0;
+  justify-content: center;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .admin-sidebar__logo {
+  margin: 0 auto;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-list-wrapper {
+  width: 100%;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-list {
+  width: 100%;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub {
+  width: 100%;
+  padding-left: 0;
+  padding-right: 0;
+  justify-content: center;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-icon {
+  margin-right: 0;
+  width: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-info,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-icon-info {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon .semi-icon,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-icon .semi-icon {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon .semi-icon svg,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-icon .semi-icon svg {
+  margin: 0 auto;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-toggle-right,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-toggle-left,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-toggle-icon {
+  display: none;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-text,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-text,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-title-text {
+  display: none;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-footer .semi-button {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 /* ===== Main area ===== */
