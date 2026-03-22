@@ -84,6 +84,42 @@ export const createDictItemSchema = z.object({
 
 export const updateDictItemSchema = createDictItemSchema.partial();
 
+// ─── 文件管理 Schema ─────────────────────────────────────────────────────────
+export const createFileStorageConfigSchema = z.object({
+  name: z.string().min(1, '配置名称不能为空').max(64),
+  provider: z.enum(['local', 'oss']),
+  status: z.enum(['active', 'disabled']).default('active'),
+  isDefault: z.boolean().default(false),
+  basePath: z.string().max(256).optional(),
+  localRootPath: z.string().max(512).optional(),
+  ossRegion: z.string().max(64).optional(),
+  ossEndpoint: z.string().max(128).optional(),
+  ossBucket: z.string().max(128).optional(),
+  ossAccessKeyId: z.string().max(128).optional(),
+  ossAccessKeySecret: z.string().max(256).optional(),
+  remark: z.string().max(256).optional(),
+}).superRefine((data, ctx) => {
+  if (data.provider === 'local' && !data.localRootPath) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '本地磁盘配置需要填写存储目录', path: ['localRootPath'] });
+  }
+  if (data.provider === 'oss') {
+    const requiredFields: Array<keyof typeof data> = [
+      'ossRegion',
+      'ossEndpoint',
+      'ossBucket',
+      'ossAccessKeyId',
+      'ossAccessKeySecret',
+    ];
+    for (const field of requiredFields) {
+      if (!data[field]) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'OSS 配置项不能为空', path: [field] });
+      }
+    }
+  }
+});
+
+export const updateFileStorageConfigSchema = createFileStorageConfigSchema;
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -99,3 +135,5 @@ export type CreateDictInput = z.infer<typeof createDictSchema>;
 export type UpdateDictInput = z.infer<typeof updateDictSchema>;
 export type CreateDictItemInput = z.infer<typeof createDictItemSchema>;
 export type UpdateDictItemInput = z.infer<typeof updateDictItemSchema>;
+export type CreateFileStorageConfigInput = z.infer<typeof createFileStorageConfigSchema>;
+export type UpdateFileStorageConfigInput = z.infer<typeof updateFileStorageConfigSchema>;

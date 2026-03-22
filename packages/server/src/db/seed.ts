@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, dicts } from './schema';
+import { users, menus, roles, roleMenus, dicts, fileStorageConfigs } from './schema';
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 
@@ -46,6 +46,15 @@ async function seed() {
     { id: 18, parentId: 5, title: '删除角色',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:role:delete' },
     { id: 19, parentId: 5, title: '分配菜单',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:role:assign' },
     { id: 6,  parentId: 2, title: '字典管理',   name: 'SystemDicts',   path: '/system/dicts',  icon: 'IconBookOpen',   type: 'menu' as const,      sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:list' },
+    { id: 8,  parentId: 2, title: '文件管理',   name: 'SystemFiles',   path: undefined,        icon: 'IconUpload',     type: 'directory' as const, sort: 5,  status: 'active' as const, visible: true, permission: 'system:file:list' },
+    { id: 24, parentId: 8, title: '文件配置',   name: 'SystemFileConfigs', path: '/system/file-configs', icon: 'IconSetting', type: 'menu' as const, sort: 1, status: 'active' as const, visible: true, permission: 'system:file:config' },
+    { id: 25, parentId: 8, title: '文件列表',   name: 'SystemFileList', path: '/system/files',  icon: 'IconFile',       type: 'menu' as const, sort: 2, status: 'active' as const, visible: true, permission: 'system:file:list' },
+    { id: 26, parentId: 24, title: '新增配置',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:file:config:create' },
+    { id: 27, parentId: 24, title: '编辑配置',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:file:config:update' },
+    { id: 28, parentId: 24, title: '删除配置',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:file:config:delete' },
+    { id: 29, parentId: 24, title: '设为默认',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:file:config:default' },
+    { id: 30, parentId: 25, title: '上传文件',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:file:upload' },
+    { id: 31, parentId: 25, title: '删除文件',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:file:delete' },
     { id: 20, parentId: 6, title: '新增字典',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:dict:create' },
     { id: 21, parentId: 6, title: '编辑字典',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:dict:update' },
     { id: 22, parentId: 6, title: '删除字典',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:dict:delete' },
@@ -101,7 +110,21 @@ async function seed() {
   await db.execute(sql`SELECT setval('dicts_id_seq', GREATEST((SELECT MAX(id) FROM dicts), 1))`);
   console.log('  ✔ Dicts seeded (onConflictDoNothing)');
 
-  // ─── 5. 字典项数据 ────────────────────────────────────────────────────────
+  // ─── 6. 文件服务配置 ──────────────────────────────────────────────────────
+  await db.insert(fileStorageConfigs).values({
+    id: 1,
+    name: '本地磁盘',
+    provider: 'local',
+    status: 'active',
+    isDefault: true,
+    localRootPath: 'storage/local',
+    basePath: 'uploads',
+    remark: '系统默认本地文件服务',
+  }).onConflictDoNothing({ target: fileStorageConfigs.id });
+  await db.execute(sql`SELECT setval('file_storage_configs_id_seq', GREATEST((SELECT MAX(id) FROM file_storage_configs), 1))`);
+  console.log('  ✔ File storage configs seeded (onConflictDoNothing)');
+
+  // ─── 7. 字典项数据 ────────────────────────────────────────────────────────
   // 使用 (dict_id, value) 作为逻辑唯一键，通过先查再插的方式去重
   const dictItemRows = [
     { dictId: 1, label: '启用',     value: 'active',    sort: 1 },

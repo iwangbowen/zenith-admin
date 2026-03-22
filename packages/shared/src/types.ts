@@ -86,3 +86,39 @@ export interface DictItem {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── 文件管理 ─────────────────────────────────────────────────────────────────
+export type FileStorageProvider = 'local' | 'oss';
+
+export interface FileStorageConfig {
+  id: number;
+  name: string;
+  provider: FileStorageProvider;
+  status: 'active' | 'disabled';
+  isDefault: boolean;
+  basePath?: string;
+  localRootPath?: string;
+  ossRegion?: string;
+  ossEndpoint?: string;
+  ossBucket?: string;
+  ossAccessKeyId?: string;
+  ossAccessKeySecret?: string;
+  remark?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ManagedFile {
+  id: number;
+  storageConfigId: number;
+  storageName: string;
+  provider: FileStorageProvider;
+  originalName: string;
+  objectKey: string;
+  size: number;
+  mimeType?: string;
+  extension?: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+}

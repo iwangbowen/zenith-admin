@@ -12,17 +12,19 @@
     "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
-    "@zenith/shared": "workspace:*",
-    "hono": "^4.7.4",
     "@hono/node-server": "^1.14.1",
-    "drizzle-orm": "^0.39.3",
-    "postgres": "^3.4.5",
+    "@zenith/shared": "workspace:*",
+    "ali-oss": "^6.23.0",
     "bcryptjs": "^3.0.2",
-    "jsonwebtoken": "^9.0.2",
     "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.39.3",
+    "hono": "^4.7.4",
+    "jsonwebtoken": "^9.0.2",
+    "postgres": "^3.4.5",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/ali-oss": "^6.23.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.9",
     "drizzle-kit": "^0.30.5",

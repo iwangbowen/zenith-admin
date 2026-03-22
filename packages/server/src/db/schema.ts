@@ -3,6 +3,7 @@ import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryK
 export const roleEnum = pgEnum('role', ['admin', 'user']);
 export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
+export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss']);
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -89,3 +90,43 @@ export const dictItems = pgTable('dict_items', {
 
 export type DictItemRow = typeof dictItems.$inferSelect;
 export type NewDictItem = typeof dictItems.$inferInsert;
+
+// ─── 文件存储配置表 ──────────────────────────────────────────────────────────
+export const fileStorageConfigs = pgTable('file_storage_configs', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  provider: fileStorageProviderEnum('provider').notNull().default('local'),
+  status: statusEnum('status').notNull().default('active'),
+  isDefault: boolean('is_default').notNull().default(false),
+  basePath: varchar('base_path', { length: 256 }),
+  localRootPath: varchar('local_root_path', { length: 512 }),
+  ossRegion: varchar('oss_region', { length: 64 }),
+  ossEndpoint: varchar('oss_endpoint', { length: 128 }),
+  ossBucket: varchar('oss_bucket', { length: 128 }),
+  ossAccessKeyId: varchar('oss_access_key_id', { length: 128 }),
+  ossAccessKeySecret: varchar('oss_access_key_secret', { length: 256 }),
+  remark: varchar('remark', { length: 256 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type FileStorageConfigRow = typeof fileStorageConfigs.$inferSelect;
+export type NewFileStorageConfig = typeof fileStorageConfigs.$inferInsert;
+
+// ─── 文件记录表 ──────────────────────────────────────────────────────────────
+export const managedFiles = pgTable('managed_files', {
+  id: serial('id').primaryKey(),
+  storageConfigId: integer('storage_config_id').notNull().references(() => fileStorageConfigs.id, { onDelete: 'restrict' }),
+  storageName: varchar('storage_name', { length: 64 }).notNull(),
+  provider: fileStorageProviderEnum('provider').notNull(),
+  originalName: varchar('original_name', { length: 256 }).notNull(),
+  objectKey: varchar('object_key', { length: 512 }).notNull(),
+  size: integer('size').notNull().default(0),
+  mimeType: varchar('mime_type', { length: 128 }),
+  extension: varchar('extension', { length: 32 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type ManagedFileRow = typeof managedFiles.$inferSelect;
+export type NewManagedFile = typeof managedFiles.$inferInsert;

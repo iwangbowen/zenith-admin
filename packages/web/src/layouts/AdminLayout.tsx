@@ -10,6 +10,7 @@ import {
   IconMenu,
   IconPriceTag,
   IconBookStroked,
+  IconUpload,
 } from '@douyinfe/semi-icons';
 import type { User } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
@@ -61,10 +62,13 @@ interface AdminLayoutProps {
   readonly onLogout: () => void;
 }
 
-function getSectionKey(pathname: string) {
-  if (pathname.startsWith('/system/')) return 'system';
-  if (pathname.startsWith('/components')) return 'others';
-  return undefined;
+function getOpenSectionKeys(pathname: string) {
+  if (pathname.startsWith('/system/file-configs') || pathname.startsWith('/system/files')) {
+    return ['system', 'system-files'];
+  }
+  if (pathname.startsWith('/system/')) return ['system'];
+  if (pathname.startsWith('/components')) return ['others'];
+  return [];
 }
 
 export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
@@ -72,14 +76,14 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
   const { mode, setThemeMode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const currentSectionKey = getSectionKey(location.pathname);
-  const [openKeys, setOpenKeys] = useState<string[]>(() => (currentSectionKey ? [currentSectionKey] : []));
+  const currentSectionKeys = useMemo(() => getOpenSectionKeys(location.pathname), [location.pathname]);
+  const [openKeys, setOpenKeys] = useState<string[]>(() => currentSectionKeys);
 
   useEffect(() => {
-    if (!collapsed && currentSectionKey) {
-      setOpenKeys((prev) => (prev.includes(currentSectionKey) ? prev : [...prev, currentSectionKey]));
+    if (!collapsed && currentSectionKeys.length > 0) {
+      setOpenKeys((prev) => Array.from(new Set([...prev, ...currentSectionKeys])));
     }
-  }, [collapsed, currentSectionKey]);
+  }, [collapsed, currentSectionKeys]);
 
   const navItems = useMemo(
     () => [
@@ -97,6 +101,15 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
           { itemKey: '/system/menus', text: '菜单管理', icon: <IconMenu /> },
           { itemKey: '/system/roles', text: '角色管理', icon: <IconBookStroked /> },
           { itemKey: '/system/dicts', text: '字典管理', icon: <IconPriceTag /> },
+          {
+            itemKey: 'system-files',
+            text: '文件管理',
+            icon: <IconUpload />,
+            items: [
+              { itemKey: '/system/file-configs', text: '文件配置', icon: <IconSetting /> },
+              { itemKey: '/system/files', text: '文件列表', icon: <IconGridView /> },
+            ],
+          },
         ],
       },
       {

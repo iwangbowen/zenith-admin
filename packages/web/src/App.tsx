@@ -10,6 +10,8 @@ import ProfilePage from './pages/profile/ProfilePage';
 import MenusPage from './pages/system/menus/MenusPage';
 import RolesPage from './pages/system/roles/RolesPage';
 import DictsPage from './pages/system/dicts/DictsPage';
+import FileStorageConfigsPage from './pages/system/file-configs/FileStorageConfigsPage';
+import FilesPage from './pages/system/files/FilesPage';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 
 export default function App() {
@@ -44,6 +46,8 @@ export default function App() {
           <Route path="system/menus" element={<MenusPage />} />
           <Route path="system/roles" element={<RolesPage />} />
           <Route path="system/dicts" element={<DictsPage />} />
+          <Route path="system/file-configs" element={<FileStorageConfigsPage />} />
+          <Route path="system/files" element={<FilesPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
