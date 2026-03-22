@@ -1,0 +1,52 @@
+/* AdminLayout — 飞书风格侧边栏 dark theme override */
+
+/* Nav container */
+.semi-navigation {
+  background: var(--color-sidebar-bg) !important;
+  border-right: none !important;
+}
+.semi-navigation-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.semi-navigation-header-logo {
+  margin-right: 8px;
+}
+.semi-navigation-header-text {
+  color: #fff !important;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* Nav items */
+.semi-navigation-item {
+  border-radius: 6px !important;
+  margin: 2px 8px !important;
+  color: var(--color-sidebar-text) !important;
+  height: 36px !important;
+  line-height: 36px !important;
+}
+.semi-navigation-item:hover {
+  background: var(--color-sidebar-hover) !important;
+  color: var(--color-sidebar-text-active) !important;
+}
+.semi-navigation-item-selected {
+  background: var(--color-sidebar-active) !important;
+  color: var(--color-sidebar-text-active) !important;
+}
+.semi-navigation-item .semi-icon {
+  color: inherit !important;
+}
+.semi-navigation-item-text {
+  font-size: 13px;
+}
+
+/* Collapse trigger */
+.semi-navigation-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.semi-navigation-collapse-btn {
+  color: var(--color-sidebar-text) !important;
+}
+.semi-navigation-collapse-btn:hover {
+  background: var(--color-sidebar-hover) !important;
+}

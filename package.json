@@ -1,0 +1,17 @@
+{
+  "name": "zenith-admin",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @zenith/server dev\" \"pnpm --filter @zenith/web dev\"",
+    "dev:server": "pnpm --filter @zenith/server dev",
+    "dev:web": "pnpm --filter @zenith/web dev",
+    "build": "pnpm --filter @zenith/shared build && pnpm --filter @zenith/server build && pnpm --filter @zenith/web build",
+    "db:generate": "pnpm --filter @zenith/server db:generate",
+    "db:migrate": "pnpm --filter @zenith/server db:migrate",
+    "db:seed": "pnpm --filter @zenith/server db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,67 @@
+.login-page {
+  display: flex;
+  height: 100vh;
+  min-height: 580px;
+}
+
+.login-left {
+  width: 420px;
+  min-width: 420px;
+  background: linear-gradient(135deg, #3370ff 0%, #2b5bdb 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-brand {
+  text-align: center;
+  z-index: 1;
+}
+
+.login-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 26px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.login-left-decor {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 70%, rgba(255, 255, 255, 0.08) 0%, transparent 60%),
+    radial-gradient(circle at 70% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+}
+
+.login-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface);
+}
+
+.login-form-wrapper {
+  width: 380px;
+}
+
+/* 保持 form item 紧凑 */
+.login-form-wrapper .semi-form-field {
+  margin-bottom: 16px;
+}
+.login-form-wrapper .semi-input-wrapper {
+  border-radius: 8px;
+}
+.login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
+  font-size: 14px;
+}
