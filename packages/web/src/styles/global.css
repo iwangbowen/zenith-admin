@@ -17,6 +17,22 @@
   --radius: 6px;
 }
 
+/* 深色模式变量 */
+[data-theme='dark'] {
+  --color-bg: #0d0f14;
+  --color-surface: #1a1d24;
+  --color-sidebar-bg: #111318;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-active: rgba(51, 112, 255, 0.25);
+  --color-sidebar-text: rgba(255, 255, 255, 0.65);
+  --color-sidebar-text-active: #ffffff;
+  --color-text: #e8eaed;
+  --color-text-secondary: #8f96a3;
+  --color-border: #2e3340;
+  color-scheme: dark;
+}
+
+
 *,
 *::before,
 *::after {
@@ -27,7 +43,17 @@
 
 html {
   font-size: 13px;
+  color-scheme: light;
 }
+/* 主题切换平滑过渡 */
+body,
+.admin-header,
+.admin-sidebar,
+.admin-content,
+.admin-layout {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
