@@ -8,12 +8,14 @@ import {
   IconExit,
   IconSetting,
   IconMenu,
-  IconPriceTag,
-  IconBookStroked,
+  IconIdCard,
+  IconBookOpenStroked,
   IconUpload,
+  IconFile,
 } from '@douyinfe/semi-icons';
-import type { User } from '@zenith/shared';
+import type { User, Menu } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
+import { request } from '../utils/request';
 import NProgress from '../components/NProgress';
 import './AdminLayout.css';
 
@@ -57,27 +59,82 @@ const themeLabelMap: Record<ThemeMode, { label: string; icon: React.ReactNode }>
   system: { label: '跟随系统', icon: <MonitorIcon /> },
 };
 
+const ICON_MAP: Record<string, React.ReactNode> = {
+  IconHome:           <IconHome />,
+  IconSetting:        <IconSetting />,
+  IconUser:           <IconUser />,
+  IconMenu:           <IconMenu />,
+  IconIdCard:         <IconIdCard />,
+  IconBookOpenStroked:<IconBookOpenStroked />,
+  IconUpload:         <IconUpload />,
+  IconFile:           <IconFile />,
+  IconGridView:       <IconGridView />,
+};
+
+function getMenuIcon(iconName?: string): React.ReactNode {
+  if (!iconName) return <IconGridView />;
+  return ICON_MAP[iconName] ?? <IconGridView />;
+}
+
+type NavItem = {
+  itemKey: string;
+  text: string;
+  icon?: React.ReactNode;
+  items?: NavItem[];
+};
+
+function menuToNavItem(menu: Menu): NavItem | null {
+  if (!menu.visible || menu.type === 'button') return null;
+  const icon = getMenuIcon(menu.icon);
+  if (menu.type === 'directory') {
+    const children = (menu.children ?? [])
+      .map(menuToNavItem)
+      .filter((item): item is NavItem => item !== null);
+    return { itemKey: menu.name ?? `dir-${menu.id}`, text: menu.title, icon, items: children };
+  }
+  return { itemKey: menu.path ?? `menu-${menu.id}`, text: menu.title, icon };
+}
+
+function findAncestorKeys(menuTree: Menu[], targetPath: string): string[] {
+  function traverse(nodes: Menu[], ancestors: string[]): string[] | null {
+    for (const node of nodes) {
+      if (!node.visible || node.type === 'button') continue;
+      if (node.type === 'directory') {
+        const key = node.name ?? `dir-${node.id}`;
+        const found = traverse(node.children ?? [], [...ancestors, key]);
+        if (found !== null) return found;
+      } else if (node.path === targetPath) {
+        return ancestors;
+      }
+    }
+    return null;
+  }
+  return traverse(menuTree, []) ?? [];
+}
+
 interface AdminLayoutProps {
   readonly user: Omit<User, 'password'>;
   readonly onLogout: () => void;
 }
 
-function getOpenSectionKeys(pathname: string) {
-  if (pathname.startsWith('/system/file-configs') || pathname.startsWith('/system/files')) {
-    return ['system', 'system-files'];
-  }
-  if (pathname.startsWith('/system/')) return ['system'];
-  if (pathname.startsWith('/components')) return ['others'];
-  return [];
-}
-
 export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [menuTree, setMenuTree] = useState<Menu[]>([]);
   const { mode, setThemeMode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const currentSectionKeys = useMemo(() => getOpenSectionKeys(location.pathname), [location.pathname]);
-  const [openKeys, setOpenKeys] = useState<string[]>(() => currentSectionKeys);
+
+  useEffect(() => {
+    request.get<Menu[]>('/api/menus').then((res) => {
+      if (res.code === 0 && res.data) setMenuTree(res.data);
+    });
+  }, []);
+
+  const currentSectionKeys = useMemo(
+    () => findAncestorKeys(menuTree, location.pathname),
+    [menuTree, location.pathname]
+  );
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
 
   useEffect(() => {
     if (!collapsed && currentSectionKeys.length > 0) {
@@ -86,42 +143,8 @@ export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
   }, [collapsed, currentSectionKeys]);
 
   const navItems = useMemo(
-    () => [
-      {
-        itemKey: '/',
-        text: '首页',
-        icon: <IconHome />,
-      },
-      {
-        itemKey: 'system',
-        text: '系统',
-        icon: <IconSetting />,
-        items: [
-          { itemKey: '/system/users', text: '用户管理', icon: <IconUser /> },
-          { itemKey: '/system/menus', text: '菜单管理', icon: <IconMenu /> },
-          { itemKey: '/system/roles', text: '角色管理', icon: <IconBookStroked /> },
-          { itemKey: '/system/dicts', text: '字典管理', icon: <IconPriceTag /> },
-          {
-            itemKey: 'system-files',
-            text: '文件管理',
-            icon: <IconUpload />,
-            items: [
-              { itemKey: '/system/file-configs', text: '文件配置', icon: <IconSetting /> },
-              { itemKey: '/system/files', text: '文件列表', icon: <IconGridView /> },
-            ],
-          },
-        ],
-      },
-      {
-        itemKey: 'others',
-        text: '其他',
-        icon: <IconGridView />,
-        items: [
-          { itemKey: '/components', text: '组件示例', icon: <IconGridView /> },
-        ],
-      },
-    ],
-    []
+    () => menuTree.map(menuToNavItem).filter((item): item is NavItem => item !== null),
+    [menuTree]
   );
 
   return (

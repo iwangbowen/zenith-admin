@@ -76,12 +76,14 @@
   color: inherit;
 }
 
-/* 紧凑布局：减小菜单项内边距 */
+/* 紧凑布局：减小菜单项内边距，去除 Semi 默认的固定高度和 margin-bottom */
 .admin-sidebar__nav .semi-navigation-item,
 .admin-sidebar__nav .semi-navigation-sub-title {
   padding-top: 4px !important;
   padding-bottom: 4px !important;
   font-size: 13px;
+  height: auto !important;
+  margin-bottom: 0 !important;
 }
 
 .admin-sidebar__nav .semi-navigation-item,
