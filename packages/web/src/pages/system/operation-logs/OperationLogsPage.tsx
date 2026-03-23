@@ -253,10 +253,11 @@ export default function OperationLogsPage() {
               {detailLog.requestBody && (
                 <DetailField label="请求体">
                   <JsonViewer
-                    value={detailLog.requestBody}
-                    height={200}
+                    key={detailLog.id}
+                    value={(() => { try { return JSON.stringify(JSON.parse(detailLog.requestBody), null, 2); } catch { return detailLog.requestBody; } })()}
+                    height={220}
                     width="100%"
-                    options={{ readOnly: true, autoWrap: true }}
+                    options={{ readOnly: true, autoWrap: true, formatOptions: { tabSize: 2, insertSpaces: true } }}
                   />
                 </DetailField>
               )}
