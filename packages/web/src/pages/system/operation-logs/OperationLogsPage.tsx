@@ -4,6 +4,7 @@ import { Search, RotateCcw, Eye } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
+import './OperationLogsPage.css';
 
 const detailLabelStyle: React.CSSProperties = { color: 'var(--semi-color-text-2)', fontSize: 12, marginBottom: 2 };
 const detailValueStyle: React.CSSProperties = { fontSize: 13, wordBreak: 'break-all' };
@@ -254,6 +255,7 @@ export default function OperationLogsPage() {
               {detailLog.requestBody && (
                 <DetailField label="请求体">
                   <JsonViewer
+                    className="operation-log-json-viewer"
                     key={detailLog.id}
                     value={(() => { try { return JSON.stringify(JSON.parse(detailLog.requestBody), null, 2); } catch { return detailLog.requestBody; } })()}
                     height={220}
