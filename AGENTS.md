@@ -93,6 +93,56 @@ npm run db:seed        # 填充初始种子数据
 
 ---
 
+## 页面布局规范
+
+### 列表页搜索栏与操作栏
+
+所有 CRUD 列表页面的顶部搜索栏和操作按钮必须遵循统一布局（参考 `UsersPage.tsx`）：
+
+```tsx
+<Card style={{ marginBottom: 16 }}>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <Space>
+      {/* 搜索输入框 + 下拉筛选 + 查询/重置按钮 */}
+      <Input prefix={<Search size={14} />} placeholder="..." showClear />
+      <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+      <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+    </Space>
+    <Space>
+      <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+    </Space>
+  </div>
+</Card>
+```
+
+要点：
+
+- 搜索条件（输入框、下拉框）和查询/重置按钮在**左侧**
+- 新增按钮在**右侧**
+- 使用 `flex` + `justifyContent: 'space-between'` 实现左右分布
+- 按钮文案统一为「查询」「重置」「新增」
+
+### 表格操作列按钮
+
+操作列按钮使用**纯文字无图标**的 borderless 按钮：
+
+```tsx
+<Space>
+  <Button theme="borderless" size="small" onClick={() => handleEdit(record)}>编辑</Button>
+  <Popconfirm title="确定要删除吗？" onConfirm={() => handleDelete(record.id)}>
+    <Button theme="borderless" type="danger" size="small">删除</Button>
+  </Popconfirm>
+</Space>
+```
+
+要点：
+
+- `theme="borderless"` + `size="small"`
+- 删除按钮额外加 `type="danger"`
+- **不使用图标**，仅纯文字
+
+---
+
 ## 常见陷阱
 
 - 修改数据库 schema 后，必须运行 `npm run db:generate` 再 `npm run db:migrate`，不能直接修改 SQL
