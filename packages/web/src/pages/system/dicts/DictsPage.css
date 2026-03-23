@@ -35,11 +35,17 @@
 .dicts-left-card {
   width: 420px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .dicts-right-card {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* 面板工具栏 */
