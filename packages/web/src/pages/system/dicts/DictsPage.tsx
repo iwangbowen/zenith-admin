@@ -252,7 +252,7 @@ export default function DictsPage() {
       <div className="dicts-layout">
         {/* 左侧：字典列表 */}
         <div className="dicts-left-card">
-          <Card style={{ marginBottom: 16 }}>
+          <Card>
             <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
               <Input
                 prefix={<Search size={14} />}
@@ -298,7 +298,7 @@ export default function DictsPage() {
         <div className="dicts-right-card">
           {selectedDict ? (
             <>
-              <Card style={{ marginBottom: 16 }}>
+              <Card>
                 <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
                   <Text strong style={{ fontSize: 14 }}>
                     字典项：{selectedDict.name}

@@ -125,7 +125,7 @@ export default function OperationLogsPage() {
 
   return (
     <div className="page-container">
-      <Card style={{ marginBottom: 16 }}>
+      <Card>
         <Space wrap>
           <Input
             prefix={<Search size={14} />}

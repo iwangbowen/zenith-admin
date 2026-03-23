@@ -265,7 +265,7 @@ export default function FileStorageConfigsPage() {
 
   return (
     <div className="page-container">
-      <Card style={{ marginBottom: 16 }}>
+      <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="storage-configs-tip" style={{ marginBottom: 0 }}>
             <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>

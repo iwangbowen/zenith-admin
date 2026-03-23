@@ -72,7 +72,7 @@ export default function LoginLogsPage() {
 
   return (
     <div className="page-container">
-      <Card style={{ marginBottom: 16 }}>
+      <Card>
         <Space>
           <Input
             prefix={<Search size={14} />}

@@ -227,7 +227,7 @@ export default function FilesPage() {
 
   return (
     <div className="page-container">
-      <Card style={{ marginBottom: 16 }}>
+      <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Input

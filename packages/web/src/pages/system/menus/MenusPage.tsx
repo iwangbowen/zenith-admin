@@ -220,7 +220,7 @@ export default function MenusPage() {
 
   return (
     <div className="page-container">
-      <Card style={{ marginBottom: 16 }}>
+      <Card>
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
           <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>
         </div>
