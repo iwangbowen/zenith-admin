@@ -297,7 +297,7 @@ export default function MonitorPage() {
         <div className="monitor-header-right">
           {lastUpdated && (
             <Text type="tertiary" size="small">
-              最后更新：{lastUpdated.toLocaleTimeString()}
+              最后更新：{lastUpdated.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
             </Text>
           )}
           <Button
