@@ -137,3 +137,22 @@ export interface LoginLog {
   message: string | null;
   createdAt: Date;
 }
+
+// ─── Operation Logs ──────────────────────────────────────
+export interface OperationLog {
+  id: number;
+  userId: number | null;
+  username: string | null;
+  module: string | null;
+  description: string;
+  method: string;
+  path: string;
+  requestBody: string | null;
+  responseCode: number | null;
+  durationMs: number | null;
+  ip: string | null;
+  userAgent: string | null;
+  os: string | null;
+  browser: string | null;
+  createdAt: string;
+}

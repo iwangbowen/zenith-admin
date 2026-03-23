@@ -5,6 +5,7 @@ import { db } from '../db';
 import { users, userRoles, roles } from '../db/schema';
 import { createUserSchema, updateUserSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { auditLog } from '../middleware/audit';
 
 const usersRouter = new Hono();
 
@@ -101,7 +102,7 @@ usersRouter.get('/', async (c) => {
 });
 
 // 创建用户
-usersRouter.post('/', async (c) => {
+usersRouter.post('/', auditLog({ description: '创建用户', module: '用户管理' }), async (c) => {
   const body = await c.req.json();
   const result = createUserSchema.safeParse(body);
   if (!result.success) {
@@ -130,7 +131,7 @@ usersRouter.post('/', async (c) => {
 });
 
 // 更新用户
-usersRouter.put('/:id', async (c) => {
+usersRouter.put('/:id', auditLog({ description: '更新用户', module: '用户管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateUserSchema.safeParse(body);
@@ -164,7 +165,7 @@ usersRouter.put('/:id', async (c) => {
 });
 
 // 删除用户
-usersRouter.delete('/:id', async (c) => {
+usersRouter.delete('/:id', auditLog({ description: '删除用户', module: '用户管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [deleted] = await db.delete(users).where(eq(users.id, id)).returning();
   if (!deleted) {

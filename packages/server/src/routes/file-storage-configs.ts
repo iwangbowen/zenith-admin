@@ -4,6 +4,7 @@ import { db } from '../db';
 import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { auditLog } from '../middleware/audit';
 
 const fileStorageConfigsRouter = new Hono();
 fileStorageConfigsRouter.use('*', authMiddleware);
@@ -71,7 +72,7 @@ fileStorageConfigsRouter.get('/default', async (c) => {
   return c.json({ code: 0, message: 'ok', data: config ? toFileStorageConfig(config) : null });
 });
 
-fileStorageConfigsRouter.post('/', async (c) => {
+fileStorageConfigsRouter.post('/', auditLog({ description: '创建文件存储配置', module: '文件存储配置' }), async (c) => {
   const body = await c.req.json();
   const result = createFileStorageConfigSchema.safeParse(body);
   if (!result.success) {
@@ -91,7 +92,7 @@ fileStorageConfigsRouter.post('/', async (c) => {
   return c.json({ code: 0, message: '创建成功', data: toFileStorageConfig(created) });
 });
 
-fileStorageConfigsRouter.put('/:id', async (c) => {
+fileStorageConfigsRouter.put('/:id', auditLog({ description: '更新文件存储配置', module: '文件存储配置' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateFileStorageConfigSchema.safeParse(body);
@@ -117,7 +118,7 @@ fileStorageConfigsRouter.put('/:id', async (c) => {
   return c.json({ code: 0, message: '更新成功', data: toFileStorageConfig(updated) });
 });
 
-fileStorageConfigsRouter.put('/:id/default', async (c) => {
+fileStorageConfigsRouter.put('/:id/default', auditLog({ description: '设置默认文件存储', module: '文件存储配置', recordBody: false }), async (c) => {
   const id = Number(c.req.param('id'));
   const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   if (!target) return c.json({ code: 404, message: '文件配置不存在', data: null }, 404);
@@ -134,7 +135,7 @@ fileStorageConfigsRouter.put('/:id/default', async (c) => {
   return c.json({ code: 0, message: '默认文件服务已更新', data: toFileStorageConfig(updated) });
 });
 
-fileStorageConfigsRouter.delete('/:id', async (c) => {
+fileStorageConfigsRouter.delete('/:id', auditLog({ description: '删除文件存储配置', module: '文件存储配置' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   if (!target) return c.json({ code: 404, message: '文件配置不存在', data: null }, 404);

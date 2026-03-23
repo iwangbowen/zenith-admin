@@ -4,6 +4,7 @@ import { db } from '../db';
 import { dicts, dictItems } from '../db/schema';
 import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { auditLog } from '../middleware/audit';
 
 const dictsRouter = new Hono();
 dictsRouter.use('*', authMiddleware);
@@ -27,7 +28,7 @@ dictsRouter.get('/', async (c) => {
   return c.json({ code: 0, message: 'ok', data: filtered.map(toDict) });
 });
 
-dictsRouter.post('/', async (c) => {
+dictsRouter.post('/', auditLog({ description: '创建字典', module: '字典管理' }), async (c) => {
   const body = await c.req.json();
   const result = createDictSchema.safeParse(body);
   if (!result.success) {
@@ -44,7 +45,7 @@ dictsRouter.post('/', async (c) => {
   }
 });
 
-dictsRouter.put('/:id', async (c) => {
+dictsRouter.put('/:id', auditLog({ description: '更新字典', module: '字典管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateDictSchema.safeParse(body);
@@ -56,7 +57,7 @@ dictsRouter.put('/:id', async (c) => {
   return c.json({ code: 0, message: '更新成功', data: toDict(dict) });
 });
 
-dictsRouter.delete('/:id', async (c) => {
+dictsRouter.delete('/:id', auditLog({ description: '删除字典', module: '字典管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [deleted] = await db.delete(dicts).where(eq(dicts.id, id)).returning();
   if (!deleted) return c.json({ code: 404, message: '字典不存在', data: null }, 404);
@@ -81,7 +82,7 @@ dictsRouter.get('/code/:code/items', async (c) => {
   return c.json({ code: 0, message: 'ok', data: items.map(toDictItem) });
 });
 
-dictsRouter.post('/:id/items', async (c) => {
+dictsRouter.post('/:id/items', auditLog({ description: '创建字典项', module: '字典管理' }), async (c) => {
   const dictId = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = createDictItemSchema.safeParse(body);
@@ -92,7 +93,7 @@ dictsRouter.post('/:id/items', async (c) => {
   return c.json({ code: 0, message: '创建成功', data: toDictItem(item) });
 });
 
-dictsRouter.put('/:id/items/:itemId', async (c) => {
+dictsRouter.put('/:id/items/:itemId', auditLog({ description: '更新字典项', module: '字典管理' }), async (c) => {
   const itemId = Number(c.req.param('itemId'));
   const body = await c.req.json();
   const result = updateDictItemSchema.safeParse(body);
@@ -104,7 +105,7 @@ dictsRouter.put('/:id/items/:itemId', async (c) => {
   return c.json({ code: 0, message: '更新成功', data: toDictItem(item) });
 });
 
-dictsRouter.delete('/:id/items/:itemId', async (c) => {
+dictsRouter.delete('/:id/items/:itemId', auditLog({ description: '删除字典项', module: '字典管理' }), async (c) => {
   const itemId = Number(c.req.param('itemId'));
   const [deleted] = await db.delete(dictItems).where(eq(dictItems.id, itemId)).returning();
   if (!deleted) return c.json({ code: 404, message: '字典项不存在', data: null }, 404);

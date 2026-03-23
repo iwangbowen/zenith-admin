@@ -151,3 +151,25 @@ export const loginLogs = pgTable('login_logs', {
   message: varchar('message', { length: 256 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ─── 操作日志表 ─────────────────────────────────────────────────────────────────
+export const operationLogs = pgTable('operation_logs', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id'),
+  username: varchar('username', { length: 32 }),
+  module: varchar('module', { length: 64 }),
+  description: varchar('description', { length: 256 }).notNull(),
+  method: varchar('method', { length: 16 }).notNull(),
+  path: varchar('path', { length: 256 }).notNull(),
+  requestBody: varchar('request_body', { length: 4096 }),
+  responseCode: integer('response_code'),
+  durationMs: integer('duration_ms'),
+  ip: varchar('ip', { length: 64 }),
+  userAgent: varchar('user_agent', { length: 512 }),
+  os: varchar('os', { length: 64 }),
+  browser: varchar('browser', { length: 64 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type OperationLogRow = typeof operationLogs.$inferSelect;
+export type NewOperationLog = typeof operationLogs.$inferInsert;

@@ -4,6 +4,7 @@ import { db } from '../db';
 import { menus } from '../db/schema';
 import { createMenuSchema, updateMenuSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { auditLog } from '../middleware/audit';
 import type { Menu } from '@zenith/shared';
 
 const menusRouter = new Hono();
@@ -67,7 +68,7 @@ menusRouter.get('/flat', async (c) => {
 });
 
 // 新增菜单
-menusRouter.post('/', async (c) => {
+menusRouter.post('/', auditLog({ description: '创建菜单', module: '菜单管理' }), async (c) => {
   const body = await c.req.json();
   const result = createMenuSchema.safeParse(body);
   if (!result.success) {
@@ -78,7 +79,7 @@ menusRouter.post('/', async (c) => {
 });
 
 // 更新菜单
-menusRouter.put('/:id', async (c) => {
+menusRouter.put('/:id', auditLog({ description: '更新菜单', module: '菜单管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateMenuSchema.safeParse(body);
@@ -95,7 +96,7 @@ menusRouter.put('/:id', async (c) => {
 });
 
 // 删除菜单（同时删除子菜单）
-menusRouter.delete('/:id', async (c) => {
+menusRouter.delete('/:id', auditLog({ description: '删除菜单', module: '菜单管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   // 收集所有子孙节点
   const all = await db.select({ id: menus.id, parentId: menus.parentId }).from(menus);

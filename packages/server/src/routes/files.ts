@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
+import { auditLog } from '../middleware/audit';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
 
 const filesRouter = new Hono();
@@ -57,7 +58,7 @@ filesRouter.get('/', async (c) => {
   });
 });
 
-filesRouter.post('/upload', async (c) => {
+filesRouter.post('/upload', auditLog({ description: '上传文件', module: '文件管理', recordBody: false }), async (c) => {
   const body = await c.req.parseBody();
   const rawFile = Array.isArray(body.file) ? body.file[0] : body.file;
   if (!isUploadFile(rawFile)) {
@@ -104,7 +105,7 @@ filesRouter.get('/:id/content', async (c) => {
   });
 });
 
-filesRouter.delete('/:id', async (c) => {
+filesRouter.delete('/:id', auditLog({ description: '删除文件', module: '文件管理', recordBody: false }), async (c) => {
   const id = Number(c.req.param('id'));
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
   if (!file) return c.json({ code: 404, message: '文件不存在', data: null }, 404);

@@ -13,6 +13,7 @@ import fileStorageConfigsRoutes from './routes/file-storage-configs';
 import filesRoutes from './routes/files';
 import monitorRoutes from './routes/monitor';
 import loginLogsRoutes from './routes/login-logs';
+import operationLogsRoutes from './routes/operation-logs';
 
 const app = new Hono();
 
@@ -28,6 +29,7 @@ app.route('/api/file-storage-configs', fileStorageConfigsRoutes);
 app.route('/api/files', filesRoutes);
 app.route('/api/monitor', monitorRoutes);
 app.route('/api/login-logs', loginLogsRoutes);
+app.route('/api/operation-logs', operationLogsRoutes);
 
 app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));
 

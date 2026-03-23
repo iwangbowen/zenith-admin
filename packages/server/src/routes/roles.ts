@@ -4,6 +4,7 @@ import { db } from '../db';
 import { roles, roleMenus, userRoles, users } from '../db/schema';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { auditLog } from '../middleware/audit';
 
 const rolesRouter = new Hono();
 rolesRouter.use('*', authMiddleware);
@@ -48,7 +49,7 @@ rolesRouter.get('/:id', async (c) => {
 });
 
 // 新增角色
-rolesRouter.post('/', async (c) => {
+rolesRouter.post('/', auditLog({ description: '创建角色', module: '角色管理' }), async (c) => {
   const body = await c.req.json();
   const result = createRoleSchema.safeParse(body);
   if (!result.success) {
@@ -66,7 +67,7 @@ rolesRouter.post('/', async (c) => {
 });
 
 // 更新角色
-rolesRouter.put('/:id', async (c) => {
+rolesRouter.put('/:id', auditLog({ description: '更新角色', module: '角色管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateRoleSchema.safeParse(body);
@@ -83,7 +84,7 @@ rolesRouter.put('/:id', async (c) => {
 });
 
 // 删除角色
-rolesRouter.delete('/:id', async (c) => {
+rolesRouter.delete('/:id', auditLog({ description: '删除角色', module: '角色管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [deleted] = await db.delete(roles).where(eq(roles.id, id)).returning();
   if (!deleted) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
@@ -91,7 +92,7 @@ rolesRouter.delete('/:id', async (c) => {
 });
 
 // 分配角色菜单
-rolesRouter.put('/:id/menus', async (c) => {
+rolesRouter.put('/:id/menus', auditLog({ description: '分配角色菜单', module: '角色管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = assignRoleMenusSchema.safeParse(body);
@@ -131,7 +132,7 @@ rolesRouter.get('/:id/users', async (c) => {
 });
 
 // 设置角色关联的用户
-rolesRouter.put('/:id/users', async (c) => {
+rolesRouter.put('/:id/users', auditLog({ description: '分配角色用户', module: '角色管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = assignRoleUsersSchema.safeParse(body);
