@@ -15,23 +15,11 @@ import {
   Rating,
   Notification,
   Toast,
-  Spin,
   Row,
   Col,
-  Divider,
   Timeline,
 } from '@douyinfe/semi-ui';
-import {
-  IconSearch,
-  IconBell,
-  IconStar,
-  IconSend,
-  IconPlus,
-  IconUser,
-  IconSetting,
-  IconTick,
-  IconInfoCircle,
-} from '@douyinfe/semi-icons';
+import { Search, Bell, Star, Send, Plus, User, Info } from 'lucide-react';
 import './ComponentsPage.css';
 
 const { Title, Text, Paragraph } = Typography;
@@ -65,7 +53,7 @@ export default function ComponentsPage() {
               <Button type="tertiary">三级按钮</Button>
               <Button type="warning" theme="solid">警告</Button>
               <Button type="danger" theme="solid">危险</Button>
-              <Button theme="borderless" icon={<IconPlus />}>新增</Button>
+              <Button theme="borderless" icon={<Plus />}>新增</Button>
               <Button loading>加载中</Button>
             </Space>
           </Section>
@@ -90,8 +78,8 @@ export default function ComponentsPage() {
           <Section title="Input 输入框">
             <Space vertical style={{ width: '100%' }} align="start">
               <Input placeholder="默认输入框" style={{ width: 280 }} />
-              <Input prefix={<IconSearch />} placeholder="搜索" showClear style={{ width: 280 }} />
-              <Input suffix={<IconSend />} placeholder="带后缀" style={{ width: 280 }} />
+              <Input prefix={<Search />} placeholder="搜索" showClear style={{ width: 280 }} />
+              <Input suffix={<Send />} placeholder="带后缀" style={{ width: 280 }} />
               <Input disabled placeholder="禁用状态" style={{ width: 280 }} />
             </Space>
           </Section>
@@ -124,10 +112,10 @@ export default function ComponentsPage() {
                 <Avatar color="green">WZ</Avatar>
               </Badge>
               <Badge dot>
-                <Avatar color="orange" icon={<IconBell />} />
+                <Avatar color="orange" icon={<Bell />} />
               </Badge>
               <Avatar src="" color="red">ZS</Avatar>
-              <Avatar style={{ background: 'var(--color-primary)' }} icon={<IconUser />} />
+              <Avatar style={{ background: 'var(--color-primary)' }} icon={<User />} />
             </Space>
           </Section>
         </Col>
@@ -142,7 +130,7 @@ export default function ComponentsPage() {
               </Space>
               <Space>
                 <Rating defaultValue={3} />
-                <Rating defaultValue={4} character={<IconStar style={{ fontSize: 20 }} />} />
+                <Rating defaultValue={4} character={<Star style={{ fontSize: 20 }} />} />
               </Space>
             </Space>
           </Section>
@@ -176,7 +164,7 @@ export default function ComponentsPage() {
           <Section title="Tooltip 提示 & 反馈">
             <Space>
               <Tooltip content="这是一个提示">
-                <Button icon={<IconInfoCircle />}>悬浮提示</Button>
+                <Button icon={<Info />}>悬浮提示</Button>
               </Tooltip>
               <Button onClick={() => Toast.success('操作成功')}>Toast</Button>
               <Button

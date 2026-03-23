@@ -12,7 +12,7 @@ import {
   Select,
   InputNumber,
 } from '@douyinfe/semi-ui';
-import { IconPlus, IconEdit, IconDelete, IconRefresh } from '@douyinfe/semi-icons';
+import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import type { Menu, MenuType } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import { renderLucideIcon } from '../../../utils/icons';
@@ -165,11 +165,11 @@ export default function MenusPage() {
       render: (_val, row) => (
         <Space>
           {row.type !== 'button' && (
-            <Button size="small" icon={<IconPlus />} onClick={() => openCreate(row.id)}>
+            <Button size="small" icon={<Plus />} onClick={() => openCreate(row.id)}>
               子项
             </Button>
           )}
-          <Button size="small" icon={<IconEdit />} onClick={() => openEdit(row)}>编辑</Button>
+          <Button size="small" icon={<Pencil />} onClick={() => openEdit(row)}>编辑</Button>
           <Popconfirm
             title="确认删除此菜单？"
             content="子菜单也将一并删除"
@@ -177,7 +177,7 @@ export default function MenusPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(row.id)}
           >
-            <Button size="small" type="danger" icon={<IconDelete />}>删除</Button>
+            <Button size="small" type="danger" icon={<Trash2 />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -192,8 +192,8 @@ export default function MenusPage() {
           <p className="page-desc">管理系统菜单和按钮权限</p>
         </div>
         <Space>
-          <Button icon={<IconRefresh />} onClick={fetchMenus}>刷新</Button>
-          <Button type="primary" icon={<IconPlus />} onClick={() => openCreate()}>新增菜单</Button>
+          <Button icon={<RefreshCw />} onClick={fetchMenus}>刷新</Button>
+          <Button type="primary" icon={<Plus />} onClick={() => openCreate()}>新增菜单</Button>
         </Space>
       </div>
 

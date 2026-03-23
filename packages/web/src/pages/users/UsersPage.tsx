@@ -13,7 +13,7 @@ import {
   Select,
   Avatar,
 } from '@douyinfe/semi-ui';
-import { IconSearch, IconPlus, IconEdit, IconDelete, IconRefresh } from '@douyinfe/semi-icons';
+import { Search, Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import type { User, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -147,7 +147,7 @@ export default function UsersPage() {
         <Space>
           <Button
             theme="borderless"
-            icon={<IconEdit />}
+            icon={<Pencil />}
             size="small"
             onClick={() => {
               setEditingUser(record);
@@ -155,7 +155,7 @@ export default function UsersPage() {
             }}
           />
           <Popconfirm title="确定要删除该用户吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button theme="borderless" type="danger" icon={<IconDelete />} size="small" />
+            <Button theme="borderless" type="danger" icon={<Trash2 />} size="small" />
           </Popconfirm>
         </Space>
       ),
@@ -168,7 +168,7 @@ export default function UsersPage() {
         <div className="users-toolbar">
           <Space>
             <Input
-              prefix={<IconSearch />}
+              prefix={<Search />}
               placeholder="搜索用户名/昵称/邮箱"
               value={keyword}
               onChange={setKeyword}
@@ -178,11 +178,11 @@ export default function UsersPage() {
             />
           </Space>
           <Space>
-            <Button icon={<IconRefresh />} onClick={fetchUsers}>刷新</Button>
+            <Button icon={<RefreshCw />} onClick={fetchUsers}>刷新</Button>
             <Button
               type="primary"
               theme="solid"
-              icon={<IconPlus />}
+              icon={<Plus />}
               onClick={() => {
                 setEditingUser(null);
                 setModalVisible(true);

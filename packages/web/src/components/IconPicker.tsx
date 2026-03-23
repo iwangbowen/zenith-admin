@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Popover, Input } from '@douyinfe/semi-ui';
 import { Search, ChevronDown, X } from 'lucide-react';
-import { ICON_REGISTRY, ICON_GROUPS, renderLucideIcon } from '../utils/icons';
+import { ICON_REGISTRY, renderLucideIcon } from '../utils/icons';
 import './IconPicker.css';
 
 interface IconPickerProps {
@@ -62,24 +62,19 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
             )}
           </div>
         ) : (
-          ICON_GROUPS.map((group) => (
-            <div key={group.label} className="icon-picker-group">
-              <div className="icon-picker-group-label">{group.label}</div>
-              <div className="icon-picker-grid">
-                {group.icons.map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    title={name}
-                    className={`icon-picker-cell ${value === name ? 'icon-picker-cell--active' : ''}`}
-                    onClick={() => handleSelect(name)}
-                  >
-                    {renderLucideIcon(name, 18)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))
+          <div className="icon-picker-grid">
+            {Object.keys(ICON_REGISTRY).map((name) => (
+              <button
+                key={name}
+                type="button"
+                title={name}
+                className={`icon-picker-cell ${value === name ? 'icon-picker-cell--active' : ''}`}
+                onClick={() => handleSelect(name)}
+              >
+                {renderLucideIcon(name, 18)}
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>

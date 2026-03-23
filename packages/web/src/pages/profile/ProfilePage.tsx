@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar,
 } from '@douyinfe/semi-ui';
-import { IconUser, IconLock } from '@douyinfe/semi-icons';
+import { User as UserIcon, Lock } from 'lucide-react';
 import type { User } from '@zenith/shared';
 import { request } from '../../utils/request';
 import './ProfilePage.css';
@@ -83,7 +83,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
         {/* 右侧：表单 */}
         <Card className="profile-form-card">
           <Tabs type="line">
-            <TabPane tab={<span><IconUser style={{ marginRight: 6 }} />基本信息</span>} itemKey="profile">
+            <TabPane tab={<span><UserIcon style={{ marginRight: 6 }} />基本信息</span>} itemKey="profile">
               <div className="profile-tab-content">
                 <Form
                   initValues={{ nickname: user.nickname, email: user.email }}
@@ -115,7 +115,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
               </div>
             </TabPane>
 
-            <TabPane tab={<span><IconLock style={{ marginRight: 6 }} />修改密码</span>} itemKey="password">
+            <TabPane tab={<span><Lock style={{ marginRight: 6 }} />修改密码</span>} itemKey="password">
               <div className="profile-tab-content">
                 <Form onSubmit={handleChangePassword} labelPosition="left" labelWidth={80}>
                   <Form.Input

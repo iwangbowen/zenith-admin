@@ -10,7 +10,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconDelete, IconPlus, IconRefresh, IconSearch } from '@douyinfe/semi-icons';
+import { Trash2, Plus, RefreshCw, Search } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -203,7 +203,7 @@ export default function FilesPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(record)}
           >
-            <Button size="small" type="danger" icon={<IconDelete />}>删除</Button>
+            <Button size="small" type="danger" icon={<Trash2 />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -223,7 +223,7 @@ export default function FilesPage() {
         <div className="files-toolbar">
           <div className="files-toolbar__left">
             <Input
-              prefix={<IconSearch />}
+              prefix={<Search />}
               placeholder="搜索文件名 / 对象键 / 文件服务"
               value={keyword}
               onChange={setKeyword}
@@ -249,13 +249,13 @@ export default function FilesPage() {
             </div>
           </div>
           <Space>
-            <Button icon={<IconRefresh />} onClick={() => {
+            <Button icon={<RefreshCw />} onClick={() => {
               fetchDefaultConfig();
               fetchFiles();
             }}>
               刷新
             </Button>
-            <Button type="primary" icon={<IconPlus />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
+            <Button type="primary" icon={<Plus />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
               上传文件
             </Button>
             <input

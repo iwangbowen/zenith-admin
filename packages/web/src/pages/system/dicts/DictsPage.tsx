@@ -14,7 +14,7 @@ import {
   Empty,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconSearch, IconPlus, IconEdit, IconDelete, IconRefresh, IconList } from '@douyinfe/semi-icons';
+import { Search, Plus, Pencil, Trash2, RefreshCw, List } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -139,7 +139,7 @@ export default function DictsPage() {
           className={`dict-name-cell${selectedDict?.id === row.id ? ' dict-name-cell--active' : ''}`}
           onClick={() => selectDict(row)}
         >
-          <IconList style={{ marginRight: 6, flexShrink: 0 }} />
+          <List style={{ marginRight: 6, flexShrink: 0 }} />
           <span className="table-cell-ellipsis" title={String(v)}>{v}</span>
         </button>
       ),
@@ -164,7 +164,7 @@ export default function DictsPage() {
         <Space>
           <Button
             size="small"
-            icon={<IconEdit />}
+            icon={<Pencil />}
             onClick={(e) => { e.stopPropagation(); setEditingDict(row); setDictModalVisible(true); }}
           >
             编辑
@@ -176,7 +176,7 @@ export default function DictsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDictDelete(row.id)}
           >
-            <Button size="small" type="danger" icon={<IconDelete />} onClick={(e) => e.stopPropagation()}>删除</Button>
+            <Button size="small" type="danger" icon={<Trash2 />} onClick={(e) => e.stopPropagation()}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -207,7 +207,7 @@ export default function DictsPage() {
         <Space>
           <Button
             size="small"
-            icon={<IconEdit />}
+            icon={<Pencil />}
             onClick={() => { setEditingItem(row); setItemModalVisible(true); }}
           >
             编辑
@@ -218,7 +218,7 @@ export default function DictsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleItemDelete(row.id)}
           >
-            <Button size="small" type="danger" icon={<IconDelete />}>删除</Button>
+            <Button size="small" type="danger" icon={<Trash2 />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -239,17 +239,17 @@ export default function DictsPage() {
         <Card className="dicts-left-card">
           <div className="dicts-panel-toolbar">
             <Input
-              prefix={<IconSearch />}
+              prefix={<Search />}
               placeholder="搜索字典名称/编码"
               value={keyword}
               onChange={(v) => setKeyword(v)}
               showClear
               style={{ flex: 1 }}
             />
-            <Button icon={<IconRefresh />} onClick={fetchDicts} />
+            <Button icon={<RefreshCw />} onClick={fetchDicts} />
             <Button
               type="primary"
-              icon={<IconPlus />}
+              icon={<Plus />}
               onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
             >
               新增
@@ -283,10 +283,10 @@ export default function DictsPage() {
                   <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
                 </Text>
                 <Space style={{ marginLeft: 'auto' }}>
-                  <Button icon={<IconRefresh />} onClick={() => fetchItems(selectedDict.id)} />
+                  <Button icon={<RefreshCw />} onClick={() => fetchItems(selectedDict.id)} />
                   <Button
                     type="primary"
-                    icon={<IconPlus />}
+                    icon={<Plus />}
                     onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
                   >
                     新增字典项
@@ -305,7 +305,7 @@ export default function DictsPage() {
             </>
           ) : (
             <Empty
-              image={<IconList size="extra-large" style={{ color: 'var(--semi-color-text-2)' }} />}
+              image={<List size={32} style={{ color: 'var(--semi-color-text-2)' }} />}
               title="请选择字典"
               description="点击左侧字典查看其字典项"
               style={{ padding: '60px 0' }}

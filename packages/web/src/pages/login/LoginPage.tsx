@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
-import { IconUser, IconLock, IconMail, IconAt } from '@douyinfe/semi-icons';
+import { User, Lock, Mail, AtSign } from 'lucide-react';
 import type { RegisterInput } from '@zenith/shared';
 import './LoginPage.css';
 
@@ -65,7 +65,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                   field="username"
                   label="用户名"
                   placeholder="请输入用户名"
-                  prefix={<IconUser />}
+                  prefix={<User />}
                   rules={[{ required: true, message: '请输入用户名' }]}
                   size="large"
                 />
@@ -74,7 +74,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                   label="密码"
                   type="password"
                   placeholder="请输入密码"
-                  prefix={<IconLock />}
+                  prefix={<Lock />}
                   rules={[{ required: true, message: '请输入密码' }]}
                   size="large"
                 />
@@ -97,7 +97,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                   field="username"
                   label="用户名"
                   placeholder="3~32 个字符"
-                  prefix={<IconUser />}
+                  prefix={<User />}
                   rules={[{ required: true, message: '请输入用户名' }]}
                   size="large"
                 />
@@ -105,7 +105,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                   field="nickname"
                   label="昵称"
                   placeholder="请输入昵称"
-                  prefix={<IconAt />}
+                  prefix={<AtSign />}
                   rules={[{ required: true, message: '请输入昵称' }]}
                   size="large"
                 />
@@ -113,7 +113,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                   field="email"
                   label="邮箱"
                   placeholder="请输入邮箱"
-                  prefix={<IconMail />}
+                  prefix={<Mail />}
                   rules={[{ required: true, type: 'string', message: '请输入邮箱' }]}
                   size="large"
                 />
@@ -122,7 +122,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                   label="密码"
                   type="password"
                   placeholder="至少6个字符"
-                  prefix={<IconLock />}
+                  prefix={<Lock />}
                   rules={[{ required: true, message: '请输入密码' }]}
                   size="large"
                 />

@@ -13,7 +13,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconDelete, IconEdit, IconPlus, IconRefresh } from '@douyinfe/semi-icons';
+import { Trash2, Pencil, Plus, RefreshCw } from 'lucide-react';
 import type {
   CreateFileStorageConfigInput,
   FileStorageConfig,
@@ -213,7 +213,7 @@ export default function FileStorageConfigsPage() {
           <Button size="small" onClick={() => handleSetDefault(record)} disabled={record.isDefault || record.status !== 'active'}>
             设为默认
           </Button>
-          <Button size="small" icon={<IconEdit />} onClick={() => openEdit(record)}>
+          <Button size="small" icon={<Pencil />} onClick={() => openEdit(record)}>
             编辑
           </Button>
           <Popconfirm
@@ -223,7 +223,7 @@ export default function FileStorageConfigsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(record)}
           >
-            <Button size="small" type="danger" icon={<IconDelete />} disabled={record.isDefault}>
+            <Button size="small" type="danger" icon={<Trash2 />} disabled={record.isDefault}>
               删除
             </Button>
           </Popconfirm>
@@ -262,8 +262,8 @@ export default function FileStorageConfigsPage() {
           <p className="page-desc">管理多文件服务，支持本地磁盘与阿里云 OSS，默认启用本地磁盘。</p>
         </div>
         <Space>
-          <Button icon={<IconRefresh />} onClick={fetchConfigs}>刷新</Button>
-          <Button type="primary" icon={<IconPlus />} onClick={openCreate}>新增配置</Button>
+          <Button icon={<RefreshCw />} onClick={fetchConfigs}>刷新</Button>
+          <Button type="primary" icon={<Plus />} onClick={openCreate}>新增配置</Button>
         </Space>
       </div>
 

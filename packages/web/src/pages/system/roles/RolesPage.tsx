@@ -15,7 +15,7 @@ import {
   Spin,
   Tooltip,
 } from '@douyinfe/semi-ui';
-import { IconSearch, IconPlus, IconEdit, IconDelete, IconRefresh, IconTreeTriangleRight } from '@douyinfe/semi-icons';
+import { Search, Plus, Pencil, Trash2, RefreshCw, ChevronRight } from 'lucide-react';
 import type { Role, Menu } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -133,12 +133,12 @@ export default function RolesPage() {
       align: 'center',
       render: (_v, row) => (
         <Space>
-          <Button size="small" icon={<IconTreeTriangleRight />} onClick={() => openMenuModal(row)}>
+          <Button size="small" icon={<ChevronRight />} onClick={() => openMenuModal(row)}>
             菜单权限
           </Button>
           <Button
             size="small"
-            icon={<IconEdit />}
+            icon={<Pencil />}
             onClick={() => { setEditingRole(row); setModalVisible(true); }}
           >
             编辑
@@ -149,7 +149,7 @@ export default function RolesPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(row.id)}
           >
-            <Button size="small" type="danger" icon={<IconDelete />}>删除</Button>
+            <Button size="small" type="danger" icon={<Trash2 />}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -172,17 +172,17 @@ export default function RolesPage() {
         </div>
         <Space>
           <Input
-            prefix={<IconSearch />}
+            prefix={<Search />}
             placeholder="搜索角色名称/编码"
             value={keyword}
             onChange={(v) => setKeyword(v)}
             style={{ width: 220 }}
             showClear
           />
-          <Button icon={<IconRefresh />} onClick={fetchRoles}>刷新</Button>
+          <Button icon={<RefreshCw />} onClick={fetchRoles}>刷新</Button>
           <Button
             type="primary"
-            icon={<IconPlus />}
+            icon={<Plus />}
             onClick={() => { setEditingRole(null); setModalVisible(true); }}
           >
             新增角色

@@ -75,9 +75,6 @@ importers:
 
   packages/web:
     dependencies:
-      '@douyinfe/semi-icons':
-        specifier: ^2.76.1
-        version: 2.93.0(react@19.2.4)
       '@douyinfe/semi-ui':
         specifier: ^2.76.1
         version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))(@tiptap/pm@3.20.4))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

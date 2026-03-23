@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@douyinfe/semi-icons": "^2.76.1",
     "@douyinfe/semi-ui": "^2.76.1",
     "@zenith/shared": "workspace:*",
     "lucide-react": "^0.577.0",

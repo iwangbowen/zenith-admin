@@ -1,14 +1,14 @@
 import { Card, Row, Col, Typography, Descriptions, Tag, Space } from '@douyinfe/semi-ui';
-import { IconUser, IconTick, IconClock, IconActivity } from '@douyinfe/semi-icons';
+import { User, Check, Clock, Activity } from 'lucide-react';
 import './DashboardPage.css';
 
 const { Title, Text, Paragraph } = Typography;
 
 const stats = [
-  { label: '总用户数', value: '1,286', icon: <IconUser style={{ color: '#3370ff' }} />, bg: '#ebf1ff' },
-  { label: '今日活跃', value: '368', icon: <IconActivity style={{ color: '#0fc6c2' }} />, bg: '#e6f7f6' },
-  { label: '今日新增', value: '28', icon: <IconTick style={{ color: '#21b550' }} />, bg: '#e8f8ec' },
-  { label: '本周登录', value: '892', icon: <IconClock style={{ color: '#f5a623' }} />, bg: '#fef6e6' },
+  { label: '总用户数', value: '1,286', icon: <User style={{ color: '#3370ff' }} />, bg: '#ebf1ff' },
+  { label: '今日活跃', value: '368', icon: <Activity style={{ color: '#0fc6c2' }} />, bg: '#e6f7f6' },
+  { label: '今日新增', value: '28', icon: <Check style={{ color: '#21b550' }} />, bg: '#e8f8ec' },
+  { label: '本周登录', value: '892', icon: <Clock style={{ color: '#f5a623' }} />, bg: '#fef6e6' },
 ];
 
 const recentActivities = [
