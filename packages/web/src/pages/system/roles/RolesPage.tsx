@@ -205,25 +205,30 @@ export default function RolesPage() {
           <h2 className="page-title">角色管理</h2>
           <p className="page-desc">管理系统角色及其菜单权限</p>
         </div>
-        <Space>
-          <Input
-            prefix={<Search />}
-            placeholder="搜索角色名称/编码"
-            value={keyword}
-            onChange={(v) => setKeyword(v)}
-            style={{ width: 220 }}
-            showClear
-          />
-          <Button icon={<RefreshCw />} onClick={fetchRoles}>刷新</Button>
-          <Button
-            type="primary"
-            icon={<Plus />}
-            onClick={() => { setEditingRole(null); setModalVisible(true); }}
-          >
-            新增角色
-          </Button>
-        </Space>
       </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
+          <Space>
+            <Input
+              prefix={<Search />}
+              placeholder="搜索角色名称/编码"
+              value={keyword}
+              onChange={(v) => setKeyword(v)}
+              style={{ width: 220 }}
+              showClear
+            />
+            <Button icon={<RefreshCw />} onClick={fetchRoles}>刷新</Button>
+            <Button
+              type="primary"
+              icon={<Plus />}
+              onClick={() => { setEditingRole(null); setModalVisible(true); }}
+            >
+              新增角色
+            </Button>
+          </Space>
+        </div>
+      </Card>
 
       <Card>
         <Table
@@ -232,7 +237,7 @@ export default function RolesPage() {
           dataSource={filtered}
           rowKey="id"
           loading={loading}
-          pagination={false}
+          pagination={{ pageSize: 10, showSizeChanger: true }}
         />
       </Card>
 

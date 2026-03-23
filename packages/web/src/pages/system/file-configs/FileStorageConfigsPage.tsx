@@ -280,7 +280,7 @@ export default function FileStorageConfigsPage() {
           dataSource={configs}
           rowKey="id"
           loading={loading}
-          pagination={false}
+          pagination={{ pageSize: 10, showSizeChanger: true }}
           size="small"
         />
       </Card>

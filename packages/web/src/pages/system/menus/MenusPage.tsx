@@ -218,11 +218,16 @@ export default function MenusPage() {
           <h2 className="page-title">菜单管理</h2>
           <p className="page-desc">管理系统菜单和按钮权限</p>
         </div>
-        <Space>
-          <Button icon={<RefreshCw />} onClick={fetchMenus}>刷新</Button>
-          <Button type="primary" theme="solid" icon={<Plus />} onClick={() => openCreate()}>新增菜单</Button>
-        </Space>
       </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
+          <Space>
+            <Button icon={<RefreshCw />} onClick={fetchMenus}>刷新</Button>
+            <Button type="primary" theme="solid" icon={<Plus />} onClick={() => openCreate()}>新增菜单</Button>
+          </Space>
+        </div>
+      </Card>
 
       <Card>
         <Table
@@ -231,7 +236,7 @@ export default function MenusPage() {
           dataSource={data}
           rowKey="id"
           loading={loading}
-          pagination={false}
+          pagination={{ pageSize: 10, showSizeChanger: true }}
           defaultExpandAllRows
         />
       </Card>
