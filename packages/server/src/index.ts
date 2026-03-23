@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { config } from './config';
+import logger from './lib/logger';
+import { httpLogger } from './middleware/logger';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import menusRoutes from './routes/menus';
@@ -15,6 +17,7 @@ import loginLogsRoutes from './routes/login-logs';
 const app = new Hono();
 
 app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
+app.use('*', httpLogger);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/users', usersRoutes);
@@ -30,10 +33,10 @@ app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp
 
 // 全局未捕获异常处理—统一返回标准错误格式
 app.onError((err, c) => {
-  console.error('[Unhandled Error]', err);
+  logger.error('[Unhandled Error]', err);
   return c.json({ code: 500, message: '服务器内部错误', data: null }, 500);
 });
 
-console.log(`Server starting on port ${config.port}...`);
+logger.info(`Server starting on port ${config.port}...`);
 serve({ fetch: app.fetch, port: config.port });
-console.log(`Server running at http://localhost:${config.port}`);
+logger.info(`Server running at http://localhost:${config.port}`);

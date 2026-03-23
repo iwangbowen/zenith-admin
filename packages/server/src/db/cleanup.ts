@@ -1,4 +1,5 @@
 import postgres from 'postgres';
+import logger from '../lib/logger';
 
 const sql = postgres('postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1 });
 
@@ -10,7 +11,7 @@ async function cleanup() {
   await sql`DROP TYPE IF EXISTS user_role CASCADE`;
   await sql`DROP TYPE IF EXISTS user_status CASCADE`;
   await sql`DROP TYPE IF EXISTS menu_type CASCADE`;
-  console.log('Done: dropped tables and types');
+  logger.info('Done: dropped tables and types');
   await sql.end();
 }
 

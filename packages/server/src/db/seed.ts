@@ -2,6 +2,7 @@ import { db } from './index';
 import { users, menus, roles, roleMenus, userRoles, dicts, fileStorageConfigs } from './schema';
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
+import logger from '../lib/logger';
 
 /**
  * 种子数据初始化脚本
@@ -9,7 +10,7 @@ import { eq, sql } from 'drizzle-orm';
  * - 不会覆盖已有数据，只补充缺失的种子记录
  */
 async function seed() {
-  console.log('🌱 Seeding database...');
+  logger.info('🌱 Seeding database...');
 
   // ─── 1. 管理员账号 ─────────────────────────────────────────────────────────
   const existing = await db.select().from(users).where(eq(users.username, 'admin'));
@@ -22,9 +23,9 @@ async function seed() {
       password: hashedPassword,
       status: 'active',
     });
-    console.log('  ✔ Admin user created: admin / 123456');
+    logger.info('  ✔ Admin user created: admin / 123456');
   } else {
-    console.log('  ⏭ Admin user already exists, skipped');
+    logger.info('  ⏭ Admin user already exists, skipped');
   }
 
   // ─── 2. 菜单数据 ──────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@ async function seed() {
       });
   }
   await db.execute(sql`SELECT setval('menus_id_seq', GREATEST((SELECT MAX(id) FROM menus), 1))`);
-  console.log('  ✔ Menus upserted');
+  logger.info('  ✔ Menus upserted');
 
   // ─── 3. 角色数据 ──────────────────────────────────────────────────────────
   const roleRows = [
@@ -94,7 +95,7 @@ async function seed() {
   ];
   await db.insert(roles).values(roleRows).onConflictDoNothing({ target: roles.id });
   await db.execute(sql`SELECT setval('roles_id_seq', GREATEST((SELECT MAX(id) FROM roles), 1))`);
-  console.log('  ✔ Roles seeded (onConflictDoNothing)');
+  logger.info('  ✔ Roles seeded (onConflictDoNothing)');
 
   // 超级管理员绑定全部菜单（联合主键去重）
   const allMenuIds = await db.select({ id: menus.id }).from(menus);
@@ -103,13 +104,13 @@ async function seed() {
       .values(allMenuIds.map((m) => ({ roleId: 1, menuId: m.id })))
       .onConflictDoNothing();
   }
-  console.log('  ✔ Role-menu bindings seeded');
+  logger.info('  ✔ Role-menu bindings seeded');
 
   // 管理员账号绑定超级管理员角色
   const [adminUser] = await db.select({ id: users.id }).from(users).where(eq(users.username, 'admin')).limit(1);
   if (adminUser) {
     await db.insert(userRoles).values({ userId: adminUser.id, roleId: 1 }).onConflictDoNothing();
-    console.log('  ✔ Admin user-role binding seeded');
+    logger.info('  ✔ Admin user-role binding seeded');
   }
 
   // ─── 4. 字典数据 ──────────────────────────────────────────────────────────
@@ -121,7 +122,7 @@ async function seed() {
   ];
   await db.insert(dicts).values(dictRows).onConflictDoNothing({ target: dicts.id });
   await db.execute(sql`SELECT setval('dicts_id_seq', GREATEST((SELECT MAX(id) FROM dicts), 1))`);
-  console.log('  ✔ Dicts seeded (onConflictDoNothing)');
+  logger.info('  ✔ Dicts seeded (onConflictDoNothing)');
 
   // ─── 6. 文件服务配置 ──────────────────────────────────────────────────────
   await db.insert(fileStorageConfigs).values({
@@ -135,7 +136,7 @@ async function seed() {
     remark: '系统默认本地文件服务',
   }).onConflictDoNothing({ target: fileStorageConfigs.id });
   await db.execute(sql`SELECT setval('file_storage_configs_id_seq', GREATEST((SELECT MAX(id) FROM file_storage_configs), 1))`);
-  console.log('  ✔ File storage configs seeded (onConflictDoNothing)');
+  logger.info('  ✔ File storage configs seeded (onConflictDoNothing)');
 
   // ─── 7. 字典项数据 ────────────────────────────────────────────────────────
   // 使用 (dict_id, value) 作为逻辑唯一键，通过先查再插的方式去重
@@ -165,15 +166,15 @@ async function seed() {
       WHERE dict_id = ${item.dictId} AND value = ${item.value} AND (color IS NULL OR color != ${item.color})
     `);
   }
-  console.log('  ✔ Dict items seeded (WHERE NOT EXISTS)');
+  logger.info('  ✔ Dict items seeded (WHERE NOT EXISTS)');
 
-  console.log('🎉 Seed complete.');
+  logger.info('🎉 Seed complete.');
   process.exit(0);
 }
 
 try {
   await seed();
 } catch (err) {
-  console.error('Seed failed:', err);
+  logger.error('Seed failed:', err);
   process.exit(1);
 }

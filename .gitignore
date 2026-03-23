@@ -4,4 +4,5 @@ dist/
 *.local
 .DS_Store
 *.log
+logs/
 *.tsbuildinfo
