@@ -6,6 +6,8 @@ import {
   Space,
   Modal,
   Form,
+  Radio,
+  RadioGroup,
   Toast,
   Popconfirm,
   TreeSelect,
@@ -28,9 +30,11 @@ export default function MenusPage() {
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
   const [parentId, setParentId] = useState<number | null>(null);
   const [iconValue, setIconValue] = useState('');
+  const [menuType, setMenuType] = useState<string>('menu');
 
   const { items: menuTypeItems } = useDictItems('menu_type');
   const { items: statusItems } = useDictItems('common_status');
+  const { items: menuVisibleItems } = useDictItems('menu_visible');
 
   const fetchMenus = useCallback(async () => {
     setLoading(true);
@@ -67,6 +71,7 @@ export default function MenusPage() {
     setEditingMenu(null);
     setParentId(pid ?? 0);
     setIconValue('');
+    setMenuType('menu');
     setModalVisible(true);
   };
 
@@ -74,11 +79,17 @@ export default function MenusPage() {
     setEditingMenu(menu);
     setParentId(menu.parentId ?? 0);
     setIconValue(menu.icon ?? '');
+    setMenuType(menu.type);
     setModalVisible(true);
   };
 
-  const handleSubmit = async (values: Partial<Menu>) => {
-    const payload = { ...values, parentId: parentId ?? 0, icon: iconValue || undefined };
+  const handleSubmit = async (values: Partial<Menu> & { visible: string }) => {
+    const payload = {
+      ...values,
+      parentId: parentId ?? 0,
+      icon: iconValue || undefined,
+      visible: values.visible === undefined ? true : values.visible === 'show',
+    };
     const res = editingMenu
       ? await request.put(`/api/menus/${editingMenu.id}`, payload)
       : await request.post('/api/menus', payload);
@@ -158,6 +169,13 @@ export default function MenusPage() {
       render: (val: string) => <DictTag dictCode="common_status" value={val} />,
     },
     {
+      title: '显示',
+      dataIndex: 'visible',
+      width: 80,
+      align: 'center',
+      render: (val: boolean, row: Menu) => row.type === 'button' ? '—' : <DictTag dictCode="menu_visible" value={val ? 'show' : 'hidden'} />,
+    },
+    {
       title: '操作',
       width: 180,
       align: 'center',
@@ -217,10 +235,11 @@ export default function MenusPage() {
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
+          key={editingMenu ? `edit-${editingMenu.id}` : 'create'}
           initValues={
             editingMenu
-              ? { ...editingMenu }
-              : { type: 'menu', status: 'active', visible: true, sort: 0, parentId: parentId ?? 0 }
+              ? { ...editingMenu, visible: editingMenu.visible ? 'show' : 'hidden' }
+              : { type: 'menu', status: 'active', visible: 'show', sort: 0, parentId: parentId ?? 0 }
           }
           onSubmit={handleSubmit}
           labelPosition="left"
@@ -237,20 +256,32 @@ export default function MenusPage() {
               expandAll
             />
           </Form.Slot>
-          <Form.Select
+          <Form.RadioGroup
             field="type"
             label="菜单类型"
             rules={[{ required: true }]}
-            style={{ width: '100%' }}
-            optionList={menuTypeItems.map((i) => ({ value: i.value, label: i.label }))}
-          />
+            onChange={(e) => setMenuType((e.target as HTMLInputElement).value)}
+            type="button"
+          >
+            {menuTypeItems.map((i) => (
+              <Radio key={i.value} value={i.value}>{i.label}</Radio>
+            ))}
+          </Form.RadioGroup>
           <Form.Input field="title" label="菜单名称" rules={[{ required: true, message: '请输入菜单名称' }]} />
-          <Form.Input field="name" label="组件名" />
-          <Form.Input field="path" label="路由路径" />
-          <Form.Slot label={{ text: '图标' }}>
-            <IconPicker value={iconValue} onChange={setIconValue} />
-          </Form.Slot>
-          <Form.Input field="permission" label="权限标识" />
+          {menuType === 'menu' && (
+            <Form.Input field="name" label="组件名" />
+          )}
+          {(menuType === 'menu' || menuType === 'directory') && (
+            <Form.Input field="path" label="路由路径" />
+          )}
+          {menuType !== 'button' && (
+            <Form.Slot label={{ text: '图标' }}>
+              <IconPicker value={iconValue} onChange={setIconValue} />
+            </Form.Slot>
+          )}
+          {menuType === 'button' && (
+            <Form.Input field="permission" label="权限标识" />
+          )}
           <Form.InputNumber field="sort" label="排序" initValue={0} min={0} />
           <Form.Select
             field="status"
@@ -258,6 +289,17 @@ export default function MenusPage() {
             style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           />
+          {menuType !== 'button' && (
+            <Form.RadioGroup
+              field="visible"
+              label="显示状态"
+              type="button"
+            >
+              {menuVisibleItems.map((i) => (
+                <Radio key={i.value} value={i.value}>{i.label}</Radio>
+              ))}
+            </Form.RadioGroup>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <Button onClick={() => setModalVisible(false)}>取消</Button>
             <Button htmlType="submit" type="primary">确认</Button>

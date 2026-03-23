@@ -114,6 +114,7 @@ async function seed() {
     { id: 1, name: '通用状态', code: 'common_status', description: '通用启用/禁用状态' },
     { id: 3, name: '菜单类型', code: 'menu_type',     description: '菜单节点类型' },
     { id: 4, name: '用户性别', code: 'user_gender',   description: '用户性别' },
+    { id: 5, name: '显示状态', code: 'menu_visible',  description: '菜单显示/隐藏状态' },
   ];
   await db.insert(dicts).values(dictRows).onConflictDoNothing({ target: dicts.id });
   await db.execute(sql`SELECT setval('dicts_id_seq', GREATEST((SELECT MAX(id) FROM dicts), 1))`);
@@ -144,6 +145,8 @@ async function seed() {
     { dictId: 4, label: '男',       value: 'male',      color: 'blue',   sort: 1 },
     { dictId: 4, label: '女',       value: 'female',    color: 'pink',   sort: 2 },
     { dictId: 4, label: '保密',     value: 'secret',    color: 'grey',   sort: 3 },
+    { dictId: 5, label: '显示',     value: 'show',      color: 'green',  sort: 1 },
+    { dictId: 5, label: '隐藏',     value: 'hidden',    color: 'grey',   sort: 2 },
   ];
   // dict_items 没有唯一约束，用 SQL 子查询避免重复插入
   for (const item of dictItemRows) {
