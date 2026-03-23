@@ -85,14 +85,27 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const location = useLocation();
 
   // ─── 通知公告 ─────────────────────────────────────────────────────────────
-  const [notices, setNotices] = useState<Notice[]>([]);
+  const [notices, setNotices] = useState<(Notice & { isRead?: boolean })[]>([]);
   const [noticePopVisible, setNoticePopVisible] = useState(false);
 
-  useEffect(() => {
-    request.get<Notice[]>('/api/notices/published').then((res) => {
+  const fetchNotices = () => {
+    request.get<(Notice & { isRead?: boolean })[]>('/api/notices/published').then((res) => {
       if (res.code === 0 && res.data) setNotices(res.data);
     });
-  }, []);
+  };
+
+  useEffect(() => { fetchNotices(); }, []);
+
+  const unreadCount = notices.filter((n) => !n.isRead).length;
+
+  const markAsRead = (id: number) => {
+    const updateReadState = () => setNotices(
+      (prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n),
+    );
+    request.post(`/api/notices/${id}/read`).then((res) => {
+      if (res.code === 0) updateReadState();
+    });
+  };
 
   useEffect(() => {
     if (presetMenus) {
@@ -198,10 +211,15 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     <List
                       style={{ overflow: 'auto', maxHeight: 380 }}
                       dataSource={notices}
-                      renderItem={(item: Notice) => (
+                      renderItem={(item: Notice & { isRead?: boolean }) => (
                         <List.Item
                           key={item.id}
-                          style={{ padding: '10px 16px', cursor: 'default' }}
+                          style={{
+                            padding: '10px 16px',
+                            cursor: item.isRead ? 'default' : 'pointer',
+                            opacity: item.isRead ? 0.55 : 1,
+                          }}
+                          onClick={() => { if (!item.isRead) markAsRead(item.id); }}
                           header={null}
                           main={
                             <div>
@@ -225,7 +243,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               }
             >
               <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
-                <Badge count={notices.length} overflowCount={99} style={{ zIndex: 1 }}>
+                <Badge count={unreadCount} overflowCount={99} style={{ zIndex: 1 }}>
                   <button className="admin-theme-btn" title="通知公告">
                     <Bell size={16} strokeWidth={1.8} />
                   </button>

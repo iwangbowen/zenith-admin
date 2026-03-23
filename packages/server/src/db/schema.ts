@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique } from 'drizzle-orm/pg-core';
 
 export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -191,3 +191,13 @@ export const notices = pgTable('notices', {
 
 export type NoticeRow = typeof notices.$inferSelect;
 export type NewNotice = typeof notices.$inferInsert;
+
+// ─── 通知已读记录表 ───────────────────────────────────────────────────────────
+export const noticeReads = pgTable('notice_reads', {
+  id: serial('id').primaryKey(),
+  noticeId: integer('notice_id').notNull().references(() => notices.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [unique('uniq_notice_user').on(t.noticeId, t.userId)]);
+
+export type NoticeReadRow = typeof noticeReads.$inferSelect;

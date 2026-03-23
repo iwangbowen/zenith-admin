@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { desc, eq, like, and, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { notices } from '../db/schema';
+import { notices, noticeReads } from '../db/schema';
 import { createNoticeSchema, updateNoticeSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { auditLog } from '../middleware/audit';
@@ -20,15 +20,40 @@ function toNotice(row: typeof notices.$inferSelect) {
   };
 }
 
-// 获取已发布的通知（供铃铛使用，无需分页，返回最近 20 条）
+// 获取已发布的通知（供铃铛使用，无需分页，返回最近 20 条，含已读标记）
 noticesRouter.get('/published', async (c) => {
+  const user = c.get('user');
   const rows = await db
     .select()
     .from(notices)
     .where(eq(notices.publishStatus, 'published'))
     .orderBy(desc(notices.publishTime))
     .limit(20);
-  return c.json({ code: 0, message: 'ok', data: rows.map(toNotice) });
+
+  // 查询当前用户已读的通知 id 集合
+  const readRows = await db
+    .select({ noticeId: noticeReads.noticeId })
+    .from(noticeReads)
+    .where(eq(noticeReads.userId, user.userId));
+  const readSet = new Set(readRows.map((r) => r.noticeId));
+
+  const data = rows.map((row) => ({
+    ...toNotice(row),
+    isRead: readSet.has(row.id),
+  }));
+  return c.json({ code: 0, message: 'ok', data });
+});
+
+// 标记通知为已读
+noticesRouter.post('/:id/read', async (c) => {
+  const user = c.get('user');
+  const id = Number(c.req.param('id'));
+  // upsert: 若已存在则忽略
+  await db
+    .insert(noticeReads)
+    .values({ noticeId: id, userId: user.userId })
+    .onConflictDoNothing();
+  return c.json({ code: 0, message: 'ok', data: null });
 });
 
 // 分页列表（管理用）

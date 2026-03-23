@@ -64,6 +64,20 @@
       "when": 1774256480327,
       "tag": "0008_omniscient_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1774257873449,
+      "tag": "0009_condemned_living_lightning",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1774258014412,
+      "tag": "0010_lowly_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }
