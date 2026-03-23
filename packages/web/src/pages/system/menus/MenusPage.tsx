@@ -7,10 +7,11 @@ import {
   Modal,
   Form,
   Radio,
-  RadioGroup,
   Toast,
   Popconfirm,
   TreeSelect,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Plus, RefreshCw } from 'lucide-react';
@@ -239,7 +240,7 @@ export default function MenusPage() {
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
         onOk={() => formApi.current?.submit()}
-        width={560}
+        width={680}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
@@ -254,17 +255,6 @@ export default function MenusPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Slot label={{ text: '父级菜单' }}>
-            <TreeSelect
-              treeData={parentTreeData}
-              value={parentId ?? 0}
-              onChange={(val) => setParentId(val as number)}
-              style={{ width: '100%' }}
-              placeholder="请选择父级菜单"
-              filterTreeNode
-              expandAll
-            />
-          </Form.Slot>
           <Form.RadioGroup
             field="type"
             label="菜单类型"
@@ -276,41 +266,73 @@ export default function MenusPage() {
               <Radio key={i.value} value={i.value}>{i.label}</Radio>
             ))}
           </Form.RadioGroup>
-          <Form.Input field="title" label="菜单名称" rules={[{ required: true, message: '请输入菜单名称' }]} />
-          {menuType === 'menu' && (
-            <Form.Input field="name" label="组件名" />
-          )}
-          {(menuType === 'menu' || menuType === 'directory') && (
-            <Form.Input field="path" label="路由路径" />
-          )}
-          {menuType === 'menu' && (
-            <Form.Input field="component" label="组件路径" placeholder="例如: users/UsersPage" />
-          )}
-          {menuType !== 'button' && (
-            <Form.Slot label={{ text: '图标' }}>
-              <IconPicker value={iconValue} onChange={setIconValue} />
-            </Form.Slot>
-          )}
-          {menuType === 'button' && (
-            <Form.Input field="permission" label="权限标识" />
-          )}
-          <Form.InputNumber field="sort" label="排序" initValue={0} min={0} />
-          <Form.RadioGroup field="status" label="状态" type="button">
-            {statusItems.map((i) => (
-              <Radio key={i.value} value={i.value}>{i.label}</Radio>
-            ))}
-          </Form.RadioGroup>
-          {menuType !== 'button' && (
-            <Form.RadioGroup
-              field="visible"
-              label="显示状态"
-              type="button"
-            >
-              {menuVisibleItems.map((i) => (
-                <Radio key={i.value} value={i.value}>{i.label}</Radio>
-              ))}
-            </Form.RadioGroup>
-          )}
+
+          <Form.Slot label={{ text: '父级菜单' }}>
+            <TreeSelect
+              treeData={parentTreeData}
+              value={parentId ?? 0}
+              onChange={(val) => setParentId(val as number)}
+              style={{ width: '100%' }}
+              placeholder="请选择父级菜单"
+              filterTreeNode
+              expandAll
+            />
+          </Form.Slot>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="title" label="菜单名称" rules={[{ required: true, message: '请输入菜单名称' }]} />
+            </Col>
+            {(menuType === 'menu' || menuType === 'directory') && (
+              <Col span={12}>
+                <Form.Input field="path" label="路由路径" rules={[{ required: true, message: '请输入路由路径' }]} />
+              </Col>
+            )}
+            {menuType === 'menu' && (
+              <Col span={12}>
+                <Form.Input field="component" label="组件路径" placeholder="例如: users/UsersPage" rules={[{ required: true, message: '请输入组件路径' }]} />
+              </Col>
+            )}
+            {menuType === 'menu' && (
+              <Col span={12}>
+                <Form.Input field="name" label="组件名" placeholder="前端组件Name" />
+              </Col>
+            )}
+            {menuType === 'button' && (
+              <Col span={12}>
+                <Form.Input field="permission" label="权限标识" rules={[{ required: true, message: '请输入权限标识' }]} />
+              </Col>
+            )}
+            {menuType !== 'button' && (
+              <Col span={12}>
+                <Form.Slot label={{ text: '图标' }}>
+                  <IconPicker value={iconValue} onChange={setIconValue} />
+                </Form.Slot>
+              </Col>
+            )}
+            <Col span={12}>
+              <Form.InputNumber field="sort" label="排序" initValue={0} min={0} style={{ width: '100%' }} />
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.RadioGroup field="status" label="状态" type="button" rules={[{ required: true }]}>
+                {statusItems.map((i) => (
+                  <Radio key={i.value} value={i.value}>{i.label}</Radio>
+                ))}
+              </Form.RadioGroup>
+            </Col>
+            {menuType !== 'button' && (
+              <Col span={12}>
+                <Form.RadioGroup field="visible" label="显示状态" type="button" rules={[{ required: true }]}>
+                  {menuVisibleItems.map((i) => (
+                    <Radio key={i.value} value={i.value}>{i.label}</Radio>
+                  ))}
+                </Form.RadioGroup>
+              </Col>
+            )}
+          </Row>
         </Form>
       </Modal>
     </div>
