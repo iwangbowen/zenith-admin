@@ -17,8 +17,8 @@
       "type": "node",
       "request": "launch",
       "name": "Debug: Web",
-      "runtimeExecutable": "pnpm",
-      "args": ["--filter", "@zenith/web", "dev"],
+      "runtimeExecutable": "npm",
+      "args": ["run", "dev", "-w", "@zenith/web"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"]

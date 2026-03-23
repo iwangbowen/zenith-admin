@@ -1,6 +1,6 @@
 # Zenith Admin — AI 协作指南
 
-Zenith Admin 是一个基于 **Hono + React + Drizzle ORM** 的全栈后台管理系统，采用 pnpm monorepo 结构。
+Zenith Admin 是一个基于 **Hono + React + Drizzle ORM** 的全栈后台管理系统，采用 npm monorepo 结构。
 
 ---
 
@@ -18,13 +18,13 @@ packages/
 ## 常用命令
 
 ```bash
-pnpm dev            # 同时启动 server + web 开发服务器
-pnpm dev:server     # 仅启动后端（端口 3000）
-pnpm dev:web        # 仅启动前端（端口 5173）
-pnpm build          # 顺序构建：shared → server → web
-pnpm db:generate    # 生成 Drizzle 迁移文件
-pnpm db:migrate     # 执行数据库迁移
-pnpm db:seed        # 填充初始种子数据
+npm run dev            # 同时启动 server + web 开发服务器
+npm run dev:server     # 仅启动后端（端口 3000）
+npm run dev:web        # 仅启动前端（端口 5173）
+npm run build          # 顺序构建：shared → server → web
+npm run db:generate    # 生成 Drizzle 迁移文件
+npm run db:migrate     # 执行数据库迁移
+npm run db:seed        # 填充初始种子数据
 ```
 
 ---
@@ -94,7 +94,7 @@ pnpm db:seed        # 填充初始种子数据
 
 ## 常见陷阱
 
-- 修改数据库 schema 后，必须运行 `pnpm db:generate` 再 `pnpm db:migrate`，不能直接修改 SQL
+- 修改数据库 schema 后，必须运行 `npm run db:generate` 再 `npm run db:migrate`，不能直接修改 SQL
 - `@zenith/shared` 中新增类型/schema 后，无需重新构建，server 和 web 会直接引用源文件
 - Semi Design 组件查询请使用 `.claude/skills/semi-ui-skills/SKILL.md` 中的 MCP 工具流程
 - CORS 当前允许所有来源（开发配置），生产部署前需收紧

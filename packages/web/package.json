@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@douyinfe/semi-ui": "^2.76.1",
-    "@zenith/shared": "workspace:*",
+    "@zenith/shared": "*",
     "dayjs": "^1.11.20",
     "lucide-react": "^0.577.0",
     "react": "^19.0.0",

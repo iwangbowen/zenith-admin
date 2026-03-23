@@ -1,14 +1,17 @@
 {
   "name": "zenith-admin",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "concurrently \"pnpm --filter @zenith/server dev\" \"pnpm --filter @zenith/web dev\"",
-    "dev:server": "pnpm --filter @zenith/server dev",
-    "dev:web": "pnpm --filter @zenith/web dev",
-    "build": "pnpm --filter @zenith/shared build && pnpm --filter @zenith/server build && pnpm --filter @zenith/web build",
-    "db:generate": "pnpm --filter @zenith/server db:generate",
-    "db:migrate": "pnpm --filter @zenith/server db:migrate",
-    "db:seed": "pnpm --filter @zenith/server db:seed"
+    "dev": "concurrently \"npm run dev -w @zenith/server\" \"npm run dev -w @zenith/web\"",
+    "dev:server": "npm run dev -w @zenith/server",
+    "dev:web": "npm run dev -w @zenith/web",
+    "build": "npm run build -w @zenith/shared && npm run build -w @zenith/server && npm run build -w @zenith/web",
+    "db:generate": "npm run db:generate -w @zenith/server",
+    "db:migrate": "npm run db:migrate -w @zenith/server",
+    "db:seed": "npm run db:seed -w @zenith/server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

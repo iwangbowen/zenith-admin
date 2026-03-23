@@ -16,7 +16,7 @@
 | 参数验证 | [Zod](https://zod.dev/)（前后端共享） |
 | 认证方案 | JWT Bearer Token（7 天有效期） |
 | 文件存储 | 本地存储 / 阿里云 OSS |
-| 包管理器 | pnpm（monorepo） |
+| 包管理器 | npm（monorepo） |
 
 ---
 
@@ -50,13 +50,12 @@ zenith-admin/
 ### 前置条件
 
 - Node.js >= 18
-- pnpm >= 9
 - PostgreSQL（本地或远程）
 
 ### 安装依赖
 
 ```bash
-pnpm install
+npm install
 ```
 
 ### 配置环境变量
@@ -80,21 +79,21 @@ VITE_APP_TITLE=Zenith Admin
 
 ```bash
 # 执行迁移
-pnpm db:migrate
+npm run db:migrate
 
 # 填充初始数据（创建 admin 账号等）
-pnpm db:seed
+npm run db:seed
 ```
 
 ### 启动开发服务器
 
 ```bash
 # 同时启动前端 + 后端
-pnpm dev
+npm run dev
 
 # 或分别启动
-pnpm dev:server   # 后端：http://localhost:3000
-pnpm dev:web      # 前端：http://localhost:5173
+npm run dev:server   # 后端：http://localhost:3000
+npm run dev:web      # 前端：http://localhost:5173
 ```
 
 ---
@@ -147,9 +146,9 @@ pnpm dev:web      # 前端：http://localhost:5173
 ## 数据库管理
 
 ```bash
-pnpm db:generate   # 根据 schema 变更生成迁移文件
-pnpm db:migrate    # 执行迁移
-pnpm db:seed       # 重置并填充种子数据
+npm run db:generate   # 根据 schema 变更生成迁移文件
+npm run db:migrate    # 执行迁移
+npm run db:seed       # 重置并填充种子数据
 ```
 
 > 修改 `packages/server/src/db/schema.ts` 后，**必须** 先 `db:generate` 再 `db:migrate`，不要直接手动修改 SQL。
@@ -160,7 +159,7 @@ pnpm db:seed       # 重置并填充种子数据
 
 ```bash
 # 生产构建（顺序：shared → server → web）
-pnpm build
+npm run build
 ```
 
 构建产物：
