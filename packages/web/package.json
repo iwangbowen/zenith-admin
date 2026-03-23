@@ -9,13 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@douyinfe/semi-ui": "^2.76.1",
+    "@douyinfe/semi-ui": "^2.93.0",
     "@zenith/shared": "*",
     "dayjs": "^1.11.20",
     "lucide-react": "^0.577.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-router-dom": "^7.3.0"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.10",
