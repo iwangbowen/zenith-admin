@@ -131,25 +131,29 @@ async function seed() {
   // ─── 7. 字典项数据 ────────────────────────────────────────────────────────
   // 使用 (dict_id, value) 作为逻辑唯一键，通过先查再插的方式去重
   const dictItemRows = [
-    { dictId: 1, label: '启用',     value: 'active',    sort: 1 },
-    { dictId: 1, label: '禁用',     value: 'disabled',  sort: 2 },
-    { dictId: 2, label: '管理员',   value: 'admin',     sort: 1 },
-    { dictId: 2, label: '普通用户', value: 'user',      sort: 2 },
-    { dictId: 3, label: '目录',     value: 'directory', sort: 1 },
-    { dictId: 3, label: '菜单',     value: 'menu',      sort: 2 },
-    { dictId: 3, label: '按钮',     value: 'button',    sort: 3 },
-    { dictId: 4, label: '男',       value: 'male',      sort: 1 },
-    { dictId: 4, label: '女',       value: 'female',    sort: 2 },
-    { dictId: 4, label: '保密',     value: 'secret',    sort: 3 },
+    { dictId: 1, label: '启用',     value: 'active',    color: 'green',  sort: 1 },
+    { dictId: 1, label: '禁用',     value: 'disabled',  color: 'grey',   sort: 2 },
+    { dictId: 2, label: '管理员',   value: 'admin',     color: 'blue',   sort: 1 },
+    { dictId: 2, label: '普通用户', value: 'user',      color: 'grey',   sort: 2 },
+    { dictId: 3, label: '目录',     value: 'directory', color: 'blue',   sort: 1 },
+    { dictId: 3, label: '菜单',     value: 'menu',      color: 'green',  sort: 2 },
+    { dictId: 3, label: '按钮',     value: 'button',    color: 'orange', sort: 3 },
+    { dictId: 4, label: '男',       value: 'male',      color: 'blue',   sort: 1 },
+    { dictId: 4, label: '女',       value: 'female',    color: 'pink',   sort: 2 },
+    { dictId: 4, label: '保密',     value: 'secret',    color: 'grey',   sort: 3 },
   ];
   // dict_items 没有唯一约束，用 SQL 子查询避免重复插入
   for (const item of dictItemRows) {
     await db.execute(sql`
-      INSERT INTO dict_items (dict_id, label, value, sort, status)
-      SELECT ${item.dictId}, ${item.label}, ${item.value}, ${item.sort}, 'active'
+      INSERT INTO dict_items (dict_id, label, value, color, sort, status)
+      SELECT ${item.dictId}, ${item.label}, ${item.value}, ${item.color}, ${item.sort}, 'active'
       WHERE NOT EXISTS (
         SELECT 1 FROM dict_items WHERE dict_id = ${item.dictId} AND value = ${item.value}
       )
+    `);
+    await db.execute(sql`
+      UPDATE dict_items SET color = ${item.color}
+      WHERE dict_id = ${item.dictId} AND value = ${item.value} AND (color IS NULL OR color != ${item.color})
     `);
   }
   console.log('  ✔ Dict items seeded (WHERE NOT EXISTS)');

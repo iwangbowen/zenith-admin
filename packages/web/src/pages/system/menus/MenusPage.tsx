@@ -8,24 +8,18 @@ import {
   Form,
   Toast,
   Popconfirm,
-  Tag,
-  Select,
   TreeSelect,
 } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
-import type { Menu, MenuType } from '@zenith/shared';
+import type { Menu } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import { renderLucideIcon } from '../../../utils/icons';
 import IconPicker from '../../../components/IconPicker';
+import DictTag from '../../../components/DictTag';
+import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './MenusPage.css';
-
-const menuTypeMap = {
-  directory: { label: '目录', color: 'blue' },
-  menu: { label: '菜单', color: 'green' },
-  button: { label: '按钮', color: 'orange' },
-} as const satisfies Record<MenuType, { label: string; color: string }>;
 
 export default function MenusPage() {
   const [data, setData] = useState<Menu[]>([]);
@@ -34,6 +28,9 @@ export default function MenusPage() {
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
   const [parentId, setParentId] = useState<number | null>(null);
   const [iconValue, setIconValue] = useState('');
+
+  const { items: menuTypeItems } = useDictItems('menu_type');
+  const { items: statusItems } = useDictItems('common_status');
 
   const fetchMenus = useCallback(async () => {
     setLoading(true);
@@ -131,9 +128,7 @@ export default function MenusPage() {
       title: '类型',
       dataIndex: 'type',
       width: 90,
-      render: (val: MenuType) => (
-        <Tag color={menuTypeMap[val].color} size="small">{menuTypeMap[val].label}</Tag>
-      ),
+      render: (val: string) => <DictTag dictCode="menu_type" value={val} />,
     },
     {
       title: '路由路径',
@@ -160,11 +155,7 @@ export default function MenusPage() {
       dataIndex: 'status',
       width: 80,
       align: 'center',
-      render: (val) => (
-        <Tag color={val === 'active' ? 'green' : 'grey'} size="small">
-          {val === 'active' ? '启用' : '禁用'}
-        </Tag>
-      ),
+      render: (val: string) => <DictTag dictCode="common_status" value={val} />,
     },
     {
       title: '操作',
@@ -246,11 +237,13 @@ export default function MenusPage() {
               expandAll
             />
           </Form.Slot>
-          <Form.Select field="type" label="菜单类型" rules={[{ required: true }]}>
-            <Select.Option value="directory">目录</Select.Option>
-            <Select.Option value="menu">菜单</Select.Option>
-            <Select.Option value="button">按钮</Select.Option>
-          </Form.Select>
+          <Form.Select
+            field="type"
+            label="菜单类型"
+            rules={[{ required: true }]}
+            style={{ width: '100%' }}
+            optionList={menuTypeItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
           <Form.Input field="title" label="菜单名称" rules={[{ required: true, message: '请输入菜单名称' }]} />
           <Form.Input field="name" label="组件名" />
           <Form.Input field="path" label="路由路径" />
@@ -259,10 +252,12 @@ export default function MenusPage() {
           </Form.Slot>
           <Form.Input field="permission" label="权限标识" />
           <Form.InputNumber field="sort" label="排序" initValue={0} min={0} />
-          <Form.Select field="status" label="状态">
-            <Select.Option value="active">启用</Select.Option>
-            <Select.Option value="disabled">禁用</Select.Option>
-          </Form.Select>
+          <Form.Select
+            field="status"
+            label="状态"
+            style={{ width: '100%' }}
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <Button onClick={() => setModalVisible(false)}>取消</Button>
             <Button htmlType="submit" type="primary">确认</Button>

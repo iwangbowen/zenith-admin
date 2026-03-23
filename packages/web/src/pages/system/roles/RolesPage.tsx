@@ -4,13 +4,11 @@ import {
   Table,
   Button,
   Input,
-  Tag,
   Space,
   Modal,
   Form,
   Toast,
   Popconfirm,
-  Select,
   Tree,
   Spin,
   Tooltip,
@@ -18,11 +16,14 @@ import {
 import { Search, Plus, Pencil, Trash2, RefreshCw, ChevronRight } from 'lucide-react';
 import type { Role, Menu } from '@zenith/shared';
 import { request } from '../../../utils/request';
+import DictTag from '../../../components/DictTag';
+import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './RolesPage.css';
 
 export default function RolesPage() {
   const [data, setData] = useState<Role[]>([]);
+  const { items: statusItems } = useDictItems('common_status');
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
@@ -114,11 +115,7 @@ export default function RolesPage() {
       dataIndex: 'status',
       width: 90,
       align: 'center',
-      render: (v) => (
-        <Tag color={v === 'active' ? 'green' : 'grey'} size="small">
-          {v === 'active' ? '启用' : '禁用'}
-        </Tag>
-      ),
+      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
     },
     {
       title: '创建时间',
@@ -219,10 +216,9 @@ export default function RolesPage() {
           <Form.Input field="name" label="角色名称" rules={[{ required: true, message: '请输入角色名称' }]} />
           <Form.Input field="code" label="角色编码" rules={[{ required: true, message: '请输入角色编码' }]} />
           <Form.Input field="description" label="描述" />
-          <Form.Select field="status" label="状态">
-            <Select.Option value="active">启用</Select.Option>
-            <Select.Option value="disabled">禁用</Select.Option>
-          </Form.Select>
+          <Form.Select field="status" label="状态"
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <Button onClick={() => setModalVisible(false)}>取消</Button>
             <Button htmlType="submit" type="primary">确认</Button>

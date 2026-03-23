@@ -1,0 +1,1 @@
+ALTER TABLE "dict_items" ADD COLUMN "color" varchar(32);

@@ -81,6 +81,7 @@ export const dictItems = pgTable('dict_items', {
   dictId: integer('dict_id').notNull().references(() => dicts.id, { onDelete: 'cascade' }),
   label: varchar('label', { length: 64 }).notNull(),
   value: varchar('value', { length: 64 }).notNull(),
+  color: varchar('color', { length: 32 }),
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('active'),
   remark: varchar('remark', { length: 256 }),

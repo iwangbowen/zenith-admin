@@ -4,18 +4,18 @@ import {
   Table,
   Button,
   Input,
-  Tag,
   Space,
   Modal,
   Form,
   Toast,
   Popconfirm,
-  Select,
   Avatar,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import type { User, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
+import DictTag from '../../components/DictTag';
+import { useDictItems } from '../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './UsersPage.css';
 
@@ -26,6 +26,9 @@ export default function UsersPage() {
   const [keyword, setKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  const { items: userRoleItems } = useDictItems('user_role');
+  const { items: statusItems } = useDictItems('common_status');
 
   const formInitValues: Partial<CreateUserInput> = editingUser
     ? {
@@ -117,21 +120,13 @@ export default function UsersPage() {
       title: '角色',
       dataIndex: 'role',
       width: 100,
-      render: (role: string) => (
-        <Tag size="small" color={role === 'admin' ? 'blue' : 'grey'} style={{ borderRadius: 4 }}>
-          {role === 'admin' ? '管理员' : '用户'}
-        </Tag>
-      ),
+      render: (role: string) => <DictTag dictCode="user_role" value={role} />,
     },
     {
       title: '状态',
       dataIndex: 'status',
       width: 100,
-      render: (status: string) => (
-        <Tag size="small" type={status === 'active' ? 'light' : 'solid'} color={status === 'active' ? 'green' : 'red'} style={{ borderRadius: 4 }}>
-          {status === 'active' ? '正常' : '禁用'}
-        </Tag>
-      ),
+      render: (status: string) => <DictTag dictCode="common_status" value={status} />,
     },
     {
       title: '创建时间',
@@ -235,14 +230,12 @@ export default function UsersPage() {
           {!editingUser && (
             <Form.Input field="password" label="密码" type="password" rules={[{ required: true, message: '请输入密码' }]} />
           )}
-          <Form.Select field="role" label="角色" style={{ width: '100%' }}>
-            <Select.Option value="admin">管理员</Select.Option>
-            <Select.Option value="user">用户</Select.Option>
-          </Form.Select>
-          <Form.Select field="status" label="状态" style={{ width: '100%' }}>
-            <Select.Option value="active">正常</Select.Option>
-            <Select.Option value="disabled">禁用</Select.Option>
-          </Form.Select>
+          <Form.Select field="role" label="角色" style={{ width: '100%' }}
+            optionList={userRoleItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
+          <Form.Select field="status" label="状态" style={{ width: '100%' }}
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
           <div style={{ textAlign: 'right', marginTop: 16 }}>
             <Space>
               <Button onClick={() => { setModalVisible(false); setEditingUser(null); }}>取消</Button>

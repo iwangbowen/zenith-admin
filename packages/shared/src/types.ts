@@ -80,6 +80,7 @@ export interface DictItem {
   dictId: number;
   label: string;
   value: string;
+  color?: string;
   sort: number;
   status: 'active' | 'disabled';
   remark?: string;

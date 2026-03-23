@@ -10,13 +10,14 @@ import {
   Form,
   Toast,
   Popconfirm,
-  Select,
   Empty,
   Typography,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, Pencil, Trash2, RefreshCw, List } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '../../../utils/request';
+import DictTag from '../../../components/DictTag';
+import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './DictsPage.css';
 
@@ -36,6 +37,7 @@ export default function DictsPage() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemModalVisible, setItemModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<DictItem | null>(null);
+  const { items: statusItems } = useDictItems('common_status');
 
   // ─── 数据获取 ──────────────────────────────────────────────────────────────
   const fetchDicts = useCallback(async () => {
@@ -150,11 +152,7 @@ export default function DictsPage() {
       dataIndex: 'status',
       width: 80,
       align: 'center',
-      render: (v) => (
-        <Tag color={v === 'active' ? 'green' : 'grey'} size="small">
-          {v === 'active' ? '启用' : '禁用'}
-        </Tag>
-      ),
+      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
     },
     {
       title: '操作',
@@ -192,11 +190,7 @@ export default function DictsPage() {
       dataIndex: 'status',
       width: 80,
       align: 'center',
-      render: (v) => (
-        <Tag color={v === 'active' ? 'green' : 'grey'} size="small">
-          {v === 'active' ? '启用' : '禁用'}
-        </Tag>
-      ),
+      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
     },
     { title: '备注', dataIndex: 'remark', ellipsis: true, render: (v) => v || '—' },
     {
@@ -333,10 +327,9 @@ export default function DictsPage() {
           <Form.Input field="name" label="字典名称" rules={[{ required: true, message: '请输入字典名称' }]} />
           <Form.Input field="code" label="字典编码" rules={[{ required: true, message: '请输入字典编码' }]} />
           <Form.Input field="description" label="描述" />
-          <Form.Select field="status" label="状态">
-            <Select.Option value="active">启用</Select.Option>
-            <Select.Option value="disabled">禁用</Select.Option>
-          </Form.Select>
+          <Form.Select field="status" label="状态"
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <Button onClick={() => setDictModalVisible(false)}>取消</Button>
             <Button htmlType="submit" type="primary">确认</Button>
@@ -363,10 +356,9 @@ export default function DictsPage() {
           <Form.Input field="label" label="标签" rules={[{ required: true, message: '请输入标签' }]} />
           <Form.Input field="value" label="键值" rules={[{ required: true, message: '请输入键值' }]} />
           <Form.InputNumber field="sort" label="排序" min={0} />
-          <Form.Select field="status" label="状态">
-            <Select.Option value="active">启用</Select.Option>
-            <Select.Option value="disabled">禁用</Select.Option>
-          </Form.Select>
+          <Form.Select field="status" label="状态"
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
           <Form.Input field="remark" label="备注" />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <Button onClick={() => setItemModalVisible(false)}>取消</Button>
