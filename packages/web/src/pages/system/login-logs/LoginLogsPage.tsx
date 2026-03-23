@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Input, Button, Form, Tag } from '@douyinfe/semi-ui';
+import { Table, Card, Input, Button, Tag, Select } from '@douyinfe/semi-ui';
 import { Search } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
@@ -17,9 +17,8 @@ export default function LoginLogsPage() {
   const fetchData = async (p = page, ps = pageSize) => {
     setLoading(true);
     try {
-      const res = await request.get<PaginatedResponse<LoginLog>>('/api/login-logs', {
-        params: { page: p, pageSize: ps, ...searchParams }
-      });
+      const query = new URLSearchParams({ page: String(p), pageSize: String(ps), ...(searchParams.username ? { username: searchParams.username } : {}), ...(searchParams.status ? { status: searchParams.status } : {}) }).toString();
+      const res = await request.get<PaginatedResponse<LoginLog>>(`/api/login-logs?${query}`);
       setData(res.data.list);
       setTotal(res.data.total);
       setPage(res.data.page);
@@ -68,30 +67,27 @@ export default function LoginLogsPage() {
   return (
     <div style={{ padding: 24 }}>
       <Card style={{ marginBottom: 16 }}>
-        <Form layout="horizontal" labelPosition="left">
-          <Form.Input 
-            field="username" 
-            label="用户名" 
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <Input 
             placeholder="请输入用户名" 
             value={searchParams.username}
             onChange={(v) => setSearchParams({ ...searchParams, username: v })}
+            style={{ width: 180 }}
           />
-          <Form.Select 
-            field="status" 
-            label="状态" 
+          <Select 
             placeholder="请选择状态" 
             value={searchParams.status}
             onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
             style={{ width: 150 }}
           >
-            <Form.Select.Option value="">全部</Form.Select.Option>
-            <Form.Select.Option value="success">成功</Form.Select.Option>
-            <Form.Select.Option value="fail">失败</Form.Select.Option>
-          </Form.Select>
-          <Button theme="solid" icon={<Search size={16} />} onClick={handleSearch} style={{ marginLeft: 16 }}>
+            <Select.Option value="">全部</Select.Option>
+            <Select.Option value="success">成功</Select.Option>
+            <Select.Option value="fail">失败</Select.Option>
+          </Select>
+          <Button theme="solid" icon={<Search size={16} />} onClick={handleSearch}>
             查询
           </Button>
-        </Form>
+        </div>
       </Card>
       
       <Card>

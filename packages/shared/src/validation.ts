@@ -40,6 +40,7 @@ export const createMenuSchema = z.object({
   title: z.string().min(1, '菜单标题不能为空').max(64),
   name: z.string().max(64).optional(),
   path: z.string().max(256).optional(),
+  component: z.string().max(256).optional(),
   icon: z.string().max(64).optional(),
   type: z.enum(['directory', 'menu', 'button']).default('menu'),
   permission: z.string().max(128).optional(),

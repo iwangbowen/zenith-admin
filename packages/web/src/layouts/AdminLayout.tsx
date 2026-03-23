@@ -72,20 +72,25 @@ function findAncestorKeys(menuTree: Menu[], targetPath: string): string[] {
 interface AdminLayoutProps {
   readonly user: Omit<User, 'password'>;
   readonly onLogout: () => void;
+  readonly presetMenus?: Menu[];
 }
 
-export default function AdminLayout({ user, onLogout }: AdminLayoutProps) {
+export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [menuTree, setMenuTree] = useState<Menu[]>([]);
+  const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
   const { mode, setThemeMode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    request.get<Menu[]>('/api/menus').then((res) => {
-      if (res.code === 0 && res.data) setMenuTree(res.data);
-    });
-  }, []);
+    if (presetMenus) {
+      setMenuTree(presetMenus);
+    } else {
+      request.get<Menu[]>('/api/menus').then((res) => {
+        if (res.code === 0 && res.data) setMenuTree(res.data);
+      });
+    }
+  }, [presetMenus]);
 
   const currentSectionKeys = useMemo(
     () => findAncestorKeys(menuTree, location.pathname),

@@ -26,6 +26,7 @@ export const menus = pgTable('menus', {
   title: varchar('title', { length: 64 }).notNull(),
   name: varchar('name', { length: 64 }),
   path: varchar('path', { length: 256 }),
+  component: varchar('component', { length: 256 }),
   icon: varchar('icon', { length: 64 }),
   type: menuTypeEnum('type').notNull().default('menu'),
   permission: varchar('permission', { length: 128 }),

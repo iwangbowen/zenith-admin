@@ -150,6 +150,13 @@ export default function MenusPage() {
       render: (val) => val || '—',
     },
     {
+      title: '组件路径',
+      dataIndex: 'component',
+      width: 250,
+      ellipsis: true,
+      render: (val) => val || '—',
+    },
+    {
       title: '权限标识',
       dataIndex: 'permission',
       width: 200,
@@ -275,6 +282,9 @@ export default function MenusPage() {
           )}
           {(menuType === 'menu' || menuType === 'directory') && (
             <Form.Input field="path" label="路由路径" />
+          )}
+          {menuType === 'menu' && (
+            <Form.Input field="component" label="组件路径" placeholder="例如: users/UsersPage" />
           )}
           {menuType !== 'button' && (
             <Form.Slot label={{ text: '图标' }}>

@@ -1,0 +1,1 @@
+ALTER TABLE "menus" ADD COLUMN "component" varchar(256);

@@ -43,6 +43,13 @@
       "when": 1774240344516,
       "tag": "0005_dry_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774244421470,
+      "tag": "0006_solid_anita_blake",
+      "breakpoints": true
     }
   ]
 }
