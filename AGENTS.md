@@ -66,6 +66,7 @@ npm run db:seed        # 填充初始种子数据
 ## 文件存储
 
 支持两种存储模式，通过 `file_storage_configs` 表中的 `is_default` 字段切换：
+
 - **local**：本地文件系统
 - **oss**：阿里云 OSS（依赖 `ali-oss`）
 
@@ -100,4 +101,5 @@ npm run db:seed        # 填充初始种子数据
 - CORS 当前允许所有来源（开发配置），生产部署前需收紧
 
 ### 列表规范
+
 - 所有的表格页面的“操作”列必须设置右侧固定（`fixed: 'right'`）。
