@@ -168,12 +168,3 @@ pnpm build
 - 前端：`packages/web/dist/`
 
 > 生产环境部署前，请收紧 CORS 配置（当前允许所有来源）。
-
----
-
-## 开发规范
-
-- **Zod Schema**：定义在 `packages/shared/src/validation.ts`，禁止在 server/web 中重复定义
-- **枚举值**：数据库 pg enum、TypeScript union type、Zod enum 三者必须保持同步
-- **UI 组件**：优先使用 Semi Design，图标优先 `@douyinfe/semi-icons`，其次 `lucide-react`
-- **请求封装**：前端统一使用 `src/utils/request.ts`，已自动处理 token 注入和 401 跳转
