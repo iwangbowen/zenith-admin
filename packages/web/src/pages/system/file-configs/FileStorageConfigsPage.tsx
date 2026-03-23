@@ -215,6 +215,7 @@ export default function FileStorageConfigsPage() {
     },
     {
       title: '存储信息',
+      key: 'storageSummary',
       dataIndex: 'provider',
       ellipsis: { showTitle: false },
       render: (_: unknown, record: FileStorageConfig) => (
