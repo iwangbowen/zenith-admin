@@ -221,9 +221,9 @@ export default function FilesPage() {
         </div>
       </div>
 
-      <Card bodyStyle={{ padding: 0 }}>
-        <div className="files-toolbar">
-          <div className="files-toolbar__left">
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="files-toolbar__left" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <Input
               prefix={<Search />}
               placeholder="搜索文件名 / 对象键 / 文件服务"
@@ -268,6 +268,9 @@ export default function FilesPage() {
             />
           </Space>
         </div>
+      </Card>
+
+      <Card>
         <Table
           className="admin-table-nowrap"
           columns={columns}

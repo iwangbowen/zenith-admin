@@ -235,82 +235,92 @@ export default function DictsPage() {
 
       <div className="dicts-layout">
         {/* 左侧：字典列表 */}
-        <Card className="dicts-left-card">
-          <div className="dicts-panel-toolbar">
-            <Input
-              prefix={<Search />}
-              placeholder="搜索字典名称/编码"
-              value={keyword}
-              onChange={(v) => setKeyword(v)}
-              showClear
-              style={{ flex: 1 }}
+        <div className="dicts-left-card">
+          <Card style={{ marginBottom: 16 }}>
+            <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
+              <Input
+                prefix={<Search />}
+                placeholder="搜索字典名称/编码"
+                value={keyword}
+                onChange={(v) => setKeyword(v)}
+                showClear
+                style={{ flex: 1 }}
+              />
+              <Button icon={<RefreshCw />} onClick={fetchDicts} />
+              <Button
+                type="primary"
+                icon={<Plus />}
+                onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
+              >
+                新增
+              </Button>
+            </div>
+          </Card>
+          <Card>
+            <Table
+              className="admin-table-nowrap"
+              columns={dictColumns}
+              dataSource={dicts}
+              rowKey="id"
+              loading={dictsLoading}
+              pagination={{ pageSize: 10, showSizeChanger: true }}
+              size="small"
+              onRow={(row) => ({
+                onClick: () => row && selectDict(row),
+                style: {
+                  cursor: 'pointer',
+                  background: row?.id === selectedDict?.id ? 'var(--semi-color-primary-light-default)' : undefined,
+                },
+              })}
             />
-            <Button icon={<RefreshCw />} onClick={fetchDicts} />
-            <Button
-              type="primary"
-              icon={<Plus />}
-              onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
-            >
-              新增
-            </Button>
-          </div>
-          <Table
-            className="admin-table-nowrap"
-            columns={dictColumns}
-            dataSource={dicts}
-            rowKey="id"
-            loading={dictsLoading}
-            pagination={false}
-            size="small"
-            onRow={(row) => ({
-              onClick: () => row && selectDict(row),
-              style: {
-                cursor: 'pointer',
-                background: row?.id === selectedDict?.id ? 'var(--semi-color-primary-light-default)' : undefined,
-              },
-            })}
-          />
-        </Card>
+          </Card>
+        </div>
 
         {/* 右侧：字典项列表 */}
-        <Card className="dicts-right-card">
+        <div className="dicts-right-card">
           {selectedDict ? (
             <>
-              <div className="dicts-panel-toolbar">
-                <Text strong style={{ fontSize: 14 }}>
-                  字典项：{selectedDict.name}
-                  <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
-                </Text>
-                <Space style={{ marginLeft: 'auto' }}>
-                  <Button icon={<RefreshCw />} onClick={() => fetchItems(selectedDict.id)} />
-                  <Button
-                    type="primary"
-                    icon={<Plus />}
-                    onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
-                  >
-                    新增字典项
-                  </Button>
-                </Space>
-              </div>
-              <Table
-                className="admin-table-nowrap"
-                columns={itemColumns}
-                dataSource={items}
-                rowKey="id"
-                loading={itemsLoading}
-                pagination={false}
-                size="small"
-              />
+              <Card style={{ marginBottom: 16 }}>
+                <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
+                  <Text strong style={{ fontSize: 14 }}>
+                    字典项：{selectedDict.name}
+                    <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
+                  </Text>
+                  <Space style={{ marginLeft: 'auto' }}>
+                    <Button icon={<RefreshCw />} onClick={() => fetchItems(selectedDict.id)} />
+                    <Button
+                      type="primary"
+                      icon={<Plus />}
+                      onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
+                    >
+                      新增字典项
+                    </Button>
+                  </Space>
+                </div>
+              </Card>
+              <Card>
+                <Table
+                  className="admin-table-nowrap"
+                  columns={itemColumns}
+                  dataSource={items}
+                  rowKey="id"
+                  loading={itemsLoading}
+                  pagination={{ pageSize: 10, showSizeChanger: true }}
+                  size="small"
+                />
+              </Card>
             </>
           ) : (
-            <Empty
-              image={<List size={32} style={{ color: 'var(--semi-color-text-2)' }} />}
-              title="请选择字典"
-              description="点击左侧字典查看其字典项"
-              style={{ padding: '60px 0' }}
-            />
+            <Card>
+              <Empty
+                image={<List size={32} style={{ color: 'var(--semi-color-text-2)' }} />}
+                title="请选择字典"
+                description="点击左侧字典查看其字典项"
+                style={{ padding: '60px 0' }}
+              />
+            </Card>
           )}
-        </Card>
+        </div>
       </div>
 
       {/* 字典创建/编辑 Modal */}

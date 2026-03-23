@@ -264,16 +264,21 @@ export default function FileStorageConfigsPage() {
           <h2 className="page-title">文件配置</h2>
           <p className="page-desc">管理多文件服务，支持本地磁盘与阿里云 OSS，默认启用本地磁盘。</p>
         </div>
-        <Space>
-          <Button icon={<RefreshCw />} onClick={fetchConfigs}>刷新</Button>
-          <Button type="primary" icon={<Plus />} onClick={openCreate}>新增配置</Button>
-        </Space>
       </div>
 
-      <Card>
-        <div className="storage-configs-tip">
-          <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="storage-configs-tip" style={{ marginBottom: 0 }}>
+            <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>
+          </div>
+          <Space>
+            <Button icon={<RefreshCw />} onClick={fetchConfigs}>刷新</Button>
+            <Button type="primary" icon={<Plus />} onClick={openCreate}>新增配置</Button>
+          </Space>
         </div>
+      </Card>
+
+      <Card>
         <Table
           className="admin-table-nowrap"
           columns={columns}
