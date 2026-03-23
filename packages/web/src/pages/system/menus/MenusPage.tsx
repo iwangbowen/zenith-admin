@@ -10,8 +10,9 @@ import {
   Popconfirm,
   Tag,
   Select,
-  InputNumber,
+  TreeSelect,
 } from '@douyinfe/semi-ui';
+import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import type { Menu, MenuType } from '@zenith/shared';
 import { request } from '../../../utils/request';
@@ -56,30 +57,39 @@ export default function MenusPage() {
 
   const flatData = flattenTree(data);
 
-  // 所有目录/菜单（供父级选择）
-  const allDirs = [
-    { value: 0, label: '顶级' },
-    ...flatData
+  // 递归构建 TreeSelect 数据（过滤掉按钮类型）
+  function buildTreeSelectData(items: Menu[]): TreeNodeData[] {
+    return items
       .filter((m) => m.type !== 'button')
-      .map((m) => ({ value: m.id, label: '\u00a0'.repeat(m.depth * 4) + m.title })),
+      .map((m) => ({
+        label: m.title,
+        value: m.id,
+        key: String(m.id),
+        children: m.children?.length ? buildTreeSelectData(m.children) : undefined,
+      }));
+  }
+
+  const parentTreeData: TreeNodeData[] = [
+    { label: '顶级', value: 0, key: '0' },
+    ...buildTreeSelectData(data),
   ];
 
   const openCreate = (pid?: number) => {
     setEditingMenu(null);
-    setParentId(pid ?? null);
+    setParentId(pid ?? 0);
     setIconValue('');
     setModalVisible(true);
   };
 
   const openEdit = (menu: Menu) => {
     setEditingMenu(menu);
-    setParentId(null);
+    setParentId(menu.parentId ?? 0);
     setIconValue(menu.icon ?? '');
     setModalVisible(true);
   };
 
-  const handleSubmit = async (values: Partial<Menu> & { parentId: number }) => {
-    const payload = { ...values, parentId: values.parentId ?? 0, icon: iconValue || undefined };
+  const handleSubmit = async (values: Partial<Menu>) => {
+    const payload = { ...values, parentId: parentId ?? 0, icon: iconValue || undefined };
     const res = editingMenu
       ? await request.put(`/api/menus/${editingMenu.id}`, payload)
       : await request.post('/api/menus', payload);
@@ -226,11 +236,17 @@ export default function MenusPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Select field="parentId" label="父级菜单" style={{ width: '100%' }}>
-            {allDirs.map((d) => (
-              <Select.Option key={d.value} value={d.value}>{d.label}</Select.Option>
-            ))}
-          </Form.Select>
+          <Form.Slot label={{ text: '父级菜单' }}>
+            <TreeSelect
+              treeData={parentTreeData}
+              value={parentId ?? 0}
+              onChange={(val) => setParentId(val as number)}
+              style={{ width: '100%' }}
+              placeholder="请选择父级菜单"
+              filterTreeNode
+              expandAll
+            />
+          </Form.Slot>
           <Form.Select field="type" label="菜单类型" rules={[{ required: true }]}>
             <Select.Option value="directory">目录</Select.Option>
             <Select.Option value="menu">菜单</Select.Option>
