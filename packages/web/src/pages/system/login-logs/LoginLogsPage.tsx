@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Card, Input, Button, Tag, Select, Space } from '@douyinfe/semi-ui';
-import { Search } from 'lucide-react';
+import { Search, RotateCcw } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import type { LoginLog, PaginatedResponse } from '@zenith/shared';
@@ -11,13 +11,13 @@ export default function LoginLogsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  
+
   const [searchParams, setSearchParams] = useState({ username: '', status: '' });
 
-  const fetchData = async (p = page, ps = pageSize) => {
+  const fetchData = async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
     try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(ps), ...(searchParams.username ? { username: searchParams.username } : {}), ...(searchParams.status ? { status: searchParams.status } : {}) }).toString();
+      const query = new URLSearchParams({ page: String(p), pageSize: String(ps), ...(params.username ? { username: params.username } : {}), ...(params.status ? { status: params.status } : {}) }).toString();
       const res = await request.get<PaginatedResponse<LoginLog>>(`/api/login-logs?${query}`);
       setData(res.data.list);
       setTotal(res.data.total);
@@ -37,6 +37,12 @@ export default function LoginLogsPage() {
   const handleSearch = () => {
     setPage(1);
     fetchData(1, pageSize);
+  };
+
+  const handleReset = () => {
+    setSearchParams({ username: '', status: '' });
+    setPage(1);
+    fetchData(1, pageSize, { username: '', status: '' });
   };
 
   const columns = [
@@ -90,9 +96,12 @@ export default function LoginLogsPage() {
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
             查询
           </Button>
+          <Button icon={<RotateCcw size={14} />} onClick={handleReset}>
+            重置
+          </Button>
         </Space>
       </Card>
-      
+
       <Card>
         <Table
           columns={columns}

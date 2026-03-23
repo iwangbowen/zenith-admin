@@ -13,7 +13,7 @@ import {
   Spin,
   Avatar,
 } from '@douyinfe/semi-ui';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Role, Menu, User } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
@@ -56,6 +56,11 @@ export default function RolesPage() {
 
   function handleSearch() {
     setSubmittedKeyword(keyword);
+  }
+
+  function handleReset() {
+    setKeyword('');
+    setSubmittedKeyword('');
   }
 
   // 拉取菜单树（用于分配权限）
@@ -211,15 +216,15 @@ export default function RolesPage() {
               showClear
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
             <Button
               type="primary"
-              theme="solid"
-              icon={<Plus />}
+              icon={<Plus size={14} />}
               onClick={() => { setEditingRole(null); setModalVisible(true); }}
             >
-              新增角色
+              新增
             </Button>
           </Space>
         </div>

@@ -10,7 +10,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, RotateCcw } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -83,6 +83,12 @@ export default function FilesPage() {
 
   function handleSearch() {
     setSubmittedKeyword(keyword);
+    if (page !== 1) setPage(1);
+  }
+
+  function handleReset() {
+    setKeyword('');
+    setSubmittedKeyword('');
     if (page !== 1) setPage(1);
   }
 
@@ -234,6 +240,7 @@ export default function FilesPage() {
               showClear
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
             <div className="files-default-tip">
@@ -249,7 +256,7 @@ export default function FilesPage() {
                 <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
               )}
             </div>
-            <Button type="primary" theme="solid" icon={<Plus />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
+            <Button type="primary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
               上传文件
             </Button>
             <input

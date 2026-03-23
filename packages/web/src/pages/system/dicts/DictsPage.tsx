@@ -13,7 +13,7 @@ import {
   Empty,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, List } from 'lucide-react';
+import { Search, Plus, List, RotateCcw } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import DictTag from '../../../components/DictTag';
@@ -74,6 +74,11 @@ export default function DictsPage() {
 
   function handleSearch() {
     setSubmittedKeyword(keyword);
+  }
+
+  function handleReset() {
+    setKeyword('');
+    setSubmittedKeyword('');
   }
 
   const selectDict = (dict: Dict) => {
@@ -245,10 +250,10 @@ export default function DictsPage() {
                 style={{ flex: 1 }}
               />
               <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+              <Button icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
               <Button
                 type="primary"
-                theme="solid"
-                icon={<Plus />}
+                icon={<Plus size={14} />}
                 onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
               >
                 新增
@@ -288,11 +293,10 @@ export default function DictsPage() {
                   <Space style={{ marginLeft: 'auto' }}>
                     <Button
                       type="primary"
-                      theme="solid"
-                      icon={<Plus />}
+                      icon={<Plus size={14} />}
                       onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
                     >
-                      新增字典项
+                      新增
                     </Button>
                   </Space>
                 </div>
