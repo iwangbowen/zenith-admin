@@ -174,8 +174,8 @@ export default function UsersPage() {
 
   return (
     <div className="page-container">
-      <Card className="users-card" bodyStyle={{ padding: 0 }}>
-        <div className="users-toolbar">
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Input
               prefix={<Search />}
@@ -202,6 +202,9 @@ export default function UsersPage() {
             </Button>
           </Space>
         </div>
+      </Card>
+
+      <Card>
         <Table
           className="admin-table-nowrap"
           columns={columns}
@@ -213,8 +216,7 @@ export default function UsersPage() {
             total: data?.total || 0,
             onPageChange: setPage,
             showTotal: true,
-            showSizeChanger: false,
-            style: { padding: '12px 16px 16px' },
+            showSizeChanger: true,
           }}
           rowKey="id"
           size="small"
