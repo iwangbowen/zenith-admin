@@ -4,7 +4,7 @@ export interface User {
   nickname: string;
   email: string;
   avatar?: string;
-  role: 'admin' | 'user';
+  roles: Role[];
   status: 'active' | 'disabled';
   createdAt: string;
   updatedAt: string;

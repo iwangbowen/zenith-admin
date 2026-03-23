@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
-import { roles, roleMenus } from '../db/schema';
-import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema } from '@zenith/shared';
+import { roles, roleMenus, userRoles, users } from '../db/schema';
+import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 
 const rolesRouter = new Hono();
@@ -109,6 +109,45 @@ rolesRouter.put('/:id/menus', async (c) => {
   }
 
   return c.json({ code: 0, message: '菜单权限已更新', data: null });
+});
+
+// 获取角色下的用户
+rolesRouter.get('/:id/users', async (c) => {
+  const id = Number(c.req.param('id'));
+  const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.id, id)).limit(1);
+  if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
+
+  const rows = await db
+    .select({ id: users.id, username: users.username, nickname: users.nickname, email: users.email, avatar: users.avatar, status: users.status, createdAt: users.createdAt, updatedAt: users.updatedAt })
+    .from(userRoles)
+    .innerJoin(users, eq(userRoles.userId, users.id))
+    .where(eq(userRoles.roleId, id));
+
+  return c.json({
+    code: 0,
+    message: 'ok',
+    data: rows.map((u) => ({ ...u, createdAt: u.createdAt.toISOString(), updatedAt: u.updatedAt.toISOString() })),
+  });
+});
+
+// 设置角色关联的用户
+rolesRouter.put('/:id/users', async (c) => {
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json();
+  const result = assignRoleUsersSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+  }
+
+  const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.id, id)).limit(1);
+  if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
+
+  await db.delete(userRoles).where(eq(userRoles.roleId, id));
+  if (result.data.userIds.length > 0) {
+    await db.insert(userRoles).values(result.data.userIds.map((userId) => ({ userId, roleId: id })));
+  }
+
+  return c.json({ code: 0, message: '用户分配已更新', data: null });
 });
 
 export default rolesRouter;

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
-import { users } from '../db/schema';
+import { users, userRoles, roles } from '../db/schema';
 import { config } from '../config';
 import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -13,6 +13,15 @@ const auth = new Hono();
 
 function getAuthUser(c: { get: (key: 'user') => unknown }): JwtPayload {
   return c.get('user') as JwtPayload;
+}
+
+async function getUserRoles(userId: number) {
+  const rows = await db
+    .select({ id: roles.id, name: roles.name, code: roles.code, description: roles.description, status: roles.status, createdAt: roles.createdAt, updatedAt: roles.updatedAt })
+    .from(userRoles)
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(eq(userRoles.userId, userId));
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() }));
 }
 
 auth.post('/login', async (c) => {
@@ -38,8 +47,10 @@ auth.post('/login', async (c) => {
     return c.json({ code: 400, message: '用户名或密码错误', data: null }, 400);
   }
 
+  const userRoleList = await getUserRoles(user.id);
+
   const token = jwt.sign(
-    { userId: user.id, username: user.username, role: user.role } satisfies JwtPayload,
+    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code) } satisfies JwtPayload,
     config.jwtSecret,
     { expiresIn: '7d' }
   );
@@ -49,7 +60,7 @@ auth.post('/login', async (c) => {
     code: 0,
     message: '登录成功',
     data: {
-      user: { ...userInfo, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+      user: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
       token: { accessToken: token },
     },
   });
@@ -80,8 +91,10 @@ auth.post('/register', async (c) => {
     .values({ username, nickname, email, password: hashedPassword })
     .returning();
 
+  const userRoleList = await getUserRoles(user.id);
+
   const token = jwt.sign(
-    { userId: user.id, username: user.username, role: user.role } satisfies JwtPayload,
+    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code) } satisfies JwtPayload,
     config.jwtSecret,
     { expiresIn: '7d' }
   );
@@ -91,7 +104,7 @@ auth.post('/register', async (c) => {
     code: 0,
     message: '注册成功',
     data: {
-      user: { ...userInfo, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+      user: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
       token: { accessToken: token },
     },
   });
@@ -103,11 +116,12 @@ auth.get('/me', authMiddleware, async (c) => {
   if (!user) {
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }
+  const userRoleList = await getUserRoles(user.id);
   const { password: _, ...userInfo } = user;
   return c.json({
     code: 0,
     message: 'ok',
-    data: { ...userInfo, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+    data: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
   });
 });
 
@@ -133,11 +147,12 @@ auth.put('/profile', authMiddleware, async (c) => {
     .where(eq(users.id, payload.userId))
     .returning();
 
+  const userRoleList = await getUserRoles(payload.userId);
   const { password: _, ...userInfo } = updated;
   return c.json({
     code: 0,
     message: '资料已更新',
-    data: { ...userInfo, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() },
+    data: { ...userInfo, roles: userRoleList, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() },
   });
 });
 

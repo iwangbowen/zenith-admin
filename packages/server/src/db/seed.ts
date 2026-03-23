@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, dicts, fileStorageConfigs } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, fileStorageConfigs } from './schema';
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 
@@ -20,7 +20,6 @@ async function seed() {
       nickname: '管理员',
       email: 'admin@zenith.dev',
       password: hashedPassword,
-      role: 'admin',
       status: 'active',
     });
     console.log('  ✔ Admin user created: admin / 123456');
@@ -103,10 +102,16 @@ async function seed() {
   }
   console.log('  ✔ Role-menu bindings seeded');
 
+  // 管理员账号绑定超级管理员角色
+  const [adminUser] = await db.select({ id: users.id }).from(users).where(eq(users.username, 'admin')).limit(1);
+  if (adminUser) {
+    await db.insert(userRoles).values({ userId: adminUser.id, roleId: 1 }).onConflictDoNothing();
+    console.log('  ✔ Admin user-role binding seeded');
+  }
+
   // ─── 4. 字典数据 ──────────────────────────────────────────────────────────
   const dictRows = [
     { id: 1, name: '通用状态', code: 'common_status', description: '通用启用/禁用状态' },
-    { id: 2, name: '用户角色', code: 'user_role',     description: '系统用户角色类型' },
     { id: 3, name: '菜单类型', code: 'menu_type',     description: '菜单节点类型' },
     { id: 4, name: '用户性别', code: 'user_gender',   description: '用户性别' },
   ];
@@ -133,8 +138,6 @@ async function seed() {
   const dictItemRows = [
     { dictId: 1, label: '启用',     value: 'active',    color: 'green',  sort: 1 },
     { dictId: 1, label: '禁用',     value: 'disabled',  color: 'grey',   sort: 2 },
-    { dictId: 2, label: '管理员',   value: 'admin',     color: 'blue',   sort: 1 },
-    { dictId: 2, label: '普通用户', value: 'user',      color: 'grey',   sort: 2 },
     { dictId: 3, label: '目录',     value: 'directory', color: 'blue',   sort: 1 },
     { dictId: 3, label: '菜单',     value: 'menu',      color: 'green',  sort: 2 },
     { dictId: 3, label: '按钮',     value: 'button',    color: 'orange', sort: 3 },

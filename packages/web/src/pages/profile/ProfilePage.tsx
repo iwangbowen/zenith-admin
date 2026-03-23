@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar,
+  Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space,
 } from '@douyinfe/semi-ui';
 import { User as UserIcon, Lock } from 'lucide-react';
 import type { User } from '@zenith/shared';
@@ -71,7 +71,11 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
             <div className="profile-meta">
               <Text type="tertiary" size="small">邮箱：{user.email}</Text>
               <Text type="tertiary" size="small">
-                角色：{user.role === 'admin' ? '管理员' : '普通用户'}
+                角色：{user.roles?.length ? (
+                  <Space spacing={4} style={{ display: 'inline-flex' }}>
+                    {user.roles.map((r) => <Tag key={r.id} size="small" color="blue">{r.name}</Tag>)}
+                  </Space>
+                ) : '无角色'}
               </Text>
               <Text type="tertiary" size="small">
                 注册时间：{new Date(user.createdAt).toLocaleDateString('zh-CN')}

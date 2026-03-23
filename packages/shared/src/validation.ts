@@ -17,7 +17,7 @@ export const createUserSchema = z.object({
   nickname: z.string().min(1).max(32),
   email: z.string().email(),
   password: z.string().min(6).max(64),
-  role: z.enum(['admin', 'user']).default('user'),
+  roleIds: z.array(z.number().int()).default([]),
   status: z.enum(['active', 'disabled']).default('active'),
 });
 
@@ -62,6 +62,10 @@ export const updateRoleSchema = createRoleSchema.partial();
 
 export const assignRoleMenusSchema = z.object({
   menuIds: z.array(z.number().int()),
+});
+
+export const assignRoleUsersSchema = z.object({
+  userIds: z.array(z.number().int()),
 });
 
 // ─── 字典 Schema ──────────────────────────────────────────────────────────────

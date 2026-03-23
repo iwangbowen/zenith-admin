@@ -5,7 +5,7 @@ import { config } from '../config';
 export interface JwtPayload {
   userId: number;
   username: string;
-  role: string;
+  roles: string[];
 }
 
 export async function authMiddleware(c: Context, next: Next) {

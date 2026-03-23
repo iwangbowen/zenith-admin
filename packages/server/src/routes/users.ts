@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import bcrypt from 'bcryptjs';
-import { eq, like, sql, and, or } from 'drizzle-orm';
+import { eq, like, sql, and, or, inArray } from 'drizzle-orm';
 import { db } from '../db';
-import { users } from '../db/schema';
+import { users, userRoles, roles } from '../db/schema';
 import { createUserSchema, updateUserSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 
@@ -10,12 +10,44 @@ const usersRouter = new Hono();
 
 usersRouter.use('*', authMiddleware);
 
+async function getUserRolesMap(userIds: number[]) {
+  if (userIds.length === 0) return new Map<number, object[]>();
+  const rows = await db
+    .select({
+      userId: userRoles.userId,
+      id: roles.id,
+      name: roles.name,
+      code: roles.code,
+      description: roles.description,
+      status: roles.status,
+      createdAt: roles.createdAt,
+      updatedAt: roles.updatedAt,
+    })
+    .from(userRoles)
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(inArray(userRoles.userId, userIds));
+
+  const map = new Map<number, object[]>();
+  for (const row of rows) {
+    const { userId, ...role } = row;
+    if (!map.has(userId)) map.set(userId, []);
+    map.get(userId)!.push({ ...role, createdAt: role.createdAt.toISOString(), updatedAt: role.updatedAt.toISOString() });
+  }
+  return map;
+}
+
+async function setUserRoles(userId: number, roleIds: number[]) {
+  await db.delete(userRoles).where(eq(userRoles.userId, userId));
+  if (roleIds.length > 0) {
+    await db.insert(userRoles).values(roleIds.map((roleId) => ({ userId, roleId })));
+  }
+}
+
 // 用户列表
 usersRouter.get('/', async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const keyword = c.req.query('keyword') || '';
-  const role = c.req.query('role');
   const status = c.req.query('status');
 
   const conditions = [];
@@ -23,9 +55,6 @@ usersRouter.get('/', async (c) => {
     conditions.push(
       or(like(users.username, `%${keyword}%`), like(users.nickname, `%${keyword}%`), like(users.email, `%${keyword}%`))
     );
-  }
-  if (role && (role === 'admin' || role === 'user')) {
-    conditions.push(eq(users.role, role));
   }
   if (status && (status === 'active' || status === 'disabled')) {
     conditions.push(eq(users.status, status));
@@ -41,7 +70,6 @@ usersRouter.get('/', async (c) => {
       nickname: users.nickname,
       email: users.email,
       avatar: users.avatar,
-      role: users.role,
       status: users.status,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
@@ -52,12 +80,16 @@ usersRouter.get('/', async (c) => {
     .offset((page - 1) * pageSize)
     .orderBy(users.id);
 
+  const userIds = list.map((u) => u.id);
+  const rolesMap = await getUserRolesMap(userIds);
+
   return c.json({
     code: 0,
     message: 'ok',
     data: {
       list: list.map((u) => ({
         ...u,
+        roles: rolesMap.get(u.id) ?? [],
         createdAt: u.createdAt.toISOString(),
         updatedAt: u.updatedAt.toISOString(),
       })),
@@ -76,16 +108,18 @@ usersRouter.post('/', async (c) => {
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
-  const { password, ...rest } = result.data;
+  const { password, roleIds, ...rest } = result.data;
   const hashedPassword = await bcrypt.hash(password, 10);
 
   try {
     const [user] = await db.insert(users).values({ ...rest, password: hashedPassword }).returning();
+    await setUserRoles(user.id, roleIds);
+    const userRoleList = (await getUserRolesMap([user.id])).get(user.id) ?? [];
     const { password: _, ...userInfo } = user;
     return c.json({
       code: 0,
       message: '创建成功',
-      data: { ...userInfo, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+      data: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
     });
   } catch (err: any) {
     if (err.code === '23505') {
@@ -104,9 +138,11 @@ usersRouter.put('/:id', async (c) => {
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
+  const { roleIds, ...rest } = result.data;
+
   const [user] = await db
     .update(users)
-    .set({ ...result.data, updatedAt: new Date() })
+    .set({ ...rest, updatedAt: new Date() })
     .where(eq(users.id, id))
     .returning();
 
@@ -114,11 +150,16 @@ usersRouter.put('/:id', async (c) => {
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }
 
+  if (roleIds !== undefined) {
+    await setUserRoles(id, roleIds);
+  }
+
+  const userRoleList = (await getUserRolesMap([id])).get(id) ?? [];
   const { password: _, ...userInfo } = user;
   return c.json({
     code: 0,
     message: '更新成功',
-    data: { ...userInfo, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+    data: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
   });
 });
 

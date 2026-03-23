@@ -10,9 +10,10 @@ import {
   Toast,
   Popconfirm,
   Avatar,
+  Tag,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
-import type { User, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
+import type { User, Role, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
 import DictTag from '../../components/DictTag';
 import { useDictItems } from '../../hooks/useDictItems';
@@ -26,20 +27,26 @@ export default function UsersPage() {
   const [keyword, setKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
 
-  const { items: userRoleItems } = useDictItems('user_role');
   const { items: statusItems } = useDictItems('common_status');
 
-  const formInitValues: Partial<CreateUserInput> = editingUser
+  useEffect(() => {
+    request.get<Role[]>('/api/roles').then((res) => {
+      if (res.code === 0) setAllRoles(res.data);
+    });
+  }, []);
+
+  const formInitValues = editingUser
     ? {
         username: editingUser.username,
         nickname: editingUser.nickname,
         email: editingUser.email,
-        role: editingUser.role,
+        roleIds: editingUser.roles.map((r) => r.id),
         status: editingUser.status,
       }
     : {
-        role: 'user',
+        roleIds: [],
         status: 'active',
       };
 
@@ -118,9 +125,15 @@ export default function UsersPage() {
     },
     {
       title: '角色',
-      dataIndex: 'role',
-      width: 100,
-      render: (role: string) => <DictTag dictCode="user_role" value={role} />,
+      dataIndex: 'roles',
+      width: 160,
+      render: (roles: Role[]) => (
+        <Space spacing={4} wrap>
+          {roles.length === 0 ? <Tag color="grey">无角色</Tag> : roles.map((r) => (
+            <Tag key={r.id} color="blue">{r.name}</Tag>
+          ))}
+        </Space>
+      ),
     },
     {
       title: '状态',
@@ -230,8 +243,13 @@ export default function UsersPage() {
           {!editingUser && (
             <Form.Input field="password" label="密码" type="password" rules={[{ required: true, message: '请输入密码' }]} />
           )}
-          <Form.Select field="role" label="角色" style={{ width: '100%' }}
-            optionList={userRoleItems.map((i) => ({ value: i.value, label: i.label }))}
+          <Form.Select
+            field="roleIds"
+            label="角色"
+            style={{ width: '100%' }}
+            multiple
+            filter
+            optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
           />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}

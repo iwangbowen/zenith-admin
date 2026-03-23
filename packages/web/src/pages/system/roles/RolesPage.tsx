@@ -11,10 +11,10 @@ import {
   Popconfirm,
   Tree,
   Spin,
-  Tooltip,
+  Avatar,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, Pencil, Trash2, RefreshCw, ChevronRight } from 'lucide-react';
-import type { Role, Menu } from '@zenith/shared';
+import { Search, Plus, Pencil, Trash2, RefreshCw, ChevronRight, Users } from 'lucide-react';
+import type { Role, Menu, User } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
@@ -33,6 +33,11 @@ export default function RolesPage() {
   const [allMenus, setAllMenus] = useState<Menu[]>([]);
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([]);
   const [menuLoading, setMenuLoading] = useState(false);
+  const [userModalVisible, setUserModalVisible] = useState(false);
+  const [userRole, setUserRole] = useState<Role | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
+  const [userModalLoading, setUserModalLoading] = useState(false);
 
   const fetchRoles = useCallback(async () => {
     setLoading(true);
@@ -74,10 +79,37 @@ export default function RolesPage() {
 
   const handleAssignMenus = async () => {
     if (!menuRole) return;
-    const res = await request.post(`/api/roles/${menuRole.id}/menus`, { menuIds: checkedMenuIds });
+    const res = await request.put(`/api/roles/${menuRole.id}/menus`, { menuIds: checkedMenuIds });
     if (res.code === 0) {
       Toast.success('菜单权限已更新');
       setMenuModalVisible(false);
+    } else {
+      Toast.error(res.message);
+    }
+  };
+
+  const openUserModal = async (role: Role) => {
+    setUserRole(role);
+    setUserModalVisible(true);
+    setUserModalLoading(true);
+    try {
+      const [usersRes, assignedRes] = await Promise.all([
+        request.get<{ list: User[] }>('/api/users?page=1&pageSize=1000'),
+        request.get<User[]>(`/api/roles/${role.id}/users`),
+      ]);
+      if (usersRes.code === 0) setAllUsers(usersRes.data.list);
+      if (assignedRes.code === 0) setAssignedUserIds(assignedRes.data.map((u) => u.id));
+    } finally {
+      setUserModalLoading(false);
+    }
+  };
+
+  const handleAssignUsers = async () => {
+    if (!userRole) return;
+    const res = await request.put(`/api/roles/${userRole.id}/users`, { userIds: assignedUserIds });
+    if (res.code === 0) {
+      Toast.success('用户分配已更新');
+      setUserModalVisible(false);
     } else {
       Toast.error(res.message);
     }
@@ -126,12 +158,15 @@ export default function RolesPage() {
     },
     {
       title: '操作',
-      width: 220,
+      width: 280,
       align: 'center',
       render: (_v, row) => (
         <Space>
           <Button size="small" icon={<ChevronRight />} onClick={() => openMenuModal(row)}>
             菜单权限
+          </Button>
+          <Button size="small" icon={<Users size={14} />} onClick={() => openUserModal(row)}>
+            分配用户
           </Button>
           <Button
             size="small"
@@ -242,17 +277,58 @@ export default function RolesPage() {
             <Spin />
           </div>
         ) : (
-          <Tooltip content="点击节点可选中/取消菜单权限；当前控件使用多选值模式展示。" position="topLeft">
-            <div>
-              <Tree
-                treeData={menusToTreeData(allMenus)}
-                multiple
-                value={checkedMenuIds.map(String)}
-                onChange={(keys) => setCheckedMenuIds((keys as string[]).map(Number))}
-                style={{ maxHeight: 400, overflow: 'auto' }}
-              />
-            </div>
-          </Tooltip>
+          <Tree
+            treeData={menusToTreeData(allMenus)}
+            multiple
+            defaultExpandAll
+            value={checkedMenuIds.map(String)}
+            onChange={(keys) => setCheckedMenuIds((keys as string[]).map(Number))}
+            style={{ maxHeight: 400, overflow: 'auto' }}
+          />
+        )}
+      </Modal>
+
+      {/* 分配用户 Modal */}
+      <Modal
+        title={`分配用户 — ${userRole?.name}`}
+        visible={userModalVisible}
+        onCancel={() => setUserModalVisible(false)}
+        onOk={handleAssignUsers}
+        okText="保存"
+        cancelText="取消"
+        width={560}
+        bodyStyle={{ paddingBottom: 0 }}
+      >
+        {userModalLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+            <Spin />
+          </div>
+        ) : (
+          <Table
+            size="small"
+            rowKey="id"
+            dataSource={allUsers}
+            pagination={false}
+            rowSelection={{
+              selectedRowKeys: assignedUserIds,
+              onChange: (keys) => setAssignedUserIds(keys as number[]),
+            }}
+            style={{ maxHeight: 400, overflow: 'auto' }}
+            columns={[
+              {
+                title: '用户',
+                render: (_: unknown, u: User) => (
+                  <Space>
+                    <Avatar size="extra-small" color="blue" style={{ fontSize: 11 }}>
+                      {u.nickname?.charAt(0)?.toUpperCase() || 'U'}
+                    </Avatar>
+                    <span>{u.nickname}（{u.username}）</span>
+                  </Space>
+                ),
+              },
+              { title: '邮箱', dataIndex: 'email', ellipsis: true },
+            ]}
+          />
         )}
       </Modal>
     </div>

@@ -1,6 +1,5 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey } from 'drizzle-orm/pg-core';
 
-export const roleEnum = pgEnum('role', ['admin', 'user']);
 export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss']);
@@ -12,7 +11,6 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 128 }).notNull().unique(),
   password: varchar('password', { length: 128 }).notNull(),
   avatar: varchar('avatar', { length: 256 }),
-  role: roleEnum('role').notNull().default('user'),
   status: statusEnum('status').notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -54,6 +52,12 @@ export const roles = pgTable('roles', {
 
 export type RoleRow = typeof roles.$inferSelect;
 export type NewRole = typeof roles.$inferInsert;
+
+// ─── 用户-角色关联表 ──────────────────────────────────────────────────────────
+export const userRoles = pgTable('user_roles', {
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.userId, t.roleId] })]);
 
 // ─── 角色-菜单关联表 ──────────────────────────────────────────────────────────
 export const roleMenus = pgTable('role_menus', {
