@@ -10,6 +10,7 @@ import {
   Toast,
   Popconfirm,
   Select,
+  DatePicker,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Notice, PaginatedResponse } from '@zenith/shared';
@@ -23,6 +24,7 @@ type SearchParams = {
   title: string;
   type: string;
   publishStatus: string;
+  timeRange: [Date, Date] | null;
 };
 
 export default function NoticesPage() {
@@ -31,8 +33,9 @@ export default function NoticesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [searchParams, setSearchParams] = useState<SearchParams>({ title: '', type: '', publishStatus: '' });
-  const [submittedParams, setSubmittedParams] = useState<SearchParams>({ title: '', type: '', publishStatus: '' });
+  const defaultSearchParams: SearchParams = { title: '', type: '', publishStatus: '', timeRange: null };
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
@@ -52,6 +55,12 @@ export default function NoticesPage() {
         ...(params.title ? { title: params.title } : {}),
         ...(params.type ? { type: params.type } : {}),
         ...(params.publishStatus ? { publishStatus: params.publishStatus } : {}),
+        ...(params.timeRange
+          ? {
+              startTime: params.timeRange[0].toISOString(),
+              endTime: params.timeRange[1].toISOString(),
+            }
+          : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<Notice>>(`/api/notices?${query}`);
       if (res.code === 0) {
@@ -76,7 +85,7 @@ export default function NoticesPage() {
   };
 
   const handleReset = () => {
-    const empty: SearchParams = { title: '', type: '', publishStatus: '' };
+    const empty = defaultSearchParams;
     setSearchParams(empty);
     setSubmittedParams(empty);
     setPage(1);
@@ -205,7 +214,7 @@ export default function NoticesPage() {
     <div className="page-container">
       <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space>
+          <Space wrap>
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索标题"
@@ -230,6 +239,13 @@ export default function NoticesPage() {
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 140 }}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={["开始时间", "结束时间"]}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
+              style={{ width: 360 }}
             />
             <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
             <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
@@ -256,12 +272,12 @@ export default function NoticesPage() {
             pageSizeOpts: [10, 20, 50],
             onPageChange: (p: number) => {
               setPage(p);
-              fetchData(p, pageSize, submittedParams);
+              void fetchData(p, pageSize, submittedParams);
             },
             onPageSizeChange: (ps: number) => {
               setPageSize(ps);
               setPage(1);
-              fetchData(1, ps, submittedParams);
+              void fetchData(1, ps, submittedParams);
             },
           }}
         />

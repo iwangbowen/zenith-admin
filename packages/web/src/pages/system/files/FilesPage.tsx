@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
-  
+  DatePicker,
   Input,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -40,12 +41,18 @@ async function fetchProtectedFile(url: string) {
 }
 
 export default function FilesPage() {
+  interface SearchParams {
+    keyword: string;
+    provider: string;
+    timeRange: [Date, Date] | null;
+  }
+
+  const defaultSearchParams: SearchParams = { keyword: '', provider: '', timeRange: null };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<PaginatedResponse<ManagedFile> | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [keyword, setKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [defaultConfig, setDefaultConfig] = useState<FileStorageConfig | null>(null);
@@ -57,39 +64,51 @@ export default function FilesPage() {
     }
   }, []);
 
-  const fetchFiles = useCallback(async () => {
+  const fetchFiles = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
     try {
-      const res = await request.get<PaginatedResponse<ManagedFile>>(
-        `/api/files?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(submittedKeyword)}`
-      );
+      const query = new URLSearchParams({
+        page: String(p),
+        pageSize: String(ps),
+        ...(params.keyword ? { keyword: params.keyword } : {}),
+        ...(params.provider ? { provider: params.provider } : {}),
+        ...(params.timeRange
+          ? {
+              startTime: params.timeRange[0].toISOString(),
+              endTime: params.timeRange[1].toISOString(),
+            }
+          : {}),
+      }).toString();
+      const res = await request.get<PaginatedResponse<ManagedFile>>(`/api/files?${query}`);
       if (res.code === 0) {
         setData(res.data);
+        setPage(res.data.page);
+        setPageSize(res.data.pageSize);
       } else {
         Toast.error(res.message);
       }
     } finally {
       setLoading(false);
     }
-  }, [submittedKeyword, page, pageSize]);
+  }, [page, pageSize, searchParams]);
 
   useEffect(() => {
     fetchDefaultConfig();
   }, [fetchDefaultConfig]);
 
   useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
+    void fetchFiles();
+  }, []);
 
   function handleSearch() {
-    setSubmittedKeyword(keyword);
-    if (page !== 1) setPage(1);
+    setPage(1);
+    void fetchFiles(1, pageSize);
   }
 
   function handleReset() {
-    setKeyword('');
-    setSubmittedKeyword('');
-    if (page !== 1) setPage(1);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchFiles(1, pageSize, defaultSearchParams);
   }
 
   const handlePickFile = () => {
@@ -233,11 +252,29 @@ export default function FilesPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索文件名 / 对象键 / 文件服务"
-              value={keyword}
-              onChange={setKeyword}
+              value={searchParams.keyword}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
               onEnterPress={handleSearch}
               style={{ width: 280 }}
               showClear
+            />
+            <Select
+              placeholder="存储类型"
+              value={searchParams.provider || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
+              style={{ width: 140 }}
+              optionList={[
+                { value: '', label: '全部类型' },
+                { value: 'local', label: '本地磁盘' },
+                { value: 'oss', label: '阿里云 OSS' },
+              ]}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={["开始时间", "结束时间"]}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              style={{ width: 360 }}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -283,10 +320,9 @@ export default function FilesPage() {
             currentPage: page,
             pageSize: pageSize,
             total: data?.total || 0,
-            onPageChange: setPage,
+            onPageChange: (currentPage) => { void fetchFiles(currentPage, pageSize); },
             onPageSizeChange: (size) => {
-              setPageSize(size);
-              setPage(1);
+              void fetchFiles(1, size);
             },
             showTotal: true,
             showSizeChanger: true,

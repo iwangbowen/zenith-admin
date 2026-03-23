@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, like, or, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -32,26 +32,53 @@ function toManagedFile(row: typeof managedFiles.$inferSelect) {
 
 filesRouter.get('/', async (c) => {
   const keyword = c.req.query('keyword') ?? '';
+  const provider = c.req.query('provider');
   const page = Number(c.req.query('page') ?? 1);
   const pageSize = Number(c.req.query('pageSize') ?? 10);
+  const startTime = c.req.query('startTime');
+  const endTime = c.req.query('endTime');
 
-  const list = await db.select().from(managedFiles).orderBy(desc(managedFiles.id));
-  const filtered = keyword
-    ? list.filter((item) =>
-        item.originalName.includes(keyword) ||
-        item.objectKey.includes(keyword) ||
-        item.storageName.includes(keyword)
-      )
-    : list;
+  const conditions = [];
+  if (keyword) {
+    conditions.push(
+      or(
+        like(managedFiles.originalName, `%${keyword}%`),
+        like(managedFiles.objectKey, `%${keyword}%`),
+        like(managedFiles.storageName, `%${keyword}%`),
+      ),
+    );
+  }
+  if (provider && (provider === 'local' || provider === 'oss')) {
+    conditions.push(eq(managedFiles.provider, provider));
+  }
+  if (startTime) {
+    conditions.push(gte(managedFiles.createdAt, new Date(startTime)));
+  }
+  if (endTime) {
+    conditions.push(lte(managedFiles.createdAt, new Date(endTime)));
+  }
 
-  const start = (page - 1) * pageSize;
-  const paginated = filtered.slice(start, start + pageSize);
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(managedFiles)
+    .where(where);
+
+  const paginated = await db
+    .select()
+    .from(managedFiles)
+    .where(where)
+    .orderBy(desc(managedFiles.id))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
   return c.json({
     code: 0,
     message: 'ok',
     data: {
       list: paginated.map(toManagedFile),
-      total: filtered.length,
+      total: count,
       page,
       pageSize,
     },

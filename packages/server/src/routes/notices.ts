@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { desc, eq, like, and, sql } from 'drizzle-orm';
+import { desc, eq, like, and, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { notices, noticeReads } from '../db/schema';
 import { createNoticeSchema, updateNoticeSchema } from '@zenith/shared';
@@ -63,11 +63,15 @@ noticesRouter.get('/', async (c) => {
   const title = c.req.query('title');
   const type = c.req.query('type');
   const publishStatus = c.req.query('publishStatus');
+  const startTime = c.req.query('startTime');
+  const endTime = c.req.query('endTime');
 
   const conditions = [];
   if (title) conditions.push(like(notices.title, `%${title}%`));
   if (type) conditions.push(eq(notices.type, type));
   if (publishStatus) conditions.push(eq(notices.publishStatus, publishStatus));
+  if (startTime) conditions.push(gte(notices.createdAt, new Date(startTime)));
+  if (endTime) conditions.push(lte(notices.createdAt, new Date(endTime)));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 

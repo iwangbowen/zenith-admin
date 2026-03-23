@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Button,
-  
+  DatePicker,
   Form,
   Modal,
   Popconfirm,
@@ -13,7 +13,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus } from 'lucide-react';
+import { Plus, Search, RotateCcw } from 'lucide-react';
 import type {
   CreateFileStorageConfigInput,
   FileStorageConfig,
@@ -31,7 +31,7 @@ type FileStorageConfigFormValues = UpdateFileStorageConfigInput;
 
 function normalizeOptional(value?: string) {
   const next = value?.trim();
-  return next ? next : undefined;
+  return next || undefined;
 }
 
 function buildPayload(provider: FileStorageProvider, isDefault: boolean, values: FileStorageConfigFormValues): CreateFileStorageConfigInput {
@@ -70,18 +70,35 @@ function getStorageSummary(config: FileStorageConfig) {
 }
 
 export default function FileStorageConfigsPage() {
+  interface SearchParams {
+    status: string;
+    timeRange: [Date, Date] | null;
+  }
+
+  const defaultSearchParams: SearchParams = { status: '', timeRange: null };
   const formApi = useRef<any>(null);
   const [configs, setConfigs] = useState<FileStorageConfig[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<FileStorageConfig | null>(null);
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
   const [formIsDefault, setFormIsDefault] = useState(false);
 
-  const fetchConfigs = useCallback(async () => {
+  const fetchConfigs = useCallback(async (params = searchParams) => {
     setLoading(true);
     try {
-      const res = await request.get<FileStorageConfig[]>('/api/file-storage-configs');
+      const query = new URLSearchParams({
+        ...(params.status ? { status: params.status } : {}),
+        ...(params.timeRange
+          ? {
+              startTime: params.timeRange[0].toISOString(),
+              endTime: params.timeRange[1].toISOString(),
+            }
+          : {}),
+      }).toString();
+      const url = query ? `/api/file-storage-configs?${query}` : '/api/file-storage-configs';
+      const res = await request.get<FileStorageConfig[]>(url);
       if (res.code === 0) {
         setConfigs(res.data);
       } else {
@@ -90,11 +107,20 @@ export default function FileStorageConfigsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
-    fetchConfigs();
-  }, [fetchConfigs]);
+    void fetchConfigs();
+  }, []);
+
+  const handleSearch = () => {
+    void fetchConfigs();
+  };
+
+  const handleReset = () => {
+    setSearchParams(defaultSearchParams);
+    void fetchConfigs(defaultSearchParams);
+  };
 
   const openCreate = () => {
     setEditingConfig(null);
@@ -266,13 +292,34 @@ export default function FileStorageConfigsPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="storage-configs-tip" style={{ marginBottom: 0 }}>
-            <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <Space wrap>
+            <Select
+              placeholder="请选择状态"
+              value={searchParams.status || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+              style={{ width: 140 }}
+            >
+              <Select.Option value="">全部状态</Select.Option>
+              <Select.Option value="active">启用</Select.Option>
+              <Select.Option value="disabled">禁用</Select.Option>
+            </Select>
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={["开始时间", "结束时间"]}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              style={{ width: 360 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </Space>
           <Space>
             <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
           </Space>
+        </div>
+        <div className="storage-configs-tip" style={{ marginBottom: 0, marginTop: 12 }}>
+            <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { asc, desc, eq, count } from 'drizzle-orm';
+import { asc, desc, eq, count, and, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '@zenith/shared';
@@ -63,7 +63,23 @@ async function clearDefaultFlag() {
 }
 
 fileStorageConfigsRouter.get('/', async (c) => {
-  const list = await db.select().from(fileStorageConfigs).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id));
+  const status = c.req.query('status');
+  const startTime = c.req.query('startTime');
+  const endTime = c.req.query('endTime');
+
+  const conditions = [];
+  if (status && (status === 'active' || status === 'disabled')) {
+    conditions.push(eq(fileStorageConfigs.status, status));
+  }
+  if (startTime) {
+    conditions.push(gte(fileStorageConfigs.updatedAt, new Date(startTime)));
+  }
+  if (endTime) {
+    conditions.push(lte(fileStorageConfigs.updatedAt, new Date(endTime)));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const list = await db.select().from(fileStorageConfigs).where(where).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id));
   return c.json({ code: 0, message: 'ok', data: list.map(toFileStorageConfig) });
 });
 
