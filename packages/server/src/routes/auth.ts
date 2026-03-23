@@ -2,14 +2,33 @@ import { Hono } from 'hono';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
+import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
-import { users, userRoles, roles } from '../db/schema';
+import { users, userRoles, roles, loginLogs } from '../db/schema';
 import { config } from '../config';
 import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
 
 const auth = new Hono();
+
+async function recordLoginLog(c: any, username: string, status: 'success' | 'fail', message: string, userId?: number) {
+  const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
+  const ua = c.req.header('user-agent') || '';
+  const parser = new UAParser(ua);
+  const browser = parser.getBrowser();
+  const os = parser.getOS();
+
+  await db.insert(loginLogs).values({
+    username,
+    userId,
+    ip,
+    browser: browser.name ? `${browser.name} ${browser.version || ''}`.trim() : 'Unknown',
+    os: os.name ? `${os.name} ${os.version || ''}`.trim() : 'Unknown',
+    status,
+    message
+  });
+}
 
 function getAuthUser(c: { get: (key: 'user') => unknown }): JwtPayload {
   return c.get('user') as JwtPayload;
@@ -35,15 +54,18 @@ auth.post('/login', async (c) => {
   const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
 
   if (!user) {
+    await recordLoginLog(c, username, 'fail', '用户名或密码错误');
     return c.json({ code: 400, message: '用户名或密码错误', data: null }, 400);
   }
 
   if (user.status === 'disabled') {
+    await recordLoginLog(c, username, 'fail', '账号已被禁用', user.id);
     return c.json({ code: 403, message: '账号已被禁用', data: null }, 403);
   }
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) {
+    await recordLoginLog(c, username, 'fail', '用户名或密码错误', user.id);
     return c.json({ code: 400, message: '用户名或密码错误', data: null }, 400);
   }
 
@@ -54,6 +76,8 @@ auth.post('/login', async (c) => {
     config.jwtSecret,
     { expiresIn: '7d' }
   );
+
+  await recordLoginLog(c, username, 'success', '登录成功', user.id);
 
   const { password: _, ...userInfo } = user;
   return c.json({
@@ -98,6 +122,8 @@ auth.post('/register', async (c) => {
     config.jwtSecret,
     { expiresIn: '7d' }
   );
+
+  await recordLoginLog(c, username, 'success', '注册并在自动登录成功', user.id);
 
   const { password: _, ...userInfo } = user;
   return c.json({

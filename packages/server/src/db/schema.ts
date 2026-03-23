@@ -135,3 +135,18 @@ export const managedFiles = pgTable('managed_files', {
 
 export type ManagedFileRow = typeof managedFiles.$inferSelect;
 export type NewManagedFile = typeof managedFiles.$inferInsert;
+
+// ─── 登录日志表 ─────────────────────────────────────────────────────────────────
+export const loginStatusEnum = pgEnum('login_status', ['success', 'fail']);
+
+export const loginLogs = pgTable('login_logs', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id'),
+  username: varchar('username', { length: 64 }).notNull(),
+  ip: varchar('ip', { length: 64 }),
+  browser: varchar('browser', { length: 64 }),
+  os: varchar('os', { length: 64 }),
+  status: loginStatusEnum('status').notNull(),
+  message: varchar('message', { length: 256 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

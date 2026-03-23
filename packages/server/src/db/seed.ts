@@ -46,6 +46,7 @@ async function seed() {
     { id: 19, parentId: 5, title: '分配菜单',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:role:assign' },
     { id: 6,  parentId: 2, title: '字典管理',   name: 'SystemDicts',   path: '/system/dicts',  icon: 'NotepadText',    type: 'menu' as const, sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:list' },
     { id: 8,  parentId: 2, title: '文件管理',   name: 'SystemFiles',   path: undefined,        icon: 'FolderOpen',     type: 'directory' as const, sort: 5,  status: 'active' as const, visible: true, permission: 'system:file:list' },
+    { id: 32, parentId: 2, title: '登录日志',   name: 'SystemLoginLogs', path: '/system/login-logs', icon: 'List',       type: 'menu' as const,      sort: 7,  status: 'active' as const, visible: true },
     { id: 9,  parentId: 2, title: '服务监控',   name: 'SystemMonitor', path: '/system/monitor', icon: 'Activity',       type: 'menu' as const,      sort: 6,  status: 'active' as const, visible: true },
     { id: 24, parentId: 8, title: '文件配置',   name: 'SystemFileConfigs', path: '/system/file-configs', icon: 'HardDriveUpload', type: 'menu' as const, sort: 1, status: 'active' as const, visible: true, permission: 'system:file:config' },
     { id: 25, parentId: 8, title: '文件列表',   name: 'SystemFileList', path: '/system/files',  icon: 'Files',          type: 'menu' as const, sort: 2, status: 'active' as const, visible: true, permission: 'system:file:list' },

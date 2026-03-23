@@ -21,12 +21,14 @@
     "hono": "^4.12.8",
     "jsonwebtoken": "^9.0.2",
     "postgres": "^3.4.5",
+    "ua-parser-js": "^2.0.9",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/ali-oss": "^6.23.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.9",
+    "@types/ua-parser-js": "^0.7.39",
     "drizzle-kit": "^0.30.5",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3"

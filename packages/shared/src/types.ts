@@ -123,3 +123,16 @@ export interface ManagedFile {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── Login Logs ──────────────────────────────────────────
+export interface LoginLog {
+  id: number;
+  userId: number | null;
+  username: string;
+  ip: string | null;
+  browser: string | null;
+  os: string | null;
+  status: 'success' | 'fail';
+  message: string | null;
+  createdAt: Date;
+}
