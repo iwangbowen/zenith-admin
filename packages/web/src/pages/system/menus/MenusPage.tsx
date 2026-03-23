@@ -21,7 +21,6 @@ import IconPicker from '../../../components/IconPicker';
 import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import './MenusPage.css';
 
 export default function MenusPage() {
   const formApi = useRef<any>(null);

@@ -21,7 +21,6 @@ import { formatDateTime } from '../../../utils/date';
 import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import './RolesPage.css';
 
 export default function RolesPage() {
   interface SearchParams {
