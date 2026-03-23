@@ -87,7 +87,13 @@ export default function DictsPage() {
   };
 
   // ─── 字典 CRUD ─────────────────────────────────────────────────────────────
-  const handleDictSubmit = async (values: Partial<Dict>) => {
+  const handleDictModalOk = async () => {
+    let values: any;
+    try {
+      values = await dictFormApi.current!.validate();
+    } catch {
+      throw new Error('validation');
+    }
     const res = editingDict
       ? await request.put(`/api/dicts/${editingDict.id}`, values)
       : await request.post('/api/dicts', values);
@@ -97,6 +103,7 @@ export default function DictsPage() {
       fetchDicts();
     } else {
       Toast.error(res.message);
+      throw new Error(res.message);
     }
   };
 
@@ -115,8 +122,14 @@ export default function DictsPage() {
   };
 
   // ─── 字典项 CRUD ───────────────────────────────────────────────────────────
-  const handleItemSubmit = async (values: Partial<DictItem>) => {
+  const handleItemModalOk = async () => {
     if (!selectedDict) return;
+    let values: any;
+    try {
+      values = await itemFormApi.current!.validate();
+    } catch {
+      throw new Error('validation');
+    }
     const res = editingItem
       ? await request.put(`/api/dicts/${selectedDict.id}/items/${editingItem.id}`, values)
       : await request.post(`/api/dicts/${selectedDict.id}/items`, values);
@@ -126,6 +139,7 @@ export default function DictsPage() {
       fetchItems(selectedDict.id);
     } else {
       Toast.error(res.message);
+      throw new Error(res.message);
     }
   };
 
@@ -331,7 +345,7 @@ export default function DictsPage() {
         title={editingDict ? '编辑字典' : '新增字典'}
         visible={dictModalVisible}
         onCancel={() => setDictModalVisible(false)}
-        onOk={() => dictFormApi.current?.submit()}
+        onOk={handleDictModalOk}
         width={480}
         bodyStyle={{ paddingBottom: 24 }}
       >
@@ -339,7 +353,6 @@ export default function DictsPage() {
           getFormApi={(api) => dictFormApi.current = api}
           key={editingDict?.id ?? 'new-dict'}
           initValues={editingDict ?? { status: 'active' }}
-          onSubmit={handleDictSubmit}
           labelPosition="left"
           labelWidth={80}
         >
@@ -357,7 +370,7 @@ export default function DictsPage() {
         title={editingItem ? '编辑字典项' : '新增字典项'}
         visible={itemModalVisible}
         onCancel={() => setItemModalVisible(false)}
-        onOk={() => itemFormApi.current?.submit()}
+        onOk={handleItemModalOk}
         width={480}
         bodyStyle={{ paddingBottom: 24 }}
       >
@@ -365,7 +378,6 @@ export default function DictsPage() {
           getFormApi={(api) => itemFormApi.current = api}
           key={editingItem?.id ?? 'new-item'}
           initValues={editingItem ?? { status: 'active', sort: 0 }}
-          onSubmit={handleItemSubmit}
           labelPosition="left"
           labelWidth={80}
         >

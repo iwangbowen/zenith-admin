@@ -110,12 +110,17 @@ export default function FileStorageConfigsPage() {
     setModalVisible(true);
   };
 
-  const handleSubmit = async (values: FileStorageConfigFormValues) => {
+  const handleModalOk = async () => {
+    let values: any;
+    try {
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
+    }
     const payload = buildPayload(formProvider, formIsDefault, values);
     const res = editingConfig
       ? await request.put<FileStorageConfig>(`/api/file-storage-configs/${editingConfig.id}`, payload)
       : await request.post<FileStorageConfig>('/api/file-storage-configs', payload);
-
     if (res.code === 0) {
       Toast.success(editingConfig ? '文件服务配置已更新' : '文件服务配置已创建');
       setModalVisible(false);
@@ -123,6 +128,7 @@ export default function FileStorageConfigsPage() {
       fetchConfigs();
     } else {
       Toast.error(res.message);
+      throw new Error(res.message);
     }
   };
 
@@ -289,7 +295,7 @@ export default function FileStorageConfigsPage() {
           setModalVisible(false);
           setEditingConfig(null);
         }}
-        onOk={() => formApi.current?.submit()}
+        onOk={handleModalOk}
         width={620}
         bodyStyle={{ paddingBottom: 24 }}
       >
@@ -297,7 +303,6 @@ export default function FileStorageConfigsPage() {
           getFormApi={(api) => formApi.current = api}
           key={editingConfig?.id ?? 'new-file-storage-config'}
           initValues={initValues}
-          onSubmit={handleSubmit}
           labelPosition="left"
           labelWidth={96}
         >

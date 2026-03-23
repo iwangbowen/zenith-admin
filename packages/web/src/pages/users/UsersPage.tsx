@@ -13,7 +13,7 @@ import {
   Tag,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, RotateCcw } from 'lucide-react';
-import type { User, Role, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
+import type { User, Role, PaginatedResponse } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import DictTag from '../../components/DictTag';
