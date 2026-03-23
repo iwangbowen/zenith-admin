@@ -160,6 +160,7 @@ export default function RolesPage() {
     },
     {
       title: '操作',
+      fixed: 'right',
       width: 280,
       align: 'center',
       render: (_v, row) => (

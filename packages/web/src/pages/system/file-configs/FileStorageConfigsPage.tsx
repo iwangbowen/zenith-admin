@@ -208,6 +208,7 @@ export default function FileStorageConfigsPage() {
     },
     {
       title: '操作',
+      fixed: 'right',
       width: 260,
       align: 'center',
       render: (_: unknown, record: FileStorageConfig) => (

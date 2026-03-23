@@ -159,6 +159,7 @@ export default function DictsPage() {
     },
     {
       title: '操作',
+      fixed: 'right',
       width: 140,
       align: 'center',
       render: (_v, row) => (
@@ -197,6 +198,7 @@ export default function DictsPage() {
     { title: '备注', dataIndex: 'remark', ellipsis: true, render: (v) => v || '—' },
     {
       title: '操作',
+      fixed: 'right',
       width: 130,
       align: 'center',
       render: (_v, row) => (

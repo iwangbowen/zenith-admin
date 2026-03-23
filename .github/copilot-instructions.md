@@ -98,3 +98,6 @@ pnpm db:seed        # 填充初始种子数据
 - `@zenith/shared` 中新增类型/schema 后，无需重新构建，server 和 web 会直接引用源文件
 - Semi Design 组件查询请使用 `.claude/skills/semi-ui-skills/SKILL.md` 中的 MCP 工具流程
 - CORS 当前允许所有来源（开发配置），生产部署前需收紧
+
+### 列表规范
+- 所有的表格页面的“操作”列必须设置右侧固定（`fixed: 'right'`）。

@@ -191,6 +191,7 @@ export default function FilesPage() {
     },
     {
       title: '操作',
+      fixed: 'right',
       width: 220,
       align: 'center',
       render: (_: unknown, record: ManagedFile) => (

@@ -186,6 +186,7 @@ export default function MenusPage() {
     },
     {
       title: '操作',
+      fixed: 'right',
       width: 180,
       align: 'center',
       render: (_val, row) => (
