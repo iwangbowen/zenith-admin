@@ -10,7 +10,12 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  flex: 1;
   min-width: 0;
+}
+
+.files-toolbar__left .semi-space {
+  width: 100%;
 }
 
 .files-default-tip {
@@ -20,9 +25,28 @@
   flex-wrap: wrap;
 }
 
+.files-toolbar__right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 960px) {
   .files-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .files-toolbar__right {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 720px) {
+  .files-toolbar__right {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

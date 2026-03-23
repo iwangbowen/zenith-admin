@@ -247,15 +247,16 @@ export default function FilesPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space>
+        <div className="files-toolbar">
+          <div className="files-toolbar__left">
+            <Space wrap>
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索文件名 / 对象键 / 文件服务"
               value={searchParams.keyword}
               onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
               onEnterPress={handleSearch}
-              style={{ width: 280 }}
+              style={{ width: 'min(280px, 100%)' }}
               showClear
             />
             <Select
@@ -274,12 +275,13 @@ export default function FilesPage() {
               placeholder={["开始时间", "结束时间"]}
               value={searchParams.timeRange ?? undefined}
               onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-              style={{ width: 360 }}
+              style={{ width: 'min(360px, 100%)' }}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
+            </Space>
+          </div>
+          <div className="files-toolbar__right">
             <div className="files-default-tip">
               <Text strong>默认文件服务：</Text>
               {defaultConfig ? (
@@ -302,7 +304,7 @@ export default function FilesPage() {
               hidden
               onChange={handleUpload}
             />
-          </Space>
+          </div>
         </div>
       </div>
 
