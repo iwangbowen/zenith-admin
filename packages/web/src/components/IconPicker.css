@@ -82,7 +82,7 @@
 
 /* ─── 滚动容器（分类视图/搜索视图共用）───────────────────────────────────────── */
 .icon-picker-scroll {
-  max-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -152,4 +152,12 @@
   padding: 24px 0;
   color: var(--semi-color-text-2);
   font-size: 13px;
+}
+
+/* ─── 滚动加载更多提示 ───────────────────────────────────────────────────────── */
+.icon-picker-load-more {
+  text-align: center;
+  padding: 8px 0 4px;
+  font-size: 11px;
+  color: var(--semi-color-text-3);
 }

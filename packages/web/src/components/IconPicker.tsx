@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { Popover, Input } from '@douyinfe/semi-ui';
 import { Search, ChevronDown, X } from 'lucide-react';
-import { ICON_REGISTRY, renderLucideIcon } from '../utils/icons';
+import { ALL_ICON_NAMES, renderLucideIcon } from '../utils/icons';
 import './IconPicker.css';
 
 interface IconPickerProps {
@@ -10,15 +10,48 @@ interface IconPickerProps {
   style?: React.CSSProperties;
 }
 
+const PAGE_SIZE = 300;
+
 export default function IconPicker({ value, onChange, style }: Readonly<IconPickerProps>) {
   const [search, setSearch] = useState('');
   const [visible, setVisible] = useState(false);
+  const [page, setPage] = useState(1);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const searchResults = useMemo(() => {
+  const filteredNames = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return null;
-    return Object.keys(ICON_REGISTRY).filter((name) => name.toLowerCase().includes(q));
+    if (!q) return ALL_ICON_NAMES;
+    return ALL_ICON_NAMES.filter((name) => name.toLowerCase().includes(q));
   }, [search]);
+
+  const displayNames = useMemo(
+    () => filteredNames.slice(0, page * PAGE_SIZE),
+    [filteredNames, page],
+  );
+
+  const hasMore = displayNames.length < filteredNames.length;
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !hasMore) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+      setPage((p) => p + 1);
+    }
+  }, [hasMore]);
+
+  const handleSearchChange = (v: string) => {
+    setSearch(v);
+    setPage(1);
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  };
+
+  const handleVisibleChange = (v: boolean) => {
+    setVisible(v);
+    if (v) {
+      setPage(1);
+      setSearch('');
+    }
+  };
 
   const handleSelect = (name: string) => {
     onChange?.(name);
@@ -36,17 +69,17 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
       <Input
         size="small"
         prefix={<Search size={13} />}
-        placeholder="搜索图标名称…"
+        placeholder={`搜索图标（共 ${ALL_ICON_NAMES.length} 个）…`}
         value={search}
-        onChange={(v) => setSearch(v)}
+        onChange={handleSearchChange}
         className="icon-picker-search"
         style={{ marginBottom: 8 }}
       />
-      <div className="icon-picker-scroll">
-        {searchResults ? (
-          <div className="icon-picker-grid">
-            {searchResults.length > 0 ? (
-              searchResults.map((name) => (
+      <div className="icon-picker-scroll" ref={scrollRef} onScroll={handleScroll}>
+        {filteredNames.length > 0 ? (
+          <>
+            <div className="icon-picker-grid">
+              {displayNames.map((name) => (
                 <button
                   key={name}
                   type="button"
@@ -56,25 +89,16 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
                 >
                   {renderLucideIcon(name, 18)}
                 </button>
-              ))
-            ) : (
-              <div className="icon-picker-empty-result">无匹配图标</div>
+              ))}
+            </div>
+            {hasMore && (
+              <div className="icon-picker-load-more">
+                向下滚动加载更多 ({displayNames.length} / {filteredNames.length})
+              </div>
             )}
-          </div>
+          </>
         ) : (
-          <div className="icon-picker-grid">
-            {Object.keys(ICON_REGISTRY).map((name) => (
-              <button
-                key={name}
-                type="button"
-                title={name}
-                className={`icon-picker-cell ${value === name ? 'icon-picker-cell--active' : ''}`}
-                onClick={() => handleSelect(name)}
-              >
-                {renderLucideIcon(name, 18)}
-              </button>
-            ))}
-          </div>
+          <div className="icon-picker-empty-result">无匹配图标</div>
         )}
       </div>
     </div>
@@ -84,7 +108,7 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
     <Popover
       content={panelContent}
       visible={visible}
-      onVisibleChange={setVisible}
+      onVisibleChange={handleVisibleChange}
       trigger="click"
       position="bottomLeft"
       showArrow={false}
