@@ -12,7 +12,7 @@ import {
   Avatar,
   Tag,
 } from '@douyinfe/semi-ui';
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { User, Role, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
@@ -72,6 +72,12 @@ export default function UsersPage() {
 
   function handleSearch() {
     setSubmittedKeyword(keyword);
+    if (page !== 1) setPage(1);
+  }
+
+  function handleReset() {
+    setKeyword('');
+    setSubmittedKeyword('');
     if (page !== 1) setPage(1);
   }
 
@@ -194,18 +200,18 @@ export default function UsersPage() {
               showClear
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
             <Button
               type="primary"
-              theme="solid"
-              icon={<Plus />}
+              icon={<Plus size={14} />}
               onClick={() => {
                 setEditingUser(null);
                 setModalVisible(true);
               }}
             >
-              新增用户
+              新增
             </Button>
           </Space>
         </div>
