@@ -44,7 +44,7 @@ pnpm db:seed        # 填充初始种子数据
 ### 前端（`packages/web`）
 
 - **UI 库**：Semi Design v2（`@douyinfe/semi-ui`）— 使用 Semi Design 组件时先查阅 `.claude/skills/semi-ui-skills/`
-- **图标**：优先使用 `@douyinfe/semi-icons`，其次 `lucide-react`
+- **图标**：统一使用 `lucide-react`，禁止引入 `@douyinfe/semi-icons`
 - **路由**：`react-router-dom` v7，页面组件位于 `src/pages/`
 - **认证状态**：`useAuth` hook，token 存储在 `localStorage`，key 为 `zenith_token`（来自 `@zenith/shared` constants）
 - **HTTP 请求**：封装在 `src/utils/request.ts`，自动附加 Bearer token 和处理 401 跳转
