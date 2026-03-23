@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Row, Col, Typography, Descriptions, Tag, Space, Spin, Empty } from '@douyinfe/semi-ui';
+import { Card, Typography, Tag, Space, Spin, Empty } from '@douyinfe/semi-ui';
 import { Bell, Cpu, Database, Server, Clock } from 'lucide-react';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
@@ -18,13 +18,6 @@ interface MonitorData {
 }
 
 type NoticeWithRead = Notice & { isRead: boolean };
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
-}
 
 function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);
@@ -53,6 +46,15 @@ export default function DashboardPage() {
   const [monitor, setMonitor] = useState<MonitorData | null>(null);
   const [notices, setNotices] = useState<NoticeWithRead[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const architectureItems = [
+    { key: '前端框架', value: 'React 19 + Vite' },
+    { key: '后端框架', value: 'Hono v4 / Node.js' },
+    { key: 'UI 组件库', value: 'Semi Design v2' },
+    { key: '数据库', value: 'PostgreSQL' },
+    { key: 'ORM', value: 'Drizzle ORM' },
+    { key: '认证方案', value: 'JWT Bearer Token' },
+  ];
 
   useEffect(() => {
     Promise.all([
@@ -96,72 +98,39 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="page-container">
-      {/* 服务运行统计卡片 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        {statCards.map((s) => (
-          <Col key={s.label} span={6}>
-            <Card
-              className="dashboard-stat-card"
-              bodyStyle={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}
-            >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  background: s.bg,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                {s.icon}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.3, minHeight: 26 }}>
-                  {s.value ?? <Spin size="small" />}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                  {s.label}
-                </div>
-              </div>
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        {/* 通知公告 */}
-        <Col span={16}>
+    <div className="page-container dashboard-page">
+      <div className="dashboard-top-grid">
+        <div className="dashboard-column dashboard-column--notice">
           <Card
             title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="dashboard-card-title">
                 <Bell size={14} />
                 <Text strong style={{ fontSize: 14 }}>通知公告</Text>
               </div>
             }
-            className="dashboard-card"
+            className="dashboard-card dashboard-card--notice"
             bodyStyle={{ padding: 0 }}
           >
             {loading ? (
-              <div style={{ padding: 40, textAlign: 'center' }}><Spin /></div>
+              <div className="dashboard-empty-state"><Spin /></div>
             ) : notices.length === 0 ? (
-              <Empty description="暂无通知公告" style={{ padding: 40 }} />
+              <Empty description="暂无通知公告" className="dashboard-empty" />
             ) : (
               <div className="notice-list">
-                {notices.slice(0, 8).map((n) => {
+                {notices.slice(0, 6).map((n) => {
                   const typeInfo = NOTICE_TYPE_MAP[n.type] ?? { label: n.type, color: 'blue' as TagColor };
                   const priInfo = NOTICE_PRIORITY_MAP[n.priority] ?? { label: n.priority, color: 'grey' as TagColor };
                   return (
                     <div key={n.id} className={`notice-item${n.isRead ? '' : ' unread'}`}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="notice-content">
                         <div className="notice-item-header">
                           <Text strong style={{ fontSize: 13 }} className="notice-title">{n.title}</Text>
                           <Tag color={typeInfo.color} size="small">{typeInfo.label}</Tag>
                           <Tag color={priInfo.color} size="small">{priInfo.label}</Tag>
                         </div>
+                        <Text type="tertiary" size="small" className="notice-summary">
+                          {n.content || '暂无详细内容'}
+                        </Text>
                         <Text type="tertiary" size="small">
                           {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}
                         </Text>
@@ -173,29 +142,23 @@ export default function DashboardPage() {
               </div>
             )}
           </Card>
-        </Col>
+        </div>
 
-        {/* 技术架构 */}
-        <Col span={8}>
+        <div className="dashboard-column">
           <Card
             title={<Text strong style={{ fontSize: 14 }}>技术架构</Text>}
-            className="dashboard-card"
+            className="dashboard-card dashboard-card--architecture"
           >
-            <Descriptions
-              size="small"
-              row
-              data={[
-                { key: '前端框架', value: 'React 19 + Vite' },
-                { key: '后端框架', value: 'Hono v4 / Node.js' },
-                { key: 'UI 组件库', value: 'Semi Design v2' },
-                { key: '数据库', value: 'PostgreSQL' },
-                { key: 'ORM', value: 'Drizzle ORM' },
-                { key: '认证方案', value: 'JWT Bearer Token' },
-              ]}
-              style={{ fontSize: 13 }}
-            />
-            <div style={{ marginTop: 14 }}>
-              <Space wrap>
+            <div className="architecture-list">
+              {architectureItems.map((item) => (
+                <div key={item.key} className="architecture-item">
+                  <div className="architecture-item__label">{item.key}</div>
+                  <div className="architecture-item__value">{item.value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="architecture-tags">
+              <Space wrap spacing={8}>
                 <Tag color="blue" size="small">TypeScript</Tag>
                 <Tag color="cyan" size="small">Vite</Tag>
                 <Tag color="green" size="small">Drizzle</Tag>
@@ -205,87 +168,29 @@ export default function DashboardPage() {
               </Space>
             </div>
           </Card>
-        </Col>
-      </Row>
+        </div>
+      </div>
 
-      {/* 服务运行信息 */}
-      <Row gutter={16}>
-        <Col span={24}>
-          <Card
-            title={<Text strong style={{ fontSize: 14 }}>服务运行信息</Text>}
-            className="dashboard-card"
-          >
-            {!monitor ? (
-              <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>
-            ) : (
-              <Row gutter={[24, 0]}>
-                <Col span={6}>
-                  <div className="monitor-section-title">操作系统</div>
-                  <Descriptions
-                    size="small"
-                    row
-                    data={[
-                      { key: '平台', value: monitor.os.platform },
-                      { key: '架构', value: monitor.os.arch },
-                      { key: '主机名', value: monitor.os.hostname },
-                      { key: '已运行', value: formatUptime(monitor.os.uptimeSeconds) },
-                    ]}
-                    style={{ fontSize: 12 }}
-                  />
-                </Col>
-                <Col span={6}>
-                  <div className="monitor-section-title">CPU</div>
-                  <Descriptions
-                    size="small"
-                    row
-                    data={[
-                      { key: '核心数', value: `${monitor.cpu.cores} 核` },
-                      { key: '主频', value: `${monitor.cpu.speed} MHz` },
-                      { key: '负载均值', value: monitor.cpu.loadAvg.map((v) => v.toFixed(2)).join(' / ') },
-                      { key: '使用率', value: `${monitor.cpu.usage}%` },
-                    ]}
-                    style={{ fontSize: 12 }}
-                  />
-                </Col>
-                <Col span={6}>
-                  <div className="monitor-section-title">内存</div>
-                  <Descriptions
-                    size="small"
-                    row
-                    data={[
-                      { key: '总内存', value: formatBytes(monitor.memory.total) },
-                      { key: '已使用', value: formatBytes(monitor.memory.used) },
-                      { key: '空闲', value: formatBytes(monitor.memory.free) },
-                      { key: '使用率', value: `${monitor.memory.usagePercent}%` },
-                    ]}
-                    style={{ fontSize: 12 }}
-                  />
-                </Col>
-                <Col span={6}>
-                  <div className="monitor-section-title">Node.js / 数据库</div>
-                  <Descriptions
-                    size="small"
-                    row
-                    data={[
-                      { key: 'Node 版本', value: monitor.node.version },
-                      { key: '运行时长', value: formatUptime(monitor.node.uptime) },
-                      { key: 'Heap 占用', value: formatBytes(monitor.node.memoryUsage.heapUsed) },
-                      ...(monitor.database
-                        ? [
-                            { key: '数据库', value: monitor.database.name },
-                            { key: 'DB 大小', value: formatBytes(monitor.database.size) },
-                            { key: '表数量', value: `${monitor.database.tableCount} 张` },
-                          ]
-                        : [{ key: '数据库', value: '无法连接' }]),
-                    ]}
-                    style={{ fontSize: 12 }}
-                  />
-                </Col>
-              </Row>
-            )}
+      <div className="dashboard-section-intro">
+        <Text strong>运行概览</Text>
+        <Text type="tertiary">只保留最常看的四项状态，信息更聚焦。</Text>
+      </div>
+
+      <div className="dashboard-metrics-grid">
+        {statCards.map((s) => (
+          <Card key={s.label} className="dashboard-stat-card" bodyStyle={{ padding: 18 }}>
+            <div className="dashboard-stat-card__inner">
+              <div className="dashboard-stat-card__icon" style={{ background: s.bg }}>
+                {s.icon}
+              </div>
+              <div className="dashboard-stat-card__content">
+                <div className="dashboard-stat-card__value">{s.value ?? <Spin size="small" />}</div>
+                <div className="dashboard-stat-card__label">{s.label}</div>
+              </div>
+            </div>
           </Card>
-        </Col>
-      </Row>
+        ))}
+      </div>
     </div>
   );
 }
