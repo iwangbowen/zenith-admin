@@ -283,12 +283,11 @@ export default function MenusPage() {
             <Form.Input field="permission" label="权限标识" />
           )}
           <Form.InputNumber field="sort" label="排序" initValue={0} min={0} />
-          <Form.Select
-            field="status"
-            label="状态"
-            style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
-          />
+          <Form.RadioGroup field="status" label="状态" type="button">
+            {statusItems.map((i) => (
+              <Radio key={i.value} value={i.value}>{i.label}</Radio>
+            ))}
+          </Form.RadioGroup>
           {menuType !== 'button' && (
             <Form.RadioGroup
               field="visible"
