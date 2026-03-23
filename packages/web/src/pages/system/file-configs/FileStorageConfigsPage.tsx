@@ -265,7 +265,7 @@ export default function FileStorageConfigsPage() {
 
   return (
     <div className="page-container">
-      <Card>
+      <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="storage-configs-tip" style={{ marginBottom: 0 }}>
             <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>
@@ -274,10 +274,11 @@ export default function FileStorageConfigsPage() {
             <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
           </Space>
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div>
         <Table
+          bordered
           className="admin-table-nowrap"
           columns={columns}
           dataSource={configs}
@@ -286,7 +287,7 @@ export default function FileStorageConfigsPage() {
           pagination={{ pageSize: 10, showSizeChanger: true }}
           size="small"
         />
-      </Card>
+      </div>
 
       <Modal
         title={editingConfig ? '编辑文件配置' : '新增文件配置'}
