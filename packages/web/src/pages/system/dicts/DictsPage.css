@@ -87,13 +87,6 @@
 }
 
 /* 面板工具栏 */
-.dicts-panel-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
 /* 字典名称单元格 */
 .dict-name-cell {
   display: inline-flex;

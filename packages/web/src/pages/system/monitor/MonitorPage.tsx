@@ -293,20 +293,22 @@ export default function MonitorPage() {
 
   return (
     <div className="monitor-page">
-      <div className="monitor-header" style={{ justifyContent: 'flex-end' }}>
-        {lastUpdated && (
-          <Text type="tertiary" size="small">
-            最后更新：{formatDateTime(lastUpdated)}
-          </Text>
-        )}
-        <Button
-          icon={<RefreshCw size={14} />}
-          onClick={fetchData}
-          loading={loading}
-          theme="light"
-        >
-          刷新
-        </Button>
+      <div className="responsive-toolbar monitor-header">
+        <div className="responsive-toolbar__right monitor-header__actions">
+          {lastUpdated && (
+            <Text type="tertiary" size="small">
+              最后更新：{formatDateTime(lastUpdated)}
+            </Text>
+          )}
+          <Button
+            icon={<RefreshCw size={14} />}
+            onClick={fetchData}
+            loading={loading}
+            theme="light"
+          >
+            刷新
+          </Button>
+        </div>
       </div>
       {renderContent()}
     </div>

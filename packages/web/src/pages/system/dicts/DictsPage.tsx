@@ -252,25 +252,29 @@ export default function DictsPage() {
         {/* 左侧：字典列表 */}
         <div className="dicts-left-card">
           <div className="search-area">
-            <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
-              <Input
-                prefix={<Search size={14} />}
-                placeholder="搜索字典名称/编码"
-                value={keyword}
-                onChange={(v) => setKeyword(v)}
-                onEnterPress={handleSearch}
-                showClear
-                style={{ flex: 1 }}
-              />
-              <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-              <Button
-                type="secondary"
-                icon={<Plus size={14} />}
-                onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
-              >
-                新增
-              </Button>
+            <div className="responsive-toolbar">
+              <div className="responsive-toolbar__left">
+                <Space wrap>
+                  <Input
+                    prefix={<Search size={14} />}
+                    placeholder="搜索字典名称/编码"
+                    value={keyword}
+                    onChange={(v) => setKeyword(v)}
+                    onEnterPress={handleSearch}
+                    showClear
+                    style={{ width: 'min(280px, 100%)' }}
+                  />
+                  <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+                  <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+                  <Button
+                    type="secondary"
+                    icon={<Plus size={14} />}
+                    onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
+                  >
+                    新增
+                  </Button>
+                </Space>
+              </div>
             </div>
           </div>
           <div>

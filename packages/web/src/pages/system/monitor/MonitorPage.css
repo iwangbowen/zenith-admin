@@ -3,21 +3,14 @@
 }
 
 .monitor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   margin-bottom: 20px;
 }
 
-.monitor-header-right {
+.monitor-header__actions {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.monitor-header .semi-button {
-  margin-left: 12px;
+  margin-left: auto;
 }
 
 .monitor-loading {
