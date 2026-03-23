@@ -10,23 +10,51 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius) !important;
 }
-.activity-list {
+
+/* 通知公告列表 */
+.notice-list {
   padding: 0;
 }
-.activity-item {
+.notice-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--color-border);
 }
-.activity-item:last-child {
+.notice-item:last-child {
   border-bottom: none;
 }
-.activity-dot {
-  width: 6px;
-  height: 6px;
+.notice-item.unread {
+  background: var(--semi-color-fill-0, #f9fafb);
+}
+.notice-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+.notice-title {
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.unread-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--color-primary);
   flex-shrink: 0;
+}
+
+/* 服务运行信息分区标题 */
+.monitor-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
 }
