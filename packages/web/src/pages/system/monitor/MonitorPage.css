@@ -44,6 +44,22 @@
   height: 100%;
 }
 
+.monitor-card.semi-card {
+  background: var(--color-layout-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px !important;
+  box-shadow: none;
+}
+
+.monitor-card.semi-card .semi-card-header {
+  background: transparent;
+  border-bottom-color: var(--color-border);
+}
+
+.monitor-card.semi-card .semi-card-body {
+  background: transparent;
+}
+
 .monitor-card-title {
   display: flex;
   align-items: center;
@@ -67,7 +83,7 @@
   justify-content: space-between;
   align-items: flex-start;
   padding: 6px 0;
-  border-bottom: 1px solid var(--semi-color-border);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .monitor-info-row:last-child {
