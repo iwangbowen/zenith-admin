@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   Table,
@@ -24,6 +24,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './MenusPage.css';
 
 export default function MenusPage() {
+  const formApi = useRef<any>(null);
   const [data, setData] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -83,7 +84,7 @@ export default function MenusPage() {
     setModalVisible(true);
   };
 
-  const handleSubmit = async (values: Partial<Menu> & { visible: string }) => {
+  const handleSubmit = async (values: Record<string, any>) => {
     const payload = {
       ...values,
       parentId: parentId ?? 0,
@@ -210,7 +211,7 @@ export default function MenusPage() {
         </div>
         <Space>
           <Button icon={<RefreshCw />} onClick={fetchMenus}>刷新</Button>
-          <Button type="primary" icon={<Plus />} onClick={() => openCreate()}>新增菜单</Button>
+          <Button type="primary" theme="solid" icon={<Plus />} onClick={() => openCreate()}>新增菜单</Button>
         </Space>
       </div>
 
@@ -230,11 +231,12 @@ export default function MenusPage() {
         title={editingMenu ? '编辑菜单' : '新增菜单'}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
-        footer={null}
+        onOk={() => formApi.current?.submit()}
         width={560}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
+          getFormApi={(api) => formApi.current = api}
           key={editingMenu ? `edit-${editingMenu.id}` : 'create'}
           initValues={
             editingMenu
@@ -299,10 +301,6 @@ export default function MenusPage() {
               ))}
             </Form.RadioGroup>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <Button onClick={() => setModalVisible(false)}>取消</Button>
-            <Button htmlType="submit" type="primary">确认</Button>
-          </div>
         </Form>
       </Modal>
     </div>

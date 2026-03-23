@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   Table,
@@ -24,6 +24,9 @@ import './DictsPage.css';
 const { Text } = Typography;
 
 export default function DictsPage() {
+  const dictFormApi = useRef<any>(null);
+  const itemFormApi = useRef<any>(null);
+
   // ─── 字典列表 ──────────────────────────────────────────────────────────────
   const [dicts, setDicts] = useState<Dict[]>([]);
   const [dictsLoading, setDictsLoading] = useState(false);
@@ -311,11 +314,12 @@ export default function DictsPage() {
         title={editingDict ? '编辑字典' : '新增字典'}
         visible={dictModalVisible}
         onCancel={() => setDictModalVisible(false)}
-        footer={null}
+        onOk={() => dictFormApi.current?.submit()}
         width={480}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
+          getFormApi={(api) => dictFormApi.current = api}
           key={editingDict?.id ?? 'new-dict'}
           initValues={editingDict ?? { status: 'active' }}
           onSubmit={handleDictSubmit}
@@ -328,10 +332,6 @@ export default function DictsPage() {
           <Form.Select field="status" label="状态"
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <Button onClick={() => setDictModalVisible(false)}>取消</Button>
-            <Button htmlType="submit" type="primary">确认</Button>
-          </div>
         </Form>
       </Modal>
 
@@ -340,11 +340,12 @@ export default function DictsPage() {
         title={editingItem ? '编辑字典项' : '新增字典项'}
         visible={itemModalVisible}
         onCancel={() => setItemModalVisible(false)}
-        footer={null}
+        onOk={() => itemFormApi.current?.submit()}
         width={480}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
+          getFormApi={(api) => itemFormApi.current = api}
           key={editingItem?.id ?? 'new-item'}
           initValues={editingItem ?? { status: 'active', sort: 0 }}
           onSubmit={handleItemSubmit}
@@ -358,10 +359,6 @@ export default function DictsPage() {
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           />
           <Form.Input field="remark" label="备注" />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <Button onClick={() => setItemModalVisible(false)}>取消</Button>
-            <Button htmlType="submit" type="primary">确认</Button>
-          </div>
         </Form>
       </Modal>
     </div>

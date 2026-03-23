@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Button,
   Card,
@@ -69,6 +69,7 @@ function getStorageSummary(config: FileStorageConfig) {
 }
 
 export default function FileStorageConfigsPage() {
+  const formApi = useRef<any>(null);
   const [configs, setConfigs] = useState<FileStorageConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -289,11 +290,12 @@ export default function FileStorageConfigsPage() {
           setModalVisible(false);
           setEditingConfig(null);
         }}
-        footer={null}
+        onOk={() => formApi.current?.submit()}
         width={620}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
+          getFormApi={(api) => formApi.current = api}
           key={editingConfig?.id ?? 'new-file-storage-config'}
           initValues={initValues}
           onSubmit={handleSubmit}
@@ -346,15 +348,6 @@ export default function FileStorageConfigsPage() {
           )}
 
           <Form.Input field="remark" label="备注" placeholder="选填，说明该文件服务的用途" />
-          <div className="storage-config-form-actions">
-            <Button onClick={() => {
-              setModalVisible(false);
-              setEditingConfig(null);
-            }}>
-              取消
-            </Button>
-            <Button htmlType="submit" type="primary">保存</Button>
-          </div>
         </Form>
       </Modal>
     </div>

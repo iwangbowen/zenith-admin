@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   Table,
@@ -22,6 +22,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './RolesPage.css';
 
 export default function RolesPage() {
+  const formApi = useRef<any>(null);
   const [data, setData] = useState<Role[]>([]);
   const { items: statusItems } = useDictItems('common_status');
   const [loading, setLoading] = useState(false);
@@ -237,11 +238,12 @@ export default function RolesPage() {
         title={editingRole ? '编辑角色' : '新增角色'}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
-        footer={null}
+        onOk={() => formApi.current?.submit()}
         width={480}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
+          getFormApi={(api) => formApi.current = api}
           initValues={editingRole ?? { status: 'active' }}
           onSubmit={handleSubmit}
           labelPosition="left"
@@ -253,10 +255,6 @@ export default function RolesPage() {
           <Form.Select field="status" label="状态"
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <Button onClick={() => setModalVisible(false)}>取消</Button>
-            <Button htmlType="submit" type="primary">确认</Button>
-          </div>
         </Form>
       </Modal>
 
@@ -266,8 +264,6 @@ export default function RolesPage() {
         visible={menuModalVisible}
         onCancel={() => setMenuModalVisible(false)}
         onOk={handleAssignMenus}
-        okText="保存"
-        cancelText="取消"
         width={480}
         bodyStyle={{ paddingBottom: 24 }}
       >
@@ -293,8 +289,6 @@ export default function RolesPage() {
         visible={userModalVisible}
         onCancel={() => setUserModalVisible(false)}
         onOk={handleAssignUsers}
-        okText="保存"
-        cancelText="取消"
         width={560}
         bodyStyle={{ paddingBottom: 0 }}
       >

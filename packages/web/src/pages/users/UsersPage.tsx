@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   Table,
@@ -21,6 +21,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './UsersPage.css';
 
 export default function UsersPage() {
+  const formApi = useRef<any>(null);
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -223,12 +224,13 @@ export default function UsersPage() {
         title={editingUser ? '编辑用户' : '新增用户'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditingUser(null); }}
-        footer={null}
+        onOk={() => formApi.current?.submit()}
         width={440}
         closeOnEsc
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
+          getFormApi={(api) => formApi.current = api}
           initValues={formInitValues}
           onSubmit={(values) => editingUser ? handleUpdate(values as UpdateUserInput) : handleCreate(values as CreateUserInput)}
           labelPosition="left"
@@ -253,12 +255,6 @@ export default function UsersPage() {
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           />
-          <div style={{ textAlign: 'right', marginTop: 16 }}>
-            <Space>
-              <Button onClick={() => { setModalVisible(false); setEditingUser(null); }}>取消</Button>
-              <Button htmlType="submit" type="primary" theme="solid">保存</Button>
-            </Space>
-          </div>
         </Form>
       </Modal>
     </div>
