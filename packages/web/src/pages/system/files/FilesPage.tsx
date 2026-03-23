@@ -46,6 +46,7 @@ export default function FilesPage() {
   const [uploading, setUploading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [defaultConfig, setDefaultConfig] = useState<FileStorageConfig | null>(null);
 
   const fetchDefaultConfig = useCallback(async () => {
@@ -59,7 +60,7 @@ export default function FilesPage() {
     setLoading(true);
     try {
       const res = await request.get<PaginatedResponse<ManagedFile>>(
-        `/api/files?page=${page}&pageSize=10&keyword=${encodeURIComponent(keyword)}`
+        `/api/files?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(keyword)}`
       );
       if (res.code === 0) {
         setData(res.data);
@@ -69,7 +70,7 @@ export default function FilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [keyword, page]);
+  }, [keyword, page, pageSize]);
 
   useEffect(() => {
     fetchDefaultConfig();
@@ -281,12 +282,15 @@ export default function FilesPage() {
           empty="暂无文件记录"
           pagination={{
             currentPage: page,
-            pageSize: 10,
+            pageSize: pageSize,
             total: data?.total || 0,
             onPageChange: setPage,
+            onPageSizeChange: (size) => {
+              setPageSize(size);
+              setPage(1);
+            },
             showTotal: true,
-            showSizeChanger: false,
-            style: { padding: '12px 16px 16px' },
+            showSizeChanger: true,
           }}
         />
       </Card>

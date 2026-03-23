@@ -26,6 +26,7 @@ export default function UsersPage() {
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -56,13 +57,13 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const res = await request.get<PaginatedResponse<User>>(
-        `/api/users?page=${page}&pageSize=10&keyword=${encodeURIComponent(keyword)}`
+        `/api/users?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(keyword)}`
       );
       if (res.code === 0) setData(res.data);
     } finally {
       setLoading(false);
     }
-  }, [page, keyword]);
+  }, [page, pageSize, keyword]);
 
   useEffect(() => {
     fetchUsers();
@@ -212,9 +213,13 @@ export default function UsersPage() {
           loading={loading}
           pagination={{
             currentPage: page,
-            pageSize: 10,
+            pageSize: pageSize,
             total: data?.total || 0,
             onPageChange: setPage,
+            onPageSizeChange: (size) => {
+              setPageSize(size);
+              setPage(1);
+            },
             showTotal: true,
             showSizeChanger: true,
           }}
