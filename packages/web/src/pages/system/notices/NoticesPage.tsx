@@ -220,46 +220,43 @@ export default function NoticesPage() {
   return (
     <div className="page-container">
       <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索标题"
-            value={searchParams.title}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
-            onEnterPress={handleSearch}
-            style={{ width: 200 }}
-          />
-          <Select
-            placeholder="通知类型"
-            value={searchParams.type || undefined}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, type: String(v ?? '') }))}
-            optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
-            showClear
-            style={{ width: 140 }}
-          />
-          <Select
-            placeholder="发布状态"
-            value={searchParams.publishStatus || undefined}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: String(v ?? '') }))}
-            optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
-            showClear
-            style={{ width: 140 }}
-          />
-          <Button icon={<Search size={14} strokeWidth={1.8} />} type="primary" onClick={handleSearch}>
-            搜索
-          </Button>
-          <Button icon={<RotateCcw size={14} strokeWidth={1.8} />} onClick={handleReset}>
-            重置
-          </Button>
-        </Space>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Space>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索标题"
+              value={searchParams.title}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
+              onEnterPress={handleSearch}
+              style={{ width: 200 }}
+              showClear
+            />
+            <Select
+              placeholder="通知类型"
+              value={searchParams.type || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: String(v ?? '') }))}
+              optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
+              showClear
+              style={{ width: 140 }}
+            />
+            <Select
+              placeholder="发布状态"
+              value={searchParams.publishStatus || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: String(v ?? '') }))}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
+              showClear
+              style={{ width: 140 }}
+            />
+            <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
+            <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
+          </Space>
+          <Space>
+            <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>
+          </Space>
+        </div>
       </Card>
 
       <Card>
-        <div style={{ marginBottom: 12 }}>
-          <Button icon={<Plus size={14} strokeWidth={1.8} />} type="primary" onClick={openCreateModal}>
-            新增通知
-          </Button>
-        </div>
         <Table
           columns={columns}
           dataSource={data}
