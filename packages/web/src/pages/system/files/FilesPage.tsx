@@ -240,7 +240,7 @@ export default function FilesPage() {
               showClear
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
             <div className="files-default-tip">
@@ -256,7 +256,7 @@ export default function FilesPage() {
                 <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
               )}
             </div>
-            <Button type="primary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
+            <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
               上传文件
             </Button>
             <input

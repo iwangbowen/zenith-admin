@@ -265,7 +265,7 @@ export default function FileStorageConfigsPage() {
             <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>
           </div>
           <Space>
-            <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
           </Space>
         </div>
       </Card>

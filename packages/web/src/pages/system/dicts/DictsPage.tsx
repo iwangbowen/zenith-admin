@@ -250,9 +250,9 @@ export default function DictsPage() {
                 style={{ flex: 1 }}
               />
               <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-              <Button icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
               <Button
-                type="primary"
+                type="secondary"
                 icon={<Plus size={14} />}
                 onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
               >
@@ -292,7 +292,7 @@ export default function DictsPage() {
                   </Text>
                   <Space style={{ marginLeft: 'auto' }}>
                     <Button
-                      type="primary"
+                      type="secondary"
                       icon={<Plus size={14} />}
                       onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
                     >
