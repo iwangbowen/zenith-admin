@@ -243,7 +243,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               }
             >
               <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
-                <Badge count={unreadCount} overflowCount={99} style={{ zIndex: 1 }}>
+                <Badge count={unreadCount > 0 ? unreadCount : undefined} overflowCount={99} style={{ zIndex: 1 }}>
                   <button className="admin-theme-btn" title="通知公告">
                     <Bell size={16} strokeWidth={1.8} />
                   </button>
