@@ -227,7 +227,7 @@ export default function FilesPage() {
 
   return (
     <div className="page-container">
-      <Card>
+      <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Input
@@ -267,10 +267,11 @@ export default function FilesPage() {
             />
           </Space>
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div>
         <Table
+          bordered
           className="admin-table-nowrap"
           columns={columns}
           dataSource={data?.list || []}
@@ -291,7 +292,7 @@ export default function FilesPage() {
             showSizeChanger: true,
           }}
         />
-      </Card>
+      </div>
     </div>
   );
 }
