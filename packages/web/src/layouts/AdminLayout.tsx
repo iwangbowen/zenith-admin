@@ -313,7 +313,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         <div
           className="admin-content"
           style={{
-            background: 'var(--color-bg)',
+            background: 'var(--color-surface)',
             overflow: 'auto',
             position: 'relative',
           }}

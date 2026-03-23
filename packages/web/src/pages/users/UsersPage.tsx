@@ -184,7 +184,7 @@ export default function UsersPage() {
 
   return (
     <div className="page-container">
-      <Card>
+      <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Input
@@ -212,7 +212,7 @@ export default function UsersPage() {
             </Button>
           </Space>
         </div>
-      </Card>
+      </div>
 
       <Card>
         <Table
