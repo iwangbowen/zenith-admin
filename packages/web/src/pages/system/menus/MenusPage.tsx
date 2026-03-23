@@ -85,7 +85,13 @@ export default function MenusPage() {
     setModalVisible(true);
   };
 
-  const handleSubmit = async (values: Record<string, any>) => {
+  const handleMenuModalOk = async () => {
+    let values: any;
+    try {
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
+    }
     const payload = {
       ...values,
       parentId: parentId ?? 0,
@@ -101,6 +107,7 @@ export default function MenusPage() {
       fetchMenus();
     } else {
       Toast.error(res.message);
+      throw new Error(res.message);
     }
   };
 
@@ -235,7 +242,7 @@ export default function MenusPage() {
         title={editingMenu ? '编辑菜单' : '新增菜单'}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
-        onOk={() => formApi.current?.submit()}
+        onOk={handleMenuModalOk}
         width={680}
         bodyStyle={{ paddingBottom: 24 }}
       >
@@ -247,7 +254,6 @@ export default function MenusPage() {
               ? { ...editingMenu, visible: editingMenu.visible ? 'show' : 'hidden' }
               : { type: 'menu', status: 'active', visible: 'show', sort: 0, parentId: parentId ?? 0 }
           }
-          onSubmit={handleSubmit}
           labelPosition="left"
           labelWidth={90}
         >

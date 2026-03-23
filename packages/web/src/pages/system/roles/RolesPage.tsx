@@ -127,7 +127,13 @@ export default function RolesPage() {
     }
   };
 
-  const handleSubmit = async (values: Partial<Role>) => {
+  const handleRoleModalOk = async () => {
+    let values: any;
+    try {
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
+    }
     const res = editingRole
       ? await request.put(`/api/roles/${editingRole.id}`, values)
       : await request.post('/api/roles', values);
@@ -137,6 +143,7 @@ export default function RolesPage() {
       fetchRoles();
     } else {
       Toast.error(res.message);
+      throw new Error(res.message);
     }
   };
 
@@ -246,14 +253,13 @@ export default function RolesPage() {
         title={editingRole ? '编辑角色' : '新增角色'}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
-        onOk={() => formApi.current?.submit()}
+        onOk={handleRoleModalOk}
         width={480}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
           getFormApi={(api) => formApi.current = api}
           initValues={editingRole ?? { status: 'active' }}
-          onSubmit={handleSubmit}
           labelPosition="left"
           labelWidth={80}
         >

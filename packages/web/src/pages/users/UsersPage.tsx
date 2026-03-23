@@ -81,27 +81,24 @@ export default function UsersPage() {
     if (page !== 1) setPage(1);
   }
 
-  const handleCreate = async (values: CreateUserInput) => {
-    const res = await request.post('/api/users', values);
-    if (res.code === 0) {
-      Toast.success('创建成功');
-      setModalVisible(false);
-      fetchUsers();
-    } else {
-      Toast.error(res.message);
+  const handleModalOk = async () => {
+    let values: any;
+    try {
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
     }
-  };
-
-  const handleUpdate = async (values: Partial<CreateUserInput>) => {
-    if (!editingUser) return;
-    const res = await request.put(`/api/users/${editingUser.id}`, values);
+    const res = editingUser
+      ? await request.put(`/api/users/${editingUser.id}`, values)
+      : await request.post('/api/users', values);
     if (res.code === 0) {
-      Toast.success('更新成功');
-      setEditingUser(null);
+      Toast.success(editingUser ? '更新成功' : '创建成功');
       setModalVisible(false);
+      setEditingUser(null);
       fetchUsers();
     } else {
       Toast.error(res.message);
+      throw new Error(res.message);
     }
   };
 
@@ -245,7 +242,7 @@ export default function UsersPage() {
         title={editingUser ? '编辑用户' : '新增用户'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditingUser(null); }}
-        onOk={() => formApi.current?.submit()}
+        onOk={handleModalOk}
         width={440}
         closeOnEsc
         bodyStyle={{ paddingBottom: 24 }}
@@ -253,7 +250,6 @@ export default function UsersPage() {
         <Form
           getFormApi={(api) => formApi.current = api}
           initValues={formInitValues}
-          onSubmit={(values) => editingUser ? handleUpdate(values as UpdateUserInput) : handleCreate(values as CreateUserInput)}
           labelPosition="left"
           labelWidth={70}
         >
