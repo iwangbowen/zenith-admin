@@ -12,7 +12,7 @@ import {
   Popconfirm,
   Select,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RotateCcw, Pencil, Trash2 } from 'lucide-react';
+import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Notice, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '../../../utils/request';
@@ -185,32 +185,17 @@ export default function NoticesPage() {
     {
       title: '操作',
       dataIndex: 'op',
-      width: 130,
+      width: 180,
       fixed: 'right' as const,
       render: (_: unknown, record: Notice) => (
         <Space>
           <Button
-            icon={<Pencil size={14} strokeWidth={1.8} />}
-            size="small"
             theme="borderless"
+            size="small"
             onClick={() => openEditModal(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确认删除这条通知吗？"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确认"
-            cancelText="取消"
-          >
-            <Button
-              icon={<Trash2 size={14} strokeWidth={1.8} />}
-              size="small"
-              theme="borderless"
-              type="danger"
-            >
-              删除
-            </Button>
+          >编辑</Button>
+          <Popconfirm title="确定要删除该通知吗？" onConfirm={() => handleDelete(record.id)}>
+            <Button theme="borderless" type="danger" size="small">删除</Button>
           </Popconfirm>
         </Space>
       ),
