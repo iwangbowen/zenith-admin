@@ -95,12 +95,18 @@ npm run db:seed        # 填充初始种子数据
 
 ## 页面布局规范
 
-### 列表页搜索栏与操作栏
+### 列表页整体布局与表格
 
-所有 CRUD 列表页面的顶部搜索栏和操作按钮必须遵循统一布局（参考 `UsersPage.tsx`）：
+所有 CRUD 列表页面（参考 `UsersPage.tsx`）采用无卡片（Cardless）设计方案：
+
+- 搜索区域直接使用 `div` 容器（如 `<div className="search-area">`）。
+- 数据表格必须使用带边框属性：`<Table bordered {...props} />`。
+- 整体背景由 `AdminLayout` 统一负责，列表页不要自行包裹 `<Card>`。
+
+顶部搜索栏和操作按钮必须遵循统一布局：
 
 ```tsx
-<Card style={{ marginBottom: 16 }}>
+<div className="search-area">
   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
     <Space>
       {/* 搜索输入框 + 下拉筛选 + 查询/重置按钮 */}
@@ -112,7 +118,7 @@ npm run db:seed        # 填充初始种子数据
       <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
     </Space>
   </div>
-</Card>
+</div>
 ```
 
 要点：
