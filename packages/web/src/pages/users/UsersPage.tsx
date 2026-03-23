@@ -15,6 +15,7 @@ import {
 import { Search, Plus, RefreshCw } from 'lucide-react';
 import type { User, Role, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
+import { formatDateTime } from '../../utils/date';
 import DictTag from '../../components/DictTag';
 import { useDictItems } from '../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -147,7 +148,7 @@ export default function UsersPage() {
       dataIndex: 'createdAt',
       width: 170,
       ellipsis: true,
-      render: (t: string) => new Date(t).toLocaleString('zh-CN'),
+      render: (t: string) => formatDateTime(t),
     },
     {
       title: '操作',

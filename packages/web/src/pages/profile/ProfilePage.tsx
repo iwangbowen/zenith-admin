@@ -5,6 +5,7 @@ import {
 import { User as UserIcon, Lock } from 'lucide-react';
 import type { User } from '@zenith/shared';
 import { request } from '../../utils/request';
+import { formatDateTime } from '../../utils/date';
 import './ProfilePage.css';
 
 const { Title, Text } = Typography;
@@ -78,7 +79,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                 ) : '无角色'}
               </Text>
               <Text type="tertiary" size="small">
-                注册时间：{new Date(user.createdAt).toLocaleDateString('zh-CN')}
+                注册时间：{formatDateTime(user.createdAt)}
               </Text>
             </div>
           </div>

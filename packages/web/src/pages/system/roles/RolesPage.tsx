@@ -16,6 +16,7 @@ import {
 import { Search, Plus, RefreshCw } from 'lucide-react';
 import type { Role, Menu, User } from '@zenith/shared';
 import { request } from '../../../utils/request';
+import { formatDateTime } from '../../../utils/date';
 import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -155,7 +156,7 @@ export default function RolesPage() {
       dataIndex: 'createdAt',
       width: 180,
       ellipsis: true,
-      render: (v) => new Date(v).toLocaleString('zh-CN'),
+      render: (v) => formatDateTime(v),
     },
     {
       title: '操作',

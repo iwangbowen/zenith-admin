@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick } from 'lucide-react';
 import { request } from '../../../utils/request';
+import { formatDateTime } from '../../../utils/date';
 import './MonitorPage.css';
 
 const { Title, Text } = Typography;
@@ -297,7 +298,7 @@ export default function MonitorPage() {
         <div className="monitor-header-right">
           {lastUpdated && (
             <Text type="tertiary" size="small">
-              最后更新：{lastUpdated.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+              最后更新：{formatDateTime(lastUpdated)}
             </Text>
           )}
           <Button

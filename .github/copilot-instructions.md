@@ -81,6 +81,17 @@ pnpm db:seed        # 填充初始种子数据
 
 ---
 
+## 时间格式规范
+
+前端所有时间显示**统一使用 `YYYY-MM-DD HH:mm:ss` 格式**（如 `2026-03-23 14:30:00`）。
+
+- 所有时间处理**必须**使用第三方库 `dayjs` 统一接管。
+- 使用 `packages/web/src/utils/date.ts` 中的 `formatDateTime(date)` 工具函数，该函数已内嵌了 `dayjs` 逻辑。
+- 禁止在组件中直接调用 `toLocaleString()`、`toLocaleDateString()`、`toLocaleTimeString()` 等原生方法。
+- `formatDateTime` 接受 `Date | string | number | null | undefined` 类型参数，对所有页面统一生效。
+
+---
+
 ## 常见陷阱
 
 - 修改数据库 schema 后，必须运行 `pnpm db:generate` 再 `pnpm db:migrate`，不能直接修改 SQL

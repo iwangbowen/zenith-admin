@@ -22,6 +22,7 @@ import type {
 } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '../../../utils/request';
+import { formatDateTime } from '../../../utils/date';
 import './FileStorageConfigsPage.css';
 
 const { Text } = Typography;
@@ -203,7 +204,7 @@ export default function FileStorageConfigsPage() {
       dataIndex: 'updatedAt',
       width: 180,
       ellipsis: true,
-      render: (value: string) => new Date(value).toLocaleString('zh-CN'),
+      render: (value: string) => formatDateTime(value),
     },
     {
       title: '操作',
