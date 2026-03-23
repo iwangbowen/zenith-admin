@@ -187,16 +187,16 @@ export default function MenusPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 180,
+      width: 260,
       align: 'center',
       render: (_val, row) => (
         <Space>
           {row.type !== 'button' && (
-            <Button size="small" onClick={() => openCreate(row.id)}>
+            <Button theme="borderless" size="small" onClick={() => openCreate(row.id)}>
               子项
             </Button>
           )}
-          <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
+          <Button theme="borderless" size="small" onClick={() => openEdit(row)}>编辑</Button>
           <Popconfirm
             title="确认删除此菜单？"
             content="子菜单也将一并删除"
@@ -204,7 +204,7 @@ export default function MenusPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(row.id)}
           >
-            <Button size="small" type="danger">删除</Button>
+            <Button theme="borderless" size="small" type="danger">删除</Button>
           </Popconfirm>
         </Space>
       ),

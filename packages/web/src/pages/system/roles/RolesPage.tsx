@@ -161,17 +161,18 @@ export default function RolesPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 280,
+      width: 360,
       align: 'center',
       render: (_v, row) => (
         <Space>
-          <Button size="small" onClick={() => openMenuModal(row)}>
+          <Button theme="borderless" size="small" onClick={() => openMenuModal(row)}>
             菜单权限
           </Button>
-          <Button size="small" onClick={() => openUserModal(row)}>
+          <Button theme="borderless" size="small" onClick={() => openUserModal(row)}>
             分配用户
           </Button>
           <Button
+            theme="borderless"
             size="small"
             onClick={() => { setEditingRole(row); setModalVisible(true); }}
           >
@@ -183,7 +184,7 @@ export default function RolesPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(row.id)}
           >
-            <Button size="small" type="danger">删除</Button>
+            <Button theme="borderless" size="small" type="danger">删除</Button>
           </Popconfirm>
         </Space>
       ),

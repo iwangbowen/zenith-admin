@@ -209,14 +209,14 @@ export default function FileStorageConfigsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 260,
+      width: 300,
       align: 'center',
       render: (_: unknown, record: FileStorageConfig) => (
-        <Space wrap>
-          <Button size="small" onClick={() => handleSetDefault(record)} disabled={record.isDefault || record.status !== 'active'}>
+        <Space>
+          <Button theme="borderless" size="small" onClick={() => handleSetDefault(record)} disabled={record.isDefault || record.status !== 'active'}>
             设为默认
           </Button>
-          <Button size="small" onClick={() => openEdit(record)}>
+          <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
             编辑
           </Button>
           <Popconfirm
@@ -226,7 +226,7 @@ export default function FileStorageConfigsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(record)}
           >
-            <Button size="small" type="danger" disabled={record.isDefault}>
+            <Button theme="borderless" size="small" type="danger" disabled={record.isDefault}>
               删除
             </Button>
           </Popconfirm>

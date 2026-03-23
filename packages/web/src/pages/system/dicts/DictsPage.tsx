@@ -160,11 +160,12 @@ export default function DictsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 140,
+      width: 180,
       align: 'center',
       render: (_v, row) => (
         <Space>
           <Button
+            theme="borderless"
             size="small"
             onClick={(e) => { e.stopPropagation(); setEditingDict(row); setDictModalVisible(true); }}
           >
@@ -177,7 +178,7 @@ export default function DictsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDictDelete(row.id)}
           >
-            <Button size="small" type="danger" onClick={(e) => e.stopPropagation()}>删除</Button>
+            <Button theme="borderless" size="small" type="danger" onClick={(e) => e.stopPropagation()}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -199,11 +200,12 @@ export default function DictsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 130,
+      width: 180,
       align: 'center',
       render: (_v, row) => (
         <Space>
           <Button
+            theme="borderless"
             size="small"
             onClick={() => { setEditingItem(row); setItemModalVisible(true); }}
           >
@@ -215,7 +217,7 @@ export default function DictsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleItemDelete(row.id)}
           >
-            <Button size="small" type="danger">删除</Button>
+            <Button theme="borderless" size="small" type="danger">删除</Button>
           </Popconfirm>
         </Space>
       ),

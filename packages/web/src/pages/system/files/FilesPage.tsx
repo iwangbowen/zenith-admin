@@ -192,12 +192,12 @@ export default function FilesPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 220,
+      width: 260,
       align: 'center',
       render: (_: unknown, record: ManagedFile) => (
-        <Space wrap>
-          <Button size="small" onClick={() => handlePreview(record)}>预览</Button>
-          <Button size="small" onClick={() => handleDownload(record)}>下载</Button>
+        <Space>
+          <Button theme="borderless" size="small" onClick={() => handlePreview(record)}>预览</Button>
+          <Button theme="borderless" size="small" onClick={() => handleDownload(record)}>下载</Button>
           <Popconfirm
             title="确认删除此文件？"
             content="删除文件记录后，将同步尝试删除实际存储对象。"
@@ -205,7 +205,7 @@ export default function FilesPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(record)}
           >
-            <Button size="small" type="danger">删除</Button>
+            <Button theme="borderless" size="small" type="danger">删除</Button>
           </Popconfirm>
         </Space>
       ),
