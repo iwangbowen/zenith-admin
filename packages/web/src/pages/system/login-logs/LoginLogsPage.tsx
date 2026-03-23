@@ -89,40 +89,44 @@ export default function LoginLogsPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <Space wrap>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="请输入用户名"
-            value={searchParams.username}
-            onChange={(v) => setSearchParams({ ...searchParams, username: v })}
-            onEnterPress={handleSearch}
-            style={{ width: 180 }}
-            showClear
-          />
-          <Select
-            placeholder="请选择状态"
-            value={searchParams.status || undefined}
-            onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
-            style={{ width: 150 }}
-          >
-            <Select.Option value="">全部</Select.Option>
-            <Select.Option value="success">成功</Select.Option>
-            <Select.Option value="fail">失败</Select.Option>
-          </Select>
-          <DatePicker
-            type="dateTimeRange"
-            placeholder={["开始时间", "结束时间"]}
-            value={searchParams.timeRange ?? undefined}
-            onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
-            style={{ width: 360 }}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-            查询
-          </Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-            重置
-          </Button>
-        </Space>
+        <div className="responsive-toolbar">
+          <div className="responsive-toolbar__left">
+            <Space wrap>
+              <Input
+                prefix={<Search size={14} />}
+                placeholder="请输入用户名"
+                value={searchParams.username}
+                onChange={(v) => setSearchParams({ ...searchParams, username: v })}
+                onEnterPress={handleSearch}
+                style={{ width: 180 }}
+                showClear
+              />
+              <Select
+                placeholder="请选择状态"
+                value={searchParams.status || undefined}
+                onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
+                style={{ width: 150 }}
+              >
+                <Select.Option value="">全部</Select.Option>
+                <Select.Option value="success">成功</Select.Option>
+                <Select.Option value="fail">失败</Select.Option>
+              </Select>
+              <DatePicker
+                type="dateTimeRange"
+                placeholder={["开始时间", "结束时间"]}
+                value={searchParams.timeRange ?? undefined}
+                onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
+                style={{ width: 360 }}
+              />
+              <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
+                查询
+              </Button>
+              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
+                重置
+              </Button>
+            </Space>
+          </div>
+        </div>
       </div>
 
       <div>

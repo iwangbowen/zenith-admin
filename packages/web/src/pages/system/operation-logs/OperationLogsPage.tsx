@@ -127,48 +127,52 @@ export default function OperationLogsPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <Space wrap>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="请输入操作人"
-            value={searchParams.username}
-            onChange={(v) => setSearchParams({ ...searchParams, username: v })}
-            onEnterPress={handleSearch}
-            style={{ width: 160 }}
-            showClear
-          />
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="请输入功能模块"
-            value={searchParams.module}
-            onChange={(v) => setSearchParams({ ...searchParams, module: v })}
-            onEnterPress={handleSearch}
-            style={{ width: 160 }}
-            showClear
-          />
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="请输入操作描述"
-            value={searchParams.description}
-            onChange={(v) => setSearchParams({ ...searchParams, description: v })}
-            onEnterPress={handleSearch}
-            style={{ width: 160 }}
-            showClear
-          />
-          <DatePicker
-            type="dateTimeRange"
-            placeholder={['开始时间', '结束时间']}
-            value={searchParams.timeRange ?? undefined}
-            onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
-            style={{ width: 360 }}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-            查询
-          </Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-            重置
-          </Button>
-        </Space>
+        <div className="responsive-toolbar">
+          <div className="responsive-toolbar__left">
+            <Space wrap>
+              <Input
+                prefix={<Search size={14} />}
+                placeholder="请输入操作人"
+                value={searchParams.username}
+                onChange={(v) => setSearchParams({ ...searchParams, username: v })}
+                onEnterPress={handleSearch}
+                style={{ width: 160 }}
+                showClear
+              />
+              <Input
+                prefix={<Search size={14} />}
+                placeholder="请输入功能模块"
+                value={searchParams.module}
+                onChange={(v) => setSearchParams({ ...searchParams, module: v })}
+                onEnterPress={handleSearch}
+                style={{ width: 160 }}
+                showClear
+              />
+              <Input
+                prefix={<Search size={14} />}
+                placeholder="请输入操作描述"
+                value={searchParams.description}
+                onChange={(v) => setSearchParams({ ...searchParams, description: v })}
+                onEnterPress={handleSearch}
+                style={{ width: 160 }}
+                showClear
+              />
+              <DatePicker
+                type="dateTimeRange"
+                placeholder={['开始时间', '结束时间']}
+                value={searchParams.timeRange ?? undefined}
+                onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
+                style={{ width: 360 }}
+              />
+              <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
+                查询
+              </Button>
+              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
+                重置
+              </Button>
+            </Space>
+          </div>
+        </div>
       </div>
 
       <div>

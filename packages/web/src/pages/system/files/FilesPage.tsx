@@ -247,8 +247,8 @@ export default function FilesPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <div className="files-toolbar">
-          <div className="files-toolbar__left">
+        <div className="responsive-toolbar files-toolbar">
+          <div className="responsive-toolbar__left files-toolbar__left">
             <Space wrap>
             <Input
               prefix={<Search size={14} />}
@@ -281,7 +281,7 @@ export default function FilesPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
             </Space>
           </div>
-          <div className="files-toolbar__right">
+          <div className="responsive-toolbar__right files-toolbar__right">
             <div className="files-default-tip">
               <Text strong>默认文件服务：</Text>
               {defaultConfig ? (
