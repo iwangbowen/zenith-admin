@@ -41,6 +41,7 @@ export interface Menu {
   title: string;
   name?: string;
   path?: string;
+  component?: string;
   icon?: string;
   type: MenuType;
   permission?: string;

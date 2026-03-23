@@ -16,6 +16,7 @@ function toMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> {
     title: row.title,
     name: row.name ?? undefined,
     path: row.path ?? undefined,
+    component: row.component ?? undefined,
     icon: row.icon ?? undefined,
     type: row.type,
     permission: row.permission ?? undefined,
