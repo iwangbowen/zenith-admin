@@ -224,13 +224,13 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 </div>
               }
             >
-              <Tooltip content="通知公告" position="bottom">
+              <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
                 <Badge count={notices.length} overflowCount={99} style={{ zIndex: 1 }}>
                   <button className="admin-theme-btn" title="通知公告">
                     <Bell size={16} strokeWidth={1.8} />
                   </button>
                 </Badge>
-              </Tooltip>
+              </div>
             </Popover>
             {/* 主题切换 */}
             <Tooltip content={
