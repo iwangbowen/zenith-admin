@@ -86,7 +86,22 @@ body {
   border-radius: var(--radius);
 }
 .semi-modal-content {
+  background: var(--color-layout-bg);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
+}
+.semi-modal-header,
+.semi-modal-body,
+.semi-modal-footer {
+  background: transparent;
+}
+
+.semi-modal-header {
+  border-bottom-color: var(--color-border);
+}
+
+.semi-modal-footer {
+  border-top-color: var(--color-border);
 }
 
 .admin-table-nowrap .semi-table-thead > .semi-table-row > .semi-table-row-head {
