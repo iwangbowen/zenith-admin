@@ -214,29 +214,28 @@ export default function UsersPage() {
         </div>
       </div>
 
-      <Card>
-        <Table
-          className="admin-table-nowrap"
-          columns={columns}
-          dataSource={data?.list || []}
-          loading={loading}
-          pagination={{
-            currentPage: page,
-            pageSize: pageSize,
-            total: data?.total || 0,
-            onPageChange: setPage,
-            onPageSizeChange: (size) => {
-              setPageSize(size);
-              setPage(1);
-            },
-            showTotal: true,
-            showSizeChanger: true,
-          }}
-          rowKey="id"
-          size="small"
-          empty="暂无数据"
-        />
-      </Card>
+      <Table
+        className="admin-table-nowrap"
+        bordered
+        columns={columns}
+        dataSource={data?.list || []}
+        loading={loading}
+        pagination={{
+          currentPage: page,
+          pageSize: pageSize,
+          total: data?.total || 0,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => {
+            setPageSize(size);
+            setPage(1);
+          },
+          showTotal: true,
+          showSizeChanger: true,
+        }}
+        rowKey="id"
+        size="small"
+        empty="暂无数据"
+      />
 
       <Modal
         title={editingUser ? '编辑用户' : '新增用户'}
