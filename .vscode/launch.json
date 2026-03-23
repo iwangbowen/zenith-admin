@@ -5,7 +5,7 @@
       "type": "node",
       "request": "launch",
       "name": "Debug: Server",
-      "runtimeExecutable": "${workspaceFolder}/packages/server/node_modules/.bin/tsx",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/tsx",
       "args": ["${workspaceFolder}/packages/server/src/index.ts"],
       "cwd": "${workspaceFolder}/packages/server",
       "sourceMaps": true,
