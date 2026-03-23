@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Input, Button, Tag, Space, DatePicker, Modal } from '@douyinfe/semi-ui';
+import { Table, Card, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Eye } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
@@ -252,9 +252,12 @@ export default function OperationLogsPage() {
               )}
               {detailLog.requestBody && (
                 <DetailField label="请求体">
-                  <pre style={{ margin: 0, padding: '8px', background: 'var(--semi-color-fill-0)', borderRadius: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12 }}>
-                    {(() => { try { return JSON.stringify(JSON.parse(detailLog.requestBody), null, 2); } catch { return detailLog.requestBody; } })()}
-                  </pre>
+                  <JsonViewer
+                    value={detailLog.requestBody}
+                    height={200}
+                    width="100%"
+                    options={{ readOnly: true, autoWrap: true }}
+                  />
                 </DetailField>
               )}
             </div>

@@ -47,8 +47,9 @@ async function seed() {
     { id: 19, parentId: 5, title: '分配菜单',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:role:assign' },
     { id: 6,  parentId: 2, title: '字典管理',   name: 'SystemDicts',   path: '/system/dicts', component: 'system/dicts/DictsPage',  icon: 'NotepadText',    type: 'menu' as const, sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:list' },
     { id: 8,  parentId: 2, title: '文件管理',   name: 'SystemFiles',   path: undefined, component: undefined,        icon: 'FolderOpen',     type: 'directory' as const, sort: 5,  status: 'active' as const, visible: true, permission: 'system:file:list' },
-    { id: 32, parentId: 2, title: '登录日志',   name: 'SystemLoginLogs', path: '/system/login-logs', component: 'system/login-logs/LoginLogsPage', icon: 'List',       type: 'menu' as const,      sort: 7,  status: 'active' as const, visible: true },
-    { id: 33, parentId: 2, title: '操作日志',   name: 'SystemOperationLogs', path: '/system/operation-logs', component: 'system/operation-logs/OperationLogsPage', icon: 'ClipboardList', type: 'menu' as const, sort: 8, status: 'active' as const, visible: true },
+    { id: 34, parentId: 2, title: '审计日志',   name: 'SystemAuditLogs', path: undefined, component: undefined, icon: 'ClipboardMinus',  type: 'directory' as const, sort: 7,  status: 'active' as const, visible: true },
+    { id: 32, parentId: 34, title: '登录日志',   name: 'SystemLoginLogs', path: '/system/login-logs', component: 'system/login-logs/LoginLogsPage', icon: 'List',       type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true },
+    { id: 33, parentId: 34, title: '操作日志',   name: 'SystemOperationLogs', path: '/system/operation-logs', component: 'system/operation-logs/OperationLogsPage', icon: 'ClipboardList', type: 'menu' as const, sort: 2, status: 'active' as const, visible: true },
     { id: 9,  parentId: 2, title: '服务监控',   name: 'SystemMonitor', path: '/system/monitor', component: 'system/monitor/MonitorPage', icon: 'Activity',       type: 'menu' as const,      sort: 6,  status: 'active' as const, visible: true },
     { id: 24, parentId: 8, title: '文件配置',   name: 'SystemFileConfigs', path: '/system/file-configs', component: 'system/file-configs/FileStorageConfigsPage', icon: 'HardDriveUpload', type: 'menu' as const, sort: 1, status: 'active' as const, visible: true, permission: 'system:file:config' },
     { id: 25, parentId: 8, title: '文件列表',   name: 'SystemFileList', path: '/system/files', component: 'system/files/FilesPage',  icon: 'Files',          type: 'menu' as const, sort: 2, status: 'active' as const, visible: true, permission: 'system:file:list' },
@@ -62,7 +63,7 @@ async function seed() {
     { id: 21, parentId: 6, title: '编辑字典',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:dict:update' },
     { id: 22, parentId: 6, title: '删除字典',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:dict:delete' },
     { id: 23, parentId: 6, title: '管理字典项',  name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:item' },
-    { id: 7,  parentId: 0, title: '组件示例',   name: 'Components',    path: '/components', component: 'components/ComponentsPage',    icon: 'Component',      type: 'menu' as const,      sort: 99, status: 'active' as const, visible: true },
+    { id: 7,  parentId: 0, title: '组件示例',   name: 'Components',    path: '/components', component: 'components/ComponentsPage',    icon: 'Component',      type: 'menu' as const,      sort: 99, status: 'active' as const, visible: false },
   ];
   for (const row of menuRows) {
     await db
