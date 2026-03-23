@@ -47,15 +47,7 @@ export default function MenusPage() {
 
   useEffect(() => { fetchMenus(); }, [fetchMenus]);
 
-  // 展开树结构为平铺列表（带层级缩进信息）
-  function flattenTree(items: Menu[], depth = 0): (Menu & { depth: number })[] {
-    return items.flatMap((item) => [
-      { ...item, depth },
-      ...(item.children ? flattenTree(item.children, depth + 1) : []),
-    ]);
-  }
-
-  const flatData = flattenTree(data);
+  // Semi Table 原生支持 children 字段树形展示，无需手动 flatten
 
   // 递归构建 TreeSelect 数据（过滤掉按钮类型）
   function buildTreeSelectData(items: Menu[]): TreeNodeData[] {
@@ -112,22 +104,28 @@ export default function MenusPage() {
     }
   };
 
-  const columns: ColumnProps<Menu & { depth: number }>[] = [
+  const columns: ColumnProps<Menu>[] = [
     {
       title: '菜单名称',
       dataIndex: 'title',
       width: 280,
-      ellipsis: { showTitle: false },
-      render: (val, row) => (
-        <span style={{ paddingLeft: row.depth * 20, display: 'flex', alignItems: 'center', minWidth: 0 }}>
-          {row.icon && (
-            <span style={{ marginRight: 6, display: 'flex', alignItems: 'center', color: 'var(--semi-color-text-1)', flexShrink: 0 }}>
-              {renderLucideIcon(row.icon, 15)}
-            </span>
-          )}
-          <span className="table-cell-ellipsis" title={String(val)}>{val}</span>
-        </span>
-      ),
+      useFullRender: true,
+      render: (val, row, _index, options) => {
+        const expandIcon = options?.expandIcon;
+        const indentText = options?.indentText;
+        return (
+          <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+            {indentText}
+            {expandIcon}
+            {row.icon && (
+              <span style={{ marginRight: 6, marginLeft: 4, display: 'flex', alignItems: 'center', color: 'var(--semi-color-text-1)', flexShrink: 0 }}>
+                {renderLucideIcon(row.icon, 15)}
+              </span>
+            )}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={String(val)}>{val}</span>
+          </span>
+        );
+      },
     },
     {
       title: '类型',
@@ -211,10 +209,11 @@ export default function MenusPage() {
         <Table
           className="admin-table-nowrap"
           columns={columns}
-          dataSource={flatData}
+          dataSource={data}
           rowKey="id"
           loading={loading}
           pagination={false}
+          defaultExpandAllRows
         />
       </Card>
 
