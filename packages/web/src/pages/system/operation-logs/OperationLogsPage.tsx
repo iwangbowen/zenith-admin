@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Input, Button, Tag, Space, DatePicker } from '@douyinfe/semi-ui';
-import { Search, RotateCcw } from 'lucide-react';
+import { Table, Card, Input, Button, Tag, Space, DatePicker, Modal } from '@douyinfe/semi-ui';
+import { Search, RotateCcw, Eye } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
+
+const detailLabelStyle: React.CSSProperties = { color: 'var(--semi-color-text-2)', fontSize: 12, marginBottom: 2 };
+const detailValueStyle: React.CSSProperties = { fontSize: 13, wordBreak: 'break-all' };
+const detailItemStyle: React.CSSProperties = { padding: '8px 0', borderBottom: '1px solid var(--semi-color-border)' };
+
+function DetailField({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
+  return (
+    <div style={detailItemStyle}>
+      <div style={detailLabelStyle}>{label}</div>
+      <div style={detailValueStyle}>{children}</div>
+    </div>
+  );
+}
 
 interface SearchParams {
   username: string;
@@ -21,6 +34,7 @@ export default function OperationLogsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
+  const [detailLog, setDetailLog] = useState<OperationLog | null>(null);
 
   const fetchData = async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
@@ -90,7 +104,22 @@ export default function OperationLogsPage() {
       dataIndex: 'createdAt',
       width: 180,
       render: (v: string) => formatDateTime(v),
+    },
+    {
+      title: '操作',
+      width: 80,
       fixed: 'right' as const,
+      render: (_: unknown, record: OperationLog) => (
+        <Button
+          theme="borderless"
+          type="primary"
+          size="small"
+          icon={<Eye size={14} />}
+          onClick={() => setDetailLog(record)}
+        >
+          详情
+        </Button>
+      ),
     },
   ];
 
@@ -156,6 +185,82 @@ export default function OperationLogsPage() {
           }}
         />
       </Card>
+
+      <Modal
+        title="操作日志详情"
+        visible={detailLog !== null}
+        onCancel={() => setDetailLog(null)}
+        footer={null}
+        width={680}
+        style={{ top: 40 }}
+      >
+        {detailLog && (() => {
+          const resCode = detailLog.responseCode;
+          const resOk = resCode != null && resCode >= 200 && resCode < 400;
+          const duration = detailLog.durationMs == null ? '-' : `${detailLog.durationMs} ms`;
+          return (
+            <div style={{ padding: '4px 0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0 16px' }}>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>ID</div>
+                  <div style={detailValueStyle}>{detailLog.id}</div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>操作人</div>
+                  <div style={detailValueStyle}>{detailLog.username ?? '-'}</div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>功能模块</div>
+                  <div style={detailValueStyle}>{detailLog.module ?? '-'}</div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>操作描述</div>
+                  <div style={detailValueStyle}>{detailLog.description}</div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>请求方法</div>
+                  <div style={detailValueStyle}><Tag color="blue" size="small">{detailLog.method}</Tag></div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>响应状态</div>
+                  <div style={detailValueStyle}><Tag color={resOk ? 'green' : 'red'} size="small">{resCode ?? '-'}</Tag></div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>耗时</div>
+                  <div style={detailValueStyle}>{duration}</div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>操作时间</div>
+                  <div style={detailValueStyle}>{formatDateTime(detailLog.createdAt)}</div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>IP 地址</div>
+                  <div style={detailValueStyle}>{detailLog.ip ?? '-'}</div>
+                </div>
+                <div style={detailItemStyle}>
+                  <div style={detailLabelStyle}>操作系统</div>
+                  <div style={detailValueStyle}>{detailLog.os ?? '-'}</div>
+                </div>
+                <div style={{ ...detailItemStyle, gridColumn: 'span 2' }}>
+                  <div style={detailLabelStyle}>浏览器</div>
+                  <div style={detailValueStyle}>{detailLog.browser ?? '-'}</div>
+                </div>
+              </div>
+              <DetailField label="请求路径">{detailLog.path}</DetailField>
+              {detailLog.userAgent && (
+                <DetailField label="User-Agent">{detailLog.userAgent}</DetailField>
+              )}
+              {detailLog.requestBody && (
+                <DetailField label="请求体">
+                  <pre style={{ margin: 0, padding: '8px', background: 'var(--semi-color-fill-0)', borderRadius: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12 }}>
+                    {(() => { try { return JSON.stringify(JSON.parse(detailLog.requestBody), null, 2); } catch { return detailLog.requestBody; } })()}
+                  </pre>
+                </DetailField>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }
