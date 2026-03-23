@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Card,
   Table,
   Button,
   Input,
@@ -210,7 +209,7 @@ export default function RolesPage() {
 
   return (
     <div className="page-container">
-      <Card>
+      <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Input
@@ -235,10 +234,11 @@ export default function RolesPage() {
             </Button>
           </Space>
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div>
         <Table
+          bordered
           className="admin-table-nowrap"
           columns={columns}
           dataSource={data}
@@ -246,7 +246,7 @@ export default function RolesPage() {
           loading={loading}
           pagination={{ pageSize: 10, showSizeChanger: true }}
         />
-      </Card>
+      </div>
 
       {/* 创建/编辑 Modal */}
       <Modal

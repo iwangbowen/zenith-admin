@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Card,
   Table,
   Button,
   Input,
@@ -204,7 +203,7 @@ export default function NoticesPage() {
 
   return (
     <div className="page-container">
-      <Card>
+      <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Input
@@ -239,10 +238,11 @@ export default function NoticesPage() {
             <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>
           </Space>
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div>
         <Table
+          bordered
           columns={columns}
           dataSource={data}
           loading={loading}
@@ -265,7 +265,7 @@ export default function NoticesPage() {
             },
           }}
         />
-      </Card>
+      </div>
 
       <Modal
         title={editingNotice ? '编辑通知' : '新增通知'}

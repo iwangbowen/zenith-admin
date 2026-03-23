@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Card,
   Table,
   Button,
   Space,
@@ -220,14 +219,15 @@ export default function MenusPage() {
 
   return (
     <div className="page-container">
-      <Card>
+      <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
           <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div>
         <Table
+          bordered
           className="admin-table-nowrap"
           columns={columns}
           dataSource={data}
@@ -236,7 +236,7 @@ export default function MenusPage() {
           pagination={{ pageSize: 10, showSizeChanger: true }}
           defaultExpandAllRows
         />
-      </Card>
+      </div>
 
       <Modal
         title={editingMenu ? '编辑菜单' : '新增菜单'}

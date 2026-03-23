@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Card,
   Table,
   Button,
   Input,
@@ -252,7 +251,7 @@ export default function DictsPage() {
       <div className="dicts-layout">
         {/* 左侧：字典列表 */}
         <div className="dicts-left-card">
-          <Card>
+          <div className="search-area">
             <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
               <Input
                 prefix={<Search size={14} />}
@@ -273,9 +272,10 @@ export default function DictsPage() {
                 新增
               </Button>
             </div>
-          </Card>
-          <Card>
+          </div>
+          <div>
             <Table
+              bordered
               className="admin-table-nowrap"
               columns={dictColumns}
               dataSource={dicts}
@@ -291,14 +291,14 @@ export default function DictsPage() {
                 },
               })}
             />
-          </Card>
+          </div>
         </div>
 
         {/* 右侧：字典项列表 */}
         <div className="dicts-right-card">
           {selectedDict ? (
             <>
-              <Card>
+              <div className="search-area">
                 <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
                   <Text strong style={{ fontSize: 14 }}>
                     字典项：{selectedDict.name}
@@ -314,9 +314,10 @@ export default function DictsPage() {
                     </Button>
                   </Space>
                 </div>
-              </Card>
-              <Card>
+              </div>
+              <div>
                 <Table
+                  bordered
                   className="admin-table-nowrap"
                   columns={itemColumns}
                   dataSource={items}
@@ -325,17 +326,17 @@ export default function DictsPage() {
                   pagination={{ pageSize: 10, showSizeChanger: true }}
                   size="small"
                 />
-              </Card>
+              </div>
             </>
           ) : (
-            <Card>
+            <div style={{ backgroundColor: 'var(--semi-color-bg-0)', borderRadius: 'var(--semi-border-radius-large)', border: '1px solid var(--semi-color-border)' }}>
               <Empty
                 image={<List size={32} style={{ color: 'var(--semi-color-text-2)' }} />}
                 title="请选择字典"
                 description="点击左侧字典查看其字典项"
                 style={{ padding: '60px 0' }}
               />
-            </Card>
+            </div>
           )}
         </div>
       </div>

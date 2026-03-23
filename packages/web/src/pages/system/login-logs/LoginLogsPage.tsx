@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Input, Button, Tag, Select, Space } from '@douyinfe/semi-ui';
+import { Table, Input, Button, Tag, Select, Space } from '@douyinfe/semi-ui';
 import { Search, RotateCcw } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
@@ -72,7 +72,7 @@ export default function LoginLogsPage() {
 
   return (
     <div className="page-container">
-      <Card>
+      <div className="search-area">
         <Space>
           <Input
             prefix={<Search size={14} />}
@@ -100,10 +100,11 @@ export default function LoginLogsPage() {
             重置
           </Button>
         </Space>
-      </Card>
+      </div>
 
-      <Card>
+      <div>
         <Table
+          bordered
           columns={columns}
           dataSource={data}
           loading={loading}
@@ -115,7 +116,7 @@ export default function LoginLogsPage() {
             onPageSizeChange: (s) => fetchData(1, s)
           }}
         />
-      </Card>
+      </div>
     </div>
   );
 }

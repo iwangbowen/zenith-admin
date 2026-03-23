@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer } from '@douyinfe/semi-ui';
+import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Eye } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
@@ -125,7 +125,7 @@ export default function OperationLogsPage() {
 
   return (
     <div className="page-container">
-      <Card>
+      <div className="search-area">
         <Space wrap>
           <Input
             prefix={<Search size={14} />}
@@ -168,10 +168,11 @@ export default function OperationLogsPage() {
             重置
           </Button>
         </Space>
-      </Card>
+      </div>
 
-      <Card>
+      <div>
         <Table
+          bordered
           columns={columns}
           dataSource={data}
           loading={loading}
@@ -184,7 +185,7 @@ export default function OperationLogsPage() {
             onPageSizeChange: (s) => { void fetchData(1, s); },
           }}
         />
-      </Card>
+      </div>
 
       <Modal
         title="操作日志详情"
