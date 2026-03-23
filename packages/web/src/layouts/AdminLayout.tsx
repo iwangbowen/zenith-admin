@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Dropdown, Tooltip, Modal, Nav } from '@douyinfe/semi-ui';
-import { Sun, Moon, Monitor, User as UserIcon, Settings, LogOut } from 'lucide-react';
-import type { User, Menu } from '@zenith/shared';
+import { Avatar, Badge, Dropdown, Empty, List, Popover, Tooltip, Modal, Nav, Typography } from '@douyinfe/semi-ui';
+import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut } from 'lucide-react';
+import type { User, Menu, Notice } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
 import { request } from '../utils/request';
+import { formatDateTime } from '../utils/date';
 import { config } from '../config';
 import { renderLucideIcon } from '../utils/icons';
 import NProgress from '../components/NProgress';
@@ -82,6 +83,16 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const { mode, setThemeMode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ─── 通知公告 ─────────────────────────────────────────────────────────────
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [noticePopVisible, setNoticePopVisible] = useState(false);
+
+  useEffect(() => {
+    request.get<Notice[]>('/api/notices/published').then((res) => {
+      if (res.code === 0 && res.data) setNotices(res.data);
+    });
+  }, []);
 
   useEffect(() => {
     if (presetMenus) {
@@ -169,6 +180,58 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         <header className="admin-header">
           <div />
           <div className="admin-header__actions">
+            {/* 通知铃铛 */}
+            <Popover
+              visible={noticePopVisible}
+              onVisibleChange={setNoticePopVisible}
+              position="bottomRight"
+              trigger="click"
+              showArrow
+              content={
+                <div style={{ width: 360, maxHeight: 440, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ padding: '12px 16px 8px', fontWeight: 600, fontSize: 14, borderBottom: '1px solid var(--semi-color-border)' }}>
+                    通知公告
+                  </div>
+                  {notices.length === 0 ? (
+                    <Empty description="暂无通知" style={{ padding: '24px 0' }} />
+                  ) : (
+                    <List
+                      style={{ overflow: 'auto', maxHeight: 380 }}
+                      dataSource={notices}
+                      renderItem={(item: Notice) => (
+                        <List.Item
+                          key={item.id}
+                          style={{ padding: '10px 16px', cursor: 'default' }}
+                          header={null}
+                          main={
+                            <div>
+                              <Typography.Text strong style={{ fontSize: 13 }}>{item.title}</Typography.Text>
+                              <Typography.Paragraph
+                                ellipsis={{ rows: 2 }}
+                                style={{ fontSize: 12, color: 'var(--semi-color-text-2)', margin: '3px 0 4px' }}
+                              >
+                                {item.content}
+                              </Typography.Paragraph>
+                              <Typography.Text style={{ fontSize: 11, color: 'var(--semi-color-text-3)' }}>
+                                {item.publishTime ? formatDateTime(item.publishTime) : formatDateTime(item.createdAt)}
+                              </Typography.Text>
+                            </div>
+                          }
+                        />
+                      )}
+                    />
+                  )}
+                </div>
+              }
+            >
+              <Tooltip content="通知公告" position="bottom">
+                <Badge count={notices.length} overflowCount={99} style={{ zIndex: 1 }}>
+                  <button className="admin-theme-btn" title="通知公告">
+                    <Bell size={16} strokeWidth={1.8} />
+                  </button>
+                </Badge>
+              </Tooltip>
+            </Popover>
             {/* 主题切换 */}
             <Tooltip content={
               <span>颜色模式：{themeLabelMap[mode].label}</span>

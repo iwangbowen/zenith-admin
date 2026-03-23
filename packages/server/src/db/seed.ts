@@ -63,6 +63,7 @@ async function seed() {
     { id: 21, parentId: 6, title: '编辑字典',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:dict:update' },
     { id: 22, parentId: 6, title: '删除字典',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:dict:delete' },
     { id: 23, parentId: 6, title: '管理字典项',  name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:item' },
+    { id: 35, parentId: 2, title: '通知公告',   name: 'SystemNotices', path: '/system/notices', component: 'system/notices/NoticesPage', icon: 'BellRing',   type: 'menu' as const,      sort: 8,  status: 'active' as const, visible: true },
     { id: 7,  parentId: 0, title: '组件示例',   name: 'Components',    path: '/components', component: 'components/ComponentsPage',    icon: 'Component',      type: 'menu' as const,      sort: 99, status: 'active' as const, visible: false },
   ];
   for (const row of menuRows) {
@@ -117,10 +118,13 @@ async function seed() {
 
   // ─── 4. 字典数据 ──────────────────────────────────────────────────────────
   const dictRows = [
-    { id: 1, name: '通用状态', code: 'common_status', description: '通用启用/禁用状态' },
-    { id: 3, name: '菜单类型', code: 'menu_type',     description: '菜单节点类型' },
-    { id: 4, name: '用户性别', code: 'user_gender',   description: '用户性别' },
-    { id: 5, name: '显示状态', code: 'menu_visible',  description: '菜单显示/隐藏状态' },
+    { id: 1, name: '通用状态',     code: 'common_status',        description: '通用启用/禁用状态' },
+    { id: 3, name: '菜单类型',     code: 'menu_type',            description: '菜单节点类型' },
+    { id: 4, name: '用户性别',     code: 'user_gender',          description: '用户性别' },
+    { id: 5, name: '显示状态',     code: 'menu_visible',         description: '菜单显示/隐藏状态' },
+    { id: 6, name: '通知类型',     code: 'notice_type',          description: '通知公告类型' },
+    { id: 7, name: '通知发布状态', code: 'notice_publish_status', description: '通知公告的发布状态' },
+    { id: 8, name: '通知优先级',   code: 'notice_priority',      description: '通知公告优先级' },
   ];
   await db.insert(dicts).values(dictRows).onConflictDoNothing({ target: dicts.id });
   await db.execute(sql`SELECT setval('dicts_id_seq', GREATEST((SELECT MAX(id) FROM dicts), 1))`);
@@ -151,8 +155,20 @@ async function seed() {
     { dictId: 4, label: '男',       value: 'male',      color: 'blue',   sort: 1 },
     { dictId: 4, label: '女',       value: 'female',    color: 'pink',   sort: 2 },
     { dictId: 4, label: '保密',     value: 'secret',    color: 'grey',   sort: 3 },
-    { dictId: 5, label: '显示',     value: 'show',      color: 'green',  sort: 1 },
-    { dictId: 5, label: '隐藏',     value: 'hidden',    color: 'grey',   sort: 2 },
+    { dictId: 5, label: '显示',     value: 'show',        color: 'green',  sort: 1 },
+    { dictId: 5, label: '隐藏',     value: 'hidden',      color: 'grey',   sort: 2 },
+    // 通知类型
+    { dictId: 6, label: '通知',     value: 'notice',      color: 'blue',   sort: 1 },
+    { dictId: 6, label: '公告',     value: 'announcement', color: 'cyan',  sort: 2 },
+    { dictId: 6, label: '警告',     value: 'warning',     color: 'orange', sort: 3 },
+    // 通知发布状态
+    { dictId: 7, label: '草稿',     value: 'draft',       color: 'grey',   sort: 1 },
+    { dictId: 7, label: '已发布',   value: 'published',   color: 'green',  sort: 2 },
+    { dictId: 7, label: '已撤回',   value: 'recalled',    color: 'orange', sort: 3 },
+    // 通知优先级
+    { dictId: 8, label: '低',       value: 'low',         color: 'grey',   sort: 1 },
+    { dictId: 8, label: '中',       value: 'medium',      color: 'blue',   sort: 2 },
+    { dictId: 8, label: '高',       value: 'high',        color: 'red',    sort: 3 },
   ];
   // dict_items 没有唯一约束，用 SQL 子查询避免重复插入
   for (const item of dictItemRows) {

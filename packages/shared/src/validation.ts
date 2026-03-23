@@ -143,3 +143,18 @@ export type CreateDictItemInput = z.infer<typeof createDictItemSchema>;
 export type UpdateDictItemInput = z.infer<typeof updateDictItemSchema>;
 export type CreateFileStorageConfigInput = z.infer<typeof createFileStorageConfigSchema>;
 export type UpdateFileStorageConfigInput = z.infer<typeof updateFileStorageConfigSchema>;
+
+// ─── 通知公告 Schema ─────────────────────────────────────────────────────────
+export const createNoticeSchema = z.object({
+  title: z.string().min(1, '标题不能为空').max(128),
+  content: z.string().min(1, '内容不能为空').max(4096),
+  type: z.string().min(1).max(32).default('notice'),
+  publishStatus: z.enum(['draft', 'published', 'recalled']).default('draft'),
+  priority: z.string().min(1).max(32).default('medium'),
+  publishTime: z.string().datetime({ offset: true }).optional().nullable(),
+});
+
+export const updateNoticeSchema = createNoticeSchema.partial();
+
+export type CreateNoticeInput = z.infer<typeof createNoticeSchema>;
+export type UpdateNoticeInput = z.infer<typeof updateNoticeSchema>;

@@ -14,6 +14,7 @@ import filesRoutes from './routes/files';
 import monitorRoutes from './routes/monitor';
 import loginLogsRoutes from './routes/login-logs';
 import operationLogsRoutes from './routes/operation-logs';
+import noticesRoutes from './routes/notices';
 
 const app = new Hono();
 
@@ -30,6 +31,7 @@ app.route('/api/files', filesRoutes);
 app.route('/api/monitor', monitorRoutes);
 app.route('/api/login-logs', loginLogsRoutes);
 app.route('/api/operation-logs', operationLogsRoutes);
+app.route('/api/notices', noticesRoutes);
 
 app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));
 

@@ -156,3 +156,22 @@ export interface OperationLog {
   browser: string | null;
   createdAt: string;
 }
+
+// ─── 通知公告 ──────────────────────────────────────────────
+export type NoticePublishStatus = 'draft' | 'published' | 'recalled';
+export type NoticeType = 'notice' | 'announcement' | 'warning';
+export type NoticePriority = 'low' | 'medium' | 'high';
+
+export interface Notice {
+  id: number;
+  title: string;
+  content: string;
+  type: string;
+  publishStatus: string;
+  priority: string;
+  publishTime: string | null;
+  createById: number | null;
+  createByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

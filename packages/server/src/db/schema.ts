@@ -173,3 +173,21 @@ export const operationLogs = pgTable('operation_logs', {
 
 export type OperationLogRow = typeof operationLogs.$inferSelect;
 export type NewOperationLog = typeof operationLogs.$inferInsert;
+
+// ─── 通知公告表 ─────────────────────────────────────────────────────────────────
+export const notices = pgTable('notices', {
+  id: serial('id').primaryKey(),
+  title: varchar('title', { length: 128 }).notNull(),
+  content: varchar('content', { length: 4096 }).notNull(),
+  type: varchar('type', { length: 32 }).notNull().default('notice'),        // 字典 notice_type
+  publishStatus: varchar('publish_status', { length: 32 }).notNull().default('draft'), // 字典 notice_publish_status
+  priority: varchar('priority', { length: 32 }).notNull().default('medium'), // 字典 notice_priority
+  publishTime: timestamp('publish_time', { withTimezone: true }),
+  createById: integer('create_by_id'),
+  createByName: varchar('create_by_name', { length: 32 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type NoticeRow = typeof notices.$inferSelect;
+export type NewNotice = typeof notices.$inferInsert;
