@@ -315,10 +315,8 @@ export default function FileStorageConfigsPage() {
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            </Space>
-          </div>
-          <div className="responsive-toolbar__right">
             <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            </Space>
           </div>
         </div>
         <div className="storage-configs-tip" style={{ marginBottom: 0, marginTop: 12 }}>

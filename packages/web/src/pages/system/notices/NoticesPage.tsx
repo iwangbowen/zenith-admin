@@ -250,10 +250,8 @@ export default function NoticesPage() {
             />
             <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
             <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
-            </Space>
-          </div>
-          <div className="responsive-toolbar__right">
             <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>
+            </Space>
           </div>
         </div>
       </div>
