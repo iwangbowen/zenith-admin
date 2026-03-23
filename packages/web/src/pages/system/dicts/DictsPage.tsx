@@ -329,7 +329,7 @@ export default function DictsPage() {
               </div>
             </>
           ) : (
-            <div style={{ backgroundColor: 'var(--semi-color-bg-0)', borderRadius: 'var(--semi-border-radius-large)', border: '1px solid var(--semi-color-border)' }}>
+            <div className="dicts-empty-panel">
               <Empty
                 image={<List size={32} style={{ color: 'var(--semi-color-text-2)' }} />}
                 title="请选择字典"
