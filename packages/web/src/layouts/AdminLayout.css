@@ -45,12 +45,13 @@
 .admin-sidebar__nav {
   height: 100%;
   width: 100%;
+  background: var(--color-sidebar-bg);
 }
 
-.admin-sidebar__nav .semi-navigation {
+.admin-sidebar__nav.semi-navigation {
   height: 100%;
   width: 100%;
-  background: transparent;
+  background: var(--color-sidebar-bg);
   border-right: none;
 }
 
@@ -226,7 +227,7 @@
 /* Header */
 .admin-header {
   height: var(--header-height);
-  background: var(--color-surface);
+  background: var(--color-layout-bg);
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
@@ -247,7 +248,7 @@
 }
 
 .admin-header__user:hover {
-  background: var(--color-bg);
+  background: var(--color-layout-hover);
 }
 
 .admin-header__actions {
@@ -271,7 +272,7 @@
 }
 
 .admin-theme-btn:hover {
-  background: var(--color-bg);
+  background: var(--color-layout-hover);
   color: var(--color-text);
 }
 
@@ -283,7 +284,7 @@
 /* Content */
 .admin-content {
   flex: 1;
-  background: var(--color-surface);
+  background: var(--color-layout-bg);
   overflow: auto;
   position: relative;
 }

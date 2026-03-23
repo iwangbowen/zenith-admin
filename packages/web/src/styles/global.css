@@ -5,6 +5,8 @@
   --header-height: 52px;
   --color-bg: #f0f1f5;
   --color-surface: #ffffff;
+  --color-layout-bg: var(--color-surface);
+  --color-layout-hover: var(--color-bg);
   /* 侧边栏 — 浅色模式使用白色 */
   --color-sidebar-bg: #ffffff;
   --color-sidebar-hover: rgba(0, 0, 0, 0.04);
@@ -23,7 +25,9 @@
 [data-theme='dark'] {
   --color-bg: #0d0f14;
   --color-surface: #1a1d24;
-  --color-sidebar-bg: #111318;
+  --color-sidebar-bg: #232429;
+  --color-layout-bg: var(--color-sidebar-bg);
+  --color-layout-hover: rgba(255, 255, 255, 0.08);
   --color-sidebar-hover: rgba(255, 255, 255, 0.08);
   --color-sidebar-active: rgba(51, 112, 255, 0.25);
   --color-sidebar-text: rgba(255, 255, 255, 0.65);
