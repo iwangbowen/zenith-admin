@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { User, Lock, Mail, AtSign } from 'lucide-react';
 import type { RegisterInput } from '@zenith/shared';
@@ -12,6 +13,7 @@ interface LoginPageProps {
 }
 
 export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState('login');
 
@@ -21,6 +23,8 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
       const res = await onLogin(values.username, values.password);
       if (res.code !== 0) {
         Toast.error(res.message);
+      } else {
+        navigate('/', { replace: true });
       }
     } finally {
       setLoading(false);
@@ -33,6 +37,8 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
       const res = await onRegister(values);
       if (res.code !== 0) {
         Toast.error(res.message);
+      } else {
+        navigate('/', { replace: true });
       }
     } finally {
       setLoading(false);
