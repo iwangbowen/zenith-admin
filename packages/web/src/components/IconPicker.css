@@ -80,20 +80,54 @@
   margin-bottom: 10px;
 }
 
-/* ─── 滚动容器（分类视图/搜索视图共用）───────────────────────────────────────── */
-.icon-picker-scroll {
-  max-height: 400px;
-  overflow-y: auto;
-  overflow-x: hidden;
+/* ─── 图标网格容器（固定高度，配合分页无需滚动）──────────────────────────────── */
+.icon-picker-grid-wrap {
+  min-height: 256px;
 }
 
-.icon-picker-scroll::-webkit-scrollbar {
-  width: 4px;
+/* ─── 分页导航 ─────────────────────────────────────────────────────────────── */
+.icon-picker-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--semi-color-border);
+  margin-top: 8px;
 }
 
-.icon-picker-scroll::-webkit-scrollbar-thumb {
-  background: var(--semi-color-fill-2);
-  border-radius: 2px;
+.icon-picker-page-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.icon-picker-page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.icon-picker-page-btn:not(:disabled):hover {
+  background: var(--semi-color-fill-1);
+  border-color: var(--semi-color-primary);
+  color: var(--semi-color-primary);
+}
+
+.icon-picker-page-info {
+  font-size: 13px;
+  color: var(--semi-color-text-1);
+  min-width: 60px;
+  text-align: center;
+  user-select: none;
 }
 
 /* ─── 分类组 ────────────────────────────────────────────────────────────────── */
@@ -154,10 +188,10 @@
   font-size: 13px;
 }
 
-/* ─── 滚动加载更多提示 ───────────────────────────────────────────────────────── */
+/* ─── （已废弃，保留占位）────────────────────────────────────────────────────── */
 .icon-picker-load-more {
-  text-align: center;
-  padding: 8px 0 4px;
+  display: none;
+  padding: 0;
   font-size: 11px;
   color: var(--semi-color-text-3);
 }

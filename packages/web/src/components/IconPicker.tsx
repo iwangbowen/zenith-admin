@@ -1,6 +1,6 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Popover, Input } from '@douyinfe/semi-ui';
-import { Search, ChevronDown, X } from 'lucide-react';
+import { Search, ChevronDown, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ALL_ICON_NAMES, renderLucideIcon } from '../utils/icons';
 import './IconPicker.css';
 
@@ -10,13 +10,13 @@ interface IconPickerProps {
   style?: React.CSSProperties;
 }
 
-const PAGE_SIZE = 300;
+/** 每页显示图标数（8 列 × 6 行） */
+const PAGE_SIZE = 48;
 
 export default function IconPicker({ value, onChange, style }: Readonly<IconPickerProps>) {
   const [search, setSearch] = useState('');
   const [visible, setVisible] = useState(false);
-  const [page, setPage] = useState(1);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filteredNames = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -24,31 +24,22 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
     return ALL_ICON_NAMES.filter((name) => name.toLowerCase().includes(q));
   }, [search]);
 
-  const displayNames = useMemo(
-    () => filteredNames.slice(0, page * PAGE_SIZE),
-    [filteredNames, page],
+  const totalPages = Math.max(1, Math.ceil(filteredNames.length / PAGE_SIZE));
+
+  const pageNames = useMemo(
+    () => filteredNames.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredNames, currentPage],
   );
-
-  const hasMore = displayNames.length < filteredNames.length;
-
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || !hasMore) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
-      setPage((p) => p + 1);
-    }
-  }, [hasMore]);
 
   const handleSearchChange = (v: string) => {
     setSearch(v);
-    setPage(1);
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setCurrentPage(1);
   };
 
   const handleVisibleChange = (v: boolean) => {
     setVisible(v);
     if (v) {
-      setPage(1);
+      setCurrentPage(1);
       setSearch('');
     }
   };
@@ -64,6 +55,12 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
     onChange?.('');
   };
 
+  const goToPrev = useCallback(() => setCurrentPage((p) => Math.max(1, p - 1)), []);
+  const goToNext = useCallback(
+    () => setCurrentPage((p) => Math.min(totalPages, p + 1)),
+    [totalPages],
+  );
+
   const panelContent = (
     <div className="icon-picker-panel">
       <Input
@@ -75,32 +72,48 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
         className="icon-picker-search"
         style={{ marginBottom: 8 }}
       />
-      <div className="icon-picker-scroll" ref={scrollRef} onScroll={handleScroll}>
+      <div className="icon-picker-grid-wrap">
         {filteredNames.length > 0 ? (
-          <>
-            <div className="icon-picker-grid">
-              {displayNames.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  title={name}
-                  className={`icon-picker-cell ${value === name ? 'icon-picker-cell--active' : ''}`}
-                  onClick={() => handleSelect(name)}
-                >
-                  {renderLucideIcon(name, 18)}
-                </button>
-              ))}
-            </div>
-            {hasMore && (
-              <div className="icon-picker-load-more">
-                向下滚动加载更多 ({displayNames.length} / {filteredNames.length})
-              </div>
-            )}
-          </>
+          <div className="icon-picker-grid">
+            {pageNames.map((name) => (
+              <button
+                key={name}
+                type="button"
+                title={name}
+                className={`icon-picker-cell ${value === name ? 'icon-picker-cell--active' : ''}`}
+                onClick={() => handleSelect(name)}
+              >
+                {renderLucideIcon(name, 18)}
+              </button>
+            ))}
+          </div>
         ) : (
           <div className="icon-picker-empty-result">无匹配图标</div>
         )}
       </div>
+      {filteredNames.length > 0 && (
+        <div className="icon-picker-pagination">
+          <button
+            type="button"
+            className="icon-picker-page-btn"
+            onClick={goToPrev}
+            disabled={currentPage === 1}
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <span className="icon-picker-page-info">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            type="button"
+            className="icon-picker-page-btn"
+            onClick={goToNext}
+            disabled={currentPage === totalPages}
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 
