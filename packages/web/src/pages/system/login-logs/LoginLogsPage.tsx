@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Input, Button, Tag, Select } from '@douyinfe/semi-ui';
+import { Table, Card, Input, Button, Tag, Select, Space } from '@douyinfe/semi-ui';
 import { Search } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
@@ -65,17 +65,20 @@ export default function LoginLogsPage() {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="page-container">
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <Input 
-            placeholder="请输入用户名" 
+        <Space>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="请输入用户名"
             value={searchParams.username}
             onChange={(v) => setSearchParams({ ...searchParams, username: v })}
+            onEnterPress={handleSearch}
             style={{ width: 180 }}
+            showClear
           />
-          <Select 
-            placeholder="请选择状态" 
+          <Select
+            placeholder="请选择状态"
             value={searchParams.status}
             onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
             style={{ width: 150 }}
@@ -84,10 +87,10 @@ export default function LoginLogsPage() {
             <Select.Option value="success">成功</Select.Option>
             <Select.Option value="fail">失败</Select.Option>
           </Select>
-          <Button theme="solid" icon={<Search size={16} />} onClick={handleSearch}>
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
             查询
           </Button>
-        </div>
+        </Space>
       </Card>
       
       <Card>

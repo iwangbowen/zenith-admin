@@ -14,7 +14,7 @@ import {
   Col,
 } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import { renderLucideIcon } from '../../../utils/icons';
@@ -214,11 +214,8 @@ export default function MenusPage() {
   return (
     <div className="page-container">
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
-          <Space>
-            <Button icon={<RefreshCw />} onClick={fetchMenus}>刷新</Button>
-            <Button type="primary" theme="solid" icon={<Plus />} onClick={() => openCreate()}>新增菜单</Button>
-          </Space>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+          <Button type="primary" theme="solid" icon={<Plus />} onClick={() => openCreate()}>新增菜单</Button>
         </div>
       </Card>
 

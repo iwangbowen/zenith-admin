@@ -13,7 +13,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type {
   CreateFileStorageConfigInput,
   FileStorageConfig,
@@ -265,8 +265,7 @@ export default function FileStorageConfigsPage() {
             <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>
           </div>
           <Space>
-            <Button icon={<RefreshCw />} onClick={fetchConfigs}>刷新</Button>
-            <Button type="primary" icon={<Plus />} onClick={openCreate}>新增配置</Button>
+            <Button type="primary" theme="solid" icon={<Plus />} onClick={openCreate}>新增配置</Button>
           </Space>
         </div>
       </Card>

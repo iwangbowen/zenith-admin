@@ -13,7 +13,7 @@ import {
   Spin,
   Avatar,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RefreshCw } from 'lucide-react';
+import { Search, Plus } from 'lucide-react';
 import type { Role, Menu, User } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
@@ -28,6 +28,7 @@ export default function RolesPage() {
   const { items: statusItems } = useDictItems('common_status');
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [menuModalVisible, setMenuModalVisible] = useState(false);
@@ -44,14 +45,18 @@ export default function RolesPage() {
   const fetchRoles = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await request.get<Role[]>(`/api/roles?keyword=${encodeURIComponent(keyword)}`);
+      const res = await request.get<Role[]>(`/api/roles?keyword=${encodeURIComponent(submittedKeyword)}`);
       if (res.code === 0) setData(res.data);
     } finally {
       setLoading(false);
     }
-  }, [keyword]);
+  }, [submittedKeyword]);
 
   useEffect(() => { fetchRoles(); }, [fetchRoles]);
+
+  function handleSearch() {
+    setSubmittedKeyword(keyword);
+  }
 
   // 拉取菜单树（用于分配权限）
   const openMenuModal = async (role: Role) => {
@@ -191,29 +196,26 @@ export default function RolesPage() {
     },
   ];
 
-  const filtered = data.filter(
-    (r) =>
-      !keyword ||
-      r.name.includes(keyword) ||
-      r.code.includes(keyword),
-  );
-
   return (
     <div className="page-container">
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Input
-              prefix={<Search />}
+              prefix={<Search size={14} />}
               placeholder="搜索角色名称/编码"
               value={keyword}
               onChange={(v) => setKeyword(v)}
+              onEnterPress={handleSearch}
               style={{ width: 220 }}
               showClear
             />
-            <Button icon={<RefreshCw />} onClick={fetchRoles}>刷新</Button>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          </Space>
+          <Space>
             <Button
               type="primary"
+              theme="solid"
               icon={<Plus />}
               onClick={() => { setEditingRole(null); setModalVisible(true); }}
             >
@@ -227,7 +229,7 @@ export default function RolesPage() {
         <Table
           className="admin-table-nowrap"
           columns={columns}
-          dataSource={filtered}
+          dataSource={data}
           rowKey="id"
           loading={loading}
           pagination={{ pageSize: 10, showSizeChanger: true }}

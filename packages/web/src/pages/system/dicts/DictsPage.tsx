@@ -13,7 +13,7 @@ import {
   Empty,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RefreshCw, List } from 'lucide-react';
+import { Search, Plus, List } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import DictTag from '../../../components/DictTag';
@@ -31,6 +31,7 @@ export default function DictsPage() {
   const [dicts, setDicts] = useState<Dict[]>([]);
   const [dictsLoading, setDictsLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [dictModalVisible, setDictModalVisible] = useState(false);
   const [editingDict, setEditingDict] = useState<Dict | null>(null);
 
@@ -46,10 +47,9 @@ export default function DictsPage() {
   const fetchDicts = useCallback(async () => {
     setDictsLoading(true);
     try {
-      const res = await request.get<Dict[]>(`/api/dicts?keyword=${encodeURIComponent(keyword)}`);
+      const res = await request.get<Dict[]>(`/api/dicts?keyword=${encodeURIComponent(submittedKeyword)}`);
       if (res.code === 0) {
         setDicts(res.data);
-        // 若当前选中字典已被删除则清除
         if (selectedDict && !res.data.some((d) => d.id === selectedDict.id)) {
           setSelectedDict(null);
           setItems([]);
@@ -58,7 +58,7 @@ export default function DictsPage() {
     } finally {
       setDictsLoading(false);
     }
-  }, [keyword, selectedDict]);
+  }, [submittedKeyword, selectedDict]);
 
   const fetchItems = useCallback(async (dictId: number) => {
     setItemsLoading(true);
@@ -71,6 +71,10 @@ export default function DictsPage() {
   }, []);
 
   useEffect(() => { fetchDicts(); }, [fetchDicts]);
+
+  function handleSearch() {
+    setSubmittedKeyword(keyword);
+  }
 
   const selectDict = (dict: Dict) => {
     setSelectedDict(dict);
@@ -232,16 +236,18 @@ export default function DictsPage() {
           <Card style={{ marginBottom: 16 }}>
             <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
               <Input
-                prefix={<Search />}
+                prefix={<Search size={14} />}
                 placeholder="搜索字典名称/编码"
                 value={keyword}
                 onChange={(v) => setKeyword(v)}
+                onEnterPress={handleSearch}
                 showClear
                 style={{ flex: 1 }}
               />
-              <Button icon={<RefreshCw />} onClick={fetchDicts} />
+              <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
               <Button
                 type="primary"
+                theme="solid"
                 icon={<Plus />}
                 onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
               >
@@ -280,9 +286,9 @@ export default function DictsPage() {
                     <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
                   </Text>
                   <Space style={{ marginLeft: 'auto' }}>
-                    <Button icon={<RefreshCw />} onClick={() => fetchItems(selectedDict.id)} />
                     <Button
                       type="primary"
+                      theme="solid"
                       icon={<Plus />}
                       onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
                     >

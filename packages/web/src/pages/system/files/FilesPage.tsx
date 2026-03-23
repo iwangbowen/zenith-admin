@@ -10,7 +10,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, RefreshCw, Search } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -45,6 +45,7 @@ export default function FilesPage() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [keyword, setKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [defaultConfig, setDefaultConfig] = useState<FileStorageConfig | null>(null);
@@ -60,7 +61,7 @@ export default function FilesPage() {
     setLoading(true);
     try {
       const res = await request.get<PaginatedResponse<ManagedFile>>(
-        `/api/files?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(keyword)}`
+        `/api/files?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(submittedKeyword)}`
       );
       if (res.code === 0) {
         setData(res.data);
@@ -70,7 +71,7 @@ export default function FilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [keyword, page, pageSize]);
+  }, [submittedKeyword, page, pageSize]);
 
   useEffect(() => {
     fetchDefaultConfig();
@@ -79,6 +80,11 @@ export default function FilesPage() {
   useEffect(() => {
     fetchFiles();
   }, [fetchFiles]);
+
+  function handleSearch() {
+    setSubmittedKeyword(keyword);
+    if (page !== 1) setPage(1);
+  }
 
   const handlePickFile = () => {
     fileInputRef.current?.click();
@@ -217,19 +223,19 @@ export default function FilesPage() {
     <div className="page-container">
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="files-toolbar__left" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Space>
             <Input
-              prefix={<Search />}
+              prefix={<Search size={14} />}
               placeholder="搜索文件名 / 对象键 / 文件服务"
               value={keyword}
               onChange={setKeyword}
-              onEnterPress={() => {
-                setPage(1);
-                fetchFiles();
-              }}
+              onEnterPress={handleSearch}
               style={{ width: 280 }}
               showClear
             />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          </Space>
+          <Space>
             <div className="files-default-tip">
               <Text strong>默认文件服务：</Text>
               {defaultConfig ? (
@@ -240,18 +246,10 @@ export default function FilesPage() {
                   <Text>{defaultConfig.name}</Text>
                 </>
               ) : (
-                <Text type="danger">未配置默认文件服务，请先前往“文件配置”设置。</Text>
+                <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
               )}
             </div>
-          </div>
-          <Space>
-            <Button icon={<RefreshCw />} onClick={() => {
-              fetchDefaultConfig();
-              fetchFiles();
-            }}>
-              刷新
-            </Button>
-            <Button type="primary" icon={<Plus />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
+            <Button type="primary" theme="solid" icon={<Plus />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
               上传文件
             </Button>
             <input

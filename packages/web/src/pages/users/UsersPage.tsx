@@ -12,7 +12,7 @@ import {
   Avatar,
   Tag,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RefreshCw } from 'lucide-react';
+import { Search, Plus } from 'lucide-react';
 import type { User, Role, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
@@ -28,6 +28,7 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
@@ -57,17 +58,22 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const res = await request.get<PaginatedResponse<User>>(
-        `/api/users?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(keyword)}`
+        `/api/users?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(submittedKeyword)}`
       );
       if (res.code === 0) setData(res.data);
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword]);
+  }, [page, pageSize, submittedKeyword]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  function handleSearch() {
+    setSubmittedKeyword(keyword);
+    if (page !== 1) setPage(1);
+  }
 
   const handleCreate = async (values: CreateUserInput) => {
     const res = await request.post('/api/users', values);
@@ -179,17 +185,17 @@ export default function UsersPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Input
-              prefix={<Search />}
+              prefix={<Search size={14} />}
               placeholder="搜索用户名/昵称/邮箱"
               value={keyword}
               onChange={setKeyword}
-              onEnterPress={() => { setPage(1); fetchUsers(); }}
+              onEnterPress={handleSearch}
               style={{ width: 260 }}
               showClear
             />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           </Space>
           <Space>
-            <Button icon={<RefreshCw />} onClick={fetchUsers}>刷新</Button>
             <Button
               type="primary"
               theme="solid"
