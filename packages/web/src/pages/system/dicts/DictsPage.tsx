@@ -299,20 +299,22 @@ export default function DictsPage() {
           {selectedDict ? (
             <>
               <div className="search-area">
-                <div className="dicts-panel-toolbar" style={{ margin: 0 }}>
-                  <Text strong style={{ fontSize: 14 }}>
-                    字典项：{selectedDict.name}
-                    <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
-                  </Text>
-                  <Space style={{ marginLeft: 'auto' }}>
-                    <Button
-                      type="secondary"
-                      icon={<Plus size={14} />}
-                      onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
-                    >
-                      新增
-                    </Button>
-                  </Space>
+                <div className="responsive-toolbar">
+                  <div className="responsive-toolbar__left">
+                    <Space wrap>
+                      <Text strong style={{ fontSize: 14 }}>
+                        字典项：{selectedDict.name}
+                        <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
+                      </Text>
+                      <Button
+                        type="secondary"
+                        icon={<Plus size={14} />}
+                        onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
+                      >
+                        新增
+                      </Button>
+                    </Space>
+                  </div>
                 </div>
               </div>
               <div>

@@ -220,8 +220,12 @@ export default function MenusPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
-          <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>
+        <div className="responsive-toolbar">
+          <div className="responsive-toolbar__left">
+            <Space wrap>
+              <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>
+            </Space>
+          </div>
         </div>
       </div>
 
