@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { desc, eq, like, and, sql } from 'drizzle-orm';
+import { desc, eq, like, and, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { loginLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -13,10 +13,14 @@ loginLogsRoute.get('/', async (c) => {
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const username = c.req.query('username');
   const status = c.req.query('status') as 'success' | 'fail' | undefined;
+  const startTime = c.req.query('startTime');
+  const endTime = c.req.query('endTime');
 
   const conditions = [];
   if (username) conditions.push(like(loginLogs.username, `%${username}%`));
   if (status) conditions.push(eq(loginLogs.status, status));
+  if (startTime) conditions.push(gte(loginLogs.createdAt, new Date(startTime)));
+  if (endTime) conditions.push(lte(loginLogs.createdAt, new Date(endTime)));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 

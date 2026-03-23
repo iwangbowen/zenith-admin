@@ -3,6 +3,7 @@ import {
   Table,
   Button,
   Input,
+  Select,
   Space,
   Modal,
   Form,
@@ -11,6 +12,7 @@ import {
   Tree,
   Spin,
   Avatar,
+  DatePicker,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Role, Menu, User } from '@zenith/shared';
@@ -22,12 +24,18 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './RolesPage.css';
 
 export default function RolesPage() {
+  interface SearchParams {
+    keyword: string;
+    status: string;
+    timeRange: [Date, Date] | null;
+  }
+
+  const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: null };
   const formApi = useRef<any>(null);
   const [data, setData] = useState<Role[]>([]);
   const { items: statusItems } = useDictItems('common_status');
   const [loading, setLoading] = useState(false);
-  const [keyword, setKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [menuModalVisible, setMenuModalVisible] = useState(false);
@@ -41,25 +49,36 @@ export default function RolesPage() {
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
   const [userModalLoading, setUserModalLoading] = useState(false);
 
-  const fetchRoles = useCallback(async () => {
+  const fetchRoles = useCallback(async (params = searchParams) => {
     setLoading(true);
     try {
-      const res = await request.get<Role[]>(`/api/roles?keyword=${encodeURIComponent(submittedKeyword)}`);
+      const query = new URLSearchParams({
+        ...(params.keyword ? { keyword: params.keyword } : {}),
+        ...(params.status ? { status: params.status } : {}),
+        ...(params.timeRange
+          ? {
+              startTime: params.timeRange[0].toISOString(),
+              endTime: params.timeRange[1].toISOString(),
+            }
+          : {}),
+      }).toString();
+          const url = query ? `/api/roles?${query}` : '/api/roles';
+          const res = await request.get<Role[]>(url);
       if (res.code === 0) setData(res.data);
     } finally {
       setLoading(false);
     }
-  }, [submittedKeyword]);
+  }, [searchParams]);
 
-  useEffect(() => { fetchRoles(); }, [fetchRoles]);
+  useEffect(() => { void fetchRoles(); }, []);
 
   function handleSearch() {
-    setSubmittedKeyword(keyword);
+    void fetchRoles();
   }
 
   function handleReset() {
-    setKeyword('');
-    setSubmittedKeyword('');
+    setSearchParams(defaultSearchParams);
+    void fetchRoles(defaultSearchParams);
   }
 
   // 拉取菜单树（用于分配权限）
@@ -211,15 +230,32 @@ export default function RolesPage() {
     <div className="page-container">
       <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space>
+          <Space wrap>
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索角色名称/编码"
-              value={keyword}
-              onChange={(v) => setKeyword(v)}
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
               onEnterPress={handleSearch}
               style={{ width: 220 }}
               showClear
+            />
+            <Select
+              placeholder="请选择状态"
+              value={searchParams.status || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+              style={{ width: 140 }}
+              optionList={[
+                { value: '', label: '全部状态' },
+                ...statusItems.map((item) => ({ value: item.value, label: item.label })),
+              ]}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={["开始时间", "结束时间"]}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              style={{ width: 360 }}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>

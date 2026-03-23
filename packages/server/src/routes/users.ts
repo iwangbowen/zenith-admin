@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import bcrypt from 'bcryptjs';
-import { eq, like, sql, and, or, inArray } from 'drizzle-orm';
+import { eq, like, sql, and, or, inArray, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { users, userRoles, roles } from '../db/schema';
 import { createUserSchema, updateUserSchema } from '@zenith/shared';
@@ -50,6 +50,8 @@ usersRouter.get('/', async (c) => {
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const keyword = c.req.query('keyword') || '';
   const status = c.req.query('status');
+  const startTime = c.req.query('startTime');
+  const endTime = c.req.query('endTime');
 
   const conditions = [];
   if (keyword) {
@@ -59,6 +61,12 @@ usersRouter.get('/', async (c) => {
   }
   if (status && (status === 'active' || status === 'disabled')) {
     conditions.push(eq(users.status, status));
+  }
+  if (startTime) {
+    conditions.push(gte(users.createdAt, new Date(startTime)));
+  }
+  if (endTime) {
+    conditions.push(lte(users.createdAt, new Date(endTime)));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;

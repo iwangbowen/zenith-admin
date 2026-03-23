@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  
   Table,
   Button,
   Input,
+  Select,
   Space,
   Modal,
   Form,
@@ -11,6 +11,7 @@ import {
   Popconfirm,
   Avatar,
   Tag,
+  DatePicker,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { User, Role, PaginatedResponse } from '@zenith/shared';
@@ -22,13 +23,19 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './UsersPage.css';
 
 export default function UsersPage() {
+  interface SearchParams {
+    keyword: string;
+    status: string;
+    timeRange: [Date, Date] | null;
+  }
+
+  const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: null };
   const formApi = useRef<any>(null);
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [keyword, setKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
@@ -54,31 +61,47 @@ export default function UsersPage() {
         status: 'active',
       };
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
     try {
+      const query = new URLSearchParams({
+        page: String(p),
+        pageSize: String(ps),
+        ...(params.keyword ? { keyword: params.keyword } : {}),
+        ...(params.status ? { status: params.status } : {}),
+        ...(params.timeRange
+          ? {
+              startTime: params.timeRange[0].toISOString(),
+              endTime: params.timeRange[1].toISOString(),
+            }
+          : {}),
+      }).toString();
       const res = await request.get<PaginatedResponse<User>>(
-        `/api/users?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(submittedKeyword)}`
+        `/api/users?${query}`
       );
-      if (res.code === 0) setData(res.data);
+      if (res.code === 0) {
+        setData(res.data);
+        setPage(res.data.page);
+        setPageSize(res.data.pageSize);
+      }
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, submittedKeyword]);
+  }, [page, pageSize, searchParams]);
 
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    void fetchUsers();
+  }, []);
 
   function handleSearch() {
-    setSubmittedKeyword(keyword);
-    if (page !== 1) setPage(1);
+    setPage(1);
+    void fetchUsers(1, pageSize);
   }
 
   function handleReset() {
-    setKeyword('');
-    setSubmittedKeyword('');
-    if (page !== 1) setPage(1);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchUsers(1, pageSize, defaultSearchParams);
   }
 
   const handleModalOk = async () => {
@@ -186,15 +209,32 @@ export default function UsersPage() {
     <div className="page-container">
       <div className="search-area">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space>
+          <Space wrap>
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索用户名/昵称/邮箱"
-              value={keyword}
-              onChange={setKeyword}
+              value={searchParams.keyword}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
               onEnterPress={handleSearch}
               style={{ width: 260 }}
               showClear
+            />
+            <Select
+              placeholder="请选择状态"
+              value={searchParams.status || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+              style={{ width: 140 }}
+              optionList={[
+                { value: '', label: '全部状态' },
+                ...statusItems.map((item) => ({ value: item.value, label: item.label })),
+              ]}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={["开始时间", "结束时间"]}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              style={{ width: 360 }}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -224,10 +264,9 @@ export default function UsersPage() {
           currentPage: page,
           pageSize: pageSize,
           total: data?.total || 0,
-          onPageChange: setPage,
+          onPageChange: (currentPage) => { void fetchUsers(currentPage, pageSize); },
           onPageSizeChange: (size) => {
-            setPageSize(size);
-            setPage(1);
+            void fetchUsers(1, size);
           },
           showTotal: true,
           showSizeChanger: true,

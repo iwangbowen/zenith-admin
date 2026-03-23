@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { eq, and, like, or, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { roles, roleMenus, userRoles, users } from '../db/schema';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
@@ -21,19 +21,35 @@ function toRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
 // 角色列表
 rolesRouter.get('/', async (c) => {
   const keyword = c.req.query('keyword') ?? '';
+  const status = c.req.query('status');
+  const startTime = c.req.query('startTime');
+  const endTime = c.req.query('endTime');
+
+  const conditions = [];
+  if (keyword) {
+    conditions.push(or(like(roles.name, `%${keyword}%`), like(roles.code, `%${keyword}%`)));
+  }
+  if (status && (status === 'active' || status === 'disabled')) {
+    conditions.push(eq(roles.status, status));
+  }
+  if (startTime) {
+    conditions.push(gte(roles.createdAt, new Date(startTime)));
+  }
+  if (endTime) {
+    conditions.push(lte(roles.createdAt, new Date(endTime)));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
   const list = await db
     .select()
     .from(roles)
+    .where(where)
     .orderBy(roles.id);
-
-  const filtered = keyword
-    ? list.filter((r) => r.name.includes(keyword) || r.code.includes(keyword))
-    : list;
 
   return c.json({
     code: 0,
     message: 'ok',
-    data: filtered.map((r) => toRole(r)),
+    data: list.map((r) => toRole(r)),
   });
 });
 
