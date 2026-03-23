@@ -2,17 +2,18 @@ import { Hono } from 'hono';
 import bcrypt from 'bcryptjs';
 import { eq, like, sql, and, or, inArray, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
-import { users, userRoles, roles } from '../db/schema';
-import { createUserSchema, updateUserSchema } from '@zenith/shared';
+import { users, userRoles, roles, departments, positions, userPositions } from '../db/schema';
+import { createUserSchema, updateUserSchema, resetUserPasswordSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { auditLog } from '../middleware/audit';
+import type { Role, Position, User } from '@zenith/shared';
 
 const usersRouter = new Hono();
 
 usersRouter.use('*', authMiddleware);
 
 async function getUserRolesMap(userIds: number[]) {
-  if (userIds.length === 0) return new Map<number, object[]>();
+  if (userIds.length === 0) return new Map<number, Role[]>();
   const rows = await db
     .select({
       userId: userRoles.userId,
@@ -28,11 +29,48 @@ async function getUserRolesMap(userIds: number[]) {
     .innerJoin(roles, eq(userRoles.roleId, roles.id))
     .where(inArray(userRoles.userId, userIds));
 
-  const map = new Map<number, object[]>();
+  const map = new Map<number, Role[]>();
   for (const row of rows) {
     const { userId, ...role } = row;
     if (!map.has(userId)) map.set(userId, []);
-    map.get(userId)!.push({ ...role, createdAt: role.createdAt.toISOString(), updatedAt: role.updatedAt.toISOString() });
+    map.get(userId)!.push({
+      ...role,
+      description: role.description ?? undefined,
+      createdAt: role.createdAt.toISOString(),
+      updatedAt: role.updatedAt.toISOString(),
+    });
+  }
+  return map;
+}
+
+async function getUserPositionsMap(userIds: number[]) {
+  if (userIds.length === 0) return new Map<number, Position[]>();
+  const rows = await db
+    .select({
+      userId: userPositions.userId,
+      id: positions.id,
+      name: positions.name,
+      code: positions.code,
+      sort: positions.sort,
+      status: positions.status,
+      remark: positions.remark,
+      createdAt: positions.createdAt,
+      updatedAt: positions.updatedAt,
+    })
+    .from(userPositions)
+    .innerJoin(positions, eq(userPositions.positionId, positions.id))
+    .where(inArray(userPositions.userId, userIds));
+
+  const map = new Map<number, Position[]>();
+  for (const row of rows) {
+    const { userId, ...position } = row;
+    if (!map.has(userId)) map.set(userId, []);
+    map.get(userId)!.push({
+      ...position,
+      remark: position.remark ?? undefined,
+      createdAt: position.createdAt.toISOString(),
+      updatedAt: position.updatedAt.toISOString(),
+    });
   }
   return map;
 }
@@ -42,6 +80,96 @@ async function setUserRoles(userId: number, roleIds: number[]) {
   if (roleIds.length > 0) {
     await db.insert(userRoles).values(roleIds.map((roleId) => ({ userId, roleId })));
   }
+}
+
+async function setUserPositions(userId: number, positionIds: number[]) {
+  await db.delete(userPositions).where(eq(userPositions.userId, userId));
+  if (positionIds.length > 0) {
+    await db.insert(userPositions).values(positionIds.map((positionId) => ({ userId, positionId })));
+  }
+}
+
+async function ensureDepartmentExists(departmentId?: number | null) {
+  if (departmentId === undefined || departmentId === null) {
+    return null;
+  }
+
+  const [department] = await db
+    .select({ id: departments.id })
+    .from(departments)
+    .where(eq(departments.id, departmentId))
+    .limit(1);
+
+  return department ? null : '所属部门不存在';
+}
+
+async function ensureRoleIdsExist(roleIds: number[]) {
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  if (uniqueRoleIds.length === 0) {
+    return null;
+  }
+
+  const existingRoles = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(inArray(roles.id, uniqueRoleIds));
+
+  return existingRoles.length === uniqueRoleIds.length ? null : '存在无效角色';
+}
+
+async function ensurePositionIdsExist(positionIds: number[]) {
+  const uniquePositionIds = Array.from(new Set(positionIds));
+  if (uniquePositionIds.length === 0) {
+    return null;
+  }
+
+  const existingPositions = await db
+    .select({ id: positions.id })
+    .from(positions)
+    .where(inArray(positions.id, uniquePositionIds));
+
+  return existingPositions.length === uniquePositionIds.length ? null : '存在无效岗位';
+}
+
+type UserListRow = {
+  id: number;
+  username: string;
+  nickname: string;
+  email: string;
+  avatar: string | null;
+  departmentId: number | null;
+  departmentName: string | null;
+  status: 'active' | 'disabled';
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+async function toPublicUsers(rows: UserListRow[]): Promise<User[]> {
+  const userIds = rows.map((row) => row.id);
+  const [rolesMap, positionsMap] = await Promise.all([
+    getUserRolesMap(userIds),
+    getUserPositionsMap(userIds),
+  ]);
+
+  return rows.map((row) => {
+    const roleList = rolesMap.get(row.id) ?? [];
+    const positionList = positionsMap.get(row.id) ?? [];
+    return {
+      id: row.id,
+      username: row.username,
+      nickname: row.nickname,
+      email: row.email,
+      avatar: row.avatar ?? undefined,
+      departmentId: row.departmentId,
+      departmentName: row.departmentName,
+      positionIds: positionList.map((item) => item.id),
+      positions: positionList,
+      roles: roleList,
+      status: row.status,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    } satisfies User;
+  });
 }
 
 // 用户列表
@@ -79,29 +207,25 @@ usersRouter.get('/', async (c) => {
       nickname: users.nickname,
       email: users.email,
       avatar: users.avatar,
+      departmentId: users.departmentId,
+      departmentName: departments.name,
       status: users.status,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     })
     .from(users)
+    .leftJoin(departments, eq(users.departmentId, departments.id))
     .where(where)
     .limit(pageSize)
     .offset((page - 1) * pageSize)
     .orderBy(users.id);
-
-  const userIds = list.map((u) => u.id);
-  const rolesMap = await getUserRolesMap(userIds);
+  const publicUsers = await toPublicUsers(list);
 
   return c.json({
     code: 0,
     message: 'ok',
     data: {
-      list: list.map((u) => ({
-        ...u,
-        roles: rolesMap.get(u.id) ?? [],
-        createdAt: u.createdAt.toISOString(),
-        updatedAt: u.updatedAt.toISOString(),
-      })),
+      list: publicUsers,
       total: Number(count),
       page,
       pageSize,
@@ -117,18 +241,47 @@ usersRouter.post('/', auditLog({ description: '创建用户', module: '用户管
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
-  const { password, roleIds, ...rest } = result.data;
+  const { password, roleIds, positionIds, departmentId, ...rest } = result.data;
+  const nextRoleIds = Array.from(new Set(roleIds));
+  const nextPositionIds = Array.from(new Set(positionIds));
+
+  const [departmentError, roleError, positionError] = await Promise.all([
+    ensureDepartmentExists(departmentId),
+    ensureRoleIdsExist(nextRoleIds),
+    ensurePositionIdsExist(nextPositionIds),
+  ]);
+
+  const referenceError = departmentError ?? roleError ?? positionError;
+  if (referenceError) {
+    return c.json({ code: 400, message: referenceError, data: null }, 400);
+  }
+
   const hashedPassword = await bcrypt.hash(password, 10);
 
   try {
-    const [user] = await db.insert(users).values({ ...rest, password: hashedPassword }).returning();
-    await setUserRoles(user.id, roleIds);
-    const userRoleList = (await getUserRolesMap([user.id])).get(user.id) ?? [];
-    const { password: _, ...userInfo } = user;
+    const [user] = await db.insert(users).values({
+      ...rest,
+      password: hashedPassword,
+      departmentId: departmentId ?? null,
+    }).returning();
+    await setUserRoles(user.id, nextRoleIds);
+    await setUserPositions(user.id, nextPositionIds);
+    const publicUser = (await toPublicUsers([{
+      id: user.id,
+      username: user.username,
+      nickname: user.nickname,
+      email: user.email,
+      avatar: user.avatar,
+      departmentId: user.departmentId,
+      departmentName: departmentId ? (await db.select({ name: departments.name }).from(departments).where(eq(departments.id, departmentId)).limit(1))[0]?.name ?? null : null,
+      status: user.status,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    }]))[0];
     return c.json({
       code: 0,
       message: '创建成功',
-      data: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+      data: publicUser,
     });
   } catch (err: any) {
     if (err.code === '23505') {
@@ -147,11 +300,30 @@ usersRouter.put('/:id', auditLog({ description: '更新用户', module: '用户�
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
-  const { roleIds, ...rest } = result.data;
+  const { roleIds, positionIds, departmentId, ...rest } = result.data;
+  const nextRoleIds = roleIds ? Array.from(new Set(roleIds)) : undefined;
+  const nextPositionIds = positionIds ? Array.from(new Set(positionIds)) : undefined;
+
+  const [departmentError, roleError, positionError] = await Promise.all([
+    ensureDepartmentExists(departmentId),
+    ensureRoleIdsExist(nextRoleIds ?? []),
+    ensurePositionIdsExist(nextPositionIds ?? []),
+  ]);
+
+  const referenceError = departmentError ?? roleError ?? positionError;
+  if (referenceError) {
+    return c.json({ code: 400, message: referenceError, data: null }, 400);
+  }
+
+  const nextValues = {
+    ...rest,
+    ...(departmentId === undefined ? {} : { departmentId: departmentId ?? null }),
+    updatedAt: new Date(),
+  };
 
   const [user] = await db
     .update(users)
-    .set({ ...rest, updatedAt: new Date() })
+    .set(nextValues)
     .where(eq(users.id, id))
     .returning();
 
@@ -159,17 +331,53 @@ usersRouter.put('/:id', auditLog({ description: '更新用户', module: '用户�
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }
 
-  if (roleIds !== undefined) {
-    await setUserRoles(id, roleIds);
+  if (nextRoleIds !== undefined) {
+    await setUserRoles(id, nextRoleIds);
+  }
+  if (nextPositionIds !== undefined) {
+    await setUserPositions(id, nextPositionIds);
   }
 
-  const userRoleList = (await getUserRolesMap([id])).get(id) ?? [];
-  const { password: _, ...userInfo } = user;
+  const departmentName = user.departmentId
+    ? (await db.select({ name: departments.name }).from(departments).where(eq(departments.id, user.departmentId)).limit(1))[0]?.name ?? null
+    : null;
+  const publicUser = (await toPublicUsers([{
+    id: user.id,
+    username: user.username,
+    nickname: user.nickname,
+    email: user.email,
+    avatar: user.avatar,
+    departmentId: user.departmentId,
+    departmentName,
+    status: user.status,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  }]))[0];
   return c.json({
     code: 0,
     message: '更新成功',
-    data: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+    data: publicUser,
   });
+});
+
+// 修改指定用户密码
+usersRouter.put('/:id/password', auditLog({ description: '修改用户密码', module: '用户管理' }), async (c) => {
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json();
+  const result = resetUserPasswordSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+  }
+
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, id)).limit(1);
+  if (!user) {
+    return c.json({ code: 404, message: '用户不存在', data: null }, 404);
+  }
+
+  const hashedPassword = await bcrypt.hash(result.data.password, 10);
+  await db.update(users).set({ password: hashedPassword, updatedAt: new Date() }).where(eq(users.id, id));
+
+  return c.json({ code: 0, message: '密码修改成功', data: null });
 });
 
 // 删除用户

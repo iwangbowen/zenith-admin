@@ -4,6 +4,10 @@ export interface User {
   nickname: string;
   email: string;
   avatar?: string;
+  departmentId?: number | null;
+  departmentName?: string | null;
+  positionIds?: number[];
+  positions?: Position[];
   roles: Role[];
   status: 'active' | 'disabled';
   createdAt: string;
@@ -63,6 +67,34 @@ export interface Role {
   createdAt: string;
   updatedAt: string;
   menuIds?: number[];
+}
+
+// ─── 部门 ─────────────────────────────────────────────────────────────────────
+export interface Department {
+  id: number;
+  parentId: number;
+  name: string;
+  code: string;
+  leader?: string;
+  phone?: string;
+  email?: string;
+  sort: number;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
+  children?: Department[];
+}
+
+// ─── 岗位 ─────────────────────────────────────────────────────────────────────
+export interface Position {
+  id: number;
+  name: string;
+  code: string;
+  sort: number;
+  status: 'active' | 'disabled';
+  remark?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── 字典 ─────────────────────────────────────────────────────────────────────

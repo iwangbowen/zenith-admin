@@ -17,6 +17,8 @@ export const createUserSchema = z.object({
   nickname: z.string().min(1).max(32),
   email: z.string().email(),
   password: z.string().min(6).max(64),
+  departmentId: z.number().int().positive().nullable().optional(),
+  positionIds: z.array(z.number().int().positive()).default([]),
   roleIds: z.array(z.number().int()).default([]),
   status: z.enum(['active', 'disabled']).default('active'),
 });
@@ -26,6 +28,10 @@ export const updateUserSchema = createUserSchema.partial().omit({ password: true
 export const changePasswordSchema = z.object({
   oldPassword: z.string().min(6, '原密码至少6个字符').max(64),
   newPassword: z.string().min(6, '新密码至少6个字符').max(64),
+});
+
+export const resetUserPasswordSchema = z.object({
+  password: z.string().min(6, '新密码至少6个字符').max(64),
 });
 
 export const updateProfileSchema = z.object({
@@ -68,6 +74,34 @@ export const assignRoleMenusSchema = z.object({
 export const assignRoleUsersSchema = z.object({
   userIds: z.array(z.number().int()),
 });
+
+// ─── 部门 Schema ──────────────────────────────────────────────────────────────
+export const createDepartmentSchema = z.object({
+  parentId: z.number().int().min(0).default(0),
+  name: z.string().min(1, '部门名称不能为空').max(64),
+  code: z.string().min(1, '部门编码不能为空').max(64).regex(/^[a-zA-Z0-9_]+$/, '部门编码只能包含字母、数字和下划线'),
+  leader: z.string().max(32).optional(),
+  phone: z.string().max(32).optional(),
+  email: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().email('邮箱格式不正确').optional()
+  ),
+  sort: z.number().int().default(0),
+  status: z.enum(['active', 'disabled']).default('active'),
+});
+
+export const updateDepartmentSchema = createDepartmentSchema.partial();
+
+// ─── 岗位 Schema ──────────────────────────────────────────────────────────────
+export const createPositionSchema = z.object({
+  name: z.string().min(1, '岗位名称不能为空').max(64),
+  code: z.string().min(1, '岗位编码不能为空').max(64).regex(/^[a-zA-Z0-9_]+$/, '岗位编码只能包含字母、数字和下划线'),
+  sort: z.number().int().default(0),
+  status: z.enum(['active', 'disabled']).default('active'),
+  remark: z.string().max(256).optional(),
+});
+
+export const updatePositionSchema = createPositionSchema.partial();
 
 // ─── 字典 Schema ──────────────────────────────────────────────────────────────
 export const createDictSchema = z.object({
@@ -131,12 +165,17 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ResetUserPasswordInput = z.infer<typeof resetUserPasswordSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type CreateMenuInput = z.infer<typeof createMenuSchema>;
 export type UpdateMenuInput = z.infer<typeof updateMenuSchema>;
 export type CreateRoleInput = z.infer<typeof createRoleSchema>;
 export type UpdateRoleInput = z.infer<typeof updateRoleSchema>;
 export type AssignRoleMenusInput = z.infer<typeof assignRoleMenusSchema>;
+export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>;
+export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>;
+export type CreatePositionInput = z.infer<typeof createPositionSchema>;
+export type UpdatePositionInput = z.infer<typeof updatePositionSchema>;
 export type CreateDictInput = z.infer<typeof createDictSchema>;
 export type UpdateDictInput = z.infer<typeof updateDictSchema>;
 export type CreateDictItemInput = z.infer<typeof createDictItemSchema>;

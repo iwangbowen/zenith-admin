@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, fileStorageConfigs } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, fileStorageConfigs, departments, positions, userPositions } from './schema';
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 import logger from '../lib/logger';
@@ -36,21 +36,29 @@ async function seed() {
     { id: 10, parentId: 3, title: '新增用户',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:user:create' },
     { id: 11, parentId: 3, title: '编辑用户',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:user:update' },
     { id: 12, parentId: 3, title: '删除用户',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:user:delete' },
-    { id: 4,  parentId: 2, title: '菜单管理',   name: 'SystemMenus',   path: '/system/menus', component: 'system/menus/MenusPage',  icon: 'LayoutList',     type: 'menu' as const,      sort: 2,  status: 'active' as const, visible: true, permission: 'system:menu:list' },
+    { id: 36, parentId: 2, title: '部门管理',   name: 'SystemDepartments', path: '/system/departments', component: 'system/departments/DepartmentsPage', icon: 'Building2', type: 'menu' as const, sort: 2, status: 'active' as const, visible: true, permission: 'system:department:list' },
+    { id: 37, parentId: 36, title: '新增部门',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:department:create' },
+    { id: 38, parentId: 36, title: '编辑部门',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:department:update' },
+    { id: 39, parentId: 36, title: '删除部门',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:department:delete' },
+    { id: 40, parentId: 2, title: '岗位管理',   name: 'SystemPositions', path: '/system/positions', component: 'system/positions/PositionsPage', icon: 'BriefcaseBusiness', type: 'menu' as const, sort: 3, status: 'active' as const, visible: true, permission: 'system:position:list' },
+    { id: 41, parentId: 40, title: '新增岗位',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:position:create' },
+    { id: 42, parentId: 40, title: '编辑岗位',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:position:update' },
+    { id: 43, parentId: 40, title: '删除岗位',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:position:delete' },
+    { id: 4,  parentId: 2, title: '菜单管理',   name: 'SystemMenus',   path: '/system/menus', component: 'system/menus/MenusPage',  icon: 'LayoutList',     type: 'menu' as const,      sort: 4,  status: 'active' as const, visible: true, permission: 'system:menu:list' },
     { id: 13, parentId: 4, title: '新增菜单',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:menu:create' },
     { id: 14, parentId: 4, title: '编辑菜单',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:menu:update' },
     { id: 15, parentId: 4, title: '删除菜单',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:menu:delete' },
-    { id: 5,  parentId: 2, title: '角色管理',   name: 'SystemRoles',   path: '/system/roles', component: 'system/roles/RolesPage',  icon: 'ShieldCheck',    type: 'menu' as const,      sort: 3,  status: 'active' as const, visible: true, permission: 'system:role:list' },
+    { id: 5,  parentId: 2, title: '角色管理',   name: 'SystemRoles',   path: '/system/roles', component: 'system/roles/RolesPage',  icon: 'ShieldCheck',    type: 'menu' as const,      sort: 5,  status: 'active' as const, visible: true, permission: 'system:role:list' },
     { id: 16, parentId: 5, title: '新增角色',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:role:create' },
     { id: 17, parentId: 5, title: '编辑角色',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:role:update' },
     { id: 18, parentId: 5, title: '删除角色',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:role:delete' },
     { id: 19, parentId: 5, title: '分配菜单',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:role:assign' },
-    { id: 6,  parentId: 2, title: '字典管理',   name: 'SystemDicts',   path: '/system/dicts', component: 'system/dicts/DictsPage',  icon: 'NotepadText',    type: 'menu' as const, sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:list' },
-    { id: 8,  parentId: 2, title: '文件管理',   name: 'SystemFiles',   path: undefined, component: undefined,        icon: 'FolderOpen',     type: 'directory' as const, sort: 5,  status: 'active' as const, visible: true, permission: 'system:file:list' },
-    { id: 34, parentId: 2, title: '审计日志',   name: 'SystemAuditLogs', path: undefined, component: undefined, icon: 'ClipboardMinus',  type: 'directory' as const, sort: 7,  status: 'active' as const, visible: true },
+    { id: 6,  parentId: 2, title: '字典管理',   name: 'SystemDicts',   path: '/system/dicts', component: 'system/dicts/DictsPage',  icon: 'NotepadText',    type: 'menu' as const, sort: 6,  status: 'active' as const, visible: true, permission: 'system:dict:list' },
+    { id: 8,  parentId: 2, title: '文件管理',   name: 'SystemFiles',   path: undefined, component: undefined,        icon: 'FolderOpen',     type: 'directory' as const, sort: 7,  status: 'active' as const, visible: true, permission: 'system:file:list' },
+    { id: 34, parentId: 2, title: '审计日志',   name: 'SystemAuditLogs', path: undefined, component: undefined, icon: 'ClipboardMinus',  type: 'directory' as const, sort: 9,  status: 'active' as const, visible: true },
     { id: 32, parentId: 34, title: '登录日志',   name: 'SystemLoginLogs', path: '/system/login-logs', component: 'system/login-logs/LoginLogsPage', icon: 'List',       type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true },
     { id: 33, parentId: 34, title: '操作日志',   name: 'SystemOperationLogs', path: '/system/operation-logs', component: 'system/operation-logs/OperationLogsPage', icon: 'ClipboardList', type: 'menu' as const, sort: 2, status: 'active' as const, visible: true },
-    { id: 9,  parentId: 2, title: '服务监控',   name: 'SystemMonitor', path: '/system/monitor', component: 'system/monitor/MonitorPage', icon: 'Activity',       type: 'menu' as const,      sort: 6,  status: 'active' as const, visible: true },
+    { id: 9,  parentId: 2, title: '服务监控',   name: 'SystemMonitor', path: '/system/monitor', component: 'system/monitor/MonitorPage', icon: 'Activity',       type: 'menu' as const,      sort: 8,  status: 'active' as const, visible: true },
     { id: 24, parentId: 8, title: '文件配置',   name: 'SystemFileConfigs', path: '/system/file-configs', component: 'system/file-configs/FileStorageConfigsPage', icon: 'HardDriveUpload', type: 'menu' as const, sort: 1, status: 'active' as const, visible: true, permission: 'system:file:config' },
     { id: 25, parentId: 8, title: '文件列表',   name: 'SystemFileList', path: '/system/files', component: 'system/files/FilesPage',  icon: 'Files',          type: 'menu' as const, sort: 2, status: 'active' as const, visible: true, permission: 'system:file:list' },
     { id: 26, parentId: 24, title: '新增配置',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:file:config:create' },
@@ -63,7 +71,7 @@ async function seed() {
     { id: 21, parentId: 6, title: '编辑字典',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:dict:update' },
     { id: 22, parentId: 6, title: '删除字典',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:dict:delete' },
     { id: 23, parentId: 6, title: '管理字典项',  name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 4,  status: 'active' as const, visible: true, permission: 'system:dict:item' },
-    { id: 35, parentId: 2, title: '通知公告',   name: 'SystemNotices', path: '/system/notices', component: 'system/notices/NoticesPage', icon: 'BellRing',   type: 'menu' as const,      sort: 8,  status: 'active' as const, visible: true },
+    { id: 35, parentId: 2, title: '通知公告',   name: 'SystemNotices', path: '/system/notices', component: 'system/notices/NoticesPage', icon: 'BellRing',   type: 'menu' as const,      sort: 10,  status: 'active' as const, visible: true },
     { id: 7,  parentId: 0, title: '组件示例',   name: 'Components',    path: '/components', component: 'components/ComponentsPage',    icon: 'Component',      type: 'menu' as const,      sort: 99, status: 'active' as const, visible: false },
   ];
   for (const row of menuRows) {
@@ -109,14 +117,61 @@ async function seed() {
   }
   logger.info('  ✔ Role-menu bindings seeded');
 
+  // ─── 4. 部门数据 ──────────────────────────────────────────────────────────
+  const departmentRows = [
+    { id: 1, parentId: 0, name: '总部', code: 'headquarters', leader: '管理员', phone: '13800000000', email: 'admin@zenith.dev', sort: 1, status: 'active' as const },
+    { id: 2, parentId: 1, name: '技术部', code: 'technology', leader: '管理员', phone: '13800000001', email: 'tech@zenith.dev', sort: 1, status: 'active' as const },
+  ];
+  for (const row of departmentRows) {
+    await db.insert(departments).values(row).onConflictDoUpdate({
+      target: departments.id,
+      set: {
+        parentId: row.parentId,
+        name: row.name,
+        code: row.code,
+        leader: row.leader,
+        phone: row.phone,
+        email: row.email,
+        sort: row.sort,
+        status: row.status,
+        updatedAt: new Date(),
+      },
+    });
+  }
+  await db.execute(sql`SELECT setval('departments_id_seq', GREATEST((SELECT MAX(id) FROM departments), 1))`);
+  logger.info('  ✔ Departments upserted');
+
+  // ─── 5. 岗位数据 ──────────────────────────────────────────────────────────
+  const positionRows = [
+    { id: 1, name: '系统管理员', code: 'system_admin', sort: 1, status: 'active' as const, remark: '默认管理员岗位' },
+    { id: 2, name: '开发工程师', code: 'developer', sort: 2, status: 'active' as const, remark: '默认技术岗位' },
+  ];
+  for (const row of positionRows) {
+    await db.insert(positions).values(row).onConflictDoUpdate({
+      target: positions.id,
+      set: {
+        name: row.name,
+        code: row.code,
+        sort: row.sort,
+        status: row.status,
+        remark: row.remark,
+        updatedAt: new Date(),
+      },
+    });
+  }
+  await db.execute(sql`SELECT setval('positions_id_seq', GREATEST((SELECT MAX(id) FROM positions), 1))`);
+  logger.info('  ✔ Positions upserted');
+
   // 管理员账号绑定超级管理员角色
   const [adminUser] = await db.select({ id: users.id }).from(users).where(eq(users.username, 'admin')).limit(1);
   if (adminUser) {
+    await db.update(users).set({ departmentId: 1, updatedAt: new Date() }).where(eq(users.id, adminUser.id));
     await db.insert(userRoles).values({ userId: adminUser.id, roleId: 1 }).onConflictDoNothing();
+    await db.insert(userPositions).values({ userId: adminUser.id, positionId: 1 }).onConflictDoNothing();
     logger.info('  ✔ Admin user-role binding seeded');
   }
 
-  // ─── 4. 字典数据 ──────────────────────────────────────────────────────────
+  // ─── 6. 字典数据 ──────────────────────────────────────────────────────────
   const dictRows = [
     { id: 1, name: '通用状态',     code: 'common_status',        description: '通用启用/禁用状态' },
     { id: 3, name: '菜单类型',     code: 'menu_type',            description: '菜单节点类型' },

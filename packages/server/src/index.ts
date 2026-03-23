@@ -6,6 +6,8 @@ import logger from './lib/logger';
 import { httpLogger } from './middleware/logger';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
+import departmentsRoutes from './routes/departments';
+import positionsRoutes from './routes/positions';
 import menusRoutes from './routes/menus';
 import rolesRoutes from './routes/roles';
 import dictsRoutes from './routes/dicts';
@@ -23,6 +25,8 @@ app.use('*', httpLogger);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/users', usersRoutes);
+app.route('/api/departments', departmentsRoutes);
+app.route('/api/positions', positionsRoutes);
 app.route('/api/menus', menusRoutes);
 app.route('/api/roles', rolesRoutes);
 app.route('/api/dicts', dictsRoutes);

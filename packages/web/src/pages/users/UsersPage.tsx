@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Table,
   Button,
@@ -14,7 +14,7 @@ import {
   DatePicker,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, RotateCcw } from 'lucide-react';
-import type { User, Role, PaginatedResponse } from '@zenith/shared';
+import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import DictTag from '../../components/DictTag';
@@ -22,41 +22,66 @@ import { useDictItems } from '../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import './UsersPage.css';
 
-export default function UsersPage() {
-  interface SearchParams {
-    keyword: string;
-    status: string;
-    timeRange: [Date, Date] | null;
-  }
+interface SearchParams {
+  keyword: string;
+  status: string;
+  timeRange: [Date, Date] | null;
+}
 
-  const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: null };
+const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: null };
+
+export default function UsersPage() {
   const formApi = useRef<any>(null);
+  const passwordFormApi = useRef<any>(null);
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [passwordUser, setPasswordUser] = useState<User | null>(null);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
+  const [allPositions, setAllPositions] = useState<Position[]>([]);
 
   const { items: statusItems } = useDictItems('common_status');
 
   useEffect(() => {
-    request.get<Role[]>('/api/roles').then((res) => {
-      if (res.code === 0) setAllRoles(res.data);
+    Promise.all([
+      request.get<Role[]>('/api/roles'),
+      request.get<Department[]>('/api/departments/flat'),
+      request.get<Position[]>('/api/positions'),
+    ]).then(([rolesRes, departmentsRes, positionsRes]) => {
+      if (rolesRes.code === 0) setAllRoles(rolesRes.data);
+      if (departmentsRes.code === 0) setAllDepartments(departmentsRes.data);
+      if (positionsRes.code === 0) setAllPositions(positionsRes.data);
     });
   }, []);
+
+  const departmentOptionList = useMemo(
+    () => allDepartments.map((item) => ({ value: item.id, label: item.name })),
+    [allDepartments]
+  );
+
+  const positionOptionList = useMemo(
+    () => allPositions.map((item) => ({ value: item.id, label: item.name })),
+    [allPositions]
+  );
 
   const formInitValues = editingUser
     ? {
         username: editingUser.username,
         nickname: editingUser.nickname,
         email: editingUser.email,
+        departmentId: editingUser.departmentId ?? undefined,
+        positionIds: editingUser.positionIds ?? editingUser.positions?.map((item) => item.id) ?? [],
         roleIds: editingUser.roles.map((r) => r.id),
         status: editingUser.status,
       }
     : {
+        positionIds: [],
         roleIds: [],
         status: 'active',
       };
@@ -76,9 +101,7 @@ export default function UsersPage() {
             }
           : {}),
       }).toString();
-      const res = await request.get<PaginatedResponse<User>>(
-        `/api/users?${query}`
-      );
+      const res = await request.get<PaginatedResponse<User>>(`/api/users?${query}`);
       if (res.code === 0) {
         setData(res.data);
         setPage(res.data.page);
@@ -107,18 +130,54 @@ export default function UsersPage() {
   const handleModalOk = async () => {
     let values: any;
     try {
-      values = await formApi.current!.validate();
+      values = await formApi.current?.validate();
     } catch {
       throw new Error('validation');
     }
+
+    const payload = {
+      ...values,
+      departmentId: values.departmentId ?? null,
+      positionIds: values.positionIds ?? [],
+      roleIds: values.roleIds ?? [],
+    };
+
     const res = editingUser
-      ? await request.put(`/api/users/${editingUser.id}`, values)
-      : await request.post('/api/users', values);
+      ? await request.put(`/api/users/${editingUser.id}`, payload)
+      : await request.post('/api/users', payload);
     if (res.code === 0) {
       Toast.success(editingUser ? '更新成功' : '创建成功');
       setModalVisible(false);
       setEditingUser(null);
-      fetchUsers();
+      void fetchUsers();
+    } else {
+      Toast.error(res.message);
+      throw new Error(res.message);
+    }
+  };
+
+  const handlePasswordModalOk = async () => {
+    let values: any;
+    try {
+      values = await passwordFormApi.current?.validate();
+    } catch {
+      throw new Error('validation');
+    }
+
+    if (values.password !== values.confirmPassword) {
+      Toast.error('两次密码输入不一致');
+      throw new Error('password_not_match');
+    }
+
+    if (!passwordUser) {
+      throw new Error('missing_user');
+    }
+
+    const res = await request.put(`/api/users/${passwordUser.id}/password`, { password: values.password });
+    if (res.code === 0) {
+      Toast.success('密码修改成功');
+      setPasswordModalVisible(false);
+      setPasswordUser(null);
     } else {
       Toast.error(res.message);
       throw new Error(res.message);
@@ -129,7 +188,7 @@ export default function UsersPage() {
     const res = await request.delete(`/api/users/${id}`);
     if (res.code === 0) {
       Toast.success('删除成功');
-      fetchUsers();
+      void fetchUsers();
     } else {
       Toast.error(res.message);
     }
@@ -159,9 +218,31 @@ export default function UsersPage() {
       ellipsis: true,
     },
     {
+      title: '部门',
+      dataIndex: 'departmentName',
+      width: 160,
+      ellipsis: true,
+      render: (value: string | null | undefined) => value || '—',
+    },
+    {
+      title: '岗位',
+      dataIndex: 'positions',
+      width: 220,
+      render: (positions: Position[] | undefined) => {
+        const list = positions ?? [];
+        return (
+          <Space spacing={4} wrap>
+            {list.length === 0 ? <Tag color="grey">无岗位</Tag> : list.map((item) => (
+              <Tag key={item.id} color="purple">{item.name}</Tag>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
       title: '角色',
       dataIndex: 'roles',
-      width: 160,
+      width: 180,
       render: (roles: Role[]) => (
         <Space spacing={4} wrap>
           {roles.length === 0 ? <Tag color="grey">无角色</Tag> : roles.map((r) => (
@@ -186,9 +267,17 @@ export default function UsersPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 180,
+      width: 240,
       render: (_: unknown, record: User) => (
         <Space>
+          <Button
+            theme="borderless"
+            size="small"
+            onClick={() => {
+              setPasswordUser(record);
+              setPasswordModalVisible(true);
+            }}
+          >修改密码</Button>
           <Button
             theme="borderless"
             size="small"
@@ -208,9 +297,8 @@ export default function UsersPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <div className="responsive-toolbar">
-          <div className="responsive-toolbar__left">
-            <Space wrap>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Space wrap>
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索用户名/昵称/邮箱"
@@ -239,6 +327,8 @@ export default function UsersPage() {
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </Space>
+          <Space>
             <Button
               type="secondary"
               icon={<Plus size={14} />}
@@ -249,8 +339,7 @@ export default function UsersPage() {
             >
               新增
             </Button>
-            </Space>
-          </div>
+          </Space>
         </div>
       </div>
 
@@ -262,12 +351,10 @@ export default function UsersPage() {
         loading={loading}
         pagination={{
           currentPage: page,
-          pageSize: pageSize,
+          pageSize,
           total: data?.total || 0,
           onPageChange: (currentPage) => { void fetchUsers(currentPage, pageSize); },
-          onPageSizeChange: (size) => {
-            void fetchUsers(1, size);
-          },
+          onPageSizeChange: (size) => { void fetchUsers(1, size); },
           showTotal: true,
           showSizeChanger: true,
         }}
@@ -279,17 +366,21 @@ export default function UsersPage() {
       <Modal
         title={editingUser ? '编辑用户' : '新增用户'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingUser(null); }}
+        onCancel={() => {
+          setModalVisible(false);
+          setEditingUser(null);
+        }}
         onOk={handleModalOk}
-        width={440}
+        width={520}
         closeOnEsc
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
-          getFormApi={(api) => formApi.current = api}
+          key={editingUser?.id ?? 'new-user'}
+          getFormApi={(api) => { formApi.current = api; }}
           initValues={formInitValues}
           labelPosition="left"
-          labelWidth={70}
+          labelWidth={80}
         >
           {!editingUser && (
             <Form.Input field="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]} />
@@ -300,6 +391,22 @@ export default function UsersPage() {
             <Form.Input field="password" label="密码" type="password" rules={[{ required: true, message: '请输入密码' }]} />
           )}
           <Form.Select
+            field="departmentId"
+            label="所属部门"
+            style={{ width: '100%' }}
+            optionList={departmentOptionList}
+            showClear
+          />
+          <Form.Select
+            field="positionIds"
+            label="岗位"
+            style={{ width: '100%' }}
+            multiple
+            filter
+            showClear
+            optionList={positionOptionList}
+          />
+          <Form.Select
             field="roleIds"
             label="角色"
             style={{ width: '100%' }}
@@ -307,8 +414,46 @@ export default function UsersPage() {
             filter
             optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
           />
-          <Form.Select field="status" label="状态" style={{ width: '100%' }}
+          <Form.Select
+            field="status"
+            label="状态"
+            style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
+        </Form>
+      </Modal>
+
+      <Modal
+        title={passwordUser ? `修改密码 - ${passwordUser.nickname}` : '修改密码'}
+        visible={passwordModalVisible}
+        onCancel={() => {
+          setPasswordModalVisible(false);
+          setPasswordUser(null);
+        }}
+        onOk={handlePasswordModalOk}
+        width={420}
+        bodyStyle={{ paddingBottom: 24 }}
+      >
+        <Form
+          key={passwordUser?.id ?? 'password-form'}
+          getFormApi={(api) => { passwordFormApi.current = api; }}
+          labelPosition="left"
+          labelWidth={90}
+        >
+          <Form.Input
+            field="password"
+            label="新密码"
+            mode="password"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码至少 6 个字符' },
+            ]}
+          />
+          <Form.Input
+            field="confirmPassword"
+            label="确认密码"
+            mode="password"
+            rules={[{ required: true, message: '请确认新密码' }]}
           />
         </Form>
       </Modal>

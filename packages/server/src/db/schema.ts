@@ -4,6 +4,39 @@ export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss']);
 
+// ─── 部门表 ───────────────────────────────────────────────────────────────────
+export const departments = pgTable('departments', {
+  id: serial('id').primaryKey(),
+  parentId: integer('parent_id').notNull().default(0),
+  name: varchar('name', { length: 64 }).notNull(),
+  code: varchar('code', { length: 64 }).notNull().unique(),
+  leader: varchar('leader', { length: 32 }),
+  phone: varchar('phone', { length: 32 }),
+  email: varchar('email', { length: 128 }),
+  sort: integer('sort').notNull().default(0),
+  status: statusEnum('status').notNull().default('active'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type DepartmentRow = typeof departments.$inferSelect;
+export type NewDepartment = typeof departments.$inferInsert;
+
+// ─── 岗位表 ───────────────────────────────────────────────────────────────────
+export const positions = pgTable('positions', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  code: varchar('code', { length: 64 }).notNull().unique(),
+  sort: integer('sort').notNull().default(0),
+  status: statusEnum('status').notNull().default('active'),
+  remark: varchar('remark', { length: 256 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type PositionRow = typeof positions.$inferSelect;
+export type NewPosition = typeof positions.$inferInsert;
+
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   username: varchar('username', { length: 32 }).notNull().unique(),
@@ -11,6 +44,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 128 }).notNull().unique(),
   password: varchar('password', { length: 128 }).notNull(),
   avatar: varchar('avatar', { length: 256 }),
+  departmentId: integer('department_id').references(() => departments.id, { onDelete: 'set null' }),
   status: statusEnum('status').notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -59,6 +93,12 @@ export const userRoles = pgTable('user_roles', {
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
 }, (t) => [primaryKey({ columns: [t.userId, t.roleId] })]);
+
+// ─── 用户-岗位关联表 ──────────────────────────────────────────────────────────
+export const userPositions = pgTable('user_positions', {
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  positionId: integer('position_id').notNull().references(() => positions.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.userId, t.positionId] })]);
 
 // ─── 角色-菜单关联表 ──────────────────────────────────────────────────────────
 export const roleMenus = pgTable('role_menus', {
