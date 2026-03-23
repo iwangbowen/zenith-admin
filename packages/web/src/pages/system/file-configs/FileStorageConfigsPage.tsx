@@ -292,8 +292,9 @@ export default function FileStorageConfigsPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <Space wrap>
+        <div className="responsive-toolbar">
+          <div className="responsive-toolbar__left">
+            <Space wrap>
             <Select
               placeholder="请选择状态"
               value={searchParams.status || undefined}
@@ -313,10 +314,11 @@ export default function FileStorageConfigsPage() {
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
+            </Space>
+          </div>
+          <div className="responsive-toolbar__right">
             <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
-          </Space>
+          </div>
         </div>
         <div className="storage-configs-tip" style={{ marginBottom: 0, marginTop: 12 }}>
             <Text type="secondary">当前支持多文件服务配置，但上传时会优先走“默认文件服务”。切换默认服务不会影响历史文件记录。</Text>

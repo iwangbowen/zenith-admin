@@ -124,6 +124,41 @@ body {
   color: var(--semi-color-text-2);
 }
 
+.responsive-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.responsive-toolbar__left {
+  flex: 1;
+  min-width: 0;
+}
+
+.responsive-toolbar__left .semi-space {
+  width: 100%;
+}
+
+.responsive-toolbar__right {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 960px) {
+  .responsive-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .responsive-toolbar__right {
+    justify-content: flex-start;
+  }
+}
+
 /* scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

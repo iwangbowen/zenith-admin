@@ -213,8 +213,9 @@ export default function NoticesPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space wrap>
+        <div className="responsive-toolbar">
+          <div className="responsive-toolbar__left">
+            <Space wrap>
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索标题"
@@ -227,7 +228,7 @@ export default function NoticesPage() {
             <Select
               placeholder="通知类型"
               value={searchParams.type || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: String(v ?? '') }))}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
               optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 140 }}
@@ -235,7 +236,7 @@ export default function NoticesPage() {
             <Select
               placeholder="发布状态"
               value={searchParams.publishStatus || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: String(v ?? '') }))}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
               optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
               showClear
               style={{ width: 140 }}
@@ -249,10 +250,11 @@ export default function NoticesPage() {
             />
             <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
             <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
+            </Space>
+          </div>
+          <div className="responsive-toolbar__right">
             <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>
-          </Space>
+          </div>
         </div>
       </div>
 

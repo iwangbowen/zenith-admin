@@ -208,8 +208,9 @@ export default function UsersPage() {
   return (
     <div className="page-container">
       <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space wrap>
+        <div className="responsive-toolbar">
+          <div className="responsive-toolbar__left">
+            <Space wrap>
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索用户名/昵称/邮箱"
@@ -238,8 +239,9 @@ export default function UsersPage() {
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
+            </Space>
+          </div>
+          <div className="responsive-toolbar__right">
             <Button
               type="secondary"
               icon={<Plus size={14} />}
@@ -250,7 +252,7 @@ export default function UsersPage() {
             >
               新增
             </Button>
-          </Space>
+          </div>
         </div>
       </div>
 
