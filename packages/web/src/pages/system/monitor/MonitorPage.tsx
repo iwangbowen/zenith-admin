@@ -5,7 +5,7 @@ import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import './MonitorPage.css';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface MonitorData {
   os: {
@@ -293,23 +293,20 @@ export default function MonitorPage() {
 
   return (
     <div className="monitor-page">
-      <div className="monitor-header">
-        <Title heading={4} style={{ margin: 0 }}>服务监控</Title>
-        <div className="monitor-header-right">
-          {lastUpdated && (
-            <Text type="tertiary" size="small">
-              最后更新：{formatDateTime(lastUpdated)}
-            </Text>
-          )}
-          <Button
-            icon={<RefreshCw size={14} />}
-            onClick={fetchData}
-            loading={loading}
-            theme="light"
-          >
-            刷新
-          </Button>
-        </div>
+      <div className="monitor-header" style={{ justifyContent: 'flex-end' }}>
+        {lastUpdated && (
+          <Text type="tertiary" size="small">
+            最后更新：{formatDateTime(lastUpdated)}
+          </Text>
+        )}
+        <Button
+          icon={<RefreshCw size={14} />}
+          onClick={fetchData}
+          loading={loading}
+          theme="light"
+        >
+          刷新
+        </Button>
       </div>
       {renderContent()}
     </div>

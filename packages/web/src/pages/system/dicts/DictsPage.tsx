@@ -226,13 +226,6 @@ export default function DictsPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h2 className="page-title">字典管理</h2>
-          <p className="page-desc">管理系统数据字典及字典项</p>
-        </div>
-      </div>
-
       <div className="dicts-layout">
         {/* 左侧：字典列表 */}
         <div className="dicts-left-card">

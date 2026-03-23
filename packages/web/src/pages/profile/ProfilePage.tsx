@@ -51,11 +51,6 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <Title heading={4} style={{ fontWeight: 600, margin: 0 }}>个人中心</Title>
-        <Text type="tertiary" size="small">管理您的账号信息和安全设置</Text>
-      </div>
-
       <div className="profile-layout">
         {/* 左侧：头像卡片 */}
         <Card className="profile-avatar-card">

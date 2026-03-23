@@ -259,13 +259,6 @@ export default function FileStorageConfigsPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h2 className="page-title">文件配置</h2>
-          <p className="page-desc">管理多文件服务，支持本地磁盘与阿里云 OSS，默认启用本地磁盘。</p>
-        </div>
-      </div>
-
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="storage-configs-tip" style={{ marginBottom: 0 }}>

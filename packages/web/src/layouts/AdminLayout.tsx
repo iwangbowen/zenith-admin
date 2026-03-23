@@ -5,6 +5,7 @@ import { Sun, Moon, Monitor, User as UserIcon, Settings, LogOut } from 'lucide-r
 import type { User, Menu } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
 import { request } from '../utils/request';
+import { config } from '../config';
 import { renderLucideIcon } from '../utils/icons';
 import NProgress from '../components/NProgress';
 import './AdminLayout.css';
@@ -108,6 +109,23 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     () => menuTree.map(menuToNavItem).filter((item): item is NavItem => item !== null),
     [menuTree]
   );
+
+  const pathTitleMap = useMemo(() => {
+    const map: Record<string, string> = { '/profile': '个人中心' };
+    function traverse(nodes: Menu[]) {
+      for (const node of nodes) {
+        if (node.path && node.title) map[node.path] = node.title;
+        if (node.children) traverse(node.children);
+      }
+    }
+    traverse(menuTree);
+    return map;
+  }, [menuTree]);
+
+  useEffect(() => {
+    const pageTitle = pathTitleMap[location.pathname];
+    document.title = pageTitle ? `${pageTitle} - ${config.appTitle}` : config.appTitle;
+  }, [location.pathname, pathTitleMap]);
 
   return (
     <div className="admin-layout">

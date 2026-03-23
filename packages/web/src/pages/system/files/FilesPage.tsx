@@ -215,13 +215,6 @@ export default function FilesPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h2 className="page-title">文件列表</h2>
-          <p className="page-desc">上传并管理通过默认文件服务保存的文件记录。</p>
-        </div>
-      </div>
-
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="files-toolbar__left" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>

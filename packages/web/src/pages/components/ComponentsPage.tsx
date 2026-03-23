@@ -39,11 +39,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function ComponentsPage() {
   return (
     <div className="page-container">
-      <div className="page-header">
-        <Title heading={4} style={{ fontWeight: 600, margin: 0 }}>组件示例</Title>
-        <Text type="tertiary" size="small">Semi Design 组件库常用组件展示</Text>
-      </div>
-
       <Row gutter={[16, 16]}>
         <Col span={12}>
           <Section title="Button 按钮">

@@ -2,7 +2,7 @@ import { Card, Row, Col, Typography, Descriptions, Tag, Space } from '@douyinfe/
 import { User, Check, Clock, Activity } from 'lucide-react';
 import './DashboardPage.css';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 const stats = [
   { label: '总用户数', value: '1,286', icon: <User style={{ color: '#3370ff' }} />, bg: '#ebf1ff' },
@@ -22,15 +22,6 @@ const recentActivities = [
 export default function DashboardPage() {
   return (
     <div className="page-container">
-      <div className="page-header">
-        <Title heading={4} style={{ fontWeight: 600, margin: 0 }}>
-          工作台
-        </Title>
-        <Text type="tertiary" size="small">
-          欢迎使用 Zenith Admin
-        </Text>
-      </div>
-
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         {stats.map((s) => (
           <Col key={s.label} span={6}>

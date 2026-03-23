@@ -213,13 +213,6 @@ export default function MenusPage() {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h2 className="page-title">菜单管理</h2>
-          <p className="page-desc">管理系统菜单和按钮权限</p>
-        </div>
-      </div>
-
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
           <Space>
