@@ -153,7 +153,7 @@ export default function UsersPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 140,
+      width: 180,
       render: (_: unknown, record: User) => (
         <Space>
           <Button
