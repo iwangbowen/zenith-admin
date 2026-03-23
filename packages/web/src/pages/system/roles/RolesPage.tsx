@@ -13,7 +13,7 @@ import {
   Spin,
   Avatar,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, Pencil, Trash2, RefreshCw, ChevronRight, Users } from 'lucide-react';
+import { Search, Plus, RefreshCw } from 'lucide-react';
 import type { Role, Menu, User } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import DictTag from '../../../components/DictTag';
@@ -162,15 +162,14 @@ export default function RolesPage() {
       align: 'center',
       render: (_v, row) => (
         <Space>
-          <Button size="small" icon={<ChevronRight />} onClick={() => openMenuModal(row)}>
+          <Button size="small" onClick={() => openMenuModal(row)}>
             菜单权限
           </Button>
-          <Button size="small" icon={<Users size={14} />} onClick={() => openUserModal(row)}>
+          <Button size="small" onClick={() => openUserModal(row)}>
             分配用户
           </Button>
           <Button
             size="small"
-            icon={<Pencil />}
             onClick={() => { setEditingRole(row); setModalVisible(true); }}
           >
             编辑
@@ -181,7 +180,7 @@ export default function RolesPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(row.id)}
           >
-            <Button size="small" type="danger" icon={<Trash2 />}>删除</Button>
+            <Button size="small" type="danger">删除</Button>
           </Popconfirm>
         </Space>
       ),

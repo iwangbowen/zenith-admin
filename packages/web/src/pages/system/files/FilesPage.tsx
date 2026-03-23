@@ -10,7 +10,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Trash2, Plus, RefreshCw, Search } from 'lucide-react';
+import { Plus, RefreshCw, Search } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -203,7 +203,7 @@ export default function FilesPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(record)}
           >
-            <Button size="small" type="danger" icon={<Trash2 />}>删除</Button>
+            <Button size="small" type="danger">删除</Button>
           </Popconfirm>
         </Space>
       ),

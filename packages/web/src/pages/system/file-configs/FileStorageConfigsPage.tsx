@@ -13,7 +13,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Trash2, Pencil, Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import type {
   CreateFileStorageConfigInput,
   FileStorageConfig,
@@ -213,7 +213,7 @@ export default function FileStorageConfigsPage() {
           <Button size="small" onClick={() => handleSetDefault(record)} disabled={record.isDefault || record.status !== 'active'}>
             设为默认
           </Button>
-          <Button size="small" icon={<Pencil />} onClick={() => openEdit(record)}>
+          <Button size="small" onClick={() => openEdit(record)}>
             编辑
           </Button>
           <Popconfirm
@@ -223,7 +223,7 @@ export default function FileStorageConfigsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(record)}
           >
-            <Button size="small" type="danger" icon={<Trash2 />} disabled={record.isDefault}>
+            <Button size="small" type="danger" disabled={record.isDefault}>
               删除
             </Button>
           </Popconfirm>

@@ -11,7 +11,7 @@ import {
   TreeSelect,
 } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import { renderLucideIcon } from '../../../utils/icons';
@@ -164,11 +164,11 @@ export default function MenusPage() {
       render: (_val, row) => (
         <Space>
           {row.type !== 'button' && (
-            <Button size="small" icon={<Plus />} onClick={() => openCreate(row.id)}>
+            <Button size="small" onClick={() => openCreate(row.id)}>
               子项
             </Button>
           )}
-          <Button size="small" icon={<Pencil />} onClick={() => openEdit(row)}>编辑</Button>
+          <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
           <Popconfirm
             title="确认删除此菜单？"
             content="子菜单也将一并删除"
@@ -176,7 +176,7 @@ export default function MenusPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(row.id)}
           >
-            <Button size="small" type="danger" icon={<Trash2 />}>删除</Button>
+            <Button size="small" type="danger">删除</Button>
           </Popconfirm>
         </Space>
       ),

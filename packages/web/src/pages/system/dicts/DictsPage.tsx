@@ -13,7 +13,7 @@ import {
   Empty,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, Pencil, Trash2, RefreshCw, List } from 'lucide-react';
+import { Search, Plus, RefreshCw, List } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import DictTag from '../../../components/DictTag';
@@ -162,7 +162,6 @@ export default function DictsPage() {
         <Space>
           <Button
             size="small"
-            icon={<Pencil />}
             onClick={(e) => { e.stopPropagation(); setEditingDict(row); setDictModalVisible(true); }}
           >
             编辑
@@ -174,7 +173,7 @@ export default function DictsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDictDelete(row.id)}
           >
-            <Button size="small" type="danger" icon={<Trash2 />} onClick={(e) => e.stopPropagation()}>删除</Button>
+            <Button size="small" type="danger" onClick={(e) => e.stopPropagation()}>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -201,7 +200,6 @@ export default function DictsPage() {
         <Space>
           <Button
             size="small"
-            icon={<Pencil />}
             onClick={() => { setEditingItem(row); setItemModalVisible(true); }}
           >
             编辑
@@ -212,7 +210,7 @@ export default function DictsPage() {
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleItemDelete(row.id)}
           >
-            <Button size="small" type="danger" icon={<Trash2 />}>删除</Button>
+            <Button size="small" type="danger">删除</Button>
           </Popconfirm>
         </Space>
       ),

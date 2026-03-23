@@ -12,7 +12,7 @@ import {
   Avatar,
   Tag,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import { Search, Plus, RefreshCw } from 'lucide-react';
 import type { User, Role, PaginatedResponse, CreateUserInput, UpdateUserInput } from '@zenith/shared';
 import { request } from '../../utils/request';
 import DictTag from '../../components/DictTag';
@@ -155,15 +155,14 @@ export default function UsersPage() {
         <Space>
           <Button
             theme="borderless"
-            icon={<Pencil />}
             size="small"
             onClick={() => {
               setEditingUser(record);
               setModalVisible(true);
             }}
-          />
+          >编辑</Button>
           <Popconfirm title="确定要删除该用户吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button theme="borderless" type="danger" icon={<Trash2 />} size="small" />
+            <Button theme="borderless" type="danger" size="small">删除</Button>
           </Popconfirm>
         </Space>
       ),
