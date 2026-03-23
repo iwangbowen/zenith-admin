@@ -30,7 +30,7 @@ async function seed() {
 
   // ─── 2. 菜单数据 ──────────────────────────────────────────────────────────
   const menuRows = [
-    { id: 1,  parentId: 0, title: '控制台',    name: 'Dashboard',     path: '/',              icon: 'Home',           type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true },
+    { id: 1,  parentId: 0, title: '首页',    name: 'Dashboard',     path: '/',              icon: 'Home',           type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true },
     { id: 2,  parentId: 0, title: '系统管理',   name: 'System',        path: undefined,        icon: 'Settings',       type: 'directory' as const, sort: 2,  status: 'active' as const, visible: true },
     { id: 3,  parentId: 2, title: '用户管理',   name: 'SystemUsers',   path: '/system/users',  icon: 'UsersRound',     type: 'menu' as const,      sort: 1,  status: 'active' as const, visible: true, permission: 'system:user:list' },
     { id: 10, parentId: 3, title: '新增用户',   name: undefined,       path: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:user:create' },
