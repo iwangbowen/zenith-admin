@@ -1,0 +1,88 @@
+.monitor-page {
+  padding: 24px;
+}
+
+.monitor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.monitor-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.monitor-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+}
+
+.monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .monitor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.monitor-card {
+  height: 100%;
+}
+
+.monitor-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.monitor-progress-section {
+  margin-bottom: 16px;
+}
+
+.monitor-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.monitor-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.monitor-info-row:last-child {
+  border-bottom: none;
+}
+
+.monitor-info-label {
+  flex-shrink: 0;
+  margin-right: 12px;
+  min-width: 120px;
+}
+
+.monitor-info-value {
+  text-align: right;
+  word-break: break-all;
+}
+
+.monitor-progress-warning :global(.semi-progress-stroke) {
+  background: var(--semi-color-warning) !important;
+}
+
+.monitor-progress-danger :global(.semi-progress-stroke) {
+  background: var(--semi-color-danger) !important;
+}

@@ -9,6 +9,7 @@ import rolesRoutes from './routes/roles';
 import dictsRoutes from './routes/dicts';
 import fileStorageConfigsRoutes from './routes/file-storage-configs';
 import filesRoutes from './routes/files';
+import monitorRoutes from './routes/monitor';
 
 const app = new Hono();
 
@@ -21,6 +22,7 @@ app.route('/api/roles', rolesRoutes);
 app.route('/api/dicts', dictsRoutes);
 app.route('/api/file-storage-configs', fileStorageConfigsRoutes);
 app.route('/api/files', filesRoutes);
+app.route('/api/monitor', monitorRoutes);
 
 app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));
 

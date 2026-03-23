@@ -12,6 +12,7 @@ import RolesPage from './pages/system/roles/RolesPage';
 import DictsPage from './pages/system/dicts/DictsPage';
 import FileStorageConfigsPage from './pages/system/file-configs/FileStorageConfigsPage';
 import FilesPage from './pages/system/files/FilesPage';
+import MonitorPage from './pages/system/monitor/MonitorPage';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="system/dicts" element={<DictsPage />} />
           <Route path="system/file-configs" element={<FileStorageConfigsPage />} />
           <Route path="system/files" element={<FilesPage />} />
+          <Route path="system/monitor" element={<MonitorPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
