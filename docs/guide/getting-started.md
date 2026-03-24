@@ -30,6 +30,7 @@ PORT=3300
 # Redis 连接（默认连接本地无密码 Redis）
 REDIS_URL=redis://127.0.0.1:6379
 # 带密码示例: REDIS_URL=redis://:your_password@127.0.0.1:6379/0
+# REDIS_KEY_PREFIX=zenith:   # 所有 key 的命名空间前缀（默认 zenith:）
 ```
 
 ### 前端 `packages/web/.env`

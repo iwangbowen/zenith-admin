@@ -82,6 +82,7 @@ JWT_SECRET=your-secret-key
 PORT=3300
 # Redis 连接（URL 格式，支持带密码）
 REDIS_URL=redis://127.0.0.1:6379
+# REDIS_KEY_PREFIX=zenith:   # 所有 Redis key 的命名空间前缀（默认 zenith:）
 ```
 
 在 `packages/web/` 下创建 `.env` 文件（可选，有默认值）：

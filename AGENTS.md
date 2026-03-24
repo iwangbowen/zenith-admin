@@ -104,8 +104,10 @@ REDIS_URL=redis://127.0.0.1:6379
 
 Redis key 规范：
 
-- `session:{tokenId}` — SessionInfo JSON，TTL 8h（每次请求自动续期）
-- `blacklist:{tokenId}` — 强制下线标记，TTL 2h（与 accessToken 有效期一致）
+所有 key 带统一命名空间前缀（默认 `zenith:`，可通过 `REDIS_KEY_PREFIX` 环境变量覆盖）：
+
+- `zenith:session:{tokenId}` — SessionInfo JSON，TTL 8h（每次请求自动续期）
+- `zenith:blacklist:{tokenId}` — 强制下线标记，TTL 2h（与 accessToken 有效期一致）
 
 ---
 

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { config } from '../config';
 import redis from './redis';
 
 export interface SessionInfo {
@@ -19,8 +20,9 @@ const SESSION_TTL = 8 * 60 * 60;
 /** Blacklist TTL: 2 hours (matches accessToken lifetime, seconds) */
 const BLACKLIST_TTL = 2 * 60 * 60;
 
-const SESSION_PREFIX = 'session:';
-const BLACKLIST_PREFIX = 'blacklist:';
+const { keyPrefix } = config.redis;
+const SESSION_PREFIX = `${keyPrefix}session:`;
+const BLACKLIST_PREFIX = `${keyPrefix}blacklist:`;
 
 /** Generate a unique token ID */
 export function generateTokenId(): string {
