@@ -102,7 +102,7 @@ export default function MonitorPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await request.get<MonitorData>('/api/monitor');
+      const res = await request.get<MonitorData>('/api/monitor', { silent: true });
       if (res.code === 0 && res.data) {
         setData(res.data);
         setLastUpdated(new Date());
