@@ -19,7 +19,7 @@
 | ---- | ---- |
 | 后端框架 | [Hono](https://hono.dev/) v4 + Node.js |
 | 前端框架 | [React](https://react.dev/) 19 + [Vite](https://vitejs.dev/) 6 |
-| UI 组件库 | [Semi Design](https://semi.design/) v2（字节跳动） |
+| UI 组件库 | [Semi Design](https://semi.design/) v2 |
 | 图标体系 | [lucide-react](https://lucide.dev/) |
 | 数据库 ORM | [Drizzle ORM](https://orm.drizzle.team/) + PostgreSQL |
 | 前端路由 | [React Router](https://reactrouter.com/) v7 |
