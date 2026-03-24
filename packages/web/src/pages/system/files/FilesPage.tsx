@@ -18,6 +18,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { config } from '../../../config';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
+import { usePermission } from '../../../hooks/usePermission';
 import './FilesPage.css';
 
 const { Text } = Typography;
@@ -41,6 +42,7 @@ async function fetchProtectedFile(url: string) {
 }
 
 export default function FilesPage() {
+  const { hasPermission } = usePermission();
   interface SearchParams {
     keyword: string;
     provider: string;
@@ -230,7 +232,7 @@ export default function FilesPage() {
         <Space>
           <Button theme="borderless" size="small" onClick={() => handlePreview(record)}>预览</Button>
           <Button theme="borderless" size="small" onClick={() => handleDownload(record)}>下载</Button>
-          <Popconfirm
+          {hasPermission('system:file:delete') && <Popconfirm
             title="确认删除此文件？"
             content="删除文件记录后，将同步尝试删除实际存储对象。"
             okText="删除"
@@ -238,7 +240,7 @@ export default function FilesPage() {
             onConfirm={() => handleDelete(record)}
           >
             <Button theme="borderless" size="small" type="danger">删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -295,9 +297,9 @@ export default function FilesPage() {
                 <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
               )}
             </div>
-            <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
+            {hasPermission('system:file:upload') && <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
               上传文件
-            </Button>
+            </Button>}
             <input
               ref={fileInputRef}
               type="file"

@@ -4,6 +4,7 @@ import { execSync } from 'node:child_process';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth';
+import { requirePermission } from '../middleware/permission';
 
 const monitorRouter = new Hono();
 
@@ -76,7 +77,7 @@ async function getDbInfo() {
   }
 }
 
-monitorRouter.get('/', async (c) => {
+monitorRouter.get('/', requirePermission('system:monitor:view'), async (c) => {
   const [cpuUsage, dbInfo] = await Promise.all([getCpuUsage(), getDbInfo()]);
 
   const totalMem = os.totalmem();

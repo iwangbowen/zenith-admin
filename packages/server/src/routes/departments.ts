@@ -4,6 +4,7 @@ import { db } from '../db';
 import { departments, users } from '../db/schema';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { requirePermission } from '../middleware/permission';
 import { auditLog } from '../middleware/audit';
 import type { Department } from '@zenith/shared';
 
@@ -103,7 +104,7 @@ async function ensureParentValid(parentId: number, currentId?: number) {
   return null;
 }
 
-departmentsRouter.get('/', async (c) => {
+departmentsRouter.get('/', requirePermission('system:department:list'), async (c) => {
   const keyword = c.req.query('keyword') ?? '';
   const status = c.req.query('status');
 
@@ -113,12 +114,12 @@ departmentsRouter.get('/', async (c) => {
   return c.json({ code: 0, message: 'ok', data });
 });
 
-departmentsRouter.get('/flat', async (c) => {
+departmentsRouter.get('/flat', requirePermission('system:department:list'), async (c) => {
   const rows = await db.select().from(departments).orderBy(asc(departments.sort), asc(departments.id));
   return c.json({ code: 0, message: 'ok', data: rows.map(toDepartment) });
 });
 
-departmentsRouter.post('/', auditLog({ description: '创建部门', module: '部门管理' }), async (c) => {
+departmentsRouter.post('/', requirePermission('system:department:create'), auditLog({ description: '创建部门', module: '部门管理' }), async (c) => {
   const body = await c.req.json();
   const result = createDepartmentSchema.safeParse(body);
   if (!result.success) {
@@ -141,7 +142,7 @@ departmentsRouter.post('/', auditLog({ description: '创建部门', module: '部
   }
 });
 
-departmentsRouter.put('/:id', auditLog({ description: '更新部门', module: '部门管理' }), async (c) => {
+departmentsRouter.put('/:id', requirePermission('system:department:update'), auditLog({ description: '更新部门', module: '部门管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateDepartmentSchema.safeParse(body);
@@ -176,7 +177,7 @@ departmentsRouter.put('/:id', auditLog({ description: '更新部门', module: '�
   }
 });
 
-departmentsRouter.delete('/:id', auditLog({ description: '删除部门', module: '部门管理' }), async (c) => {
+departmentsRouter.delete('/:id', requirePermission('system:department:delete'), auditLog({ description: '删除部门', module: '部门管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [department] = await db.select({ id: departments.id }).from(departments).where(eq(departments.id, id)).limit(1);
   if (!department) {

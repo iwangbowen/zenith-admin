@@ -19,6 +19,7 @@ import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import { useDictItems } from '../../../hooks/useDictItems';
 import DictTag from '../../../components/DictTag';
+import { usePermission } from '../../../hooks/usePermission';
 
 type SearchParams = {
   title: string;
@@ -28,6 +29,7 @@ type SearchParams = {
 };
 
 export default function NoticesPage() {
+  const { hasPermission } = usePermission();
   const [data, setData] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
@@ -197,14 +199,14 @@ export default function NoticesPage() {
       fixed: 'right' as const,
       render: (_: unknown, record: Notice) => (
         <Space>
-          <Button
+          {hasPermission('system:notice:update') && <Button
             theme="borderless"
             size="small"
             onClick={() => openEditModal(record)}
-          >编辑</Button>
-          <Popconfirm title="确定要删除该通知吗？" onConfirm={() => handleDelete(record.id)}>
+          >编辑</Button>}
+          {hasPermission('system:notice:delete') && <Popconfirm title="确定要删除该通知吗？" onConfirm={() => handleDelete(record.id)}>
             <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -250,7 +252,7 @@ export default function NoticesPage() {
             />
             <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
             <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
-            <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>
+            {hasPermission('system:notice:create') && <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>}
             </Space>
           </div>
         </div>

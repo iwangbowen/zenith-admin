@@ -18,11 +18,13 @@ import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Role, Menu, User } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
+import { usePermission } from '../../../hooks/usePermission';
 import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 
 export default function RolesPage() {
+  const { hasPermission } = usePermission();
   interface SearchParams {
     keyword: string;
     status: string;
@@ -199,27 +201,27 @@ export default function RolesPage() {
       align: 'center',
       render: (_v, row) => (
         <Space>
-          <Button theme="borderless" size="small" onClick={() => openMenuModal(row)}>
+          {hasPermission('system:role:assign') && <Button theme="borderless" size="small" onClick={() => openMenuModal(row)}>
             菜单权限
-          </Button>
-          <Button theme="borderless" size="small" onClick={() => openUserModal(row)}>
+          </Button>}
+          {hasPermission('system:role:assign') && <Button theme="borderless" size="small" onClick={() => openUserModal(row)}>
             分配用户
-          </Button>
-          <Button
+          </Button>}
+          {hasPermission('system:role:update') && <Button
             theme="borderless"
             size="small"
             onClick={() => { setEditingRole(row); setModalVisible(true); }}
           >
             编辑
-          </Button>
-          <Popconfirm
+          </Button>}
+          {hasPermission('system:role:delete') && <Popconfirm
             title="确认删除此角色？"
             okText="删除"
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleDelete(row.id)}
           >
             <Button theme="borderless" size="small" type="danger">删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -259,13 +261,13 @@ export default function RolesPage() {
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            <Button
+            {hasPermission('system:role:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}
               onClick={() => { setEditingRole(null); setModalVisible(true); }}
             >
               新增
-            </Button>
+            </Button>}
             </Space>
           </div>
         </div>

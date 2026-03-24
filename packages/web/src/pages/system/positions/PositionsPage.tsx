@@ -18,6 +18,7 @@ import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
+import { usePermission } from '../../../hooks/usePermission';
 
 interface SearchParams {
   keyword: string;
@@ -32,6 +33,7 @@ const defaultSearchParams: SearchParams = {
 };
 
 export default function PositionsPage() {
+  const { hasPermission } = usePermission();
   const formApi = useRef<any>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Position[]>([]);
@@ -150,17 +152,17 @@ export default function PositionsPage() {
       width: 160,
       render: (_: unknown, record: Position) => (
         <Space>
-          <Button
+          {hasPermission('system:position:update') && <Button
             theme="borderless"
             size="small"
             onClick={() => {
               setEditingPosition(record);
               setModalVisible(true);
             }}
-          >编辑</Button>
-          <Popconfirm title="确定要删除该岗位吗？" onConfirm={() => handleDelete(record.id)}>
+          >编辑</Button>}
+          {hasPermission('system:position:delete') && <Popconfirm title="确定要删除该岗位吗？" onConfirm={() => handleDelete(record.id)}>
             <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -201,7 +203,7 @@ export default function PositionsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
-            <Button
+            {hasPermission('system:position:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}
               onClick={() => {
@@ -210,7 +212,7 @@ export default function PositionsPage() {
               }}
             >
               新增
-            </Button>
+            </Button>}
           </Space>
         </div>
       </div>

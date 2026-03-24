@@ -5,29 +5,31 @@ import type { User, LoginResponse } from '@zenith/shared';
 
 interface AuthState {
   user: Omit<User, 'password'> | null;
+  permissions: string[];
   loading: boolean;
 }
 
 export function useAuth() {
-  const [state, setState] = useState<AuthState>({ user: null, loading: true });
+  const [state, setState] = useState<AuthState>({ user: null, permissions: [], loading: true });
 
   const fetchUser = useCallback(async () => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
-      setState({ user: null, loading: false });
+      setState({ user: null, permissions: [], loading: false });
       return;
     }
     try {
-      const res = await request.get<User>('/api/auth/me');
+      const res = await request.get<User & { permissions: string[] }>('/api/auth/me');
       if (res.code === 0) {
-        setState({ user: res.data, loading: false });
+        const { permissions, ...userData } = res.data;
+        setState({ user: userData, permissions: permissions ?? [], loading: false });
       } else {
         localStorage.removeItem(TOKEN_KEY);
-        setState({ user: null, loading: false });
+        setState({ user: null, permissions: [], loading: false });
       }
     } catch {
       localStorage.removeItem(TOKEN_KEY);
-      setState({ user: null, loading: false });
+      setState({ user: null, permissions: [], loading: false });
     }
   }, []);
 
@@ -39,7 +41,7 @@ export function useAuth() {
     const res = await request.post<LoginResponse>('/api/auth/login', { username, password });
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
-      setState({ user: res.data.user, loading: false });
+      setState({ user: res.data.user, permissions: [], loading: false });
     }
     return res;
   };
@@ -48,14 +50,14 @@ export function useAuth() {
     const res = await request.post<LoginResponse>('/api/auth/register', data);
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
-      setState({ user: res.data.user, loading: false });
+      setState({ user: res.data.user, permissions: [], loading: false });
     }
     return res;
   };
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
-    setState({ user: null, loading: false });
+    setState({ user: null, permissions: [], loading: false });
   };
 
   const updateUser = (user: Omit<User, 'password'>) => {

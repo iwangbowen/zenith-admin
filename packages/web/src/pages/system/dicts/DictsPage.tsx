@@ -18,11 +18,13 @@ import { request } from '../../../utils/request';
 import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { usePermission } from '../../../hooks/usePermission';
 import './DictsPage.css';
 
 const { Text } = Typography;
 
 export default function DictsPage() {
+  const { hasPermission } = usePermission();
   const dictFormApi = useRef<any>(null);
   const itemFormApi = useRef<any>(null);
 
@@ -186,14 +188,14 @@ export default function DictsPage() {
       align: 'center',
       render: (_v, row) => (
         <Space>
-          <Button
+          {hasPermission('system:dict:update') && <Button
             theme="borderless"
             size="small"
             onClick={(e) => { e.stopPropagation(); setEditingDict(row); setDictModalVisible(true); }}
           >
             编辑
-          </Button>
-          <Popconfirm
+          </Button>}
+          {hasPermission('system:dict:delete') && <Popconfirm
             title="确认删除此字典？"
             content="字典下的所有字典项也将一并删除"
             okText="删除"
@@ -201,7 +203,7 @@ export default function DictsPage() {
             onConfirm={() => handleDictDelete(row.id)}
           >
             <Button theme="borderless" size="small" type="danger" onClick={(e) => e.stopPropagation()}>删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -226,21 +228,21 @@ export default function DictsPage() {
       align: 'center',
       render: (_v, row) => (
         <Space>
-          <Button
+          {hasPermission('system:dict:item') && <Button
             theme="borderless"
             size="small"
             onClick={() => { setEditingItem(row); setItemModalVisible(true); }}
           >
             编辑
-          </Button>
-          <Popconfirm
+          </Button>}
+          {hasPermission('system:dict:item') && <Popconfirm
             title="确认删除此字典项？"
             okText="删除"
             okButtonProps={{ type: 'danger', theme: 'solid' }}
             onConfirm={() => handleItemDelete(row.id)}
           >
             <Button theme="borderless" size="small" type="danger">删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -266,13 +268,13 @@ export default function DictsPage() {
                   />
                   <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
                   <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-                  <Button
+                  {hasPermission('system:dict:create') && <Button
                     type="secondary"
                     icon={<Plus size={14} />}
                     onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
                   >
                     新增
-                  </Button>
+                  </Button>}
                 </Space>
               </div>
             </div>
@@ -310,13 +312,13 @@ export default function DictsPage() {
                         字典项：{selectedDict.name}
                         <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
                       </Text>
-                      <Button
+                      {hasPermission('system:dict:item') && <Button
                         type="secondary"
                         icon={<Plus size={14} />}
                         onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
                       >
                         新增
-                      </Button>
+                      </Button>}
                     </Space>
                   </div>
                 </div>

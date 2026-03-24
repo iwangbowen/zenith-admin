@@ -4,6 +4,7 @@ import { db } from '../db';
 import { notices, noticeReads } from '../db/schema';
 import { createNoticeSchema, updateNoticeSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { requirePermission } from '../middleware/permission';
 import { auditLog } from '../middleware/audit';
 import type { JwtPayload } from '../middleware/auth';
 
@@ -57,7 +58,7 @@ noticesRouter.post('/:id/read', async (c) => {
 });
 
 // 分页列表（管理用）
-noticesRouter.get('/', async (c) => {
+noticesRouter.get('/', requirePermission('system:notice:list'), async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const title = c.req.query('title');
@@ -96,7 +97,7 @@ noticesRouter.get('/', async (c) => {
 });
 
 // 获取单条
-noticesRouter.get('/:id', async (c) => {
+noticesRouter.get('/:id', requirePermission('system:notice:list'), async (c) => {
   const id = Number(c.req.param('id'));
   const [row] = await db.select().from(notices).where(eq(notices.id, id));
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
@@ -104,7 +105,7 @@ noticesRouter.get('/:id', async (c) => {
 });
 
 // 创建
-noticesRouter.post('/', auditLog({ description: '创建通知公告', module: '通知公告' }), async (c) => {
+noticesRouter.post('/', requirePermission('system:notice:create'), auditLog({ description: '创建通知公告', module: '通知公告' }), async (c) => {
   const user = c.get('user');
   const body = await c.req.json();
   const result = createNoticeSchema.safeParse(body);
@@ -136,7 +137,7 @@ noticesRouter.post('/', auditLog({ description: '创建通知公告', module: '�
 });
 
 // 更新
-noticesRouter.put('/:id', auditLog({ description: '更新通知公告', module: '通知公告' }), async (c) => {
+noticesRouter.put('/:id', requirePermission('system:notice:update'), auditLog({ description: '更新通知公告', module: '通知公告' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateNoticeSchema.safeParse(body);
@@ -168,7 +169,7 @@ noticesRouter.put('/:id', auditLog({ description: '更新通知公告', module: 
 });
 
 // 删除
-noticesRouter.delete('/:id', auditLog({ description: '删除通知公告', module: '通知公告' }), async (c) => {
+noticesRouter.delete('/:id', requirePermission('system:notice:delete'), auditLog({ description: '删除通知公告', module: '通知公告' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [row] = await db.delete(notices).where(eq(notices.id, id)).returning();
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);

@@ -18,6 +18,7 @@ import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
+import { usePermission } from '../../../hooks/usePermission';
 
 interface SearchParams {
   keyword: string;
@@ -95,6 +96,7 @@ function buildDepartmentTreeData(items: Department[], excludedIds: Set<number>):
 }
 
 export default function DepartmentsPage() {
+  const { hasPermission } = usePermission();
   const formApi = useRef<any>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Department[]>([]);
@@ -222,17 +224,17 @@ export default function DepartmentsPage() {
       width: 160,
       render: (_: unknown, record: Department) => (
         <Space>
-          <Button
+          {hasPermission('system:department:update') && <Button
             theme="borderless"
             size="small"
             onClick={() => {
               setEditingDepartment(record);
               setModalVisible(true);
             }}
-          >编辑</Button>
-          <Popconfirm title="确定要删除该部门吗？" onConfirm={() => handleDelete(record.id)}>
+          >编辑</Button>}
+          {hasPermission('system:department:delete') && <Popconfirm title="确定要删除该部门吗？" onConfirm={() => handleDelete(record.id)}>
             <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -266,7 +268,7 @@ export default function DepartmentsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
-            <Button
+            {hasPermission('system:department:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}
               onClick={() => {
@@ -275,7 +277,7 @@ export default function DepartmentsPage() {
               }}
             >
               新增
-            </Button>
+            </Button>}
           </Space>
         </div>
       </div>

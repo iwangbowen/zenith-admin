@@ -21,6 +21,7 @@ import DictTag from '../../components/DictTag';
 import { useDictItems } from '../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
+import { usePermission } from '../../hooks/usePermission';
 import './UsersPage.css';
 
 interface SearchParams {
@@ -32,6 +33,7 @@ interface SearchParams {
 const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: null };
 
 export default function UsersPage() {
+  const { hasPermission } = usePermission();
   const formApi = useRef<any>(null);
   const passwordFormApi = useRef<any>(null);
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
@@ -298,25 +300,25 @@ export default function UsersPage() {
       width: 240,
       render: (_: unknown, record: User) => (
         <Space>
-          <Button
+          {hasPermission('system:user:update') && <Button
             theme="borderless"
             size="small"
             onClick={() => {
               setPasswordUser(record);
               setPasswordModalVisible(true);
             }}
-          >修改密码</Button>
-          <Button
+          >修改密码</Button>}
+          {hasPermission('system:user:update') && <Button
             theme="borderless"
             size="small"
             onClick={() => {
               setEditingUser(record);
               setModalVisible(true);
             }}
-          >编辑</Button>
-          <Popconfirm title="确定要删除该用户吗？" onConfirm={() => handleDelete(record.id)}>
+          >编辑</Button>}
+          {hasPermission('system:user:delete') && <Popconfirm title="确定要删除该用户吗？" onConfirm={() => handleDelete(record.id)}>
             <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -357,7 +359,7 @@ export default function UsersPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
-            <Button
+            {hasPermission('system:user:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}
               onClick={() => {
@@ -366,7 +368,7 @@ export default function UsersPage() {
               }}
             >
               新增
-            </Button>
+            </Button>}
           </Space>
         </div>
       </div>

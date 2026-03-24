@@ -5,7 +5,9 @@ import { db } from '../db';
 import { users, userRoles, roles, departments, positions, userPositions } from '../db/schema';
 import { createUserSchema, updateUserSchema, resetUserPasswordSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { requirePermission } from '../middleware/permission';
 import { auditLog } from '../middleware/audit';
+import { clearUserPermissionCache } from '../lib/permissions';
 import type { Role, Position, User } from '@zenith/shared';
 
 const usersRouter = new Hono();
@@ -173,7 +175,7 @@ async function toPublicUsers(rows: UserListRow[]): Promise<User[]> {
 }
 
 // 用户列表
-usersRouter.get('/', async (c) => {
+usersRouter.get('/', requirePermission('system:user:list'), async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const keyword = c.req.query('keyword') || '';
@@ -234,7 +236,7 @@ usersRouter.get('/', async (c) => {
 });
 
 // 创建用户
-usersRouter.post('/', auditLog({ description: '创建用户', module: '用户管理' }), async (c) => {
+usersRouter.post('/', requirePermission('system:user:create'), auditLog({ description: '创建用户', module: '用户管理' }), async (c) => {
   const body = await c.req.json();
   const result = createUserSchema.safeParse(body);
   if (!result.success) {
@@ -292,7 +294,7 @@ usersRouter.post('/', auditLog({ description: '创建用户', module: '用户管
 });
 
 // 更新用户
-usersRouter.put('/:id', auditLog({ description: '更新用户', module: '用户管理' }), async (c) => {
+usersRouter.put('/:id', requirePermission('system:user:update'), auditLog({ description: '更新用户', module: '用户管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateUserSchema.safeParse(body);
@@ -333,6 +335,7 @@ usersRouter.put('/:id', auditLog({ description: '更新用户', module: '用户�
 
   if (nextRoleIds !== undefined) {
     await setUserRoles(id, nextRoleIds);
+    clearUserPermissionCache(id);
   }
   if (nextPositionIds !== undefined) {
     await setUserPositions(id, nextPositionIds);
@@ -361,7 +364,7 @@ usersRouter.put('/:id', auditLog({ description: '更新用户', module: '用户�
 });
 
 // 修改指定用户密码
-usersRouter.put('/:id/password', auditLog({ description: '修改用户密码', module: '用户管理' }), async (c) => {
+usersRouter.put('/:id/password', requirePermission('system:user:update'), auditLog({ description: '修改用户密码', module: '用户管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = resetUserPasswordSchema.safeParse(body);
@@ -381,7 +384,7 @@ usersRouter.put('/:id/password', auditLog({ description: '修改用户密码', m
 });
 
 // 删除用户
-usersRouter.delete('/:id', auditLog({ description: '删除用户', module: '用户管理' }), async (c) => {
+usersRouter.delete('/:id', requirePermission('system:user:delete'), auditLog({ description: '删除用户', module: '用户管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [deleted] = await db.delete(users).where(eq(users.id, id)).returning();
   if (!deleted) {

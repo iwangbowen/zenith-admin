@@ -4,6 +4,7 @@ import { db } from '../db';
 import { positions, userPositions } from '../db/schema';
 import { createPositionSchema, updatePositionSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { requirePermission } from '../middleware/permission';
 import { auditLog } from '../middleware/audit';
 
 const positionsRouter = new Hono();
@@ -23,7 +24,7 @@ function toPosition(row: typeof positions.$inferSelect) {
   };
 }
 
-positionsRouter.get('/', async (c) => {
+positionsRouter.get('/', requirePermission('system:position:list'), async (c) => {
   const keyword = c.req.query('keyword') ?? '';
   const status = c.req.query('status');
   const startTime = c.req.query('startTime');
@@ -48,7 +49,7 @@ positionsRouter.get('/', async (c) => {
   return c.json({ code: 0, message: 'ok', data: list.map(toPosition) });
 });
 
-positionsRouter.post('/', auditLog({ description: '创建岗位', module: '岗位管理' }), async (c) => {
+positionsRouter.post('/', requirePermission('system:position:create'), auditLog({ description: '创建岗位', module: '岗位管理' }), async (c) => {
   const body = await c.req.json();
   const result = createPositionSchema.safeParse(body);
   if (!result.success) {
@@ -66,7 +67,7 @@ positionsRouter.post('/', auditLog({ description: '创建岗位', module: '岗�
   }
 });
 
-positionsRouter.put('/:id', auditLog({ description: '更新岗位', module: '岗位管理' }), async (c) => {
+positionsRouter.put('/:id', requirePermission('system:position:update'), auditLog({ description: '更新岗位', module: '岗位管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updatePositionSchema.safeParse(body);
@@ -92,7 +93,7 @@ positionsRouter.put('/:id', auditLog({ description: '更新岗位', module: '岗
   }
 });
 
-positionsRouter.delete('/:id', auditLog({ description: '删除岗位', module: '岗位管理' }), async (c) => {
+positionsRouter.delete('/:id', requirePermission('system:position:delete'), auditLog({ description: '删除岗位', module: '岗位管理' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [position] = await db.select({ id: positions.id }).from(positions).where(eq(positions.id, id)).limit(1);
   if (!position) {

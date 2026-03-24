@@ -18,11 +18,13 @@ import type { Menu } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import { renderLucideIcon } from '../../../utils/icons';
 import IconPicker from '../../../components/IconPicker';
+import { usePermission } from '../../../hooks/usePermission';
 import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 
 export default function MenusPage() {
+  const { hasPermission } = usePermission();
   const formApi = useRef<any>(null);
   const [data, setData] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(false);
@@ -196,13 +198,13 @@ export default function MenusPage() {
       align: 'center',
       render: (_val, row) => (
         <Space>
-          {row.type !== 'button' && (
+          {row.type !== 'button' && hasPermission('system:menu:create') && (
             <Button theme="borderless" size="small" onClick={() => openCreate(row.id)}>
               子项
             </Button>
           )}
-          <Button theme="borderless" size="small" onClick={() => openEdit(row)}>编辑</Button>
-          <Popconfirm
+          {hasPermission('system:menu:update') && <Button theme="borderless" size="small" onClick={() => openEdit(row)}>编辑</Button>}
+          {hasPermission('system:menu:delete') && <Popconfirm
             title="确认删除此菜单？"
             content="子菜单也将一并删除"
             okText="删除"
@@ -210,7 +212,7 @@ export default function MenusPage() {
             onConfirm={() => handleDelete(row.id)}
           >
             <Button theme="borderless" size="small" type="danger">删除</Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -222,7 +224,7 @@ export default function MenusPage() {
         <div className="responsive-toolbar">
           <div className="responsive-toolbar__left">
             <Space wrap>
-              <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>
+              {hasPermission('system:menu:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>}
             </Space>
           </div>
         </div>

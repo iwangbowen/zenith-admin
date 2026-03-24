@@ -23,6 +23,7 @@ import type {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
+import { usePermission } from '../../../hooks/usePermission';
 import './FileStorageConfigsPage.css';
 
 const { Text } = Typography;
@@ -70,6 +71,7 @@ function getStorageSummary(config: FileStorageConfig) {
 }
 
 export default function FileStorageConfigsPage() {
+  const { hasPermission } = usePermission();
   interface SearchParams {
     status: string;
     timeRange: [Date, Date] | null;
@@ -246,13 +248,13 @@ export default function FileStorageConfigsPage() {
       align: 'center',
       render: (_: unknown, record: FileStorageConfig) => (
         <Space>
-          <Button theme="borderless" size="small" onClick={() => handleSetDefault(record)} disabled={record.isDefault || record.status !== 'active'}>
+          {hasPermission('system:file:config:default') && <Button theme="borderless" size="small" onClick={() => handleSetDefault(record)} disabled={record.isDefault || record.status !== 'active'}>
             设为默认
-          </Button>
-          <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
+          </Button>}
+          {hasPermission('system:file:config:update') && <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
             编辑
-          </Button>
-          <Popconfirm
+          </Button>}
+          {hasPermission('system:file:config:delete') && <Popconfirm
             title="确认删除此文件服务配置？"
             content="若已绑定文件记录，后端会阻止删除。"
             okText="删除"
@@ -262,7 +264,7 @@ export default function FileStorageConfigsPage() {
             <Button theme="borderless" size="small" type="danger" disabled={record.isDefault}>
               删除
             </Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
@@ -315,7 +317,7 @@ export default function FileStorageConfigsPage() {
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            {hasPermission('system:file:config:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
             </Space>
           </div>
         </div>

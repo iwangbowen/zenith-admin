@@ -9,6 +9,7 @@ import { config } from '../config';
 import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
+import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 
 const auth = new Hono();
 
@@ -143,11 +144,26 @@ auth.get('/me', authMiddleware, async (c) => {
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }
   const userRoleList = await getUserRoles(user.id);
+
+  // Collect permission codes for this user
+  let permissions: string[];
+  if (isSuperAdmin(userRoleList.map((r) => r.code))) {
+    permissions = ['*']; // super_admin has all permissions
+  } else {
+    permissions = await getUserPermissions(user.id);
+  }
+
   const { password: _, ...userInfo } = user;
   return c.json({
     code: 0,
     message: 'ok',
-    data: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+    data: {
+      ...userInfo,
+      roles: userRoleList,
+      permissions,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
+    },
   });
 });
 

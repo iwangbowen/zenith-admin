@@ -2,6 +2,7 @@ import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Spin } from '@douyinfe/semi-ui';
 import { useAuth } from './hooks/useAuth';
+import { PermissionContext } from './hooks/usePermission';
 import { request } from './utils/request';
 import type { Menu } from '@zenith/shared';
 
@@ -10,6 +11,7 @@ import LoginPage from './pages/login/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import ProfilePage from './pages/profile/ProfilePage';
 import NotFoundPage from './pages/not-found/NotFoundPage';
+import ForbiddenPage from './pages/forbidden/ForbiddenPage';
 
 const modules = import.meta.glob('./pages/**/*.tsx');
 
@@ -27,12 +29,12 @@ function flattenMenus(menus: Menu[]): Menu[] {
   return routes;
 }
 
-function AdminRouteLoader({ user, logout, updateUser }: any) {
+function AdminRouteLoader({ user, permissions, logout, updateUser }: any) {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    request.get<Menu[]>('/api/menus').then((res) => {
+    request.get<Menu[]>('/api/menus/user').then((res) => {
       if (res.code === 0 && res.data) {
         setMenus(res.data);
       }
@@ -50,19 +52,21 @@ function AdminRouteLoader({ user, logout, updateUser }: any) {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<AdminLayout user={user} onLogout={logout} presetMenus={menus} />}>
+    <PermissionContext.Provider value={permissions}>
+      <Routes>
+        <Route path="/" element={<AdminLayout user={user} onLogout={logout} presetMenus={menus} />}>
         {/* 固定路由 */}
         <Route index element={<DashboardPage />} />
         <Route path="profile" element={<ProfilePage user={user} onUserUpdate={updateUser} />} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
-        
+        <Route path="forbidden" element={<ForbiddenPage />} />
+
         {/* 动态路由 */}
         {dynamicRoutes.map(m => {
           // 由于 vite glob 是以 ./pages 开头的，我们需要拼接
           const importPath = `./pages/${m.component}.tsx`;
           const importFn = modules[importPath] as () => Promise<{ default: React.ComponentType<any> }>;
-          
+
           if (!importFn) {
             console.warn(`[Router] Component not found for path: ${m.path} -> ${importPath}`);
             return null;
@@ -73,27 +77,28 @@ function AdminRouteLoader({ user, logout, updateUser }: any) {
           const routePath = m.path!.startsWith('/') ? m.path!.slice(1) : m.path!;
 
           return (
-            <Route 
-              key={m.id} 
-              path={routePath} 
+            <Route
+              key={m.id}
+              path={routePath}
               element={
                 <Suspense fallback={<div style={{ padding: 24 }}><Spin /></div>}>
                   <Component />
                 </Suspense>
-              } 
+              }
             />
           );
         })}
-        
+
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </PermissionContext.Provider>
   );
 }
 
 export default function App() {
-  const { user, loading, login, register, logout, updateUser } = useAuth();
+  const { user, permissions, loading, login, register, logout, updateUser } = useAuth();
 
   if (loading) {
     return (
@@ -106,7 +111,7 @@ export default function App() {
   return (
     <BrowserRouter>
       {user ? (
-        <AdminRouteLoader user={user} logout={logout} updateUser={updateUser} />
+        <AdminRouteLoader user={user} permissions={permissions} logout={logout} updateUser={updateUser} />
       ) : (
         <Routes>
           <Route path="/login" element={<LoginPage onLogin={login} onRegister={register} />} />
