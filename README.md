@@ -6,9 +6,10 @@
 
 ---
 
-## 文档站与项目首页
+## 文档站、演示站与项目首页
 
-项目文档站与项目首页：<https://iwangbowen.github.io/zenith-admin/>
+- 文档站：<https://iwangbowen.github.io/zenith-admin/>
+- 演示站：<https://iwangbowen.github.io/zenith-admin/demo/>（账号 `admin` / 密码 `123456`，无需后端）
 
 ---
 

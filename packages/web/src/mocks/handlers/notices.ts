@@ -24,15 +24,13 @@ export const noticesHandlers = [
   }),
 
   // 已发布通知列表（前台展示，无需鉴权）
-  http.get('/api/notices/published', ({ request }) => {
-    const url = new URL(request.url);
-    const page = Number(url.searchParams.get('page')) || 1;
-    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
-    const list = mockNotices
+  http.get('/api/notices/published', () => {
+    const data = mockNotices
       .filter((n) => n.publishStatus === 'published')
-      .slice((page - 1) * pageSize, page * pageSize);
-    const total = mockNotices.filter((n) => n.publishStatus === 'published').length;
-    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+      .sort((a, b) => new Date(b.publishTime ?? 0).getTime() - new Date(a.publishTime ?? 0).getTime())
+      .slice(0, 20)
+      .map((n) => ({ ...n, isRead: false }));
+    return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
   // 获取单个通知
@@ -96,5 +94,10 @@ export const noticesHandlers = [
     if (index === -1) return HttpResponse.json({ code: 404, message: '通知不存在', data: null });
     mockNotices.splice(index, 1);
     return HttpResponse.json({ code: 0, message: '删除成功', data: null });
+  }),
+
+  // 标记通知已读
+  http.post('/api/notices/:id/read', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
 ];

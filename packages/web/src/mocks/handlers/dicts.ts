@@ -3,20 +3,16 @@ import { mockDicts, mockDictItems, getNextDictId, getNextDictItemId } from '../d
 import type { Dict, DictItem } from '@zenith/shared';
 
 export const dictsHandlers = [
-  // 字典列表（分页）
+  // 字典列表（DictsPage 期望平铺数组）
   http.get('/api/dicts', ({ request }) => {
     const url = new URL(request.url);
-    const page = Number(url.searchParams.get('page')) || 1;
-    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const keyword = url.searchParams.get('keyword') ?? '';
 
-    let list = mockDicts.filter((d) => {
+    const list = mockDicts.filter((d) => {
       if (keyword && !d.name.includes(keyword) && !d.code.includes(keyword)) return false;
       return true;
     });
-    const total = list.length;
-    list = list.slice((page - 1) * pageSize, page * pageSize);
-    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+    return HttpResponse.json({ code: 0, message: 'ok', data: list });
   }),
 
   // 获取单个字典

@@ -3,20 +3,18 @@ import { mockPositions, getNextPositionId } from '../data/positions';
 import type { Position } from '@zenith/shared';
 
 export const positionsHandlers = [
-  // 岗位列表（分页）
+  // 岗位列表（平铺，与真实后端一致）
   http.get('/api/positions', ({ request }) => {
     const url = new URL(request.url);
-    const page = Number(url.searchParams.get('page')) || 1;
-    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const keyword = url.searchParams.get('keyword') ?? '';
+    const status = url.searchParams.get('status') ?? '';
 
-    let list = mockPositions.filter((p) => {
+    const data = mockPositions.filter((p) => {
       if (keyword && !p.name.includes(keyword) && !p.code.includes(keyword)) return false;
+      if (status && p.status !== status) return false;
       return true;
     });
-    const total = list.length;
-    list = list.slice((page - 1) * pageSize, page * pageSize);
-    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+    return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
   // 所有岗位（供下拉框使用）

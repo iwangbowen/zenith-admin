@@ -4,20 +4,18 @@ import { mockMenus } from '../data/menus';
 import type { Role } from '@zenith/shared';
 
 export const rolesHandlers = [
-  // 角色列表（分页）
+  // 角色列表（平铺，与真实后端一致）
   http.get('/api/roles', ({ request }) => {
     const url = new URL(request.url);
-    const page = Number(url.searchParams.get('page')) || 1;
-    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const keyword = url.searchParams.get('keyword') ?? '';
+    const status = url.searchParams.get('status') ?? '';
 
-    let list = mockRoles.filter((r) => {
+    const data = mockRoles.filter((r) => {
       if (keyword && !r.name.includes(keyword) && !r.code.includes(keyword)) return false;
+      if (status && r.status !== status) return false;
       return true;
     });
-    const total = list.length;
-    list = list.slice((page - 1) * pageSize, page * pageSize);
-    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+    return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
   // 所有角色（不分页，供下拉框使用）

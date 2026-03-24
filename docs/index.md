@@ -11,6 +11,9 @@ hero:
       text: 快速开始 →
       link: /guide/getting-started
     - theme: alt
+      text: 在线演示 →
+      link: https://iwangbowen.github.io/zenith-admin/demo/
+    - theme: alt
       text: GitHub
       link: https://github.com/iwangbowen/zenith-admin
 features:

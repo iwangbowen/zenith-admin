@@ -187,12 +187,27 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
               </Form>
             </TabPane>
           </Tabs>
-          <Text
-            type="tertiary"
-            style={{ display: 'block', textAlign: 'center', marginTop: 20, fontSize: 12 }}
-          >
-            默认账号：admin / 123456
-          </Text>
+          {import.meta.env.VITE_DEMO_MODE === 'true' ? (
+            <div style={{
+              marginTop: 20,
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'var(--semi-color-primary-light-default)',
+              border: '1px solid var(--semi-color-primary-light-active)',
+              fontSize: 13,
+              textAlign: 'center',
+              color: 'var(--semi-color-primary)',
+            }}>
+              <strong>演示模式</strong> · 账号：<code>admin</code> / 密码：<code>123456</code>
+            </div>
+          ) : (
+            <Text
+              type="tertiary"
+              style={{ display: 'block', textAlign: 'center', marginTop: 20, fontSize: 12 }}
+            >
+              默认账号：admin / 123456
+            </Text>
+          )}
         </div>
       </div>
     </div>

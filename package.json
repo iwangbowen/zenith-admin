@@ -8,6 +8,7 @@
     "dev": "concurrently \"npm run dev -w @zenith/server\" \"npm run dev -w @zenith/web\"",
     "dev:server": "npm run dev -w @zenith/server",
     "dev:web": "npm run dev -w @zenith/web",
+    "dev:demo": "npm run dev:demo -w @zenith/web",
     "docs:dev": "vitepress dev docs --host 0.0.0.0 --port 4177",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs --host 0.0.0.0 --port 4178",

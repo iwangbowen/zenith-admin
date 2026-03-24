@@ -3,6 +3,11 @@ import { mockCronJobs, getNextCronJobId } from '../data/system';
 import type { CronJob } from '@zenith/shared';
 
 export const cronJobsHandlers = [
+  // 获取可用任务处理器列表（必须在 :id 路由之前声明）
+  http.get('/api/cron-jobs/handlers', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: ['emailNotification', 'dataCleanup', 'reportGeneration', 'cacheRefresh'] });
+  }),
+
   // 定时任务列表（分页）
   http.get('/api/cron-jobs', ({ request }) => {
     const url = new URL(request.url);

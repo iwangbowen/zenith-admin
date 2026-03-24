@@ -2,13 +2,21 @@ import { http, HttpResponse } from 'msw';
 import { mockDepartments, getNextDeptId } from '../data/departments';
 import type { Department } from '@zenith/shared';
 
-function buildDeptTree(list: Department[], parentId: number | null = null): Department[] {
+function buildDeptTree(list: Department[], parentId: number = 0): Department[] {
   return list
-    .filter((d) => (d.parentId ?? null) === parentId)
-    .map((d) => ({ ...d, children: buildDeptTree(list, d.id) }));
+    .filter((d) => d.parentId === parentId)
+    .map((d) => {
+      const children = buildDeptTree(list, d.id);
+      return children.length > 0 ? { ...d, children } : { ...d };
+    });
 }
 
 export const departmentsHandlers = [
+  // 部门平铺列表（供下拉框使用）
+  http.get('/api/departments/flat', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: mockDepartments });
+  }),
+
   // 部门树
   http.get('/api/departments', ({ request }) => {
     const url = new URL(request.url);

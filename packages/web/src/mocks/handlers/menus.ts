@@ -3,6 +3,11 @@ import { mockMenus, buildMenuTree, getNextMenuId } from '../data/menus';
 import type { Menu } from '@zenith/shared';
 
 export const menusHandlers = [
+  // 当前用户的菜单树（用于渲染侧边栏）
+  http.get('/api/menus/user', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: buildMenuTree(mockMenus) });
+  }),
+
   // 菜单树（含所有层级）
   http.get('/api/menus', ({ request }) => {
     const url = new URL(request.url);
