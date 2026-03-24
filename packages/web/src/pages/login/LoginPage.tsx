@@ -13,7 +13,7 @@ interface LoginPageProps {
   onRegister: (data: { username: string; nickname: string; email: string; password: string }) => Promise<{ code: number; message: string }>;
 }
 
-export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
+export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPageProps>) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState('login');
@@ -42,12 +42,13 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
     setLoading(true);
     try {
       const res = await onLogin(values.username, values.password, captchaId, values.captchaCode);
-      if (res.code !== 0) {
-        Toast.error(res.message);
-        if (captchaEnabled) fetchCaptcha();
-      } else {
+      if (res.code === 0) {
         navigate('/', { replace: true });
+        return;
       }
+
+      Toast.error(res.message);
+      if (captchaEnabled) fetchCaptcha();
     } finally {
       setLoading(false);
     }
@@ -57,11 +58,12 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
     setLoading(true);
     try {
       const res = await onRegister(values);
-      if (res.code !== 0) {
-        Toast.error(res.message);
-      } else {
+      if (res.code === 0) {
         navigate('/', { replace: true });
+        return;
       }
+
+      Toast.error(res.message);
     } finally {
       setLoading(false);
     }
@@ -70,22 +72,45 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   return (
     <div className="login-page">
       <div className="login-left">
+        <div className="login-blob login-blob-1" />
+        <div className="login-blob login-blob-2" />
+        <div className="login-blob login-blob-3" />
         <div className="login-brand">
-          <div className="login-logo">Z</div>
-          <Title heading={2} style={{ color: '#fff', marginBottom: 8 }}>
-            Zenith Admin
-          </Title>
-          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>
-            现代化企业后台管理框架
-          </Text>
+          <div className="login-logo-wrap">
+            <div className="login-logo">Z</div>
+            <span className="login-brand-name">Zenith Admin</span>
+          </div>
+          <h1 className="login-headline">
+            高效管理，
+            <br />
+            <span className="login-headline-highlight">赋能业务增长</span>
+          </h1>
+          <p className="login-desc">
+            企业级后台管理系统，为团队提供高效、
+            <br />
+            稳定、安全的管理解决方案。
+          </p>
+          <div className="login-badges">
+            <span className="login-badge"><span className="login-badge-dot" />稳定运行</span>
+            <span className="login-badge"><span className="login-badge-dot" />高效管理</span>
+            <span className="login-badge"><span className="login-badge-dot" />安全防护</span>
+          </div>
         </div>
-        <div className="login-left-decor" />
       </div>
       <div className="login-right">
         <div className="login-form-wrapper">
-          <Title heading={3} style={{ marginBottom: 24, fontWeight: 600 }}>
-            {tab === 'login' ? '欢迎回来' : '创建账号'}
-          </Title>
+          <div className="login-mobile-brand">
+            <div className="login-logo">Z</div>
+            <span className="login-brand-name">Zenith Admin</span>
+          </div>
+          <div className="login-form-header">
+            <Title heading={3} style={{ marginBottom: 6, fontWeight: 700 }}>
+              {tab === 'login' ? '欢迎回来' : '创建账号'}
+            </Title>
+            <Text type="tertiary" style={{ fontSize: 14, display: 'block', marginBottom: 24 }}>
+              {tab === 'login' ? '请输入您的账号信息以登录工作台' : '注册新账号加入我们'}
+            </Text>
+          </div>
           <Tabs type="line" activeKey={tab} onChange={setTab} style={{ marginBottom: 20 }}>
             <TabPane tab="登录" itemKey="login">
               <Form onSubmit={handleLogin} style={{ marginTop: 12 }}>
@@ -117,12 +142,24 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                         size="large"
                       />
                     </div>
-                    <div
-                      style={{ cursor: 'pointer', marginTop: 28, flexShrink: 0, borderRadius: 4, overflow: 'hidden', border: '1px solid var(--semi-color-border)' }}
+                    <button
+                      type="button"
+                      style={{
+                        cursor: 'pointer',
+                        marginTop: 28,
+                        flexShrink: 0,
+                        borderRadius: 4,
+                        overflow: 'hidden',
+                        border: '1px solid var(--semi-color-border)',
+                        padding: 0,
+                        background: 'transparent',
+                        lineHeight: 0,
+                      }}
                       title="点击刷新验证码"
                       onClick={fetchCaptcha}
-                      dangerouslySetInnerHTML={{ __html: captchaSvg }}
-                    />
+                    >
+                      <div dangerouslySetInnerHTML={{ __html: captchaSvg }} />
+                    </button>
                   </div>
                 )}
                 <Button
@@ -187,7 +224,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
               </Form>
             </TabPane>
           </Tabs>
-          {import.meta.env.VITE_DEMO_MODE === 'true' ? (
+          {import.meta.env.VITE_DEMO_MODE === 'true' && (
             <div style={{
               marginTop: 20,
               padding: '10px 14px',
@@ -200,13 +237,6 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
             }}>
               <strong>演示模式</strong> · 账号：<code>admin</code> / 密码：<code>123456</code>
             </div>
-          ) : (
-            <Text
-              type="tertiary"
-              style={{ display: 'block', textAlign: 'center', marginTop: 20, fontSize: 12 }}
-            >
-              默认账号：admin / 123456
-            </Text>
           )}
         </div>
       </div>
