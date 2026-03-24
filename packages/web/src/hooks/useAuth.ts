@@ -41,7 +41,7 @@ export function useAuth() {
     const res = await request.post<LoginResponse>('/api/auth/login', { username, password });
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
-      setState({ user: res.data.user, permissions: [], loading: false });
+      await fetchUser();
     }
     return res;
   };
@@ -50,7 +50,7 @@ export function useAuth() {
     const res = await request.post<LoginResponse>('/api/auth/register', data);
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
-      setState({ user: res.data.user, permissions: [], loading: false });
+      await fetchUser();
     }
     return res;
   };
