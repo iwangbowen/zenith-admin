@@ -333,6 +333,13 @@
   font-weight: 500;
 }
 
+.admin-tab-item__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
 .admin-tab-item__text {
   max-width: 120px;
   overflow: hidden;
