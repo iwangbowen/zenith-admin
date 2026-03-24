@@ -105,7 +105,6 @@ export default function MenusPage() {
       setModalVisible(false);
       fetchMenus();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -115,8 +114,6 @@ export default function MenusPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       fetchMenus();
-    } else {
-      Toast.error(res.message);
     }
   };
 

@@ -109,8 +109,6 @@ export default function NoticesPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       fetchData(page, pageSize, submittedParams);
-    } else {
-      Toast.error(res.message || '删除失败');
     }
   };
 
@@ -141,8 +139,6 @@ export default function NoticesPage() {
         Toast.success(editingNotice ? '更新成功' : '创建成功');
         setModalVisible(false);
         fetchData(editingNotice ? page : 1, pageSize, submittedParams);
-      } else {
-        Toast.error(res.message || '操作失败');
       }
     } finally {
       setSubmitting(false);

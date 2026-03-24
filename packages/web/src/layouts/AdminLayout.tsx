@@ -104,7 +104,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [noticePopVisible, setNoticePopVisible] = useState(false);
 
   const fetchNotices = () => {
-    request.get<(Notice & { isRead?: boolean })[]>('/api/notices/published').then((res) => {
+    request.get<(Notice & { isRead?: boolean })[]>('/api/notices/published', { silent: true }).then((res) => {
       if (res.code === 0 && res.data) setNotices(res.data);
     });
   };
@@ -142,7 +142,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     const updateReadState = () => setNotices(
       (prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n),
     );
-    request.post(`/api/notices/${id}/read`).then((res) => {
+    request.post(`/api/notices/${id}/read`, undefined, { silent: true }).then((res) => {
       if (res.code === 0) updateReadState();
     });
   };
@@ -151,7 +151,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     if (presetMenus) {
       setMenuTree(presetMenus);
     } else {
-      request.get<Menu[]>('/api/menus').then((res) => {
+      request.get<Menu[]>('/api/menus', { silent: true }).then((res) => {
         if (res.code === 0 && res.data) setMenuTree(res.data);
       });
     }

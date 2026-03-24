@@ -108,7 +108,6 @@ export default function PositionsPage() {
       setEditingPosition(null);
       void fetchPositions();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -118,8 +117,6 @@ export default function PositionsPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       void fetchPositions();
-    } else {
-      Toast.error(res.message);
     }
   };
 

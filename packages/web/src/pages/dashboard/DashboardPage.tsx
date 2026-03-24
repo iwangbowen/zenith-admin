@@ -58,8 +58,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     Promise.all([
-      request.get<MonitorData>('/api/monitor'),
-      request.get<NoticeWithRead[]>('/api/notices/published'),
+      request.get<MonitorData>('/api/monitor', { silent: true }),
+      request.get<NoticeWithRead[]>('/api/notices/published', { silent: true }),
     ]).then(([monRes, notRes]) => {
       if (monRes.code === 0) setMonitor(monRes.data);
       if (notRes.code === 0) setNotices(notRes.data);
@@ -69,29 +69,25 @@ export default function DashboardPage() {
   const statCards = [
     {
       label: 'CPU 使用率',
-      value: monitor ? `${monitor.cpu.usage}%` : null,
+      value: loading ? null : (monitor ? `${monitor.cpu.usage}%` : '-'),
       icon: <Cpu size={18} style={{ color: '#3370ff' }} />,
       bg: '#ebf1ff',
     },
     {
       label: '内存使用率',
-      value: monitor ? `${monitor.memory.usagePercent}%` : null,
+      value: loading ? null : (monitor ? `${monitor.memory.usagePercent}%` : '-'),
       icon: <Server size={18} style={{ color: '#0fc6c2' }} />,
       bg: '#e6f7f6',
     },
     {
       label: 'Node 运行时间',
-      value: monitor ? formatUptime(monitor.node.uptime) : null,
+      value: loading ? null : (monitor ? formatUptime(monitor.node.uptime) : '-'),
       icon: <Clock size={18} style={{ color: '#21b550' }} />,
       bg: '#e8f8ec',
     },
     {
       label: '数据库连接',
-      value: monitor
-        ? monitor.database
-          ? `${monitor.database.activeConnections} / ${monitor.database.totalConnections}`
-          : '-'
-        : null,
+      value: loading ? null : (monitor ? (monitor.database ? `${monitor.database.activeConnections} / ${monitor.database.totalConnections}` : '-') : '-'),
       icon: <Database size={18} style={{ color: '#f5a623' }} />,
       bg: '#fef6e6',
     },

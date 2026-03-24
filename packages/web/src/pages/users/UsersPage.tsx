@@ -181,7 +181,6 @@ export default function UsersPage() {
       setEditingUser(null);
       void fetchUsers();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -209,7 +208,6 @@ export default function UsersPage() {
       setPasswordModalVisible(false);
       setPasswordUser(null);
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -219,8 +217,6 @@ export default function UsersPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       void fetchUsers();
-    } else {
-      Toast.error(res.message);
     }
   };
 

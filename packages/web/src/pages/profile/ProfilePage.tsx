@@ -26,8 +26,6 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     if (res.code === 0) {
       Toast.success('资料已更新');
       onUserUpdate(res.data);
-    } else {
-      Toast.error(res.message);
     }
   }
 
@@ -44,8 +42,6 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     setPwdLoading(false);
     if (res.code === 0) {
       Toast.success('密码修改成功，请重新登录');
-    } else {
-      Toast.error(res.message);
     }
   }
 

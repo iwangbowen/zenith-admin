@@ -87,8 +87,6 @@ export default function FilesPage() {
         setData(res.data);
         setPage(res.data.page);
         setPageSize(res.data.pageSize);
-      } else {
-        Toast.error(res.message);
       }
     } finally {
       setLoading(false);
@@ -133,8 +131,6 @@ export default function FilesPage() {
         setPage(1);
         fetchDefaultConfig();
         fetchFiles();
-      } else {
-        Toast.error(res.message);
       }
     } finally {
       setUploading(false);
@@ -171,8 +167,6 @@ export default function FilesPage() {
     if (res.code === 0) {
       Toast.success('文件已删除');
       fetchFiles();
-    } else {
-      Toast.error(res.message);
     }
   };
 

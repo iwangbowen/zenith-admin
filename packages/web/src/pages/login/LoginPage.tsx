@@ -25,7 +25,7 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
 
   const fetchCaptcha = useCallback(async () => {
     try {
-      const res = await request.get<{ captchaId: string; svg: string; enabled: boolean }>('/api/auth/captcha');
+      const res = await request.get<{ captchaId: string; svg: string; enabled: boolean }>('/api/auth/captcha', { silent: true });
       if (res.code === 0) {
         setCaptchaEnabled(res.data.enabled);
         if (res.data.enabled) {

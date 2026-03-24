@@ -1,6 +1,12 @@
+import { Toast } from '@douyinfe/semi-ui';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { ApiResponse } from '@zenith/shared';
 import { config } from '../config';
+
+export interface RequestOptions {
+  /** 静默模式：为 true 时不自动弹出错误提示，由调用方自行处理 */
+  silent?: boolean;
+}
 
 class Request {
   private readonly baseUrl: string;
@@ -52,15 +58,18 @@ class Request {
     return this.refreshing;
   }
 
-  async request<T>(url: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  async request<T>(url: string, options: RequestInit & RequestOptions = {}): Promise<ApiResponse<T>> {
+    const { silent, ...fetchOptions } = options;
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${url}`, {
-        ...options,
-        headers: { ...this.getHeaders(options.body), ...options.headers },
+        ...fetchOptions,
+        headers: { ...this.getHeaders(fetchOptions.body), ...fetchOptions.headers },
       });
     } catch {
-      return { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
+      const errResp = { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
+      if (!silent) Toast.error(errResp.message);
+      return errResp;
     }
 
     if (res.status === 401) {
@@ -70,11 +79,13 @@ class Request {
         // Retry original request with new token
         try {
           res = await fetch(`${this.baseUrl}${url}`, {
-            ...options,
-            headers: { ...this.getHeaders(options.body), ...options.headers },
+            ...fetchOptions,
+            headers: { ...this.getHeaders(fetchOptions.body), ...fetchOptions.headers },
           });
         } catch {
-          return { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
+          const errResp = { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
+          if (!silent) Toast.error(errResp.message);
+          return errResp;
         }
         if (res.status === 401) {
           localStorage.removeItem(TOKEN_KEY);
@@ -92,30 +103,35 @@ class Request {
 
     try {
       const data: ApiResponse<T> = await res.json();
+      if (data.code !== 0 && !silent) {
+        Toast.error(data.message || '操作失败');
+      }
       return data;
     } catch {
-      return { code: -1, message: '响应解析失败', data: null as unknown as T };
+      const errResp = { code: -1, message: '响应解析失败', data: null as unknown as T };
+      if (!silent) Toast.error(errResp.message);
+      return errResp;
     }
   }
 
-  get<T>(url: string) {
-    return this.request<T>(url, { method: 'GET' });
+  get<T>(url: string, opts: RequestOptions = {}) {
+    return this.request<T>(url, { method: 'GET', ...opts });
   }
 
-  post<T>(url: string, body?: unknown) {
-    return this.request<T>(url, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body) });
+  post<T>(url: string, body?: unknown, opts: RequestOptions = {}) {
+    return this.request<T>(url, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body), ...opts });
   }
 
-  put<T>(url: string, body?: unknown) {
-    return this.request<T>(url, { method: 'PUT', body: body instanceof FormData ? body : JSON.stringify(body) });
+  put<T>(url: string, body?: unknown, opts: RequestOptions = {}) {
+    return this.request<T>(url, { method: 'PUT', body: body instanceof FormData ? body : JSON.stringify(body), ...opts });
   }
 
-  delete<T>(url: string) {
-    return this.request<T>(url, { method: 'DELETE' });
+  delete<T>(url: string, opts: RequestOptions = {}) {
+    return this.request<T>(url, { method: 'DELETE', ...opts });
   }
 
-  postForm<T>(url: string, body: FormData) {
-    return this.request<T>(url, { method: 'POST', body });
+  postForm<T>(url: string, body: FormData, opts: RequestOptions = {}) {
+    return this.request<T>(url, { method: 'POST', body, ...opts });
   }
 
   /** Download a file (binary response) - used for Excel export */

@@ -94,7 +94,6 @@ export default function SystemConfigsPage() {
       setEditingConfig(null);
       void fetchData();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -104,8 +103,6 @@ export default function SystemConfigsPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       void fetchData();
-    } else {
-      Toast.error(res.message);
     }
   };
 

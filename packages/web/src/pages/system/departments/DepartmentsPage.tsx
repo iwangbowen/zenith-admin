@@ -183,7 +183,6 @@ export default function DepartmentsPage() {
       setEditingDepartment(null);
       void fetchDepartments();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -193,8 +192,6 @@ export default function DepartmentsPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       void fetchDepartments();
-    } else {
-      Toast.error(res.message);
     }
   };
 

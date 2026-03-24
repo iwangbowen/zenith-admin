@@ -103,7 +103,6 @@ export default function DictsPage() {
       setDictModalVisible(false);
       fetchDicts();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -117,8 +116,6 @@ export default function DictsPage() {
         setItems([]);
       }
       fetchDicts();
-    } else {
-      Toast.error(res.message);
     }
   };
 
@@ -139,7 +136,6 @@ export default function DictsPage() {
       setItemModalVisible(false);
       fetchItems(selectedDict.id);
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -150,8 +146,6 @@ export default function DictsPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       fetchItems(selectedDict.id);
-    } else {
-      Toast.error(res.message);
     }
   };
 

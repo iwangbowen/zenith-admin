@@ -19,7 +19,7 @@ export function useAuth() {
       return;
     }
     try {
-      const res = await request.get<User & { permissions: string[] }>('/api/auth/me');
+      const res = await request.get<User & { permissions: string[] }>('/api/auth/me', { silent: true });
       if (res.code === 0) {
         const { permissions, ...userData } = res.data;
         setState({ user: userData, permissions: permissions ?? [], loading: false });
@@ -40,7 +40,7 @@ export function useAuth() {
   }, [fetchUser]);
 
   const login = async (username: string, password: string, captchaId?: string, captchaCode?: string) => {
-    const res = await request.post<LoginResponse>('/api/auth/login', { username, password, captchaId, captchaCode });
+    const res = await request.post<LoginResponse>('/api/auth/login', { username, password, captchaId, captchaCode }, { silent: true });
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
       localStorage.setItem(REFRESH_TOKEN_KEY, res.data.token.refreshToken);
@@ -50,7 +50,7 @@ export function useAuth() {
   };
 
   const register = async (data: { username: string; nickname: string; email: string; password: string }) => {
-    const res = await request.post<LoginResponse>('/api/auth/register', data);
+    const res = await request.post<LoginResponse>('/api/auth/register', data, { silent: true });
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
       localStorage.setItem(REFRESH_TOKEN_KEY, res.data.token.refreshToken);

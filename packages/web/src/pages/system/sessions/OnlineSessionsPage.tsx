@@ -46,8 +46,6 @@ export default function OnlineSessionsPage() {
         if (res.code === 0) {
           Toast.success('已强制下线');
           void fetchData();
-        } else {
-          Toast.error(res.message);
         }
       },
     });

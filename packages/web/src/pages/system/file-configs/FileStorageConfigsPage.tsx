@@ -103,8 +103,6 @@ export default function FileStorageConfigsPage() {
       const res = await request.get<FileStorageConfig[]>(url);
       if (res.code === 0) {
         setConfigs(res.data);
-      } else {
-        Toast.error(res.message);
       }
     } finally {
       setLoading(false);
@@ -155,7 +153,6 @@ export default function FileStorageConfigsPage() {
       setEditingConfig(null);
       fetchConfigs();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -165,8 +162,6 @@ export default function FileStorageConfigsPage() {
     if (res.code === 0) {
       Toast.success('文件服务配置已删除');
       fetchConfigs();
-    } else {
-      Toast.error(res.message);
     }
   };
 
@@ -175,8 +170,6 @@ export default function FileStorageConfigsPage() {
     if (res.code === 0) {
       Toast.success('默认文件服务已更新');
       fetchConfigs();
-    } else {
-      Toast.error(res.message);
     }
   };
 

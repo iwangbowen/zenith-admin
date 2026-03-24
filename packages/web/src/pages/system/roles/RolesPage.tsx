@@ -114,8 +114,6 @@ export default function RolesPage() {
     if (res.code === 0) {
       Toast.success('菜单权限已更新');
       setMenuModalVisible(false);
-    } else {
-      Toast.error(res.message);
     }
   };
 
@@ -141,8 +139,6 @@ export default function RolesPage() {
     if (res.code === 0) {
       Toast.success('用户分配已更新');
       setUserModalVisible(false);
-    } else {
-      Toast.error(res.message);
     }
   };
 
@@ -161,7 +157,6 @@ export default function RolesPage() {
       setModalVisible(false);
       fetchRoles();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -171,8 +166,6 @@ export default function RolesPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       fetchRoles();
-    } else {
-      Toast.error(res.message);
     }
   };
 

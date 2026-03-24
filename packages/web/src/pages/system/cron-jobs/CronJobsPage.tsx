@@ -87,8 +87,6 @@ export default function CronJobsPage() {
         if (res.code === 0) {
           Toast.success('已触发执行');
           void fetchData();
-        } else {
-          Toast.error(res.message);
         }
       },
     });
@@ -109,7 +107,6 @@ export default function CronJobsPage() {
       setCronExprValue('');
       void fetchData();
     } else {
-      Toast.error(res.message);
       throw new Error(res.message);
     }
   };
@@ -119,8 +116,6 @@ export default function CronJobsPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       void fetchData();
-    } else {
-      Toast.error(res.message);
     }
   };
 
