@@ -19,8 +19,8 @@ packages/
 
 ```bash
 npm run dev            # 同时启动 server + web 开发服务器
-npm run dev:server     # 仅启动后端（端口 3000）
-npm run dev:web        # 仅启动前端（端口 5173）
+npm run dev:server     # 仅启动后端（端口 3300）
+npm run dev:web        # 仅启动前端（端口 5373）
 npm run build          # 顺序构建：shared → server → web
 npm run db:generate    # 生成 Drizzle 迁移文件
 npm run db:migrate     # 执行数据库迁移

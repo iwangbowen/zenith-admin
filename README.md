@@ -30,14 +30,14 @@
 ```text
 zenith-admin/
 ├── packages/
-│   ├── server/          # Hono 后端服务（端口 3000）
+│   ├── server/          # Hono 后端服务
 │   │   ├── src/
 │   │   │   ├── routes/  # API 路由（认证、用户、部门、岗位、角色、菜单、字典、日志、监控、会话、定时任务等）
 │   │   │   ├── db/      # Drizzle schema、迁移与种子数据
 │   │   │   ├── lib/     # 验证码、文件存储、日志、权限、WebSocket、定时任务调度等能力封装
 │   │   │   └── middleware/  # 日志、认证与权限中间件
 │   │   └── drizzle/     # 数据库迁移文件
-│   ├── web/             # React 前端（端口 5173）
+│   ├── web/             # React 前端
 │   │   └── src/
 │   │       ├── pages/   # 页面组件（登录、仪表盘、个人中心、组织与系统管理、日志、监控等）
 │   │       ├── layouts/ # AdminLayout 主布局与导航容器
@@ -70,13 +70,13 @@ npm install
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/zenith_admin
 JWT_SECRET=your-secret-key
-PORT=3000
+PORT=3300
 ```
 
 在 `packages/web/` 下创建 `.env` 文件（可选，有默认值）：
 
 ```env
-VITE_API_BASE_URL=http://localhost:3000
+VITE_API_BASE_URL=http://localhost:3300
 VITE_APP_TITLE=Zenith Admin
 ```
 
@@ -97,8 +97,8 @@ npm run db:seed
 npm run dev
 
 # 或分别启动
-npm run dev:server   # 后端：http://localhost:3000
-npm run dev:web      # 前端：http://localhost:5173
+npm run dev:server   # 后端：http://localhost:3300
+npm run dev:web      # 前端：http://localhost:5373
 ```
 
 ### 启动文档站（VitePress）
