@@ -1,20 +1,25 @@
 # Zenith Admin
 
-基于 **Hono + React 19 + Drizzle ORM** 的现代化全栈后台管理系统。
+基于 **Hono v4 + React 19 + Semi Design v2 + Drizzle ORM** 的全栈后台管理系统，覆盖认证授权、组织架构、系统配置、通知公告、日志审计、在线会话、定时任务、文件管理与运行监控等后台场景。
+
+项目采用 **npm monorepo** 结构：后端使用 Hono + PostgreSQL 提供 API 服务，前端使用 React 19 + Vite + **Semi Design v2** 构建后台界面，`shared` 包统一维护前后端共享类型、常量与 Zod 校验 schema。
 
 ---
 
 ## 技术栈
 
 | 层级 | 技术 |
-|------|------|
+| ---- | ---- |
 | 后端框架 | [Hono](https://hono.dev/) v4 + Node.js |
 | 前端框架 | [React](https://react.dev/) 19 + [Vite](https://vitejs.dev/) 6 |
 | UI 组件库 | [Semi Design](https://semi.design/) v2（字节跳动） |
+| 图标体系 | [lucide-react](https://lucide.dev/) |
 | 数据库 ORM | [Drizzle ORM](https://orm.drizzle.team/) + PostgreSQL |
 | 前端路由 | [React Router](https://reactrouter.com/) v7 |
 | 参数验证 | [Zod](https://zod.dev/)（前后端共享） |
 | 认证方案 | JWT Bearer Token（7 天有效期） |
+| 会话机制 | Access Token + Refresh Token 自动续期 |
+| 实时通信 | WebSocket |
 | 文件存储 | 本地存储 / 阿里云 OSS |
 | 包管理器 | npm（monorepo） |
 
@@ -22,24 +27,24 @@
 
 ## 项目结构
 
-```
+```text
 zenith-admin/
 ├── packages/
 │   ├── server/          # Hono 后端服务（端口 3000）
 │   │   ├── src/
-│   │   │   ├── routes/  # API 路由（auth/users/menus/roles/dicts/files）
-│   │   │   ├── db/      # Drizzle schema 与数据库操作
-│   │   │   ├── lib/     # 文件存储等工具库
-│   │   │   └── middleware/  # JWT 认证中间件
+│   │   │   ├── routes/  # API 路由（认证、用户、部门、岗位、角色、菜单、字典、日志、监控、会话、定时任务等）
+│   │   │   ├── db/      # Drizzle schema、迁移与种子数据
+│   │   │   ├── lib/     # 验证码、文件存储、日志、权限、WebSocket、定时任务调度等能力封装
+│   │   │   └── middleware/  # 日志、认证与权限中间件
 │   │   └── drizzle/     # 数据库迁移文件
 │   ├── web/             # React 前端（端口 5173）
 │   │   └── src/
-│   │       ├── pages/   # 页面组件（登录/仪表盘/用户/系统管理等）
-│   │       ├── layouts/ # AdminLayout 主布局
-│   │       ├── components/ # 公共组件（IconPicker/NProgress）
-│   │       ├── hooks/   # useAuth / useTheme
-│   │       └── utils/   # request.ts 请求封装
-│   └── shared/          # 前后端共享类型 + Zod schema + 常量
+│   │       ├── pages/   # 页面组件（登录、仪表盘、个人中心、组织与系统管理、日志、监控等）
+│   │       ├── layouts/ # AdminLayout 主布局与导航容器
+│   │       ├── components/ # 公共组件（图标选择器、进度条、Cron 表达式构建器等）
+│   │       ├── hooks/   # 认证、主题、偏好设置、标签页、WebSocket 等 hooks
+│   │       └── utils/   # 请求封装、日期格式化、图标映射等工具
+│   └── shared/          # 前后端共享类型、常量与 Zod schema
 └── package.json         # Monorepo 根配置
 ```
 
@@ -100,15 +105,45 @@ npm run dev:web      # 前端：http://localhost:5173
 
 ## 功能模块
 
-| 模块 | 说明 |
-|------|------|
-| 用户管理 | 用户 CRUD、状态管理、角色分配 |
-| 菜单管理 | 树形菜单结构，支持目录/菜单/按钮三种类型 |
-| 角色管理 | 角色 CRUD、菜单权限分配 |
-| 数据字典 | 字典主表 + 字典项管理 |
-| 文件管理 | 文件上传、列表查看，支持本地/OSS 双模式 |
-| 存储配置 | 配置本地存储或阿里云 OSS，支持切换默认存储 |
-| 个人中心 | 修改密码、更新个人资料 |
+### 认证与账户
+
+- 用户登录、注册、个人中心、资料维护、密码修改
+- JWT Bearer Token 鉴权，配合 Refresh Token 自动续期
+- 登录支持验证码校验，降低暴力尝试风险
+
+### 权限与导航
+
+- 用户管理：用户 CRUD、启停用、角色分配
+- 角色管理：角色 CRUD、菜单权限配置
+- 菜单管理：支持目录 / 菜单 / 按钮三级能力模型
+- 动态菜单路由：前端根据当前用户菜单自动注册可访问页面
+
+### 组织与基础资料
+
+- 部门管理：组织层级维护
+- 岗位管理：岗位信息维护与关联使用
+- 数据字典：字典类型与字典项统一管理
+- 系统配置：可维护系统运行相关配置项
+
+### 通知、审计与安全
+
+- 通知公告：发布记录、已读状态管理，并支持实时通知推送
+- 登录日志：记录登录行为，便于安全审计
+- 操作日志：记录关键业务操作轨迹
+- 在线会话：查看当前在线会话，并支持强制下线
+
+### 文件与存储
+
+- 文件管理：上传、列表查询、下载等基础能力
+- 存储配置：支持本地文件系统与阿里云 OSS
+- 默认存储切换：通过配置切换当前默认文件存储策略
+
+### 任务与运行维护
+
+- 定时任务管理：维护 Cron 任务并由服务端调度执行
+- 系统监控：查看运行状态相关信息
+- WebSocket：支持实时通知与会话下线消息推送
+- 健康检查：提供 `/api/health` 接口用于服务探活
 
 ---
 
@@ -163,6 +198,7 @@ npm run build
 ```
 
 构建产物：
+
 - 后端：`packages/server/dist/`
 - 前端：`packages/web/dist/`
 
