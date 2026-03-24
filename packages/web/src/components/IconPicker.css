@@ -80,54 +80,13 @@
   margin-bottom: 10px;
 }
 
-/* ─── 图标网格容器（固定高度，配合分页无需滚动）──────────────────────────────── */
-.icon-picker-grid-wrap {
-  min-height: 256px;
-}
-
-/* ─── 分页导航 ─────────────────────────────────────────────────────────────── */
+/* ─── 分页导航（使用 Semi Pagination 组件）─────────────────────────────────── */
 .icon-picker-pagination {
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 12px;
   padding: 8px 0 2px;
   border-top: 1px solid var(--semi-color-border);
-  margin-top: 8px;
-}
-
-.icon-picker-page-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--semi-color-border);
-  border-radius: var(--semi-border-radius-small);
-  background: var(--semi-color-fill-0);
-  color: var(--semi-color-text-1);
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
-}
-
-.icon-picker-page-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.icon-picker-page-btn:not(:disabled):hover {
-  background: var(--semi-color-fill-1);
-  border-color: var(--semi-color-primary);
-  color: var(--semi-color-primary);
-}
-
-.icon-picker-page-info {
-  font-size: 13px;
-  color: var(--semi-color-text-1);
-  min-width: 60px;
-  text-align: center;
-  user-select: none;
+  margin-top: 4px;
 }
 
 /* ─── 分类组 ────────────────────────────────────────────────────────────────── */
@@ -144,20 +103,13 @@
   padding: 4px 2px 3px;
 }
 
-.icon-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 4px;
-  border-radius: var(--semi-border-radius-small);
-}
-
-/* ─── 单个图标格 ─────────────────────────────────────────────────────────────── */
+/* ─── 单个图标格（置于 List.Item 内部）──────────────────────────────────────── */
 .icon-picker-cell {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 100%;
+  height: 36px;
   border: 1px solid transparent;
   border-radius: var(--semi-border-radius-small);
   background: transparent;

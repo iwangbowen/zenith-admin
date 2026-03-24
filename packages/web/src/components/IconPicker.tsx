@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Popover, Input } from '@douyinfe/semi-ui';
-import { Search, ChevronDown, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Popover, Input, List, Pagination } from '@douyinfe/semi-ui';
+import { Search, ChevronDown, X } from 'lucide-react';
 import { ALL_ICON_NAMES, renderLucideIcon } from '../utils/icons';
 import './IconPicker.css';
 
@@ -10,8 +10,8 @@ interface IconPickerProps {
   style?: React.CSSProperties;
 }
 
-/** 每页显示图标数（8 列 × 6 行） */
-const PAGE_SIZE = 48;
+/** 每页显示图标数（8 列 × 7 行） */
+const PAGE_SIZE = 56;
 
 export default function IconPicker({ value, onChange, style }: Readonly<IconPickerProps>) {
   const [search, setSearch] = useState('');
@@ -23,8 +23,6 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
     if (!q) return ALL_ICON_NAMES;
     return ALL_ICON_NAMES.filter((name) => name.toLowerCase().includes(q));
   }, [search]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredNames.length / PAGE_SIZE));
 
   const pageNames = useMemo(
     () => filteredNames.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
@@ -55,12 +53,6 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
     onChange?.('');
   };
 
-  const goToPrev = useCallback(() => setCurrentPage((p) => Math.max(1, p - 1)), []);
-  const goToNext = useCallback(
-    () => setCurrentPage((p) => Math.min(totalPages, p + 1)),
-    [totalPages],
-  );
-
   const panelContent = (
     <div className="icon-picker-panel">
       <Input
@@ -73,45 +65,36 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
         style={{ marginBottom: 8 }}
       />
       <div className="icon-picker-grid-wrap">
-        {filteredNames.length > 0 ? (
-          <div className="icon-picker-grid">
-            {pageNames.map((name) => (
+        <List
+          size="small"
+          split={false}
+          grid={{ span: 3, gutter: 4 }}
+          dataSource={pageNames}
+          emptyContent={<div className="icon-picker-empty-result">无匹配图标</div>}
+          renderItem={(name) => (
+            <List.Item style={{ padding: 0 }}>
               <button
-                key={name}
                 type="button"
-                title={name}
-                className={`icon-picker-cell ${value === name ? 'icon-picker-cell--active' : ''}`}
+                className={`icon-picker-cell${value === name ? ' icon-picker-cell--active' : ''}`}
                 onClick={() => handleSelect(name)}
+                title={name}
               >
                 {renderLucideIcon(name, 18)}
               </button>
-            ))}
-          </div>
-        ) : (
-          <div className="icon-picker-empty-result">无匹配图标</div>
-        )}
+            </List.Item>
+          )}
+        />
       </div>
-      {filteredNames.length > 0 && (
+      {filteredNames.length > PAGE_SIZE && (
         <div className="icon-picker-pagination">
-          <button
-            type="button"
-            className="icon-picker-page-btn"
-            onClick={goToPrev}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="icon-picker-page-info">
-            {currentPage} / {totalPages}
-          </span>
-          <button
-            type="button"
-            className="icon-picker-page-btn"
-            onClick={goToNext}
-            disabled={currentPage === totalPages}
-          >
-            <ChevronRight size={14} />
-          </button>
+          <Pagination
+            size="small"
+            total={filteredNames.length}
+            pageSize={PAGE_SIZE}
+            currentPage={currentPage}
+            onPageChange={(page) => setCurrentPage(page)}
+            showSizeChanger={false}
+          />
         </div>
       )}
     </div>
