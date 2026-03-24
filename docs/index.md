@@ -69,9 +69,9 @@ features:
 <section class="zn-section">
   <h2 class="zn-title">从这里开始</h2>
   <div class="zn-links">
-    <a class="zn-link" href="/guide/getting-started">快速开始<small>环境准备 → 启动项目 → 看到页面</small></a>
-    <a class="zn-link" href="/guide/project-structure">项目结构<small>目录分层与职责说明</small></a>
-    <a class="zn-link" href="/product/features">功能清单<small>已实现模块一览</small></a>
-    <a class="zn-link" href="/backend/api-conventions">接口规范<small>响应格式 · 鉴权 · 分页</small></a>
+    <a class="zn-link" href="./guide/getting-started">快速开始<small>环境准备 → 启动项目 → 看到页面</small></a>
+    <a class="zn-link" href="./guide/project-structure">项目结构<small>目录分层与职责说明</small></a>
+    <a class="zn-link" href="./product/features">功能清单<small>已实现模块一览</small></a>
+    <a class="zn-link" href="./backend/api-conventions">接口规范<small>响应格式 · 鉴权 · 分页</small></a>
   </div>
 </section>

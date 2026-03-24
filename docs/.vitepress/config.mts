@@ -1,9 +1,20 @@
 import { defineConfig } from 'vitepress';
 
+const repositoryName = process.env.GITHUB_REPOSITORY?.split('/')[1] ?? '';
+const isUserOrOrgPagesRepo = repositoryName.endsWith('.github.io');
+const isGitHubPagesBuild = process.env.GITHUB_ACTIONS === 'true' && repositoryName.length > 0;
+
+let base = '/';
+
+if (isGitHubPagesBuild) {
+  base = isUserOrOrgPagesRepo ? '/' : `/${repositoryName}/`;
+}
+
 export default defineConfig({
   lang: 'zh-CN',
   title: 'Zenith Admin',
   description: 'Zenith Admin 文档站：项目介绍、快速开始、开发说明与更新记录。',
+  base,
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {

@@ -1,6 +1,6 @@
 # 部署说明
 
-当前阶段优先完成**本地开发与预览验证**。本页先整理部署相关信息，方便后续接入正式发布流程。
+本页整理 Zenith Admin 的构建与部署信息，重点包括业务项目的构建方式，以及文档站通过 GitHub Pages 自动发布的方案。
 
 ## 应用构建
 
@@ -35,6 +35,37 @@ npm run docs:build
 npm run docs:preview
 ```
 
+## 文档站自动部署（GitHub Pages）
+
+文档站已经按 **GitHub Pages 官方 Actions 方案**接入自动部署。
+
+### 工作流文件
+
+仓库中会新增：
+
+- `.github/workflows/docs-pages.yml`
+
+### 触发方式
+
+- 推送到 `master` 时：构建并发布文档站
+- Pull Request 时：只做构建校验，不执行发布
+- 支持手动触发工作流
+
+### 访问地址
+
+当前仓库为 `iwangbowen/zenith-admin`，如果启用 GitHub Pages，默认访问地址会是：
+
+`https://iwangbowen.github.io/zenith-admin/`
+
+### `base` 路径策略
+
+文档站配置已经按环境自动切换：
+
+- 本地开发：`/`
+- GitHub Pages 构建：`/zenith-admin/`
+
+这样本地调试和线上发布都能正常工作，不需要手动来回改配置。
+
 ## 生产部署建议
 
 ### 后端
@@ -51,13 +82,37 @@ npm run docs:preview
 ### 文档站
 
 - 适合部署到 GitHub Pages、Vercel、Netlify 等静态平台
-- 如果部署到 GitHub Pages，后续需要根据仓库路径设置正确的 `base`
+- 当前已接入 GitHub Pages 自动化部署
+- 如果仓库名发生变化，需要同步确认线上 `base` 路径是否仍然正确
 
-## 当前状态
+## 你需要手动做的事
 
-GitHub Pages 的自动化部署流程**暂未接入**，等本地效果确认后再补充：
+代码侧的配置我可以补齐，但 GitHub 仓库设置里还有几步需要你自己在网页上完成：
 
-- 工作流配置
-- Pages 构建与发布
-- 仓库路径 `base` 调整
-- 自定义域名（如需要）
+1. 打开仓库 **Settings → Pages**
+2. 在 **Build and deployment** 中将 Source 设为 **GitHub Actions**
+3. 确认默认分支是 `master`
+4. 推送当前改动到 GitHub
+5. 到 **Actions** 页面确认 `Docs Pages` 工作流执行成功
+
+## 发布后建议检查
+
+工作流首次成功后，建议你实际检查这些页面：
+
+- 首页：`/zenith-admin/`
+- 快速开始：`/zenith-admin/guide/getting-started`
+- 产品概览：`/zenith-admin/product/overview`
+- Changelog：`/zenith-admin/changelog/`
+
+重点确认：
+
+- 页面样式是否正常
+- favicon 是否正常
+- 暗色模式切换是否正常
+- 内页刷新是否正常
+- 静态资源是否没有 404
+
+## 后续可选项
+
+- 如果后续接自定义域名，`base` 策略可能需要调整
+- 如果想让 PR 先做更严格校验，可以再单独拆分一个 docs check workflow
