@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Input, Button, Tag, Select, Space, DatePicker } from '@douyinfe/semi-ui';
+import { Table, Input, Button, Tag, Select, Space, DatePicker, Modal } from '@douyinfe/semi-ui';
 import { Search, RotateCcw } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
@@ -20,6 +20,7 @@ export default function LoginLogsPage() {
   const [pageSize, setPageSize] = useState(10);
 
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
+  const [detailLog, setDetailLog] = useState<LoginLog | null>(null);
 
   const fetchData = async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
@@ -84,6 +85,21 @@ export default function LoginLogsPage() {
       width: 180,
       render: (v: string) => formatDateTime(v),
     },
+    {
+      title: '操作',
+      width: 80,
+      fixed: 'right' as const,
+      render: (_: unknown, record: LoginLog) => (
+        <Button
+          theme="borderless"
+          type="primary"
+          size="small"
+          onClick={() => setDetailLog(record)}
+        >
+          详情
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -144,6 +160,43 @@ export default function LoginLogsPage() {
           }}
         />
       </div>
+
+      <Modal
+        title="登录日志详情"
+        visible={detailLog !== null}
+        onCancel={() => setDetailLog(null)}
+        footer={null}
+        width={560}
+        style={{ top: 40 }}
+      >
+        {detailLog && (
+          <div style={{ padding: '4px 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+              {([
+                ['ID', String(detailLog.id)],
+                ['用户名', detailLog.username],
+                ['状态', null],
+                ['登录信息', detailLog.message ?? '-'],
+                ['IP 地址', detailLog.ip ?? '-'],
+                ['浏览器', detailLog.browser ?? '-'],
+                ['操作系统', detailLog.os ?? '-'],
+                ['登录时间', formatDateTime(detailLog.createdAt)],
+              ] as const).map(([label, value]) => (
+                <div key={label} style={{ padding: '8px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
+                  <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12, marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: 13, wordBreak: 'break-all' }}>
+                    {label === '状态'
+                      ? <Tag color={detailLog.status === 'success' ? 'green' : 'red'} size="small">
+                          {detailLog.status === 'success' ? '成功' : '失败'}
+                        </Tag>
+                      : value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

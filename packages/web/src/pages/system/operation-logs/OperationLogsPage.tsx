@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer } from '@douyinfe/semi-ui';
-import { Search, RotateCcw, Eye } from 'lucide-react';
+import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer, Select } from '@douyinfe/semi-ui';
+import { Search, RotateCcw } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
@@ -23,10 +23,13 @@ interface SearchParams {
   username: string;
   module: string;
   description: string;
+  method: string;
+  path: string;
+  status: string;
   timeRange: [Date, Date] | null;
 }
 
-const defaultParams: SearchParams = { username: '', module: '', description: '', timeRange: null };
+const defaultParams: SearchParams = { username: '', module: '', description: '', method: '', path: '', status: '', timeRange: null };
 
 export default function OperationLogsPage() {
   const [data, setData] = useState<OperationLog[]>([]);
@@ -46,6 +49,9 @@ export default function OperationLogsPage() {
         ...(params.username ? { username: params.username } : {}),
         ...(params.module ? { module: params.module } : {}),
         ...(params.description ? { description: params.description } : {}),
+        ...(params.method ? { method: params.method } : {}),
+        ...(params.path ? { path: params.path } : {}),
+        ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange ? { startTime: params.timeRange[0].toISOString(), endTime: params.timeRange[1].toISOString() } : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<OperationLog>>(`/api/operation-logs?${query}`);
@@ -115,7 +121,6 @@ export default function OperationLogsPage() {
           theme="borderless"
           type="primary"
           size="small"
-          icon={<Eye size={14} />}
           onClick={() => setDetailLog(record)}
         >
           详情
@@ -157,6 +162,38 @@ export default function OperationLogsPage() {
                 style={{ width: 160 }}
                 showClear
               />
+              <Select
+                placeholder="请求方法"
+                value={searchParams.method || undefined}
+                onChange={(v) => setSearchParams({ ...searchParams, method: v as string })}
+                style={{ width: 130 }}
+                showClear
+              >
+                <Select.Option value="GET">GET</Select.Option>
+                <Select.Option value="POST">POST</Select.Option>
+                <Select.Option value="PUT">PUT</Select.Option>
+                <Select.Option value="PATCH">PATCH</Select.Option>
+                <Select.Option value="DELETE">DELETE</Select.Option>
+              </Select>
+              <Input
+                prefix={<Search size={14} />}
+                placeholder="请输入请求路径"
+                value={searchParams.path}
+                onChange={(v) => setSearchParams({ ...searchParams, path: v })}
+                onEnterPress={handleSearch}
+                style={{ width: 180 }}
+                showClear
+              />
+              <Select
+                placeholder="操作状态"
+                value={searchParams.status || undefined}
+                onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
+                style={{ width: 130 }}
+                showClear
+              >
+                <Select.Option value="success">成功</Select.Option>
+                <Select.Option value="fail">失败</Select.Option>
+              </Select>
               <DatePicker
                 type="dateTimeRange"
                 placeholder={['开始时间', '结束时间']}

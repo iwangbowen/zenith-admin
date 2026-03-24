@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { desc, like, and, gte, lte, sql } from 'drizzle-orm';
+import { desc, like, and, gte, lte, sql, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -15,6 +15,9 @@ operationLogsRoute.get('/', guard({ permission: 'system:log:operation' }), async
   const username = c.req.query('username');
   const module = c.req.query('module');
   const description = c.req.query('description');
+  const method = c.req.query('method');
+  const path = c.req.query('path');
+  const status = c.req.query('status');
   const startTime = c.req.query('startTime');
   const endTime = c.req.query('endTime');
 
@@ -22,6 +25,10 @@ operationLogsRoute.get('/', guard({ permission: 'system:log:operation' }), async
   if (username) conditions.push(like(operationLogs.username, `%${username}%`));
   if (module) conditions.push(like(operationLogs.module, `%${module}%`));
   if (description) conditions.push(like(operationLogs.description, `%${description}%`));
+  if (method) conditions.push(eq(operationLogs.method, method));
+  if (path) conditions.push(like(operationLogs.path, `%${path}%`));
+  if (status === 'success') conditions.push(and(gte(operationLogs.responseCode, 200), lte(operationLogs.responseCode, 399)));
+  if (status === 'fail') conditions.push(gte(operationLogs.responseCode, 400));
   if (startTime) conditions.push(gte(operationLogs.createdAt, new Date(startTime)));
   if (endTime) conditions.push(lte(operationLogs.createdAt, new Date(endTime)));
 
