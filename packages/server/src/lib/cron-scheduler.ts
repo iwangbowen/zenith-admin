@@ -21,8 +21,8 @@ handlerRegistry.set('cleanExpiredCaptchas', async () => {
 });
 
 handlerRegistry.set('cleanExpiredSessions', async () => {
-  const count = cleanExpiredSessions();
-  return `清理了 ${count} 个过期会话`;
+  const count = await cleanExpiredSessions();
+  return `清理了 ${count} 个过期会话（Redis TTL 自动清理）`;
 });
 
 handlerRegistry.set('echo', async (params) => {

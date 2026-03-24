@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import redis from './redis';
 
 export interface SessionInfo {
   tokenId: string;
@@ -12,11 +13,14 @@ export interface SessionInfo {
   lastActiveAt: Date;
 }
 
-/** Active sessions: tokenId → SessionInfo */
-const sessions = new Map<string, SessionInfo>();
+/** Session TTL: 8 hours (seconds) */
+const SESSION_TTL = 8 * 60 * 60;
 
-/** Blacklisted token IDs (forced logout) */
-const blacklist = new Set<string>();
+/** Blacklist TTL: 2 hours (matches accessToken lifetime, seconds) */
+const BLACKLIST_TTL = 2 * 60 * 60;
+
+const SESSION_PREFIX = 'session:';
+const BLACKLIST_PREFIX = 'blacklist:';
 
 /** Generate a unique token ID */
 export function generateTokenId(): string {
@@ -24,61 +28,89 @@ export function generateTokenId(): string {
 }
 
 /** Register a new session on login */
-export function registerSession(info: Omit<SessionInfo, 'lastActiveAt'>): void {
-  sessions.set(info.tokenId, { ...info, lastActiveAt: new Date() });
+export async function registerSession(info: Omit<SessionInfo, 'lastActiveAt'>): Promise<void> {
+  const session: SessionInfo = { ...info, lastActiveAt: new Date() };
+  await redis.set(
+    `${SESSION_PREFIX}${info.tokenId}`,
+    JSON.stringify(session),
+    'EX',
+    SESSION_TTL,
+  );
 }
 
-/** Refresh session activity timestamp */
-export function touchSession(tokenId: string): void {
-  const session = sessions.get(tokenId);
-  if (session) {
-    session.lastActiveAt = new Date();
-  }
+/** Refresh session activity timestamp and reset TTL */
+export async function touchSession(tokenId: string): Promise<void> {
+  const key = `${SESSION_PREFIX}${tokenId}`;
+  const raw = await redis.get(key);
+  if (!raw) return;
+  const session: SessionInfo = JSON.parse(raw);
+  session.lastActiveAt = new Date();
+  await redis.set(key, JSON.stringify(session), 'EX', SESSION_TTL);
 }
 
 /** Check if a token is blacklisted */
-export function isTokenBlacklisted(tokenId: string): boolean {
-  return blacklist.has(tokenId);
+export async function isTokenBlacklisted(tokenId: string): Promise<boolean> {
+  const result = await redis.exists(`${BLACKLIST_PREFIX}${tokenId}`);
+  return result === 1;
 }
 
 /** Force logout a session by tokenId */
-export function forceLogout(tokenId: string): boolean {
-  const session = sessions.get(tokenId);
-  if (!session) return false;
-  blacklist.add(tokenId);
-  sessions.delete(tokenId);
+export async function forceLogout(tokenId: string): Promise<boolean> {
+  const key = `${SESSION_PREFIX}${tokenId}`;
+  const raw = await redis.get(key);
+  if (!raw) return false;
+  await Promise.all([
+    redis.set(`${BLACKLIST_PREFIX}${tokenId}`, '1', 'EX', BLACKLIST_TTL),
+    redis.del(key),
+  ]);
   return true;
 }
 
 /** Remove session (normal logout or token expired) */
-export function removeSession(tokenId: string): void {
-  sessions.delete(tokenId);
+export async function removeSession(tokenId: string): Promise<void> {
+  await redis.del(`${SESSION_PREFIX}${tokenId}`);
 }
 
 /** Get all online sessions */
-export function getOnlineSessions(): SessionInfo[] {
-  return Array.from(sessions.values()).sort(
-    (a, b) => b.loginAt.getTime() - a.loginAt.getTime()
-  );
+export async function getOnlineSessions(): Promise<SessionInfo[]> {
+  const keys = await scanKeys(`${SESSION_PREFIX}*`);
+  if (keys.length === 0) return [];
+  const values = await redis.mget(...keys);
+  return values
+    .filter((v): v is string => v !== null)
+    .map((v) => {
+      const s = JSON.parse(v) as SessionInfo;
+      // Parse date strings back to Date objects
+      s.loginAt = new Date(s.loginAt);
+      s.lastActiveAt = new Date(s.lastActiveAt);
+      return s;
+    })
+    .sort((a, b) => b.loginAt.getTime() - a.loginAt.getTime());
 }
 
 /** Get online session count */
-export function getOnlineCount(): number {
-  return sessions.size;
+export async function getOnlineCount(): Promise<number> {
+  const keys = await scanKeys(`${SESSION_PREFIX}*`);
+  return keys.length;
 }
 
-/** Clean expired sessions (no activity for 8 hours) and stale blacklist entries */
-export function cleanExpiredSessions(): number {
-  const cutoff = Date.now() - 8 * 60 * 60 * 1000;
-  let count = 0;
-  for (const [id, session] of sessions) {
-    if (session.lastActiveAt.getTime() < cutoff) {
-      sessions.delete(id);
-      count++;
-    }
-  }
-  // Clean blacklist entries older than 24h (tokens would be expired by then)
-  // Since we can't track blacklist age easily with a Set, we keep it simple
-  // In production you'd want a TTL-based cache like Redis
-  return count;
+/**
+ * Clean expired sessions.
+ * Redis TTL handles expiry automatically; this function is a no-op retained for interface compatibility.
+ */
+export async function cleanExpiredSessions(): Promise<number> {
+  // Redis automatically removes keys past their TTL — nothing to do here
+  return 0;
+}
+
+/** Scan all keys matching a pattern using SCAN (safe for production) */
+async function scanKeys(pattern: string): Promise<string[]> {
+  const keys: string[] = [];
+  let cursor = '0';
+  do {
+    const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+    cursor = nextCursor;
+    keys.push(...batch);
+  } while (cursor !== '0');
+  return keys;
 }

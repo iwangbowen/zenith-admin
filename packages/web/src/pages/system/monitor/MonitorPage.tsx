@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick } from 'lucide-react';
+import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import './MonitorPage.css';
@@ -51,6 +51,18 @@ interface MonitorData {
     activeConnections: number;
     totalConnections: number;
     tableCount: number;
+  } | null;
+  redis: {
+    version: string;
+    uptimeSeconds: number;
+    connectedClients: number;
+    usedMemory: number;
+    usedMemoryHuman: string;
+    totalCommandsProcessed: number;
+    keyspaceHits: number;
+    keyspaceMisses: number;
+    keyCount: number;
+    role: string;
   } | null;
 }
 
@@ -285,6 +297,40 @@ export default function MonitorPage() {
             </>
           ) : (
             <Text type="tertiary">数据库信息不可用</Text>
+          )}
+        </Card>
+
+        <Card
+          className="monitor-card"
+          title={
+            <div className="monitor-card-title">
+              <Layers size={16} />
+              <span>Redis</span>
+            </div>
+          }
+        >
+          {data.redis ? (
+            <>
+              <InfoRow label="版本" value={data.redis.version} />
+              <InfoRow label="运行时长" value={formatUptime(data.redis.uptimeSeconds)} />
+              <InfoRow label="角色" value={data.redis.role} />
+              <InfoRow label="已用内存" value={`${data.redis.usedMemoryHuman} (${formatBytes(data.redis.usedMemory)})`} />
+              <InfoRow label="已连接客户端" value={data.redis.connectedClients} />
+              <InfoRow label="Key 总数" value={data.redis.keyCount} />
+              <InfoRow label="命令总执行数" value={data.redis.totalCommandsProcessed.toLocaleString()} />
+              <InfoRow
+                label="命中率"
+                value={(() => {
+                  const total = data.redis.keyspaceHits + data.redis.keyspaceMisses;
+                  return total > 0
+                    ? `${((data.redis.keyspaceHits / total) * 100).toFixed(1)}%`
+                    : 'N/A';
+                })()}
+              />
+              <InfoRow label="Redis 状态" value={<Tag color="green" size="small">运行中</Tag>} />
+            </>
+          ) : (
+            <Text type="tertiary">Redis 信息不可用</Text>
           )}
         </Card>
       </div>

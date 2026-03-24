@@ -116,7 +116,7 @@ auth.post('/login', async (c) => {
   const browserInfo = parser.getBrowser();
   const osInfo = parser.getOS();
 
-  registerSession({
+  await registerSession({
     tokenId,
     userId: user.id,
     username: user.username,

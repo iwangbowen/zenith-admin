@@ -5,6 +5,7 @@ import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
+import redis from '../lib/redis';
 
 const monitorRouter = new Hono();
 
@@ -37,7 +38,7 @@ function getDiskInfo() {
     const output = execSync('df -B1 / --output=size,used,avail 2>/dev/null || df -B1 /', { encoding: 'utf8', timeout: 3000 });
     const lines = output.trim().split('\n');
     if (lines.length >= 2) {
-      const parts = lines[lines.length - 1].trim().split(/\s+/);
+      const parts = lines.at(-1)!.trim().split(/\s+/);
       if (parts.length >= 3) {
         const total = Number.parseInt(parts[0], 10);
         const used = Number.parseInt(parts[1], 10);
@@ -49,6 +50,40 @@ function getDiskInfo() {
     // ignore
   }
   return null;
+}
+
+function parseRedisInfo(info: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const line of info.split('\r\n')) {
+    if (line && !line.startsWith('#')) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx !== -1) {
+        result[line.slice(0, colonIdx)] = line.slice(colonIdx + 1);
+      }
+    }
+  }
+  return result;
+}
+
+async function getRedisInfo() {
+  try {
+    const [infoStr, dbSize] = await Promise.all([redis.info(), redis.dbsize()]);
+    const info = parseRedisInfo(infoStr);
+    return {
+      version: info.redis_version ?? 'Unknown',
+      uptimeSeconds: Number(info.uptime_in_seconds ?? 0),
+      connectedClients: Number(info.connected_clients ?? 0),
+      usedMemory: Number(info.used_memory ?? 0),
+      usedMemoryHuman: info.used_memory_human ?? '',
+      totalCommandsProcessed: Number(info.total_commands_processed ?? 0),
+      keyspaceHits: Number(info.keyspace_hits ?? 0),
+      keyspaceMisses: Number(info.keyspace_misses ?? 0),
+      keyCount: dbSize,
+      role: info.role ?? 'Unknown',
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function getDbInfo() {
@@ -78,7 +113,7 @@ async function getDbInfo() {
 }
 
 monitorRouter.get('/', guard({ permission: 'system:monitor:view' }), async (c) => {
-  const [cpuUsage, dbInfo] = await Promise.all([getCpuUsage(), getDbInfo()]);
+  const [cpuUsage, dbInfo, redisInfo] = await Promise.all([getCpuUsage(), getDbInfo(), getRedisInfo()]);
 
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -124,6 +159,7 @@ monitorRouter.get('/', guard({ permission: 'system:monitor:view' }), async (c) =
       memoryUsage: process.memoryUsage(),
     },
     database: dbInfo,
+    redis: redisInfo,
   };
 
   return c.json({ code: 0, message: 'success', data });

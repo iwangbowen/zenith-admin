@@ -82,6 +82,33 @@ npm run db:seed        # 填充初始种子数据
 
 ---
 
+## Redis 说明
+
+会话数据（在线会话、强制下线黑名单）通过 **Redis** 持久化，服务重启后不丢失。
+
+默认连接：`redis://127.0.0.1:6379`（无密码）
+
+通过 `.env` 文件配置（两种方式二选一）：
+
+```env
+# 方式一：URL 格式（支持带密码）
+REDIS_URL=redis://127.0.0.1:6379
+# REDIS_URL=redis://:your_password@127.0.0.1:6379/0
+
+# 方式二：逐项配置
+# REDIS_HOST=127.0.0.1
+# REDIS_PORT=6379
+# REDIS_PASSWORD=
+# REDIS_DB=0
+```
+
+Redis key 规范：
+
+- `session:{tokenId}` — SessionInfo JSON，TTL 8h（每次请求自动续期）
+- `blacklist:{tokenId}` — 强制下线标记，TTL 2h（与 accessToken 有效期一致）
+
+---
+
 ## 时间格式规范
 
 前端所有时间显示**统一使用 `YYYY-MM-DD HH:mm:ss` 格式**（如 `2026-03-23 14:30:00`）。

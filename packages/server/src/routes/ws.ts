@@ -22,9 +22,6 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
       if (token) {
         try {
           payload = jwt.verify(token, config.jwtSecret) as JwtPayload;
-          if (payload.jti && isTokenBlacklisted(payload.jti)) {
-            payload = null;
-          }
         } catch {
           payload = null;
         }
@@ -36,7 +33,18 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
             ws.close(4001, 'Unauthorized');
             return;
           }
-          registerConnection(payload.userId, ws);
+          const currentPayload = payload;
+          // Check blacklist asynchronously, then register or close
+          isTokenBlacklisted(currentPayload.jti ?? '').then((blacklisted) => {
+            if (blacklisted) {
+              ws.close(4001, 'Session revoked');
+              return;
+            }
+            registerConnection(currentPayload.userId, ws);
+          }).catch(() => {
+            // On Redis error, allow connection (fail-open for WebSocket)
+            registerConnection(currentPayload.userId, ws);
+          });
         },
         onClose(_evt, ws) {
           if (payload) {

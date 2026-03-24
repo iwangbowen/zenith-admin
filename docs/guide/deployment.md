@@ -2,6 +2,30 @@
 
 本页整理 Zenith Admin 的构建与部署信息，重点包括业务项目的构建方式，以及文档站通过 GitHub Pages 自动发布的方案。
 
+## 前置依赖
+
+- **PostgreSQL**：持久化业务数据
+- **Redis**：持久化在线会话与黑名单状态，服务重启后会话不丢失
+
+## 环境变量参考
+
+在 `packages/server/.env`（或 CI 环境变量）中配置：
+
+```env
+PORT=3300
+JWT_SECRET=your-secret-key
+DATABASE_URL=postgresql://user:pass@host:5432/zenith_admin
+# Redis 连接（支持带密码的 URL 格式）
+REDIS_URL=redis://127.0.0.1:6379
+# 带密码示例：
+# REDIS_URL=redis://:your_password@127.0.0.1:6379/0
+# 或逐项配置（与 REDIS_URL 二选一）：
+# REDIS_HOST=127.0.0.1
+# REDIS_PORT=6379
+# REDIS_PASSWORD=
+# REDIS_DB=0
+```
+
 ## 应用构建
 
 在仓库根目录执行：

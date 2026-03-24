@@ -22,6 +22,7 @@
 | UI 组件库 | [Semi Design](https://semi.design/) v2 |
 | 图标体系 | [lucide-react](https://lucide.dev/) |
 | 数据库 ORM | [Drizzle ORM](https://orm.drizzle.team/) + PostgreSQL |
+| 会话持久化 | [Redis](https://redis.io/)（ioredis） |
 | 前端路由 | [React Router](https://reactrouter.com/) v7 |
 | 参数验证 | [Zod](https://zod.dev/)（前后端共享） |
 | 认证方案 | JWT Bearer Token（7 天有效期） |
@@ -63,6 +64,7 @@ zenith-admin/
 
 - Node.js >= 18
 - PostgreSQL（本地或远程）
+- Redis（本地或远程，用于会话持久化）
 
 ### 安装依赖
 
@@ -78,6 +80,8 @@ npm install
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/zenith_admin
 JWT_SECRET=your-secret-key
 PORT=3300
+# Redis 连接（URL 格式，支持带密码）
+REDIS_URL=redis://127.0.0.1:6379
 ```
 
 在 `packages/web/` 下创建 `.env` 文件（可选，有默认值）：

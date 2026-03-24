@@ -9,6 +9,7 @@ Zenith Admin 是一个基于 **Hono + React 19 + Drizzle ORM** 的 npm monorepo 
 - Node.js >= 18
 - npm
 - PostgreSQL
+- Redis（用于会话持久化，默认连接本地 `127.0.0.1:6379`）
 
 ## 安装依赖
 
@@ -26,6 +27,9 @@ npm install
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/zenith_admin
 JWT_SECRET=your-secret-key
 PORT=3300
+# Redis 连接（默认连接本地无密码 Redis）
+REDIS_URL=redis://127.0.0.1:6379
+# 带密码示例: REDIS_URL=redis://:your_password@127.0.0.1:6379/0
 ```
 
 ### 前端 `packages/web/.env`

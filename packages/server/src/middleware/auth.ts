@@ -21,13 +21,16 @@ export async function authMiddleware(c: Context, next: Next) {
     const payload = jwt.verify(token, config.jwtSecret) as JwtPayload;
 
     // Check if this token has been force-logged-out
-    if (payload.jti && isTokenBlacklisted(payload.jti)) {
-      return c.json({ code: 401, message: '会话已被强制下线', data: null }, 401);
+    if (payload.jti) {
+      const blacklisted = await isTokenBlacklisted(payload.jti);
+      if (blacklisted) {
+        return c.json({ code: 401, message: '会话已被强制下线', data: null }, 401);
+      }
     }
 
     // Refresh session activity
     if (payload.jti) {
-      touchSession(payload.jti);
+      await touchSession(payload.jti);
     }
 
     c.set('user', payload);

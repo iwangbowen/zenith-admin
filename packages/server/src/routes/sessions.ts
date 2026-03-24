@@ -9,7 +9,7 @@ const sessionsRoute = new Hono();
 sessionsRoute.use('/*', authMiddleware);
 
 sessionsRoute.get('/', guard({ permission: 'system:session:list' }), async (c) => {
-  const sessions = getOnlineSessions();
+  const sessions = await getOnlineSessions();
   return c.json({
     code: 0,
     message: 'ok',
@@ -32,8 +32,9 @@ sessionsRoute.get('/', guard({ permission: 'system:session:list' }), async (c) =
 sessionsRoute.delete('/:tokenId', guard({ permission: 'system:session:forceLogout', audit: { module: '会话管理', description: '强制下线' } }), async (c) => {
   const tokenId = c.req.param('tokenId');
   // Find the session to get userId before force-logout
-  const session = getOnlineSessions().find((s) => s.tokenId === tokenId);
-  const success = forceLogout(tokenId);
+  const allSessions = await getOnlineSessions();
+  const session = allSessions.find((s) => s.tokenId === tokenId);
+  const success = await forceLogout(tokenId);
   if (!success) {
     return c.json({ code: 404, message: '会话不存在', data: null }, 404);
   }
