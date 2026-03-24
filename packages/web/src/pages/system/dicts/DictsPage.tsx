@@ -8,7 +8,6 @@ import {
   Modal,
   Form,
   Toast,
-  Popconfirm,
   Empty,
   Typography,
 } from '@douyinfe/semi-ui';
@@ -195,15 +194,7 @@ export default function DictsPage() {
           >
             编辑
           </Button>}
-          {hasPermission('system:dict:delete') && <Popconfirm
-            title="确认删除此字典？"
-            content="字典下的所有字典项也将一并删除"
-            okText="删除"
-            okButtonProps={{ type: 'danger', theme: 'solid' }}
-            onConfirm={() => handleDictDelete(row.id)}
-          >
-            <Button theme="borderless" size="small" type="danger" onClick={(e) => e.stopPropagation()}>删除</Button>
-          </Popconfirm>}
+          {hasPermission('system:dict:delete') && <Button theme="borderless" size="small" type="danger" onClick={(e) => { e.stopPropagation(); Modal.confirm({ title: '确认删除此字典？', content: '字典下的所有字典项也将一并删除', onOk: () => handleDictDelete(row.id) }); }}>删除</Button>}
         </Space>
       ),
     },
@@ -235,14 +226,12 @@ export default function DictsPage() {
           >
             编辑
           </Button>}
-          {hasPermission('system:dict:item') && <Popconfirm
-            title="确认删除此字典项？"
-            okText="删除"
-            okButtonProps={{ type: 'danger', theme: 'solid' }}
-            onConfirm={() => handleItemDelete(row.id)}
-          >
-            <Button theme="borderless" size="small" type="danger">删除</Button>
-          </Popconfirm>}
+          {hasPermission('system:dict:item') && <Button theme="borderless" size="small" type="danger" onClick={() => {
+            Modal.confirm({
+              title: '确认删除此字典项？',
+              onOk: () => handleItemDelete(row.id),
+            });
+          }}>删除</Button>}
         </Space>
       ),
     },

@@ -8,7 +8,6 @@ import {
   Modal,
   Form,
   Toast,
-  Popconfirm,
   Tree,
   Spin,
   Avatar,
@@ -214,14 +213,12 @@ export default function RolesPage() {
           >
             编辑
           </Button>}
-          {hasPermission('system:role:delete') && <Popconfirm
-            title="确认删除此角色？"
-            okText="删除"
-            okButtonProps={{ type: 'danger', theme: 'solid' }}
-            onConfirm={() => handleDelete(row.id)}
-          >
-            <Button theme="borderless" size="small" type="danger">删除</Button>
-          </Popconfirm>}
+          {hasPermission('system:role:delete') && <Button theme="borderless" size="small" type="danger" onClick={() => {
+            Modal.confirm({
+              title: '确认删除此角色？',
+              onOk: () => handleDelete(row.id),
+            });
+          }}>删除</Button>}
         </Space>
       ),
     },

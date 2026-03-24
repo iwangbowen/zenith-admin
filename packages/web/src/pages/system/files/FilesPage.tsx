@@ -3,7 +3,7 @@ import {
   Button,
   DatePicker,
   Input,
-  Popconfirm,
+  Modal,
   Select,
   Space,
   Table,
@@ -232,15 +232,13 @@ export default function FilesPage() {
         <Space>
           <Button theme="borderless" size="small" onClick={() => handlePreview(record)}>预览</Button>
           <Button theme="borderless" size="small" onClick={() => handleDownload(record)}>下载</Button>
-          {hasPermission('system:file:delete') && <Popconfirm
-            title="确认删除此文件？"
-            content="删除文件记录后，将同步尝试删除实际存储对象。"
-            okText="删除"
-            okButtonProps={{ type: 'danger', theme: 'solid' }}
-            onConfirm={() => handleDelete(record)}
-          >
-            <Button theme="borderless" size="small" type="danger">删除</Button>
-          </Popconfirm>}
+          {hasPermission('system:file:delete') && <Button theme="borderless" size="small" type="danger" onClick={() => {
+            Modal.confirm({
+              title: '确认删除此文件？',
+              content: '删除文件记录后，将同步尝试删除实际存储对象。',
+              onOk: () => handleDelete(record),
+            });
+          }}>删除</Button>}
         </Space>
       ),
     },

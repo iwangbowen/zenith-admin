@@ -7,7 +7,6 @@ import {
   Form,
   Radio,
   Toast,
-  Popconfirm,
   TreeSelect,
   Row,
   Col,
@@ -204,15 +203,13 @@ export default function MenusPage() {
             </Button>
           )}
           {hasPermission('system:menu:update') && <Button theme="borderless" size="small" onClick={() => openEdit(row)}>编辑</Button>}
-          {hasPermission('system:menu:delete') && <Popconfirm
-            title="确认删除此菜单？"
-            content="子菜单也将一并删除"
-            okText="删除"
-            okButtonProps={{ type: 'danger', theme: 'solid' }}
-            onConfirm={() => handleDelete(row.id)}
-          >
-            <Button theme="borderless" size="small" type="danger">删除</Button>
-          </Popconfirm>}
+          {hasPermission('system:menu:delete') && <Button theme="borderless" size="small" type="danger" onClick={() => {
+            Modal.confirm({
+              title: '确认删除此菜单？',
+              content: '子菜单也将一并删除',
+              onOk: () => handleDelete(row.id),
+            });
+          }}>删除</Button>}
         </Space>
       ),
     },

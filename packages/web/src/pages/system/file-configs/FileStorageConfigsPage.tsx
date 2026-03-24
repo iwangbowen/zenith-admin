@@ -4,7 +4,6 @@ import {
   DatePicker,
   Form,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Switch,
@@ -254,17 +253,16 @@ export default function FileStorageConfigsPage() {
           {hasPermission('system:file:config:update') && <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
             编辑
           </Button>}
-          {hasPermission('system:file:config:delete') && <Popconfirm
-            title="确认删除此文件服务配置？"
-            content="若已绑定文件记录，后端会阻止删除。"
-            okText="删除"
-            okButtonProps={{ type: 'danger', theme: 'solid' }}
-            onConfirm={() => handleDelete(record)}
-          >
-            <Button theme="borderless" size="small" type="danger" disabled={record.isDefault}>
-              删除
-            </Button>
-          </Popconfirm>}
+          {hasPermission('system:file:config:delete') && <Button
+            theme="borderless" size="small" type="danger" disabled={record.isDefault}
+            onClick={() => {
+              Modal.confirm({
+                title: '确认删除此文件服务配置？',
+                content: '若已绑定文件记录，后端会阻止删除。',
+                onOk: () => handleDelete(record),
+              });
+            }}
+          >删除</Button>}
         </Space>
       ),
     },

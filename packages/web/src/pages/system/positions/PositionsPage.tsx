@@ -5,7 +5,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Table,
@@ -160,9 +159,12 @@ export default function PositionsPage() {
               setModalVisible(true);
             }}
           >编辑</Button>}
-          {hasPermission('system:position:delete') && <Popconfirm title="确定要删除该岗位吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>}
+          {hasPermission('system:position:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
+            Modal.confirm({
+              title: '确定要删除该岗位吗？',
+              onOk: () => handleDelete(record.id),
+            });
+          }}>删除</Button>}
         </Space>
       ),
     },
