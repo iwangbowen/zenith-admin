@@ -82,7 +82,7 @@ async function seed() {
     { id: 52, parentId: 50, title: '编辑配置',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:config:update' },
     { id: 53, parentId: 50, title: '删除配置',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:config:delete' },
     // 在线用户
-    { id: 54, parentId: 2, title: '在线用户',   name: 'SystemSessions', path: '/system/sessions', component: 'system/sessions/SessionsPage', icon: 'MonitorSmartphone', type: 'menu' as const, sort: 12, status: 'active' as const, visible: true, permission: 'system:session:list' },
+    { id: 54, parentId: 2, title: '在线用户',   name: 'SystemSessions', path: '/system/sessions', component: 'system/sessions/OnlineSessionsPage', icon: 'MonitorSmartphone', type: 'menu' as const, sort: 12, status: 'active' as const, visible: true, permission: 'system:session:list' },
     { id: 55, parentId: 54, title: '强制下线',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:session:forceLogout' },
     // 定时任务
     { id: 56, parentId: 2, title: '定时任务',   name: 'SystemCronJobs', path: '/system/cron-jobs', component: 'system/cron-jobs/CronJobsPage', icon: 'Clock', type: 'menu' as const, sort: 13, status: 'active' as const, visible: true, permission: 'system:cronjob:list' },
