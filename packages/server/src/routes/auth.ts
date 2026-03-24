@@ -48,8 +48,12 @@ async function getUserRoles(userId: number) {
 }
 
 auth.get('/captcha', async (c) => {
+  const enabled = await getConfigBoolean('captcha_enabled', false);
+  if (!enabled) {
+    return c.json({ code: 0, message: 'ok', data: { enabled: false, captchaId: '', svg: '' } });
+  }
   const result = generateCaptcha();
-  return c.json({ code: 0, message: 'ok', data: result });
+  return c.json({ code: 0, message: 'ok', data: { enabled: true, captchaId: result.captchaId, svg: result.captchaImage } });
 });
 
 auth.post('/login', async (c) => {
