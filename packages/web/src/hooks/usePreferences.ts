@@ -2,11 +2,14 @@ import { useState, useCallback } from 'react';
 import { PREFERENCES_KEY } from '@zenith/shared';
 import type { ThemeMode } from './useTheme';
 
+export type NavLayout = 'vertical' | 'horizontal' | 'mixed';
+
 export interface UserPreferences {
   enableTabs: boolean;
   tabsMaxCount: number;
   showTabIcon: boolean;
   colorMode: ThemeMode;
+  navLayout: NavLayout;
 }
 
 const defaultPreferences: UserPreferences = {
@@ -14,6 +17,7 @@ const defaultPreferences: UserPreferences = {
   tabsMaxCount: 20,
   showTabIcon: true,
   colorMode: 'light',
+  navLayout: 'vertical',
 };
 
 function loadPreferences(): UserPreferences {
