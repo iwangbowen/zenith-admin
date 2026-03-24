@@ -1,0 +1,84 @@
+import { defineConfig } from 'vitepress';
+
+export default defineConfig({
+  lang: 'zh-CN',
+  title: 'Zenith Admin',
+  description: 'Zenith Admin 文档站：项目介绍、快速开始、开发说明与更新记录。',
+  cleanUrls: true,
+  lastUpdated: true,
+  themeConfig: {
+    siteTitle: 'Zenith Admin',
+    logo: '/favicon.svg',
+    nav: [
+      { text: '首页', link: '/' },
+      { text: '快速开始', link: '/guide/getting-started' },
+      { text: '产品', link: '/product/overview' },
+      { text: '后端', link: '/backend/api-conventions' },
+      { text: '前端', link: '/frontend/ui-conventions' },
+      { text: 'Changelog', link: '/changelog/' },
+    ],
+    search: {
+      provider: 'local',
+    },
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/iwangbowen/zenith-admin' },
+    ],
+    footer: {
+      message: 'Built with VitePress for local documentation preview.',
+      copyright: 'Copyright © 2026 Zenith Admin',
+    },
+    sidebar: [
+      {
+        text: '开始使用',
+        collapsed: false,
+        items: [
+          { text: '快速开始', link: '/guide/getting-started' },
+          { text: '本地开发', link: '/guide/development' },
+          { text: '项目结构', link: '/guide/project-structure' },
+          { text: '部署说明', link: '/guide/deployment' },
+        ],
+      },
+      {
+        text: '产品与能力',
+        collapsed: false,
+        items: [
+          { text: '产品概览', link: '/product/overview' },
+          { text: '功能模块', link: '/product/features' },
+        ],
+      },
+      {
+        text: '后端',
+        collapsed: true,
+        items: [
+          { text: 'API 规范', link: '/backend/api-conventions' },
+          { text: '数据库与迁移', link: '/backend/database' },
+        ],
+      },
+      {
+        text: '前端',
+        collapsed: true,
+        items: [
+          { text: 'UI 规范', link: '/frontend/ui-conventions' },
+          { text: '认证与请求', link: '/frontend/auth-request' },
+        ],
+      },
+      {
+        text: '参考资料',
+        collapsed: true,
+        items: [{ text: 'Changelog', link: '/changelog/' }],
+      },
+    ],
+    outline: {
+      level: [2, 3],
+      label: '页面导航',
+    },
+    docFooter: {
+      prev: '上一页',
+      next: '下一页',
+    },
+  },
+  head: [
+    ['link', { rel: 'icon', href: '/favicon.svg' }],
+    ['meta', { name: 'theme-color', content: '#3b82f6' }],
+  ],
+});

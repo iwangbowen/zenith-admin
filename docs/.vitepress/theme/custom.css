@@ -1,0 +1,247 @@
+:root {
+  --vp-c-brand-1: #2563eb;
+  --vp-c-brand-2: #1d4ed8;
+  --vp-c-brand-3: #1e40af;
+  --vp-c-brand-soft: rgba(37, 99, 235, 0.14);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(135deg, #0f172a 10%, #2563eb 55%, #60a5fa 100%);
+  --zenith-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
+  --zenith-card-bg: rgba(255, 255, 255, 0.92);
+  --zenith-card-border: rgba(148, 163, 184, 0.18);
+  --zenith-card-shadow: 0 20px 50px rgba(15, 23, 42, 0.05);
+  --zenith-muted-text: #475569;
+  --zenith-strong-text: #0f172a;
+  --zenith-note-bg: rgba(15, 23, 42, 0.04);
+  --zenith-hero-bg:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.16), transparent 26%),
+    radial-gradient(circle at top right, rgba(191, 219, 254, 0.16), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), #ffffff 32%, #f8fbff 100%);
+}
+
+.dark {
+  --vp-c-brand-1: #60a5fa;
+  --vp-c-brand-2: #3b82f6;
+  --vp-c-brand-3: #2563eb;
+  --vp-c-brand-soft: rgba(96, 165, 250, 0.18);
+  --vp-home-hero-name-background: linear-gradient(135deg, #f8fafc 0%, #93c5fd 45%, #60a5fa 100%);
+  --zenith-panel-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.9), rgba(15, 23, 42, 0.88));
+  --zenith-card-bg: rgba(15, 23, 42, 0.82);
+  --zenith-card-border: rgba(100, 116, 139, 0.32);
+  --zenith-card-shadow: 0 24px 50px rgba(2, 6, 23, 0.35);
+  --zenith-muted-text: #cbd5e1;
+  --zenith-strong-text: #f8fafc;
+  --zenith-note-bg: rgba(148, 163, 184, 0.12);
+  --zenith-hero-bg:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.12), transparent 26%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96) 38%, rgba(3, 7, 18, 1) 100%);
+}
+
+.VPHome {
+  background: var(--zenith-hero-bg);
+}
+
+.VPHome .VPHero {
+  padding-top: 72px;
+}
+
+.VPHome .VPButton.brand {
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.18);
+}
+
+.VPHome .VPFeature {
+  border: 1px solid var(--zenith-card-border);
+  background: var(--zenith-card-bg);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06);
+}
+
+.dark .VPHome .VPFeature {
+  box-shadow: 0 18px 45px rgba(2, 6, 23, 0.28);
+}
+
+.VPHome .VPFeature .title,
+.VPHome .VPFeature .details {
+  color: var(--zenith-strong-text);
+}
+
+.VPHome .VPFeature .details {
+  color: var(--zenith-muted-text);
+}
+
+.vp-doc .home-panel {
+  margin: 24px 0;
+  padding: 32px;
+  border: 1px solid var(--zenith-card-border);
+  border-radius: 24px;
+  background: var(--zenith-panel-bg);
+  box-shadow: var(--zenith-card-shadow);
+}
+
+.vp-doc .landing-badge {
+  display: inline-flex;
+  margin: 0 0 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vp-doc .landing-heading {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.2;
+  color: var(--zenith-strong-text);
+}
+
+.vp-doc .landing-subtitle {
+  margin: 12px 0 0;
+  color: var(--zenith-muted-text);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.vp-doc .home-grid,
+.vp-doc .home-stats,
+.vp-doc .quick-entry-grid,
+.vp-doc .home-scenarios {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.vp-doc .home-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.vp-doc .home-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.vp-doc .home-scenarios {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vp-doc .quick-entry-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.vp-doc .home-card,
+.vp-doc .home-stat,
+.vp-doc .quick-entry,
+.vp-doc .scenario-card {
+  padding: 20px;
+  border: 1px solid var(--zenith-card-border);
+  border-radius: 20px;
+  background: var(--zenith-card-bg);
+}
+
+.vp-doc .home-card h3,
+.vp-doc .quick-entry h3,
+.vp-doc .scenario-card h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: var(--zenith-strong-text);
+  font-size: 18px;
+}
+
+.vp-doc .home-card p,
+.vp-doc .quick-entry p,
+.vp-doc .scenario-card p,
+.vp-doc .home-stat p {
+  margin: 0;
+  color: var(--zenith-muted-text);
+  line-height: 1.8;
+}
+
+.vp-doc .home-stat strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--zenith-strong-text);
+  font-size: 28px;
+}
+
+.vp-doc .home-timeline {
+  margin-top: 24px;
+  padding-left: 20px;
+}
+
+.vp-doc .home-timeline li {
+  margin: 12px 0;
+  color: var(--zenith-muted-text);
+  line-height: 1.8;
+}
+
+.vp-doc .home-timeline strong,
+.vp-doc .home-timeline code,
+.vp-doc .home-stat code {
+  color: var(--zenith-strong-text);
+}
+
+.vp-doc .quick-entry {
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.vp-doc .quick-entry:hover {
+  border-color: rgba(37, 99, 235, 0.32);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(37, 99, 235, 0.08);
+}
+
+.dark .vp-doc .quick-entry:hover {
+  border-color: rgba(96, 165, 250, 0.42);
+  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.35);
+}
+
+.vp-doc .home-note {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--zenith-note-bg);
+  color: var(--zenith-muted-text);
+}
+
+.dark .vp-doc .landing-badge {
+  background: rgba(96, 165, 250, 0.2);
+  color: #eff6ff;
+}
+
+.dark .VPHome .VPButton.alt {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #f8fafc;
+}
+
+.dark .VPHome .VPButton.alt:hover {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+@media (max-width: 960px) {
+  .vp-doc .home-grid,
+  .vp-doc .quick-entry-grid,
+  .vp-doc .home-stats,
+  .vp-doc .home-scenarios {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .vp-doc .home-panel {
+    padding: 20px;
+    border-radius: 20px;
+  }
+
+  .vp-doc .landing-heading {
+    font-size: 26px;
+  }
+
+  .vp-doc .home-grid,
+  .vp-doc .quick-entry-grid,
+  .vp-doc .home-stats,
+  .vp-doc .home-scenarios {
+    grid-template-columns: 1fr;
+  }
+}
