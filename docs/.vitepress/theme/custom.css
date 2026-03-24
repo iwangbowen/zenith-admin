@@ -29,8 +29,8 @@
   --zn-text-2: #9ca3af;
   --zn-text-3: #6b7280;
   --zn-border: #1f2937;
-  --zn-bg-alt: #111827;
-  --zn-bg-stripe: #161f2e;
+  --zn-bg-alt: #1c1f26;
+  --zn-bg-stripe: #22252c;
 }
 
 /* ===== Hero ===== */
@@ -57,35 +57,40 @@
 }
 
 .VPHome .VPButton.brand {
-  border-radius: 6px;
+  border-radius: 2px;
   box-shadow: none;
 }
 
 .VPHome .VPButton.alt {
-  border-radius: 6px;
+  border-radius: 2px;
+  box-shadow: none;
 }
 
-/* ===== Features 区域 ===== */
+/* ===== Features 区域（flat） ===== */
 .VPHome .VPFeatures {
   padding-top: 0;
 }
 
 .VPHome .VPFeature {
-  border: 1px solid var(--zn-border);
-  border-radius: 8px;
-  background: var(--vp-c-bg);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  border: none;
+  border-radius: 0;
+  background: var(--zn-bg-alt);
+  box-shadow: none;
+  transition: background-color 0.15s;
 }
 
 .VPHome .VPFeature:hover {
-  border-color: rgba(26, 109, 255, 0.4);
-  box-shadow: 0 4px 12px rgba(26, 109, 255, 0.08);
+  background: var(--zn-bg-stripe);
+  box-shadow: none;
+}
+
+.dark .VPHome .VPFeature {
+  background: var(--zn-bg-alt);
 }
 
 .dark .VPHome .VPFeature:hover {
-  border-color: rgba(91, 154, 255, 0.4);
-  box-shadow: 0 4px 12px rgba(91, 154, 255, 0.08);
+  background: var(--zn-bg-stripe);
+  box-shadow: none;
 }
 
 .VPHome .VPFeature .title {
