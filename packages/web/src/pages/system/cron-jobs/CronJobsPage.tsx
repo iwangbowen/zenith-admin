@@ -130,7 +130,7 @@ export default function CronJobsPage() {
       }
     : { status: 'active' };
 
-  const runStatusColor: Record<string, string> = {
+  const runStatusColor: Record<string, import('@douyinfe/semi-ui/lib/es/tag/interface').TagColor> = {
     success: 'green',
     fail: 'red',
     running: 'blue',
