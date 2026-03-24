@@ -194,7 +194,7 @@ export default function DictsPage() {
           >
             编辑
           </Button>}
-          {hasPermission('system:dict:delete') && <Button theme="borderless" size="small" type="danger" onClick={(e) => { e.stopPropagation(); Modal.confirm({ title: '确认删除此字典？', content: '字典下的所有字典项也将一并删除', onOk: () => handleDictDelete(row.id) }); }}>删除</Button>}
+          {hasPermission('system:dict:delete') && <Button theme="borderless" size="small" type="danger" onClick={(e) => { e.stopPropagation(); Modal.confirm({ title: '确认删除此字典？', content: '字典下的所有字典项也将一并删除', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDictDelete(row.id) }); }}>删除</Button>}
         </Space>
       ),
     },
@@ -229,6 +229,7 @@ export default function DictsPage() {
           {hasPermission('system:dict:item') && <Button theme="borderless" size="small" type="danger" onClick={() => {
             Modal.confirm({
               title: '确认删除此字典项？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
               onOk: () => handleItemDelete(row.id),
             });
           }}>删除</Button>}

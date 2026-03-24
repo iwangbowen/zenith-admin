@@ -216,6 +216,7 @@ export default function RolesPage() {
           {hasPermission('system:role:delete') && <Button theme="borderless" size="small" type="danger" onClick={() => {
             Modal.confirm({
               title: '确认删除此角色？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
               onOk: () => handleDelete(row.id),
             });
           }}>删除</Button>}

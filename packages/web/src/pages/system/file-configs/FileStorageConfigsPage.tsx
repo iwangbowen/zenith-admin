@@ -259,6 +259,7 @@ export default function FileStorageConfigsPage() {
               Modal.confirm({
                 title: '确认删除此文件服务配置？',
                 content: '若已绑定文件记录，后端会阻止删除。',
+                okButtonProps: { type: 'danger', theme: 'solid' },
                 onOk: () => handleDelete(record),
               });
             }}

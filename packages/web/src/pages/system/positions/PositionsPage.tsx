@@ -162,6 +162,7 @@ export default function PositionsPage() {
           {hasPermission('system:position:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
             Modal.confirm({
               title: '确定要删除该岗位吗？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
               onOk: () => handleDelete(record.id),
             });
           }}>删除</Button>}

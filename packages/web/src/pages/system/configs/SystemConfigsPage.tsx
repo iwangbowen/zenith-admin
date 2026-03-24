@@ -143,7 +143,7 @@ export default function SystemConfigsPage() {
           )}
           {hasPermission('system:config:delete') && (
             <Button theme="borderless" type="danger" size="small" onClick={() => {
-              Modal.confirm({ title: '确定要删除此配置吗？', onOk: () => handleDelete(record.id) });
+              Modal.confirm({ title: '确定要删除此配置吗？', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDelete(record.id) });
             }}>
               删除
             </Button>

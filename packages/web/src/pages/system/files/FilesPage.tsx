@@ -236,6 +236,7 @@ export default function FilesPage() {
             Modal.confirm({
               title: '确认删除此文件？',
               content: '删除文件记录后，将同步尝试删除实际存储对象。',
+              okButtonProps: { type: 'danger', theme: 'solid' },
               onOk: () => handleDelete(record),
             });
           }}>删除</Button>}

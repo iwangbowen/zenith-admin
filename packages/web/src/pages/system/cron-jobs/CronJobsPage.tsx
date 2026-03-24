@@ -174,7 +174,7 @@ export default function CronJobsPage() {
           )}
           {hasPermission('system:cron:delete') && (
             <Button theme="borderless" type="danger" size="small" onClick={() => {
-              Modal.confirm({ title: '确定要删除此任务吗？', onOk: () => handleDelete(record.id) });
+              Modal.confirm({ title: '确定要删除此任务吗？', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDelete(record.id) });
             }}>
               删除
             </Button>

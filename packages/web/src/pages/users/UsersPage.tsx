@@ -318,6 +318,7 @@ export default function UsersPage() {
           {hasPermission('system:user:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
             Modal.confirm({
               title: '确定要删除该用户吗？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
               onOk: () => handleDelete(record.id),
             });
           }}>删除</Button>}

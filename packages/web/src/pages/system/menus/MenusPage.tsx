@@ -207,6 +207,7 @@ export default function MenusPage() {
             Modal.confirm({
               title: '确认删除此菜单？',
               content: '子菜单也将一并删除',
+              okButtonProps: { type: 'danger', theme: 'solid' },
               onOk: () => handleDelete(row.id),
             });
           }}>删除</Button>}
