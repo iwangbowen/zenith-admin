@@ -10,6 +10,7 @@ import {
   Table,
   Toast,
 } from '@douyinfe/semi-ui';
+import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Department } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -27,6 +28,71 @@ const defaultSearchParams: SearchParams = {
   keyword: '',
   status: '',
 };
+
+function collectDescendantIds(items: Department[], departmentId: number): Set<number> {
+  const descendants = new Set<number>();
+  const queue = [departmentId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    if (currentId === undefined) {
+      continue;
+    }
+
+    for (const item of items) {
+      if (item.parentId === currentId) {
+        descendants.add(item.id);
+        queue.push(item.id);
+      }
+    }
+  }
+
+  return descendants;
+}
+
+function buildDepartmentTreeData(items: Department[], excludedIds: Set<number>): TreeNodeData[] {
+  const nodeMap = new Map<number, TreeNodeData>();
+  const roots: TreeNodeData[] = [];
+
+  items.forEach((item) => {
+    if (excludedIds.has(item.id)) {
+      return;
+    }
+
+    nodeMap.set(item.id, {
+      label: item.name,
+      value: item.id,
+      key: String(item.id),
+    });
+  });
+
+  items.forEach((item) => {
+    if (excludedIds.has(item.id)) {
+      return;
+    }
+
+    const node = nodeMap.get(item.id);
+    if (!node) {
+      return;
+    }
+
+    if (item.parentId === 0) {
+      roots.push(node);
+      return;
+    }
+
+    const parentNode = nodeMap.get(item.parentId);
+    if (!parentNode) {
+      roots.push(node);
+      return;
+    }
+
+    parentNode.children = parentNode.children ?? [];
+    parentNode.children.push(node);
+  });
+
+  return roots;
+}
 
 export default function DepartmentsPage() {
   const formApi = useRef<any>(null);
@@ -60,10 +126,20 @@ export default function DepartmentsPage() {
     void fetchDepartments();
   }, []);
 
-  const parentOptions = useMemo(
-    () => [{ value: 0, label: '顶级部门' }, ...allDepartments.map((item) => ({ value: item.id, label: item.name }))],
-    [allDepartments]
-  );
+  const parentTreeData = useMemo(() => {
+    const excludedIds = editingDepartment
+      ? new Set([editingDepartment.id, ...collectDescendantIds(allDepartments, editingDepartment.id)])
+      : new Set<number>();
+
+    return [
+      {
+        label: '顶级部门',
+        value: 0,
+        key: '0',
+        children: buildDepartmentTreeData(allDepartments, excludedIds),
+      },
+    ];
+  }, [allDepartments, editingDepartment]);
 
   const formInitValues = editingDepartment
     ? {
@@ -233,7 +309,15 @@ export default function DepartmentsPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Select field="parentId" label="上级部门" optionList={parentOptions} style={{ width: '100%' }} />
+          <Form.TreeSelect
+            field="parentId"
+            label="上级部门"
+            style={{ width: '100%' }}
+            treeData={parentTreeData}
+            placeholder="请选择上级部门"
+            filterTreeNode
+            expandAll
+          />
           <Form.Input field="name" label="部门名称" rules={[{ required: true, message: '请输入部门名称' }]} />
           <Form.Input field="code" label="部门编码" rules={[{ required: true, message: '请输入部门编码' }]} />
           <Form.Input field="leader" label="负责人" />
