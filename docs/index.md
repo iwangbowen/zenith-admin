@@ -5,7 +5,7 @@ titleTemplate: false
 hero:
   name: Zenith Admin
   text: 全栈后台项目底座
-  tagline: 常见后台能力已就位，clone 下来直接往里加业务。
+  tagline: 基于 Hono + React + Drizzle ORM 的全栈后台管理底座，内置常用后台能力，开箱即用。
   actions:
     - theme: brand
       text: 快速开始 →
@@ -18,22 +18,22 @@ hero:
       link: https://github.com/iwangbowen/zenith-admin
 features:
   - title: 用户 / 角色 / 菜单
-    details: 动态菜单 + RBAC 权限，按钮级鉴权，直接能用。
+    details: 支持动态菜单配置与 RBAC 权限控制，提供按钮级别鉴权能力。
   - title: 共享类型层
-    details: Zod schema 在 server 和 web 里共用一份，字段不一致的问题少很多。
+    details: Zod Schema 在前后端共享，统一校验逻辑，减少字段不一致风险。
   - title: 文件存储
-    details: 本地和阿里云 OSS 两种模式，在后台切换一下就行。
+    details: 支持本地存储与阿里云 OSS 两种模式，可在后台配置页面切换。
   - title: 数据字典
-    details: 改下拉框选项不用动代码，后台配置就能改。
+    details: 通过后台配置动态管理枚举类型，无需修改代码即可变更选项。
   - title: JWT 鉴权
-    details: 7 天 Token，中间件接管认证逻辑，路由层不用重复写。
+    details: 采用 JWT Bearer Token 认证，有效期 7 天，中间件统一处理鉴权逻辑。
   - title: 数据库迁移
-    details: schema 改了就跑 migrate，有 SQL 文件可以追溯历史变更。
+    details: Schema 变更通过 Drizzle 迁移管理，SQL 历史文件可追溯版本变更。
 ---
 
 <section class="zn-section">
   <h2 class="zn-title">技术选型</h2>
-  <p class="zn-desc">几个你可能在意的技术点，先交个底。</p>
+  <p class="zn-desc">项目使用的主要技术栈。</p>
   <ul class="zn-deflist">
     <li><span class="zn-term">后端</span><span class="zn-def">Hono v4 · Node.js · Drizzle ORM · PostgreSQL</span></li>
     <li><span class="zn-term">前端</span><span class="zn-def">React 19 · Vite · Semi Design · react-router v7</span></li>
@@ -43,7 +43,7 @@ features:
 
 <section class="zn-section">
   <h2 class="zn-title">目录结构</h2>
-  <p class="zn-desc">三个包，各管各的事。</p>
+  <p class="zn-desc">项目采用 npm monorepo 结构，分为三个子包。</p>
   <ul class="zn-deflist">
     <li><span class="zn-term"><code>packages/server</code></span><span class="zn-def">Hono 路由 + Drizzle schema + 业务逻辑</span></li>
     <li><span class="zn-term"><code>packages/web</code></span><span class="zn-def">React 页面 + Semi 组件 + 状态管理</span></li>
