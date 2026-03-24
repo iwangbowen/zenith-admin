@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -132,7 +132,9 @@ export const dictItems = pgTable('dict_items', {
   remark: varchar('remark', { length: 256 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex('dict_items_dict_id_value_unique').on(table.dictId, table.value),
+]);
 
 export type DictItemRow = typeof dictItems.$inferSelect;
 export type NewDictItem = typeof dictItems.$inferInsert;

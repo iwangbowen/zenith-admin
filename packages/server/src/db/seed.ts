@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, fileStorageConfigs, departments, positions, userPositions, systemConfigs } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs } from './schema';
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 import logger from '../lib/logger';
@@ -13,20 +13,15 @@ async function seed() {
   logger.info('🌱 Seeding database...');
 
   // ─── 1. 管理员账号 ─────────────────────────────────────────────────────────
-  const existing = await db.select().from(users).where(eq(users.username, 'admin'));
   const hashedPassword = await bcrypt.hash('123456', 10);
-  if (existing.length === 0) {
-    await db.insert(users).values({
-      username: 'admin',
-      nickname: '管理员',
-      email: 'admin@zenith.dev',
-      password: hashedPassword,
-      status: 'active',
-    });
-    logger.info('  ✔ Admin user created: admin / 123456');
-  } else {
-    logger.info('  ⏭ Admin user already exists, skipped');
-  }
+  await db.insert(users).values({
+    username: 'admin',
+    nickname: '管理员',
+    email: 'admin@zenith.dev',
+    password: hashedPassword,
+    status: 'active',
+  }).onConflictDoNothing({ target: users.username });
+  logger.info('  ✔ Admin user seeded (onConflictDoNothing)');
 
   // ─── 2. 菜单数据 ──────────────────────────────────────────────────────────
   const menuRows = [
@@ -216,7 +211,7 @@ async function seed() {
   logger.info('  ✔ File storage configs seeded (onConflictDoNothing)');
 
   // ─── 7. 字典项数据 ────────────────────────────────────────────────────────
-  // 使用 (dict_id, value) 作为逻辑唯一键，通过先查再插的方式去重
+  // 使用 (dict_id, value) 唯一索引，通过 onConflictDoUpdate 保持幂等
   const dictItemRows = [
     { dictId: 1, label: '启用',     value: 'active',    color: 'green',  sort: 1 },
     { dictId: 1, label: '禁用',     value: 'disabled',  color: 'grey',   sort: 2 },
@@ -241,21 +236,19 @@ async function seed() {
     { dictId: 8, label: '中',       value: 'medium',      color: 'blue',   sort: 2 },
     { dictId: 8, label: '高',       value: 'high',        color: 'red',    sort: 3 },
   ];
-  // dict_items 没有唯一约束，用 SQL 子查询避免重复插入
-  for (const item of dictItemRows) {
-    await db.execute(sql`
-      INSERT INTO dict_items (dict_id, label, value, color, sort, status)
-      SELECT ${item.dictId}, ${item.label}, ${item.value}, ${item.color}, ${item.sort}, 'active'
-      WHERE NOT EXISTS (
-        SELECT 1 FROM dict_items WHERE dict_id = ${item.dictId} AND value = ${item.value}
-      )
-    `);
-    await db.execute(sql`
-      UPDATE dict_items SET color = ${item.color}
-      WHERE dict_id = ${item.dictId} AND value = ${item.value} AND (color IS NULL OR color != ${item.color})
-    `);
-  }
-  logger.info('  ✔ Dict items seeded (WHERE NOT EXISTS)');
+  // dict_items 使用 (dict_id, value) 唯一索引，通过 onConflictDoUpdate 保持幂等
+  await db.insert(dictItems)
+    .values(dictItemRows.map(r => ({ ...r, status: 'active' as const })))
+    .onConflictDoUpdate({
+      target: [dictItems.dictId, dictItems.value],
+      set: {
+        label: sql`excluded.label`,
+        color: sql`excluded.color`,
+        sort: sql`excluded.sort`,
+        updatedAt: new Date(),
+      },
+    });
+  logger.info('  ✔ Dict items seeded (onConflictDoUpdate)');
 
   // ─── 8. 系统配置种子数据 ──────────────────────────────────────────────────
   const systemConfigRows = [
@@ -273,14 +266,10 @@ async function seed() {
     { name: '清理过期验证码', cronExpression: '0 */30 * * * *', handler: 'cleanExpiredCaptchas', status: 'active' as const, description: '每30分钟清理过期的验证码' },
     { name: '清理过期会话', cronExpression: '0 0 * * * *', handler: 'cleanExpiredSessions', status: 'active' as const, description: '每小时清理超过8小时无活动的会话' },
   ];
-  for (const row of cronJobRows) {
-    await db.execute(sql`
-      INSERT INTO cron_jobs (name, cron_expression, handler, status, description)
-      SELECT ${row.name}, ${row.cronExpression}, ${row.handler}, ${row.status}, ${row.description}
-      WHERE NOT EXISTS (SELECT 1 FROM cron_jobs WHERE name = ${row.name})
-    `);
-  }
-  logger.info('  ✔ Cron jobs seeded');
+  await db.insert(cronJobs)
+    .values(cronJobRows)
+    .onConflictDoNothing({ target: cronJobs.name });
+  logger.info('  ✔ Cron jobs seeded (onConflictDoNothing)');
 
   logger.info('🎉 Seed complete.');
   process.exit(0);
