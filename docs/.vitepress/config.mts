@@ -16,7 +16,18 @@ export default defineConfig({
   description: 'Zenith Admin 文档站：项目介绍、快速开始、开发说明与更新记录。',
   base,
   cleanUrls: true,
-  lastUpdated: true,
+  lastUpdated: {
+    text: '最后更新于',
+    formatOptions: {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    },
+  },
   themeConfig: {
     siteTitle: 'Zenith Admin',
     logo: '/favicon.svg',
