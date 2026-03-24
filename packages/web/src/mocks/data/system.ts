@@ -1,45 +1,11 @@
 import type { SystemConfig, CronJob, FileStorageConfig, OnlineUser } from '@zenith/shared';
+import { SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
 
-export const mockSystemConfigs: SystemConfig[] = [
-  { id: 1, configKey: 'captcha_enabled',       configValue: 'false',        configType: 'boolean', description: '是否开启登录验证码', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' },
-  { id: 2, configKey: 'site_name',             configValue: 'Zenith Admin', configType: 'string',  description: '站点名称，显示在浏览器标签页', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' },
-  { id: 3, configKey: 'user_default_password', configValue: '123456',       configType: 'string',  description: '新增用户时的默认密码', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' },
-];
+export const mockSystemConfigs: SystemConfig[] = SEED_SYSTEM_CONFIGS.map((s) => ({ ...s }));
 
-export const mockCronJobs: CronJob[] = [
-  {
-    id: 1,
-    name: '清理过期验证码',
-    cronExpression: '0 */30 * * * *',
-    handler: 'cleanExpiredCaptchas',
-    params: null,
-    status: 'active',
-    description: '每30分钟清理过期的验证码',
-    lastRunAt: '2024-01-01T00:30:00.000Z',
-    nextRunAt: '2024-01-01T01:00:00.000Z',
-    lastRunStatus: 'success',
-    lastRunMessage: null,
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
-  },
-  {
-    id: 2,
-    name: '清理过期会话',
-    cronExpression: '0 0 * * * *',
-    handler: 'cleanExpiredSessions',
-    params: null,
-    status: 'active',
-    description: '每小时清理超过8小时无活动的会话',
-    lastRunAt: '2024-01-01T01:00:00.000Z',
-    nextRunAt: '2024-01-01T02:00:00.000Z',
-    lastRunStatus: 'success',
-    lastRunMessage: null,
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
-  },
-];
+export const mockCronJobs: CronJob[] = SEED_CRON_JOBS.map((c) => ({ ...c }));
 
-let nextCronJobId = 3;
+let nextCronJobId = Math.max(...SEED_CRON_JOBS.map((c) => c.id)) + 1;
 export function getNextCronJobId() {
   return nextCronJobId++;
 }
