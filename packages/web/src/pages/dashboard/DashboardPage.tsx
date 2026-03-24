@@ -85,6 +85,7 @@ export default function DashboardPage() {
                       size="small"
                       theme="borderless"
                       type="tertiary"
+                      className="notice-mark-read"
                       onClick={() => markAsRead(n.id)}
                     >
                       标记已读
