@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer, Select } from '@douyinfe/semi-ui';
-import { Search, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
@@ -207,6 +207,11 @@ export default function OperationLogsPage() {
               <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
                 重置
               </Button>
+            </Space>
+          </div>
+          <div className="responsive-toolbar__right">
+            <Space>
+              <Button icon={<Download size={14} />} onClick={() => request.download('/api/operation-logs/export', '操作日志.xlsx')}>导出</Button>
             </Space>
           </div>
         </div>

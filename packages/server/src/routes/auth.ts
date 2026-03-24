@@ -10,6 +10,9 @@ import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema 
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
+import { generateCaptcha, verifyCaptcha } from '../lib/captcha';
+import { getConfigBoolean } from '../lib/system-config';
+import { generateTokenId, registerSession } from '../lib/session-manager';
 
 const auth = new Hono();
 
@@ -44,11 +47,28 @@ async function getUserRoles(userId: number) {
   return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() }));
 }
 
+auth.get('/captcha', async (c) => {
+  const result = generateCaptcha();
+  return c.json({ code: 0, message: 'ok', data: result });
+});
+
 auth.post('/login', async (c) => {
   const body = await c.req.json();
   const result = loginSchema.safeParse(body);
   if (!result.success) {
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+  }
+
+  // Check if captcha is enabled
+  const captchaEnabled = await getConfigBoolean('captcha_enabled', false);
+  if (captchaEnabled) {
+    const { captchaId, captchaCode } = result.data;
+    if (!captchaId || !captchaCode) {
+      return c.json({ code: 400, message: '请输入验证码', data: null }, 400);
+    }
+    if (!verifyCaptcha(captchaId, captchaCode)) {
+      return c.json({ code: 400, message: '验证码错误或已过期', data: null }, 400);
+    }
   }
 
   const { username, password } = result.data;
@@ -71,12 +91,37 @@ auth.post('/login', async (c) => {
   }
 
   const userRoleList = await getUserRoles(user.id);
+  const tokenId = generateTokenId();
 
-  const token = jwt.sign(
-    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code) } satisfies JwtPayload,
+  const accessToken = jwt.sign(
+    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), jti: tokenId } satisfies JwtPayload,
     config.jwtSecret,
-    { expiresIn: '7d' }
+    { expiresIn: '2h' }
   );
+
+  const refreshToken = jwt.sign(
+    { userId: user.id, username: user.username, type: 'refresh', jti: tokenId },
+    config.jwtSecret,
+    { expiresIn: '30d' }
+  );
+
+  // Register session for online user tracking
+  const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
+  const ua = c.req.header('user-agent') || '';
+  const parser = new UAParser(ua);
+  const browserInfo = parser.getBrowser();
+  const osInfo = parser.getOS();
+
+  registerSession({
+    tokenId,
+    userId: user.id,
+    username: user.username,
+    nickname: user.nickname,
+    ip,
+    browser: browserInfo.name ? `${browserInfo.name} ${browserInfo.version || ''}`.trim() : 'Unknown',
+    os: osInfo.name ? `${osInfo.name} ${osInfo.version || ''}`.trim() : 'Unknown',
+    loginAt: new Date(),
+  });
 
   await recordLoginLog(c, username, 'success', '登录成功', user.id);
 
@@ -86,7 +131,7 @@ auth.post('/login', async (c) => {
     message: '登录成功',
     data: {
       user: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
-      token: { accessToken: token },
+      token: { accessToken, refreshToken },
     },
   });
 });
@@ -117,11 +162,18 @@ auth.post('/register', async (c) => {
     .returning();
 
   const userRoleList = await getUserRoles(user.id);
+  const tokenId = generateTokenId();
 
-  const token = jwt.sign(
-    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code) } satisfies JwtPayload,
+  const accessToken = jwt.sign(
+    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), jti: tokenId } satisfies JwtPayload,
     config.jwtSecret,
-    { expiresIn: '7d' }
+    { expiresIn: '2h' }
+  );
+
+  const refreshToken = jwt.sign(
+    { userId: user.id, username: user.username, type: 'refresh', jti: tokenId },
+    config.jwtSecret,
+    { expiresIn: '30d' }
   );
 
   await recordLoginLog(c, username, 'success', '注册并在自动登录成功', user.id);
@@ -132,9 +184,43 @@ auth.post('/register', async (c) => {
     message: '注册成功',
     data: {
       user: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
-      token: { accessToken: token },
+      token: { accessToken, refreshToken },
     },
   });
+});
+
+// Refresh token endpoint
+auth.post('/refresh', async (c) => {
+  const body = await c.req.json();
+  const token = body.refreshToken;
+  if (!token) {
+    return c.json({ code: 400, message: 'refreshToken 不能为空', data: null }, 400);
+  }
+
+  try {
+    const payload = jwt.verify(token, config.jwtSecret) as { userId: number; username: string; type?: string; jti?: string };
+    if (payload.type !== 'refresh') {
+      return c.json({ code: 401, message: '无效的 refresh token', data: null }, 401);
+    }
+
+    // Get fresh user roles
+    const userRoleList = await getUserRoles(payload.userId);
+    const tokenId = generateTokenId();
+
+    const accessToken = jwt.sign(
+      { userId: payload.userId, username: payload.username, roles: userRoleList.map((r) => r.code), jti: tokenId } satisfies JwtPayload,
+      config.jwtSecret,
+      { expiresIn: '2h' }
+    );
+
+    return c.json({
+      code: 0,
+      message: 'ok',
+      data: { accessToken },
+    });
+  } catch {
+    return c.json({ code: 401, message: 'refresh token 已过期', data: null }, 401);
+  }
 });
 
 auth.get('/me', authMiddleware, async (c) => {

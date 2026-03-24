@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text } from 'drizzle-orm/pg-core';
 
 export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -241,3 +241,41 @@ export const noticeReads = pgTable('notice_reads', {
 }, (t) => [unique('uniq_notice_user').on(t.noticeId, t.userId)]);
 
 export type NoticeReadRow = typeof noticeReads.$inferSelect;
+
+// ─── 系统参数配置表 ──────────────────────────────────────────────────────────
+export const configTypeEnum = pgEnum('config_type', ['string', 'number', 'boolean', 'json']);
+
+export const systemConfigs = pgTable('system_configs', {
+  id: serial('id').primaryKey(),
+  configKey: varchar('config_key', { length: 128 }).notNull().unique(),
+  configValue: varchar('config_value', { length: 4096 }).notNull().default(''),
+  configType: configTypeEnum('config_type').notNull().default('string'),
+  description: varchar('description', { length: 256 }).notNull().default(''),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type SystemConfigRow = typeof systemConfigs.$inferSelect;
+export type NewSystemConfig = typeof systemConfigs.$inferInsert;
+
+// ─── 定时任务表 ──────────────────────────────────────────────────────────────
+export const cronRunStatusEnum = pgEnum('cron_run_status', ['success', 'fail', 'running']);
+
+export const cronJobs = pgTable('cron_jobs', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull().unique(),
+  cronExpression: varchar('cron_expression', { length: 128 }).notNull(),
+  handler: varchar('handler', { length: 128 }).notNull(),
+  params: text('params'),
+  status: statusEnum('status').notNull().default('disabled'),
+  description: varchar('description', { length: 256 }).notNull().default(''),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+  lastRunStatus: cronRunStatusEnum('last_run_status'),
+  lastRunMessage: varchar('last_run_message', { length: 1024 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type CronJobRow = typeof cronJobs.$inferSelect;
+export type NewCronJob = typeof cronJobs.$inferInsert;

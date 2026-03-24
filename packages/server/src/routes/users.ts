@@ -7,6 +7,7 @@ import { createUserSchema, updateUserSchema, resetUserPasswordSchema } from '@ze
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
+import { exportToExcel } from '../lib/excel-export';
 import type { Role, Position, User } from '@zenith/shared';
 
 const usersRouter = new Hono();
@@ -390,6 +391,39 @@ usersRouter.delete('/:id', guard({ permission: 'system:user:delete', audit: { de
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+usersRouter.get('/export', guard({ permission: 'system:user:list' }), async (c) => {
+  const list = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      nickname: users.nickname,
+      email: users.email,
+      departmentName: departments.name,
+      status: users.status,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .leftJoin(departments, eq(users.departmentId, departments.id))
+    .orderBy(users.id);
+
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '用户名', key: 'username', width: 16 },
+      { header: '昵称', key: 'nickname', width: 16 },
+      { header: '邮箱', key: 'email', width: 24 },
+      { header: '部门', key: 'departmentName', width: 16 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'active' ? '启用' : '禁用' },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    list.map((r) => ({ ...r, departmentName: r.departmentName ?? '', createdAt: r.createdAt.toISOString() })),
+    '用户列表'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=users.xlsx');
+  return c.body(buffer);
 });
 
 export default usersRouter;

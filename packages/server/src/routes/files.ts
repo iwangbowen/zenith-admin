@@ -5,6 +5,7 @@ import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
+import { exportToExcel } from '../lib/excel-export';
 
 const filesRouter = new Hono();
 filesRouter.use('*', authMiddleware);
@@ -144,6 +145,25 @@ filesRouter.delete('/:id', guard({ permission: 'system:file:delete', audit: { de
 
   await db.delete(managedFiles).where(eq(managedFiles.id, id));
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+filesRouter.get('/export', guard({ permission: 'system:file:list' }), async (c) => {
+  const rows = await db.select().from(managedFiles).orderBy(desc(managedFiles.id));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '文件名', key: 'originalName', width: 28 },
+      { header: '类型', key: 'mimeType', width: 18 },
+      { header: '大小(bytes)', key: 'size', width: 14 },
+      { header: '存储方式', key: 'storageProvider', width: 12 },
+      { header: '上传时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    '文件列表'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=files.xlsx');
+  return c.body(buffer);
 });
 
 export default filesRouter;

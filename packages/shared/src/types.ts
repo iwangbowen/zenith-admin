@@ -16,6 +16,7 @@ export interface User {
 
 export interface AuthTokens {
   accessToken: string;
+  refreshToken: string;
 }
 
 export interface ApiResponse<T = unknown> {
@@ -206,4 +207,54 @@ export interface Notice {
   createByName: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── 系统参数配置 ──────────────────────────────────────────
+export type ConfigType = 'string' | 'number' | 'boolean' | 'json';
+
+export interface SystemConfig {
+  id: number;
+  configKey: string;
+  configValue: string;
+  configType: ConfigType;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── 定时任务 ──────────────────────────────────────────────
+export type CronRunStatus = 'success' | 'fail' | 'running';
+
+export interface CronJob {
+  id: number;
+  name: string;
+  cronExpression: string;
+  handler: string;
+  params: string | null;
+  status: 'active' | 'disabled';
+  description: string;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastRunStatus: CronRunStatus | null;
+  lastRunMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── 在线用户 ──────────────────────────────────────────────
+export interface OnlineUser {
+  tokenId: string;
+  userId: number;
+  username: string;
+  nickname: string;
+  ip: string;
+  browser: string;
+  os: string;
+  loginAt: string;
+}
+
+// ─── 验证码 ──────────────────────────────────────────────
+export interface CaptchaResponse {
+  captchaId: string;
+  captchaImage: string;
 }

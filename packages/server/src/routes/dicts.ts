@@ -5,6 +5,7 @@ import { dicts, dictItems } from '../db/schema';
 import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
+import { exportToExcel } from '../lib/excel-export';
 
 const dictsRouter = new Hono();
 dictsRouter.use('*', authMiddleware);
@@ -110,6 +111,25 @@ dictsRouter.delete('/:id/items/:itemId', guard({ permission: 'system:dict:item',
   const [deleted] = await db.delete(dictItems).where(eq(dictItems.id, itemId)).returning();
   if (!deleted) return c.json({ code: 404, message: '字典项不存在', data: null }, 404);
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+dictsRouter.get('/export', guard({ permission: 'system:dict:list' }), async (c) => {
+  const rows = await db.select().from(dicts).orderBy(asc(dicts.id));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '字典名称', key: 'name', width: 20 },
+      { header: '字典编码', key: 'code', width: 20 },
+      { header: '备注', key: 'remark', width: 30 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'active' ? '启用' : '禁用' },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    '字典列表'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=dicts.xlsx');
+  return c.body(buffer);
 });
 
 export default dictsRouter;

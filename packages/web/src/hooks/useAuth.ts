@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { request } from '../utils/request';
-import { TOKEN_KEY } from '@zenith/shared';
+import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { User, LoginResponse } from '@zenith/shared';
 
 interface AuthState {
@@ -25,10 +25,12 @@ export function useAuth() {
         setState({ user: userData, permissions: permissions ?? [], loading: false });
       } else {
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(REFRESH_TOKEN_KEY);
         setState({ user: null, permissions: [], loading: false });
       }
     } catch {
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
       setState({ user: null, permissions: [], loading: false });
     }
   }, []);
@@ -37,10 +39,11 @@ export function useAuth() {
     fetchUser();
   }, [fetchUser]);
 
-  const login = async (username: string, password: string) => {
-    const res = await request.post<LoginResponse>('/api/auth/login', { username, password });
+  const login = async (username: string, password: string, captchaId?: string, captchaCode?: string) => {
+    const res = await request.post<LoginResponse>('/api/auth/login', { username, password, captchaId, captchaCode });
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, res.data.token.refreshToken);
       await fetchUser();
     }
     return res;
@@ -50,6 +53,7 @@ export function useAuth() {
     const res = await request.post<LoginResponse>('/api/auth/register', data);
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, res.data.token.refreshToken);
       await fetchUser();
     }
     return res;
@@ -57,6 +61,7 @@ export function useAuth() {
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
     setState({ user: null, permissions: [], loading: false });
   };
 

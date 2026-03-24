@@ -17,6 +17,10 @@ import monitorRoutes from './routes/monitor';
 import loginLogsRoutes from './routes/login-logs';
 import operationLogsRoutes from './routes/operation-logs';
 import noticesRoutes from './routes/notices';
+import systemConfigsRoutes from './routes/system-configs';
+import sessionsRoutes from './routes/sessions';
+import cronJobsRoutes from './routes/cron-jobs';
+import { initCronScheduler } from './lib/cron-scheduler';
 
 const app = new Hono();
 
@@ -36,6 +40,9 @@ app.route('/api/monitor', monitorRoutes);
 app.route('/api/login-logs', loginLogsRoutes);
 app.route('/api/operation-logs', operationLogsRoutes);
 app.route('/api/notices', noticesRoutes);
+app.route('/api/system-configs', systemConfigsRoutes);
+app.route('/api/sessions', sessionsRoutes);
+app.route('/api/cron-jobs', cronJobsRoutes);
 
 app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));
 
@@ -48,3 +55,10 @@ app.onError((err, c) => {
 logger.info(`Server starting on port ${config.port}...`);
 serve({ fetch: app.fetch, port: config.port });
 logger.info(`Server running at http://localhost:${config.port}`);
+
+// Initialize cron scheduler after server is up
+try {
+  await initCronScheduler();
+} catch (err) {
+  logger.error('Failed to initialize cron scheduler', err);
+}

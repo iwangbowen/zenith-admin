@@ -5,6 +5,7 @@ import { positions, userPositions } from '../db/schema';
 import { createPositionSchema, updatePositionSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
+import { exportToExcel } from '../lib/excel-export';
 
 const positionsRouter = new Hono();
 
@@ -110,6 +111,26 @@ positionsRouter.delete('/:id', guard({ permission: 'system:position:delete', aud
 
   await db.delete(positions).where(eq(positions.id, id));
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+positionsRouter.get('/export', guard({ permission: 'system:position:list' }), async (c) => {
+  const rows = await db.select().from(positions).orderBy(asc(positions.sort));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '岗位名称', key: 'name', width: 18 },
+      { header: '岗位编码', key: 'code', width: 18 },
+      { header: '排序', key: 'sort', width: 8 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'active' ? '启用' : '禁用' },
+      { header: '备注', key: 'remark', width: 24 },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, remark: r.remark ?? '', createdAt: r.createdAt.toISOString() })),
+    '岗位列表'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=positions.xlsx');
+  return c.body(buffer);
 });
 
 export default positionsRouter;

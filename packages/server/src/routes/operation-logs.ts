@@ -4,6 +4,7 @@ import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
+import { exportToExcel } from '../lib/excel-export';
 
 const operationLogsRoute = new Hono();
 
@@ -57,6 +58,29 @@ operationLogsRoute.get('/', guard({ permission: 'system:log:operation' }), async
       pageSize,
     },
   });
+});
+
+operationLogsRoute.get('/export', guard({ permission: 'system:operationlog:list' }), async (c) => {
+  const rows = await db.select().from(operationLogs).orderBy(desc(operationLogs.id));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '用户名', key: 'username', width: 14 },
+      { header: '模块', key: 'module', width: 14 },
+      { header: '描述', key: 'description', width: 20 },
+      { header: '方法', key: 'method', width: 8 },
+      { header: '路径', key: 'path', width: 24 },
+      { header: '状态码', key: 'responseCode', width: 10 },
+      { header: '耗时(ms)', key: 'duration', width: 12 },
+      { header: 'IP', key: 'ip', width: 16 },
+      { header: '时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    '操作日志'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=operation-logs.xlsx');
+  return c.body(buffer);
 });
 
 export default operationLogsRoute;

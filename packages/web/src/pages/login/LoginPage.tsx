@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { User, Lock, Mail, AtSign } from 'lucide-react';
 import type { RegisterInput } from '@zenith/shared';
+import { request } from '../../utils/request';
 import './LoginPage.css';
 
 const { Title, Text } = Typography;
 
 interface LoginPageProps {
-  onLogin: (username: string, password: string) => Promise<{ code: number; message: string }>;
+  onLogin: (username: string, password: string, captchaId?: string, captchaCode?: string) => Promise<{ code: number; message: string }>;
   onRegister: (data: { username: string; nickname: string; email: string; password: string }) => Promise<{ code: number; message: string }>;
 }
 
@@ -17,12 +18,33 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState('login');
 
+  // Captcha state
+  const [captchaEnabled, setCaptchaEnabled] = useState(false);
+  const [captchaId, setCaptchaId] = useState('');
+  const [captchaSvg, setCaptchaSvg] = useState('');
+
+  const fetchCaptcha = useCallback(async () => {
+    try {
+      const res = await request.get<{ captchaId: string; svg: string; enabled: boolean }>('/api/auth/captcha');
+      if (res.code === 0) {
+        setCaptchaEnabled(res.data.enabled);
+        if (res.data.enabled) {
+          setCaptchaId(res.data.captchaId);
+          setCaptchaSvg(res.data.svg);
+        }
+      }
+    } catch { /* captcha endpoint not available */ }
+  }, []);
+
+  useEffect(() => { fetchCaptcha(); }, [fetchCaptcha]);
+
   const handleLogin = async (values: Record<string, string>) => {
     setLoading(true);
     try {
-      const res = await onLogin(values.username, values.password);
+      const res = await onLogin(values.username, values.password, captchaId, values.captchaCode);
       if (res.code !== 0) {
         Toast.error(res.message);
+        if (captchaEnabled) fetchCaptcha();
       } else {
         navigate('/', { replace: true });
       }
@@ -84,6 +106,25 @@ export default function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                   rules={[{ required: true, message: '请输入密码' }]}
                   size="large"
                 />
+                {captchaEnabled && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <Form.Input
+                        field="captchaCode"
+                        label="验证码"
+                        placeholder="请输入验证码"
+                        rules={[{ required: true, message: '请输入验证码' }]}
+                        size="large"
+                      />
+                    </div>
+                    <div
+                      style={{ cursor: 'pointer', marginTop: 28, flexShrink: 0, borderRadius: 4, overflow: 'hidden', border: '1px solid var(--semi-color-border)' }}
+                      title="点击刷新验证码"
+                      onClick={fetchCaptcha}
+                      dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                    />
+                  </div>
+                )}
                 <Button
                   htmlType="submit"
                   type="primary"

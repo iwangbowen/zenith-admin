@@ -4,6 +4,7 @@ import { db } from '../db';
 import { loginLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
+import { exportToExcel } from '../lib/excel-export';
 
 const loginLogsRoute = new Hono();
 
@@ -51,6 +52,25 @@ loginLogsRoute.get('/', guard({ permission: 'system:log:login' }), async (c) => 
       pageSize,
     },
   });
+});
+
+loginLogsRoute.get('/export', guard({ permission: 'system:loginlog:list' }), async (c) => {
+  const rows = await db.select().from(loginLogs).orderBy(desc(loginLogs.id));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '用户名', key: 'username', width: 16 },
+      { header: 'IP', key: 'ip', width: 18 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'success' ? '成功' : '失败' },
+      { header: '消息', key: 'message', width: 30 },
+      { header: '登录时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, message: r.message ?? '', createdAt: r.createdAt.toISOString() })),
+    '登录日志'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=login-logs.xlsx');
+  return c.body(buffer);
 });
 
 export default loginLogsRoute;

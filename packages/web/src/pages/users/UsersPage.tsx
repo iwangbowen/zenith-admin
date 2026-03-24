@@ -12,7 +12,7 @@ import {
   Tag,
   DatePicker,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RotateCcw } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
@@ -361,6 +361,7 @@ export default function UsersPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
+            <Button icon={<Download size={14} />} onClick={() => request.download('/api/users/export', '用户列表.xlsx')}>导出</Button>
             {hasPermission('system:user:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}

@@ -5,6 +5,7 @@ import { departments, users } from '../db/schema';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
+import { exportToExcel } from '../lib/excel-export';
 import type { Department } from '@zenith/shared';
 
 const departmentsRouter = new Hono();
@@ -203,6 +204,26 @@ departmentsRouter.delete('/:id', guard({ permission: 'system:department:delete',
 
   await db.delete(departments).where(eq(departments.id, id));
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+departmentsRouter.get('/export', guard({ permission: 'system:department:list' }), async (c) => {
+  const rows = await db.select().from(departments).orderBy(asc(departments.sort));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '部门名称', key: 'name', width: 20 },
+      { header: '部门编码', key: 'code', width: 16 },
+      { header: '负责人', key: 'leader', width: 14 },
+      { header: '电话', key: 'phone', width: 16 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'active' ? '启用' : '禁用' },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, leader: r.leader ?? '', phone: r.phone ?? '', createdAt: r.createdAt.toISOString() })),
+    '部门列表'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=departments.xlsx');
+  return c.body(buffer);
 });
 
 export default departmentsRouter;

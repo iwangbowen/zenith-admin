@@ -10,7 +10,7 @@ import {
   Toast,
 } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { Search, Plus, RotateCcw } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Department } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '../../../components/DictTag';
@@ -270,6 +270,7 @@ export default function DepartmentsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
+            <Button icon={<Download size={14} />} onClick={() => request.download('/api/departments/export', '部门列表.xlsx')}>导出</Button>
             {hasPermission('system:department:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}

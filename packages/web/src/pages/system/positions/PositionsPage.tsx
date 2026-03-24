@@ -10,7 +10,7 @@ import {
   Table,
   Toast,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RotateCcw } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Position } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '../../../components/DictTag';
@@ -205,6 +205,7 @@ export default function PositionsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
+            <Button icon={<Download size={14} />} onClick={() => request.download('/api/positions/export', '岗位列表.xlsx')}>导出</Button>
             {hasPermission('system:position:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}

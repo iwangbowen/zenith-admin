@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const loginSchema = z.object({
   username: z.string().min(3, '用户名至少3个字符').max(32),
   password: z.string().min(6, '密码至少6个字符').max(64),
+  captchaId: z.string().optional(),
+  captchaCode: z.string().optional(),
 });
 
 export const registerSchema = z.object({
@@ -197,3 +199,31 @@ export const updateNoticeSchema = createNoticeSchema.partial();
 
 export type CreateNoticeInput = z.infer<typeof createNoticeSchema>;
 export type UpdateNoticeInput = z.infer<typeof updateNoticeSchema>;
+
+// ─── 系统参数配置 Schema ─────────────────────────────────────────────────────
+export const createSystemConfigSchema = z.object({
+  configKey: z.string().min(1, '键名不能为空').max(128).regex(/^[\w.]+$/, '键名只能包含字母、数字、下划线和点号'),
+  configValue: z.string().max(4096),
+  configType: z.enum(['string', 'number', 'boolean', 'json']).default('string'),
+  description: z.string().max(256).default(''),
+});
+
+export const updateSystemConfigSchema = createSystemConfigSchema.partial();
+
+export type CreateSystemConfigInput = z.infer<typeof createSystemConfigSchema>;
+export type UpdateSystemConfigInput = z.infer<typeof updateSystemConfigSchema>;
+
+// ─── 定时任务 Schema ────────────────────────────────────────────────────────
+export const createCronJobSchema = z.object({
+  name: z.string().min(1, '任务名称不能为空').max(64),
+  cronExpression: z.string().min(1, 'Cron 表达式不能为空').max(128),
+  handler: z.string().min(1, '处理器不能为空').max(128),
+  params: z.string().max(4096).nullable().optional(),
+  status: z.enum(['active', 'disabled']).default('disabled'),
+  description: z.string().max(256).default(''),
+});
+
+export const updateCronJobSchema = createCronJobSchema.partial();
+
+export type CreateCronJobInput = z.infer<typeof createCronJobSchema>;
+export type UpdateCronJobInput = z.infer<typeof updateCronJobSchema>;

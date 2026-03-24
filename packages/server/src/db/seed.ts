@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, fileStorageConfigs, departments, positions, userPositions } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, fileStorageConfigs, departments, positions, userPositions, systemConfigs } from './schema';
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 import logger from '../lib/logger';
@@ -76,6 +76,19 @@ async function seed() {
     { id: 37, parentId: 35, title: '编辑通知',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:notice:update' },
     { id: 38, parentId: 35, title: '删除通知',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:notice:delete' },
     { id: 7,  parentId: 0, title: '组件示例',   name: 'Components',    path: '/components', component: 'components/ComponentsPage',    icon: 'Component',      type: 'menu' as const,      sort: 99, status: 'active' as const, visible: false },
+    // 系统参数配置
+    { id: 50, parentId: 2, title: '系统配置',   name: 'SystemConfigs', path: '/system/configs', component: 'system/configs/SystemConfigsPage', icon: 'SlidersHorizontal', type: 'menu' as const, sort: 11, status: 'active' as const, visible: true, permission: 'system:config:list' },
+    { id: 51, parentId: 50, title: '新增配置',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:config:create' },
+    { id: 52, parentId: 50, title: '编辑配置',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:config:update' },
+    { id: 53, parentId: 50, title: '删除配置',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:config:delete' },
+    // 在线用户
+    { id: 54, parentId: 2, title: '在线用户',   name: 'SystemSessions', path: '/system/sessions', component: 'system/sessions/SessionsPage', icon: 'MonitorSmartphone', type: 'menu' as const, sort: 12, status: 'active' as const, visible: true, permission: 'system:session:list' },
+    { id: 55, parentId: 54, title: '强制下线',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:session:forceLogout' },
+    // 定时任务
+    { id: 56, parentId: 2, title: '定时任务',   name: 'SystemCronJobs', path: '/system/cron-jobs', component: 'system/cron-jobs/CronJobsPage', icon: 'Clock', type: 'menu' as const, sort: 13, status: 'active' as const, visible: true, permission: 'system:cronjob:list' },
+    { id: 57, parentId: 56, title: '新增任务',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 1,  status: 'active' as const, visible: true, permission: 'system:cronjob:create' },
+    { id: 58, parentId: 56, title: '编辑任务',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 2,  status: 'active' as const, visible: true, permission: 'system:cronjob:update' },
+    { id: 59, parentId: 56, title: '删除任务',   name: undefined,       path: undefined, component: undefined,        icon: undefined,        type: 'button' as const,    sort: 3,  status: 'active' as const, visible: true, permission: 'system:cronjob:delete' },
   ];
   for (const row of menuRows) {
     await db
@@ -243,6 +256,31 @@ async function seed() {
     `);
   }
   logger.info('  ✔ Dict items seeded (WHERE NOT EXISTS)');
+
+  // ─── 8. 系统配置种子数据 ──────────────────────────────────────────────────
+  const systemConfigRows = [
+    { configKey: 'captcha_enabled', configValue: 'false', configType: 'boolean' as const, label: '登录验证码', description: '是否开启登录验证码', sort: 1, status: 'active' as const, builtIn: true },
+    { configKey: 'site_name', configValue: 'Zenith Admin', configType: 'string' as const, label: '站点名称', description: '站点名称，显示在浏览器标签页', sort: 2, status: 'active' as const, builtIn: true },
+    { configKey: 'user_default_password', configValue: '123456', configType: 'string' as const, label: '用户默认密码', description: '新增用户时的默认密码', sort: 3, status: 'active' as const, builtIn: true },
+  ];
+  for (const row of systemConfigRows) {
+    await db.insert(systemConfigs).values(row).onConflictDoNothing();
+  }
+  logger.info('  ✔ System configs seeded');
+
+  // ─── 9. 定时任务种子数据 ──────────────────────────────────────────────────
+  const cronJobRows = [
+    { name: '清理过期验证码', cronExpression: '0 */30 * * * *', handler: 'cleanExpiredCaptchas', status: 'active' as const, description: '每30分钟清理过期的验证码' },
+    { name: '清理过期会话', cronExpression: '0 0 * * * *', handler: 'cleanExpiredSessions', status: 'active' as const, description: '每小时清理超过8小时无活动的会话' },
+  ];
+  for (const row of cronJobRows) {
+    await db.execute(sql`
+      INSERT INTO cron_jobs (name, cron_expression, handler, status, description)
+      SELECT ${row.name}, ${row.cronExpression}, ${row.handler}, ${row.status}, ${row.description}
+      WHERE NOT EXISTS (SELECT 1 FROM cron_jobs WHERE name = ${row.name})
+    `);
+  }
+  logger.info('  ✔ Cron jobs seeded');
 
   logger.info('🎉 Seed complete.');
   process.exit(0);

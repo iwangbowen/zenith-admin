@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Tag, Select, Space, DatePicker, Modal } from '@douyinfe/semi-ui';
-import { Search, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import type { LoginLog, PaginatedResponse } from '@zenith/shared';
@@ -140,6 +140,11 @@ export default function LoginLogsPage() {
               <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
                 重置
               </Button>
+            </Space>
+          </div>
+          <div className="responsive-toolbar__right">
+            <Space>
+              <Button icon={<Download size={14} />} onClick={() => request.download('/api/login-logs/export', '登录日志.xlsx')}>导出</Button>
             </Space>
           </div>
         </div>

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Badge, Dropdown, Empty, List, Popover, Tooltip, Modal, Nav, Typography } from '@douyinfe/semi-ui';
-import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut } from 'lucide-react';
+import { Avatar, Badge, Dropdown, Empty, List, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber } from '@douyinfe/semi-ui';
+import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
 import type { User, Menu, Notice } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
+import { usePreferences } from '../hooks/usePreferences';
+import { useTabsStore } from '../hooks/useTabsStore';
 import { request } from '../utils/request';
 import { formatDateTime } from '../utils/date';
 import { config } from '../config';
@@ -81,6 +83,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [collapsed, setCollapsed] = useState(false);
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
   const { mode, setThemeMode } = useTheme();
+  const { preferences, setPreferences } = usePreferences();
+  const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeAll } = useTabsStore(preferences.tabsMaxCount);
+  const [prefsVisible, setPrefsVisible] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -150,6 +155,35 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     const pageTitle = pathTitleMap[location.pathname];
     document.title = pageTitle ? `${pageTitle} - ${config.appTitle}` : config.appTitle;
   }, [location.pathname, pathTitleMap]);
+
+  // Sync current route to tabs
+  useEffect(() => {
+    if (preferences.enableTabs) {
+      const title = pathTitleMap[location.pathname] || location.pathname;
+      addTab(location.pathname, title);
+    }
+  }, [location.pathname, preferences.enableTabs, pathTitleMap, addTab]);
+
+  const handleTabChange = (key: string) => {
+    setActiveKey(key);
+    navigate(key);
+  };
+
+  const handleTabClose = (key: string) => {
+    const currentActive = activeKey;
+    removeTab(key);
+    // If closing the active tab, navigate to the nearest remaining tab
+    if (key === currentActive) {
+      const idx = tabs.findIndex((t) => t.key === key);
+      const remaining = tabs.filter((t) => t.key !== key);
+      if (remaining.length > 0) {
+        const nextTab = remaining[Math.min(idx, remaining.length - 1)];
+        navigate(nextTab.key);
+      } else {
+        navigate('/');
+      }
+    }
+  };
 
   return (
     <div className="admin-layout">
@@ -281,7 +315,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               render={
                 <Dropdown.Menu>
                   <Dropdown.Item icon={<UserIcon size={14} strokeWidth={1.8} />} onClick={() => navigate('/profile')}>个人中心</Dropdown.Item>
-                  <Dropdown.Item icon={<Settings size={14} strokeWidth={1.8} />}>设置</Dropdown.Item>
+                  <Dropdown.Item icon={<Settings size={14} strokeWidth={1.8} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>
                   <Dropdown.Divider />
                   <Dropdown.Item
                     icon={<LogOut size={14} strokeWidth={1.8} />}
@@ -318,8 +352,81 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             position: 'relative',
           }}
         >
+          {/* Tabs bar */}
+          {preferences.enableTabs && tabs.length > 0 && (
+            <div className="admin-tabs-bar">
+              {tabs.map((tab) => (
+                <div
+                  key={tab.key}
+                  role="tab"
+                  tabIndex={0}
+                  className={`admin-tab-item${tab.key === activeKey ? ' admin-tab-item--active' : ''}`}
+                  onClick={() => handleTabChange(tab.key)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleTabChange(tab.key); }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    const menu = document.createElement('div');
+                    menu.className = 'admin-tab-ctx';
+                    menu.innerHTML = `<div class="admin-tab-ctx-item" data-action="close-others">关闭其他</div><div class="admin-tab-ctx-item" data-action="close-all">关闭全部</div>`;
+                    menu.style.left = `${e.clientX}px`;
+                    menu.style.top = `${e.clientY}px`;
+                    document.body.appendChild(menu);
+                    const handler = (ev: MouseEvent) => {
+                      const target = ev.target as HTMLElement;
+                      if (target.dataset.action === 'close-others') closeOthers(tab.key);
+                      if (target.dataset.action === 'close-all') { closeAll(); navigate('/'); }
+                      menu.remove();
+                      document.removeEventListener('click', handler);
+                    };
+                    document.addEventListener('click', handler);
+                  }}
+                >
+                  <span className="admin-tab-item__text">{tab.title}</span>
+                  {tab.closable && (
+                    <button
+                      type="button"
+                      className="admin-tab-item__close"
+                      onClick={(e) => { e.stopPropagation(); handleTabClose(tab.key); }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <Outlet />
         </div>
+
+        {/* Preferences SideSheet */}
+        <SideSheet
+          title="偏好设置"
+          visible={prefsVisible}
+          onCancel={() => setPrefsVisible(false)}
+          width={360}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>启用多标签页</span>
+              <Switch
+                checked={preferences.enableTabs}
+                onChange={(v) => setPreferences({ enableTabs: v })}
+              />
+            </div>
+            {preferences.enableTabs && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>最大标签数</span>
+                <InputNumber
+                  min={5}
+                  max={50}
+                  value={preferences.tabsMaxCount}
+                  onChange={(v) => setPreferences({ tabsMaxCount: v as number })}
+                  style={{ width: 100 }}
+                />
+              </div>
+            )}
+          </div>
+        </SideSheet>
       </div>
     </div>
   );

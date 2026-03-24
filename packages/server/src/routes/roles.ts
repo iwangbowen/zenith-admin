@@ -6,6 +6,7 @@ import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUs
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
+import { exportToExcel } from '../lib/excel-export';
 
 const rolesRouter = new Hono();
 rolesRouter.use('*', authMiddleware);
@@ -171,6 +172,25 @@ rolesRouter.put('/:id/users', guard({ permission: 'system:role:assign', audit: {
   clearUserPermissionCache();
 
   return c.json({ code: 0, message: '用户分配已更新', data: null });
+});
+
+rolesRouter.get('/export', guard({ permission: 'system:role:list' }), async (c) => {
+  const rows = await db.select().from(roles);
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '角色名称', key: 'name', width: 18 },
+      { header: '角色编码', key: 'code', width: 18 },
+      { header: '描述', key: 'description', width: 30 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'active' ? '启用' : '禁用' },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    '角色列表'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=roles.xlsx');
+  return c.body(buffer);
 });
 
 export default rolesRouter;

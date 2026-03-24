@@ -5,6 +5,7 @@ import { notices, noticeReads } from '../db/schema';
 import { createNoticeSchema, updateNoticeSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
+import { exportToExcel } from '../lib/excel-export';
 import type { JwtPayload } from '../middleware/auth';
 
 type Env = { Variables: { user: JwtPayload } };
@@ -173,6 +174,26 @@ noticesRouter.delete('/:id', guard({ permission: 'system:notice:delete', audit: 
   const [row] = await db.delete(notices).where(eq(notices.id, id)).returning();
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+noticesRouter.get('/export', guard({ permission: 'system:notice:list' }), async (c) => {
+  const rows = await db.select().from(notices).orderBy(desc(notices.id));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '标题', key: 'title', width: 24 },
+      { header: '类型', key: 'type', width: 12 },
+      { header: '优先级', key: 'priority', width: 10 },
+      { header: '发布状态', key: 'publishStatus', width: 12 },
+      { header: '创建人', key: 'createByName', width: 14 },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    '通知公告'
+  );
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=notices.xlsx');
+  return c.body(buffer);
 });
 
 export default noticesRouter;

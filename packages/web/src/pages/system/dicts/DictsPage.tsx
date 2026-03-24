@@ -11,7 +11,7 @@ import {
   Empty,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, List, RotateCcw } from 'lucide-react';
+import { Search, Plus, List, RotateCcw, Download } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '../../../utils/request';
 import DictTag from '../../../components/DictTag';
@@ -257,6 +257,11 @@ export default function DictsPage() {
                   />
                   <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
                   <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+                </Space>
+              </div>
+              <div className="responsive-toolbar__right">
+                <Space>
+                  <Button icon={<Download size={14} />} onClick={() => request.download('/api/dicts/export', '字典列表.xlsx')}>导出</Button>
                   {hasPermission('system:dict:create') && <Button
                     type="secondary"
                     icon={<Plus size={14} />}

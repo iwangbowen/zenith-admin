@@ -1,5 +1,10 @@
 export const API_PREFIX = '/api';
 export const TOKEN_KEY = 'zenith_token';
+export const REFRESH_TOKEN_KEY = 'zenith_refresh_token';
+export const PREFERENCES_KEY = 'zenith_preferences';
 export const USER_ROLES = ['admin', 'user'] as const;
 export const USER_STATUSES = ['active', 'disabled'] as const;
 export const FILE_STORAGE_PROVIDERS = ['local', 'oss'] as const;
+export const CONFIG_TYPES = ['string', 'number', 'boolean', 'json'] as const;
+export const CRON_JOB_STATUSES = ['active', 'disabled'] as const;
+export const CRON_RUN_STATUSES = ['success', 'fail', 'running'] as const;

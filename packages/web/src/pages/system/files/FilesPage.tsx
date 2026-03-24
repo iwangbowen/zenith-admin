@@ -11,7 +11,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, Search, RotateCcw } from 'lucide-react';
+import { Plus, Search, RotateCcw, Download } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -295,6 +295,7 @@ export default function FilesPage() {
                 <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
               )}
             </div>
+            <Button icon={<Download size={14} />} onClick={() => request.download('/api/files/export', '文件列表.xlsx')}>导出</Button>
             {hasPermission('system:file:upload') && <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
               上传文件
             </Button>}
