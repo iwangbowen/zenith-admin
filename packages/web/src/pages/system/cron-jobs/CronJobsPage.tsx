@@ -10,12 +10,13 @@ import {
   Tag,
   Toast,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RotateCcw, Download, Play } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { CronJob, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import { usePermission } from '../../../hooks/usePermission';
+import { CronBuilderPopover } from '../../../components/CronBuilderPopover';
 
 interface SearchParams {
   keyword: string;
@@ -37,6 +38,7 @@ export default function CronJobsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
   const [handlers, setHandlers] = useState<string[]>([]);
+  const [cronExprValue, setCronExprValue] = useState('');;
 
   const fetchData = useCallback(async (p = page, params = searchParams) => {
     setLoading(true);
@@ -104,6 +106,7 @@ export default function CronJobsPage() {
       Toast.success(editingJob ? '更新成功' : '创建成功');
       setModalVisible(false);
       setEditingJob(null);
+      setCronExprValue('');
       void fetchData();
     } else {
       Toast.error(res.message);
@@ -170,7 +173,7 @@ export default function CronJobsPage() {
             </Button>
           )}
           {hasPermission('system:cron:update') && (
-            <Button theme="borderless" size="small" onClick={() => { setEditingJob(record); setModalVisible(true); }}>
+            <Button theme="borderless" size="small" onClick={() => { setEditingJob(record); setCronExprValue(record.cronExpression ?? ''); setModalVisible(true); }}>
               编辑
             </Button>
           )}
@@ -217,7 +220,7 @@ export default function CronJobsPage() {
           <Space>
             <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
             {hasPermission('system:cron:create') && (
-              <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setModalVisible(true); }}>新增</Button>
+              <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
             )}
           </Space>
         </div>
@@ -242,7 +245,7 @@ export default function CronJobsPage() {
       <Modal
         title={editingJob ? '编辑定时任务' : '新增定时任务'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingJob(null); }}
+        onCancel={() => { setModalVisible(false); setEditingJob(null); setCronExprValue(''); }}
         onOk={handleModalOk}
         width={560}
       >
@@ -251,10 +254,27 @@ export default function CronJobsPage() {
           getFormApi={(api) => { formApi.current = api; }}
           initValues={formInitValues}
           labelPosition="left"
-          labelWidth={100}
+          labelWidth={120}
+          onValueChange={(v: Record<string, unknown>) => {
+            if (typeof v.cronExpression === 'string') setCronExprValue(v.cronExpression);
+          }}
         >
           <Form.Input field="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]} />
-          <Form.Input field="cronExpression" label="Cron 表达式" rules={[{ required: true, message: '请输入 Cron 表达式' }]} placeholder="如 */5 * * * *" />
+          <Form.Input
+            field="cronExpression"
+            label="Cron 表达式"
+            rules={[{ required: true, message: '请输入 Cron 表达式' }]}
+            placeholder="如 0 */5 * * * *"
+            addonAfter={
+              <CronBuilderPopover
+                value={cronExprValue}
+                onApply={(expr) => {
+                  formApi.current?.setValue('cronExpression', expr);
+                  setCronExprValue(expr);
+                }}
+              />
+            }
+          />
           <Form.Select
             field="handler"
             label="处理器"
