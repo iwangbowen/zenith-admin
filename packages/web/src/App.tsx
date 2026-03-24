@@ -109,7 +109,7 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
       {user ? (
         <AdminRouteLoader user={user} permissions={permissions} logout={logout} updateUser={updateUser} />
       ) : (
