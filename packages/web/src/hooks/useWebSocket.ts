@@ -23,11 +23,14 @@ export function useWebSocket(onMessage: MessageHandler) {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
 
-    // Build WebSocket URL from API base
-    const base = config.apiBaseUrl || window.location.origin;
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = new URL(base);
-    const wsUrl = `${wsProtocol}://${url.host}/api/ws?token=${encodeURIComponent(token)}`;
+    // Build WebSocket URL
+    // Use dedicated wsBaseUrl if set (dev mode), otherwise derive from origin
+    let wsBase = config.wsBaseUrl;
+    if (!wsBase) {
+      const base = config.apiBaseUrl || globalThis.location.origin;
+      wsBase = base.replace(/^http/, 'ws');
+    }
+    const wsUrl = `${wsBase}/api/ws?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
