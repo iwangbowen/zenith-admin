@@ -5,7 +5,7 @@ titleTemplate: false
 hero:
   name: Zenith Admin
   text: 全栈后台项目底座
-  tagline: 用户、权限、菜单、字典、文件管理，常见的都已经有了。clone 下来，环境配好，直接往里加业务。
+  tagline: 常见后台能力已就位，clone 下来直接往里加业务。
   actions:
     - theme: brand
       text: 快速开始 →
@@ -31,25 +31,21 @@ features:
 <section class="zn-section">
   <h2 class="zn-title">技术选型</h2>
   <p class="zn-desc">几个你可能在意的技术点，先交个底。</p>
-  <table class="zn-table">
-    <tbody>
-      <tr><th>后端</th><td>Hono v4 · Node.js · Drizzle ORM · PostgreSQL</td></tr>
-      <tr><th>前端</th><td>React 19 · Vite · Semi Design · react-router v7</td></tr>
-      <tr><th>工程</th><td>npm monorepo · 共享 Zod 校验 · JWT 鉴权</td></tr>
-    </tbody>
-  </table>
+  <ul class="zn-deflist">
+    <li><span class="zn-term">后端</span><span class="zn-def">Hono v4 · Node.js · Drizzle ORM · PostgreSQL</span></li>
+    <li><span class="zn-term">前端</span><span class="zn-def">React 19 · Vite · Semi Design · react-router v7</span></li>
+    <li><span class="zn-term">工程</span><span class="zn-def">npm monorepo · 共享 Zod 校验 · JWT 鉴权</span></li>
+  </ul>
 </section>
 
 <section class="zn-section">
   <h2 class="zn-title">目录结构</h2>
   <p class="zn-desc">三个包，各管各的事。</p>
-  <table class="zn-table">
-    <tbody>
-      <tr><th><code>packages/server</code></th><td>Hono 路由 + Drizzle schema + 业务逻辑</td></tr>
-      <tr><th><code>packages/web</code></th><td>React 页面 + Semi 组件 + 状态管理</td></tr>
-      <tr><th><code>packages/shared</code></th><td>TypeScript 类型 + Zod 校验 + 常量</td></tr>
-    </tbody>
-  </table>
+  <ul class="zn-deflist">
+    <li><span class="zn-term"><code>packages/server</code></span><span class="zn-def">Hono 路由 + Drizzle schema + 业务逻辑</span></li>
+    <li><span class="zn-term"><code>packages/web</code></span><span class="zn-def">React 页面 + Semi 组件 + 状态管理</span></li>
+    <li><span class="zn-term"><code>packages/shared</code></span><span class="zn-def">TypeScript 类型 + Zod 校验 + 常量</span></li>
+  </ul>
 </section>
 
 <section class="zn-section">

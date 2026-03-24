@@ -3,44 +3,57 @@
   --vp-c-brand-1: #1a6dff;
   --vp-c-brand-2: #1560e6;
   --vp-c-brand-3: #0f4fc2;
-  --vp-c-brand-soft: rgba(26, 109, 255, 0.1);
-  --vp-home-hero-name-color: #1a1a1a;
+  --vp-c-brand-soft: rgba(26, 109, 255, 0.08);
+
+  --vp-home-hero-name-color: #111827;
   --vp-home-hero-name-background: none;
 
-  --zn-text-1: #1f2937;
+  --zn-text-1: #111827;
   --zn-text-2: #6b7280;
+  --zn-text-3: #9ca3af;
   --zn-border: #e5e7eb;
-  --zn-bg-soft: #f9fafb;
+  --zn-bg-alt: #f9fafb;
+  --zn-bg-stripe: #f3f4f6;
 }
 
 .dark {
   --vp-c-brand-1: #5b9aff;
   --vp-c-brand-2: #4a8af0;
   --vp-c-brand-3: #3b7ae0;
-  --vp-c-brand-soft: rgba(91, 154, 255, 0.12);
-  --vp-home-hero-name-color: #f3f4f6;
+  --vp-c-brand-soft: rgba(91, 154, 255, 0.1);
+
+  --vp-home-hero-name-color: #f9fafb;
   --vp-home-hero-name-background: none;
 
-  --zn-text-1: #f3f4f6;
+  --zn-text-1: #f9fafb;
   --zn-text-2: #9ca3af;
-  --zn-border: #2d3748;
-  --zn-bg-soft: #1a202c;
+  --zn-text-3: #6b7280;
+  --zn-border: #1f2937;
+  --zn-bg-alt: #111827;
+  --zn-bg-stripe: #161f2e;
 }
 
 /* ===== Hero ===== */
+.VPHome .VPHero {
+  padding-bottom: 40px;
+}
+
 .VPHome .VPHero .name {
-  font-size: 40px !important;
+  font-size: 38px !important;
   background: none !important;
   -webkit-background-clip: unset !important;
   -webkit-text-fill-color: var(--zn-text-1) !important;
+  letter-spacing: -0.5px;
 }
 
 .VPHome .VPHero .text {
   color: var(--zn-text-1);
+  letter-spacing: -0.3px;
 }
 
 .VPHome .VPHero .tagline {
   color: var(--zn-text-2);
+  line-height: 1.75;
 }
 
 .VPHome .VPButton.brand {
@@ -52,89 +65,112 @@
   border-radius: 6px;
 }
 
-/* ===== Features 卡片 ===== */
+/* ===== Features 区域 ===== */
+.VPHome .VPFeatures {
+  padding-top: 0;
+}
+
 .VPHome .VPFeature {
   border: 1px solid var(--zn-border);
   border-radius: 8px;
   background: var(--vp-c-bg);
-  box-shadow: none;
-  transition: border-color 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .VPHome .VPFeature:hover {
-  border-color: var(--vp-c-brand-1);
+  border-color: rgba(26, 109, 255, 0.4);
+  box-shadow: 0 4px 12px rgba(26, 109, 255, 0.08);
+}
+
+.dark .VPHome .VPFeature:hover {
+  border-color: rgba(91, 154, 255, 0.4);
+  box-shadow: 0 4px 12px rgba(91, 154, 255, 0.08);
 }
 
 .VPHome .VPFeature .title {
   color: var(--zn-text-1);
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .VPHome .VPFeature .details {
   color: var(--zn-text-2);
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.65;
 }
 
 /* ===== 自定义 section ===== */
 .vp-doc .zn-section {
   max-width: 960px;
-  margin: 48px auto 0;
-  padding: 0 24px;
+  margin: 0 auto;
+  padding: 40px 24px 0;
+}
+
+.vp-doc .zn-divider {
+  border: none;
+  border-top: 1px solid var(--zn-border);
+  margin: 0;
 }
 
 .vp-doc .zn-title {
   margin: 0 0 4px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--zn-text-1);
   border: none;
   padding: 0;
+  letter-spacing: 0.1px;
 }
 
 .vp-doc .zn-desc {
   margin: 0 0 16px;
-  font-size: 14px;
-  color: var(--zn-text-2);
+  font-size: 13px;
+  color: var(--zn-text-3);
 }
 
-/* --- 表格 --- */
-.vp-doc .zn-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
+/* --- 定义列表（替代表格） --- */
+.vp-doc .zn-deflist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.vp-doc .zn-table tr {
+.vp-doc .zn-deflist li {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 9px 0;
   border-bottom: 1px solid var(--zn-border);
+  font-size: 13.5px;
+  line-height: 1.7;
+  margin: 0;
 }
 
-.vp-doc .zn-table tr:last-child {
+.vp-doc .zn-deflist li:last-child {
   border-bottom: none;
 }
 
-.vp-doc .zn-table th {
-  width: 200px;
-  padding: 10px 16px 10px 0;
-  text-align: left;
+.vp-doc .zn-deflist .zn-term {
+  flex-shrink: 0;
+  width: 140px;
+  color: var(--zn-text-2);
   font-weight: 500;
-  color: var(--zn-text-1);
-  white-space: nowrap;
-  vertical-align: top;
+  font-size: 13px;
 }
 
-.vp-doc .zn-table th code {
-  font-size: 13px;
+.vp-doc .zn-deflist .zn-term code {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--vp-c-brand-1);
   background: var(--vp-c-brand-soft);
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 4px;
 }
 
-.vp-doc .zn-table td {
-  padding: 10px 0;
-  color: var(--zn-text-2);
-  line-height: 1.6;
+.vp-doc .zn-deflist .zn-def {
+  color: var(--zn-text-1);
+  flex: 1;
 }
 
 /* --- 导航列表 --- */
@@ -142,14 +178,22 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
 }
 
 .vp-doc .zn-navlist li {
-  padding: 8px 0;
+  padding: 9px 0;
   border-bottom: 1px solid var(--zn-border);
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--zn-text-2);
-  line-height: 1.6;
+  line-height: 1.7;
+  background: none;
+}
+
+.vp-doc .zn-navlist li:nth-child(even) {
+  background: none;
 }
 
 .vp-doc .zn-navlist li:last-child {
@@ -176,6 +220,5 @@
   .vp-doc .zn-table td {
     display: block;
     padding-top: 0;
-    padding-bottom: 10px;
   }
 }
