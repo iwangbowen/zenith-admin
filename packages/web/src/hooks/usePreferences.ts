@@ -1,14 +1,19 @@
 import { useState, useCallback } from 'react';
 import { PREFERENCES_KEY } from '@zenith/shared';
+import type { ThemeMode } from './useTheme';
 
 export interface UserPreferences {
   enableTabs: boolean;
   tabsMaxCount: number;
+  showTabIcon: boolean;
+  colorMode: ThemeMode;
 }
 
 const defaultPreferences: UserPreferences = {
   enableTabs: true,
   tabsMaxCount: 20,
+  showTabIcon: true,
+  colorMode: 'light',
 };
 
 function loadPreferences(): UserPreferences {

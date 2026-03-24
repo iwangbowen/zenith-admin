@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Badge, Dropdown, Empty, List, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber } from '@douyinfe/semi-ui';
+import { Avatar, Badge, Dropdown, Empty, List, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
 import type { User, Menu, Notice } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
@@ -84,6 +84,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
   const { mode, setThemeMode } = useTheme();
   const { preferences, setPreferences } = usePreferences();
+
+  // Sync colorMode preference with theme
+  useEffect(() => {
+    if (preferences.colorMode !== mode) {
+      setThemeMode(preferences.colorMode);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeAll } = useTabsStore(preferences.tabsMaxCount);
   const [prefsVisible, setPrefsVisible] = useState(false);
   const navigate = useNavigate();
@@ -144,6 +152,18 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     function traverse(nodes: Menu[]) {
       for (const node of nodes) {
         if (node.path && node.title) map[node.path] = node.title;
+        if (node.children) traverse(node.children);
+      }
+    }
+    traverse(menuTree);
+    return map;
+  }, [menuTree]);
+
+  const pathIconMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    function traverse(nodes: Menu[]) {
+      for (const node of nodes) {
+        if (node.path && node.icon) map[node.path] = node.icon;
         if (node.children) traverse(node.children);
       }
     }
@@ -381,6 +401,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     document.addEventListener('click', handler);
                   }}
                 >
+                  {preferences.showTabIcon && pathIconMap[tab.key] && (
+                    <span className="admin-tab-item__icon">{renderLucideIcon(pathIconMap[tab.key], 14)}</span>
+                  )}
                   <span className="admin-tab-item__text">{tab.title}</span>
                   {tab.closable && (
                     <button
@@ -407,6 +430,22 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>颜色模式</span>
+              <RadioGroup
+                type="button"
+                value={mode}
+                onChange={(e) => {
+                  const v = e.target.value as ThemeMode;
+                  setThemeMode(v);
+                  setPreferences({ colorMode: v });
+                }}
+              >
+                <Radio value="light">浅色</Radio>
+                <Radio value="dark">深色</Radio>
+                <Radio value="system">系统</Radio>
+              </RadioGroup>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>启用多标签页</span>
               <Switch
                 checked={preferences.enableTabs}
@@ -414,16 +453,25 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               />
             </div>
             {preferences.enableTabs && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>最大标签数</span>
-                <InputNumber
-                  min={5}
-                  max={50}
-                  value={preferences.tabsMaxCount}
-                  onChange={(v) => setPreferences({ tabsMaxCount: v as number })}
-                  style={{ width: 100 }}
-                />
-              </div>
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>标签页显示图标</span>
+                  <Switch
+                    checked={preferences.showTabIcon}
+                    onChange={(v) => setPreferences({ showTabIcon: v })}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>最大标签数</span>
+                  <InputNumber
+                    min={5}
+                    max={50}
+                    value={preferences.tabsMaxCount}
+                    onChange={(v) => setPreferences({ tabsMaxCount: v as number })}
+                    style={{ width: 100 }}
+                  />
+                </div>
+              </>
             )}
           </div>
         </SideSheet>
