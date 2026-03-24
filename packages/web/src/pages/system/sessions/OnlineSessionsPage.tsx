@@ -23,9 +23,9 @@ export default function OnlineSessionsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await request.get<OnlineUser[]>('/api/sessions/online');
+      const res = await request.get<{ list: OnlineUser[]; total: number }>('/api/sessions');
       if (res.code === 0) {
-        setData(res.data);
+        setData(res.data.list);
       }
     } finally {
       setLoading(false);
@@ -42,7 +42,7 @@ export default function OnlineSessionsPage() {
       content: `用户：${username}`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.post(`/api/sessions/${tokenId}/force-logout`);
+        const res = await request.delete(`/api/sessions/${tokenId}`);
         if (res.code === 0) {
           Toast.success('已强制下线');
           void fetchData();
