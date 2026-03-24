@@ -5,5 +5,13 @@ import App from './App';
 import './styles/global.css';
 import { enableMocking } from './mocks';
 
-await enableMocking();
-createRoot(document.getElementById('root')!).render(<App />);
+ async function bootstrap() {
+	 await enableMocking();
+
+	 createRoot(document.getElementById('root')!).render(
+		 <App />
+	 );
+ }
+
+// eslint-disable-next-line unicorn/prefer-top-level-await
+ void bootstrap();
