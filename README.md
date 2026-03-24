@@ -101,6 +101,21 @@ npm run dev:server   # 后端：http://localhost:3000
 npm run dev:web      # 前端：http://localhost:5173
 ```
 
+### 启动文档站（VitePress）
+
+```bash
+# 本地开发
+npm run docs:dev
+
+# 生产构建
+npm run docs:build
+
+# 本地预览构建结果
+npm run docs:preview
+```
+
+默认本地地址：`http://localhost:4177`
+
 ---
 
 ## 功能模块
@@ -203,3 +218,9 @@ npm run build
 - 前端：`packages/web/dist/`
 
 > 生产环境部署前，请收紧 CORS 配置（当前允许所有来源）。
+
+---
+
+## License
+
+本项目采用 [MIT License](./LICENSE)。
