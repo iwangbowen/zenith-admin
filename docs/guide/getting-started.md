@@ -25,13 +25,13 @@ npm install
 ```ini
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/zenith_admin
 JWT_SECRET=your-secret-key
-PORT=3000
+PORT=3300
 ```
 
 ### 前端 `packages/web/.env`
 
 ```ini
-VITE_API_BASE_URL=http://localhost:3000
+VITE_API_BASE_URL=http://localhost:3300
 VITE_APP_TITLE=Zenith Admin
 ```
 
@@ -55,8 +55,8 @@ npm run dev:web
 
 默认地址：
 
-- 后端：`http://localhost:3000`
-- 前端：`http://localhost:5173`
+- 后端：`http://localhost:3300`
+- 前端：`http://localhost:5373`
 
 ## 启动文档站
 
