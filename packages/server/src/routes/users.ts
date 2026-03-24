@@ -5,8 +5,7 @@ import { db } from '../db';
 import { users, userRoles, roles, departments, positions, userPositions } from '../db/schema';
 import { createUserSchema, updateUserSchema, resetUserPasswordSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
-import { requirePermission } from '../middleware/permission';
-import { auditLog } from '../middleware/audit';
+import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 import type { Role, Position, User } from '@zenith/shared';
 
@@ -175,7 +174,7 @@ async function toPublicUsers(rows: UserListRow[]): Promise<User[]> {
 }
 
 // 用户列表
-usersRouter.get('/', requirePermission('system:user:list'), async (c) => {
+usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const keyword = c.req.query('keyword') || '';
@@ -236,7 +235,7 @@ usersRouter.get('/', requirePermission('system:user:list'), async (c) => {
 });
 
 // 创建用户
-usersRouter.post('/', requirePermission('system:user:create'), auditLog({ description: '创建用户', module: '用户管理' }), async (c) => {
+usersRouter.post('/', guard({ permission: 'system:user:create', audit: { description: '创建用户', module: '用户管理' } }), async (c) => {
   const body = await c.req.json();
   const result = createUserSchema.safeParse(body);
   if (!result.success) {
@@ -294,7 +293,7 @@ usersRouter.post('/', requirePermission('system:user:create'), auditLog({ descri
 });
 
 // 更新用户
-usersRouter.put('/:id', requirePermission('system:user:update'), auditLog({ description: '更新用户', module: '用户管理' }), async (c) => {
+usersRouter.put('/:id', guard({ permission: 'system:user:update', audit: { description: '更新用户', module: '用户管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateUserSchema.safeParse(body);
@@ -364,7 +363,7 @@ usersRouter.put('/:id', requirePermission('system:user:update'), auditLog({ desc
 });
 
 // 修改指定用户密码
-usersRouter.put('/:id/password', requirePermission('system:user:update'), auditLog({ description: '修改用户密码', module: '用户管理' }), async (c) => {
+usersRouter.put('/:id/password', guard({ permission: 'system:user:update', audit: { description: '修改用户密码', module: '用户管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = resetUserPasswordSchema.safeParse(body);
@@ -384,7 +383,7 @@ usersRouter.put('/:id/password', requirePermission('system:user:update'), auditL
 });
 
 // 删除用户
-usersRouter.delete('/:id', requirePermission('system:user:delete'), auditLog({ description: '删除用户', module: '用户管理' }), async (c) => {
+usersRouter.delete('/:id', guard({ permission: 'system:user:delete', audit: { description: '删除用户', module: '用户管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const [deleted] = await db.delete(users).where(eq(users.id, id)).returning();
   if (!deleted) {

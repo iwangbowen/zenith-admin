@@ -4,8 +4,7 @@ import { db } from '../db';
 import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
-import { requirePermission } from '../middleware/permission';
-import { auditLog } from '../middleware/audit';
+import { guard } from '../middleware/guard';
 
 const fileStorageConfigsRouter = new Hono();
 fileStorageConfigsRouter.use('*', authMiddleware);
@@ -63,7 +62,7 @@ async function clearDefaultFlag() {
   await db.update(fileStorageConfigs).set({ isDefault: false, updatedAt: new Date() });
 }
 
-fileStorageConfigsRouter.get('/', requirePermission('system:file:config'), async (c) => {
+fileStorageConfigsRouter.get('/', guard({ permission: 'system:file:config' }), async (c) => {
   const status = c.req.query('status');
   const startTime = c.req.query('startTime');
   const endTime = c.req.query('endTime');
@@ -84,12 +83,12 @@ fileStorageConfigsRouter.get('/', requirePermission('system:file:config'), async
   return c.json({ code: 0, message: 'ok', data: list.map(toFileStorageConfig) });
 });
 
-fileStorageConfigsRouter.get('/default', requirePermission('system:file:config'), async (c) => {
+fileStorageConfigsRouter.get('/default', guard({ permission: 'system:file:config' }), async (c) => {
   const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.isDefault, true)).limit(1);
   return c.json({ code: 0, message: 'ok', data: config ? toFileStorageConfig(config) : null });
 });
 
-fileStorageConfigsRouter.post('/', requirePermission('system:file:config:create'), auditLog({ description: '创建文件存储配置', module: '文件存储配置' }), async (c) => {
+fileStorageConfigsRouter.post('/', guard({ permission: 'system:file:config:create', audit: { description: '创建文件存储配置', module: '文件存储配置' } }), async (c) => {
   const body = await c.req.json();
   const result = createFileStorageConfigSchema.safeParse(body);
   if (!result.success) {
@@ -109,7 +108,7 @@ fileStorageConfigsRouter.post('/', requirePermission('system:file:config:create'
   return c.json({ code: 0, message: '创建成功', data: toFileStorageConfig(created) });
 });
 
-fileStorageConfigsRouter.put('/:id', requirePermission('system:file:config:update'), auditLog({ description: '更新文件存储配置', module: '文件存储配置' }), async (c) => {
+fileStorageConfigsRouter.put('/:id', guard({ permission: 'system:file:config:update', audit: { description: '更新文件存储配置', module: '文件存储配置' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateFileStorageConfigSchema.safeParse(body);
@@ -135,7 +134,7 @@ fileStorageConfigsRouter.put('/:id', requirePermission('system:file:config:updat
   return c.json({ code: 0, message: '更新成功', data: toFileStorageConfig(updated) });
 });
 
-fileStorageConfigsRouter.put('/:id/default', requirePermission('system:file:config:default'), auditLog({ description: '设置默认文件存储', module: '文件存储配置', recordBody: false }), async (c) => {
+fileStorageConfigsRouter.put('/:id/default', guard({ permission: 'system:file:config:default', audit: { description: '设置默认文件存储', module: '文件存储配置', recordBody: false } }), async (c) => {
   const id = Number(c.req.param('id'));
   const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   if (!target) return c.json({ code: 404, message: '文件配置不存在', data: null }, 404);
@@ -152,7 +151,7 @@ fileStorageConfigsRouter.put('/:id/default', requirePermission('system:file:conf
   return c.json({ code: 0, message: '默认文件服务已更新', data: toFileStorageConfig(updated) });
 });
 
-fileStorageConfigsRouter.delete('/:id', requirePermission('system:file:config:delete'), auditLog({ description: '删除文件存储配置', module: '文件存储配置' }), async (c) => {
+fileStorageConfigsRouter.delete('/:id', guard({ permission: 'system:file:config:delete', audit: { description: '删除文件存储配置', module: '文件存储配置' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   if (!target) return c.json({ code: 404, message: '文件配置不存在', data: null }, 404);

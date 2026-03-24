@@ -4,8 +4,7 @@ import { db } from '../db';
 import { departments, users } from '../db/schema';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
-import { requirePermission } from '../middleware/permission';
-import { auditLog } from '../middleware/audit';
+import { guard } from '../middleware/guard';
 import type { Department } from '@zenith/shared';
 
 const departmentsRouter = new Hono();
@@ -104,7 +103,7 @@ async function ensureParentValid(parentId: number, currentId?: number) {
   return null;
 }
 
-departmentsRouter.get('/', requirePermission('system:department:list'), async (c) => {
+departmentsRouter.get('/', guard({ permission: 'system:department:list' }), async (c) => {
   const keyword = c.req.query('keyword') ?? '';
   const status = c.req.query('status');
 
@@ -114,12 +113,12 @@ departmentsRouter.get('/', requirePermission('system:department:list'), async (c
   return c.json({ code: 0, message: 'ok', data });
 });
 
-departmentsRouter.get('/flat', requirePermission('system:department:list'), async (c) => {
+departmentsRouter.get('/flat', guard({ permission: 'system:department:list' }), async (c) => {
   const rows = await db.select().from(departments).orderBy(asc(departments.sort), asc(departments.id));
   return c.json({ code: 0, message: 'ok', data: rows.map(toDepartment) });
 });
 
-departmentsRouter.post('/', requirePermission('system:department:create'), auditLog({ description: '创建部门', module: '部门管理' }), async (c) => {
+departmentsRouter.post('/', guard({ permission: 'system:department:create', audit: { description: '创建部门', module: '部门管理' } }), async (c) => {
   const body = await c.req.json();
   const result = createDepartmentSchema.safeParse(body);
   if (!result.success) {
@@ -142,7 +141,7 @@ departmentsRouter.post('/', requirePermission('system:department:create'), audit
   }
 });
 
-departmentsRouter.put('/:id', requirePermission('system:department:update'), auditLog({ description: '更新部门', module: '部门管理' }), async (c) => {
+departmentsRouter.put('/:id', guard({ permission: 'system:department:update', audit: { description: '更新部门', module: '部门管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateDepartmentSchema.safeParse(body);
@@ -177,7 +176,7 @@ departmentsRouter.put('/:id', requirePermission('system:department:update'), aud
   }
 });
 
-departmentsRouter.delete('/:id', requirePermission('system:department:delete'), auditLog({ description: '删除部门', module: '部门管理' }), async (c) => {
+departmentsRouter.delete('/:id', guard({ permission: 'system:department:delete', audit: { description: '删除部门', module: '部门管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const [department] = await db.select({ id: departments.id }).from(departments).where(eq(departments.id, id)).limit(1);
   if (!department) {

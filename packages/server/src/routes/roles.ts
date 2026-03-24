@@ -4,8 +4,7 @@ import { db } from '../db';
 import { roles, roleMenus, userRoles, users } from '../db/schema';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
-import { requirePermission } from '../middleware/permission';
-import { auditLog } from '../middleware/audit';
+import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 
 const rolesRouter = new Hono();
@@ -21,7 +20,7 @@ function toRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
 }
 
 // 角色列表
-rolesRouter.get('/', requirePermission('system:role:list'), async (c) => {
+rolesRouter.get('/', guard({ permission: 'system:role:list' }), async (c) => {
   const keyword = c.req.query('keyword') ?? '';
   const status = c.req.query('status');
   const startTime = c.req.query('startTime');
@@ -56,7 +55,7 @@ rolesRouter.get('/', requirePermission('system:role:list'), async (c) => {
 });
 
 // 获取单个角色（含 menuIds）
-rolesRouter.get('/:id', requirePermission('system:role:list'), async (c) => {
+rolesRouter.get('/:id', guard({ permission: 'system:role:list' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [role] = await db.select().from(roles).where(eq(roles.id, id)).limit(1);
   if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
@@ -67,7 +66,7 @@ rolesRouter.get('/:id', requirePermission('system:role:list'), async (c) => {
 });
 
 // 新增角色
-rolesRouter.post('/', requirePermission('system:role:create'), auditLog({ description: '创建角色', module: '角色管理' }), async (c) => {
+rolesRouter.post('/', guard({ permission: 'system:role:create', audit: { description: '创建角色', module: '角色管理' } }), async (c) => {
   const body = await c.req.json();
   const result = createRoleSchema.safeParse(body);
   if (!result.success) {
@@ -85,7 +84,7 @@ rolesRouter.post('/', requirePermission('system:role:create'), auditLog({ descri
 });
 
 // 更新角色
-rolesRouter.put('/:id', requirePermission('system:role:update'), auditLog({ description: '更新角色', module: '角色管理' }), async (c) => {
+rolesRouter.put('/:id', guard({ permission: 'system:role:update', audit: { description: '更新角色', module: '角色管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateRoleSchema.safeParse(body);
@@ -102,7 +101,7 @@ rolesRouter.put('/:id', requirePermission('system:role:update'), auditLog({ desc
 });
 
 // 删除角色
-rolesRouter.delete('/:id', requirePermission('system:role:delete'), auditLog({ description: '删除角色', module: '角色管理' }), async (c) => {
+rolesRouter.delete('/:id', guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const [deleted] = await db.delete(roles).where(eq(roles.id, id)).returning();
   if (!deleted) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
@@ -110,7 +109,7 @@ rolesRouter.delete('/:id', requirePermission('system:role:delete'), auditLog({ d
 });
 
 // 分配角色菜单
-rolesRouter.put('/:id/menus', requirePermission('system:role:assign'), auditLog({ description: '分配角色菜单', module: '角色管理' }), async (c) => {
+rolesRouter.put('/:id/menus', guard({ permission: 'system:role:assign', audit: { description: '分配角色菜单', module: '角色管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = assignRoleMenusSchema.safeParse(body);
@@ -133,7 +132,7 @@ rolesRouter.put('/:id/menus', requirePermission('system:role:assign'), auditLog(
   return c.json({ code: 0, message: '菜单权限已更新', data: null });
 });
 
-rolesRouter.get('/:id/users', requirePermission('system:role:list'), async (c) => {
+rolesRouter.get('/:id/users', guard({ permission: 'system:role:list' }), async (c) => {
   const id = Number(c.req.param('id'));
   const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.id, id)).limit(1);
   if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
@@ -152,7 +151,7 @@ rolesRouter.get('/:id/users', requirePermission('system:role:list'), async (c) =
 });
 
 // 设置角色关联的用户
-rolesRouter.put('/:id/users', requirePermission('system:role:assign'), auditLog({ description: '分配角色用户', module: '角色管理' }), async (c) => {
+rolesRouter.put('/:id/users', guard({ permission: 'system:role:assign', audit: { description: '分配角色用户', module: '角色管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = assignRoleUsersSchema.safeParse(body);

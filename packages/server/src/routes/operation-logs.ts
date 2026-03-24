@@ -3,13 +3,13 @@ import { desc, like, and, gte, lte, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import { requirePermission } from '../middleware/permission';
+import { guard } from '../middleware/guard';
 
 const operationLogsRoute = new Hono();
 
 operationLogsRoute.use('/*', authMiddleware);
 
-operationLogsRoute.get('/', requirePermission('system:log:operation'), async (c) => {
+operationLogsRoute.get('/', guard({ permission: 'system:log:operation' }), async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const username = c.req.query('username');

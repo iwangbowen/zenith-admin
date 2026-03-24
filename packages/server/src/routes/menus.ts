@@ -4,8 +4,7 @@ import { db } from '../db';
 import { menus } from '../db/schema';
 import { createMenuSchema, updateMenuSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
-import { requirePermission } from '../middleware/permission';
-import { auditLog } from '../middleware/audit';
+import { guard } from '../middleware/guard';
 import { isSuperAdmin, getUserMenuIds } from '../lib/permissions';
 import type { JwtPayload } from '../middleware/auth';
 import type { Menu } from '@zenith/shared';
@@ -88,19 +87,19 @@ menusRouter.get('/user', async (c) => {
 });
 
 // 获取菜单树（全部，管理用）
-menusRouter.get('/', requirePermission('system:menu:list'), async (c) => {
+menusRouter.get('/', guard({ permission: 'system:menu:list' }), async (c) => {
   const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
   return c.json({ code: 0, message: 'ok', data: buildTree(list.map(toMenu)) });
 });
 
 // 获取平铺列表（用于角色分配菜单时展示）
-menusRouter.get('/flat', requirePermission('system:menu:list'), async (c) => {
+menusRouter.get('/flat', guard({ permission: 'system:menu:list' }), async (c) => {
   const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
   return c.json({ code: 0, message: 'ok', data: list.map(toMenu) });
 });
 
 // 新增菜单
-menusRouter.post('/', requirePermission('system:menu:create'), auditLog({ description: '创建菜单', module: '菜单管理' }), async (c) => {
+menusRouter.post('/', guard({ permission: 'system:menu:create', audit: { description: '创建菜单', module: '菜单管理' } }), async (c) => {
   const body = await c.req.json();
   const result = createMenuSchema.safeParse(body);
   if (!result.success) {
@@ -111,7 +110,7 @@ menusRouter.post('/', requirePermission('system:menu:create'), auditLog({ descri
 });
 
 // 更新菜单
-menusRouter.put('/:id', requirePermission('system:menu:update'), auditLog({ description: '更新菜单', module: '菜单管理' }), async (c) => {
+menusRouter.put('/:id', guard({ permission: 'system:menu:update', audit: { description: '更新菜单', module: '菜单管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const body = await c.req.json();
   const result = updateMenuSchema.safeParse(body);
@@ -128,7 +127,7 @@ menusRouter.put('/:id', requirePermission('system:menu:update'), auditLog({ desc
 });
 
 // 删除菜单（同时删除子菜单）
-menusRouter.delete('/:id', requirePermission('system:menu:delete'), auditLog({ description: '删除菜单', module: '菜单管理' }), async (c) => {
+menusRouter.delete('/:id', guard({ permission: 'system:menu:delete', audit: { description: '删除菜单', module: '菜单管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
   // 收集所有子孙节点
   const all = await db.select({ id: menus.id, parentId: menus.parentId }).from(menus);
