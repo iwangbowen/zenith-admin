@@ -30,6 +30,7 @@ export default function DictsPage() {
   // ─── 字典列表 ──────────────────────────────────────────────────────────────
   const [dicts, setDicts] = useState<Dict[]>([]);
   const [dictsLoading, setDictsLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [dictModalVisible, setDictModalVisible] = useState(false);
@@ -262,7 +263,7 @@ export default function DictsPage() {
               </div>
               <div className="responsive-toolbar__right">
                 <Space>
-                  <Button icon={<Download size={14} />} onClick={() => request.download('/api/dicts/export', '字典列表.xlsx')}>导出</Button>
+                  <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
                   {hasPermission('system:dict:create') && <Button
                     type="secondary"
                     icon={<Plus size={14} />}

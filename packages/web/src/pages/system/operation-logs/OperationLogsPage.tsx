@@ -34,6 +34,7 @@ const defaultParams: SearchParams = { username: '', module: '', description: '',
 export default function OperationLogsPage() {
   const [data, setData] = useState<OperationLog[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -211,7 +212,7 @@ export default function OperationLogsPage() {
           </div>
           <div className="responsive-toolbar__right">
             <Space>
-              <Button icon={<Download size={14} />} onClick={() => request.download('/api/operation-logs/export', '操作日志.xlsx')}>导出</Button>
+              <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/operation-logs/export', '操作日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             </Space>
           </div>
         </div>

@@ -35,6 +35,7 @@ export default function SystemConfigsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<any>(null);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<SystemConfig[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -72,10 +73,11 @@ export default function SystemConfigsPage() {
   const handlePageChange = (p: number) => { setPage(p); void fetchData(p); };
 
   const handleExport = async () => {
+    setExportLoading(true);
     try {
       await request.download('/api/system-configs/export', '系统配置.xlsx');
       Toast.success('导出成功');
-    } catch { Toast.error('导出失败'); }
+    } catch { Toast.error('导出失败'); } finally { setExportLoading(false); }
   };
 
   const handleModalOk = async () => {
@@ -178,7 +180,7 @@ export default function SystemConfigsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
-            <Button icon={<Download size={14} />} onClick={handleExport}>导出</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
             {hasPermission('system:config:create') && (
               <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingConfig(null); setModalVisible(true); }}>新增</Button>
             )}

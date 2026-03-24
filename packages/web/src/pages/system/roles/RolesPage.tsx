@@ -35,6 +35,7 @@ export default function RolesPage() {
   const [data, setData] = useState<Role[]>([]);
   const { items: statusItems } = useDictItems('common_status');
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -263,7 +264,7 @@ export default function RolesPage() {
           </div>
           <div className="responsive-toolbar__right">
           <Space>
-            <Button icon={<Download size={14} />} onClick={() => request.download('/api/roles/export', '角色列表.xlsx')}>导出</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/roles/export', '角色列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             {hasPermission('system:role:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}

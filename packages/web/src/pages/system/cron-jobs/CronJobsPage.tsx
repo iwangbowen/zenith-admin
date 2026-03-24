@@ -28,6 +28,7 @@ export default function CronJobsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<any>(null);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<CronJob[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -68,10 +69,11 @@ export default function CronJobsPage() {
   const handlePageChange = (p: number) => { setPage(p); void fetchData(p); };
 
   const handleExport = async () => {
+    setExportLoading(true);
     try {
       await request.download('/api/cron-jobs/export', '定时任务.xlsx');
       Toast.success('导出成功');
-    } catch { Toast.error('导出失败'); }
+    } catch { Toast.error('导出失败'); } finally { setExportLoading(false); }
   };
 
   const handleRunOnce = (id: number, name: string) => {
@@ -213,7 +215,7 @@ export default function CronJobsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
-            <Button icon={<Download size={14} />} onClick={handleExport}>导出</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
             {hasPermission('system:cron:create') && (
               <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setModalVisible(true); }}>新增</Button>
             )}

@@ -15,6 +15,7 @@ export default function LoginLogsPage() {
   const defaultParams: SearchParams = { username: '', status: '', timeRange: null };
   const [data, setData] = useState<LoginLog[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -144,7 +145,7 @@ export default function LoginLogsPage() {
           </div>
           <div className="responsive-toolbar__right">
             <Space>
-              <Button icon={<Download size={14} />} onClick={() => request.download('/api/login-logs/export', '登录日志.xlsx')}>导出</Button>
+              <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             </Space>
           </div>
         </div>

@@ -31,6 +31,7 @@ export default function NoticesPage() {
   const { hasPermission } = usePermission();
   const [data, setData] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -259,7 +260,7 @@ export default function NoticesPage() {
           </div>
           <div className="responsive-toolbar__right">
           <Space>
-            <Button icon={<Download size={14} />} onClick={() => request.download('/api/notices/export', '通知列表.xlsx')}>导出</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/notices/export', '通知列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             {hasPermission('system:notice:create') && <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>}
             </Space>
           </div>

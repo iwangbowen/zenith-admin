@@ -80,6 +80,7 @@ export default function FileStorageConfigsPage() {
   const formApi = useRef<any>(null);
   const [configs, setConfigs] = useState<FileStorageConfig[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<FileStorageConfig | null>(null);
@@ -320,7 +321,7 @@ export default function FileStorageConfigsPage() {
           </div>
           <div className="responsive-toolbar__right">
           <Space>
-            <Button icon={<Download size={14} />} onClick={() => request.download('/api/file-storage-configs/export', '文件配置列表.xlsx')}>导出</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/file-storage-configs/export', '文件配置列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             {hasPermission('system:file:config:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
             </Space>
           </div>

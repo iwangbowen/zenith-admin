@@ -98,6 +98,7 @@ export default function DepartmentsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<any>(null);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<Department[]>([]);
   const [allDepartments, setAllDepartments] = useState<Department[]>([]);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
@@ -271,7 +272,7 @@ export default function DepartmentsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
-            <Button icon={<Download size={14} />} onClick={() => request.download('/api/departments/export', '部门列表.xlsx')}>导出</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/departments/export', '部门列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             {hasPermission('system:department:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}

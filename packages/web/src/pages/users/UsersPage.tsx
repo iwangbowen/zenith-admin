@@ -37,6 +37,7 @@ export default function UsersPage() {
   const passwordFormApi = useRef<any>(null);
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
@@ -362,7 +363,7 @@ export default function UsersPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
-            <Button icon={<Download size={14} />} onClick={() => request.download('/api/users/export', '用户列表.xlsx')}>导出</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             {hasPermission('system:user:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}

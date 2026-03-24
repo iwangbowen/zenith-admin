@@ -53,6 +53,7 @@ export default function FilesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<PaginatedResponse<ManagedFile> | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [page, setPage] = useState(1);
@@ -296,7 +297,7 @@ export default function FilesPage() {
                 <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
               )}
             </div>
-            <Button icon={<Download size={14} />} onClick={() => request.download('/api/files/export', '文件列表.xlsx')}>导出</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/files/export', '文件列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             {hasPermission('system:file:upload') && <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
               上传文件
             </Button>}
