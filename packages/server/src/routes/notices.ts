@@ -6,6 +6,7 @@ import { createNoticeSchema, updateNoticeSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
+import { broadcast } from '../lib/ws-manager';
 import type { JwtPayload } from '../middleware/auth';
 
 type Env = { Variables: { user: JwtPayload } };
@@ -133,7 +134,11 @@ noticesRouter.post('/', guard({ permission: 'system:notice:create', audit: { des
       createByName: user?.username ?? null,
     })
     .returning();
-  return c.json({ code: 0, message: '创建成功', data: toNotice(row) });
+  const notice = toNotice(row);
+  if (row.publishStatus === 'published') {
+    broadcast({ type: 'notice:new', payload: notice });
+  }
+  return c.json({ code: 0, message: '创建成功', data: notice });
 });
 
 // 更新
@@ -165,7 +170,11 @@ noticesRouter.put('/:id', guard({ permission: 'system:notice:update', audit: { d
     .where(eq(notices.id, id))
     .returning();
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
-  return c.json({ code: 0, message: '更新成功', data: toNotice(row) });
+  const notice = toNotice(row);
+  if (result.data.publishStatus === 'published') {
+    broadcast({ type: 'notice:new', payload: notice });
+  }
+  return c.json({ code: 0, message: '更新成功', data: notice });
 });
 
 // 删除

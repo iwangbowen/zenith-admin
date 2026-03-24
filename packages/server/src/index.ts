@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
+import { createNodeWebSocket } from '@hono/node-ws';
 import { config } from './config';
 import logger from './lib/logger';
 import { httpLogger } from './middleware/logger';
@@ -20,9 +21,12 @@ import noticesRoutes from './routes/notices';
 import systemConfigsRoutes from './routes/system-configs';
 import sessionsRoutes from './routes/sessions';
 import cronJobsRoutes from './routes/cron-jobs';
+import { createWsRoute } from './routes/ws';
 import { initCronScheduler } from './lib/cron-scheduler';
 
 const app = new Hono();
+
+const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
 app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
 app.use('*', httpLogger);
@@ -43,6 +47,7 @@ app.route('/api/notices', noticesRoutes);
 app.route('/api/system-configs', systemConfigsRoutes);
 app.route('/api/sessions', sessionsRoutes);
 app.route('/api/cron-jobs', cronJobsRoutes);
+app.route('/api/ws', createWsRoute(upgradeWebSocket));
 
 app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));
 
@@ -53,7 +58,8 @@ app.onError((err, c) => {
 });
 
 logger.info(`Server starting on port ${config.port}...`);
-serve({ fetch: app.fetch, port: config.port });
+const server = serve({ fetch: app.fetch, port: config.port });
+injectWebSocket(server);
 logger.info(`Server running at http://localhost:${config.port}`);
 
 // Initialize cron scheduler after server is up

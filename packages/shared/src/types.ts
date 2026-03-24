@@ -258,3 +258,8 @@ export interface CaptchaResponse {
   captchaId: string;
   captchaImage: string;
 }
+
+// ─── WebSocket 消息类型 ──────────────────────────────────────────────────────
+export type WsMessage =
+  | { type: 'notice:new'; payload: Notice }
+  | { type: 'session:force-logout'; payload: { reason: string } };

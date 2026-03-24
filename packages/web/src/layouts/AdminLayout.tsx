@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Badge, Dropdown, Empty, List, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
+import { Avatar, Badge, Dropdown, Empty, List, Notification, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
-import type { User, Menu, Notice } from '@zenith/shared';
+import type { User, Menu, Notice, WsMessage } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
 import { usePreferences } from '../hooks/usePreferences';
 import { useTabsStore } from '../hooks/useTabsStore';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { request } from '../utils/request';
 import { formatDateTime } from '../utils/date';
 import { config } from '../config';
@@ -110,6 +111,31 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   useEffect(() => { fetchNotices(); }, []);
 
   const unreadCount = notices.filter((n) => !n.isRead).length;
+
+  // ─── WebSocket ──────────────────────────────────────────────────────────────
+  const handleWsMessage = useCallback((msg: WsMessage) => {
+    if (msg.type === 'notice:new') {
+      // Prepend the new notice and show a notification popup
+      setNotices((prev) => [{ ...msg.payload, isRead: false }, ...prev]);
+      Notification.info({
+        title: '新通知',
+        content: msg.payload.title,
+        duration: 5,
+        position: 'topRight',
+      });
+    } else if (msg.type === 'session:force-logout') {
+      Notification.warning({
+        title: '强制下线',
+        content: msg.payload.reason,
+        duration: 0,
+        position: 'topRight',
+      });
+      // Auto-logout after a brief delay so the user can see the notification
+      setTimeout(() => onLogout(), 2000);
+    }
+  }, [onLogout]);
+
+  const { disconnect: disconnectWs } = useWebSocket(handleWsMessage);
 
   const markAsRead = (id: number) => {
     const updateReadState = () => setNotices(
@@ -346,7 +372,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                         okText: '退出',
                         cancelText: '取消',
                         okButtonProps: { type: 'danger', theme: 'solid' },
-                        onOk: onLogout,
+                        onOk: () => { disconnectWs(); onLogout(); },
                       })
                     }
                   >

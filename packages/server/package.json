@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
+    "@hono/node-ws": "^1.3.0",
     "@zenith/shared": "*",
     "ali-oss": "^6.23.0",
     "bcryptjs": "^3.0.2",
