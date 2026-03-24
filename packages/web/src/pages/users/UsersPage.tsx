@@ -20,6 +20,7 @@ import { formatDateTime } from '../../utils/date';
 import DictTag from '../../components/DictTag';
 import { useDictItems } from '../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import './UsersPage.css';
 
 interface SearchParams {
@@ -60,8 +61,35 @@ export default function UsersPage() {
     });
   }, []);
 
-  const departmentOptionList = useMemo(
-    () => allDepartments.map((item) => ({ value: item.id, label: item.name })),
+  const departmentTreeData = useMemo<TreeNodeData[]>(
+    () => {
+      const nodeMap = new Map<number, TreeNodeData>();
+      const rootNodes: TreeNodeData[] = [];
+
+      allDepartments.forEach((item) => {
+        nodeMap.set(item.id, {
+          key: String(item.id),
+          value: item.id,
+          label: item.name,
+          children: [],
+        });
+      });
+
+      allDepartments.forEach((item) => {
+        const currentNode = nodeMap.get(item.id);
+        if (!currentNode) return;
+
+        const parentNode = item.parentId ? nodeMap.get(item.parentId) : undefined;
+        if (parentNode) {
+          parentNode.children = [...(parentNode.children ?? []), currentNode];
+          return;
+        }
+
+        rootNodes.push(currentNode);
+      });
+
+      return rootNodes;
+    },
     [allDepartments]
   );
 
@@ -390,11 +418,14 @@ export default function UsersPage() {
           {!editingUser && (
             <Form.Input field="password" label="密码" type="password" rules={[{ required: true, message: '请输入密码' }]} />
           )}
-          <Form.Select
+          <Form.TreeSelect
             field="departmentId"
             label="所属部门"
             style={{ width: '100%' }}
-            optionList={departmentOptionList}
+            treeData={departmentTreeData}
+            placeholder="请选择所属部门"
+            filterTreeNode
+            expandAll
             showClear
           />
           <Form.Select
