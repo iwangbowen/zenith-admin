@@ -7,10 +7,15 @@ export default defineConfig(({ mode }) => {
   const port = Number(env.VITE_PORT) || 5373;
   // GitHub Pages 部署时通过环境变量注入 base 路径（如 /zenith-admin/）
   const base = env.VITE_BASE_URL || '/';
+  // Demo 模式使用 top-level await，需要 esnext 目标构建
+  const buildTarget = mode === 'demo' ? 'esnext' : undefined;
 
   return {
     base,
     plugins: [react()],
+    build: {
+      ...(buildTarget ? { target: buildTarget } : {}),
+    },
     server: {
       port,
       proxy: {
