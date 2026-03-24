@@ -8,19 +8,17 @@ import {
   Modal,
   Form,
   Toast,
-  Empty,
-  Typography,
+  SideSheet,
 } from '@douyinfe/semi-ui';
 import { Search, Plus, List, RotateCcw, Download } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '../../../utils/request';
+import { formatDateTime } from '../../../utils/date';
 import DictTag from '../../../components/DictTag';
 import { useDictItems } from '../../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '../../../hooks/usePermission';
 import './DictsPage.css';
-
-const { Text } = Typography;
 
 export default function DictsPage() {
   const { hasPermission } = usePermission();
@@ -38,6 +36,7 @@ export default function DictsPage() {
 
   // ─── 字典项列表 ────────────────────────────────────────────────────────────
   const [selectedDict, setSelectedDict] = useState<Dict | null>(null);
+  const [sideSheetVisible, setSideSheetVisible] = useState(false);
   const [items, setItems] = useState<DictItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemModalVisible, setItemModalVisible] = useState(false);
@@ -85,6 +84,7 @@ export default function DictsPage() {
   const selectDict = (dict: Dict) => {
     setSelectedDict(dict);
     fetchItems(dict.id);
+    setSideSheetVisible(true);
   };
 
   // ─── 字典 CRUD ─────────────────────────────────────────────────────────────
@@ -181,13 +181,21 @@ export default function DictsPage() {
       align: 'center',
       render: (v: string) => <DictTag dictCode="common_status" value={v} />,
     },
+    { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v) => formatDateTime(v) },
     {
       title: '操作',
       fixed: 'right',
-      width: 180,
+      width: 220,
       align: 'center',
       render: (_v, row) => (
         <Space>
+          {hasPermission('system:dict:item') && <Button
+            theme="borderless"
+            size="small"
+            onClick={(e) => { e.stopPropagation(); selectDict(row); }}
+          >
+            字典项
+          </Button>}
           {hasPermission('system:dict:update') && <Button
             theme="borderless"
             size="small"
@@ -213,6 +221,7 @@ export default function DictsPage() {
       render: (v: string) => <DictTag dictCode="common_status" value={v} />,
     },
     { title: '备注', dataIndex: 'remark', ellipsis: true, render: (v) => v || '—' },
+    { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v) => formatDateTime(v) },
     {
       title: '操作',
       fixed: 'right',
@@ -241,109 +250,92 @@ export default function DictsPage() {
 
   return (
     <div className="page-container">
-      <div className="dicts-layout">
-        {/* 左侧：字典列表 */}
-        <div className="dicts-left-card">
-          <div className="search-area">
-            <div className="responsive-toolbar">
-              <div className="responsive-toolbar__left">
-                <Space wrap>
-                  <Input
-                    prefix={<Search size={14} />}
-                    placeholder="搜索字典名称/编码"
-                    value={keyword}
-                    onChange={(v) => setKeyword(v)}
-                    onEnterPress={handleSearch}
-                    showClear
-                    style={{ width: 'min(280px, 100%)' }}
-                  />
-                  <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-                  <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-                </Space>
-              </div>
-              <div className="responsive-toolbar__right">
-                <Space>
-                  <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-                  {hasPermission('system:dict:create') && <Button
-                    type="secondary"
-                    icon={<Plus size={14} />}
-                    onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
-                  >
-                    新增
-                  </Button>}
-                </Space>
-              </div>
-            </div>
-          </div>
-          <div>
-            <Table
-              bordered
-              className="admin-table-nowrap"
-              columns={dictColumns}
-              dataSource={dicts}
-              rowKey="id"
-              loading={dictsLoading}
-              pagination={{ pageSize: 10, showSizeChanger: true }}
-              size="small"
-              onRow={(row) => ({
-                onClick: () => row && selectDict(row),
-                style: {
-                  cursor: 'pointer',
-                  background: row?.id === selectedDict?.id ? 'var(--semi-color-primary-light-default)' : undefined,
-                },
-              })}
-            />
-          </div>
-        </div>
-
-        {/* 右侧：字典项列表 */}
-        <div className="dicts-right-card">
-          {selectedDict ? (
-            <>
-              <div className="search-area">
-                <div className="responsive-toolbar">
-                  <div className="responsive-toolbar__left">
-                    <Space wrap>
-                      <Text strong style={{ fontSize: 14 }}>
-                        字典项：{selectedDict.name}
-                        <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
-                      </Text>
-                      {hasPermission('system:dict:item') && <Button
-                        type="secondary"
-                        icon={<Plus size={14} />}
-                        onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
-                      >
-                        新增
-                      </Button>}
-                    </Space>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <Table
-                  bordered
-                  className="admin-table-nowrap"
-                  columns={itemColumns}
-                  dataSource={items}
-                  rowKey="id"
-                  loading={itemsLoading}
-                  pagination={{ pageSize: 10, showSizeChanger: true }}
-                  size="small"
-                />
-              </div>
-            </>
-          ) : (
-            <div className="dicts-empty-panel">
-              <Empty
-                image={<List size={32} style={{ color: 'var(--semi-color-text-2)' }} />}
-                title="请选择字典"
-                description="点击左侧字典查看其字典项"
-                style={{ padding: '60px 0' }}
+      <div className="search-area">
+        <div className="responsive-toolbar">
+          <div className="responsive-toolbar__left">
+            <Space wrap>
+              <Input
+                prefix={<Search size={14} />}
+                placeholder="搜索字典名称/编码"
+                value={keyword}
+                onChange={(v) => setKeyword(v)}
+                onEnterPress={handleSearch}
+                showClear
+                style={{ width: 'min(280px, 100%)' }}
               />
-            </div>
-          )}
+              <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            </Space>
+          </div>
+          <div className="responsive-toolbar__right">
+            <Space>
+              <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+              {hasPermission('system:dict:create') && <Button
+                type="secondary"
+                icon={<Plus size={14} />}
+                onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
+              >
+                新增
+              </Button>}
+            </Space>
+          </div>
         </div>
       </div>
+      <Table
+        bordered
+        className="admin-table-nowrap"
+        columns={dictColumns}
+        dataSource={dicts}
+        rowKey="id"
+        loading={dictsLoading}
+        pagination={{ pageSize: 10, showSizeChanger: true }}
+        size="small"
+        onRow={(row) => ({
+          onClick: () => row && selectDict(row),
+          style: { cursor: 'pointer' },
+        })}
+      />
+
+      {/* 字典项 SideSheet */}
+      <SideSheet
+        title={
+          selectedDict ? (
+            <span>
+              字典项：{selectedDict.name}
+              <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
+            </span>
+          ) : '字典项'
+        }
+        visible={sideSheetVisible}
+        onCancel={() => setSideSheetVisible(false)}
+        width={700}
+        bodyStyle={{ padding: '16px 24px' }}
+        headerStyle={{ borderBottom: '1px solid var(--semi-color-border)' }}
+        footer={
+          hasPermission('system:dict:item') ? (
+            <div style={{ textAlign: 'right' }}>
+              <Button
+                type="secondary"
+                icon={<Plus size={14} />}
+                onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
+              >
+                新增字典项
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        <Table
+          bordered
+          className="admin-table-nowrap"
+          columns={itemColumns}
+          dataSource={items}
+          rowKey="id"
+          loading={itemsLoading}
+          pagination={{ pageSize: 10, showSizeChanger: true }}
+          size="small"
+        />
+      </SideSheet>
 
       {/* 字典创建/编辑 Modal */}
       <Modal
