@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, Typography, Tag, Space, Spin, Empty, Toast } from '@douyinfe/semi-ui';
+import { Button, Card, Typography, Tag, Space, Spin, Empty, Toast, List } from '@douyinfe/semi-ui';
 import { Bell } from 'lucide-react';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
@@ -60,43 +60,49 @@ export default function DashboardPage() {
     if (loading) return <div className="dashboard-empty-state"><Spin /></div>;
     if (notices.length === 0) return <Empty description="暂无通知公告" className="dashboard-empty" />;
     return (
-      <div className="notice-list">
-        {notices.slice(0, 6).map((n) => {
+      <List
+        className="notice-list"
+        dataSource={notices.slice(0, 6)}
+        size="small"
+        renderItem={(n: NoticeWithRead) => {
           const typeInfo = NOTICE_TYPE_MAP[n.type] ?? { label: n.type, color: 'blue' as TagColor };
           const priInfo = NOTICE_PRIORITY_MAP[n.priority] ?? { label: n.priority, color: 'grey' as TagColor };
           return (
-            <div key={n.id} className="notice-item">
-              <div className="notice-content">
-                <div className="notice-item-header">
-                  {!n.isRead && <div className="unread-dot" />}
-                  <Text strong style={{ fontSize: 13 }} className="notice-title">{n.title}</Text>
-                  <Tag color={typeInfo.color} size="small">{typeInfo.label}</Tag>
-                  <Tag color={priInfo.color} size="small">{priInfo.label}</Tag>
-                </div>
-                <Text type="tertiary" size="small" className="notice-summary">
-                  {n.content || '暂无详细内容'}
-                </Text>
-                <div className="notice-item-footer">
-                  <Text type="tertiary" size="small">
-                    {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}
+            <List.Item
+              className="notice-item"
+              header={n.isRead ? <div className="notice-read-placeholder" /> : <div className="unread-dot" />}
+              main={(
+                <div className="notice-content">
+                  <div className="notice-item-header">
+                    <Text strong style={{ fontSize: 13 }} className="notice-title">{n.title}</Text>
+                    <Tag color={typeInfo.color} size="small">{typeInfo.label}</Tag>
+                    <Tag color={priInfo.color} size="small">{priInfo.label}</Tag>
+                  </div>
+                  <Text type="tertiary" size="small" className="notice-summary">
+                    {n.content || '暂无详细内容'}
                   </Text>
-                  {!n.isRead && (
-                    <Button
-                      size="small"
-                      theme="borderless"
-                      type="tertiary"
-                      className="notice-mark-read"
-                      onClick={() => markAsRead(n.id)}
-                    >
-                      标记已读
-                    </Button>
-                  )}
+                  <div className="notice-item-footer">
+                    <Text type="tertiary" size="small">
+                      {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}
+                    </Text>
+                    {!n.isRead && (
+                      <Button
+                        size="small"
+                        theme="borderless"
+                        type="tertiary"
+                        className="notice-mark-read"
+                        onClick={() => markAsRead(n.id)}
+                      >
+                        标记已读
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
+              )}
+            />
           );
-        })}
-      </div>
+        }}
+      />
     );
   }
 
