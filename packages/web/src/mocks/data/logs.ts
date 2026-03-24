@@ -1,0 +1,63 @@
+import type { LoginLog, OperationLog } from '@zenith/shared';
+
+export const mockLoginLogs: LoginLog[] = [
+  {
+    id: 1,
+    userId: 1,
+    username: 'admin',
+    ip: '127.0.0.1',
+    browser: 'Chrome 120',
+    os: 'Windows 11',
+    status: 'success',
+    message: '登录成功',
+    createdAt: new Date(Date.now() - 3600 * 1000),
+  },
+  {
+    id: 2,
+    userId: null,
+    username: 'unknown',
+    ip: '192.168.1.100',
+    browser: 'Firefox 121',
+    os: 'macOS 14',
+    status: 'fail',
+    message: '用户名或密码错误',
+    createdAt: new Date(Date.now() - 7200 * 1000),
+  },
+];
+
+export const mockOperationLogs: OperationLog[] = [
+  {
+    id: 1,
+    userId: 1,
+    username: 'admin',
+    module: '用户管理',
+    description: '查询用户列表',
+    method: 'GET',
+    path: '/api/users',
+    requestBody: null,
+    responseCode: 0,
+    durationMs: 12,
+    ip: '127.0.0.1',
+    userAgent: 'Mozilla/5.0 Chrome/120',
+    os: 'Windows 11',
+    browser: 'Chrome 120',
+    createdAt: new Date(Date.now() - 1800 * 1000).toISOString(),
+  },
+  {
+    id: 2,
+    userId: 1,
+    username: 'admin',
+    module: '系统配置',
+    description: '更新系统参数',
+    method: 'PUT',
+    path: '/api/system-configs/1',
+    requestBody: '{"configValue":"true"}',
+    responseCode: 0,
+    durationMs: 28,
+    ip: '127.0.0.1',
+    userAgent: 'Mozilla/5.0 Chrome/120',
+    os: 'Windows 11',
+    browser: 'Chrome 120',
+    createdAt: new Date(Date.now() - 5400 * 1000).toISOString(),
+  },
+];

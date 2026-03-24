@@ -5,8 +5,11 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiTarget = env.VITE_API_BASE_URL || 'http://localhost:3300';
   const port = Number(env.VITE_PORT) || 5373;
+  // GitHub Pages 部署时通过环境变量注入 base 路径（如 /zenith-admin/）
+  const base = env.VITE_BASE_URL || '/';
 
   return {
+    base,
     plugins: [react()],
     server: {
       port,

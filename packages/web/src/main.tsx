@@ -3,5 +3,7 @@ import '@douyinfe/semi-ui/react19-adapter';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles/global.css';
+import { enableMocking } from './mocks';
 
+await enableMocking();
 createRoot(document.getElementById('root')!).render(<App />);
