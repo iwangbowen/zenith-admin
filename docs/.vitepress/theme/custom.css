@@ -227,3 +227,8 @@
     padding-top: 0;
   }
 }
+
+/* ===== 隐藏内置 VPLastUpdated（由自定义组件替代）===== */
+.VPDocFooter .last-updated {
+  display: none;
+}
