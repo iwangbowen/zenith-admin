@@ -156,13 +156,18 @@
   border-bottom: none;
 }
 
-.notice-item.unread {
-  background: rgba(51, 112, 255, 0.08);
-}
+
 
 .notice-content {
   flex: 1;
   min-width: 0;
+}
+
+.notice-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
 }
 
 .notice-item-header {

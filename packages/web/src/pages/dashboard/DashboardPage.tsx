@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Typography, Tag, Space, Spin, Empty } from '@douyinfe/semi-ui';
+import { Button, Card, Typography, Tag, Space, Spin, Empty, Toast } from '@douyinfe/semi-ui';
 import { Bell } from 'lucide-react';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
@@ -24,6 +24,9 @@ const NOTICE_PRIORITY_MAP: Record<string, { label: string; color: TagColor }> = 
   low: { label: '低', color: 'green' },
 };
 
+const markReadById = (id: number) => (n: NoticeWithRead) =>
+  n.id === id ? { ...n, isRead: true } : n;
+
 export default function DashboardPage() {
   const [notices, setNotices] = useState<NoticeWithRead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +48,14 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  function markAsRead(id: number) {
+    request.post(`/api/notices/${id}/read`, undefined, { silent: true }).then((res) => {
+      if (res.code !== 0) return;
+      setNotices((prev) => prev.map(markReadById(id)));
+      Toast.success('已标记为已读');
+    });
+  }
+
   function renderNotices() {
     if (loading) return <div className="dashboard-empty-state"><Spin /></div>;
     if (notices.length === 0) return <Empty description="暂无通知公告" className="dashboard-empty" />;
@@ -54,9 +65,10 @@ export default function DashboardPage() {
           const typeInfo = NOTICE_TYPE_MAP[n.type] ?? { label: n.type, color: 'blue' as TagColor };
           const priInfo = NOTICE_PRIORITY_MAP[n.priority] ?? { label: n.priority, color: 'grey' as TagColor };
           return (
-            <div key={n.id} className={`notice-item${n.isRead ? '' : ' unread'}`}>
+            <div key={n.id} className="notice-item">
               <div className="notice-content">
                 <div className="notice-item-header">
+                  {!n.isRead && <div className="unread-dot" />}
                   <Text strong style={{ fontSize: 13 }} className="notice-title">{n.title}</Text>
                   <Tag color={typeInfo.color} size="small">{typeInfo.label}</Tag>
                   <Tag color={priInfo.color} size="small">{priInfo.label}</Tag>
@@ -64,11 +76,22 @@ export default function DashboardPage() {
                 <Text type="tertiary" size="small" className="notice-summary">
                   {n.content || '暂无详细内容'}
                 </Text>
-                <Text type="tertiary" size="small">
-                  {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}
-                </Text>
+                <div className="notice-item-footer">
+                  <Text type="tertiary" size="small">
+                    {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}
+                  </Text>
+                  {!n.isRead && (
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      type="tertiary"
+                      onClick={() => markAsRead(n.id)}
+                    >
+                      标记已读
+                    </Button>
+                  )}
+                </div>
               </div>
-              {!n.isRead && <div className="unread-dot" />}
             </div>
           );
         })}
