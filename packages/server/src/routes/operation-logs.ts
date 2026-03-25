@@ -18,6 +18,7 @@ operationLogsRoute.get('/', guard({ permission: 'system:log:operation' }), async
   const description = c.req.query('description');
   const method = c.req.query('method');
   const path = c.req.query('path');
+  const ip = c.req.query('ip');
   const status = c.req.query('status');
   const startTime = c.req.query('startTime');
   const endTime = c.req.query('endTime');
@@ -28,6 +29,7 @@ operationLogsRoute.get('/', guard({ permission: 'system:log:operation' }), async
   if (description) conditions.push(like(operationLogs.description, `%${description}%`));
   if (method) conditions.push(eq(operationLogs.method, method));
   if (path) conditions.push(like(operationLogs.path, `%${path}%`));
+  if (ip) conditions.push(like(operationLogs.ip, `%${ip}%`));
   if (status === 'success') conditions.push(and(gte(operationLogs.responseCode, 200), lte(operationLogs.responseCode, 399)));
   if (status === 'fail') conditions.push(gte(operationLogs.responseCode, 400));
   if (startTime) conditions.push(gte(operationLogs.createdAt, new Date(startTime)));

@@ -88,11 +88,12 @@ interface SearchParams {
   description: string;
   method: string;
   path: string;
+  ip: string;
   status: string;
   timeRange: [Date, Date] | null;
 }
 
-const defaultParams: SearchParams = { username: '', module: '', description: '', method: '', path: '', status: '', timeRange: null };
+const defaultParams: SearchParams = { username: '', module: '', description: '', method: '', path: '', ip: '', status: '', timeRange: null };
 
 export default function OperationLogsPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
@@ -114,6 +115,7 @@ export default function OperationLogsPage() {
         ...(params.username ? { username: params.username } : {}),
         ...(params.module ? { module: params.module } : {}),
         ...(params.description ? { description: params.description } : {}),
+        ...(params.ip ? { ip: params.ip } : {}),
         ...(params.method ? { method: params.method } : {}),
         ...(params.path ? { path: params.path } : {}),
         ...(params.status ? { status: params.status } : {}),
@@ -258,6 +260,15 @@ export default function OperationLogsPage() {
                 onChange={(v) => setSearchParams({ ...searchParams, path: v })}
                 onEnterPress={handleSearch}
                 style={{ width: 180 }}
+                showClear
+              />
+              <Input
+                prefix={<Search size={14} />}
+                placeholder="请输入 IP 地址"
+                value={searchParams.ip}
+                onChange={(v) => setSearchParams({ ...searchParams, ip: v })}
+                onEnterPress={handleSearch}
+                style={{ width: 160 }}
                 showClear
               />
               <Select
