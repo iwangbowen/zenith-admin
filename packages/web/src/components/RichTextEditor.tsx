@@ -8,6 +8,7 @@ interface RichTextEditorProps {
   onChange?: (html: string) => void;
   placeholder?: string;
   height?: number;
+  disableFullscreen?: boolean;
 }
 
 export default function RichTextEditor({
@@ -15,6 +16,7 @@ export default function RichTextEditor({
   onChange,
   placeholder = '请输入内容...',
   height = 320,
+  disableFullscreen = false,
 }: Readonly<RichTextEditorProps>) {
   const [editor, setEditor] = useState<IDomEditor | null>(null);
 
@@ -27,7 +29,12 @@ export default function RichTextEditor({
   }, [editor]);
 
   const toolbarConfig: Partial<IToolbarConfig> = {
-    excludeKeys: ['uploadVideo', 'group-video', 'insertVideo'],
+    excludeKeys: [
+      'uploadVideo',
+      'group-video',
+      'insertVideo',
+      ...(disableFullscreen ? ['fullScreen'] : []),
+    ],
   };
 
   const editorConfig: Partial<IEditorConfig> = {

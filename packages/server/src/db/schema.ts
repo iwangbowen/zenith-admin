@@ -222,7 +222,7 @@ export type NewOperationLog = typeof operationLogs.$inferInsert;
 export const notices = pgTable('notices', {
   id: serial('id').primaryKey(),
   title: varchar('title', { length: 128 }).notNull(),
-  content: varchar('content', { length: 4096 }).notNull(),
+  content: text('content').notNull(),
   type: varchar('type', { length: 32 }).notNull().default('notice'),        // 字典 notice_type
   publishStatus: varchar('publish_status', { length: 32 }).notNull().default('draft'), // 字典 notice_publish_status
   priority: varchar('priority', { length: 32 }).notNull().default('medium'), // 字典 notice_priority

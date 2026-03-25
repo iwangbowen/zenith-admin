@@ -6,6 +6,7 @@ import {
   Tag,
   Space,
   Modal,
+  SideSheet,
   Form,
   Toast,
   Select,
@@ -329,16 +330,20 @@ export default function NoticesPage() {
         />
       </div>
 
-      <Modal
+      <SideSheet
         title={editingNotice ? '编辑通知' : '新增通知'}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
-        onOk={handleSubmit}
-        okText={editingNotice ? '保存' : '创建'}
-        cancelText="取消"
-        confirmLoading={submitting}
         width={860}
-        afterClose={() => formApi?.reset()}
+        afterVisibleChange={(visible) => { if (!visible) formApi?.reset(); }}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button onClick={() => setModalVisible(false)}>取消</Button>
+            <Button type="primary" loading={submitting} onClick={handleSubmit}>
+              {editingNotice ? '保存' : '创建'}
+            </Button>
+          </div>
+        }
       >
         <Form
           getFormApi={(api) => setFormApi(api)}
@@ -360,17 +365,7 @@ export default function NoticesPage() {
             placeholder="请输入通知标题"
             rules={[{ required: true, message: '标题不能为空' }]}
           />
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 4, fontSize: 14, fontWeight: 500 }}>内容</div>
-            <RichTextEditor
-              key={editorKey}
-              value={contentHtml}
-              onChange={setContentHtml}
-              placeholder="请输入通知内容"
-              height={350}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
             <Form.Select
               field="type"
               label="通知类型"
@@ -393,8 +388,18 @@ export default function NoticesPage() {
               style={{ width: '100%' }}
             />
           </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 4, fontSize: 14, fontWeight: 500 }}>内容</div>
+            <RichTextEditor
+              key={editorKey}
+              value={contentHtml}
+              onChange={setContentHtml}
+              placeholder="请输入通知内容"
+              height={500}
+            />
+          </div>
         </Form>
-      </Modal>
+      </SideSheet>
     </div>
   );
 }
