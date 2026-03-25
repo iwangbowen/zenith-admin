@@ -44,6 +44,7 @@ AI 会在生成代码之前，主动向你确认以下信息：
 | 4 | 共享 TypeScript 类型 | `packages/shared/src/types.ts` |
 | 5 | Hono 路由（CRUD + 分页 + 筛选） | `packages/server/src/routes/` |
 | 6 | 注册路由 | `packages/server/src/index.ts` |
+| 6b | 更新 OpenAPI Spec | `packages/server/src/openapi.ts` |
 | 7 | 前端列表页（搜索 + 表格 + 弹窗） | `packages/web/src/pages/` |
 | 8 | 菜单种子数据 | `packages/shared/src/seed-data.ts` |
 | 9 | 数据库种子 | `packages/server/src/db/seed.ts` |

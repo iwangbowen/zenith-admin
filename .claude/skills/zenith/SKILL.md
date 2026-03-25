@@ -234,6 +234,10 @@ npm run db:migrate
 app.route('/api/xxx', xxxRoutes);
 ```
 
+**Step 6b** — `packages/server/src/openapi.ts`：更新 OpenAPI Spec
+在 `paths` 中为新模块添加接口定义（列表、新增、更新、删除），并在 `tags` 数组末尾追加标签。
+详细示例参考 [crud-backend.md](./references/crud-backend.md) 的「更新 OpenAPI Spec」章节。
+
 #### 前端（参考 [crud-frontend.md](./references/crud-frontend.md)）
 
 **Step 7** — `packages/web/src/pages/xxx/XxxPage.tsx`：创建页面组件

@@ -355,3 +355,61 @@ if (before) {
    - 将 `beforeData` + `afterData` 一并写入 `operation_logs`
 
 > **注意**：DELETE 操作的 `afterData` 通常为 null（响应 `data` 为 null），是预期行为，前端 diff 会仅展示变更前列。
+
+---
+
+## 更新 OpenAPI Spec（packages/server/src/openapi.ts）
+
+每次新增 CRUD 路由后，**必须同步更新** `packages/server/src/openapi.ts`，否则 Swagger UI（`GET /api/docs`）将缺失对应接口文档。
+
+### 需要更新的部分
+
+1. **`paths`**：添加新模块的各接口路径（列表、新增、更新、删除）
+2. **`components.schemas`**（可选）：若实体较复杂，可新增 Schema 定义以便复用
+3. **`tags`**：在 `tags` 数组末尾添加新模块的标签条目
+
+### 示例：为「合同管理」模块添加 Spec
+
+```typescript
+// --- 在 paths 中添加 ---
+'/contracts': {
+  get: {
+    tags: ['合同管理'],
+    summary: '合同列表（分页）',
+    parameters: [
+      { $ref: '#/components/parameters/PageParam' },
+      { $ref: '#/components/parameters/PageSizeParam' },
+      { name: 'contractNo', in: 'query', description: '合同编号', schema: { type: 'string' } },
+    ],
+    responses: { '200': { description: '合同分页列表' } },
+  },
+  post: {
+    tags: ['合同管理'],
+    summary: '新增合同',
+    requestBody: {
+      required: true,
+      content: { 'application/json': { schema: { /* 字段定义 */ } } },
+    },
+    responses: { '200': { description: '创建成功' } },
+  },
+},
+'/contracts/{id}': {
+  put: {
+    tags: ['合同管理'],
+    summary: '更新合同',
+    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+    responses: { '200': { description: '更新成功' } },
+  },
+  delete: {
+    tags: ['合同管理'],
+    summary: '删除合同',
+    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+    responses: { '200': { description: '删除成功' } },
+  },
+},
+
+// --- 在 tags 数组末尾添加 ---
+{ name: '合同管理', description: '合同 CRUD 管理' },
+```
+
+更新完成后，重启后端服务，访问 [http://localhost:3300/api/docs](http://localhost:3300/api/docs) 即可看到新接口文档。
