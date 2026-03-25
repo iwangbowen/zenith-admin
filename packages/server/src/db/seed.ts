@@ -61,7 +61,7 @@ async function seed() {
   logger.info('  ✔ Menus upserted');
 
   // ─── 3. 角色数据（数据来源：@zenith/shared SEED_ROLES）────────────────────
-  const roleRows = SEED_ROLES.map(({ id, name, code, description, status }) => ({ id, name, code, description, status }));
+  const roleRows = SEED_ROLES.map(({ id, name, code, description, status, dataScope }) => ({ id, name, code, description, status, dataScope }));
   await db.insert(roles).values(roleRows).onConflictDoNothing({ target: roles.id });
   await db.execute(sql`SELECT setval('roles_id_seq', GREATEST((SELECT MAX(id) FROM roles), 1))`);
   logger.info('  ✔ Roles seeded (onConflictDoNothing)');

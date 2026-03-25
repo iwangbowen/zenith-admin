@@ -65,6 +65,7 @@ export const createRoleSchema = z.object({
   code: z.string().min(1, '角色编码不能为空').max(64).regex(/^[a-z_]+$/, '角色编码只能包含小写字母和下划线'),
   description: z.string().max(256).optional(),
   status: z.enum(['active', 'disabled']).default('active'),
+  dataScope: z.enum(['all', 'dept', 'self']).default('all'),
 });
 
 export const updateRoleSchema = createRoleSchema.partial();
@@ -81,7 +82,7 @@ export const assignRoleUsersSchema = z.object({
 export const createDepartmentSchema = z.object({
   parentId: z.number().int().min(0).default(0),
   name: z.string().min(1, '部门名称不能为空').max(64),
-  code: z.string().min(1, '部门编码不能为空').max(64).regex(/^[a-zA-Z0-9_]+$/, '部门编码只能包含字母、数字和下划线'),
+  code: z.string().min(1, '部门编码不能为空').max(64).regex(/^\w+$/, '部门编码只能包含字母、数字和下划线'),
   leader: z.string().max(32).optional(),
   phone: z.string().max(32).optional(),
   email: z.preprocess(
@@ -97,7 +98,7 @@ export const updateDepartmentSchema = createDepartmentSchema.partial();
 // ─── 岗位 Schema ──────────────────────────────────────────────────────────────
 export const createPositionSchema = z.object({
   name: z.string().min(1, '岗位名称不能为空').max(64),
-  code: z.string().min(1, '岗位编码不能为空').max(64).regex(/^[a-zA-Z0-9_]+$/, '岗位编码只能包含字母、数字和下划线'),
+  code: z.string().min(1, '岗位编码不能为空').max(64).regex(/^\w+$/, '岗位编码只能包含字母、数字和下划线'),
   sort: z.number().int().default(0),
   status: z.enum(['active', 'disabled']).default('active'),
   remark: z.string().max(256).optional(),

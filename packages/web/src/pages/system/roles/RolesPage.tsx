@@ -174,6 +174,16 @@ export default function RolesPage() {
     { title: '角色编码', dataIndex: 'code', width: 160, ellipsis: true },
     { title: '描述', dataIndex: 'description', ellipsis: true, render: (v) => v || '—' },
     {
+      title: '数据权限',
+      dataIndex: 'dataScope',
+      width: 140,
+      align: 'center',
+      render: (v: string) => {
+        const map: Record<string, string> = { all: '全部数据', dept: '本部门及以下', self: '仅本人数据' };
+        return map[v] ?? v;
+      },
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       width: 90,
@@ -302,6 +312,13 @@ export default function RolesPage() {
           <Form.Input field="description" label="描述" />
           <Form.Select field="status" label="状态"
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
+          <Form.Select field="dataScope" label="数据权限"
+            optionList={[
+              { value: 'all', label: '全部数据' },
+              { value: 'dept', label: '本部门及以下' },
+              { value: 'self', label: '仅本人数据' },
+            ]}
           />
         </Form>
       </Modal>

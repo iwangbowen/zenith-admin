@@ -38,6 +38,7 @@ export const rolesHandlers = [
       name: body.name ?? '',
       code: body.code ?? '',
       description: body.description,
+      dataScope: body.dataScope ?? 'all',
       status: body.status ?? 'active',
       menuIds: body.menuIds ?? [],
       createdAt: new Date().toISOString(),

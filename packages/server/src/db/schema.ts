@@ -3,6 +3,7 @@ import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryK
 export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss']);
+export const dataScopeEnum = pgEnum('data_scope', ['all', 'dept', 'self']);
 
 // ─── 部门表 ───────────────────────────────────────────────────────────────────
 export const departments = pgTable('departments', {
@@ -81,6 +82,7 @@ export const roles = pgTable('roles', {
   code: varchar('code', { length: 64 }).notNull().unique(),
   description: varchar('description', { length: 256 }),
   status: statusEnum('status').notNull().default('active'),
+  dataScope: dataScopeEnum('data_scope').notNull().default('all'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

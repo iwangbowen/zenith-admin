@@ -59,11 +59,14 @@ export interface Menu {
 }
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
+export type DataScope = 'all' | 'dept' | 'self';
+
 export interface Role {
   id: number;
   name: string;
   code: string;
   description?: string;
+  dataScope: DataScope;
   status: 'active' | 'disabled';
   createdAt: string;
   updatedAt: string;

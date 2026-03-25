@@ -103,6 +103,16 @@ export const usersHandlers = [
     return HttpResponse.json({ code: 0, message: '更新成功', data: toUserResponse(user) });
   }),
 
+  // 批量删除用户
+  http.delete('/api/users/batch', async ({ request }) => {
+    const body = await request.json() as { ids: number[] };
+    const ids = new Set(body?.ids ?? []);
+    if (ids.size === 0) return HttpResponse.json({ code: 400, message: '请选择要删除的用户', data: null });
+    const before = mockUsers.length;
+    mockUsers.splice(0, mockUsers.length, ...mockUsers.filter((u) => !ids.has(u.id)));
+    return HttpResponse.json({ code: 0, message: `已删除 ${before - mockUsers.length} 个用户`, data: null });
+  }),
+
   // 删除用户
   http.delete('/api/users/:id', ({ params }) => {
     const index = mockUsers.findIndex((u) => u.id === Number(params.id));

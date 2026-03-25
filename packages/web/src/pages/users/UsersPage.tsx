@@ -12,7 +12,7 @@ import {
   Tag,
   DatePicker,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RotateCcw, Download } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
@@ -50,6 +50,23 @@ export default function UsersPage() {
   const [allPositions, setAllPositions] = useState<Position[]>([]);
 
   const { items: statusItems } = useDictItems('common_status');
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+
+  const handleBatchDelete = () => {
+    Modal.confirm({
+      title: `确认删除选中的 ${selectedRowKeys.length} 个用户？`,
+      content: '删除后无法恢复，请谨慎操作。',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        const res = await request.delete<null>('/api/users/batch', { ids: selectedRowKeys });
+        if (res.code === 0) {
+          Toast.success('批量删除成功');
+          setSelectedRowKeys([]);
+          void fetchUsers();
+        }
+      },
+    });
+  };
 
   useEffect(() => {
     Promise.all([
@@ -359,6 +376,11 @@ export default function UsersPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
+            {selectedRowKeys.length > 0 && hasPermission('system:user:delete') && (
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
             <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
             {hasPermission('system:user:create') && <Button
               type="secondary"
@@ -392,6 +414,10 @@ export default function UsersPage() {
         rowKey="id"
         size="small"
         empty="暂无数据"
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+        }}
       />
 
       <Modal

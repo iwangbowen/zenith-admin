@@ -5,6 +5,7 @@ import { db } from '../db';
 import { users, userRoles, roles, departments, positions, userPositions } from '../db/schema';
 import { createUserSchema, updateUserSchema, resetUserPasswordSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
@@ -199,6 +200,41 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
     conditions.push(lte(users.createdAt, new Date(endTime)));
   }
 
+  // 数据权限过滤
+  const payload = c.get('user') as JwtPayload;
+  const currentUserId = payload.userId;
+  const userRoleList = await db
+    .select({ dataScope: roles.dataScope, code: roles.code })
+    .from(userRoles)
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(eq(userRoles.userId, currentUserId));
+
+  const isSuperAdmin = userRoleList.some((r) => r.code === 'super_admin');
+  const scopeSet = new Set(userRoleList.map((r) => r.dataScope));
+  let effectiveScope: string;
+  if (isSuperAdmin || scopeSet.has('all')) {
+    effectiveScope = 'all';
+  } else if (scopeSet.has('dept')) {
+    effectiveScope = 'dept';
+  } else {
+    effectiveScope = 'self';
+  }
+
+  if (effectiveScope === 'dept') {
+    const [currentUser] = await db
+      .select({ departmentId: users.departmentId })
+      .from(users)
+      .where(eq(users.id, currentUserId))
+      .limit(1);
+    if (currentUser?.departmentId) {
+      conditions.push(eq(users.departmentId, currentUser.departmentId));
+    } else {
+      conditions.push(eq(users.id, currentUserId));
+    }
+  } else if (effectiveScope === 'self') {
+    conditions.push(eq(users.id, currentUserId));
+  }
+
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(users).where(where);
@@ -381,6 +417,36 @@ usersRouter.put('/:id/password', guard({ permission: 'system:user:update', audit
   await db.update(users).set({ password: hashedPassword, updatedAt: new Date() }).where(eq(users.id, id));
 
   return c.json({ code: 0, message: '密码修改成功', data: null });
+});
+
+// 批量删除用户
+usersRouter.delete('/batch', guard({ permission: 'system:user:delete', audit: { description: '批量删除用户', module: '用户管理' } }), async (c) => {
+  const body = await c.req.json();
+  const ids = body?.ids;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return c.json({ code: 400, message: '请选择要删除的用户', data: null }, 400);
+  }
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) {
+    return c.json({ code: 400, message: '用户ID格式无效', data: null }, 400);
+  }
+  await db.delete(users).where(inArray(users.id, validIds));
+  return c.json({ code: 0, message: `已删除 ${validIds.length} 个用户`, data: null });
+});
+
+// 批量修改用户状态
+usersRouter.put('/batch-status', guard({ permission: 'system:user:update', audit: { description: '批量修改用户状态', module: '用户管理' } }), async (c) => {
+  const body = await c.req.json();
+  const { ids, status } = body ?? {};
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return c.json({ code: 400, message: '请选择要操作的用户', data: null }, 400);
+  }
+  if (status !== 'active' && status !== 'disabled') {
+    return c.json({ code: 400, message: '状态值无效', data: null }, 400);
+  }
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  await db.update(users).set({ status, updatedAt: new Date() }).where(inArray(users.id, validIds));
+  return c.json({ code: 0, message: '状态已更新', data: null });
 });
 
 // 删除用户

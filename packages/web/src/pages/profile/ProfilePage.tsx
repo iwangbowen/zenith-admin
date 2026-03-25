@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space,
+  Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space, Upload, Spin,
 } from '@douyinfe/semi-ui';
 import { User as UserIcon, Lock } from 'lucide-react';
 import type { User } from '@zenith/shared';
@@ -18,6 +18,7 @@ interface ProfilePageProps {
 export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
 
   async function handleUpdateProfile(values: { nickname: string; email: string }) {
     setProfileLoading(true);
@@ -51,13 +52,59 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
         {/* 左侧：头像卡片 */}
         <Card className="profile-avatar-card">
           <div className="profile-avatar-section">
-            <Avatar
-              size="extra-large"
-              color="blue"
-              style={{ fontSize: 28, width: 80, height: 80 }}
+            <Upload
+              className="avatar-upload"
+              showUploadList={false}
+              accept="image/*"
+              limit={1}
+              customRequest={({ file, onSuccess, onError }) => {
+                setAvatarLoading(true);
+                const formData = new FormData();
+                formData.append('file', file.fileInstance as File);
+                request.post<{ url: string }>('/api/files/upload', formData)
+                  .then(async (res) => {
+                    if (res.code === 0 && res.data?.url) {
+                      const profileRes = await request.put<Omit<User, 'password'>>('/auth/profile', { avatar: res.data.url });
+                      if (profileRes.code === 0) {
+                        onUserUpdate(profileRes.data);
+                        Toast.success('头像已更新');
+                        onSuccess?.(res);
+                      } else {
+                        Toast.error(profileRes.message ?? '头像更新失败');
+                        onError?.({ status: profileRes.code }, new Event('error'));
+                      }
+                    } else {
+                      Toast.error(res.message ?? '上传失败');
+                      onError?.({ status: res.code }, new Event('error'));
+                    }
+                  })
+                  .catch(() => {
+                    Toast.error('上传失败，请重试');
+                    onError?.({ status: 500 }, new Event('error'));
+                  })
+                  .finally(() => setAvatarLoading(false));
+              }}
             >
-              {user.nickname?.charAt(0)?.toUpperCase() || 'U'}
-            </Avatar>
+              <div className="avatar-upload-trigger">
+                {avatarLoading ? (
+                  <div className="avatar-loading-wrapper" style={{ width: 80, height: 80 }}>
+                    <Spin />
+                  </div>
+                ) : (
+                  <>
+                    <Avatar
+                      size="extra-large"
+                      color="blue"
+                      style={{ fontSize: 28, width: 80, height: 80 }}
+                      src={user.avatar || undefined}
+                    >
+                      {!user.avatar && (user.nickname?.charAt(0)?.toUpperCase() || 'U')}
+                    </Avatar>
+                    <div className="avatar-upload-mask">更换头像</div>
+                  </>
+                )}
+              </div>
+            </Upload>
             <Title heading={5} style={{ margin: '12px 0 4px' }}>{user.nickname}</Title>
             <Text type="tertiary" size="small">@{user.username}</Text>
             <div className="profile-meta">

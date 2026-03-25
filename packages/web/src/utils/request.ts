@@ -126,8 +126,9 @@ class Request {
     return this.request<T>(url, { method: 'PUT', body: body instanceof FormData ? body : JSON.stringify(body), ...opts });
   }
 
-  delete<T>(url: string, opts: RequestOptions = {}) {
-    return this.request<T>(url, { method: 'DELETE', ...opts });
+  delete<T>(url: string, body?: unknown, opts: RequestOptions = {}) {
+    const bodyInit = body === undefined ? {} : { body: JSON.stringify(body) };
+    return this.request<T>(url, { method: 'DELETE', ...bodyInit, ...opts });
   }
 
   postForm<T>(url: string, body: FormData, opts: RequestOptions = {}) {
