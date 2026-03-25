@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer, Select } from '@douyinfe/semi-ui';
+import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
 import './OperationLogsPage.css';
+import OperationLogStatsPanel from './OperationLogStatsPanel';
 
 const detailLabelStyle: React.CSSProperties = { color: 'var(--semi-color-text-2)', fontSize: 12, marginBottom: 2 };
 const detailValueStyle: React.CSSProperties = { fontSize: 13, wordBreak: 'break-all' };
@@ -32,6 +33,7 @@ interface SearchParams {
 const defaultParams: SearchParams = { username: '', module: '', description: '', method: '', path: '', status: '', timeRange: null };
 
 export default function OperationLogsPage() {
+  const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
   const [data, setData] = useState<OperationLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -132,7 +134,18 @@ export default function OperationLogsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
+      <Tabs
+        activeKey={activeTab}
+        onChange={(k) => setActiveTab(k as 'list' | 'stats')}
+        type="line"
+        style={{ marginBottom: 0 }}
+      >
+        <TabPane tab="日志列表" itemKey="list" />
+        <TabPane tab="统计分析" itemKey="stats" />
+      </Tabs>
+      {activeTab === 'list' && (
+        <>
+          <div className="search-area">
         <div className="responsive-toolbar">
           <div className="responsive-toolbar__left">
             <Space wrap>
@@ -234,6 +247,13 @@ export default function OperationLogsPage() {
           }}
         />
       </div>
+        </>
+      )}
+      {activeTab === 'stats' && (
+        <div style={{ paddingTop: 16 }}>
+          <OperationLogStatsPanel />
+        </div>
+      )}
 
       <Modal
         title="操作日志详情"

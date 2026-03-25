@@ -60,6 +60,57 @@ operationLogsRoute.get('/', guard({ permission: 'system:log:operation' }), async
   });
 });
 
+operationLogsRoute.get('/stats', guard({ permission: 'system:log:operation' }), async (c) => {
+  const days = Math.min(Math.max(Number(c.req.query('days')) || 90, 7), 365);
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days + 1);
+  startDate.setHours(0, 0, 0, 0);
+
+  const [moduleStats, dailyStats, userStats] = await Promise.all([
+    db
+      .select({
+        module: operationLogs.module,
+        count: sql<number>`cast(count(*) as integer)`,
+      })
+      .from(operationLogs)
+      .where(gte(operationLogs.createdAt, startDate))
+      .groupBy(operationLogs.module)
+      .orderBy(desc(sql`count(*)`))
+      .limit(20),
+
+    db
+      .select({
+        date: sql<string>`to_char(date(${operationLogs.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
+        count: sql<number>`cast(count(*) as integer)`,
+      })
+      .from(operationLogs)
+      .where(gte(operationLogs.createdAt, startDate))
+      .groupBy(sql`date(${operationLogs.createdAt} AT TIME ZONE 'UTC')`)
+      .orderBy(sql`date(${operationLogs.createdAt} AT TIME ZONE 'UTC')`),
+
+    db
+      .select({
+        username: operationLogs.username,
+        count: sql<number>`cast(count(*) as integer)`,
+      })
+      .from(operationLogs)
+      .where(gte(operationLogs.createdAt, startDate))
+      .groupBy(operationLogs.username)
+      .orderBy(desc(sql`count(*)`))
+      .limit(10),
+  ]);
+
+  return c.json({
+    code: 0,
+    message: 'ok',
+    data: {
+      moduleStats: moduleStats.map((r) => ({ module: r.module ?? '未知模块', count: r.count })),
+      dailyStats: dailyStats.map((r) => ({ date: r.date, count: r.count })),
+      userStats: userStats.map((r) => ({ username: r.username ?? '未知用户', count: r.count })),
+    },
+  });
+});
+
 operationLogsRoute.get('/export', guard({ permission: 'system:operationlog:list' }), async (c) => {
   const rows = await db.select().from(operationLogs).orderBy(desc(operationLogs.id));
   const buffer = await exportToExcel(

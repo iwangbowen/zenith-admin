@@ -193,6 +193,12 @@ export interface OperationLog {
   createdAt: string;
 }
 
+export interface OperationLogStats {
+  moduleStats: { module: string; count: number }[];
+  dailyStats: { date: string; count: number }[];
+  userStats: { username: string; count: number }[];
+}
+
 // ─── 通知公告 ──────────────────────────────────────────────
 export type NoticePublishStatus = 'draft' | 'published' | 'recalled';
 export type NoticeType = 'notice' | 'announcement' | 'warning';
