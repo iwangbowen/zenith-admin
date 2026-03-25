@@ -250,7 +250,7 @@ export default function XxxPage() {
   // 渲染
   // ════════════════════════════════════════════════════════════════════════
   return (
-    <div>
+    <div className="page-container">
       {/* 搜索区：左搜右操作，flex 布局 */}
       <div className="search-area">
         <div
