@@ -5,8 +5,13 @@
 ## 登录态管理
 
 - 通过 `useAuth` hook 管理认证状态
-- token 存储在 `localStorage`
-- 存储 key 为 `zenith_token`（来自 `@zenith/shared` 常量）
+- Token 存储在 `localStorage`，key 来自 `@zenith/shared/src/constants.ts`：
+
+| 常量 | Key | 说明 |
+|------|-----|------|
+| `TOKEN_KEY` | `zenith_token` | Access Token |
+| `REFRESH_TOKEN_KEY` | `zenith_refresh_token` | Refresh Token，用于自动续期 |
+| `PREFERENCES_KEY` | `zenith_preferences` | 用户偏好设置（主题、布局等）|
 
 ## 请求封装
 
@@ -18,7 +23,8 @@
 
 - 自动附加 Bearer Token
 - 统一处理接口响应
-- 在 401 场景下跳转登录页
+- Access Token 过期时，自动用 Refresh Token 换取新 token 并重试
+- 在 401（无法续期）场景下跳转登录页
 
 ## 与后端的协作方式
 

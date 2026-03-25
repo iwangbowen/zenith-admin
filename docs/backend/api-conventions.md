@@ -31,9 +31,20 @@
 
 ## 认证方式
 
-- 使用 JWT Bearer Token
-- Token 有效期为 7 天
-- 需要认证的请求需携带：`Authorization: Bearer <token>`
+项目采用 **Access Token + Refresh Token 双 token** 机制：
+
+| Token | 存储 Key | 说明 |
+|-------|----------|------|
+| Access Token | `zenith_token` | 短期 token，附在每次请求头中 |
+| Refresh Token | `zenith_refresh_token` | 长期 token，用于在 Access Token 过期时自动续期 |
+
+需要认证的请求需携带：
+
+```http
+Authorization: Bearer <access_token>
+```
+
+当 Access Token 过期时，前端 `request.ts` 会自动携带 Refresh Token 向后端换取新的 Access Token，对业务代码透明。
 
 认证中间件会在上下文中注入用户信息，供后续权限判断使用。
 

@@ -23,9 +23,10 @@ npm run db:seed        # 填充初始种子数据
 
 ### 页面布局规范
 
-- 列表页使用 `<div className="page-container">` 包裹
-- 搜索栏用 `flex + justifyContent: space-between`（搜索条件左，新增按钮右）
+- 列表页搜索区使用 `<div className="search-area">` 包裹
+- 搜索栏用 `flex + justifyContent: space-between`（搜索条件 + 查询/重置按钮在左，新增按钮在右）
 - 操作列按钮：`theme="borderless"` 纯文字，无图标，必须 `fixed: 'right'`
+- 表格统一使用 `<Table bordered>`
 
 ### Demo 演示模式（MSW Mock）
 
@@ -49,7 +50,7 @@ AI 在生成代码时会自动遵守以下约定：
 | 时间显示 | 使用 `formatDateTime()` 工具函数 |
 | 图标来源 | `lucide-react`，禁止使用 `@douyinfe/semi-icons` |
 | 分页响应 | `{ list, total, page, pageSize }` |
-| Token 存储 | `localStorage`，key 为 `zenith_token` |
+| Token 存储 | `localStorage`，Access Token key 为 `zenith_token`，Refresh Token key 为 `zenith_refresh_token` |
 
 ---
 

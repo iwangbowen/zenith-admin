@@ -59,6 +59,7 @@ export default defineConfig({
           { text: '本地开发', link: '/guide/development' },
           { text: '项目结构', link: '/guide/project-structure' },
           { text: '部署说明', link: '/guide/deployment' },
+          { text: '项目维护', link: '/guide/contributing' },
         ],
       },
       {

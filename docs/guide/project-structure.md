@@ -19,10 +19,10 @@ zenith-admin/
 
 关注这些目录：
 
-- `src/routes/`：API 路由
+- `src/routes/`：API 路由（认证、用户、部门、岗位、角色、菜单、字典、通知、日志、监控、会话、定时任务等）
 - `src/db/`：Drizzle schema、迁移与 seed
 - `src/middleware/`：认证、日志等中间件
-- `src/lib/`：文件存储、权限、系统配置等通用能力
+- `src/lib/`：通用能力封装（文件存储、权限过滤、Redis 会话、定时调度、Excel 导出、验证码等）
 - `drizzle/`：生成的迁移文件
 
 ## `packages/web`
@@ -54,7 +54,8 @@ zenith-admin/
 - `product/`：产品概览与功能模块
 - `backend/`：接口规范、数据库说明
 - `frontend/`：UI 规范、认证与请求
-- `changelog/`：更新日志预留页
+- `ai/`：AI 开发辅助说明（AGENTS.md 、Zenith Skill）
+- `changelog/`：版本更新历史
 
 ## 为什么这样分层
 

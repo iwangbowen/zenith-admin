@@ -57,12 +57,18 @@ npm run docs:preview
 
 前端页面与操作入口统一使用 `lucide-react`，不要引入 `@douyinfe/semi-icons`。
 
-## 文档站当前阶段
+## 发布新版本
 
-当前文档站主要用于：
+当需要发布新版本时，参考 Zenith Skill 中的「发布新版本流程」，或按以下步骤操作：
 
-- 本地预览与结构确认
-- 项目推广展示
-- 沉淀基础开发文档
+1. 更新四个 `package.json` 中的版本号（根 + server + web + shared）
+2. 在 `docs/changelog/index.md` 顶部追加本版本变更记录
+3. 提交并推送到 `master`
+4. 打 tag 并推送，触发 Release 工作流：
 
-GitHub Pages 自动化部署将作为下一阶段工作继续补充。
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+GitHub Actions `release.yml` 将自动完成构建 → 打包 → 创建 GitHub Release。

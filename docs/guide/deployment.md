@@ -1,142 +1,176 @@
 # 部署说明
 
-本页整理 Zenith Admin 的构建与部署信息，重点包括业务项目的构建方式，以及文档站通过 GitHub Pages 自动发布的方案。
+本页说明如何将 Zenith Admin 部署到生产服务器，面向需要独立运行此系统的团队或个人。
 
 ## 前置依赖
 
-- **PostgreSQL**：持久化业务数据
-- **Redis**：持久化在线会话与黑名单状态，服务重启后会话不丢失
+在目标服务器上准备以下环境：
 
-## 环境变量参考
+| 依赖 | 版本要求 | 说明 |
+|------|---------|------|
+| Node.js | >= 18 | 运行后端服务 |
+| PostgreSQL | >= 14 | 持久化业务数据 |
+| Redis | >= 6 | 持久化在线会话与黑名单状态 |
+| Nginx（可选） | 任意 | 托管前端静态文件 + 反向代理 |
 
-在 `packages/server/.env`（或 CI 环境变量）中配置：
+---
+
+## 获取发布产物
+
+在 [GitHub Releases](https://github.com/iwangbowen/zenith-admin/releases) 页面下载最新版本的两个压缩包：
+
+| 文件 | 内容 |
+|------|------|
+| `zenith-admin-server-vX.Y.Z.zip` | 后端构建产物（`dist/` + `drizzle/` + `package.json`） |
+| `zenith-admin-web-vX.Y.Z.zip` | 前端静态文件（直接托管即可） |
+
+---
+
+## 部署后端
+
+### 1. 解压并安装依赖
+
+```bash
+unzip zenith-admin-server-vX.Y.Z.zip -d zenith-server
+cd zenith-server/server
+
+# 仅安装生产依赖
+npm install --production
+```
+
+### 2. 配置环境变量
+
+在 `zenith-server/server/` 目录下创建 `.env` 文件：
 
 ```env
 PORT=3300
-JWT_SECRET=your-secret-key
-DATABASE_URL=postgresql://user:pass@host:5432/zenith_admin
-# Redis 连接（支持带密码的 URL 格式）
+JWT_SECRET=your-strong-secret-key
+
+# PostgreSQL
+DATABASE_URL=postgresql://user:pass@localhost:5432/zenith_admin
+
+# Redis（URL 格式，支持带密码）
 REDIS_URL=redis://127.0.0.1:6379
-# 带密码示例：
 # REDIS_URL=redis://:your_password@127.0.0.1:6379/0
-# 或逐项配置（与 REDIS_URL 二选一）：
-# REDIS_HOST=127.0.0.1
-# REDIS_PORT=6379
-# REDIS_PASSWORD=
-# REDIS_DB=0
+
+# 日志（可选）
+LOG_LEVEL=info
+LOG_DIR=./logs
+
+# CORS（生产环境务必收紧，指定前端域名）
+# CORS_ORIGIN=https://your-domain.com
 ```
 
-## 应用构建
+::: warning 安全提示
+生产环境务必使用强随机字符串作为 `JWT_SECRET`，并通过 `CORS_ORIGIN` 限制允许的前端来源，不要保留默认的"允许所有来源"配置。
+:::
 
-在仓库根目录执行：
+### 3. 初始化数据库
 
 ```bash
-npm run build
+# 执行数据库迁移
+node dist/db/migrate.js
+
+# 填充初始种子数据（创建 admin 账号等）
+node dist/db/seed.js
 ```
 
-构建顺序：
-
-1. `@zenith/shared`
-2. `@zenith/server`
-3. `@zenith/web`
-
-构建产物：
-
-- 后端：`packages/server/dist/`
-- 前端：`packages/web/dist/`
-
-## 文档站构建
+### 4. 启动服务
 
 ```bash
-npm run docs:build
+# 直接启动（开发/测试）
+node dist/index.js
+
+# 使用 PM2 管理进程（推荐生产环境）
+npm install -g pm2
+pm2 start dist/index.js --name zenith-server
+pm2 save
+pm2 startup
 ```
 
-构建产物位于：`docs/.vitepress/dist/`
+后端服务默认监听 `http://localhost:3300`。
 
-本地预览：
+---
+
+## 部署前端
+
+前端为纯静态文件，解压后直接用 Nginx 托管即可。
+
+### 1. 解压静态文件
 
 ```bash
-npm run docs:preview
+unzip zenith-admin-web-vX.Y.Z.zip -d zenith-web
+# 静态文件位于 zenith-web/web/dist/
 ```
 
-## 文档站自动部署（GitHub Pages）
+### 2. Nginx 配置示例
 
-文档站已经按 **GitHub Pages 官方 Actions 方案**接入自动部署。
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
 
-### 工作流文件
+    # 前端静态文件
+    root /path/to/zenith-web/web/dist;
+    index index.html;
 
-仓库中会新增：
+    # SPA 路由支持
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
 
-- `.github/workflows/docs-pages.yml`
+    # 后端 API 反向代理
+    location /api/ {
+        proxy_pass http://localhost:3300;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
 
-### 触发方式
+    # WebSocket 支持
+    location /ws {
+        proxy_pass http://localhost:3300;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+}
+```
 
-- 推送到 `master` 时：构建并发布文档站
-- Pull Request 时：只做构建校验，不执行发布
-- 支持手动触发工作流
+::: tip
+将 `your-domain.com` 替换为实际域名，`/path/to/zenith-web/web/dist` 替换为实际路径。
+生产环境建议同时配置 HTTPS（可使用 Let's Encrypt）。
+:::
 
-### 访问地址
+### 3. 前端环境配置
 
-当前仓库为 `iwangbowen/zenith-admin`，如果启用 GitHub Pages，默认访问地址会是：
+若需要自定义前端接入的 API 地址，在构建前修改 `packages/web/.env` 中的 `VITE_API_BASE_URL`，或在使用 Nginx 反向代理时，将 `/api/` 代理到后端，前端保持默认配置即可。
 
-`https://iwangbowen.github.io/zenith-admin/`
+---
 
-### `base` 路径策略
+## 健康检查
 
-文档站配置已经按环境自动切换：
+服务启动后，可通过以下接口确认后端运行正常：
 
-- 本地开发：`/`
-- GitHub Pages 构建：`/zenith-admin/`
+```bash
+curl http://localhost:3300/api/health
+```
 
-这样本地调试和线上发布都能正常工作，不需要手动来回改配置。
+返回 `200 OK` 表示服务正常。
 
-## 生产部署建议
+---
 
-### 后端
+## 升级版本
 
-- 使用 Node.js 运行构建后的 `packages/server/dist/`
-- 生产环境应收紧 CORS 配置
-- 生产数据库应通过环境变量提供 `DATABASE_URL`
+1. 在 [GitHub Releases](https://github.com/iwangbowen/zenith-admin/releases) 下载新版本产物
+2. 停止当前后端进程（`pm2 stop zenith-server`）
+3. 替换 `dist/` 目录内容
+4. 执行数据库迁移（新版本可能包含 schema 变更）
 
-### 前端
+   ```bash
+   node dist/db/migrate.js
+   ```
 
-- 可部署到任意静态托管平台
-- 需要正确配置 `VITE_API_BASE_URL`
-
-### 文档站
-
-- 适合部署到 GitHub Pages、Vercel、Netlify 等静态平台
-- 当前已接入 GitHub Pages 自动化部署
-- 如果仓库名发生变化，需要同步确认线上 `base` 路径是否仍然正确
-
-## 你需要手动做的事
-
-代码侧的配置我可以补齐，但 GitHub 仓库设置里还有几步需要你自己在网页上完成：
-
-1. 打开仓库 **Settings → Pages**
-2. 在 **Build and deployment** 中将 Source 设为 **GitHub Actions**
-3. 确认默认分支是 `master`
-4. 推送当前改动到 GitHub
-5. 到 **Actions** 页面确认 `Docs Pages` 工作流执行成功
-
-## 发布后建议检查
-
-工作流首次成功后，建议你实际检查这些页面：
-
-- 首页：`/zenith-admin/`
-- 快速开始：`/zenith-admin/guide/getting-started`
-- 产品概览：`/zenith-admin/product/overview`
-- Changelog：`/zenith-admin/changelog/`
-
-重点确认：
-
-- 页面样式是否正常
-- favicon 是否正常
-- 暗色模式切换是否正常
-- 内页刷新是否正常
-- 静态资源是否没有 404
-
-## 后续可选项
-
-- 如果后续接自定义域名，`base` 策略可能需要调整
-- 如果想让 PR 先做更严格校验，可以再单独拆分一个 docs check workflow
+5. 重启后端进程（`pm2 restart zenith-server`）
+6. 替换前端静态文件目录内容，Nginx 无需重启
