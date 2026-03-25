@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Dropdown, Empty, List, Notification, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
@@ -102,6 +102,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   // ─── 通知公告 ─────────────────────────────────────────────────────────────
   const [notices, setNotices] = useState<(Notice & { isRead?: boolean })[]>([]);
   const [noticePopVisible, setNoticePopVisible] = useState(false);
+  const recentNoticeMessageRef = useRef(new Map<string, number>());
 
   const fetchNotices = () => {
     request.get<(Notice & { isRead?: boolean })[]>('/api/notices/published', { silent: true }).then((res) => {
@@ -116,8 +117,26 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   // ─── WebSocket ──────────────────────────────────────────────────────────────
   const handleWsMessage = useCallback((msg: WsMessage) => {
     if (msg.type === 'notice:new') {
-      // Prepend the new notice and show a notification popup
-      setNotices((prev) => [{ ...msg.payload, isRead: false }, ...prev]);
+      const messageKey = `${msg.payload.id}:${msg.payload.updatedAt}`;
+      const now = Date.now();
+
+      for (const [key, timestamp] of recentNoticeMessageRef.current) {
+        if (now - timestamp > 60_000) {
+          recentNoticeMessageRef.current.delete(key);
+        }
+      }
+
+      if (recentNoticeMessageRef.current.has(messageKey)) {
+        return;
+      }
+
+      recentNoticeMessageRef.current.set(messageKey, now);
+
+      setNotices((prev) => {
+        const next = prev.filter((notice) => notice.id !== msg.payload.id);
+        return [{ ...msg.payload, isRead: false }, ...next];
+      });
+
       Notification.info({
         title: '新通知',
         content: msg.payload.title,
