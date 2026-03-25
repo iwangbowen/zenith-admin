@@ -21,7 +21,7 @@ const DAYS_OPTIONS = [
   { label: '最近 90 天', value: 90 },
 ];
 
-const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 function getHeatColor(count: number, max: number): string {
   if (count === 0 || max === 0) return 'var(--semi-color-fill-1)';
