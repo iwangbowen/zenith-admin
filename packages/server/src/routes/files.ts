@@ -8,6 +8,25 @@ import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConf
 import { exportToExcel } from '../lib/excel-export';
 
 const filesRouter = new Hono();
+
+// 文件内容公开访问（用于头像等展示场景，浏览器 img src 无法携带 Token）
+filesRouter.get('/:id/content', async (c) => {
+  const id = Number(c.req.param('id'));
+  const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
+  if (!file) return c.json({ code: 404, message: '文件不存在', data: null }, 404);
+
+  const [storageConfig] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, file.storageConfigId)).limit(1);
+  if (!storageConfig) return c.json({ code: 404, message: '文件存储配置不存在', data: null }, 404);
+
+  const storedFile = await readStoredFile(file, storageConfig);
+  return new Response(new Uint8Array(storedFile.buffer), {
+    headers: {
+      'Content-Type': storedFile.contentType,
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(storedFile.fileName)}`,
+    },
+  });
+});
+
 filesRouter.use('*', authMiddleware);
 
 function isUploadFile(value: unknown): value is File {
@@ -114,23 +133,6 @@ filesRouter.post('/upload', guard({ permission: 'system:file:upload', audit: { d
   }).returning();
 
   return c.json({ code: 0, message: '上传成功', data: toManagedFile(created) });
-});
-
-filesRouter.get('/:id/content', async (c) => {
-  const id = Number(c.req.param('id'));
-  const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
-  if (!file) return c.json({ code: 404, message: '文件不存在', data: null }, 404);
-
-  const [storageConfig] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, file.storageConfigId)).limit(1);
-  if (!storageConfig) return c.json({ code: 404, message: '文件存储配置不存在', data: null }, 404);
-
-  const storedFile = await readStoredFile(file, storageConfig);
-  return new Response(new Uint8Array(storedFile.buffer), {
-    headers: {
-      'Content-Type': storedFile.contentType,
-      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(storedFile.fileName)}`,
-    },
-  });
 });
 
 filesRouter.delete('/:id', guard({ permission: 'system:file:delete', audit: { description: '删除文件', module: '文件管理', recordBody: false } }), async (c) => {
