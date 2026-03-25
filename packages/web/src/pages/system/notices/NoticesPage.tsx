@@ -19,6 +19,7 @@ import { formatDateTime } from '../../../utils/date';
 import { useDictItems } from '../../../hooks/useDictItems';
 import DictTag from '../../../components/DictTag';
 import { usePermission } from '../../../hooks/usePermission';
+import RichTextEditor from '../../../components/RichTextEditor';
 
 type SearchParams = {
   title: string;
@@ -44,6 +45,8 @@ export default function NoticesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formApi, setFormApi] = useState<any>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [contentHtml, setContentHtml] = useState('');
+  const [editorKey, setEditorKey] = useState(0);
 
   const { items: typeItems } = useDictItems('notice_type');
   const { items: statusItems } = useDictItems('notice_publish_status');
@@ -97,10 +100,14 @@ export default function NoticesPage() {
 
   const openCreateModal = () => {
     setEditingNotice(null);
+    setContentHtml('');
+    setEditorKey((k) => k + 1);
     setModalVisible(true);
   };
 
   const openEditModal = (record: Notice) => {
+    setContentHtml(record.content ?? '');
+    setEditorKey((k) => k + 1);
     setEditingNotice(record);
     setModalVisible(true);
   };
@@ -139,9 +146,15 @@ export default function NoticesPage() {
     }
     setSubmitting(true);
     try {
+      const isContentEmpty = !contentHtml || contentHtml === '<p><br></p>';
+      if (isContentEmpty) {
+        Toast.warning('请输入通知内容');
+        setSubmitting(false);
+        return;
+      }
       const payload = {
         title: values.title,
-        content: values.content,
+        content: contentHtml,
         type: values.type || 'notice',
         publishStatus: values.publishStatus || 'draft',
         priority: values.priority || 'medium',
@@ -324,7 +337,7 @@ export default function NoticesPage() {
         okText={editingNotice ? '保存' : '创建'}
         cancelText="取消"
         confirmLoading={submitting}
-        width={640}
+        width={860}
         afterClose={() => formApi?.reset()}
       >
         <Form
@@ -334,7 +347,6 @@ export default function NoticesPage() {
             editingNotice
               ? {
                   title: editingNotice.title,
-                  content: editingNotice.content,
                   type: editingNotice.type,
                   publishStatus: editingNotice.publishStatus,
                   priority: editingNotice.priority,
@@ -348,13 +360,16 @@ export default function NoticesPage() {
             placeholder="请输入通知标题"
             rules={[{ required: true, message: '标题不能为空' }]}
           />
-          <Form.TextArea
-            field="content"
-            label="内容"
-            placeholder="请输入通知内容"
-            rows={5}
-            rules={[{ required: true, message: '内容不能为空' }]}
-          />
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 4, fontSize: 14, fontWeight: 500 }}>内容</div>
+            <RichTextEditor
+              key={editorKey}
+              value={contentHtml}
+              onChange={setContentHtml}
+              placeholder="请输入通知内容"
+              height={350}
+            />
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
             <Form.Select
               field="type"
