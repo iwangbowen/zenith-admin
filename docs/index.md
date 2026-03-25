@@ -5,7 +5,7 @@ titleTemplate: false
 hero:
   name: Zenith Admin
   text: 全栈后台项目底座
-  tagline: 基于 Hono + React + Drizzle ORM 的全栈后台管理底座，内置常用后台能力，开箱即用。
+  tagline: 基于 Hono + React + Drizzle ORM 的全栈后台管理底座，内置常用后台能力，原生 AI 友好，一句话生成完整 CRUD 模块。
   actions:
     - theme: brand
       text: 快速开始 →
@@ -56,6 +56,7 @@ features:
   <ul class="zn-navlist">
     <li><a href="/guide/getting-started">快速开始</a> — 环境准备 → 启动项目 → 看到页面</li>
     <li><a href="/guide/project-structure">项目结构</a> — 目录分层与职责说明</li>
+    <li><a href="/ai/">AI 辅助开发</a> — 使用 Zenith Skill 一句话生成 CRUD 模块</li>
     <li><a href="/product/features">功能清单</a> — 已实现模块一览</li>
     <li><a href="/backend/api-conventions">接口规范</a> — 响应格式 · 鉴权 · 分页</li>
   </ul>

@@ -34,6 +34,7 @@ export default defineConfig({
     nav: [
       { text: '首页', link: '/' },
       { text: '快速开始', link: '/guide/getting-started' },
+      { text: 'AI 辅助开发', link: '/ai/' },
       { text: '产品', link: '/product/overview' },
       { text: '后端', link: '/backend/api-conventions' },
       { text: '前端', link: '/frontend/ui-conventions' },
@@ -58,6 +59,15 @@ export default defineConfig({
           { text: '本地开发', link: '/guide/development' },
           { text: '项目结构', link: '/guide/project-structure' },
           { text: '部署说明', link: '/guide/deployment' },
+        ],
+      },
+      {
+        text: 'AI 辅助开发',
+        collapsed: false,
+        items: [
+          { text: '概览', link: '/ai/' },
+          { text: 'AGENTS.md', link: '/ai/agents' },
+          { text: 'Zenith Skill', link: '/ai/skills' },
         ],
       },
       {
