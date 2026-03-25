@@ -139,6 +139,42 @@
   padding-top: 0;
 }
 
+/* 项目链接 */
+.project-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-link-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 13px;
+  border: 1px solid var(--color-border);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.project-link-item:hover {
+  background: var(--semi-color-primary-light-default);
+  border-color: var(--semi-color-primary);
+  color: var(--semi-color-primary);
+}
+
+/* 日历卡片 */
+.dashboard-card--calendar .semi-calendar-month {
+  border: none;
+  background: transparent;
+}
+
+.dashboard-card--calendar .semi-calendar-month-grid {
+  font-size: 12px;
+}
+
 /* 通知公告列表 */
 .notice-list {
   padding: 0;

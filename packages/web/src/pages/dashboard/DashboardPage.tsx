@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, Typography, Tag, Space, Spin, Empty, Toast, List } from '@douyinfe/semi-ui';
-import { Bell } from 'lucide-react';
+import { Button, Card, Calendar, Typography, Tag, Space, Spin, Empty, Toast, List } from '@douyinfe/semi-ui';
+import { Bell, Github, BookOpen, MonitorPlay } from 'lucide-react';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import type { Notice } from '@zenith/shared';
@@ -126,8 +126,29 @@ export default function DashboardPage() {
 
         <div className="dashboard-column">
           <Card
+            title={<Text strong style={{ fontSize: 14 }}>项目链接</Text>}
+            className="dashboard-card dashboard-card--links"
+          >
+            <div className="project-links">
+              <a href="https://github.com/iwangbowen/zenith-admin" target="_blank" rel="noreferrer" className="project-link-item">
+                <Github size={18} />
+                <span>GitHub 仓库</span>
+              </a>
+              <a href="https://iwangbowen.github.io/zenith-admin/" target="_blank" rel="noreferrer" className="project-link-item">
+                <BookOpen size={18} />
+                <span>文档站点</span>
+              </a>
+              <a href="https://iwangbowen.github.io/zenith-admin/demo/" target="_blank" rel="noreferrer" className="project-link-item">
+                <MonitorPlay size={18} />
+                <span>在线演示</span>
+              </a>
+            </div>
+          </Card>
+
+          <Card
             title={<Text strong style={{ fontSize: 14 }}>技术架构</Text>}
             className="dashboard-card dashboard-card--architecture"
+            style={{ marginTop: 16 }}
           >
             <div className="architecture-list">
               {architectureItems.map((item) => (
@@ -147,6 +168,15 @@ export default function DashboardPage() {
                 <Tag color="orange" size="small">JWT</Tag>
               </Space>
             </div>
+          </Card>
+
+          <Card
+            title={<Text strong style={{ fontSize: 14 }}>日历</Text>}
+            className="dashboard-card dashboard-card--calendar"
+            style={{ marginTop: 16 }}
+            bodyStyle={{ padding: '8px 0 4px' }}
+          >
+            <Calendar mode="month" />
           </Card>
         </div>
       </div>
