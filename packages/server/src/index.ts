@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
+import { swaggerUI } from '@hono/swagger-ui';
 import { config } from './config';
+import { openapiSpec } from './openapi';
 import logger from './lib/logger';
 import { db } from './db/index';
 import redis from './lib/redis';
@@ -82,6 +84,10 @@ app.get('/api/health', async (c) => {
     checks,
   });
 });
+
+// API 文档（无需认证）
+app.get('/api/openapi.json', (c) => c.json(openapiSpec));
+app.get('/api/docs', swaggerUI({ url: '/api/openapi.json' }));
 
 // 全局未捕获异常处理—统一返回标准错误格式
 app.onError((err, c) => {

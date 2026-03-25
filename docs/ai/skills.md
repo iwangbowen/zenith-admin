@@ -18,7 +18,7 @@ Zenith Skill 是针对 Zenith Admin 的专属开发辅助工作流，内置于 `
 
 ---
 
-## 执行流程
+## CRUD 生成流程
 
 ### Step 0：信息收集与确认
 
@@ -75,15 +75,39 @@ AI 会在生成代码之前，主动向你确认以下信息：
 
 ---
 
+## 后端路由规范
+
+生成的 Hono 路由遵循以下约定（详见 [API 规范](/backend/api-conventions)）：
+
+- `GET    /api/{resource}`      — 分页列表，支持多字段筛选
+- `POST   /api/{resource}`      — 新增
+- `PUT    /api/{resource}/:id`  — 更新
+- `DELETE /api/{resource}/:id`  — 删除
+
+所有路由通过 `guard` 中间件自动记录操作日志。如需记录操作前/后数据 diff，需在 PUT/DELETE handler 中调用 `setAuditBeforeData()`，详见[操作日志与变更记录](/backend/audit-log-changes)。
+
+---
+
+## 前端页面规范
+
+生成的列表页遵循统一布局约定（详见 [UI 规范](/frontend/ui-conventions)）：
+
+- 搜索区与操作按钮位于同一行，左侧搜索，右侧「新增」按钮
+- 使用 `<Table bordered>` 数据表格
+- 操作列使用纯文字 borderless 按钮，右侧固定（`fixed: 'right'`）
+- 新增/编辑使用 `Modal` 弹窗，删除使用 `Popconfirm` 二次确认
+
+---
+
 ## Skill 文件结构
 
 ```text
 .claude/skills/zenith/
 ├── SKILL.md               # 工作流入口与步骤定义
 └── references/
-    ├── crud-backend.md    # 后端路由代码模板
-    ├── crud-frontend.md   # 前端页面代码模板
-    ├── crud-mock.md       # MSW Mock 代码模板
+    ├── crud-backend.md    # 后端路由完整代码模板（含 diff 记录）
+    ├── crud-frontend.md   # 前端列表页完整代码模板
+    ├── crud-mock.md       # MSW Mock handler 代码模板
     └── crud-seed.md       # 种子数据代码模板
 ```
 
