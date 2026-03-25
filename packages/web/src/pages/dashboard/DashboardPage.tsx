@@ -78,9 +78,11 @@ export default function DashboardPage() {
                     <Tag color={typeInfo.color} size="small">{typeInfo.label}</Tag>
                     <Tag color={priInfo.color} size="small">{priInfo.label}</Tag>
                   </div>
-                  <Text type="tertiary" size="small" className="notice-summary">
-                    {n.content || '暂无详细内容'}
-                  </Text>
+                  <div
+                    className="notice-summary"
+                    style={{ maxHeight: 40, overflow: 'hidden', lineHeight: 1.5 }}
+                    dangerouslySetInnerHTML={{ __html: n.content || '' }}
+                  />
                   <div className="notice-item-footer">
                     <Text type="tertiary" size="small">
                       {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}

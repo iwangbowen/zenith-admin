@@ -349,9 +349,10 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     main={
                       <div>
                         <Typography.Text strong style={{ fontSize: 13 }}>{item.title}</Typography.Text>
-                        <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: 12, color: 'var(--semi-color-text-2)', margin: '3px 0 4px' }}>
-                          {item.content}
-                        </Typography.Paragraph>
+                        <div
+                          style={{ fontSize: 12, color: 'var(--semi-color-text-2)', margin: '3px 0 4px', maxHeight: 40, overflow: 'hidden', lineHeight: 1.5 }}
+                          dangerouslySetInnerHTML={{ __html: item.content }}
+                        />
                         <Typography.Text style={{ fontSize: 11, color: 'var(--semi-color-text-3)' }}>
                           {item.publishTime ? formatDateTime(item.publishTime) : formatDateTime(item.createdAt)}
                         </Typography.Text>
