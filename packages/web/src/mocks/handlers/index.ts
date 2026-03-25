@@ -13,6 +13,7 @@ import { monitorHandlers } from './monitor';
 import { loginLogsHandlers } from './login-logs';
 import { operationLogsHandlers } from './operation-logs';
 import { sessionsHandlers } from './sessions';
+import { regionsHandlers } from './regions';
 
 export const handlers = [
   ...authHandlers,
@@ -30,4 +31,5 @@ export const handlers = [
   ...loginLogsHandlers,
   ...operationLogsHandlers,
   ...sessionsHandlers,
+  ...regionsHandlers,
 ];

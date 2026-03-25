@@ -227,3 +227,18 @@ export const updateCronJobSchema = createCronJobSchema.partial();
 
 export type CreateCronJobInput = z.infer<typeof createCronJobSchema>;
 export type UpdateCronJobInput = z.infer<typeof updateCronJobSchema>;
+
+// ─── 地区管理 Schema ───────────────────────────────────────────────────────────
+export const createRegionSchema = z.object({
+  code:       z.string().min(1, '区划代码不能为空').max(12),
+  name:       z.string().min(1, '名称不能为空').max(64),
+  level:      z.enum(['province', 'city', 'county']),
+  parentCode: z.string().max(12).nullable().optional(),
+  sort:       z.number().int().default(0),
+  status:     z.enum(['active', 'disabled']).default('active'),
+});
+
+export const updateRegionSchema = createRegionSchema.partial();
+
+export type CreateRegionInput = z.infer<typeof createRegionSchema>;
+export type UpdateRegionInput = z.infer<typeof updateRegionSchema>;

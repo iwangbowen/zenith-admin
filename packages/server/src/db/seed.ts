@@ -1,9 +1,18 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions } from './schema';
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
+import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
+
+const require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { provinces, cities, areas } = require('china-division') as {
+  provinces: Array<{ code: string; name: string }>;
+  cities: Array<{ code: string; name: string; provinceCode: string }>;
+  areas: Array<{ code: string; name: string; cityCode: string; provinceCode: string }>;
+};
 
 /**
  * 种子数据初始化脚本
@@ -167,6 +176,43 @@ async function seed() {
     .values(cronJobRows)
     .onConflictDoNothing({ target: cronJobs.name });
   logger.info('  ✔ Cron jobs seeded (onConflictDoNothing)');
+
+  // ─── 10. 地区数据（来源：china-division 包）────────────────────────────────
+  const regionRows = [
+    ...provinces.map((p, i) => ({
+      code: p.code,
+      name: p.name,
+      level: 'province' as const,
+      parentCode: null,
+      sort: i,
+      status: 'active' as const,
+    })),
+    ...cities.map((c, i) => ({
+      code: c.code,
+      name: c.name,
+      level: 'city' as const,
+      parentCode: c.provinceCode,
+      sort: i,
+      status: 'active' as const,
+    })),
+    ...areas.map((a, i) => ({
+      code: a.code,
+      name: a.name,
+      level: 'county' as const,
+      parentCode: a.cityCode,
+      sort: i,
+      status: 'active' as const,
+    })),
+  ];
+  // 批量插入，每批 500 条，避免单次参数过多
+  const BATCH_SIZE = 500;
+  let inserted = 0;
+  for (let i = 0; i < regionRows.length; i += BATCH_SIZE) {
+    const batch = regionRows.slice(i, i + BATCH_SIZE);
+    await db.insert(regions).values(batch).onConflictDoNothing({ target: regions.code });
+    inserted += batch.length;
+  }
+  logger.info(`  ✔ Regions seeded (onConflictDoNothing) — ${inserted} records`);
 
   logger.info('🎉 Seed complete.');
   process.exit(0);

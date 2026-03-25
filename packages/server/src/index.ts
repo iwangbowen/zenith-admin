@@ -21,6 +21,7 @@ import noticesRoutes from './routes/notices';
 import systemConfigsRoutes from './routes/system-configs';
 import sessionsRoutes from './routes/sessions';
 import cronJobsRoutes from './routes/cron-jobs';
+import regionsRoutes from './routes/regions';
 import { createWsRoute } from './routes/ws';
 import { initCronScheduler } from './lib/cron-scheduler';
 
@@ -47,6 +48,7 @@ app.route('/api/notices', noticesRoutes);
 app.route('/api/system-configs', systemConfigsRoutes);
 app.route('/api/sessions', sessionsRoutes);
 app.route('/api/cron-jobs', cronJobsRoutes);
+app.route('/api/regions', regionsRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 
 app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));

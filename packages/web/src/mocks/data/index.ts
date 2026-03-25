@@ -7,3 +7,4 @@ export * from './dicts';
 export * from './system';
 export * from './notices';
 export * from './logs';
+export * from './regions';

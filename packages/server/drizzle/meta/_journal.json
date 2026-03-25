@@ -99,6 +99,13 @@
       "when": 1774332295714,
       "tag": "0013_cheerful_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1774400149542,
+      "tag": "0014_outgoing_namora",
+      "breakpoints": true
     }
   ]
 }

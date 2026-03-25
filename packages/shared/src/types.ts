@@ -263,3 +263,19 @@ export interface CaptchaResponse {
 export type WsMessage =
   | { type: 'notice:new'; payload: Notice }
   | { type: 'session:force-logout'; payload: { reason: string } };
+
+// ─── 地区管理 ──────────────────────────────────────────────
+export type RegionLevel = 'province' | 'city' | 'county';
+
+export interface Region {
+  id: number;
+  code: string;
+  name: string;
+  level: RegionLevel;
+  parentCode: string | null;
+  sort: number;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
+  children?: Region[];
+}

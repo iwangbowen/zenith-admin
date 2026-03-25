@@ -281,3 +281,21 @@ export const cronJobs = pgTable('cron_jobs', {
 
 export type CronJobRow = typeof cronJobs.$inferSelect;
 export type NewCronJob = typeof cronJobs.$inferInsert;
+
+// ─── 地区表 ──────────────────────────────────────────────────────────────────
+export const regionLevelEnum = pgEnum('region_level', ['province', 'city', 'county']);
+
+export const regions = pgTable('regions', {
+  id:         serial('id').primaryKey(),
+  code:       varchar('code', { length: 12 }).notNull().unique(),
+  name:       varchar('name', { length: 64 }).notNull(),
+  level:      regionLevelEnum('level').notNull(),
+  parentCode: varchar('parent_code', { length: 12 }),
+  sort:       integer('sort').notNull().default(0),
+  status:     statusEnum('status').notNull().default('active'),
+  createdAt:  timestamp('created_at').defaultNow().notNull(),
+  updatedAt:  timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type RegionRow = typeof regions.$inferSelect;
+export type NewRegion = typeof regions.$inferInsert;
