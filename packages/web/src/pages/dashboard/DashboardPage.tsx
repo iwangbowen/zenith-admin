@@ -141,15 +141,12 @@ export default function DashboardPage() {
             <div className="project-links">
               <a href="https://github.com/iwangbowen/zenith-admin" target="_blank" rel="noreferrer" className="project-link-item" title="GitHub 仓库">
                 <Github size={18} />
-                <span>GitHub</span>
               </a>
               <a href="https://iwangbowen.github.io/zenith-admin/" target="_blank" rel="noreferrer" className="project-link-item" title="文档站点">
                 <BookOpen size={18} />
-                <span>文档</span>
               </a>
               <a href="https://iwangbowen.github.io/zenith-admin/demo/" target="_blank" rel="noreferrer" className="project-link-item" title="在线演示">
                 <MonitorPlay size={18} />
-                <span>演示</span>
               </a>
             </div>
           </Card>
