@@ -122,6 +122,15 @@ export default function DashboardPage() {
           >
             {renderNotices()}
           </Card>
+
+          <Card
+            title={<Text strong style={{ fontSize: 14 }}>日历</Text>}
+            className="dashboard-card dashboard-card--calendar"
+            style={{ marginTop: 16 }}
+            bodyStyle={{ padding: '8px 0 4px' }}
+          >
+            <Calendar mode="month" />
+          </Card>
         </div>
 
         <div className="dashboard-column">
@@ -130,17 +139,17 @@ export default function DashboardPage() {
             className="dashboard-card dashboard-card--links"
           >
             <div className="project-links">
-              <a href="https://github.com/iwangbowen/zenith-admin" target="_blank" rel="noreferrer" className="project-link-item">
+              <a href="https://github.com/iwangbowen/zenith-admin" target="_blank" rel="noreferrer" className="project-link-item" title="GitHub 仓库">
                 <Github size={18} />
-                <span>GitHub 仓库</span>
+                <span>GitHub</span>
               </a>
-              <a href="https://iwangbowen.github.io/zenith-admin/" target="_blank" rel="noreferrer" className="project-link-item">
+              <a href="https://iwangbowen.github.io/zenith-admin/" target="_blank" rel="noreferrer" className="project-link-item" title="文档站点">
                 <BookOpen size={18} />
-                <span>文档站点</span>
+                <span>文档</span>
               </a>
-              <a href="https://iwangbowen.github.io/zenith-admin/demo/" target="_blank" rel="noreferrer" className="project-link-item">
+              <a href="https://iwangbowen.github.io/zenith-admin/demo/" target="_blank" rel="noreferrer" className="project-link-item" title="在线演示">
                 <MonitorPlay size={18} />
-                <span>在线演示</span>
+                <span>演示</span>
               </a>
             </div>
           </Card>
@@ -168,15 +177,6 @@ export default function DashboardPage() {
                 <Tag color="orange" size="small">JWT</Tag>
               </Space>
             </div>
-          </Card>
-
-          <Card
-            title={<Text strong style={{ fontSize: 14 }}>日历</Text>}
-            className="dashboard-card dashboard-card--calendar"
-            style={{ marginTop: 16 }}
-            bodyStyle={{ padding: '8px 0 4px' }}
-          >
-            <Calendar mode="month" />
           </Card>
         </div>
       </div>

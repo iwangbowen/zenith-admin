@@ -142,21 +142,22 @@
 /* 项目链接 */
 .project-links {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  gap: 8px;
 }
 
 .project-link-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 6px 12px;
   border-radius: 8px;
   color: var(--color-text);
   text-decoration: none;
   font-size: 13px;
   border: 1px solid var(--color-border);
   transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
 }
 
 .project-link-item:hover {
