@@ -10,7 +10,7 @@ import {
   Table,
   Toast,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RotateCcw, Download } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { Position } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '../../../components/DictTag';
@@ -40,6 +40,7 @@ export default function PositionsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems } = useDictItems('common_status');
 
   const fetchPositions = useCallback(async (params = searchParams) => {
@@ -118,6 +119,22 @@ export default function PositionsPage() {
       Toast.success('删除成功');
       void fetchPositions();
     }
+  };
+
+  const handleBatchDelete = () => {
+    Modal.confirm({
+      title: `确认删除选中的 ${selectedRowKeys.length} 个岗位？`,
+      content: '删除后无法恢复，请确认操作',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        const res = await request.delete<null>('/api/positions/batch', { ids: selectedRowKeys });
+        if (res.code === 0) {
+          Toast.success(res.message ?? '删除成功');
+          setSelectedRowKeys([]);
+          void fetchPositions();
+        }
+      },
+    });
   };
 
   const columns: ColumnProps<Position>[] = [
@@ -205,6 +222,11 @@ export default function PositionsPage() {
           </Space>
           <Space>
             <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/positions/export', '岗位列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+            {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && (
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
             {hasPermission('system:position:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}
@@ -228,6 +250,10 @@ export default function PositionsPage() {
         rowKey="id"
         pagination={false}
         empty="暂无数据"
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+        }}
       />
 
       <Modal

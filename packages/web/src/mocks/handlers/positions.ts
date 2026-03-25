@@ -55,6 +55,17 @@ export const positionsHandlers = [
     return HttpResponse.json({ code: 0, message: '更新成功', data: pos });
   }),
 
+  // 批量删除岗位
+  http.delete('/api/positions/batch', async ({ request }) => {
+    const body = await request.json() as { ids: number[] };
+    const ids = body?.ids ?? [];
+    ids.forEach((id) => {
+      const index = mockPositions.findIndex((p) => p.id === id);
+      if (index !== -1) mockPositions.splice(index, 1);
+    });
+    return HttpResponse.json({ code: 0, message: `已删除 ${ids.length} 个岗位`, data: null });
+  }),
+
   // 删除岗位
   http.delete('/api/positions/:id', ({ params }) => {
     const index = mockPositions.findIndex((p) => p.id === Number(params.id));

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, asc, eq, gte, like, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, like, lte, or } from 'drizzle-orm';
 import { db } from '../db';
 import { positions, userPositions } from '../db/schema';
 import { createPositionSchema, updatePositionSchema } from '@zenith/shared';
@@ -91,6 +91,29 @@ positionsRouter.put('/:id', guard({ permission: 'system:position:update', audit:
     }
     throw error;
   }
+});
+
+// 批量删除岗位
+positionsRouter.delete('/batch', guard({ permission: 'system:position:delete', audit: { description: '批量删除岗位', module: '岗位管理' } }), async (c) => {
+  const body = await c.req.json();
+  const ids = body?.ids;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return c.json({ code: 400, message: '请选择要删除的岗位', data: null }, 400);
+  }
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) {
+    return c.json({ code: 400, message: '岗位ID格式无效', data: null }, 400);
+  }
+  // 检查是否有绑定用户
+  const bindings = await db
+    .select({ positionId: userPositions.positionId })
+    .from(userPositions)
+    .where(inArray(userPositions.positionId, validIds));
+  if (bindings.length > 0) {
+    return c.json({ code: 400, message: '所选岗位中存在关联用户，无法删除', data: null }, 400);
+  }
+  await db.delete(positions).where(inArray(positions.id, validIds));
+  return c.json({ code: 0, message: `已删除 ${validIds.length} 个岗位`, data: null });
 });
 
 positionsRouter.delete('/:id', guard({ permission: 'system:position:delete', audit: { description: '删除岗位', module: '岗位管理' } }), async (c) => {

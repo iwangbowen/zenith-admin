@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { desc, eq, like, and, sql, gte, lte } from 'drizzle-orm';
+import { desc, eq, like, and, sql, gte, lte, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { notices, noticeReads } from '../db/schema';
 import { createNoticeSchema, updateNoticeSchema } from '@zenith/shared';
@@ -175,6 +175,21 @@ noticesRouter.put('/:id', guard({ permission: 'system:notice:update', audit: { d
     broadcast({ type: 'notice:new', payload: notice });
   }
   return c.json({ code: 0, message: '更新成功', data: notice });
+});
+
+// 批量删除
+noticesRouter.delete('/batch', guard({ permission: 'system:notice:delete', audit: { description: '批量删除通知公告', module: '通知公告' } }), async (c) => {
+  const body = await c.req.json();
+  const ids = body?.ids;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return c.json({ code: 400, message: '请选择要删除的通知', data: null }, 400);
+  }
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) {
+    return c.json({ code: 400, message: '通知ID格式无效', data: null }, 400);
+  }
+  await db.delete(notices).where(inArray(notices.id, validIds));
+  return c.json({ code: 0, message: `已删除 ${validIds.length} 条通知`, data: null });
 });
 
 // 删除

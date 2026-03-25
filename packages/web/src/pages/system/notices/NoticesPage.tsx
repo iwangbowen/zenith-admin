@@ -11,7 +11,7 @@ import {
   Select,
   DatePicker,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RotateCcw, Download } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { Notice, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '../../../utils/request';
@@ -43,6 +43,7 @@ export default function NoticesPage() {
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formApi, setFormApi] = useState<any>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
   const { items: typeItems } = useDictItems('notice_type');
   const { items: statusItems } = useDictItems('notice_publish_status');
@@ -110,6 +111,22 @@ export default function NoticesPage() {
       Toast.success('删除成功');
       fetchData(page, pageSize, submittedParams);
     }
+  };
+
+  const handleBatchDelete = () => {
+    Modal.confirm({
+      title: `确认删除选中的 ${selectedRowKeys.length} 条通知？`,
+      content: '删除后无法恢复，请确认操作',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        const res = await request.delete<null>('/api/notices/batch', { ids: selectedRowKeys });
+        if (res.code === 0) {
+          Toast.success(res.message ?? '删除成功');
+          setSelectedRowKeys([]);
+          fetchData(1, pageSize, submittedParams);
+        }
+      },
+    });
   };
 
   const handleSubmit = async () => {
@@ -257,6 +274,11 @@ export default function NoticesPage() {
           <div className="responsive-toolbar__right">
           <Space>
             <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/notices/export', '通知列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+            {selectedRowKeys.length > 0 && hasPermission('system:notice:delete') && (
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
             {hasPermission('system:notice:create') && <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>}
             </Space>
           </div>
@@ -271,6 +293,10 @@ export default function NoticesPage() {
           loading={loading}
           rowKey="id"
           scroll={{ x: 1200 }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys as number[]),
+          }}
           pagination={{
             total,
             currentPage: page,
