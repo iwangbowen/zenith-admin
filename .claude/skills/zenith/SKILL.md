@@ -74,6 +74,21 @@ export const xxxTable = pgTable('xxx', {
 });
 ```
 
+> **设计原则**：`department_id` 在**创建记录时**从创建人的部门写入，之后不随人员部门变动而改变。这样即使创建人后来调岗，历史数据仍归属于原部门。因此过滤逻辑是 `WHERE data.department_id IN (我的部门及子部门)`，而非通过 `created_by` 反查创建人的当前部门。
+
+**创建接口中需自动填入部门**（示例）：
+
+```ts
+// POST / 创建接口
+const [creator] = await db.select({ departmentId: users.departmentId })
+  .from(users).where(eq(users.id, currentUserId)).limit(1);
+
+await db.insert(xxxTable).values({
+  ...validatedData,
+  departmentId: creator?.departmentId ?? null,  // 自动从创建人获取部门
+});
+```
+
 #### 后端实现方式（使用公共工具函数）
 
 **统一使用** `getDataScopeCondition`（位于 `packages/server/src/lib/data-scope.ts`），**不要在各路由中重复内联查询逻辑**。
