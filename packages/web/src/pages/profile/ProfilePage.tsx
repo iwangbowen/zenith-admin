@@ -36,7 +36,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       return;
     }
     setPwdLoading(true);
-    const res = await request.put('/auth/password', {
+    const res = await request.put('/api/auth/password', {
       oldPassword: values.oldPassword,
       newPassword: values.newPassword,
     });
