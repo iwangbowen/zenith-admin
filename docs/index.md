@@ -5,7 +5,7 @@ titleTemplate: false
 hero:
   name: Zenith Admin
   text: 全栈后台项目底座
-  tagline: 基于 Hono + React + Drizzle ORM 的全栈后台管理底座，内置常用后台能力，原生 AI 友好，一句话生成完整 CRUD 模块。
+  tagline: 基于 Hono + React + Semi Design + Drizzle ORM 的全栈后台管理底座，内置常用后台能力，原生 AI 友好，一句话生成完整 CRUD 模块。
   actions:
     - theme: brand
       text: 快速开始 →
@@ -17,16 +17,16 @@ hero:
       text: GitHub
       link: https://github.com/iwangbowen/zenith-admin
 features:
+  - title: Semi Design UI
+    details: 前端基于抖音开源的 Semi Design v2 组件库，提供完整的企业级 UI 组件，图标统一使用 lucide-react。
   - title: 用户 / 角色 / 菜单
     details: 支持动态菜单配置与 RBAC 权限控制，提供按钮级别鉴权能力。
   - title: 共享类型层
     details: Zod Schema 在前后端共享，统一校验逻辑，减少字段不一致风险。
   - title: 文件存储
     details: 支持本地存储与阿里云 OSS 两种模式，可在后台配置页面切换。
-  - title: 数据字典
-    details: 通过后台配置动态管理枚举类型，无需修改代码即可变更选项。
-  - title: JWT 鉴权
-    details: 采用 JWT Bearer Token 认证，有效期 7 天，中间件统一处理鉴权逻辑。
+  - title: JWT 双 Token 鉴权
+    details: 采用 Access Token + Refresh Token 双 token 机制，前端自动续期，对业务代码透明，中间件统一处理鉴权逻辑。
   - title: 数据库迁移
     details: Schema 变更通过 Drizzle 迁移管理，SQL 历史文件可追溯版本变更。
 ---
@@ -36,7 +36,7 @@ features:
   <p class="zn-desc">项目使用的主要技术栈。</p>
   <ul class="zn-deflist">
     <li><span class="zn-term">后端</span><span class="zn-def">Hono v4 · Node.js · Drizzle ORM · PostgreSQL</span></li>
-    <li><span class="zn-term">前端</span><span class="zn-def">React 19 · Vite · Semi Design · react-router v7</span></li>
+    <li><span class="zn-term">前端</span><span class="zn-def">React 19 · Vite · <a href="https://semi.design/" target="_blank">Semi Design v2</a> · react-router v7 · lucide-react</span></li>
     <li><span class="zn-term">工程</span><span class="zn-def">npm monorepo · 共享 Zod 校验 · JWT 鉴权</span></li>
   </ul>
 </section>
