@@ -20,6 +20,68 @@ function DetailField({ label, children }: Readonly<{ label: string; children: Re
   );
 }
 
+function DataDiff({ beforeData, afterData }: Readonly<{ beforeData: string | null; afterData: string | null }>) {
+  const parseSafe = (s: string | null): Record<string, unknown> | null => {
+    if (!s) return null;
+    try { return JSON.parse(s) as Record<string, unknown>; } catch { return null; }
+  };
+  const before = parseSafe(beforeData);
+  const after = parseSafe(afterData);
+
+  if (!before && !after) {
+    return <span style={{ color: 'var(--semi-color-text-2)' }}>无变更数据</span>;
+  }
+
+  const allKeys = Array.from(new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]));
+  const changedKeys = allKeys.filter((k) => {
+    const bv = JSON.stringify(before?.[k]);
+    const av = JSON.stringify(after?.[k]);
+    return bv !== av;
+  });
+
+  if (changedKeys.length === 0 && before && after) {
+    return <span style={{ color: 'var(--semi-color-text-2)' }}>数据未发生变化</span>;
+  }
+
+  const displayKeys = changedKeys.length > 0 ? changedKeys : allKeys;
+  const fmtVal = (v: unknown): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'object') return JSON.stringify(v);
+    // v is a primitive (string, number, boolean, bigint, symbol) here
+    return `${v as string | number | boolean}`;
+  };
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      <thead>
+        <tr style={{ background: 'var(--semi-color-fill-0)' }}>
+          <th style={{ padding: '4px 8px', textAlign: 'left', width: '30%' }}>字段</th>
+          <th style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--semi-color-danger)' }}>变更前</th>
+          <th style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--semi-color-success)' }}>变更后</th>
+        </tr>
+      </thead>
+      <tbody>
+        {displayKeys.map((k) => {
+          const bv = before?.[k];
+          const av = after?.[k];
+          const changed = JSON.stringify(bv) !== JSON.stringify(av);
+          return (
+            <tr key={k} style={{ background: changed ? 'var(--semi-color-warning-light-default)' : undefined }}>
+              <td style={{ padding: '3px 8px', fontWeight: 500 }}>{k}</td>
+              <td style={{ padding: '3px 8px', color: changed ? 'var(--semi-color-danger)' : undefined }}>
+                {fmtVal(bv) == null ? <span style={{ opacity: 0.4 }}>—</span> : fmtVal(bv)}
+              </td>
+              <td style={{ padding: '3px 8px', color: changed ? 'var(--semi-color-success)' : undefined }}>
+                {fmtVal(av) == null ? <span style={{ opacity: 0.4 }}>—</span> : fmtVal(av)}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 interface SearchParams {
   username: string;
   module: string;
@@ -329,6 +391,11 @@ export default function OperationLogsPage() {
                     width="100%"
                     options={{ readOnly: true, autoWrap: true, formatOptions: { tabSize: 2, insertSpaces: true } }}
                   />
+                </DetailField>
+              )}
+              {(detailLog.beforeData ?? detailLog.afterData) && (
+                <DetailField label="数据变更">
+                  <DataDiff beforeData={detailLog.beforeData} afterData={detailLog.afterData} />
                 </DetailField>
               )}
             </div>

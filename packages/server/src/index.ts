@@ -4,6 +4,9 @@ import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { config } from './config';
 import logger from './lib/logger';
+import { db } from './db/index';
+import redis from './lib/redis';
+import { sql } from 'drizzle-orm';
 import { httpLogger } from './middleware/logger';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
@@ -26,6 +29,7 @@ import { createWsRoute } from './routes/ws';
 import { initCronScheduler } from './lib/cron-scheduler';
 
 const app = new Hono();
+const startTime = Date.now();
 
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
@@ -51,7 +55,33 @@ app.route('/api/cron-jobs', cronJobsRoutes);
 app.route('/api/regions', regionsRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 
-app.get('/api/health', (c) => c.json({ code: 0, message: 'ok', data: { timestamp: Date.now() } }));
+app.get('/api/health', async (c) => {
+  const checks: Record<string, 'ok' | 'error'> = {};
+
+  // Check database
+  try {
+    await db.execute(sql`SELECT 1`);
+    checks.database = 'ok';
+  } catch {
+    checks.database = 'error';
+  }
+
+  // Check Redis
+  try {
+    await redis.ping();
+    checks.redis = 'ok';
+  } catch {
+    checks.redis = 'error';
+  }
+
+  const allOk = Object.values(checks).every((v) => v === 'ok');
+  return c.json({
+    status: allOk ? 'ok' : 'degraded',
+    version: '0.1.1',
+    uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
+    checks,
+  });
+});
 
 // 全局未捕获异常处理—统一返回标准错误格式
 app.onError((err, c) => {

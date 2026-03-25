@@ -206,6 +206,8 @@ export const operationLogs = pgTable('operation_logs', {
   method: varchar('method', { length: 16 }).notNull(),
   path: varchar('path', { length: 256 }).notNull(),
   requestBody: varchar('request_body', { length: 4096 }),
+  beforeData: text('before_data'),
+  afterData: text('after_data'),
   responseCode: integer('response_code'),
   durationMs: integer('duration_ms'),
   ip: varchar('ip', { length: 64 }),
@@ -283,6 +285,21 @@ export const cronJobs = pgTable('cron_jobs', {
 
 export type CronJobRow = typeof cronJobs.$inferSelect;
 export type NewCronJob = typeof cronJobs.$inferInsert;
+
+// ─── 定时任务执行日志表 ────────────────────────────────────────────────────────
+export const cronJobLogs = pgTable('cron_job_logs', {
+  id:          serial('id').primaryKey(),
+  jobId:       integer('job_id').notNull().references(() => cronJobs.id, { onDelete: 'cascade' }),
+  jobName:     varchar('job_name', { length: 64 }).notNull(),
+  startedAt:   timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  endedAt:     timestamp('ended_at', { withTimezone: true }),
+  durationMs:  integer('duration_ms'),
+  status:      cronRunStatusEnum('status').notNull().default('running'),
+  output:      text('output'),
+});
+
+export type CronJobLogRow = typeof cronJobLogs.$inferSelect;
+export type NewCronJobLog = typeof cronJobLogs.$inferInsert;
 
 // ─── 地区表 ──────────────────────────────────────────────────────────────────
 export const regionLevelEnum = pgEnum('region_level', ['province', 'city', 'county']);

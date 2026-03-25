@@ -13,6 +13,11 @@ export interface AuditLogOptions {
   recordBody?: boolean;
 }
 
+/** 在路由处理器中调用，记录操作前的实体快照，用于 diff 展示 */
+export function setAuditBeforeData(c: Context, data: unknown): void {
+  c.set('auditBeforeData', JSON.stringify(data));
+}
+
 export interface GuardOptions {
   /** 需要的权限码，传字符串或数组（满足其一即可） */
   permission?: string | string[];
@@ -25,6 +30,8 @@ async function writeOperationLog(
   options: AuditLogOptions,
   durationMs: number,
   requestBody: unknown,
+  beforeData: string | undefined,
+  afterData: string | undefined,
 ) {
   try {
     const user = c.get('user') as JwtPayload | undefined;
@@ -51,6 +58,8 @@ async function writeOperationLog(
       method: c.req.method,
       path: c.req.path,
       requestBody: bodyStr ?? null,
+      beforeData: beforeData ?? null,
+      afterData: afterData ?? null,
       responseCode,
       durationMs,
       ip,
@@ -95,7 +104,20 @@ export function guard(opts: GuardOptions): MiddlewareHandler {
         }
       }
       await next();
-      writeOperationLog(c, opts.audit, Date.now() - start, body).catch(() => {});
+      // 捕获操作前快照（由路由处理器通过 setAuditBeforeData 注入）
+      const beforeData = c.get('auditBeforeData') as string | undefined;
+      // 捕获响应体作为操作后快照
+      let afterData: string | undefined;
+      try {
+        const cloned = c.res.clone();
+        const resJson = await cloned.json() as { code?: number; data?: unknown };
+        if (resJson.code === 0 && resJson.data != null) {
+          afterData = JSON.stringify(resJson.data);
+        }
+      } catch {
+        // 响应体非 JSON 或无 data，忽略
+      }
+      writeOperationLog(c, opts.audit, Date.now() - start, body, beforeData, afterData).catch(() => {});
       return;
     }
 

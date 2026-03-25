@@ -1,7 +1,7 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
-import { cronJobs } from '../db/schema';
+import { cronJobs, cronJobLogs } from '../db/schema';
 import logger from './logger';
 import { cleanExpiredCaptchas } from './captcha';
 import { cleanExpiredSessions } from './session-manager';
@@ -88,19 +88,44 @@ export function validateCronExpression(expression: string): boolean {
 
 async function executeJob(jobId: number, handler: string, params: string | null): Promise<{ success: boolean; message: string }> {
   const fn = handlerRegistry.get(handler);
+
+  // 获取任务名称（用于日志记录）
+  const [jobRow] = await db.select({ name: cronJobs.name }).from(cronJobs).where(eq(cronJobs.id, jobId)).limit(1);
+  const jobName = jobRow?.name ?? `job_${jobId}`;
+  const startedAt = new Date();
+
   if (!fn) {
     const msg = `Handler "${handler}" not found`;
-    await db.update(cronJobs).set({
-      lastRunAt: new Date(),
-      lastRunStatus: 'fail',
-      lastRunMessage: msg,
-      updatedAt: new Date(),
-    }).where(eq(cronJobs.id, jobId));
+    await Promise.all([
+      db.update(cronJobs).set({
+        lastRunAt: startedAt,
+        lastRunStatus: 'fail',
+        lastRunMessage: msg,
+        updatedAt: new Date(),
+      }).where(eq(cronJobs.id, jobId)),
+      db.insert(cronJobLogs).values({
+        jobId,
+        jobName,
+        startedAt,
+        endedAt: new Date(),
+        durationMs: 0,
+        status: 'fail',
+        output: msg,
+      }),
+    ]);
     return { success: false, message: msg };
   }
 
+  // 插入运行中日志，同时更新任务状态
+  const [logRow] = await db.insert(cronJobLogs).values({
+    jobId,
+    jobName,
+    startedAt,
+    status: 'running',
+  }).returning();
+
   await db.update(cronJobs).set({
-    lastRunAt: new Date(),
+    lastRunAt: startedAt,
     lastRunStatus: 'running',
     lastRunMessage: null,
     updatedAt: new Date(),
@@ -108,19 +133,39 @@ async function executeJob(jobId: number, handler: string, params: string | null)
 
   try {
     const message = await fn(params);
-    await db.update(cronJobs).set({
-      lastRunStatus: 'success',
-      lastRunMessage: message.slice(0, 1024),
-      updatedAt: new Date(),
-    }).where(eq(cronJobs.id, jobId));
+    const endedAt = new Date();
+    const durationMs = endedAt.getTime() - startedAt.getTime();
+    await Promise.all([
+      db.update(cronJobs).set({
+        lastRunStatus: 'success',
+        lastRunMessage: message.slice(0, 1024),
+        updatedAt: new Date(),
+      }).where(eq(cronJobs.id, jobId)),
+      db.update(cronJobLogs).set({
+        endedAt,
+        durationMs,
+        status: 'success',
+        output: message.slice(0, 2048),
+      }).where(eq(cronJobLogs.id, logRow.id)),
+    ]);
     return { success: true, message };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await db.update(cronJobs).set({
-      lastRunStatus: 'fail',
-      lastRunMessage: message.slice(0, 1024),
-      updatedAt: new Date(),
-    }).where(eq(cronJobs.id, jobId));
+    const endedAt = new Date();
+    const durationMs = endedAt.getTime() - startedAt.getTime();
+    await Promise.all([
+      db.update(cronJobs).set({
+        lastRunStatus: 'fail',
+        lastRunMessage: message.slice(0, 1024),
+        updatedAt: new Date(),
+      }).where(eq(cronJobs.id, jobId)),
+      db.update(cronJobLogs).set({
+        endedAt,
+        durationMs,
+        status: 'fail',
+        output: message.slice(0, 2048),
+      }).where(eq(cronJobLogs.id, logRow.id)),
+    ]);
     logger.error(`Cron job ${jobId} failed:`, err);
     return { success: false, message };
   }

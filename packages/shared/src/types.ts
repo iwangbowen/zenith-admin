@@ -184,6 +184,8 @@ export interface OperationLog {
   method: string;
   path: string;
   requestBody: string | null;
+  beforeData: string | null;
+  afterData: string | null;
   responseCode: number | null;
   durationMs: number | null;
   ip: string | null;

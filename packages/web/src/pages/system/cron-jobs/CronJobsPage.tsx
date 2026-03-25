@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
+  Drawer,
   Form,
   Input,
   Modal,
@@ -23,6 +24,17 @@ interface SearchParams {
   status: string;
 }
 
+interface CronJobLog {
+  id: number;
+  jobId: number;
+  jobName: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  status: 'success' | 'fail' | 'running';
+  output: string | null;
+}
+
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function CronJobsPage() {
@@ -37,8 +49,14 @@ export default function CronJobsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
-  const [handlers, setHandlers] = useState<string[]>([]);
-  const [cronExprValue, setCronExprValue] = useState('');;
+  const [logsDrawerVisible, setLogsDrawerVisible] = useState(false);
+  const [logsJobName, setLogsJobName] = useState('');
+  const [logsJobId, setLogsJobId] = useState<number | null>(null);
+  const [logsData, setLogsData] = useState<CronJobLog[]>([]);
+  const [logsTotal, setLogsTotal] = useState(0);
+  const [logsPage, setLogsPage] = useState(1);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const logsPageSize = 20;;
 
   const fetchData = useCallback(async (p = page, params = searchParams) => {
     setLoading(true);
@@ -119,6 +137,30 @@ export default function CronJobsPage() {
     }
   };
 
+  const fetchJobLogs = useCallback(async (jobId: number, p = 1) => {
+    setLogsLoading(true);
+    try {
+      const query = new URLSearchParams({ page: String(p), pageSize: String(logsPageSize) }).toString();
+      const res = await request.get<PaginatedResponse<CronJobLog>>(`/api/cron-jobs/${jobId}/logs?${query}`);
+      if (res.code === 0) {
+        setLogsData(res.data.list);
+        setLogsTotal(res.data.total);
+        setLogsPage(res.data.page);
+      }
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [logsPageSize]);
+
+  const openLogsDrawer = (record: CronJob) => {
+    setLogsJobId(record.id);
+    setLogsJobName(record.name);
+    setLogsData([]);
+    setLogsPage(1);
+    setLogsDrawerVisible(true);
+    void fetchJobLogs(record.id, 1);
+  };
+
   const formInitValues = editingJob
     ? {
         name: editingJob.name,
@@ -159,9 +201,14 @@ export default function CronJobsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 200,
+      width: 280,
       render: (_: unknown, record: CronJob) => (
         <Space>
+          {hasPermission('system:cronjob:list') && (
+            <Button theme="borderless" size="small" onClick={() => openLogsDrawer(record)}>
+              执行日志
+            </Button>
+          )}
           {hasPermission('system:cron:execute') && (
             <Button theme="borderless" size="small" onClick={() => handleRunOnce(record.id, record.name)}>
               执行
@@ -291,6 +338,68 @@ export default function CronJobsPage() {
           <Form.TextArea field="description" label="描述" maxCount={256} />
         </Form>
       </Modal>
+
+      {/* 执行日志抽屉 */}
+      <Drawer
+        title={`执行日志 — ${logsJobName}`}
+        visible={logsDrawerVisible}
+        onClose={() => setLogsDrawerVisible(false)}
+        width={760}
+        closeOnEsc
+      >
+        <Table
+          bordered
+          size="small"
+          rowKey="id"
+          loading={logsLoading}
+          dataSource={logsData}
+          columns={[
+            {
+              title: '开始时间',
+              dataIndex: 'startedAt',
+              width: 180,
+              render: (v: string) => formatDateTime(v),
+            },
+            {
+              title: '结束时间',
+              dataIndex: 'endedAt',
+              width: 180,
+              render: (v: string | null) => v ? formatDateTime(v) : '—',
+            },
+            {
+              title: '耗时(ms)',
+              dataIndex: 'durationMs',
+              width: 90,
+              render: (v: number | null) => v ?? '—',
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 80,
+              render: (v: string) => (
+                <Tag color={runStatusColor[v] ?? 'grey'} size="small">
+                  {({'success': '成功', 'fail': '失败', 'running': '运行中'} as Record<string, string>)[v] ?? v}
+                </Tag>
+              ),
+            },
+            {
+              title: '输出',
+              dataIndex: 'output',
+              ellipsis: true,
+              render: (v: string | null) => v || '—',
+            },
+          ]}
+          pagination={{
+            currentPage: logsPage,
+            pageSize: logsPageSize,
+            total: logsTotal,
+            onPageChange: (p) => {
+              if (logsJobId != null) void fetchJobLogs(logsJobId, p);
+            },
+            showTotal: true,
+          }}
+        />
+      </Drawer>
     </div>
   );
 }

@@ -11,8 +11,8 @@ import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { generateCaptcha, verifyCaptcha } from '../lib/captcha';
-import { getConfigBoolean } from '../lib/system-config';
-import { generateTokenId, registerSession } from '../lib/session-manager';
+import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
+import { generateTokenId, registerSession, checkLoginLock, recordLoginFailure, clearLoginAttempts } from '../lib/session-manager';
 
 const auth = new Hono();
 
@@ -76,10 +76,27 @@ auth.post('/login', async (c) => {
   }
 
   const { username, password } = result.data;
+
+  // ─── 登录失败锁定检查 ────────────────────────────────────────────────────
+  const remainingLockSeconds = await checkLoginLock(username);
+  if (remainingLockSeconds > 0) {
+    const remainingMinutes = Math.ceil(remainingLockSeconds / 60);
+    return c.json({ code: 423, message: `账号已被锁定，请 ${remainingMinutes} 分钟后重试`, data: null }, 423);
+  }
+
+  const [loginMaxAttempts, loginLockDurationMinutes] = await Promise.all([
+    getConfigNumber('login_max_attempts', 10),
+    getConfigNumber('login_lock_duration_minutes', 30),
+  ]);
+  const lockDurationSeconds = loginLockDurationMinutes * 60;
+
   const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
 
   if (!user) {
-    await recordLoginLog(c, username, 'fail', '用户名或密码错误');
+    await Promise.all([
+      recordLoginLog(c, username, 'fail', '用户名或密码错误'),
+      recordLoginFailure(username, loginMaxAttempts, lockDurationSeconds),
+    ]);
     return c.json({ code: 400, message: '用户名或密码错误', data: null }, 400);
   }
 
@@ -90,9 +107,15 @@ auth.post('/login', async (c) => {
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) {
-    await recordLoginLog(c, username, 'fail', '用户名或密码错误', user.id);
+    await Promise.all([
+      recordLoginLog(c, username, 'fail', '用户名或密码错误', user.id),
+      recordLoginFailure(username, loginMaxAttempts, lockDurationSeconds),
+    ]);
     return c.json({ code: 400, message: '用户名或密码错误', data: null }, 400);
   }
+
+  // 登录成功，清除失败计数
+  await clearLoginAttempts(username);
 
   const userRoleList = await getUserRoles(user.id);
   const tokenId = generateTokenId();

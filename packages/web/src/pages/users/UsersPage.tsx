@@ -237,6 +237,13 @@ export default function UsersPage() {
     }
   };
 
+  const handleUnlock = async (id: number) => {
+    const res = await request.post(`/api/users/${id}/unlock`, {});
+    if (res.code === 0) {
+      Toast.success('解锁成功');
+    }
+  };
+
   const columns: ColumnProps<User>[] = [
     {
       title: '用户',
@@ -310,7 +317,7 @@ export default function UsersPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 240,
+      width: 280,
       render: (_: unknown, record: User) => (
         <Space>
           {hasPermission('system:user:update') && <Button
@@ -321,6 +328,11 @@ export default function UsersPage() {
               setPasswordModalVisible(true);
             }}
           >修改密码</Button>}
+          {hasPermission('system:user:update') && <Button
+            theme="borderless"
+            size="small"
+            onClick={() => handleUnlock(record.id)}
+          >解锁</Button>}
           {hasPermission('system:user:update') && <Button
             theme="borderless"
             size="small"

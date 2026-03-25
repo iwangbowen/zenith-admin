@@ -161,9 +161,11 @@ export const SEED_DICT_ITEMS: DictItem[] = [
 // ─── 系统配置 ─────────────────────────────────────────────────────────────────
 
 export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
-  { id: 1, configKey: 'captcha_enabled',       configValue: 'false',        configType: 'boolean', description: '是否开启登录验证码',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, configKey: 'site_name',             configValue: 'Zenith Admin', configType: 'string',  description: '站点名称，显示在浏览器标签页', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 3, configKey: 'user_default_password', configValue: '123456',       configType: 'string',  description: '新增用户时的默认密码',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, configKey: 'captcha_enabled',            configValue: 'false',        configType: 'boolean', description: '是否开启登录验证码',                createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, configKey: 'site_name',                  configValue: 'Zenith Admin', configType: 'string',  description: '站点名称，显示在浏览器标签页',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, configKey: 'user_default_password',      configValue: '123456',       configType: 'string',  description: '新增用户时的默认密码',               createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 4, configKey: 'login_max_attempts',         configValue: '10',           configType: 'number',  description: '登录失败最大次数，超出后锁定账号',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 5, configKey: 'login_lock_duration_minutes',configValue: '30',           configType: 'number',  description: '账号锁定时长（分钟）',               createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 定时任务 ─────────────────────────────────────────────────────────────────

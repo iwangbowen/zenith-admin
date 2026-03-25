@@ -116,3 +116,48 @@ async function scanKeys(pattern: string): Promise<string[]> {
   } while (cursor !== '0');
   return keys;
 }
+
+// ─── 登录失败锁定 ────────────────────────────────────────────────────────────
+
+const LOGIN_ATTEMPT_PREFIX = `${keyPrefix}login_attempt:`;
+const LOGIN_LOCK_PREFIX = `${keyPrefix}login_lock:`;
+
+/** 检查账号是否被锁定，返回剩余秒数（0 表示未锁定） */
+export async function checkLoginLock(username: string): Promise<number> {
+  const ttl = await redis.ttl(`${LOGIN_LOCK_PREFIX}${username}`);
+  return Math.max(ttl, 0);
+}
+
+/** 记录一次登录失败，达到阈值后自动锁定，返回剩余允许次数 */
+export async function recordLoginFailure(
+  username: string,
+  maxAttempts: number,
+  lockDurationSeconds: number,
+): Promise<number> {
+  const attemptKey = `${LOGIN_ATTEMPT_PREFIX}${username}`;
+  const count = await redis.incr(attemptKey);
+  // 第一次失败时设置过期时间（锁定时长，避免永久累积）
+  if (count === 1) {
+    await redis.expire(attemptKey, lockDurationSeconds);
+  }
+  const remaining = maxAttempts - count;
+  if (remaining <= 0) {
+    // 触发锁定
+    await redis.set(`${LOGIN_LOCK_PREFIX}${username}`, '1', 'EX', lockDurationSeconds);
+    await redis.del(attemptKey);
+  }
+  return Math.max(remaining, 0);
+}
+
+/** 登录成功后清除失败计数 */
+export async function clearLoginAttempts(username: string): Promise<void> {
+  await redis.del(`${LOGIN_ATTEMPT_PREFIX}${username}`);
+}
+
+/** 管理员手动解除账号锁定 */
+export async function unlockUser(username: string): Promise<void> {
+  await Promise.all([
+    redis.del(`${LOGIN_LOCK_PREFIX}${username}`),
+    redis.del(`${LOGIN_ATTEMPT_PREFIX}${username}`),
+  ]);
+}

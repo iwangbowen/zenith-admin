@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { eq, like, and, sql, desc } from 'drizzle-orm';
 import { db } from '../db';
-import { cronJobs } from '../db/schema';
+import { cronJobs, cronJobLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
@@ -194,6 +194,39 @@ cronJobsRoute.get('/export', guard({ permission: 'system:cronjob:list' }), async
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=cron-jobs.xlsx');
   return c.body(buffer);
+});
+
+// GET /:id/logs — 定时任务执行日志
+cronJobsRoute.get('/:id/logs', guard({ permission: 'system:cronjob:list' }), async (c) => {
+  const id = Number(c.req.param('id'));
+  const page     = Number(c.req.query('page'))     || 1;
+  const pageSize = Number(c.req.query('pageSize')) || 20;
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(cronJobLogs)
+    .where(eq(cronJobLogs.jobId, id));
+
+  const rows = await db
+    .select()
+    .from(cronJobLogs)
+    .where(eq(cronJobLogs.jobId, id))
+    .orderBy(desc(cronJobLogs.startedAt))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  const list = rows.map((r) => ({
+    id: r.id,
+    jobId: r.jobId,
+    jobName: r.jobName,
+    startedAt: r.startedAt.toISOString(),
+    endedAt: r.endedAt?.toISOString() ?? null,
+    durationMs: r.durationMs,
+    status: r.status,
+    output: r.output,
+  }));
+
+  return c.json({ code: 0, message: 'ok', data: { list, total: Number(count), page, pageSize } });
 });
 
 export default cronJobsRoute;

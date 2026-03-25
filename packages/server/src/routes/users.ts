@@ -6,10 +6,11 @@ import { users, userRoles, roles, departments, positions, userPositions } from '
 import { createUserSchema, updateUserSchema, resetUserPasswordSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
 import { getDataScopeCondition } from '../lib/data-scope';
+import { unlockUser } from '../lib/session-manager';
 import type { Role, Position, User } from '@zenith/shared';
 
 const usersRouter = new Hono<{ Variables: { user: JwtPayload } }>();
@@ -315,6 +316,13 @@ usersRouter.put('/:id', guard({ permission: 'system:user:update', audit: { descr
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
+  // 记录操作前快照（用于 diff）
+  const [beforeUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  if (beforeUser) {
+    const { password: _pw, ...safeBeforeUser } = beforeUser;
+    setAuditBeforeData(c, safeBeforeUser);
+  }
+
   const { roleIds, positionIds, departmentId, ...rest } = result.data;
   const nextRoleIds = roleIds ? Array.from(new Set(roleIds)) : undefined;
   const nextPositionIds = positionIds ? Array.from(new Set(positionIds)) : undefined;
@@ -429,6 +437,12 @@ usersRouter.put('/batch-status', guard({ permission: 'system:user:update', audit
 // 删除用户
 usersRouter.delete('/:id', guard({ permission: 'system:user:delete', audit: { description: '删除用户', module: '用户管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
+  // 记录操作前快照（用于 diff）
+  const [beforeUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  if (beforeUser) {
+    const { password: _pw, ...safeBeforeUser } = beforeUser;
+    setAuditBeforeData(c, safeBeforeUser);
+  }
   const [deleted] = await db.delete(users).where(eq(users.id, id)).returning();
   if (!deleted) {
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
@@ -467,6 +481,16 @@ usersRouter.get('/export', guard({ permission: 'system:user:list' }), async (c) 
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=users.xlsx');
   return c.body(buffer);
+});
+
+usersRouter.post('/:id/unlock', guard({ permission: 'system:user:update', audit: { description: '解除账号锁定', module: '用户管理' } }), async (c) => {
+  const id = Number(c.req.param('id'));
+  const [user] = await db.select({ username: users.username }).from(users).where(eq(users.id, id)).limit(1);
+  if (!user) {
+    return c.json({ code: 404, message: '用户不存在', data: null }, 404);
+  }
+  await unlockUser(user.username);
+  return c.json({ code: 0, message: '解锁成功', data: null });
 });
 
 export default usersRouter;

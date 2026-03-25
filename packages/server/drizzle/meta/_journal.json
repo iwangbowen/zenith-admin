@@ -120,6 +120,20 @@
       "when": 1774442280579,
       "tag": "0016_abnormal_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1774448947252,
+      "tag": "0017_ambiguous_mister_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1774449388450,
+      "tag": "0018_fancy_garia",
+      "breakpoints": true
     }
   ]
 }
