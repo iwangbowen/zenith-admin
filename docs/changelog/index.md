@@ -4,6 +4,35 @@
 
 ---
 
+## v0.1.2 - 2026-03-25
+
+### Added
+
+#### 后端
+
+- 集成 Swagger UI，新增两个无需认证的端点：
+  - `GET /api/docs` — Swagger UI 交互界面
+  - `GET /api/openapi.json` — OpenAPI 3.0 JSON Spec（可导入 Postman / Apifox）
+- 新增 `packages/server/src/openapi.ts`，以 TypeScript 对象维护 OpenAPI 3.0 Spec，覆盖全部 API 分组
+
+#### 操作日志
+
+- 操作日志列表新增 **IP 地址**搜索筛选条件，支持模糊匹配
+
+#### 文档站点
+
+- 新增「Swagger / OpenAPI」章节，说明文档访问、鉴权、导入及 Spec 维护方式
+- 新增「系统内置配置」章节，说明 5 个内置配置项的用途、类型、默认值及使用方式
+- 新增「操作日志与变更记录」章节，说明 Diff 机制架构及如何为新路由添加变更快照
+- 更新「Zenith Skill」章节，新增后端路由规范与前端页面规范说明
+
+### Fixed
+
+- 修复 CronJobsPage 使用不存在的 `Drawer` 组件导致的运行时错误（改为 `SideSheet`）
+- 修复 CronJobsPage `cronExprValue` 和 `handlers` 状态变量未声明的运行时错误
+
+---
+
 ## v0.1.1 - 2026-03-25
 
 ### Added
