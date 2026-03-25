@@ -2,6 +2,8 @@ import '@wangeditor/editor/dist/css/style.css';
 import { Editor, Toolbar } from '@wangeditor/editor-for-react';
 import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/editor';
 import { useEffect, useState } from 'react';
+import { config as appConfig } from '../config';
+import { TOKEN_KEY } from '@zenith/shared';
 
 interface RichTextEditorProps {
   value?: string;
@@ -41,6 +43,21 @@ export default function RichTextEditor({
     placeholder,
     onChange(e: IDomEditor) {
       onChange?.(e.getHtml());
+    },
+    MENU_CONF: {
+      uploadImage: {
+        server: `${appConfig.apiBaseUrl}/api/files/upload`,
+        fieldName: 'file',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}`,
+        },
+        customInsert(res: { code: number; data: { url: string } }, insertFn: (url: string, alt: string, href: string) => void) {
+          if (res.code === 0) {
+            const url = res.data.url.startsWith('http') ? res.data.url : `${appConfig.apiBaseUrl}${res.data.url}`;
+            insertFn(url, '', '');
+          }
+        },
+      },
     },
   };
 
