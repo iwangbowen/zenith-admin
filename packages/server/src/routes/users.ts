@@ -9,9 +9,10 @@ import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
+import { getDataScopeCondition } from '../lib/data-scope';
 import type { Role, Position, User } from '@zenith/shared';
 
-const usersRouter = new Hono();
+const usersRouter = new Hono<{ Variables: { user: JwtPayload } }>();
 
 usersRouter.use('*', authMiddleware);
 
@@ -24,6 +25,7 @@ async function getUserRolesMap(userIds: number[]) {
       name: roles.name,
       code: roles.code,
       description: roles.description,
+      dataScope: roles.dataScope,
       status: roles.status,
       createdAt: roles.createdAt,
       updatedAt: roles.updatedAt,
@@ -201,39 +203,14 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
   }
 
   // 数据权限过滤
-  const payload = c.get('user') as JwtPayload;
+  const payload = c.get('user');
   const currentUserId = payload.userId;
-  const userRoleList = await db
-    .select({ dataScope: roles.dataScope, code: roles.code })
-    .from(userRoles)
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(eq(userRoles.userId, currentUserId));
-
-  const isSuperAdmin = userRoleList.some((r) => r.code === 'super_admin');
-  const scopeSet = new Set(userRoleList.map((r) => r.dataScope));
-  let effectiveScope: string;
-  if (isSuperAdmin || scopeSet.has('all')) {
-    effectiveScope = 'all';
-  } else if (scopeSet.has('dept')) {
-    effectiveScope = 'dept';
-  } else {
-    effectiveScope = 'self';
-  }
-
-  if (effectiveScope === 'dept') {
-    const [currentUser] = await db
-      .select({ departmentId: users.departmentId })
-      .from(users)
-      .where(eq(users.id, currentUserId))
-      .limit(1);
-    if (currentUser?.departmentId) {
-      conditions.push(eq(users.departmentId, currentUser.departmentId));
-    } else {
-      conditions.push(eq(users.id, currentUserId));
-    }
-  } else if (effectiveScope === 'self') {
-    conditions.push(eq(users.id, currentUserId));
-  }
+  const scopeCondition = await getDataScopeCondition({
+    currentUserId,
+    deptColumn: users.departmentId,
+    ownerColumn: users.id,
+  });
+  if (scopeCondition) conditions.push(scopeCondition);
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
