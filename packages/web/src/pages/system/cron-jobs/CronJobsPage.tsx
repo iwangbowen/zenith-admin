@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
-  Drawer,
+  SideSheet,
   Form,
   Input,
   Modal,
@@ -49,6 +49,8 @@ export default function CronJobsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
+  const [cronExprValue, setCronExprValue] = useState('');
+  const [handlers, setHandlers] = useState<string[]>([]);
   const [logsDrawerVisible, setLogsDrawerVisible] = useState(false);
   const [logsJobName, setLogsJobName] = useState('');
   const [logsJobId, setLogsJobId] = useState<number | null>(null);
@@ -340,10 +342,10 @@ export default function CronJobsPage() {
       </Modal>
 
       {/* 执行日志抽屉 */}
-      <Drawer
+      <SideSheet
         title={`执行日志 — ${logsJobName}`}
         visible={logsDrawerVisible}
-        onClose={() => setLogsDrawerVisible(false)}
+        onCancel={() => setLogsDrawerVisible(false)}
         width={760}
         closeOnEsc
       >
@@ -399,7 +401,7 @@ export default function CronJobsPage() {
             showTotal: true,
           }}
         />
-      </Drawer>
+      </SideSheet>
     </div>
   );
 }
