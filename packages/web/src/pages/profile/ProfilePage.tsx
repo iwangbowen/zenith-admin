@@ -22,7 +22,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   async function handleUpdateProfile(values: { nickname: string; email: string }) {
     setProfileLoading(true);
-    const res = await request.put<Omit<User, 'password'>>('/auth/profile', values);
+    const res = await request.put<Omit<User, 'password'>>('/api/auth/profile', values);
     setProfileLoading(false);
     if (res.code === 0) {
       Toast.success('资料已更新');
@@ -64,7 +64,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                 request.post<{ url: string }>('/api/files/upload', formData)
                   .then(async (res) => {
                     if (res.code === 0 && res.data?.url) {
-                      const profileRes = await request.put<Omit<User, 'password'>>('/auth/profile', { avatar: res.data.url });
+                      const profileRes = await request.put<Omit<User, 'password'>>('/api/auth/profile', { avatar: res.data.url });
                       if (profileRes.code === 0) {
                         onUserUpdate(profileRes.data);
                         Toast.success('头像已更新');
