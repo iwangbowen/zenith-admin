@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   DatePicker,
+  ImagePreview,
   Input,
   Modal,
   Select,
@@ -58,6 +59,11 @@ export default function FilesPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
+  const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
+  const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
+  const previewBlobUrlsRef = useRef<string[]>([]);
   const [defaultConfig, setDefaultConfig] = useState<FileStorageConfig | null>(null);
 
   const fetchDefaultConfig = useCallback(async () => {
@@ -137,14 +143,46 @@ export default function FilesPage() {
     }
   };
 
+  const cleanupPreviewBlobs = () => {
+    previewBlobUrlsRef.current.forEach((url) => globalThis.URL.revokeObjectURL(url));
+    previewBlobUrlsRef.current = [];
+  };
+
   const handlePreview = async (file: ManagedFile) => {
+    const isImage = file.mimeType?.startsWith('image/');
+
+    if (!isImage) {
+      try {
+        const blob = await fetchProtectedFile(file.url);
+        const objectUrl = globalThis.URL.createObjectURL(blob);
+        globalThis.open(objectUrl, '_blank', 'noopener,noreferrer');
+        globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(objectUrl), 60_000);
+      } catch (error) {
+        Toast.error(error instanceof Error ? error.message : '预览文件失败');
+      }
+      return;
+    }
+
+    const imageFiles = (data?.list ?? []).filter((f) => f.mimeType?.startsWith('image/'));
+    const clickedIndex = imageFiles.findIndex((f) => f.id === file.id);
+
+    setPreviewLoadingId(file.id);
     try {
-      const blob = await fetchProtectedFile(file.url);
-      const objectUrl = globalThis.URL.createObjectURL(blob);
-      globalThis.open(objectUrl, '_blank', 'noopener,noreferrer');
-      globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(objectUrl), 60_000);
+      cleanupPreviewBlobs();
+      const blobUrls = await Promise.all(
+        imageFiles.map(async (f) => {
+          const blob = await fetchProtectedFile(f.url);
+          return globalThis.URL.createObjectURL(blob);
+        }),
+      );
+      previewBlobUrlsRef.current = blobUrls;
+      setPreviewSrcList(blobUrls);
+      setPreviewCurrentIndex(Math.max(0, clickedIndex));
+      setPreviewVisible(true);
     } catch (error) {
-      Toast.error(error instanceof Error ? error.message : '预览文件失败');
+      Toast.error(error instanceof Error ? error.message : '预览图片失败');
+    } finally {
+      setPreviewLoadingId(null);
     }
   };
 
@@ -225,7 +263,7 @@ export default function FilesPage() {
       align: 'center',
       render: (_: unknown, record: ManagedFile) => (
         <Space>
-          <Button theme="borderless" size="small" onClick={() => handlePreview(record)}>预览</Button>
+          <Button theme="borderless" size="small" loading={previewLoadingId === record.id} onClick={() => handlePreview(record)}>预览</Button>
           <Button theme="borderless" size="small" onClick={() => handleDownload(record)}>下载</Button>
           {hasPermission('system:file:delete') && <Button theme="borderless" size="small" type="danger" onClick={() => {
             Modal.confirm({
@@ -304,6 +342,21 @@ export default function FilesPage() {
           </div>
         </div>
       </div>
+
+      <ImagePreview
+        src={previewSrcList}
+        visible={previewVisible}
+        currentIndex={previewCurrentIndex}
+        onChange={setPreviewCurrentIndex}
+        onVisibleChange={(v) => {
+          if (!v) {
+            setPreviewVisible(false);
+            cleanupPreviewBlobs();
+            setPreviewSrcList([]);
+          }
+        }}
+        infinite
+      />
 
       <div>
         <Table
