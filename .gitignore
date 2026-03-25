@@ -8,3 +8,4 @@ logs/
 *.tsbuildinfo
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+**/storage/local/
