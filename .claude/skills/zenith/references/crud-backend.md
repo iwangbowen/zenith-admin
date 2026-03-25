@@ -317,3 +317,41 @@ async function ensureYyyExists(yyyId: number | null | undefined): Promise<string
   return row ? null : `指定的 YYY（id=${yyyId}）不存在`;
 }
 ```
+
+---
+
+## 操作日志数据变更 Diff（为路由添加修改前/后快照）
+
+Zenith Admin 的操作日志支持记录**操作前/后的实体快照**，在日志详情弹窗中以表格 diff 形式展示变更字段（高亮差异行）。
+
+### 架构说明
+
+| 层 | 文件 | 职责 |
+|----|------|------|
+| DB | `operation_logs.before_data` / `after_data` | 存储 JSON 快照字符串（`text` 类型） |
+| 中间件 | `packages/server/src/middleware/guard.ts` | 自动从响应体提取 `afterData`；提供 `setAuditBeforeData()` 供路由注入 `beforeData` |
+| 路由 | 需要 diff 的 PUT/DELETE 路由 | 在处理前查询实体，调用 `setAuditBeforeData(c, entityRow)` |
+| 前端 | `OperationLogsPage.tsx → DiffTable` | 解析 JSON、比对字段、高亮变更行（无需额外修改） |
+
+### 为新路由添加 diff
+
+1. 导入 `setAuditBeforeData`：
+```ts
+import { guard, setAuditBeforeData } from '../middleware/guard';
+```
+
+2. 在 PUT / DELETE handler 中，验证通过后、执行写操作**前**，查询并注入操作前快照：
+```ts
+// 操作前快照（如有敏感字段需先排除，如 password）
+const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
+if (before) {
+  const { sensitiveField: _sf, ...safeBefore } = before as any;
+  setAuditBeforeData(c, safeBefore);
+}
+```
+
+3. `guard` 中间件自动：
+   - 在 `next()` 后从 `{ code: 0, data: ... }` 响应体提取 `afterData`
+   - 将 `beforeData` + `afterData` 一并写入 `operation_logs`
+
+> **注意**：DELETE 操作的 `afterData` 通常为 null（响应 `data` 为 null），是预期行为，前端 diff 会仅展示变更前列。
