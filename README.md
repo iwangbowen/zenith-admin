@@ -1,5 +1,10 @@
 # Zenith Admin
 
+[![Version](https://img.shields.io/github/v/tag/iwangbowen/zenith-admin?label=version&color=blue)](https://github.com/iwangbowen/zenith-admin/releases)
+[![Pages](https://github.com/iwangbowen/zenith-admin/actions/workflows/pages.yml/badge.svg)](https://github.com/iwangbowen/zenith-admin/actions/workflows/pages.yml)
+[![Release](https://github.com/iwangbowen/zenith-admin/actions/workflows/release.yml/badge.svg)](https://github.com/iwangbowen/zenith-admin/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/iwangbowen/zenith-admin)](./LICENSE)
+
 基于 **Hono v4 + React 19 + Semi Design v2 + Drizzle ORM** 的全栈后台管理系统，覆盖认证授权、组织架构、系统配置、通知公告、日志审计、在线会话、定时任务、文件管理与运行监控等后台场景。
 
 项目采用 **npm monorepo** 结构：后端使用 Hono + PostgreSQL 提供 API 服务，前端使用 React 19 + Vite + **Semi Design v2** 构建后台界面，`shared` 包统一维护前后端共享类型、常量与 Zod 校验 schema。
