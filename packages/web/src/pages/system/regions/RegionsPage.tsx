@@ -245,23 +245,20 @@ export default function RegionsPage() {
               onEnterPress={handleSearch}
             />
             <Select
-              placeholder="级别"
-              value={searchParams.level}
-              onChange={(v) => setSearchParams((p) => ({ ...p, level: v as string }))}
+              placeholder="全部级别"
+              value={searchParams.level || undefined}
+              onChange={(v) => setSearchParams((p) => ({ ...p, level: (v as string) ?? '' }))}
               showClear
               style={{ width: 110 }}
-              optionList={[{ value: '', label: '全部' }, ...LEVEL_OPTIONS]}
+              optionList={LEVEL_OPTIONS}
             />
             <Select
-              placeholder="状态"
-              value={searchParams.status}
-              onChange={(v) => setSearchParams((p) => ({ ...p, status: v as string }))}
+              placeholder="全部状态"
+              value={searchParams.status || undefined}
+              onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
               showClear
               style={{ width: 110 }}
-              optionList={[
-                { value: '', label: '全部' },
-                ...statusItems.map((i) => ({ value: i.value, label: i.label })),
-              ]}
+              optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
               查询

@@ -271,17 +271,14 @@ export default function XxxPage() {
               onEnterPress={handleSearch}
             />
             <Select
-              placeholder="状态"
-              value={searchParams.status}
+              placeholder="全部状态"
+              value={searchParams.status || undefined}
               onChange={(v) =>
-                setSearchParams((p) => ({ ...p, status: v as string }))
+                setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))
               }
               showClear
               style={{ width: 120 }}
-              optionList={[
-                { value: '', label: '全部' },
-                ...statusItems.map((i) => ({ value: i.value, label: i.label })),
-              ]}
+              optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
             />
             <Button
               type="primary"
