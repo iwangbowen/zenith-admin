@@ -4,6 +4,41 @@
 
 ---
 
+## v0.1.1 - 2026-03-25
+
+### Added
+
+#### 通知管理
+
+- 通知内容编辑器升级为富文本编辑器（基于 wangEditor），支持格式化文本与图片插入
+- 富文本编辑器支持图片上传，通过 Authorization 头上传图片并自动插入到编辑器
+- 通知列表支持 HTML 内容渲染（`dangerouslySetInnerHTML`），展示富文本内容
+- 通知编辑界面改用 SideSheet 侧边抽屉，提升编辑体验
+- 通知内容字段类型从 `varchar` 升级为 `text`，支持长文本存储
+- 通知管理添加批量删除功能，后端新增 `DELETE /api/notices/batch` 接口
+
+#### 组件与前端
+
+- 新增省市区三级联动选择组件（`RegionSelect`），基于 Semi Design Cascader 封装，支持动态加载
+- 组件示例页面新增省市区联动选择演示
+
+### Changed
+
+- WebSocket 连接管理优化：添加自动重连机制，使用 Map 记录最近通知时间戳，避免重复推送通知
+- 岗位管理添加批量删除功能，后端新增 `DELETE /api/positions/batch` 接口
+
+### Fixed
+
+- 修复个人资料页密码更新接口路径错误（`/auth/password` → `/api/auth/password`）
+- 修复超级管理员和普通用户角色的数据范围字段缺失问题
+
+### Docs
+
+- 重构部署文档，新增贡献指南与维护说明
+- 更新首页文档，补充 Semi Design v2 和 lucide-react 技术栈说明
+
+---
+
 ## v0.1.0 - 2026-03-25
 
 首个正式版本，包含完整的后台管理基础框架。
