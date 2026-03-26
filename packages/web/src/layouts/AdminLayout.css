@@ -191,7 +191,20 @@
 
 .admin-sidebar__nav .semi-navigation-item-selected,
 .admin-sidebar__nav .semi-navigation-sub-selected {
-  background: var(--color-sidebar-active);
+  background: rgba(51, 112, 255, 0.05) !important;
+  position: relative;
+}
+
+.admin-sidebar__nav .semi-navigation-item-selected::before,
+.admin-sidebar__nav .semi-navigation-sub-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background-color: var(--color-primary);
+  border-radius: 2px;
 }
 
 .admin-sidebar__nav .semi-navigation-footer {
