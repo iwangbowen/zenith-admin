@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "password_updated_at" timestamp DEFAULT now() NOT NULL;

@@ -47,6 +47,7 @@ export const users = pgTable('users', {
   avatar: varchar('avatar', { length: 256 }),
   departmentId: integer('department_id').references(() => departments.id, { onDelete: 'set null' }),
   status: statusEnum('status').notNull().default('active'),
+  passwordUpdatedAt: timestamp('password_updated_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

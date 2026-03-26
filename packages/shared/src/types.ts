@@ -10,6 +10,7 @@ export interface User {
   positions?: Position[];
   roles: Role[];
   status: 'active' | 'disabled';
+  passwordUpdatedAt: string;
   createdAt: string;
   updatedAt: string;
 }
