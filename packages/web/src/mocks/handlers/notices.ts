@@ -33,6 +33,31 @@ export const noticesHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
+  // 通知收件箱（分页，含已读状态 — Demo 模式已读状态不持久化，始终 false）
+  http.get('/api/notices/inbox', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
+    const isReadFilter = url.searchParams.get('isRead');
+
+    let list = mockNotices
+      .filter((n) => n.publishStatus === 'published')
+      .sort((a, b) => new Date(b.publishTime ?? 0).getTime() - new Date(a.publishTime ?? 0).getTime())
+      .map((n) => ({ ...n, isRead: false }));
+
+    if (isReadFilter === 'true') list = list.filter((n) => n.isRead);
+    else if (isReadFilter === 'false') list = list.filter((n) => !n.isRead);
+
+    const total = list.length;
+    const paged = list.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });
+  }),
+
+  // 全部标记为已读（Demo 模式不持久化，直接返回成功）
+  http.post('/api/notices/read-all', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
   // 获取单个通知
   http.get('/api/notices/:id', ({ params }) => {
     const notice = mockNotices.find((n) => n.id === Number(params.id));

@@ -10,6 +10,7 @@ import AdminLayout from './layouts/AdminLayout';
 import LoginPage from './pages/login/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import ProfilePage from './pages/profile/ProfilePage';
+import NotificationsPage from './pages/notifications/NotificationsPage';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import ForbiddenPage from './pages/forbidden/ForbiddenPage';
 
@@ -58,6 +59,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: any) {
         {/* 固定路由 */}
         <Route index element={<DashboardPage />} />
         <Route path="profile" element={<ProfilePage user={user} onUserUpdate={updateUser} />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
         <Route path="forbidden" element={<ForbiddenPage />} />
 

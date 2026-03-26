@@ -58,6 +58,67 @@ noticesRouter.post('/:id/read', async (c) => {
   return c.json({ code: 0, message: 'ok', data: null });
 });
 
+// 全部标记为已读（将所有已发布且未读的通知批量写入 noticeReads）
+noticesRouter.post('/read-all', async (c) => {
+  const user = c.get('user');
+
+  const allPublished = await db
+    .select({ id: notices.id })
+    .from(notices)
+    .where(eq(notices.publishStatus, 'published'));
+
+  if (allPublished.length === 0) {
+    return c.json({ code: 0, message: 'ok', data: null });
+  }
+
+  const readRows = await db
+    .select({ noticeId: noticeReads.noticeId })
+    .from(noticeReads)
+    .where(eq(noticeReads.userId, user.userId));
+  const readSet = new Set(readRows.map((r) => r.noticeId));
+
+  const unreadIds = allPublished.filter((n) => !readSet.has(n.id)).map((n) => n.id);
+  if (unreadIds.length > 0) {
+    await db
+      .insert(noticeReads)
+      .values(unreadIds.map((noticeId) => ({ noticeId, userId: user.userId })))
+      .onConflictDoNothing();
+  }
+
+  return c.json({ code: 0, message: 'ok', data: null });
+});
+
+// 收件箱（分页，含已读标记，供普通用户查看所有已发布通知）
+noticesRouter.get('/inbox', async (c) => {
+  const user = c.get('user');
+  const page = Number(c.req.query('page')) || 1;
+  const pageSize = Number(c.req.query('pageSize')) || 10;
+  const isRead = c.req.query('isRead'); // 'true' | 'false' | undefined
+
+  const [readRows, allRows] = await Promise.all([
+    db
+      .select({ noticeId: noticeReads.noticeId })
+      .from(noticeReads)
+      .where(eq(noticeReads.userId, user.userId)),
+    db
+      .select()
+      .from(notices)
+      .where(eq(notices.publishStatus, 'published'))
+      .orderBy(desc(notices.publishTime)),
+  ]);
+
+  const readSet = new Set(readRows.map((r) => r.noticeId));
+  let list = allRows.map((row) => ({ ...toNotice(row), isRead: readSet.has(row.id) }));
+
+  if (isRead === 'true') list = list.filter((n) => n.isRead);
+  else if (isRead === 'false') list = list.filter((n) => !n.isRead);
+
+  const total = list.length;
+  const paged = list.slice((page - 1) * pageSize, page * pageSize);
+
+  return c.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });
+});
+
 // 分页列表（管理用）
 noticesRouter.get('/', guard({ permission: 'system:notice:list' }), async (c) => {
   const page = Number(c.req.query('page')) || 1;

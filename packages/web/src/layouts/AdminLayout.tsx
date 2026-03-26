@@ -194,7 +194,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   );
 
   const pathTitleMap = useMemo(() => {
-    const map: Record<string, string> = { '/profile': '个人中心' };
+    const map: Record<string, string> = { '/profile': '个人中心', '/notifications': '通知中心' };
     function traverse(nodes: Menu[]) {
       for (const node of nodes) {
         if (node.path && node.title) map[node.path] = node.title;
@@ -357,7 +357,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               <Empty description="暂无通知" style={{ padding: '24px 0' }} />
             ) : (
               <List
-                style={{ overflow: 'auto', maxHeight: 380 }}
+                style={{ overflow: 'auto', maxHeight: 340 }}
                 dataSource={notices}
                 renderItem={(item: Notice & { isRead?: boolean }) => (
                   <List.Item
@@ -381,6 +381,25 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 )}
               />
             )}
+            <div
+              style={{
+                padding: '8px 16px',
+                borderTop: '1px solid var(--semi-color-border)',
+                textAlign: 'center',
+              }}
+            >
+              <Typography.Text
+                link
+                size="small"
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  setNoticePopVisible(false);
+                  navigate('/notifications');
+                }}
+              >
+                查看全部通知
+              </Typography.Text>
+            </div>
           </div>
         }
       >

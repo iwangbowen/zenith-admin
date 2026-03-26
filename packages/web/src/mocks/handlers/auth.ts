@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { mockUsers } from '../data/users';
 import { mockMenus } from '../data/menus';
 import { mockRoles } from '../data/roles';
+import { mockLoginLogs, mockOperationLogs } from '../data/logs';
 
 const MOCK_TOKEN = 'mock-access-token-demo';
 const MOCK_REFRESH_TOKEN = 'mock-refresh-token-demo';
@@ -81,5 +82,31 @@ export const authHandlers = [
     }
     user.password = body.newPassword;
     return HttpResponse.json({ code: 0, message: '密码修改成功', data: null });
+  }),
+
+  // 我的登录记录（仅返回当前 mock 用户的记录）
+  http.get('/api/auth/my-login-logs', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
+    const userId = mockUsers[0].id;
+    const list = mockLoginLogs
+      .filter((l) => l.userId === userId)
+      .map((l) => ({ ...l, createdAt: l.createdAt instanceof Date ? l.createdAt.toISOString() : l.createdAt }));
+    const total = list.length;
+    const paged = list.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });
+  }),
+
+  // 我的操作记录（仅返回当前 mock 用户的记录）
+  http.get('/api/auth/my-operation-logs', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
+    const userId = mockUsers[0].id;
+    const list = mockOperationLogs.filter((l) => l.userId === userId);
+    const total = list.length;
+    const paged = list.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });
   }),
 ];
