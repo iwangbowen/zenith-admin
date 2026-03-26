@@ -15,7 +15,7 @@ export async function getPasswordPolicy(): Promise<PasswordPolicy> {
   const map = Object.fromEntries(configs.map((c) => [c.configKey, c.configValue]));
   const rawMinLength = map['password_min_length'];
   const parsedMinLength = rawMinLength !== undefined ? Number(rawMinLength) : NaN;
-  const safeMinLength = Number.isFinite(parsedMinLength) && parsedMinLength >= 1 ? parsedMinLength : 8;
+  const safeMinLength = Number.isFinite(parsedMinLength) && parsedMinLength >= 1 ? parsedMinLength : 6;
   return {
     minLength: safeMinLength,
     requireUppercase: map['password_require_uppercase'] === 'true',

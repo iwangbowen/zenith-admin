@@ -8,7 +8,7 @@ export const systemConfigsHandlers = [
     return HttpResponse.json({
       code: 0,
       message: 'success',
-      data: { minLength: 8, requireUppercase: false, requireSpecialChar: false },
+      data: { minLength: 6, requireUppercase: false, requireSpecialChar: false },
     });
   }),
 
