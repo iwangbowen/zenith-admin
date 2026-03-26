@@ -494,7 +494,7 @@ usersRouter.get('/import-template', guard({ permission: 'system:user:list' }), a
   const buffer = await workbook.xlsx.writeBuffer();
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=user_import_template.xlsx');
-  return c.body(buffer as unknown as ArrayBuffer);
+  return c.body(buffer as Buffer);
 });
 
 // 批量导入用户
@@ -550,7 +550,7 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
       .where(or(eq(users.username, username), eq(users.email, email)))
       .limit(1);
     if (existingUser.length > 0) {
-      errors.push({ row: rowNum, message: `用户名或邮箱已存在: ${username}` });
+      errors.push({ row: rowNum, message: `用户名或邮箱已存在: ${username} / ${email}` });
       continue;
     }
 

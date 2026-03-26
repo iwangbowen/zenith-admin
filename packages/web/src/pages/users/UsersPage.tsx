@@ -59,7 +59,15 @@ export default function UsersPage() {
 
   const [importModalVisible, setImportModalVisible] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
-  const [importResult, setImportResult] = useState<{ total: number; success: number; failed: number; errors: Array<{ row: number; message: string }> } | null>(null);
+
+  interface ImportResult {
+    total: number;
+    success: number;
+    failed: number;
+    errors: Array<{ row: number; message: string }>;
+  }
+
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importFileRef = useRef<File | null>(null);
 
   const handleBatchDelete = () => {
@@ -242,8 +250,12 @@ export default function UsersPage() {
     }
   };
 
-  const handleImportTemplate = () => {
-    window.location.href = '/api/users/import-template';
+  const handleImportTemplate = async () => {
+    try {
+      await request.download('/api/users/import-template', 'user_import_template.xlsx');
+    } catch {
+      Toast.error('模板下载失败');
+    }
   };
 
   const handleImportSubmit = async () => {
@@ -262,12 +274,12 @@ export default function UsersPage() {
         },
         body: formData,
       });
-      const data = await res.json() as { code: number; message: string; data: typeof importResult };
+      const data = await res.json() as { code: number; message: string; data: ImportResult };
       if (data.code === 0) {
         setImportResult(data.data);
-        if (data.data && data.data.success > 0) void fetchUsers();
+        if (data.data.success > 0) void fetchUsers();
       } else {
-        Toast.error(data.message ?? '导入失败');
+        Toast.error(data.message);
       }
     } catch {
       Toast.error('导入请求失败');
