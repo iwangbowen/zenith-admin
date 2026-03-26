@@ -139,7 +139,7 @@ cronJobsRoute.delete('/:id', guard({ permission: 'system:cronjob:delete', audit:
 });
 
 // Manual execution
-cronJobsRoute.post('/:id/run', guard({ permission: 'system:cronjob:update', audit: { module: '定时任务', description: '手动执行任务' } }), async (c) => {
+cronJobsRoute.post('/:id/run', guard({ permission: 'system:cronjob:execute', audit: { module: '定时任务', description: '手动执行任务' } }), async (c) => {
   const id = Number(c.req.param('id'));
   const result = await runJobOnce(id);
   return c.json({ code: result.success ? 0 : 500, message: result.message, data: null });

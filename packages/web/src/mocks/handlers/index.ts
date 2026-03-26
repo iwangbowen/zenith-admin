@@ -14,6 +14,7 @@ import { loginLogsHandlers } from './login-logs';
 import { operationLogsHandlers } from './operation-logs';
 import { sessionsHandlers } from './sessions';
 import { regionsHandlers } from './regions';
+import { dashboardHandlers } from './dashboard';
 
 export const handlers = [
   ...authHandlers,
@@ -32,4 +33,5 @@ export const handlers = [
   ...operationLogsHandlers,
   ...sessionsHandlers,
   ...regionsHandlers,
+  ...dashboardHandlers,
 ];

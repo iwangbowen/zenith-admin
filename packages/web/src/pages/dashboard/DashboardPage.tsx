@@ -1,15 +1,37 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Calendar, Typography, Tag, Space, Spin, Empty, Toast, List } from '@douyinfe/semi-ui';
-import { Bell, Github, BookOpen, MonitorPlay } from 'lucide-react';
+import { Bell, Github, BookOpen, MonitorPlay, Users, UserCheck, Wifi, LogIn, Activity } from 'lucide-react';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import type { Notice } from '@zenith/shared';
+import { usePermission } from '../../hooks/usePermission';
 import './DashboardPage.css';
 
 const { Text } = Typography;
 
 type NoticeWithRead = Notice & { isRead: boolean };
+
+interface DashboardStats {
+  totalUsers: number;
+  activeUsers: number;
+  onlineUsers: number;
+  todayLogins: number;
+  todayOperations: number;
+}
+
+const STAT_ITEMS: Array<{
+  key: keyof DashboardStats;
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+}> = [
+  { key: 'totalUsers',      label: '系统用户总数', icon: <Users size={20} />,      color: '#4A90E2' },
+  { key: 'activeUsers',     label: '活跃用户',     icon: <UserCheck size={20} />,  color: '#52C41A' },
+  { key: 'onlineUsers',     label: '当前在线',     icon: <Wifi size={20} />,       color: '#13C2C2' },
+  { key: 'todayLogins',     label: '今日登录',     icon: <LogIn size={20} />,      color: '#722ED1' },
+  { key: 'todayOperations', label: '今日操作',     icon: <Activity size={20} />,   color: '#FA8C16' },
+];
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -30,8 +52,12 @@ const markReadById = (id: number) => (n: NoticeWithRead) =>
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { permissions } = usePermission();
+  const isAdmin = permissions.includes('*');
   const [notices, setNotices] = useState<NoticeWithRead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const architectureItems = [
     { key: '前端框架', value: 'React 19 + Vite' },
@@ -49,6 +75,16 @@ export default function DashboardPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    setStatsLoading(true);
+    request.get<DashboardStats>('/api/dashboard/stats', { silent: true })
+      .then((res) => {
+        if (res.code === 0) setStats(res.data);
+      })
+      .finally(() => setStatsLoading(false));
+  }, [isAdmin]);
 
   function markAsRead(id: number) {
     request.post(`/api/notices/${id}/read`, undefined, { silent: true }).then((res) => {
@@ -112,6 +148,36 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container dashboard-page">
+      {isAdmin && (
+        <div className="dashboard-stats-row">
+          {statsLoading
+            ? <div style={{ padding: '20px 0', textAlign: 'center' }}><Spin /></div>
+            : STAT_ITEMS.map((item) => (
+              <Card key={item.key} className="dashboard-stat-card" bodyStyle={{ padding: '16px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 10,
+                    background: `${item.color}18`,
+                    color: item.color,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {item.icon}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.2, color: 'var(--semi-color-text-0)' }}>
+                      {stats?.[item.key] ?? '—'}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 2 }}>
+                      {item.label}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))
+          }
+        </div>
+      )}
       <div className="dashboard-top-grid">
         <div className="dashboard-column dashboard-column--notice">
           <Card

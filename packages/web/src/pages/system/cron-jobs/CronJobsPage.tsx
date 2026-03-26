@@ -211,17 +211,17 @@ export default function CronJobsPage() {
               执行日志
             </Button>
           )}
-          {hasPermission('system:cron:execute') && (
+          {hasPermission('system:cronjob:execute') && (
             <Button theme="borderless" size="small" onClick={() => handleRunOnce(record.id, record.name)}>
               执行
             </Button>
           )}
-          {hasPermission('system:cron:update') && (
+          {hasPermission('system:cronjob:update') && (
             <Button theme="borderless" size="small" onClick={() => { setEditingJob(record); setCronExprValue(record.cronExpression ?? ''); setModalVisible(true); }}>
               编辑
             </Button>
           )}
-          {hasPermission('system:cron:delete') && (
+          {hasPermission('system:cronjob:delete') && (
             <Button theme="borderless" type="danger" size="small" onClick={() => {
               Modal.confirm({ title: '确定要删除此任务吗？', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDelete(record.id) });
             }}>
@@ -263,7 +263,7 @@ export default function CronJobsPage() {
           </Space>
           <Space>
             <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-            {hasPermission('system:cron:create') && (
+            {hasPermission('system:cronjob:create') && (
               <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
             )}
           </Space>
