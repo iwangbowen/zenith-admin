@@ -610,3 +610,19 @@
 .admin-tab-ctx-item:hover {
   background: var(--color-layout-hover);
 }
+
+/* ===== Notification badge dot ===== */
+.admin-notify-badge .semi-badge-dot {
+  width: 6px !important;
+  height: 6px !important;
+  min-width: 6px !important;
+  background-color: #ff6b6b !important;
+  box-shadow: 0 0 0 1.5px #ffffff !important;
+  border-radius: 50% !important;
+  top: 2px !important;
+  right: 2px !important;
+}
+
+[data-theme='dark'] .admin-notify-badge .semi-badge-dot {
+  box-shadow: 0 0 0 1.5px var(--color-sidebar-bg) !important;
+}
