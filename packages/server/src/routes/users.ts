@@ -148,6 +148,7 @@ type UserListRow = {
   departmentId: number | null;
   departmentName: string | null;
   status: 'active' | 'disabled';
+  passwordUpdatedAt: Date;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -174,6 +175,7 @@ async function toPublicUsers(rows: UserListRow[]): Promise<User[]> {
       positions: positionList,
       roles: roleList,
       status: row.status,
+      passwordUpdatedAt: row.passwordUpdatedAt.toISOString(),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     } satisfies User;
@@ -228,6 +230,7 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
       departmentId: users.departmentId,
       departmentName: departments.name,
       status: users.status,
+      passwordUpdatedAt: users.passwordUpdatedAt,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     })
@@ -297,6 +300,7 @@ usersRouter.post('/', guard({ permission: 'system:user:create', audit: { descrip
       departmentId: user.departmentId,
       departmentName: departmentId ? (await db.select({ name: departments.name }).from(departments).where(eq(departments.id, departmentId)).limit(1))[0]?.name ?? null : null,
       status: user.status,
+      passwordUpdatedAt: user.passwordUpdatedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }]))[0];
@@ -380,6 +384,7 @@ usersRouter.put('/:id', guard({ permission: 'system:user:update', audit: { descr
     departmentId: user.departmentId,
     departmentName,
     status: user.status,
+      passwordUpdatedAt: user.passwordUpdatedAt,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   }]))[0];
@@ -641,6 +646,7 @@ usersRouter.get('/export', guard({ permission: 'system:user:list' }), async (c) 
       email: users.email,
       departmentName: departments.name,
       status: users.status,
+      passwordUpdatedAt: users.passwordUpdatedAt,
       createdAt: users.createdAt,
     })
     .from(users)

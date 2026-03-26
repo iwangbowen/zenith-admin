@@ -11,6 +11,7 @@ export interface User {
   roles: Role[];
   status: 'active' | 'disabled';
   passwordUpdatedAt: string;
+  requirePasswordChange?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,8 +35,9 @@ export interface PaginatedResponse<T> {
 }
 
 export interface LoginResponse {
-  user: Omit<User, 'password'>;
+  user: Omit<User, 'password'> & { requirePasswordChange?: boolean };
   token: AuthTokens;
+  requirePasswordChange?: boolean;
 }
 
 // ─── 菜单 ─────────────────────────────────────────────────────────────────────

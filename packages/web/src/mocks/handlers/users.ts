@@ -80,6 +80,7 @@ export const usersHandlers = [
       positions,
       roles,
       status: body.status ?? 'active',
+      passwordUpdatedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

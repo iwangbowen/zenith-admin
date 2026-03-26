@@ -114,6 +114,20 @@ auth.post('/login', async (c) => {
     return c.json({ code: 400, message: '用户名或密码错误', data: null }, 400);
   }
 
+
+  // Check password expiry
+  let requirePasswordChange = false;
+  const expiryEnabled = await getConfigBoolean('password_expiry_enabled', false);
+  if (expiryEnabled) {
+    const expiryDays = await getConfigNumber('password_expiry_days', 90);
+    const pwdUpdate = user.passwordUpdatedAt || user.createdAt;
+    const msInDay = 1000 * 60 * 60 * 24;
+    const daysSinceUpdate = (Date.now() - pwdUpdate.getTime()) / msInDay;
+    if (daysSinceUpdate > expiryDays) {
+      requirePasswordChange = true;
+    }
+  }
+
   // 登录成功，清除失败计数
   await clearLoginAttempts(username);
 
@@ -157,8 +171,9 @@ auth.post('/login', async (c) => {
     code: 0,
     message: '登录成功',
     data: {
-      user: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+      user: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString(), requirePasswordChange },
       token: { accessToken, refreshToken },
+      requirePasswordChange,
     },
   });
 });
@@ -266,6 +281,19 @@ auth.get('/me', authMiddleware, async (c) => {
     permissions = await getUserPermissions(user.id);
   }
 
+  // Check password expiry
+  let requirePasswordChange = false;
+  const expiryEnabled = await getConfigBoolean('password_expiry_enabled', false);
+  if (expiryEnabled) {
+    const expiryDays = await getConfigNumber('password_expiry_days', 90);
+    const pwdUpdate = user.passwordUpdatedAt || user.createdAt;
+    const msInDay = 1000 * 60 * 60 * 24;
+    const daysSinceUpdate = (Date.now() - pwdUpdate.getTime()) / msInDay;
+    if (daysSinceUpdate > expiryDays) {
+      requirePasswordChange = true;
+    }
+  }
+
   const { password: _, ...userInfo } = user;
   return c.json({
     code: 0,
@@ -274,6 +302,7 @@ auth.get('/me', authMiddleware, async (c) => {
       ...userInfo,
       roles: userRoleList,
       permissions,
+      requirePasswordChange,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
     },
@@ -298,7 +327,7 @@ auth.put('/profile', authMiddleware, async (c) => {
 
   const [updated] = await db
     .update(users)
-    .set({ ...result.data, updatedAt: new Date() })
+    .set({ ...result.data, passwordUpdatedAt: new Date(), updatedAt: new Date() })
     .where(eq(users.id, payload.userId))
     .returning();
 
@@ -331,7 +360,7 @@ auth.put('/password', authMiddleware, async (c) => {
   }
 
   const hashed = await bcrypt.hash(result.data.newPassword, 10);
-  await db.update(users).set({ password: hashed, updatedAt: new Date() }).where(eq(users.id, payload.userId));
+  await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date(), updatedAt: new Date() }).where(eq(users.id, payload.userId));
 
   return c.json({ code: 0, message: '密码修改成功', data: null });
 });

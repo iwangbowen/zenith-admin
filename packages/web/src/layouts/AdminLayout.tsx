@@ -12,6 +12,7 @@ import { formatDateTime } from '../utils/date';
 import { config } from '../config';
 import { renderLucideIcon } from '../utils/icons';
 import NProgress from '../components/NProgress';
+import ForceChangePasswordModal from '../components/ForceChangePasswordModal';
 import './AdminLayout.css';
 
 // 主题图标
