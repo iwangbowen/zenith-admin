@@ -186,11 +186,12 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   let formSubtitle = '请输入您的账号信息以登录工作台';
 
   const handleOAuthLogin = async (provider: OAuthProviderType) => {
-    const res = await request.get<{ authUrl: string; state: string }>(`/api/auth/oauth/${provider}`);
+    const res = await request.get<{ authUrl: string; state: string }>(`/api/auth/oauth/${provider}`, { silent: true });
     if (res.code === 0 && res.data?.authUrl) {
       globalThis.location.href = res.data.authUrl;
+    } else {
+      Toast.warning(res.message || '该登录方式暂不可用，请联系管理员配置');
     }
-    // 错误 toast 由 request 工具自动处理
   };
 
   if (isDemoMode) {

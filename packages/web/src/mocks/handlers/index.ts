@@ -17,6 +17,7 @@ import { regionsHandlers } from './regions';
 import { emailConfigHandlers } from './email-config';
 import { dashboardHandlers } from './dashboard';
 import { oauthHandlers } from './oauth';
+import { oauthConfigHandlers } from './oauth-config';
 import { dbBackupsHandlers } from './db-backups';
 
 export const handlers = [
@@ -39,5 +40,6 @@ export const handlers = [
   ...emailConfigHandlers,
   ...dashboardHandlers,
   ...oauthHandlers,
+  ...oauthConfigHandlers,
   ...dbBackupsHandlers,
 ];
