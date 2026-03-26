@@ -779,6 +779,64 @@ export const openapiSpec = {
         },
       },
     },
+    // ─── Email Config ─────────────────────────────────────────────────────────
+    '/email-config': {
+      get: { tags: ['邮件配置'], summary: '获取邮件配置', responses: { '200': { description: 'SMTP配置信息' } } },
+      put: {
+        tags: ['邮件配置'],
+        summary: '保存邮件配置',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  smtpHost: { type: 'string', example: 'smtp.example.com' },
+                  smtpPort: { type: 'integer', example: 465 },
+                  smtpUser: { type: 'string', example: 'noreply@example.com' },
+                  smtpPassword: { type: 'string' },
+                  fromName: { type: 'string', example: 'Zenith Admin' },
+                  fromEmail: { type: 'string' },
+                  encryption: { type: 'string', enum: ['none', 'ssl', 'tls'], example: 'ssl' },
+                  status: { type: 'string', enum: ['active', 'disabled'] },
+                },
+              },
+            },
+          },
+        },
+        responses: { '200': { description: '保存成功' } },
+      },
+    },
+    '/email-config/test': {
+      post: {
+        tags: ['邮件配置'],
+        summary: '发送测试邮件',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email'], properties: { email: { type: 'string', format: 'email' } } } } } },
+        responses: { '200': { description: '发送成功' }, '400': { description: 'SMTP配置不完整' }, '500': { description: '发送失败' } },
+      },
+    },
+    // ─── User Import ──────────────────────────────────────────────────────────
+    '/users/import-template': {
+      get: { tags: ['用户管理'], summary: '下载用户导入模板（Excel）', responses: { '200': { description: 'Excel 模板文件' } } },
+    },
+    '/users/import': {
+      post: {
+        tags: ['用户管理'],
+        summary: '批量导入用户（Excel）',
+        requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary', description: '用户导入 Excel 文件' } } } } } },
+        responses: { '200': { description: '导入结果', content: { 'application/json': { schema: { type: 'object', properties: { total: { type: 'integer' }, success: { type: 'integer' }, failed: { type: 'integer' }, errors: { type: 'array', items: { type: 'object', properties: { row: { type: 'integer' }, message: { type: 'string' } } } } } } } } } },
+      },
+    },
+    // ─── Password Policy ─────────────────────────────────────────────────────
+    '/system-configs/password-policy': {
+      get: {
+        tags: ['系统配置'],
+        summary: '获取密码策略（无需认证）',
+        security: [],
+        responses: { '200': { description: '密码策略', content: { 'application/json': { schema: { type: 'object', properties: { minLength: { type: 'integer', example: 8 }, requireUppercase: { type: 'boolean' }, requireSpecialChar: { type: 'boolean' } } } } } } },
+      },
+    },
     // ─── Health ───────────────────────────────────────────────────────────────
     '/health': {
       get: {
@@ -831,8 +889,9 @@ export const openapiSpec = {
     { name: '服务监控', description: 'CPU / 内存 / 磁盘等服务器状态' },
     { name: '通知公告', description: '通知公告 CRUD、发布、收件箱' },
     { name: '地区管理', description: '行政地区 CRUD' },
-    { name: '系统配置', description: '内置系统配置项的读写' },
+    { name: '系统配置', description: '内置系统配置项的读写、密码策略' },
     { name: '定时任务', description: '定时任务管理及执行历史' },
+    { name: '邮件配置', description: 'SMTP 邮件服务器配置及测试' },
     { name: '服务状态', description: '健康检查，无需认证' },
   ],
 };
