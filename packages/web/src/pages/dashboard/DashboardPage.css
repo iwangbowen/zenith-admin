@@ -123,38 +123,22 @@
 .dashboard-card--architecture .semi-card-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
-.architecture-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+.dashboard-card--architecture .semi-list {
+  background: transparent;
 }
 
-.architecture-item {
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  min-width: 0;
+.dashboard-card--architecture .semi-list-item {
+  border-bottom: 1px solid var(--color-border);
 }
 
-.architecture-item__label {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  margin-bottom: 2px;
-}
-
-.architecture-item__value {
-  font-size: 13px;
-  line-height: 1.35;
-  color: var(--color-text);
-  font-weight: 600;
+.dashboard-card--architecture .semi-list-item:last-child {
+  border-bottom: none;
 }
 
 .architecture-tags {
-  padding-top: 0;
+  padding: 8px 16px 4px;
 }
 
 /* 项目链接 */

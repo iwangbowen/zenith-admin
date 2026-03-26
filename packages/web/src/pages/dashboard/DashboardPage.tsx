@@ -228,17 +228,21 @@ export default function DashboardPage() {
             title={<Text strong style={{ fontSize: 14 }}>技术架构</Text>}
             className="dashboard-card dashboard-card--architecture"
             style={{ marginTop: 16 }}
+            bodyStyle={{ padding: '4px 0 8px' }}
           >
-            <div className="architecture-list">
-              {architectureItems.map((item) => (
-                <div key={item.key} className="architecture-item">
-                  <div className="architecture-item__label">{item.key}</div>
-                  <div className="architecture-item__value">{item.value}</div>
-                </div>
-              ))}
-            </div>
+            <List
+              dataSource={architectureItems}
+              size="small"
+              renderItem={(item) => (
+                <List.Item
+                  style={{ padding: '6px 16px' }}
+                  main={<Text type="tertiary" size="small">{item.key}</Text>}
+                  extra={<Text strong size="small">{item.value}</Text>}
+                />
+              )}
+            />
             <div className="architecture-tags">
-              <Space wrap spacing={8}>
+              <Space wrap spacing={6}>
                 <Tag color="blue" size="small">TypeScript</Tag>
                 <Tag color="cyan" size="small">Vite</Tag>
                 <Tag color="green" size="small">Drizzle</Tag>
