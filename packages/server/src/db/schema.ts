@@ -320,7 +320,7 @@ export type RegionRow = typeof regions.$inferSelect;
 export type NewRegion = typeof regions.$inferInsert;
 
 // ─── 邮件配置表 ──────────────────────────────────────────────────────────────
-export const emailSmtpEnum = pgEnum('email_encryption', ['none', 'ssl', 'tls']);
+export const emailEncryptionEnum = pgEnum('email_encryption', ['none', 'ssl', 'tls']);
 
 export const emailConfigs = pgTable('email_configs', {
   id: serial('id').primaryKey(),
@@ -330,7 +330,7 @@ export const emailConfigs = pgTable('email_configs', {
   smtpPassword: varchar('smtp_password', { length: 256 }).notNull().default(''),
   fromName: varchar('from_name', { length: 64 }).notNull().default('Zenith Admin'),
   fromEmail: varchar('from_email', { length: 128 }).notNull().default(''),
-  encryption: emailSmtpEnum('encryption').notNull().default('ssl'),
+  encryption: emailEncryptionEnum('encryption').notNull().default('ssl'),
   status: statusEnum('status').notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
