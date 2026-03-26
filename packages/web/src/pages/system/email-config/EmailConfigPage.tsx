@@ -81,6 +81,7 @@ export default function EmailConfigPage() {
   }
 
   return (
+    <div className="page-container">
     <div style={{ maxWidth: 640 }}>
       <div style={{ marginBottom: 24 }}>
         <Title heading={5} style={{ margin: 0 }}>
@@ -181,6 +182,7 @@ export default function EmailConfigPage() {
           />
         </div>
       </Modal>
+    </div>
     </div>
   );
 }
