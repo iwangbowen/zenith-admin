@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space, Upload, Spin,
+  Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space, Upload, Spin, Table,
 } from '@douyinfe/semi-ui';
-import { User as UserIcon, Lock } from 'lucide-react';
-import type { User } from '@zenith/shared';
+
+import type { User, LoginLog, OperationLog } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import './ProfilePage.css';
@@ -19,6 +19,49 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
+
+  // 登录记录
+  const [loginLogs, setLoginLogs] = useState<LoginLog[]>([]);
+  const [loginLogsLoading, setLoginLogsLoading] = useState(false);
+  const [loginLogsLoaded, setLoginLogsLoaded] = useState(false);
+  const [loginLogsPage, setLoginLogsPage] = useState(1);
+  const [loginLogsTotal, setLoginLogsTotal] = useState(0);
+
+  // 操作记录
+  const [operationLogs, setOperationLogs] = useState<OperationLog[]>([]);
+  const [operationLogsLoading, setOperationLogsLoading] = useState(false);
+  const [operationLogsLoaded, setOperationLogsLoaded] = useState(false);
+  const [operationLogsPage, setOperationLogsPage] = useState(1);
+  const [operationLogsTotal, setOperationLogsTotal] = useState(0);
+
+  async function fetchLoginLogs(page = 1) {
+    setLoginLogsLoading(true);
+    const res = await request.get<{ list: LoginLog[]; total: number }>(`/api/auth/my-login-logs?page=${page}&pageSize=10`);
+    setLoginLogsLoading(false);
+    if (res.code === 0 && res.data) {
+      setLoginLogs(res.data.list);
+      setLoginLogsTotal(res.data.total);
+      setLoginLogsPage(page);
+      setLoginLogsLoaded(true);
+    }
+  }
+
+  async function fetchOperationLogs(page = 1) {
+    setOperationLogsLoading(true);
+    const res = await request.get<{ list: OperationLog[]; total: number }>(`/api/auth/my-operation-logs?page=${page}&pageSize=10`);
+    setOperationLogsLoading(false);
+    if (res.code === 0 && res.data) {
+      setOperationLogs(res.data.list);
+      setOperationLogsTotal(res.data.total);
+      setOperationLogsPage(page);
+      setOperationLogsLoaded(true);
+    }
+  }
+
+  function handleTabChange(key: string) {
+    if (key === 'login-logs' && !loginLogsLoaded) void fetchLoginLogs();
+    if (key === 'operation-logs' && !operationLogsLoaded) void fetchOperationLogs();
+  }
 
   async function handleUpdateProfile(values: { nickname: string; email: string }) {
     setProfileLoading(true);
@@ -125,8 +168,8 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
         {/* 右侧：表单 */}
         <Card className="profile-form-card">
-          <Tabs type="line">
-            <TabPane tab={<span><UserIcon style={{ marginRight: 6 }} />基本信息</span>} itemKey="profile">
+          <Tabs type="line" onChange={handleTabChange}>
+            <TabPane tab="基本信息" itemKey="profile">
               <div className="profile-tab-content">
                 <Form
                   initValues={{ nickname: user.nickname, email: user.email }}
@@ -158,7 +201,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
               </div>
             </TabPane>
 
-            <TabPane tab={<span><Lock style={{ marginRight: 6 }} />修改密码</span>} itemKey="password">
+            <TabPane tab="修改密码" itemKey="password">
               <div className="profile-tab-content">
                 <Form onSubmit={handleChangePassword} labelPosition="left" labelWidth={80}>
                   <Form.Input
@@ -191,6 +234,74 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     </Button>
                   </Form.Slot>
                 </Form>
+              </div>
+            </TabPane>
+
+            <TabPane tab="登录记录" itemKey="login-logs">
+              <div className="profile-tab-content">
+                <Table
+                  bordered
+                  loading={loginLogsLoading}
+                  dataSource={loginLogs}
+                  rowKey="id"
+                  pagination={{
+                    total: loginLogsTotal,
+                    currentPage: loginLogsPage,
+                    pageSize: 10,
+                    showSizeChanger: false,
+                    onPageChange: (page) => void fetchLoginLogs(page),
+                  }}
+                  columns={[
+                    {
+                      title: '登录时间',
+                      dataIndex: 'createdAt',
+                      render: (v: string) => formatDateTime(v),
+                      width: 180,
+                    },
+                    { title: 'IP', dataIndex: 'ip', width: 140 },
+                    { title: '浏览器', dataIndex: 'browser' },
+                    { title: '操作系统', dataIndex: 'os' },
+                    {
+                      title: '状态',
+                      dataIndex: 'status',
+                      width: 80,
+                      render: (v: string) => (
+                        <Tag color={v === 'success' ? 'green' : 'red'} size="small">
+                          {v === 'success' ? '成功' : '失败'}
+                        </Tag>
+                      ),
+                    },
+                  ]}
+                />
+              </div>
+            </TabPane>
+
+            <TabPane tab="操作记录" itemKey="operation-logs">
+              <div className="profile-tab-content">
+                <Table
+                  bordered
+                  loading={operationLogsLoading}
+                  dataSource={operationLogs}
+                  rowKey="id"
+                  pagination={{
+                    total: operationLogsTotal,
+                    currentPage: operationLogsPage,
+                    pageSize: 10,
+                    showSizeChanger: false,
+                    onPageChange: (page) => void fetchOperationLogs(page),
+                  }}
+                  columns={[
+                    {
+                      title: '操作时间',
+                      dataIndex: 'createdAt',
+                      render: (v: string) => formatDateTime(v),
+                      width: 180,
+                    },
+                    { title: '操作模块', dataIndex: 'module', width: 120 },
+                    { title: '操作描述', dataIndex: 'description' },
+                    { title: '请求方法', dataIndex: 'method', width: 90 },
+                  ]}
+                />
               </div>
             </TabPane>
           </Tabs>

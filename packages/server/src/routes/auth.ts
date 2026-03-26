@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq } from 'drizzle-orm';
+import { eq, desc, sql, gte, lte, like, and } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
-import { users, userRoles, roles, loginLogs } from '../db/schema';
+import { users, userRoles, roles, loginLogs, operationLogs } from '../db/schema';
 import { config } from '../config';
 import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
@@ -334,6 +334,88 @@ auth.put('/password', authMiddleware, async (c) => {
   await db.update(users).set({ password: hashed, updatedAt: new Date() }).where(eq(users.id, payload.userId));
 
   return c.json({ code: 0, message: '密码修改成功', data: null });
+});
+
+// 我的登录记录
+auth.get('/my-login-logs', authMiddleware, async (c) => {
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
+  const page = Number(c.req.query('page')) || 1;
+  const pageSize = Number(c.req.query('pageSize')) || 10;
+  const status = c.req.query('status') as 'success' | 'fail' | undefined;
+  const startTime = c.req.query('startTime');
+  const endTime = c.req.query('endTime');
+
+  const conditions = [eq(loginLogs.userId, payload.userId)];
+  if (status) conditions.push(eq(loginLogs.status, status));
+  if (startTime) conditions.push(gte(loginLogs.createdAt, new Date(startTime)));
+  if (endTime) conditions.push(lte(loginLogs.createdAt, new Date(endTime)));
+
+  const where = and(...conditions);
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(loginLogs)
+    .where(where);
+
+  const rows = await db
+    .select()
+    .from(loginLogs)
+    .where(where)
+    .orderBy(desc(loginLogs.createdAt))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  return c.json({
+    code: 0,
+    message: 'ok',
+    data: {
+      list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+      total: count,
+      page,
+      pageSize,
+    },
+  });
+});
+
+// 我的操作记录
+auth.get('/my-operation-logs', authMiddleware, async (c) => {
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
+  const page = Number(c.req.query('page')) || 1;
+  const pageSize = Number(c.req.query('pageSize')) || 10;
+  const module = c.req.query('module');
+  const startTime = c.req.query('startTime');
+  const endTime = c.req.query('endTime');
+
+  const conditions = [eq(operationLogs.userId, payload.userId)];
+  if (module) conditions.push(like(operationLogs.module, `%${module}%`));
+  if (startTime) conditions.push(gte(operationLogs.createdAt, new Date(startTime)));
+  if (endTime) conditions.push(lte(operationLogs.createdAt, new Date(endTime)));
+
+  const where = and(...conditions);
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(operationLogs)
+    .where(where);
+
+  const rows = await db
+    .select()
+    .from(operationLogs)
+    .where(where)
+    .orderBy(desc(operationLogs.createdAt))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  return c.json({
+    code: 0,
+    message: 'ok',
+    data: {
+      list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+      total: count,
+      page,
+      pageSize,
+    },
+  });
 });
 
 export default auth;
