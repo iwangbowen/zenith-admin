@@ -706,4 +706,14 @@
   max-height: calc(100vh - 20px) !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
+  /* 隐藏滚动条但保留滚动功能 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.semi-navigation-popover::-webkit-scrollbar,
+.semi-portal .semi-navigation-popover::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
