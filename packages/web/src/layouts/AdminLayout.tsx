@@ -410,6 +410,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </button>
         </Dropdown>
       </Tooltip>
+      <div style={{ width: 1, height: 16, backgroundColor: 'var(--color-border)', margin: '0 4px' }} />
       <Dropdown
         position="bottomRight"
         render={

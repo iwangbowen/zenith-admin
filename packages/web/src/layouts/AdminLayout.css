@@ -102,7 +102,8 @@
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, #4d8aff 0%, #3370ff 100%);
+  box-shadow: 0 2px 6px rgba(51, 112, 255, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
