@@ -13,8 +13,10 @@
   display: flex;
   align-items: center;
   background: var(--color-sidebar-bg);
-  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--topbar-shadow);
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .admin-topbar__brand {

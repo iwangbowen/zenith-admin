@@ -19,6 +19,7 @@
   --color-text-secondary: #646a73;
   --color-border: #e1e3e6;
   --radius: 6px;
+  --topbar-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 
 /* 深色模式变量 */
@@ -36,6 +37,7 @@
   --color-text: #e8eaed;
   --color-text-secondary: #8f96a3;
   --color-border: #2e3340;
+  --topbar-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
   color-scheme: dark;
 }
 
