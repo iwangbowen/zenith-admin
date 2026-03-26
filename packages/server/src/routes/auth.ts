@@ -179,6 +179,11 @@ auth.post('/login', async (c) => {
 });
 
 auth.post('/register', async (c) => {
+  const allowRegistration = await getConfigBoolean('allow_registration', false);
+  if (!allowRegistration) {
+    return c.json({ code: 403, message: '系统已关闭注册功能', data: null }, 403);
+  }
+
   const body = await c.req.json();
   const result = registerSchema.safeParse(body);
   if (!result.success) {

@@ -24,6 +24,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   const [captchaEnabled, setCaptchaEnabled] = useState(false);
   const [captchaId, setCaptchaId] = useState('');
   const [captchaSvg, setCaptchaSvg] = useState('');
+  const [allowRegistration, setAllowRegistration] = useState(false);
 
   const fetchCaptcha = useCallback(async () => {
     try {
@@ -39,6 +40,16 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   }, []);
 
   useEffect(() => { fetchCaptcha(); }, [fetchCaptcha]);
+
+  useEffect(() => {
+    request.get<{ configValue: string }>('/api/system-configs/public/allow_registration', { silent: true })
+      .then(res => {
+        if (res.code === 0 && res.data) {
+          setAllowRegistration(res.data.configValue === 'true');
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogin = async (values: Record<string, string>) => {
     setLoading(true);
@@ -243,7 +254,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
               {formSubtitle}
             </Text>
           </div>
-          {isDemoMode ? (
+          {isDemoMode || !allowRegistration ? (
             <div style={{ marginBottom: 20 }}>
               {renderLoginForm()}
             </div>
