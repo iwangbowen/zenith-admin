@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 export interface TabItem {
   key: string;
@@ -11,6 +11,12 @@ const HOME_TAB: TabItem = { key: '/', title: '首页', closable: false };
 export function useTabsStore(maxCount: number = 20) {
   const [tabs, setTabs] = useState<TabItem[]>([HOME_TAB]);
   const [activeKey, setActiveKey] = useState('/');
+
+  // 我们使用一个 ref 来在回调中获取最新的状态，以决定要返回的 nextActive
+  const stateRef = useRef({ tabs, activeKey });
+  useEffect(() => {
+    stateRef.current = { tabs, activeKey };
+  }, [tabs, activeKey]);
 
   const addTab = useCallback((key: string, title: string) => {
     setTabs((prev) => {
@@ -42,8 +48,32 @@ export function useTabsStore(maxCount: number = 20) {
   }, [tabs]);
 
   const closeOthers = useCallback((key: string) => {
-    setTabs((prev) => prev.filter((t) => !t.closable || t.key === key));
+    const nextTabs = stateRef.current.tabs.filter((t) => !t.closable || t.key === key);
+    setTabs(nextTabs);
     setActiveKey(key);
+    return key;
+  }, []);
+
+  const closeLeft = useCallback((key: string) => {
+    const { tabs: currentTabs, activeKey: currentActive } = stateRef.current;
+    const idx = currentTabs.findIndex((t) => t.key === key);
+    if (idx < 0) return currentActive;
+    const nextTabs = currentTabs.filter((t, i) => !t.closable || i >= idx);
+    const nextActive = nextTabs.some((t) => t.key === currentActive) ? currentActive : key;
+    setTabs(nextTabs);
+    setActiveKey(nextActive);
+    return nextActive;
+  }, []);
+
+  const closeRight = useCallback((key: string) => {
+    const { tabs: currentTabs, activeKey: currentActive } = stateRef.current;
+    const idx = currentTabs.findIndex((t) => t.key === key);
+    if (idx < 0) return currentActive;
+    const nextTabs = currentTabs.filter((t, i) => !t.closable || i <= idx);
+    const nextActive = nextTabs.some((t) => t.key === currentActive) ? currentActive : key;
+    setTabs(nextTabs);
+    setActiveKey(nextActive);
+    return nextActive;
   }, []);
 
   const closeAll = useCallback(() => {
@@ -51,5 +81,5 @@ export function useTabsStore(maxCount: number = 20) {
     setActiveKey('/');
   }, []);
 
-  return { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeAll };
+  return { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll };
 }

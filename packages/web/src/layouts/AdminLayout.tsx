@@ -93,7 +93,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeAll } = useTabsStore(preferences.tabsMaxCount);
+  const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll } = useTabsStore(preferences.tabsMaxCount);
   const [prefsVisible, setPrefsVisible] = useState(false);
   const [manualTopKey, setManualTopKey] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -553,14 +553,39 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       e.preventDefault();
                       const menu = document.createElement('div');
                       menu.className = 'admin-tab-ctx';
-                      menu.innerHTML = `<div class="admin-tab-ctx-item" data-action="close-others">关闭其他</div><div class="admin-tab-ctx-item" data-action="close-all">关闭全部</div>`;
+
+                      let menuHtml = '';
+                      if (tab.closable) {
+                        menuHtml += `<div class="admin-tab-ctx-item" data-action="close">关闭当前</div>`;
+                      }
+                      menuHtml += `<div class="admin-tab-ctx-item" data-action="close-others">关闭其他</div>`;
+                      menuHtml += `<div class="admin-tab-ctx-item" data-action="close-left">关闭左侧</div>`;
+                      menuHtml += `<div class="admin-tab-ctx-item" data-action="close-right">关闭右侧</div>`;
+                      menuHtml += `<div class="admin-tab-ctx-item" data-action="close-all">关闭全部</div>`;
+
+                      menu.innerHTML = menuHtml;
                       menu.style.left = `${e.clientX}px`;
                       menu.style.top = `${e.clientY}px`;
                       document.body.appendChild(menu);
+
                       const handler = (ev: MouseEvent) => {
                         const target = ev.target as HTMLElement;
-                        if (target.dataset.action === 'close-others') closeOthers(tab.key);
-                        if (target.dataset.action === 'close-all') { closeAll(); navigate('/'); }
+                        const action = (target.closest('.admin-tab-ctx-item') as HTMLElement)?.dataset.action;
+                        if (action === 'close') {
+                          handleTabClose(tab.key);
+                        } else if (action === 'close-others') {
+                          const nextKey = closeOthers(tab.key);
+                          navigate(nextKey);
+                        } else if (action === 'close-left') {
+                          const nextKey = closeLeft(tab.key);
+                          navigate(nextKey);
+                        } else if (action === 'close-right') {
+                          const nextKey = closeRight(tab.key);
+                          navigate(nextKey);
+                        } else if (action === 'close-all') {
+                          closeAll();
+                          navigate('/');
+                        }
                         menu.remove();
                         document.removeEventListener('click', handler);
                       };
