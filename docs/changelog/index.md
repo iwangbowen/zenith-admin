@@ -4,6 +4,39 @@
 
 ---
 
+## v0.1.4 - 2026-03-26
+
+### Added
+
+#### 密码策略
+
+- 新增密码策略系统配置项：`password_min_length`（最小长度，默认 8）、`password_require_uppercase`（是否必须含大写字母）、`password_require_special_char`（是否必须含特殊字符）
+- 新增 `packages/server/src/lib/password-policy.ts`，提供 `getPasswordPolicy()` 和 `validatePassword()` 工具函数
+- 用户创建和密码修改接口均自动读取并校验密码策略，不符合规则返回 `400` 错误
+- 新增公开接口 `GET /api/system-configs/password-policy`（无需认证），供前端表单获取当前密码要求
+- 用户管理新增用户弹窗、个人资料密码修改表单均展示密码复杂度提示
+
+#### 用户批量导入
+
+- 新增 `GET /api/users/import-template` 接口，返回带样例数据的 Excel 导入模板
+- 新增 `POST /api/users/import` 接口，解析 Excel 文件并批量创建用户，支持按部门编码、岗位编码、角色编码自动关联，逐行报告失败原因
+- 新增 `system:user:import` 按钮权限
+- 用户管理页新增「导入」按钮，弹窗支持模板下载、文件上传及导入结果展示（成功/失败计数与错误明细）
+
+#### 邮件配置
+
+- 新增 `email_configs` 数据库表（含 `email_encryption` 枚举），并添加对应 Drizzle 迁移文件
+- 新增 `GET /api/email-config`、`PUT /api/email-config` 接口，支持 SMTP 服务器配置的读取与保存
+- 新增 `POST /api/email-config/test` 接口，通过 nodemailer 向指定邮箱发送测试邮件
+- 新增「邮件配置」菜单页面（`/system/email-config`），表单涵盖 SMTP 主机、端口、加密方式、授权密码、发件人信息，并支持一键发送测试邮件
+- MSW Demo 模式下同步添加邮件配置 mock 数据与 handler
+
+### Changed
+
+- OpenAPI Spec 新增邮件配置、用户导入、密码策略等相关接口文档及标签
+
+---
+
 ## v0.1.3 - 2026-03-26
 
 ### Added

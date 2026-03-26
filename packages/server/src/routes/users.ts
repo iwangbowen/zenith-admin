@@ -513,6 +513,11 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
   const errors: Array<{ row: number; message: string }> = [];
   let success = 0;
 
+  const getCellText = (row: ExcelJS.Row, col: number) => {
+    const cell = row.getCell(col);
+    return cell.text?.toString().trim() ?? '';
+  };
+
   const dataRows: ExcelJS.Row[] = [];
   sheet.eachRow((row, rowNum) => {
     if (rowNum > 1) dataRows.push(row);
@@ -520,19 +525,15 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
 
   for (const row of dataRows) {
     const rowNum = row.number;
-    const getCellText = (col: number) => {
-      const cell = row.getCell(col);
-      return cell.text?.toString().trim() ?? '';
-    };
 
-    const username = getCellText(1);
-    const nickname = getCellText(2);
-    const email = getCellText(3);
-    const password = getCellText(4);
-    const departmentCode = getCellText(5);
-    const positionCodesRaw = getCellText(6);
-    const roleCodesRaw = getCellText(7);
-    const statusRaw = getCellText(8);
+    const username = getCellText(row, 1);
+    const nickname = getCellText(row, 2);
+    const email = getCellText(row, 3);
+    const password = getCellText(row, 4);
+    const departmentCode = getCellText(row, 5);
+    const positionCodesRaw = getCellText(row, 6);
+    const roleCodesRaw = getCellText(row, 7);
+    const statusRaw = getCellText(row, 8);
 
     if (!username || !nickname || !email || !password) {
       errors.push({ row: rowNum, message: '用户名、昵称、邮箱、密码为必填项' });

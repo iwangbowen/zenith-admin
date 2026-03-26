@@ -66,7 +66,7 @@ emailConfigRouter.post('/test', guard({ permission: 'system:email-config:update'
   try {
     const nodemailer = await import('nodemailer').catch(() => null);
     if (!nodemailer) {
-      return c.json({ code: 500, message: 'nodemailer 未安装，请运行 npm install 后重试', data: null }, 500);
+      return c.json({ code: 500, message: 'nodemailer 模块加载失败，请检查依赖安装（npm install）', data: null }, 500);
     }
 
     const secure = config.encryption === 'ssl';

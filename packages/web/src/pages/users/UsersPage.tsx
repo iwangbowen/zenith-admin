@@ -16,7 +16,6 @@ import {
 } from '@douyinfe/semi-ui';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
-import { TOKEN_KEY } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '../../utils/password-policy';
@@ -267,19 +266,12 @@ export default function UsersPage() {
     const formData = new FormData();
     formData.append('file', importFileRef.current);
     try {
-      const res = await fetch('/api/users/import', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}`,
-        },
-        body: formData,
-      });
-      const data = await res.json() as { code: number; message: string; data: ImportResult };
-      if (data.code === 0) {
-        setImportResult(data.data);
-        if (data.data.success > 0) void fetchUsers();
+      const res = await request.postForm<ImportResult>('/api/users/import', formData);
+      if (res.code === 0) {
+        setImportResult(res.data);
+        if (res.data.success > 0) void fetchUsers();
       } else {
-        Toast.error(data.message);
+        Toast.error(res.message);
       }
     } catch {
       Toast.error('导入请求失败');
