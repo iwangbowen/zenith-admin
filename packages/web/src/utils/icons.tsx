@@ -30,5 +30,5 @@ export const ALL_ICON_NAMES: string[] = Object.keys(ICON_REGISTRY).sort((a, b) =
 export function renderLucideIcon(name: string, size = 16): React.ReactElement | null {
   const Icon = ICON_REGISTRY[name];
   if (!Icon) return null;
-  return React.createElement(Icon as React.ComponentType<{ size: number }>, { size });
+  return React.createElement(Icon as React.ComponentType<{ size: number; strokeWidth?: number }>, { size, strokeWidth: 1.5 });
 }

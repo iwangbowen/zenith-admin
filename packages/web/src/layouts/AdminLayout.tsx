@@ -16,15 +16,15 @@ import './AdminLayout.css';
 
 // 主题图标
 function SunIcon() {
-  return <Sun size={16} strokeWidth={1.8} />;
+  return <Sun size={16} strokeWidth={1.5} />;
 }
 
 function MoonIcon() {
-  return <Moon size={16} strokeWidth={1.8} />;
+  return <Moon size={16} strokeWidth={1.5} />;
 }
 
 function MonitorIcon() {
-  return <Monitor size={16} strokeWidth={1.8} />;
+  return <Monitor size={16} strokeWidth={1.5} />;
 }
 
 const themeLabelMap: Record<ThemeMode, { label: string; icon: React.ReactNode }> = {
@@ -387,7 +387,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
           <Badge count={unreadCount > 0 ? unreadCount : undefined} overflowCount={99} style={{ zIndex: 1 }}>
             <button className="admin-theme-btn" title="通知公告">
-              <Bell size={16} strokeWidth={1.8} />
+              <Bell size={16} strokeWidth={1.5} />
             </button>
           </Badge>
         </div>
@@ -415,11 +415,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         position="bottomRight"
         render={
           <Dropdown.Menu>
-            <Dropdown.Item icon={<UserIcon size={14} strokeWidth={1.8} />} onClick={() => navigate('/profile')}>个人中心</Dropdown.Item>
-            <Dropdown.Item icon={<Settings size={14} strokeWidth={1.8} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>
+            <Dropdown.Item icon={<UserIcon size={14} strokeWidth={1.5} />} onClick={() => navigate('/profile')}>个人中心</Dropdown.Item>
+            <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>
             <Dropdown.Divider />
             <Dropdown.Item
-              icon={<LogOut size={14} strokeWidth={1.8} />}
+              icon={<LogOut size={14} strokeWidth={1.5} />}
               onClick={() => Modal.confirm({
                 title: '确认退出',
                 content: '确定要退出登录吗？',
