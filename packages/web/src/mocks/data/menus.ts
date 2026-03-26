@@ -3,7 +3,7 @@ import { SEED_MENUS } from '@zenith/shared';
 
 export const mockMenus: Menu[] = SEED_MENUS.map((m) => ({ ...m }));
 
-let nextMenuId = 100;
+let nextMenuId = 300;
 export function getNextMenuId() {
   return nextMenuId++;
 }

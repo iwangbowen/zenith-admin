@@ -82,7 +82,8 @@ menusRouter.get('/user', async (c) => {
     }
   }
 
-  const filtered = allMenus.filter((m) => allowedMenuIds.has(m.id));
+  // 始终下发内置隐藏菜单（visible=false），所有登录用户都需要它们的标题/面包屑信息
+  const filtered = allMenus.filter((m) => allowedMenuIds.has(m.id) || !m.visible);
   return c.json({ code: 0, message: 'ok', data: buildTree(filtered.map(toMenu)) });
 });
 

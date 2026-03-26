@@ -72,6 +72,9 @@ export const SEED_MENUS: Menu[] = [
   { id: 102, parentId: 100, title: '编辑地区', name: undefined,            path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 2,  status: 'active', visible: true,  permission: 'system:region:update',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 103, parentId: 100, title: '删除地区', name: undefined,            path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 3,  status: 'active', visible: true,  permission: 'system:region:delete',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 7,  parentId: 2,  title: '组件示例',   name: 'Components',          path: '/components',                component: 'components/ComponentsPage',                      icon: 'Component',         type: 'menu',      sort: 15, status: 'active', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // ── 内置隐藏菜单（不显示在侧边栏，供面包屑/标签页标题使用）──────────────────────────────
+  { id: 200, parentId: 0, title: '个人中心',   name: 'Profile',             path: '/profile',                   component: 'profile/ProfilePage',                            icon: 'UserRound',         type: 'menu',      sort: 99, status: 'active', visible: false, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 201, parentId: 0, title: '通知中心',   name: 'Notifications',       path: '/notifications',             component: 'notifications/NotificationsPage',                icon: 'Bell',              type: 'menu',      sort: 100, status: 'active', visible: false, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────

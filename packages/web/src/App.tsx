@@ -16,11 +16,14 @@ import ForbiddenPage from './pages/forbidden/ForbiddenPage';
 
 const modules = import.meta.glob('./pages/**/*.tsx');
 
+/** 固定路由路径，不通过菜单动态加载 */
+const FIXED_ROUTES = new Set(['/profile', '/notifications']);
+
 /** 扁平化菜单以便注册路由 */
 function flattenMenus(menus: Menu[]): Menu[] {
   let routes: Menu[] = [];
   for (const m of menus) {
-    if (m.path && m.component) {
+    if (m.path && m.component && !FIXED_ROUTES.has(m.path)) {
       routes.push(m);
     }
     if (m.children && m.children.length > 0) {

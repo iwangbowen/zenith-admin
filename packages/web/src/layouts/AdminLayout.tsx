@@ -194,7 +194,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   );
 
   const pathTitleMap = useMemo(() => {
-    const map: Record<string, string> = { '/profile': '个人中心', '/notifications': '通知中心' };
+    const map: Record<string, string> = {};
     function traverse(nodes: Menu[]) {
       for (const node of nodes) {
         if (node.path && node.title) map[node.path] = node.title;
