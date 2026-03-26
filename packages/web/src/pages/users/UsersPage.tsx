@@ -620,7 +620,7 @@ export default function UsersPage() {
               accept=".xlsx,.xls"
               limit={1}
               action=""
-              beforeUpload={(file) => {
+              beforeUpload={({ file }) => {
                 importFileRef.current = file.fileInstance ?? null;
                 return false;
               }}
