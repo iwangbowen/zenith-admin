@@ -8,7 +8,7 @@ import type { Notice } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type NoticeWithRead = Notice & { isRead: boolean };
 
@@ -157,35 +157,32 @@ export default function NotificationsPage() {
 
   return (
     <div className="page-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Bell size={18} />
-          <Title heading={5} style={{ margin: 0 }}>通知中心</Title>
+      <div className="search-area">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Tabs activeKey={activeTab} onChange={handleTabChange} style={{ marginBottom: 0 }}>
+            <TabPane tab="全部通知" itemKey="all" />
+            <TabPane
+              tab={
+                <Space spacing={4}>
+                  <span>未读消息</span>
+                  {activeTab === 'all' && unreadCount > 0 && (
+                    <Tag color="red" size="small">{unreadCount}</Tag>
+                  )}
+                </Space>
+              }
+              itemKey="unread"
+            />
+          </Tabs>
+          <Button
+            type="secondary"
+            icon={<CheckCheck size={14} />}
+            loading={markAllLoading}
+            onClick={handleMarkAllRead}
+          >
+            全部标记为已读
+          </Button>
         </div>
-        <Button
-          type="secondary"
-          icon={<CheckCheck size={14} />}
-          loading={markAllLoading}
-          onClick={handleMarkAllRead}
-        >
-          全部标记为已读
-        </Button>
       </div>
-
-      <Tabs activeKey={activeTab} onChange={handleTabChange}>
-        <TabPane tab="全部通知" itemKey="all" />
-        <TabPane
-          tab={
-            <Space spacing={4}>
-              <span>未读消息</span>
-              {activeTab === 'all' && unreadCount > 0 && (
-                <Tag color="red" size="small">{unreadCount}</Tag>
-              )}
-            </Space>
-          }
-          itemKey="unread"
-        />
-      </Tabs>
 
       {list.length === 0 && !loading ? (
         <Empty
