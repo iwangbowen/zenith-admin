@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space, Upload, Spin, Table,
 } from '@douyinfe/semi-ui';
@@ -6,6 +6,7 @@ import {
 import type { User, LoginLog, OperationLog } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
+import { formatPasswordPolicyHint, type PasswordPolicy } from '../../utils/password-policy';
 import './ProfilePage.css';
 
 const { Title, Text } = Typography;
@@ -19,6 +20,20 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const [passwordPolicy, setPasswordPolicy] = useState<PasswordPolicy | null>(null);
+
+  // 获取密码策略
+  useEffect(() => {
+    request
+      .get<PasswordPolicy>('/api/system-configs/password-policy')
+      .then((res) => {
+        if (res.code === 0) setPasswordPolicy(res.data);
+      })
+      .catch(() => {
+        // 请求失败时保持使用默认策略（null），避免未处理的 Promise 拒绝
+        setPasswordPolicy(null);
+      });
+  }, []);
 
   // 登录记录
   const [loginLogs, setLoginLogs] = useState<LoginLog[]>([]);
@@ -217,9 +232,12 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     mode="password"
                     rules={[
                       { required: true, message: '请输入新密码' },
-                      { min: 6, message: '密码至少6个字符' },
+                      ...(passwordPolicy?.minLength
+                        ? [{ min: passwordPolicy.minLength, message: `密码至少${passwordPolicy.minLength}个字符` }]
+                        : []),
                     ]}
                     style={{ width: 320 }}
+                    helpText={formatPasswordPolicyHint(passwordPolicy)}
                   />
                   <Form.Input
                     field="confirmPassword"

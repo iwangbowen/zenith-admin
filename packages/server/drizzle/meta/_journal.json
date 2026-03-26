@@ -134,6 +134,13 @@
       "when": 1774449388450,
       "tag": "0018_fancy_garia",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1774500000000,
+      "tag": "0019_email_configs",
+      "breakpoints": true
     }
   ]
 }

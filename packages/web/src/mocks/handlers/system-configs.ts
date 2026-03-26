@@ -3,6 +3,15 @@ import { mockSystemConfigs } from '../data/system';
 import type { SystemConfig } from '@zenith/shared';
 
 export const systemConfigsHandlers = [
+  // 密码策略（公开，无需鉴权）
+  http.get('/api/system-configs/password-policy', () => {
+    return HttpResponse.json({
+      code: 0,
+      message: 'success',
+      data: { minLength: 6, requireUppercase: false, requireSpecialChar: false },
+    });
+  }),
+
   // 系统参数列表
   http.get('/api/system-configs', ({ request }) => {
     const url = new URL(request.url);

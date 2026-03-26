@@ -27,6 +27,7 @@ import systemConfigsRoutes from './routes/system-configs';
 import sessionsRoutes from './routes/sessions';
 import cronJobsRoutes from './routes/cron-jobs';
 import regionsRoutes from './routes/regions';
+import emailConfigRoutes from './routes/email-config';
 import dashboardRoutes from './routes/dashboard';
 import { createWsRoute } from './routes/ws';
 import { initCronScheduler } from './lib/cron-scheduler';
@@ -56,6 +57,7 @@ app.route('/api/system-configs', systemConfigsRoutes);
 app.route('/api/sessions', sessionsRoutes);
 app.route('/api/cron-jobs', cronJobsRoutes);
 app.route('/api/regions', regionsRoutes);
+app.route('/api/email-config', emailConfigRoutes);
 app.route('/api/dashboard', dashboardRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 
