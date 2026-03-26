@@ -700,19 +700,16 @@
   box-shadow: 0 0 0 1.5px var(--color-sidebar-bg) !important;
 }
 
-/* 解决菜单折叠状态下，悬浮弹出的子菜单因为内容过多无法滚动的问题 */
-.semi-portal .semi-navigation-popover,
-.semi-navigation-popover {
-  max-height: calc(100vh - 20px) !important;
+/* 解决各种菜单模式（侧边栏折叠、顶部水平导航）弹出的子菜单无法滚动的问题 */
+.semi-portal .semi-dropdown-wrapper:has(.semi-navigation-item) {
+  max-height: calc(100vh - 80px) !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
-  /* 隐藏滚动条但保留滚动功能 */
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
 }
 
-.semi-navigation-popover::-webkit-scrollbar,
-.semi-portal .semi-navigation-popover::-webkit-scrollbar {
+.semi-portal .semi-dropdown-wrapper:has(.semi-navigation-item)::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
