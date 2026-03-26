@@ -140,6 +140,25 @@
   width: 100%;
   background: var(--color-sidebar-bg);
   border-right: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 修复 Semi Nav 内部布局：让 inner 和 header-list-outer 正确分配高度 */
+.admin-sidebar__nav .semi-navigation-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-sidebar__nav .semi-navigation-header-list-outer {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .admin-sidebar__nav.semi-navigation-collapsed {
@@ -151,10 +170,14 @@
   height: var(--header-height);
   padding: 0 14px;
   border-bottom: none;
+  flex-shrink: 0;
 }
 
 .admin-sidebar__nav .semi-navigation-list-wrapper {
   padding: 4px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .admin-nav-link-wrapper {
@@ -221,6 +244,7 @@
   height: 48px !important;
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .admin-sidebar__nav .semi-navigation-footer .semi-button {

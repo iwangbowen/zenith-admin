@@ -99,6 +99,18 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ─── Tabs 滚动 ─────────────────────────────────────────────────────────────
+  const activeTabRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // 延迟以确保 DOM 已完成渲染
+    const timer = setTimeout(() => {
+      if (activeTabRef.current) {
+        activeTabRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [activeKey, tabs.length]);
+
   // ─── 通知公告 ─────────────────────────────────────────────────────────────
   const [notices, setNotices] = useState<(Notice & { isRead?: boolean })[]>([]);
   const [noticePopVisible, setNoticePopVisible] = useState(false);
@@ -531,6 +543,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 {tabs.map((tab) => (
                   <div
                     key={tab.key}
+                    ref={tab.key === activeKey ? activeTabRef : null}
                     role="tab"
                     tabIndex={0}
                     className={`admin-tab-item${tab.key === activeKey ? ' admin-tab-item--active' : ''}`}
