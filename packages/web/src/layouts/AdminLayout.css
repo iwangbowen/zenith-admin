@@ -196,10 +196,16 @@
 
 .admin-sidebar__nav .semi-navigation-footer {
   border-top: 1px solid var(--color-border);
+  padding: 8px 14px !important;
+  height: 48px !important;
+  display: flex;
+  align-items: center;
 }
 
 .admin-sidebar__nav .semi-navigation-footer .semi-button {
   justify-content: flex-start;
+  height: 32px !important;
+  padding: 0 8px !important;
 }
 
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-header {
