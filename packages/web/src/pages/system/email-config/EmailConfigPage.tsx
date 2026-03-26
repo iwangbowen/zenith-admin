@@ -26,7 +26,7 @@ export default function EmailConfigPage() {
             smtpHost: res.data.smtpHost,
             smtpPort: res.data.smtpPort,
             smtpUser: res.data.smtpUser,
-            smtpPassword: res.data.smtpPassword,
+            // smtpPassword is intentionally not returned by the API to avoid leaking credentials
             fromName: res.data.fromName,
             fromEmail: res.data.fromEmail,
             encryption: res.data.encryption,

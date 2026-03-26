@@ -13,8 +13,11 @@ const POLICY_KEYS = ['password_min_length', 'password_require_uppercase', 'passw
 export async function getPasswordPolicy(): Promise<PasswordPolicy> {
   const configs = await db.select().from(systemConfigs).where(inArray(systemConfigs.configKey, [...POLICY_KEYS]));
   const map = Object.fromEntries(configs.map((c) => [c.configKey, c.configValue]));
+  const rawMinLength = map['password_min_length'];
+  const parsedMinLength = rawMinLength !== undefined ? Number(rawMinLength) : NaN;
+  const safeMinLength = Number.isFinite(parsedMinLength) && parsedMinLength >= 1 ? parsedMinLength : 8;
   return {
-    minLength: parseInt(map['password_min_length'] ?? '8', 10),
+    minLength: safeMinLength,
     requireUppercase: map['password_require_uppercase'] === 'true',
     requireSpecialChar: map['password_require_special_char'] === 'true',
   };

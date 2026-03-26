@@ -24,9 +24,15 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   // 获取密码策略
   useEffect(() => {
-    request.get<PasswordPolicy>('/api/system-configs/password-policy').then((res) => {
-      if (res.code === 0) setPasswordPolicy(res.data);
-    });
+    request
+      .get<PasswordPolicy>('/api/system-configs/password-policy')
+      .then((res) => {
+        if (res.code === 0) setPasswordPolicy(res.data);
+      })
+      .catch(() => {
+        // 请求失败时保持使用默认策略（null），避免未处理的 Promise 拒绝
+        setPasswordPolicy(null);
+      });
   }, []);
 
   // 登录记录
@@ -226,7 +232,9 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     mode="password"
                     rules={[
                       { required: true, message: '请输入新密码' },
-                      { min: passwordPolicy?.minLength ?? 6, message: `密码至少${passwordPolicy?.minLength ?? 6}个字符` },
+                      ...(passwordPolicy?.minLength
+                        ? [{ min: passwordPolicy.minLength, message: `密码至少${passwordPolicy.minLength}个字符` }]
+                        : []),
                     ]}
                     style={{ width: 320 }}
                     helpText={formatPasswordPolicyHint(passwordPolicy)}

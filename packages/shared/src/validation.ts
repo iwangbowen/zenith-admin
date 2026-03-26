@@ -246,12 +246,12 @@ export type UpdateRegionInput = z.infer<typeof updateRegionSchema>;
 
 // ─── 邮件配置 Schema ─────────────────────────────────────────────────────────
 export const emailConfigSchema = z.object({
-  smtpHost: z.string().max(128).optional().default(''),
+  smtpHost: z.string().min(1, 'SMTP 服务器地址不能为空').max(128).optional(),
   smtpPort: z.number().int().min(1).max(65535).default(465),
-  smtpUser: z.string().max(128).optional().default(''),
-  smtpPassword: z.string().max(256).optional().default(''),
-  fromName: z.string().max(64).optional().default('Zenith Admin'),
-  fromEmail: z.string().max(128).optional().default(''),
+  smtpUser: z.string().min(1, 'SMTP 用户名不能为空').max(128).optional(),
+  smtpPassword: z.string().max(256).optional(),
+  fromName: z.string().max(64).default('Zenith Admin'),
+  fromEmail: z.string().max(128).optional(),
   encryption: z.enum(['none', 'ssl', 'tls']).default('ssl'),
   status: z.enum(['active', 'disabled']).default('active'),
 });

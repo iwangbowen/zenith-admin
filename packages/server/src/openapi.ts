@@ -825,7 +825,43 @@ export const openapiSpec = {
         tags: ['用户管理'],
         summary: '批量导入用户（Excel）',
         requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary', description: '用户导入 Excel 文件' } } } } } },
-        responses: { '200': { description: '导入结果', content: { 'application/json': { schema: { type: 'object', properties: { total: { type: 'integer' }, success: { type: 'integer' }, failed: { type: 'integer' }, errors: { type: 'array', items: { type: 'object', properties: { row: { type: 'integer' }, message: { type: 'string' } } } } } } } } } },
+        responses: {
+          '200': {
+            description: '导入结果',
+            content: {
+              'application/json': {
+                schema: {
+                  allOf: [
+                    { $ref: '#/components/schemas/ApiResponse' },
+                    {
+                      type: 'object',
+                      properties: {
+                        data: {
+                          type: 'object',
+                          properties: {
+                            total: { type: 'integer' },
+                            success: { type: 'integer' },
+                            failed: { type: 'integer' },
+                            errors: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  row: { type: 'integer' },
+                                  message: { type: 'string' },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
       },
     },
     // ─── Password Policy ─────────────────────────────────────────────────────

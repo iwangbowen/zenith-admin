@@ -18,7 +18,10 @@ emailConfigRouter.get('/', guard({ permission: 'system:email-config:view' }), as
     const [created] = await db.insert(emailConfigs).values({}).returning();
     config = created;
   }
-  return c.json({ code: 0, message: 'success', data: config });
+  // Mask password field before returning to avoid leaking credentials
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { smtpPassword: _masked, ...safeConfig } = config;
+  return c.json({ code: 0, message: 'success', data: safeConfig });
 });
 
 // PUT / - update email config

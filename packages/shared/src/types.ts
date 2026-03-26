@@ -299,7 +299,7 @@ export interface EmailConfig {
   smtpHost: string;
   smtpPort: number;
   smtpUser: string;
-  smtpPassword: string;
+  smtpPassword?: string;
   fromName: string;
   fromEmail: string;
   encryption: EmailEncryption;

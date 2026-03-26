@@ -6,7 +6,9 @@ let emailConfig: EmailConfig = { ...mockEmailConfig };
 
 export const emailConfigHandlers = [
   http.get('/api/email-config', () => {
-    return HttpResponse.json({ code: 0, message: 'success', data: emailConfig });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { smtpPassword: _masked, ...safeConfig } = emailConfig;
+    return HttpResponse.json({ code: 0, message: 'success', data: safeConfig });
   }),
 
   http.put('/api/email-config', async ({ request }) => {

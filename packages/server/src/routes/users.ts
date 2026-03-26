@@ -461,7 +461,7 @@ usersRouter.delete('/:id', guard({ permission: 'system:user:delete', audit: { de
 });
 
 // 下载导入模板
-usersRouter.get('/import-template', guard({ permission: 'system:user:list' }), async (c) => {
+usersRouter.get('/import-template', guard({ permission: 'system:user:import' }), async (c) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('用户导入模板');
 
@@ -523,6 +523,20 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
     if (rowNum > 1) dataRows.push(row);
   });
 
+  // Pre-fetch lookup maps to avoid N+1 queries
+  const [allDepts, allRoles, allPositions, existingUsersList] = await Promise.all([
+    db.select({ id: departments.id, code: departments.code }).from(departments),
+    db.select({ id: roles.id, code: roles.code }).from(roles),
+    db.select({ id: positions.id, code: positions.code }).from(positions),
+    db.select({ username: users.username, email: users.email }).from(users),
+  ]);
+
+  const deptCodeMap = new Map(allDepts.map((d) => [d.code, d.id]));
+  const roleCodeMap = new Map(allRoles.map((r) => [r.code, r.id]));
+  const positionCodeMap = new Map(allPositions.map((p) => [p.code, p.id]));
+  const existingUsernames = new Set(existingUsersList.map((u) => u.username));
+  const existingEmails = new Set(existingUsersList.map((u) => u.email));
+
   for (const row of dataRows) {
     const rowNum = row.number;
 
@@ -546,40 +560,54 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
       continue;
     }
 
-    const existingUser = await db.select({ id: users.id })
-      .from(users)
-      .where(or(eq(users.username, username), eq(users.email, email)))
-      .limit(1);
-    if (existingUser.length > 0) {
+    if (existingUsernames.has(username) || existingEmails.has(email)) {
       errors.push({ row: rowNum, message: `用户名或邮箱已存在: ${username} / ${email}` });
       continue;
     }
 
     let departmentId: number | null = null;
     if (departmentCode) {
-      const [dept] = await db.select({ id: departments.id }).from(departments).where(eq(departments.code, departmentCode)).limit(1);
-      if (!dept) {
+      const deptId = deptCodeMap.get(departmentCode);
+      if (!deptId) {
         errors.push({ row: rowNum, message: `部门编码不存在: ${departmentCode}` });
         continue;
       }
-      departmentId = dept.id;
+      departmentId = deptId;
     }
 
     const roleCodes = roleCodesRaw ? roleCodesRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
     let roleIds: number[] = [];
     if (roleCodes.length > 0) {
-      const foundRoles = await db.select({ id: roles.id }).from(roles).where(inArray(roles.code, roleCodes));
-      roleIds = foundRoles.map((r) => r.id);
+      const missingRoleCodes = roleCodes.filter((code) => !roleCodeMap.has(code));
+      if (missingRoleCodes.length > 0) {
+        errors.push({ row: rowNum, message: `角色编码不存在: ${missingRoleCodes.join(', ')}` });
+        continue;
+      }
+      roleIds = roleCodes.map((code) => roleCodeMap.get(code)!);
     }
 
     const positionCodes = positionCodesRaw ? positionCodesRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
     let positionIds: number[] = [];
     if (positionCodes.length > 0) {
-      const foundPositions = await db.select({ id: positions.id }).from(positions).where(inArray(positions.code, positionCodes));
-      positionIds = foundPositions.map((p) => p.id);
+      const missingPositionCodes = positionCodes.filter((code) => !positionCodeMap.has(code));
+      if (missingPositionCodes.length > 0) {
+        errors.push({ row: rowNum, message: `岗位编码不存在: ${missingPositionCodes.join(', ')}` });
+        continue;
+      }
+      positionIds = positionCodes.map((code) => positionCodeMap.get(code)!);
     }
 
-    const status = (statusRaw === 'disabled' ? 'disabled' : 'active') as 'active' | 'disabled';
+    let status: 'active' | 'disabled' = 'active';
+    if (statusRaw) {
+      const normalized = statusRaw.trim().toLowerCase();
+      if (normalized === 'active' || normalized === 'disabled') {
+        status = normalized as 'active' | 'disabled';
+      } else {
+        errors.push({ row: rowNum, message: `状态值无效: ${statusRaw}（仅支持 active/disabled 或留空）` });
+        continue;
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     try {
@@ -588,6 +616,9 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
       }).returning();
       if (roleIds.length > 0) await setUserRoles(newUser.id, roleIds);
       if (positionIds.length > 0) await setUserPositions(newUser.id, positionIds);
+      // Track new entries to prevent duplicates within same import file
+      existingUsernames.add(username);
+      existingEmails.add(email);
       success++;
     } catch (e: any) {
       errors.push({ row: rowNum, message: `插入失败: ${(e.message as string | undefined) ?? '未知错误'}` });
