@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Card, Calendar, Typography, Tag, Space, Spin, Empty, Toast, List } from '@douyinfe/semi-ui';
 import { Bell, Github, BookOpen, MonitorPlay } from 'lucide-react';
 import { request } from '../../utils/request';
@@ -28,6 +29,7 @@ const markReadById = (id: number) => (n: NoticeWithRead) =>
   n.id === id ? { ...n, isRead: true } : n;
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [notices, setNotices] = useState<NoticeWithRead[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -114,9 +116,12 @@ export default function DashboardPage() {
         <div className="dashboard-column dashboard-column--notice">
           <Card
             title={
-              <div className="dashboard-card-title">
-                <Bell size={14} />
-                <Text strong style={{ fontSize: 14 }}>通知公告</Text>
+              <div className="dashboard-card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <Space spacing={6}>
+                  <Bell size={14} />
+                  <Text strong style={{ fontSize: 14 }}>通知公告</Text>
+                </Space>
+                <Button theme="borderless" size="small" type="tertiary" onClick={() => navigate('/notifications')}>查看更多</Button>
               </div>
             }
             className="dashboard-card dashboard-card--notice"
