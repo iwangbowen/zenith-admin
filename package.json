@@ -17,7 +17,10 @@
     "build:demo": "npm run build -w @zenith/shared && npm run build:demo -w @zenith/web",
     "db:generate": "npm run db:generate -w @zenith/server",
     "db:migrate": "npm run db:migrate -w @zenith/server",
-    "db:seed": "npm run db:seed -w @zenith/server"
+    "db:seed": "npm run db:seed -w @zenith/server",
+    "test": "npm run test -w @zenith/server && npm run test -w @zenith/web",
+    "test:server": "npm run test -w @zenith/server",
+    "test:web": "npm run test -w @zenith/web"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

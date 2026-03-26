@@ -255,3 +255,23 @@
   height: 44px;
   box-shadow: 0 12px 28px rgba(47, 92, 255, 0.22);
 }
+
+/* OAuth 按钮 */
+.oauth-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-2);
+  color: var(--semi-color-text-0);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.oauth-btn:hover {
+  border-color: var(--semi-color-primary);
+  color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}

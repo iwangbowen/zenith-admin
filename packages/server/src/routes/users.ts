@@ -494,7 +494,7 @@ usersRouter.get('/import-template', guard({ permission: 'system:user:import' }),
   const buffer = await workbook.xlsx.writeBuffer();
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=user_import_template.xlsx');
-  return c.body(buffer as Buffer);
+  return c.body(buffer as ArrayBuffer);
 });
 
 // 批量导入用户
@@ -662,7 +662,7 @@ usersRouter.get('/export', guard({ permission: 'system:user:list' }), async (c) 
   );
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=users.xlsx');
-  return c.body(buffer);
+  return c.body(buffer as ArrayBuffer);
 });
 
 usersRouter.post('/:id/unlock', guard({ permission: 'system:user:update', audit: { description: '解除账号锁定', module: '用户管理' } }), async (c) => {

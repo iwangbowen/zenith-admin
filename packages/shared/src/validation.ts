@@ -257,3 +257,11 @@ export const emailConfigSchema = z.object({
 });
 
 export type EmailConfigInput = z.infer<typeof emailConfigSchema>;
+
+// ─── 数据库备份 Schema ─────────────────────────────────────────────────────
+export const createBackupSchema = z.object({
+  type: z.enum(['pg_dump', 'drizzle_export']),
+  name: z.string().min(1, '备份名称不能为空').max(128).optional(),
+});
+
+export type CreateBackupInput = z.infer<typeof createBackupSchema>;

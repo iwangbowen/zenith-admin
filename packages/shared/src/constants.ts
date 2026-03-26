@@ -8,3 +8,6 @@ export const FILE_STORAGE_PROVIDERS = ['local', 'oss'] as const;
 export const CONFIG_TYPES = ['string', 'number', 'boolean', 'json'] as const;
 export const CRON_JOB_STATUSES = ['active', 'disabled'] as const;
 export const CRON_RUN_STATUSES = ['success', 'fail', 'running'] as const;
+export const OAUTH_PROVIDERS = ['github', 'dingtalk', 'wechat_work'] as const;
+export const BACKUP_TYPES = ['pg_dump', 'drizzle_export'] as const;
+export const BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as const;

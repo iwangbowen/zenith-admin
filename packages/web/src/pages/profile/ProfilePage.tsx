@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
-  Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space, Upload, Spin, Table,
+  Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space, Upload, Spin, Table, Popconfirm,
 } from '@douyinfe/semi-ui';
+import { Github } from 'lucide-react';
 
-import type { User, LoginLog, OperationLog } from '@zenith/shared';
+import type { User, LoginLog, OperationLog, OAuthAccount, OAuthProviderType } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '../../utils/password-policy';
@@ -49,6 +50,11 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [operationLogsPage, setOperationLogsPage] = useState(1);
   const [operationLogsTotal, setOperationLogsTotal] = useState(0);
 
+  // OAuth 绑定
+  const [oauthAccounts, setOauthAccounts] = useState<OAuthAccount[]>([]);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthLoaded, setOauthLoaded] = useState(false);
+
   async function fetchLoginLogs(page = 1) {
     setLoginLogsLoading(true);
     const res = await request.get<{ list: LoginLog[]; total: number }>(`/api/auth/my-login-logs?page=${page}&pageSize=10`);
@@ -76,6 +82,40 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   function handleTabChange(key: string) {
     if (key === 'login-logs' && !loginLogsLoaded) void fetchLoginLogs();
     if (key === 'operation-logs' && !operationLogsLoaded) void fetchOperationLogs();
+    if (key === 'oauth-accounts' && !oauthLoaded) void fetchOauthAccounts();
+  }
+
+  async function fetchOauthAccounts() {
+    setOauthLoading(true);
+    const res = await request.get<OAuthAccount[]>('/api/auth/oauth/accounts');
+    setOauthLoading(false);
+    if (res.code === 0 && res.data) {
+      setOauthAccounts(res.data);
+      setOauthLoaded(true);
+    }
+  }
+
+  const PROVIDER_INFO: Record<OAuthProviderType, { label: string; icon: React.ReactNode }> = {
+    github: { label: 'GitHub', icon: <Github size={16} /> },
+    dingtalk: { label: '钉钉', icon: <span style={{ fontSize: 14 }}>钉</span> },
+    wechat_work: { label: '企业微信', icon: <span style={{ fontSize: 14 }}>微</span> },
+  };
+
+  async function handleOAuthBind(provider: OAuthProviderType) {
+    const res = await request.get<{ authUrl: string; state: string }>(`/api/auth/oauth/${provider}`);
+    if (res.code === 0 && res.data?.authUrl) {
+      // 绑定流程：先记录当前页面，OAuth 回调后回来
+      sessionStorage.setItem('oauth_bind_provider', provider);
+      globalThis.location.href = res.data.authUrl;
+    }
+  }
+
+  async function handleOAuthUnbind(provider: OAuthProviderType) {
+    const res = await request.delete(`/api/auth/oauth/unbind/${provider}`);
+    if (res.code === 0) {
+      Toast.success('已解绑');
+      setOauthAccounts((prev) => prev.filter((a) => a.provider !== provider));
+    }
   }
 
   async function handleUpdateProfile(values: { nickname: string; email: string }) {
@@ -320,6 +360,51 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     { title: '请求方法', dataIndex: 'method', width: 90 },
                   ]}
                 />
+              </div>
+            </TabPane>
+
+            <TabPane tab="账号绑定" itemKey="oauth-accounts">
+              <div className="profile-tab-content">
+                {oauthLoading ? (
+                  <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {(['github', 'dingtalk', 'wechat_work'] as OAuthProviderType[]).map((provider) => {
+                      const info = PROVIDER_INFO[provider];
+                      const bound = oauthAccounts.find((a) => a.provider === provider);
+                      return (
+                        <div
+                          key={provider}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '12px 16px',
+                            borderRadius: 8,
+                            border: '1px solid var(--semi-color-border)',
+                          }}
+                        >
+                          <Space>
+                            {info.icon}
+                            <Text strong>{info.label}</Text>
+                            {bound ? (
+                              <Tag color="green" size="small">已绑定 · {bound.nickname || bound.openId}</Tag>
+                            ) : (
+                              <Tag color="grey" size="small">未绑定</Tag>
+                            )}
+                          </Space>
+                          {bound ? (
+                            <Popconfirm title={`确定要解绑 ${info.label} 账号吗？`} onConfirm={() => handleOAuthUnbind(provider)}>
+                              <Button theme="borderless" type="danger" size="small">解绑</Button>
+                            </Popconfirm>
+                          ) : (
+                            <Button theme="borderless" size="small" onClick={() => handleOAuthBind(provider)}>绑定</Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </TabPane>
           </Tabs>

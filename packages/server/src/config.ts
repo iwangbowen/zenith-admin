@@ -20,4 +20,20 @@ export const config = {
     dir: process.env.LOG_DIR || 'logs',
     maxFiles: process.env.LOG_MAX_FILES || '30d',
   },
+  oauth: {
+    github: {
+      clientId: process.env.OAUTH_GITHUB_CLIENT_ID || '',
+      clientSecret: process.env.OAUTH_GITHUB_CLIENT_SECRET || '',
+    },
+    dingtalk: {
+      clientId: process.env.OAUTH_DINGTALK_CLIENT_ID || '',
+      clientSecret: process.env.OAUTH_DINGTALK_CLIENT_SECRET || '',
+    },
+    wechatWork: {
+      corpId: process.env.OAUTH_WECHAT_WORK_CORP_ID || '',
+      agentId: process.env.OAUTH_WECHAT_WORK_AGENT_ID || '',
+      secret: process.env.OAUTH_WECHAT_WORK_SECRET || '',
+    },
+    callbackBaseUrl: process.env.OAUTH_CALLBACK_BASE_URL || 'http://localhost:5373',
+  },
 };

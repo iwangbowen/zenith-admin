@@ -5,7 +5,7 @@ import { emailConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { emailConfigSchema } from '@zenith/shared';
-import type { JwtPayload } from '../lib/jwt';
+import type { JwtPayload } from '../middleware/auth';
 
 const emailConfigRouter = new Hono<{ Variables: { user: JwtPayload } }>();
 

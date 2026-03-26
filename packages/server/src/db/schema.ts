@@ -338,3 +338,48 @@ export const emailConfigs = pgTable('email_configs', {
 
 export type EmailConfigRow = typeof emailConfigs.$inferSelect;
 export type NewEmailConfig = typeof emailConfigs.$inferInsert;
+
+// ─── OAuth 第三方账号绑定表 ────────────────────────────────────────────────────
+export const oauthProviderEnum = pgEnum('oauth_provider', ['github', 'dingtalk', 'wechat_work']);
+
+export const userOauthAccounts = pgTable('user_oauth_accounts', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: oauthProviderEnum('provider').notNull(),
+  openId: varchar('open_id', { length: 128 }).notNull(),
+  unionId: varchar('union_id', { length: 128 }),
+  nickname: varchar('nickname', { length: 64 }),
+  avatar: varchar('avatar', { length: 512 }),
+  accessToken: varchar('access_token', { length: 512 }),
+  refreshToken: varchar('refresh_token', { length: 512 }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  raw: text('raw'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [unique('uniq_provider_open_id').on(t.provider, t.openId)]);
+
+export type UserOauthAccountRow = typeof userOauthAccounts.$inferSelect;
+export type NewUserOauthAccount = typeof userOauthAccounts.$inferInsert;
+
+// ─── 数据库备份记录表 ──────────────────────────────────────────────────────────
+export const backupTypeEnum = pgEnum('backup_type', ['pg_dump', 'drizzle_export']);
+export const backupStatusEnum = pgEnum('backup_status', ['pending', 'running', 'success', 'failed']);
+
+export const dbBackups = pgTable('db_backups', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 128 }).notNull(),
+  type: backupTypeEnum('type').notNull(),
+  fileId: integer('file_id').references(() => managedFiles.id, { onDelete: 'set null' }),
+  fileSize: integer('file_size'),
+  status: backupStatusEnum('status').notNull().default('pending'),
+  tables: text('tables'),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  durationMs: integer('duration_ms'),
+  errorMessage: text('error_message'),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type DbBackupRow = typeof dbBackups.$inferSelect;
+export type NewDbBackup = typeof dbBackups.$inferInsert;

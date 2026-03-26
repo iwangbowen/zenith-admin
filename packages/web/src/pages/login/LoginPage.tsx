@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
-import { User, Lock, Mail, AtSign } from 'lucide-react';
-import type { RegisterInput } from '@zenith/shared';
+import { User, Lock, Mail, AtSign, Github } from 'lucide-react';
+import type { RegisterInput, OAuthProviderType } from '@zenith/shared';
 import { request } from '../../utils/request';
 import './LoginPage.css';
 
@@ -185,6 +185,13 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
 
   let formSubtitle = '请输入您的账号信息以登录工作台';
 
+  const handleOAuthLogin = async (provider: OAuthProviderType) => {
+    const res = await request.get<{ authUrl: string; state: string }>(`/api/auth/oauth/${provider}`);
+    if (res.code === 0 && res.data?.authUrl) {
+      globalThis.location.href = res.data.authUrl;
+    }
+  };
+
   if (isDemoMode) {
     formSubtitle = '当前为演示模式，仅开放预置账号登录，页面数据为模拟环境。';
   } else if (tab !== 'login') {
@@ -247,6 +254,36 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
               </TabPane>
             </Tabs>
           )}
+          {/* OAuth 第三方登录 */}
+          <div style={{ textAlign: 'center', marginTop: 16 }}>
+            <Text type="tertiary" size="small">其他方式登录</Text>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 10 }}>
+              <button
+                type="button"
+                className="oauth-btn"
+                title="GitHub 登录"
+                onClick={() => handleOAuthLogin('github')}
+              >
+                <Github size={20} />
+              </button>
+              <button
+                type="button"
+                className="oauth-btn"
+                title="钉钉登录"
+                onClick={() => handleOAuthLogin('dingtalk')}
+              >
+                <svg viewBox="0 0 1024 1024" width="20" height="20" fill="currentColor"><path d="M512 0C229.2 0 0 229.2 0 512s229.2 512 512 512 512-229.2 512-512S794.8 0 512 0zm227 603.6c-6 10.2-29 31.6-72.8 66L642 690.8l13.6 59.4s1.2 5.2-2.4 7.2-7.6 0-7.6 0l-85.6-52.4c0 0-29.6 15.2-41.6 19.6-12 4.4-14.4-4.8-14-8.4l7.6-56.8-162.8-2s-6.8-0.8-8.4-6.4c-2-7.2 6.8-10.8 6.8-10.8l98-43.6-24.4-32.8s-4-6.8 0.8-9.6c4.8-2.8 9.6 1.6 9.6 1.6l114 67.2 96.4-60s28.4-18.4 42-31.2c13.6-12.8 12-22.4 12-22.4-4-36-125.2-52-204-72-78.8-20-180.8-60-162-148 0 0 8.8-50 80-98.4 0 0 47.2-46.8 52.4 15.2 0 0 4 38.8-6.4 50-10.4 11.2-48.4 40.4-48.4 40.4s-24.4 14.4-10.4 24c14 9.6 78 38 133.2 46.4 55.2 8.4 172.8 8 208 80.8 0 0 25.2 44.4 10.8 68.8z"/></svg>
+              </button>
+              <button
+                type="button"
+                className="oauth-btn"
+                title="企业微信登录"
+                onClick={() => handleOAuthLogin('wechat_work')}
+              >
+                <svg viewBox="0 0 1024 1024" width="20" height="20" fill="currentColor"><path d="M672 288c-105.6 0-198.4 52-256 131.2C358.4 340 265.6 288 160 288 71.6 288 0 359.6 0 448c0 52.4 25.2 100 64 129.6L42.4 648c-2 5.6 3.6 10.8 9.2 8.4l60-28.8C140.4 644 172 656 208 660l-2.4-12c0-119.2 96.8-216 216-216 5.6 0 11.2 0.4 16.8 0.8C465.6 345.6 560.4 288 672 288zm-160 144c-17.6 0-32-14.4-32-32s14.4-32 32-32 32 14.4 32 32-14.4 32-32 32zM352 400c0-17.6 14.4-32 32-32s32 14.4 32 32-14.4 32-32 32-32-14.4-32-32zm480 48c0 117.6-96.8 216-216 216-36 0-70-9.6-100-26l-60 28.8c-5.6 2.4-11.2-2.8-9.2-8.4l21.6-70.4c-38.8-30-64-77.6-64-129.6 0-117.6 96.8-216 216-216 98.4 0 181.2 66.4 206.8 156.8 3.2 16.4 4.8 32.8 4.8 48.8zm-272-40c-17.6 0-32-14.4-32-32s14.4-32 32-32 32 14.4 32 32-14.4 32-32 32zm160 0c-17.6 0-32-14.4-32-32s14.4-32 32-32 32 14.4 32 32-14.4 32-32 32z"/></svg>
+              </button>
+            </div>
+          </div>
           {import.meta.env.VITE_DEMO_MODE === 'true' && (
             <div style={{
               marginTop: 20,

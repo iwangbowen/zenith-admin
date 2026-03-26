@@ -141,6 +141,13 @@
       "when": 1774500000000,
       "tag": "0019_email_configs",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1774515715313,
+      "tag": "0020_colossal_hercules",
+      "breakpoints": true
     }
   ]
 }

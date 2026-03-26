@@ -5,6 +5,8 @@ import { cronJobs, cronJobLogs } from '../db/schema';
 import logger from './logger';
 import { cleanExpiredCaptchas } from './captcha';
 import { cleanExpiredSessions } from './session-manager';
+import { createPgDumpBackup, createDrizzleExportBackup } from './db-backup';
+import { dbBackups } from '../db/schema';
 
 type HandlerFn = (params?: string | null) => Promise<string>;
 
@@ -27,6 +29,15 @@ handlerRegistry.set('cleanExpiredSessions', async () => {
 
 handlerRegistry.set('echo', async (params) => {
   return `Echo: ${params ?? 'no params'}`;
+});
+
+handlerRegistry.set('databaseBackup', async (params) => {
+  const type = params === 'drizzle_export' ? 'drizzle_export' : 'pg_dump';
+  const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
+  const [backup] = await db.insert(dbBackups).values({ name: `cron-${type}-${timestamp}`, type, status: 'pending' }).returning();
+  const run = type === 'pg_dump' ? createPgDumpBackup : createDrizzleExportBackup;
+  await run(backup.id);
+  return `数据库备份完成 (${type}), ID: ${backup.id}`;
 });
 
 // ─── Public API ────────────────────────────────────────────────

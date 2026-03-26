@@ -307,3 +307,45 @@ export interface EmailConfig {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── OAuth 第三方账号 ───────────────────────────────────────────────────────
+export type OAuthProviderType = 'github' | 'dingtalk' | 'wechat_work';
+
+export interface OAuthAccount {
+  id: number;
+  userId: number;
+  provider: OAuthProviderType;
+  openId: string;
+  unionId?: string | null;
+  nickname?: string | null;
+  avatar?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OAuthProviderInfo {
+  key: OAuthProviderType;
+  label: string;
+  icon: string;
+}
+
+// ─── 数据库备份 ────────────────────────────────────────────────────────────
+export type BackupType = 'pg_dump' | 'drizzle_export';
+export type BackupStatus = 'pending' | 'running' | 'success' | 'failed';
+
+export interface DbBackup {
+  id: number;
+  name: string;
+  type: BackupType;
+  fileId: number | null;
+  fileSize: number | null;
+  status: BackupStatus;
+  tables: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  createdBy: number | null;
+  createdByName?: string | null;
+  createdAt: string;
+}

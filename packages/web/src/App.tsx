@@ -13,6 +13,7 @@ import ProfilePage from './pages/profile/ProfilePage';
 import NotificationsPage from './pages/notifications/NotificationsPage';
 import NotFoundPage from './pages/not-found/NotFoundPage';
 import ForbiddenPage from './pages/forbidden/ForbiddenPage';
+import OAuthCallbackPage from './pages/oauth/OAuthCallbackPage';
 
 const modules = import.meta.glob('./pages/**/*.tsx');
 
@@ -120,6 +121,7 @@ export default function App() {
       ) : (
         <Routes>
           <Route path="/login" element={<LoginPage onLogin={login} onRegister={register} />} />
+          <Route path="/oauth/callback/:provider" element={<OAuthCallbackPage />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       )}
