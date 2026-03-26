@@ -449,7 +449,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && (
         <header className="admin-topbar">
-          <div className="admin-topbar__brand">
+          <div className="admin-topbar__brand" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
             <div className="admin-sidebar__logo">Z</div>
             <span className="admin-sidebar__title">Zenith Admin</span>
           </div>
@@ -482,8 +482,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               onOpenChange={({ openKeys: nextOpenKeys }) => setOpenKeys((nextOpenKeys ?? []).map(String))}
               onCollapseChange={setCollapsed}
               header={navLayout === 'vertical' ? {
-                logo: <div className="admin-sidebar__logo">Z</div>,
-                text: <span className="admin-sidebar__title">Zenith Admin</span>,
+                logo: <div className="admin-sidebar__logo" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>Z</div>,
+                text: <span className="admin-sidebar__title" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>Zenith Admin</span>,
               } : undefined}
               footer={{
                 collapseButton: true,

@@ -25,6 +25,12 @@
   gap: 8px;
   padding: 0 16px;
   flex-shrink: 0;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+
+.admin-topbar__brand:hover {
+  background: var(--color-sidebar-hover);
 }
 
 .admin-topbar__nav {
