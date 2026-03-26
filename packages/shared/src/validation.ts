@@ -243,3 +243,17 @@ export const updateRegionSchema = createRegionSchema.partial();
 
 export type CreateRegionInput = z.infer<typeof createRegionSchema>;
 export type UpdateRegionInput = z.infer<typeof updateRegionSchema>;
+
+// ─── 邮件配置 Schema ─────────────────────────────────────────────────────────
+export const emailConfigSchema = z.object({
+  smtpHost: z.string().max(128).optional().default(''),
+  smtpPort: z.number().int().min(1).max(65535).default(465),
+  smtpUser: z.string().max(128).optional().default(''),
+  smtpPassword: z.string().max(256).optional().default(''),
+  fromName: z.string().max(64).optional().default('Zenith Admin'),
+  fromEmail: z.string().max(128).optional().default(''),
+  encryption: z.enum(['none', 'ssl', 'tls']).default('ssl'),
+  status: z.enum(['active', 'disabled']).default('active'),
+});
+
+export type EmailConfigInput = z.infer<typeof emailConfigSchema>;

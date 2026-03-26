@@ -290,3 +290,20 @@ export interface Region {
   updatedAt: string;
   children?: Region[];
 }
+
+// ─── 邮件配置 ──────────────────────────────────────────────────────────────
+export type EmailEncryption = 'none' | 'ssl' | 'tls';
+
+export interface EmailConfig {
+  id: number;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPassword: string;
+  fromName: string;
+  fromEmail: string;
+  encryption: EmailEncryption;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  updatedAt: string;
+}

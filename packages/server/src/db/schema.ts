@@ -318,3 +318,23 @@ export const regions = pgTable('regions', {
 
 export type RegionRow = typeof regions.$inferSelect;
 export type NewRegion = typeof regions.$inferInsert;
+
+// ─── 邮件配置表 ──────────────────────────────────────────────────────────────
+export const emailSmtpEnum = pgEnum('email_encryption', ['none', 'ssl', 'tls']);
+
+export const emailConfigs = pgTable('email_configs', {
+  id: serial('id').primaryKey(),
+  smtpHost: varchar('smtp_host', { length: 128 }).notNull().default(''),
+  smtpPort: integer('smtp_port').notNull().default(465),
+  smtpUser: varchar('smtp_user', { length: 128 }).notNull().default(''),
+  smtpPassword: varchar('smtp_password', { length: 256 }).notNull().default(''),
+  fromName: varchar('from_name', { length: 64 }).notNull().default('Zenith Admin'),
+  fromEmail: varchar('from_email', { length: 128 }).notNull().default(''),
+  encryption: emailSmtpEnum('encryption').notNull().default('ssl'),
+  status: statusEnum('status').notNull().default('active'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type EmailConfigRow = typeof emailConfigs.$inferSelect;
+export type NewEmailConfig = typeof emailConfigs.$inferInsert;
