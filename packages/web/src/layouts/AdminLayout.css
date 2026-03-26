@@ -180,6 +180,25 @@
   min-height: 0;
 }
 
+/* 侧边栏菜单极窄滚动条 */
+.admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 4px;
+}
+
+.admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-secondary);
+}
+
+.admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .admin-nav-link-wrapper {
   display: block;
   width: 100%;
@@ -329,6 +348,30 @@
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
+}
+
+/* 折叠状态下，Semi UI 弹出的子菜单最大高度限制及极窄滚动条 */
+.semi-navigation-popup {
+  max-height: calc(100vh - 20px) !important;
+  overflow-y: auto !important;
+}
+
+.semi-navigation-popup::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.semi-navigation-popup::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 4px;
+}
+
+.semi-navigation-popup::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-secondary);
+}
+
+.semi-navigation-popup::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* 子级菜单缩进 — 一级子项
@@ -655,4 +698,12 @@
 
 [data-theme='dark'] .admin-notify-badge .semi-badge-dot {
   box-shadow: 0 0 0 1.5px var(--color-sidebar-bg) !important;
+}
+
+/* 解决菜单折叠状态下，悬浮弹出的子菜单因为内容过多无法滚动的问题 */
+.semi-portal .semi-navigation-popover,
+.semi-navigation-popover {
+  max-height: calc(100vh - 20px) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
 }
