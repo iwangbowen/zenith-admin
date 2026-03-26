@@ -11,6 +11,7 @@ import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { unlockUser } from '../lib/session-manager';
+import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import type { Role, Position, User } from '@zenith/shared';
 
 const usersRouter = new Hono<{ Variables: { user: JwtPayload } }>();
@@ -257,6 +258,10 @@ usersRouter.post('/', guard({ permission: 'system:user:create', audit: { descrip
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
+  const policy = await getPasswordPolicy();
+  const policyError = validatePassword(result.data.password, policy);
+  if (policyError) return c.json({ code: 400, message: policyError, data: null }, 400);
+
   const { password, roleIds, positionIds, departmentId, ...rest } = result.data;
   const nextRoleIds = Array.from(new Set(roleIds));
   const nextPositionIds = Array.from(new Set(positionIds));
@@ -392,6 +397,10 @@ usersRouter.put('/:id/password', guard({ permission: 'system:user:update', audit
   if (!result.success) {
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
+
+  const policy = await getPasswordPolicy();
+  const policyError = validatePassword(result.data.password, policy);
+  if (policyError) return c.json({ code: 400, message: policyError, data: null }, 400);
 
   const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, id)).limit(1);
   if (!user) {

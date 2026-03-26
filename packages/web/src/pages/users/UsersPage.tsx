@@ -16,6 +16,7 @@ import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
+import { formatPasswordPolicyHint, type PasswordPolicy } from '../../utils/password-policy';
 import DictTag from '../../components/DictTag';
 import { useDictItems } from '../../hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -48,6 +49,7 @@ export default function UsersPage() {
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [allDepartments, setAllDepartments] = useState<Department[]>([]);
   const [allPositions, setAllPositions] = useState<Position[]>([]);
+  const [passwordPolicy, setPasswordPolicy] = useState<PasswordPolicy | null>(null);
 
   const { items: statusItems } = useDictItems('common_status');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
@@ -77,6 +79,9 @@ export default function UsersPage() {
       if (rolesRes.code === 0) setAllRoles(rolesRes.data);
       if (departmentsRes.code === 0) setAllDepartments(departmentsRes.data);
       if (positionsRes.code === 0) setAllPositions(positionsRes.data);
+    });
+    request.get<PasswordPolicy>('/api/system-configs/password-policy').then((res) => {
+      if (res.code === 0) setPasswordPolicy(res.data);
     });
   }, []);
 
@@ -457,7 +462,13 @@ export default function UsersPage() {
           <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
           <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
           {!editingUser && (
-            <Form.Input field="password" label="密码" type="password" rules={[{ required: true, message: '请输入密码' }]} />
+            <Form.Input
+              field="password"
+              label="密码"
+              type="password"
+              rules={[{ required: true, message: '请输入密码' }]}
+              helpText={formatPasswordPolicyHint(passwordPolicy)}
+            />
           )}
           <Form.TreeSelect
             field="departmentId"

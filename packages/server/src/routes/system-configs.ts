@@ -6,6 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createSystemConfigSchema, updateSystemConfigSchema } from '@zenith/shared';
 import { exportToExcel } from '../lib/excel-export';
+import { getPasswordPolicy } from '../lib/password-policy';
 
 const systemConfigsRoute = new Hono();
 
@@ -21,6 +22,12 @@ systemConfigsRoute.get('/public/:key', async (c) => {
     message: 'ok',
     data: { configKey: row.configKey, configValue: row.configValue, configType: row.configType },
   });
+});
+
+// Public endpoint: get current password policy (used in frontend forms)
+systemConfigsRoute.get('/password-policy', async (c) => {
+  const policy = await getPasswordPolicy();
+  return c.json({ code: 0, message: 'success', data: policy });
 });
 
 // Protected routes
