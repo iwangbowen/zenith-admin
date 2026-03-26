@@ -1,14 +1,14 @@
-import { config } from '../../config';
-import type { OAuthProvider, OAuthTokenResult, OAuthUserInfo } from './types';
+import type { OAuthProvider, OAuthProviderConfig, OAuthTokenResult, OAuthUserInfo } from './types';
 
 export class WeChatWorkProvider implements OAuthProvider {
   readonly provider = 'wechat_work' as const;
+  constructor(private readonly cfg: OAuthProviderConfig) {}
 
   getAuthUrl(state: string): string {
     const params = new URLSearchParams({
-      appid: config.oauth.wechatWork.corpId,
-      agentid: config.oauth.wechatWork.agentId,
-      redirect_uri: `${config.oauth.callbackBaseUrl}/oauth/callback/wechat_work`,
+      appid: this.cfg.corpId || '',
+      agentid: this.cfg.agentId || '',
+      redirect_uri: `${this.cfg.callbackBaseUrl}/oauth/callback/wechat_work`,
       response_type: 'code',
       scope: 'snsapi_privateinfo',
       state,
@@ -18,13 +18,14 @@ export class WeChatWorkProvider implements OAuthProvider {
 
   async getToken(code: string): Promise<OAuthTokenResult> {
     const params = new URLSearchParams({
-      corpid: config.oauth.wechatWork.corpId,
-      corpsecret: config.oauth.wechatWork.secret,
+      corpid: this.cfg.corpId || '',
+      corpsecret: this.cfg.clientSecret,
     });
     const resp = await fetch(`https://qyapi.weixin.qq.com/cgi-bin/gettoken?${params}`);
     const data = await resp.json() as Record<string, unknown>;
     if (data.errcode) throw new Error(`WeChatWork token error: ${data.errmsg}`);
-    return { accessToken: data.access_token as string, expiresIn: data.expires_in as number };
+    // 将 code 暂存在 refreshToken 中，供 getUserInfo 使用
+    return { accessToken: data.access_token as string, refreshToken: code, expiresIn: data.expires_in as number };
   }
 
   async getUserInfo(token: OAuthTokenResult): Promise<OAuthUserInfo> {

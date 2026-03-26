@@ -265,3 +265,14 @@ export const createBackupSchema = z.object({
 });
 
 export type CreateBackupInput = z.infer<typeof createBackupSchema>;
+
+// ─── OAuth 配置 Schema ─────────────────────────────────────────────────────
+export const updateOauthConfigSchema = z.object({
+  clientId: z.string().max(256).default(''),
+  clientSecret: z.string().max(512).default(''),
+  agentId: z.string().max(128).nullable().optional(),
+  corpId: z.string().max(128).nullable().optional(),
+  enabled: z.boolean().default(false),
+});
+
+export type UpdateOauthConfigInput = z.infer<typeof updateOauthConfigSchema>;

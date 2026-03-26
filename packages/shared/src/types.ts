@@ -329,6 +329,18 @@ export interface OAuthProviderInfo {
   icon: string;
 }
 
+export interface OAuthConfig {
+  id: number;
+  provider: OAuthProviderType;
+  clientId: string;
+  clientSecret: string;
+  agentId?: string | null;
+  corpId?: string | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── 数据库备份 ────────────────────────────────────────────────────────────
 export type BackupType = 'pg_dump' | 'drizzle_export';
 export type BackupStatus = 'pending' | 'running' | 'success' | 'failed';

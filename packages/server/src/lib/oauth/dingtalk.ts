@@ -1,24 +1,21 @@
-import { config } from '../../config';
-import type { OAuthProvider, OAuthTokenResult, OAuthUserInfo } from './types';
+import type { OAuthProvider, OAuthProviderConfig, OAuthTokenResult, OAuthUserInfo } from './types';
 
-const OLD_API = 'https://oapi.dingtalk.com';
 const NEW_API = 'https://api.dingtalk.com';
 
 export class DingTalkProvider implements OAuthProvider {
   readonly provider = 'dingtalk' as const;
+  constructor(private readonly cfg: OAuthProviderConfig) {}
 
   getAuthUrl(state: string): string {
     const params = new URLSearchParams({
-      client_id: config.oauth.dingtalk.clientId,
-      redirect_uri: `${config.oauth.callbackBaseUrl}/oauth/callback/dingtalk`,
+      client_id: this.cfg.clientId,
+      redirect_uri: `${this.cfg.callbackBaseUrl}/oauth/callback/dingtalk`,
       response_type: 'code',
       scope: 'openid',
       prompt: 'consent',
       state,
     });
-    return `${NEW_API}/v1.0/contact/users/me?${params}`;
-    // 实际授权页面
-    // return `https://login.dingtalk.com/oauth2/auth?${params}`;
+    return `https://login.dingtalk.com/oauth2/auth?${params}`;
   }
 
   async getToken(code: string): Promise<OAuthTokenResult> {
@@ -26,8 +23,8 @@ export class DingTalkProvider implements OAuthProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        clientId: config.oauth.dingtalk.clientId,
-        clientSecret: config.oauth.dingtalk.clientSecret,
+        clientId: this.cfg.clientId,
+        clientSecret: this.cfg.clientSecret,
         code,
         grantType: 'authorization_code',
       }),

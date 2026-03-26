@@ -14,6 +14,22 @@ export interface OAuthTokenResult {
   expiresIn?: number;
 }
 
+export interface OAuthProviderConfig {
+  clientId: string;
+  clientSecret: string;
+  agentId?: string | null;
+  corpId?: string | null;
+  callbackBaseUrl: string;
+}
+
+export interface OAuthProviderConfig {
+  clientId: string;
+  clientSecret: string;
+  agentId?: string | null;
+  corpId?: string | null;
+  callbackBaseUrl: string;
+}
+
 export interface OAuthProvider {
   readonly provider: OAuthProviderType;
   getAuthUrl(state: string): string;

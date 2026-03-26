@@ -190,6 +190,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
     if (res.code === 0 && res.data?.authUrl) {
       globalThis.location.href = res.data.authUrl;
     }
+    // 错误 toast 由 request 工具自动处理
   };
 
   if (isDemoMode) {

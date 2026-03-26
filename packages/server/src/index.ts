@@ -30,6 +30,7 @@ import regionsRoutes from './routes/regions';
 import emailConfigRoutes from './routes/email-config';
 import dashboardRoutes from './routes/dashboard';
 import oauthRoutes from './routes/oauth';
+import oauthConfigRoutes from './routes/oauth-config';
 import dbBackupsRoutes from './routes/db-backups';
 import { createWsRoute } from './routes/ws';
 import { initCronScheduler } from './lib/cron-scheduler';
@@ -62,6 +63,7 @@ app.route('/api/regions', regionsRoutes);
 app.route('/api/email-config', emailConfigRoutes);
 app.route('/api/dashboard', dashboardRoutes);
 app.route('/api/auth/oauth', oauthRoutes);
+app.route('/api/oauth-config', oauthConfigRoutes);
 app.route('/api/db-backups', dbBackupsRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 

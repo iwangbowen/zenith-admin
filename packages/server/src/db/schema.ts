@@ -361,6 +361,22 @@ export const userOauthAccounts = pgTable('user_oauth_accounts', {
 export type UserOauthAccountRow = typeof userOauthAccounts.$inferSelect;
 export type NewUserOauthAccount = typeof userOauthAccounts.$inferInsert;
 
+// ─── OAuth 配置表 ──────────────────────────────────────────────────────────────
+export const oauthConfigs = pgTable('oauth_configs', {
+  id: serial('id').primaryKey(),
+  provider: oauthProviderEnum('provider').notNull().unique(),
+  clientId: varchar('client_id', { length: 256 }).notNull().default(''),
+  clientSecret: varchar('client_secret', { length: 512 }).notNull().default(''),
+  agentId: varchar('agent_id', { length: 128 }),
+  corpId: varchar('corp_id', { length: 128 }),
+  enabled: boolean('enabled').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type OauthConfigRow = typeof oauthConfigs.$inferSelect;
+export type NewOauthConfig = typeof oauthConfigs.$inferInsert;
+
 // ─── 数据库备份记录表 ──────────────────────────────────────────────────────────
 export const backupTypeEnum = pgEnum('backup_type', ['pg_dump', 'drizzle_export']);
 export const backupStatusEnum = pgEnum('backup_status', ['pending', 'running', 'success', 'failed']);

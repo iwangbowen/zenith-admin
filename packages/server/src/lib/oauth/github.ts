@@ -1,13 +1,13 @@
-import { config } from '../../config';
-import type { OAuthProvider, OAuthTokenResult, OAuthUserInfo } from './types';
+import type { OAuthProvider, OAuthProviderConfig, OAuthTokenResult, OAuthUserInfo } from './types';
 
 export class GitHubProvider implements OAuthProvider {
   readonly provider = 'github' as const;
+  constructor(private readonly cfg: OAuthProviderConfig) {}
 
   getAuthUrl(state: string): string {
     const params = new URLSearchParams({
-      client_id: config.oauth.github.clientId,
-      redirect_uri: `${config.oauth.callbackBaseUrl}/oauth/callback/github`,
+      client_id: this.cfg.clientId,
+      redirect_uri: `${this.cfg.callbackBaseUrl}/oauth/callback/github`,
       scope: 'read:user user:email',
       state,
     });
@@ -22,8 +22,8 @@ export class GitHubProvider implements OAuthProvider {
         Accept: 'application/json',
       },
       body: JSON.stringify({
-        client_id: config.oauth.github.clientId,
-        client_secret: config.oauth.github.clientSecret,
+        client_id: this.cfg.clientId,
+        client_secret: this.cfg.clientSecret,
         code,
       }),
     });

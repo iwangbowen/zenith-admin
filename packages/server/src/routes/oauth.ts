@@ -8,7 +8,7 @@ import { users, userRoles, roles, userOauthAccounts } from '../db/schema';
 import { config } from '../config';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
-import { getOAuthProvider } from '../lib/oauth';
+import { getOAuthProvider, isProviderConfigured } from '../lib/oauth';
 import { generateTokenId, registerSession } from '../lib/session-manager';
 import type { OAuthProviderType } from '@zenith/shared';
 import { OAUTH_PROVIDERS } from '@zenith/shared';
@@ -46,13 +46,17 @@ function issueTokens(user: { id: number; username: string }, roleCodes: string[]
 }
 
 // ─── 获取 OAuth 授权链接 ─────────────────────────────────────────────────
-oauth.get('/:provider', (c) => {
+oauth.get('/:provider', async (c) => {
   const provider = c.req.param('provider');
   if (!isValidProvider(provider)) {
     return c.json({ code: 400, message: '不支持的 OAuth 提供方', data: null }, 400);
   }
+  if (!(await isProviderConfigured(provider))) {
+    return c.json({ code: 400, message: '该 OAuth 提供方尚未配置，请联系管理员', data: null }, 400);
+  }
   const state = crypto.randomBytes(16).toString('hex');
-  const authUrl = getOAuthProvider(provider).getAuthUrl(state);
+  const oauthProvider = await getOAuthProvider(provider);
+  const authUrl = oauthProvider.getAuthUrl(state);
   return c.json({ code: 0, message: 'ok', data: { authUrl, state } });
 });
 
@@ -62,6 +66,9 @@ oauth.post('/:provider/callback', async (c) => {
   if (!isValidProvider(provider)) {
     return c.json({ code: 400, message: '不支持的 OAuth 提供方', data: null }, 400);
   }
+  if (!(await isProviderConfigured(provider))) {
+    return c.json({ code: 400, message: '该 OAuth 提供方尚未配置', data: null }, 400);
+  }
 
   const body = await c.req.json();
   const code = body.code as string | undefined;
@@ -69,7 +76,7 @@ oauth.post('/:provider/callback', async (c) => {
     return c.json({ code: 400, message: '缺少授权码', data: null }, 400);
   }
 
-  const oauthProvider = getOAuthProvider(provider);
+  const oauthProvider = await getOAuthProvider(provider);
   const tokenResult = await oauthProvider.getToken(code);
   const userInfo = await oauthProvider.getUserInfo(tokenResult);
 
@@ -174,7 +181,7 @@ oauth.post('/bind', authMiddleware, async (c) => {
     return c.json({ code: 400, message: '不支持的 OAuth 提供方', data: null }, 400);
   }
 
-  const oauthProvider = getOAuthProvider(provider);
+  const oauthProvider = await getOAuthProvider(provider);
   const tokenResult = await oauthProvider.getToken(code);
   const userInfo = await oauthProvider.getUserInfo(tokenResult);
 
