@@ -11,9 +11,12 @@ import {
   Avatar,
   Tag,
   DatePicker,
+  Upload,
+  Typography,
 } from '@douyinfe/semi-ui';
-import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2, FileUp } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
+import { TOKEN_KEY } from '@zenith/shared';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '../../utils/password-policy';
@@ -53,6 +56,11 @@ export default function UsersPage() {
 
   const { items: statusItems } = useDictItems('common_status');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ total: number; success: number; failed: number; errors: Array<{ row: number; message: string }> } | null>(null);
+  const importFileRef = useRef<File | null>(null);
 
   const handleBatchDelete = () => {
     Modal.confirm({
@@ -234,6 +242,40 @@ export default function UsersPage() {
     }
   };
 
+  const handleImportTemplate = () => {
+    window.location.href = '/api/users/import-template';
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importFileRef.current) {
+      Toast.warning('请先选择文件');
+      return;
+    }
+    setImportLoading(true);
+    const formData = new FormData();
+    formData.append('file', importFileRef.current);
+    try {
+      const res = await fetch('/api/users/import', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}`,
+        },
+        body: formData,
+      });
+      const data = await res.json() as { code: number; message: string; data: typeof importResult };
+      if (data.code === 0) {
+        setImportResult(data.data);
+        if (data.data && data.data.success > 0) void fetchUsers();
+      } else {
+        Toast.error(data.message ?? '导入失败');
+      }
+    } catch {
+      Toast.error('导入请求失败');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const handleDelete = async (id: number) => {
     const res = await request.delete(`/api/users/${id}`);
     if (res.code === 0) {
@@ -399,6 +441,13 @@ export default function UsersPage() {
               </Button>
             )}
             <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+            {hasPermission('system:user:import') && (
+              <Button
+                type="secondary"
+                icon={<FileUp size={14} />}
+                onClick={() => { setImportModalVisible(true); setImportResult(null); importFileRef.current = null; }}
+              >导入</Button>
+            )}
             {hasPermission('system:user:create') && <Button
               type="secondary"
               icon={<Plus size={14} />}
@@ -539,6 +588,66 @@ export default function UsersPage() {
             rules={[{ required: true, message: '请确认新密码' }]}
           />
         </Form>
+      </Modal>
+
+      <Modal
+        title="批量导入用户"
+        visible={importModalVisible}
+        onCancel={() => setImportModalVisible(false)}
+        footer={
+          importResult ? (
+            <Button onClick={() => setImportModalVisible(false)}>关闭</Button>
+          ) : (
+            <Space>
+              <Button onClick={() => setImportModalVisible(false)}>取消</Button>
+              <Button type="primary" loading={importLoading} onClick={handleImportSubmit}>开始导入</Button>
+            </Space>
+          )
+        }
+        width={560}
+      >
+        {!importResult ? (
+          <div style={{ padding: '16px 0' }}>
+            <div style={{ marginBottom: 12 }}>
+              <Button type="tertiary" icon={<Download size={14} />} onClick={handleImportTemplate}>下载导入模板</Button>
+              <Typography.Text type="tertiary" style={{ marginLeft: 8, fontSize: 12 }}>请先下载模板，按格式填写后上传</Typography.Text>
+            </div>
+            <Upload
+              accept=".xlsx,.xls"
+              limit={1}
+              action=""
+              beforeUpload={(file) => {
+                importFileRef.current = file.fileInstance ?? null;
+                return false;
+              }}
+              onRemove={() => { importFileRef.current = null; }}
+            >
+              <Button icon={<FileUp size={14} />}>选择文件</Button>
+            </Upload>
+          </div>
+        ) : (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <Space>
+                <Tag color="green">成功: {importResult.success}</Tag>
+                <Tag color="red">失败: {importResult.failed}</Tag>
+                <Tag color="grey">共: {importResult.total}</Tag>
+              </Space>
+            </div>
+            {importResult.errors.length > 0 && (
+              <Table
+                size="small"
+                columns={[
+                  { title: '行号', dataIndex: 'row', width: 80 },
+                  { title: '错误信息', dataIndex: 'message' },
+                ]}
+                dataSource={importResult.errors}
+                pagination={false}
+                rowKey="row"
+              />
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

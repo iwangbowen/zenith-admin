@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import bcrypt from 'bcryptjs';
 import { eq, like, sql, and, or, inArray, gte, lte } from 'drizzle-orm';
+import ExcelJS from 'exceljs';
 import { db } from '../db';
 import { users, userRoles, roles, departments, positions, userPositions } from '../db/schema';
 import { createUserSchema, updateUserSchema, resetUserPasswordSchema } from '@zenith/shared';
@@ -457,6 +458,146 @@ usersRouter.delete('/:id', guard({ permission: 'system:user:delete', audit: { de
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+// 下载导入模板
+usersRouter.get('/import-template', guard({ permission: 'system:user:list' }), async (c) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('用户导入模板');
+
+  sheet.columns = [
+    { header: '用户名*', key: 'username', width: 16 },
+    { header: '昵称*', key: 'nickname', width: 16 },
+    { header: '邮箱*', key: 'email', width: 24 },
+    { header: '密码*', key: 'password', width: 16 },
+    { header: '部门编码', key: 'departmentCode', width: 18 },
+    { header: '岗位编码(逗号分隔)', key: 'positionCodes', width: 22 },
+    { header: '角色编码(逗号分隔)', key: 'roleCodes', width: 22 },
+    { header: '状态(active/disabled)', key: 'status', width: 22 },
+  ];
+
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+
+  sheet.addRow({
+    username: 'zhangsan',
+    nickname: '张三',
+    email: 'zhangsan@example.com',
+    password: 'Password123',
+    departmentCode: 'technology',
+    positionCodes: 'engineer',
+    roleCodes: 'normal_user',
+    status: 'active',
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', 'attachment; filename=user_import_template.xlsx');
+  return c.body(buffer as unknown as ArrayBuffer);
+});
+
+// 批量导入用户
+usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { description: '导入用户', module: '用户管理' } }), async (c) => {
+  const formData = await c.req.formData();
+  const file = formData.get('file') as File | null;
+  if (!file) return c.json({ code: 400, message: '请上传文件', data: null }, 400);
+
+  const arrayBuffer = await file.arrayBuffer();
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(arrayBuffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return c.json({ code: 400, message: '文件格式无效或工作表为空', data: null }, 400);
+
+  const policy = await getPasswordPolicy();
+  const errors: Array<{ row: number; message: string }> = [];
+  let success = 0;
+
+  const dataRows: ExcelJS.Row[] = [];
+  sheet.eachRow((row, rowNum) => {
+    if (rowNum > 1) dataRows.push(row);
+  });
+
+  for (const row of dataRows) {
+    const rowNum = row.number;
+    const getCellText = (col: number) => {
+      const cell = row.getCell(col);
+      return cell.text?.toString().trim() ?? '';
+    };
+
+    const username = getCellText(1);
+    const nickname = getCellText(2);
+    const email = getCellText(3);
+    const password = getCellText(4);
+    const departmentCode = getCellText(5);
+    const positionCodesRaw = getCellText(6);
+    const roleCodesRaw = getCellText(7);
+    const statusRaw = getCellText(8);
+
+    if (!username || !nickname || !email || !password) {
+      errors.push({ row: rowNum, message: '用户名、昵称、邮箱、密码为必填项' });
+      continue;
+    }
+
+    const policyError = validatePassword(password, policy);
+    if (policyError) {
+      errors.push({ row: rowNum, message: policyError });
+      continue;
+    }
+
+    const existingUser = await db.select({ id: users.id })
+      .from(users)
+      .where(or(eq(users.username, username), eq(users.email, email)))
+      .limit(1);
+    if (existingUser.length > 0) {
+      errors.push({ row: rowNum, message: `用户名或邮箱已存在: ${username}` });
+      continue;
+    }
+
+    let departmentId: number | null = null;
+    if (departmentCode) {
+      const [dept] = await db.select({ id: departments.id }).from(departments).where(eq(departments.code, departmentCode)).limit(1);
+      if (!dept) {
+        errors.push({ row: rowNum, message: `部门编码不存在: ${departmentCode}` });
+        continue;
+      }
+      departmentId = dept.id;
+    }
+
+    const roleCodes = roleCodesRaw ? roleCodesRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    let roleIds: number[] = [];
+    if (roleCodes.length > 0) {
+      const foundRoles = await db.select({ id: roles.id }).from(roles).where(inArray(roles.code, roleCodes));
+      roleIds = foundRoles.map((r) => r.id);
+    }
+
+    const positionCodes = positionCodesRaw ? positionCodesRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    let positionIds: number[] = [];
+    if (positionCodes.length > 0) {
+      const foundPositions = await db.select({ id: positions.id }).from(positions).where(inArray(positions.code, positionCodes));
+      positionIds = foundPositions.map((p) => p.id);
+    }
+
+    const status = (statusRaw === 'disabled' ? 'disabled' : 'active') as 'active' | 'disabled';
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    try {
+      const [newUser] = await db.insert(users).values({
+        username, nickname, email, password: hashedPassword, departmentId, status,
+      }).returning();
+      if (roleIds.length > 0) await setUserRoles(newUser.id, roleIds);
+      if (positionIds.length > 0) await setUserPositions(newUser.id, positionIds);
+      success++;
+    } catch (e: any) {
+      errors.push({ row: rowNum, message: `插入失败: ${(e.message as string | undefined) ?? '未知错误'}` });
+    }
+  }
+
+  return c.json({
+    code: 0,
+    message: '导入完成',
+    data: { total: dataRows.length, success, failed: errors.length, errors },
+  });
 });
 
 usersRouter.get('/export', guard({ permission: 'system:user:list' }), async (c) => {

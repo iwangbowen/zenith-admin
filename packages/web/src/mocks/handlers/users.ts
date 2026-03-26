@@ -141,4 +141,23 @@ export const usersHandlers = [
     user.updatedAt = new Date().toISOString();
     return HttpResponse.json({ code: 0, message: '状态更新成功', data: null });
   }),
+
+  // 下载导入模板
+  http.get('/api/users/import-template', () => {
+    return new Response(new ArrayBuffer(0), {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename=user_import_template.xlsx',
+      },
+    });
+  }),
+
+  // 批量导入用户
+  http.post('/api/users/import', () => {
+    return HttpResponse.json({
+      code: 0,
+      message: '导入完成',
+      data: { total: 2, success: 2, failed: 0, errors: [] },
+    });
+  }),
 ];
