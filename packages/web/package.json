@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@douyinfe/semi-ui": "^2.93.0",
+    "@iconify/react": "^6.0.2",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-react": "^1.0.6",
     "@zenith/shared": "*",

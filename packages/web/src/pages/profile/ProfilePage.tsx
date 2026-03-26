@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import {
   Card, Form, Button, Typography, Tabs, TabPane, Toast, Avatar, Tag, Space, Upload, Spin, Table, Popconfirm,
 } from '@douyinfe/semi-ui';
-import { Github } from 'lucide-react';
+// import removed
+import { Icon } from '@iconify/react';
 
 import type { User, LoginLog, OperationLog, OAuthAccount, OAuthProviderType } from '@zenith/shared';
 import { request } from '../../utils/request';
@@ -96,9 +97,9 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   }
 
   const PROVIDER_INFO: Record<OAuthProviderType, { label: string; icon: React.ReactNode }> = {
-    github: { label: 'GitHub', icon: <Github size={16} /> },
-    dingtalk: { label: '钉钉', icon: <span style={{ fontSize: 14 }}>钉</span> },
-    wechat_work: { label: '企业微信', icon: <span style={{ fontSize: 14 }}>微</span> },
+    github: { label: 'GitHub', icon: <Icon icon="simple-icons:github" width="16" height="16" /> },
+    dingtalk: { label: '钉钉', icon: <Icon icon="ant-design:dingtalk-outlined" width="16" height="16" /> },
+    wechat_work: { label: '企业微信', icon: <Icon icon="ant-design:wechat-work-filled" width="16" height="16" /> },
   };
 
   async function handleOAuthBind(provider: OAuthProviderType) {
