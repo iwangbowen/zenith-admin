@@ -8,32 +8,43 @@
 
 ### Added
 
-#### 密码策略
+#### 密码策略与安全
 
-- 新增密码策略系统配置项：`password_min_length`（最小长度，默认 8）、`password_require_uppercase`（是否必须含大写字母）、`password_require_special_char`（是否必须含特殊字符）
-- 新增 `packages/server/src/lib/password-policy.ts`，提供 `getPasswordPolicy()` 和 `validatePassword()` 工具函数
-- 用户创建和密码修改接口均自动读取并校验密码策略，不符合规则返回 `400` 错误
-- 新增公开接口 `GET /api/system-configs/password-policy`（无需认证），供前端表单获取当前密码要求
-- 用户管理新增用户弹窗、个人资料密码修改表单均展示密码复杂度提示
+- 新增密码复杂度配置项（最小长度、是否必须大写字母/特殊字符），用户创建和密码修改接口自动校验
+- 新增密码过期功能：可设置密码有效期天数，过期后登录触发强制修改密码弹窗
+- 新增注册功能开关（`allow_registration`）：支持全站启停开放注册，登录页入口动态显示
 
 #### 用户批量导入
 
-- 新增 `GET /api/users/import-template` 接口，返回带样例数据的 Excel 导入模板
-- 新增 `POST /api/users/import` 接口，解析 Excel 文件并批量创建用户，支持按部门编码、岗位编码、角色编码自动关联，逐行报告失败原因
-- 新增 `system:user:import` 按钮权限
-- 用户管理页新增「导入」按钮，弹窗支持模板下载、文件上传及导入结果展示（成功/失败计数与错误明细）
+- 新增 Excel 导入接口，支持按部门/岗位/角色编码自动关联，逐行报告失败原因
+- 用户管理页新增「导入」按钮，支持模板下载、文件上传与导入结果展示
 
 #### 邮件配置
 
-- 新增 `email_configs` 数据库表（含 `email_encryption` 枚举），并添加对应 Drizzle 迁移文件
-- 新增 `GET /api/email-config`、`PUT /api/email-config` 接口，支持 SMTP 服务器配置的读取与保存
-- 新增 `POST /api/email-config/test` 接口，通过 nodemailer 向指定邮箱发送测试邮件
-- 新增「邮件配置」菜单页面（`/system/email-config`），表单涵盖 SMTP 主机、端口、加密方式、授权密码、发件人信息，并支持一键发送测试邮件
-- MSW Demo 模式下同步添加邮件配置 mock 数据与 handler
+- 新增 `email_configs` 数据库表及 SMTP 配置读写接口（支持发送测试邮件）
+- 新增「邮件配置」菜单页面，涵盖 SMTP 主机、端口、加密方式、授权密码等配置
+
+#### OAuth 第三方登录
+
+- 支持 GitHub、钉钉、企业微信三种 OAuth 提供方，登录后自动创建或绑定账号
+- 新增 OAuth 配置管理页面（`/system/oauth-config`），可配置各提供方的 Client ID / Secret
+- 个人中心新增「关联账号」Tab，可查看已绑定的第三方账号
+
+#### 数据库备份管理
+
+- 新增数据库备份功能（基于 pg_dump），支持手动触发、下载及删除备份文件
+- 新增「数据库备份」菜单页面（`/system/db-backups`）
+
+#### 其他
+
+- 顶部标签栏新增右键上下文菜单（关闭当前/其他/左侧/右侧/全部标签）
+- 新增 Vitest 单元测试配置，覆盖密码策略、输入净化、验证码、日期格式化等工具函数
 
 ### Changed
 
-- OpenAPI Spec 新增邮件配置、用户导入、密码策略等相关接口文档及标签
+- 侧边栏菜单支持独立滚动，滚动条改为极窄样式，子菜单添加最大高度限制
+- 登录页第三方登录图标替换为 `@iconify/react` 组件
+- OpenAPI Spec 补充邮件配置、用户导入、密码策略、OAuth 登录、数据库备份接口文档
 
 ---
 
