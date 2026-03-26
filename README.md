@@ -18,26 +18,22 @@
 
 ---
 
-## AI 友好（AI-Ready）
+## 原生 AI 友好
 
-Zenith Admin 专为 AI 辅助开发场景设计，开箱即用：
+Zenith Admin 专为 AI 辅助开发场景设计，提供开箱即用的 AI 集成机制，让 GitHub Copilot、Claude、Cursor 等工具在生成代码时能精准理解项目约定。
 
-| 文件 / 目录 | 作用 |
+| 文件 / 目录 | 用途 |
 | --- | --- |
-| [`AGENTS.md`](./AGENTS.md) | 使用 GitHub Copilot、Claude、Cursor 等 AI 工具时，AI 会自动读取此文件，了解项目架构约定、常用命令与注意事项 |
-| [`.claude/skills/zenith/`](./.claude/skills/zenith/) | Zenith CRUD Skill：描述完整的模块开发流程，AI 按此模板自动生成符合约定的后端路由、前端页面、Mock 数据和菜单配置 |
+| [`AGENTS.md`](./AGENTS.md) | AI 工具的"项目说明书"，包含架构约定、常用命令与注意事项 |
+| [`.claude/skills/zenith/`](./.claude/skills/zenith/) | Zenith CRUD Skill：完整的模块开发工作流，一句话触发自动化生成 |
 
-### 快速体验 AI 辅助 CRUD
-
-在支持 Skills 的 AI 工具（如 GitHub Copilot）中直接描述需求：
+在支持 Skills 的 AI 工具（如 GitHub Copilot）中直接描述需求，即可自动完成 Schema → 迁移 → 类型 → 路由 → 前端页面 → Mock 数据的全流程生成：
 
 ```text
 实现「商品分类」的 CRUD 管理功能
 ```
 
-AI 会自动读取 `AGENTS.md` 与 Zenith Skill，按照项目约定依次完成：数据库 Schema → Zod 校验 → 共享类型 → Hono 路由 → 前端页面 → Mock 数据 → 菜单配置。
-
-> 详细使用说明参见文档站：[AI 辅助开发](https://iwangbowen.github.io/zenith-admin/ai/)。
+> 详细说明参见文档站：[AI 辅助开发](https://iwangbowen.github.io/zenith-admin/ai/)。
 
 ---
 
