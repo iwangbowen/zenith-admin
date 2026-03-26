@@ -148,6 +148,13 @@
       "when": 1774515715313,
       "tag": "0020_colossal_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1774517721030,
+      "tag": "0021_goofy_anthem",
+      "breakpoints": true
     }
   ]
 }
