@@ -216,6 +216,21 @@
   margin-bottom: 0 !important;
 }
 
+/* 一级菜单字体样式与子级菜单保持一致 */
+.admin-sidebar__nav .semi-navigation-item,
+.admin-sidebar__nav .semi-navigation-sub-title {
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+/* 确保一级菜单和子级菜单的字体样式一致 */
+.admin-sidebar__nav .semi-navigation-item-text,
+.admin-sidebar__nav .semi-navigation-sub-text,
+.admin-sidebar__nav .semi-navigation-sub-title-text {
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
 .admin-sidebar__nav .semi-navigation-item,
 .admin-sidebar__nav .semi-navigation-sub {
   border-radius: 6px;
