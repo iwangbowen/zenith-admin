@@ -17,11 +17,12 @@ packages/web/src/pages/xxx/XxxPage.tsx
 ```tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Button, Table, Space, Form, Input, Select,
+  Button, Table, Form, Input, Select,
   Modal, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, Plus } from 'lucide-react';
+import { SearchToolbar } from '../../components/SearchToolbar';
 import { request } from '../../utils/request';
 import { formatDateTime } from '../../utils/date';
 import { useDictItems } from '../../hooks/useDictItems';
@@ -251,63 +252,38 @@ export default function XxxPage() {
   // ════════════════════════════════════════════════════════════════════════
   return (
     <div className="page-container">
-      {/* 搜索区：左搜右操作，flex 布局 */}
-      <div className="search-area">
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <Space>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索名称..."
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
-              showClear
-              style={{ width: 220 }}
-              onEnterPress={handleSearch}
-            />
-            <Select
-              placeholder="全部状态"
-              value={searchParams.status || undefined}
-              onChange={(v) =>
-                setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))
-              }
-              showClear
-              style={{ width: 120 }}
-              optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
-            />
-            <Button
-              type="primary"
-              icon={<Search size={14} />}
-              onClick={handleSearch}
-            >
-              查询
-            </Button>
-            <Button
-              type="tertiary"
-              icon={<RotateCcw size={14} />}
-              onClick={handleReset}
-            >
-              重置
-            </Button>
-          </Space>
-          <Space>
-            {hasPermission('system:xxx:create') && (
-              <Button
-                type="secondary"
-                icon={<Plus size={14} />}
-                onClick={openCreate}
-              >
-                新增
-              </Button>
-            )}
-          </Space>
-        </div>
-      </div>
+      {/* 搜索区：使用 SearchToolbar 组件，left 放搜索控件，right 放操作按钮 */}
+      {/* 具体写法参考 packages/web/src/pages/users/UsersPage.tsx */}
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索名称..."
+            value={searchParams.keyword}
+            onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+            showClear
+            style={{ width: 220 }}
+            onEnterPress={handleSearch}
+          />
+          <Select
+            placeholder="全部状态"
+            value={searchParams.status || undefined}
+            onChange={(v) =>
+              setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))
+            }
+            showClear
+            style={{ width: 120 }}
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<>
+          {hasPermission('system:xxx:create') && (
+            <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+          )}
+        </>}
+      />
 
       {/* 数据表格 */}
       <Table

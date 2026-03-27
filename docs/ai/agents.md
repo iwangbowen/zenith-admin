@@ -1,67 +1,38 @@
 # AGENTS.md
 
-`AGENTS.md` 是 Zenith Admin 的"项目说明书"，位于仓库根目录。主流 AI 工具（GitHub Copilot、Claude Code、Cursor 等）在进入项目时会自动读取此文件，从而了解项目架构、约定和常见陷阱。
+`AGENTS.md` 是 Zenith Admin 的"项目说明书"，位于仓库根目录。主流 AI 编程工具（GitHub Copilot、Claude Code、Cursor 等）在进入项目时会自动读取此文件，从而了解项目的技术栈、架构约定与常见陷阱。
 
 ---
 
-## 包含内容
+## 它的作用
 
-### 技术栈与架构约定
+AI 工具在生成代码、回答问题或执行重构时，会参照 `AGENTS.md` 中的约定来确保输出与项目现有风格一致。它相当于一份"机器可读的编码规范"——无需反复提醒 AI，规则就自动生效。
 
-- 后端 Hono 路由规范（统一响应格式、认证中间件、Zod 校验）
-- 前端 Semi Design 使用规则（图标来源、时间格式、组件用法）
-- 共享层说明（`@zenith/shared` 直接引用 `.ts` 源文件，无需编译）
+没有这份文件时，AI 可能会：
 
-### 常用命令
+- 使用不符合项目约定的响应格式或组件库
+- 忽略统一的布局规范和命名习惯
+- 遗漏数据库迁移、枚举同步等容易出错的步骤
 
-```bash
-npm run dev            # 同时启动 server + web 开发服务器
-npm run db:generate    # 生成 Drizzle 迁移文件
-npm run db:migrate     # 执行数据库迁移
-npm run db:seed        # 填充初始种子数据
-```
+## 涵盖哪些方面
 
-### 页面布局规范
+`AGENTS.md` 按模块组织，覆盖了以下几类信息（具体内容请直接阅读原文）：
 
-- 列表页搜索区使用 `<div className="search-area">` 包裹
-- 搜索栏用 `flex + justifyContent: space-between`（搜索条件 + 查询/重置按钮在左，新增按钮在右）
-- 操作列按钮：`theme="borderless"` 纯文字，无图标，必须 `fixed: 'right'`
-- 表格统一使用 `<Table bordered>`
+- **技术栈与架构**：后端、前端、共享层各自的框架选型和职责划分
+- **常用命令**：开发、构建、数据库迁移等日常操作
+- **编码约定**：响应格式、组件使用、页面布局等统一规范
+- **常见陷阱**：开发中容易踩坑的注意事项
+- **Demo 演示模式**：MSW Mock 的维护要求
 
-### Demo 演示模式（MSW Mock）
-
-新增业务模块时，必须同步在 `data/` 和 `handlers/` 中添加对应的 MSW mock。
-
-### 常见陷阱
-
-- 修改数据库 schema 后，必须运行 `npm run db:generate` 再 `npm run db:migrate`
-- 枚举值在 pgEnum、TypeScript union、Zod enum 三处必须保持一致
-- 操作列必须设置 `fixed: 'right'`
-
----
-
-## 已内置的项目上下文
-
-AI 在生成代码时会自动遵守以下约定：
-
-| 约定 | 规则 |
-| --- | --- |
-| API 响应格式 | `{ code, message, data }` |
-| 时间显示 | 使用 `formatDateTime()` 工具函数 |
-| 图标来源 | `lucide-react`，禁止使用 `@douyinfe/semi-icons` |
-| 分页响应 | `{ list, total, page, pageSize }` |
-| Token 存储 | `localStorage`，Access Token key 为 `zenith_token`，Refresh Token key 为 `zenith_refresh_token` |
-
----
+> 具体条目可能随项目演进而增减，始终以仓库根目录的 `AGENTS.md` 原文为准。
 
 ## 如何维护
 
-当你修改了项目的架构约定（如新增组件规范、修改 API 格式、添加新中间件），应同步更新 `AGENTS.md`，确保 AI 工具获取最新信息。
+当项目的架构约定发生变更时，应同步更新 `AGENTS.md`，确保 AI 工具获取的信息始终是最新的。
 
-```bash
-# 典型需要更新 AGENTS.md 的场景：
-# - 新增了全局中间件
-# - 修改了统一响应格式
-# - 约定了新的命名规范
-# - 新增了必须遵守的布局规则
-```
+常见需要更新的场景：
+
+- 新增或修改了全局中间件、统一响应格式
+- 约定了新的组件规范或布局规则
+- 变更了数据库工作流或命名习惯
+- 引入了新的第三方库或替换了现有依赖

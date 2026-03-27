@@ -128,34 +128,35 @@ Redis key 规范：
 
 所有 CRUD 列表页面（参考 `UsersPage.tsx`）采用无卡片（Cardless）设计方案：
 
-- 搜索区域直接使用 `div` 容器（如 `<div className="search-area">`）。
+- 搜索区域统一使用 `SearchToolbar` 组件（`components/SearchToolbar.tsx`）。
 - 数据表格必须使用带边框属性：`<Table bordered {...props} />`。
 - 整体背景由 `AdminLayout` 统一负责，列表页不要自行包裹 `<Card>`。
 
 顶部搜索栏和操作按钮必须遵循统一布局：
 
 ```tsx
-<div className="search-area">
-  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-    <Space>
-      {/* 搜索输入框 + 下拉筛选 + 查询/重置按钮 */}
-      <Input prefix={<Search size={14} />} placeholder="..." showClear />
-      <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-      <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-    </Space>
-    <Space>
-      <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
-    </Space>
-  </div>
-</div>
+import { SearchToolbar } from '../../components/SearchToolbar';
+
+<SearchToolbar
+  left={<>
+    {/* 搜索输入框 + 下拉筛选 + 查询/重置按钮 */}
+    <Input prefix={<Search size={14} />} placeholder="..." showClear />
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  </>}
+  right={<>
+    <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  </>}
+/>
 ```
 
 要点：
 
-- 搜索条件（输入框、下拉框）和查询/重置按钮在**左侧**
-- 新增按钮在**右侧**
-- 使用 `flex` + `justifyContent: 'space-between'` 实现左右分布
+- `left`：搜索条件（输入框、下拉框）+ 查询/重置按钮
+- `right`：新增等操作按钮
+- `left` 内部自动用 `<Space wrap>` 包裹，`right` 不自动包裹（由调用方控制）
 - 按钮文案统一为「查询」「重置」「新增」
+- 可选 props：`className`（附加 CSS 类名）、`children`（工具栏下方附加内容）
 
 ### 表格操作列按钮
 

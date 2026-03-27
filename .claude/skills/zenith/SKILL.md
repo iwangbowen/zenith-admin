@@ -289,7 +289,7 @@ app.route('/api/xxx', xxxRoutes);
 
 **Step 7** — `packages/web/src/pages/xxx/XxxPage.tsx`：创建页面组件
 - 遵循 AGENTS.md「页面布局规范」
-- 搜索栏：左搜右操作，`<div className="search-area">`
+- 搜索栏：使用 `SearchToolbar` 组件（参考 `UsersPage.tsx`）
 - 表格：`<Table bordered>`，操作列 `fixed: 'right'`
 - 弹窗：新增/编辑共用一个 `<Modal>` + `<Form>`
 
@@ -323,7 +323,7 @@ app.route('/api/xxx', xxxRoutes);
 | **图标库** | 统一使用 `lucide-react`，禁止 `@douyinfe/semi-icons` |
 | **操作按钮样式** | `theme="borderless" size="small"`，删除加 `type="danger"` |
 | **无图标文字按钮** | 操作列按钮只用纯文字，不加图标 |
-| **搜索栏布局** | `<div className="search-area">`，内部 flex + `justifyContent: 'space-between'`，搜索在左，新增在右 |
+| **搜索栏布局** | 使用 `SearchToolbar` 组件（`components/SearchToolbar.tsx`），`left` 放搜索控件，`right` 放操作按钮，参考 `UsersPage.tsx` |
 | **表格样式** | 统一 `<Table bordered>` |
 | **响应码规范** | 成功 `{ code: 0, message: 'ok', data: T }`，失败 `{ code: 400, message: '...', data: null }` |
 | **分页格式** | 列表接口返回 `{ list, total, page, pageSize }` |
