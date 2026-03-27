@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Form,
@@ -10,6 +10,7 @@ import {
   Toast,
   Popconfirm,
 } from '@douyinfe/semi-ui';
+import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Region } from '@zenith/shared';
@@ -106,21 +107,43 @@ export default function RegionsPage() {
     setEditingLevel('province');
   }
 
-  // 根据当前选择的 level，过滤可选父级
-  const parentOptions = (() => {
-    if (editingLevel === 'province') return [];
-    const parentLevel = editingLevel === 'city' ? 'province' : 'city';
-    return flatData
-      .filter((r) => r.level === parentLevel)
-      .map((r) => ({ value: r.code, label: `${r.name}（${r.code}）` }));
-  })();
+  // 构建 Cascader 树数据：省→市 两级
+  const cascaderTreeData = useMemo<CascaderData[]>(() => {
+    const provinces = flatData.filter((r) => r.level === 'province');
+    const cities = flatData.filter((r) => r.level === 'city');
+    return provinces.map((prov) => ({
+      value: prov.code,
+      label: `${prov.name}（${prov.code}）`,
+      children: cities
+        .filter((c) => c.parentCode === prov.code)
+        .map((c) => ({ value: c.code, label: `${c.name}（${c.code}）` })),
+    }));
+  }, [flatData]);
+
+  // 根据 editingLevel 决定展示的 treeData（市级只需一层省，县级需省→市两层）
+  const parentTreeData = useMemo<CascaderData[]>(() => {
+    if (editingLevel === 'city') {
+      return cascaderTreeData.map(({ children: _c, ...rest }) => rest);
+    }
+    return cascaderTreeData;
+  }, [cascaderTreeData, editingLevel]);
+
+  // 从 parentCode 反推 Cascader 路径（用于编辑回显）
+  function buildCascaderPath(parentCode: string | null | undefined): string[] {
+    if (!parentCode) return [];
+    const target = flatData.find((r) => r.code === parentCode);
+    if (!target) return [parentCode];
+    if (target.level === 'province') return [target.code];
+    if (target.level === 'city' && target.parentCode) return [target.parentCode, target.code];
+    return [parentCode];
+  }
 
   const formInitValues = editingRegion
     ? {
         code: editingRegion.code,
         name: editingRegion.name,
         level: editingRegion.level,
-        parentCode: editingRegion.parentCode ?? undefined,
+        parentCode: buildCascaderPath(editingRegion.parentCode),
         sort: editingRegion.sort,
         status: editingRegion.status,
       }
@@ -135,9 +158,10 @@ export default function RegionsPage() {
     }
     if (!values) throw new Error('validation');
 
+    const parentCodeArr = Array.isArray(values.parentCode) ? values.parentCode : [];
     const payload = {
       ...values,
-      parentCode: values.level === 'province' ? null : (values.parentCode ?? null),
+      parentCode: values.level === 'province' ? null : (parentCodeArr.at(-1) ?? null),
     };
 
     const res = editingRegion
@@ -315,12 +339,14 @@ export default function RegionsPage() {
             onChange={(v) => setEditingLevel(v as string)}
           />
           {editingLevel !== 'province' && (
-            <Form.Select
+            <Form.Cascader
               field="parentCode"
               label="父级地区"
               placeholder="请选择父级地区"
-              optionList={parentOptions}
-              filter
+              treeData={parentTreeData}
+              changeOnSelect
+              filterTreeNode
+              showClear
               rules={[{ required: true, message: '请选择父级地区' }]}
               style={{ width: '100%' }}
             />
