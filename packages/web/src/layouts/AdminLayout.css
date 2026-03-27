@@ -480,12 +480,6 @@
   flex-shrink: 0;
 }
 
-/* Breadcrumb inside header (vertical layout) */
-.admin-breadcrumb .semi-breadcrumb-item-link,
-.admin-breadcrumb .semi-breadcrumb-item-title {
-  font-size: 13px;
-}
-
 /* Content */
 .admin-content {
   flex: 1;

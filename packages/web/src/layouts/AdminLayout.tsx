@@ -740,7 +740,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           {/* Breadcrumb bar — below tabs for all layouts */}
           {preferences.showBreadcrumb && breadcrumbs.length > 0 && (
             <div className="admin-breadcrumb-bar">
-              <Breadcrumb className="admin-breadcrumb" style={{ fontSize: 13 }}>
+              <Breadcrumb>
                 {breadcrumbs.map((crumb, index) => (
                   <Breadcrumb.Item key={crumb.title}>
                     {index === 0 && crumb.path === '/' ? (
