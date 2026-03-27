@@ -556,9 +556,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             <header className="admin-header">
               {preferences.showBreadcrumb && breadcrumbs.length > 0 ? (
                 <Breadcrumb className="admin-breadcrumb" style={{ fontSize: 13 }}>
-                  <Breadcrumb.Item onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</Breadcrumb.Item>
-                  {breadcrumbs.map((crumb) => (
-                    <Breadcrumb.Item key={crumb.title}>{crumb.title}</Breadcrumb.Item>
+                  {breadcrumbs.map((crumb, index) => (
+                    <Breadcrumb.Item key={crumb.title}>
+                      {index === 0 && crumb.path === '/' ? (
+                        <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</span>
+                      ) : (
+                        crumb.title
+                      )}
+                    </Breadcrumb.Item>
                   ))}
                 </Breadcrumb>
               ) : <div />}
@@ -569,9 +574,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           {navLayout !== 'vertical' && preferences.showBreadcrumb && breadcrumbs.length > 0 && (
             <div className="admin-breadcrumb-bar">
               <Breadcrumb className="admin-breadcrumb" style={{ fontSize: 13 }}>
-                <Breadcrumb.Item onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</Breadcrumb.Item>
-                {breadcrumbs.map((crumb) => (
-                  <Breadcrumb.Item key={crumb.title}>{crumb.title}</Breadcrumb.Item>
+                {breadcrumbs.map((crumb, index) => (
+                  <Breadcrumb.Item key={crumb.title}>
+                    {index === 0 && crumb.path === '/' ? (
+                      <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</span>
+                    ) : (
+                      crumb.title
+                    )}
+                  </Breadcrumb.Item>
                 ))}
               </Breadcrumb>
             </div>
