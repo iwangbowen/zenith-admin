@@ -4,6 +4,7 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
 import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
+import { usePermission } from '@/hooks/usePermission';
 
 export default function DbBackupsPage() {
   const [list, setList] = useState<DbBackup[]>([]);
@@ -15,6 +16,7 @@ export default function DbBackupsPage() {
   const [filterType, setFilterType] = useState<string>('');
   const [createVisible, setCreateVisible] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const { hasPermission } = usePermission();
 
   const fetchList = useCallback(async (p = page) => {
     setLoading(true);
@@ -114,9 +116,11 @@ export default function DbBackupsPage() {
           {record.fileId && record.status === 'success' && (
             <Button theme="borderless" size="small" onClick={() => handleDownload(record)}>下载</Button>
           )}
-          <Popconfirm title="确定要删除吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
+          {hasPermission('system:db-backup:delete') && (
+            <Popconfirm title="确定要删除吗？" onConfirm={() => handleDelete(record.id)}>
+              <Button theme="borderless" type="danger" size="small">删除</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -157,7 +161,9 @@ export default function DbBackupsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           </Space>
           <Space>
-            <Button type="secondary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增备份</Button>
+            {hasPermission('system:db-backup:create') && (
+              <Button type="secondary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增备份</Button>
+            )}
           </Space>
         </div>
       </div>

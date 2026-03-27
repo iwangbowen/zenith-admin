@@ -4,6 +4,7 @@ import { db } from '../db';
 import { dbBackups, users } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
+import { guard } from '../middleware/guard';
 import { createBackupSchema } from '@zenith/shared';
 import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup';
 import logger from '../lib/logger';
@@ -12,7 +13,7 @@ const backups = new Hono<{ Variables: { user: JwtPayload } }>();
 backups.use('*', authMiddleware);
 
 // ─── 备份列表 ─────────────────────────────────────────────────────────
-backups.get('/', async (c) => {
+backups.get('/', guard({ permission: 'system:db-backup:list' }), async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const status = c.req.query('status') as string | undefined;
@@ -70,7 +71,7 @@ backups.get('/', async (c) => {
 });
 
 // ─── 创建备份 ─────────────────────────────────────────────────────────
-backups.post('/', async (c) => {
+backups.post('/', guard({ permission: 'system:db-backup:create', audit: { description: '创建数据库备份', module: '数据库备份' } }), async (c) => {
   const payload = c.get('user') as JwtPayload;
   const body = await c.req.json();
   const result = createBackupSchema.safeParse(body);
@@ -106,7 +107,7 @@ backups.post('/', async (c) => {
 });
 
 // ─── 删除备份记录 ─────────────────────────────────────────────────────
-backups.delete('/:id', async (c) => {
+backups.delete('/:id', guard({ permission: 'system:db-backup:delete', audit: { description: '删除数据库备份', module: '数据库备份' } }), async (c) => {
   const id = Number(c.req.param('id'));
   if (!id) return c.json({ code: 400, message: '无效 ID', data: null }, 400);
 
