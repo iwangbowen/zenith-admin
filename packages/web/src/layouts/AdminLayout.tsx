@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Badge, Breadcrumb, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
-import { Bell, Building2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
+import { Avatar, Badge, Breadcrumb, Button, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
+import { Bell, Building2, Check, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
 import type { User, Menu, Notice, Tenant, WsMessage } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
-import { usePreferences, type NavLayout } from '@/hooks/usePreferences';
+import { usePreferences, type NavLayout, type TabAnimation } from '@/hooks/usePreferences';
+import { applyThemeColor, THEME_COLOR_PRESETS } from '@/lib/theme-color';
 import { useTabsStore } from '@/hooks/useTabsStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
@@ -101,7 +102,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [collapsed, setCollapsed] = useState(false);
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
   const { mode, setThemeMode } = useTheme();
-  const { preferences, setPreferences } = usePreferences();
+  const { preferences, setPreferences, resetPreferences } = usePreferences();
+
+  // Apply theme color when dark/light mode changes
+  useEffect(() => {
+    const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
+    applyThemeColor(preferences.themeColor, isDark);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   // Sync colorMode preference with theme
   useEffect(() => {
@@ -112,6 +120,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   }, []);
   const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll } = useTabsStore(preferences.tabsMaxCount);
   const [prefsVisible, setPrefsVisible] = useState(false);
+  const [exitingTabKeys, setExitingTabKeys] = useState<Set<string>>(new Set());
+  const [enteringTabKeys, setEnteringTabKeys] = useState<Set<string>>(new Set());
+  const prevTabsLengthRef = useRef(0);
   const [manualTopKey, setManualTopKey] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -322,15 +333,25 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     }
   }, [location.pathname, preferences.enableTabs, pathTitleMap, addTab]);
 
-  const handleTabChange = (key: string) => {
-    setActiveKey(key);
-    navigate(key);
-  };
+  // Track entering tabs (new tab added since last render)
+  useEffect(() => {
+    const prev = prevTabsLengthRef.current;
+    if (tabs.length > prev && preferences.tabAnimation !== 'none') {
+      const newTab = tabs.at(-1);
+      if (newTab) {
+        setEnteringTabKeys((s) => new Set([...s, newTab.key]));
+        setTimeout(() => {
+          setEnteringTabKeys((s) => { const n = new Set(s); n.delete(newTab.key); return n; });
+        }, 300);
+      }
+    }
+    prevTabsLengthRef.current = tabs.length;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs.length]);
 
-  const handleTabClose = (key: string) => {
+  const doRemoveTab = (key: string) => {
     const currentActive = activeKey;
     removeTab(key);
-    // If closing the active tab, navigate to the nearest remaining tab
     if (key === currentActive) {
       const idx = tabs.findIndex((t) => t.key === key);
       const remaining = tabs.filter((t) => t.key !== key);
@@ -341,6 +362,23 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         navigate('/');
       }
     }
+  };
+
+  const handleTabChange = (key: string) => {
+    setActiveKey(key);
+    navigate(key);
+  };
+
+  const handleTabClose = (key: string) => {
+    if (preferences.tabAnimation === 'none') {
+      doRemoveTab(key);
+      return;
+    }
+    setExitingTabKeys((s) => new Set([...s, key]));
+    setTimeout(() => {
+      setExitingTabKeys((s) => { const n = new Set(s); n.delete(key); return n; });
+      doRemoveTab(key);
+    }, 220);
   };
 
   // ─── Render wrappers ──────────────────────────────────────────────────────
@@ -628,14 +666,23 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
             {/* Tabs bar */}
             {preferences.enableTabs && tabs.length > 0 && (
-              <div className="admin-tabs-bar">
-                {tabs.map((tab) => (
+              <div className="admin-tabs-bar" data-tab-animation={preferences.tabAnimation}>
+                {tabs.map((tab) => {
+                  const isEntering = enteringTabKeys.has(tab.key);
+                  const isExiting = exitingTabKeys.has(tab.key);
+                  const tabClass = [
+                    'admin-tab-item',
+                    tab.key === activeKey ? 'admin-tab-item--active' : '',
+                    isEntering ? 'admin-tab-item--entering' : '',
+                    isExiting ? 'admin-tab-item--exiting' : '',
+                  ].filter(Boolean).join(' ');
+                  return (
                   <div
                     key={tab.key}
                     ref={tab.key === activeKey ? activeTabRef : null}
                     role="tab"
                     tabIndex={0}
-                    className={`admin-tab-item${tab.key === activeKey ? ' admin-tab-item--active' : ''}`}
+                    className={tabClass}
                     onClick={() => handleTabChange(tab.key)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleTabChange(tab.key); }}
                     onContextMenu={(e) => {
@@ -695,7 +742,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             <Outlet />
@@ -709,7 +757,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             width={380}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {/* Nav layout picker */}
+
+              {/* ── 导航布局 ── */}
               <div>
                 <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>导航布局</div>
                 <div style={{ display: 'flex', gap: 12 }}>
@@ -730,7 +779,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   ))}
                 </div>
               </div>
-              {/* Color mode */}
+
+              {/* ── 颜色模式 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>颜色模式</span>
                 <RadioGroup
@@ -747,12 +797,48 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   <Radio value="system">系统</Radio>
                 </RadioGroup>
               </div>
-              {/* Breadcrumb setting */}
+
+              {/* ── 主题色 ── */}
+              <div>
+                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>主题颜色</div>
+                <div className="theme-color-picker">
+                  {THEME_COLOR_PRESETS.map((preset) => {
+                    const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
+                    const currentColor = isDark ? preset.dark.primary : preset.light.primary;
+                    const isActive = preferences.themeColor === preset.key;
+                    return (
+                      <Tooltip key={preset.key} content={preset.name} position="top">
+                        <button
+                          type="button"
+                          className={`theme-color-swatch${isActive ? ' theme-color-swatch--active' : ''}`}
+                          style={{ backgroundColor: currentColor, color: currentColor }}
+                          onClick={() => {
+                            setPreferences({ themeColor: preset.key });
+                            applyThemeColor(preset.key, isDark);
+                          }}
+                          title={preset.name}
+                        >
+                          {isActive && (
+                            <span className="theme-color-swatch__check">
+                              <Check size={14} strokeWidth={2.5} />
+                            </span>
+                          )}
+                        </button>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── 面包屑 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>显示面包屑导航</span>
                 <Switch checked={preferences.showBreadcrumb} onChange={(v) => setPreferences({ showBreadcrumb: v })} />
               </div>
-              {/* Tabs settings */}
+
+              <div className="prefs-section-divider" />
+
+              {/* ── 多标签页 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>启用多标签页</span>
                 <Switch checked={preferences.enableTabs} onChange={(v) => setPreferences({ enableTabs: v })} />
@@ -773,8 +859,51 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       style={{ width: 100 }}
                     />
                   </div>
+
+                  {/* ── 标签页动画 ── */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>标签页动画</span>
+                    <RadioGroup
+                      type="button"
+                      value={preferences.tabAnimation}
+                      onChange={(e) => setPreferences({ tabAnimation: e.target.value as TabAnimation })}
+                    >
+                      <Radio value="none">无</Radio>
+                      <Radio value="fade">淡入</Radio>
+                      <Radio value="slide">滑入</Radio>
+                      <Radio value="zoom">缩放</Radio>
+                    </RadioGroup>
+                  </div>
                 </>
               )}
+
+              <div className="prefs-section-divider" />
+
+              {/* ── 重置 ── */}
+              <div>
+                <Button
+                  type="danger"
+                  theme="light"
+                  block
+                  className="prefs-reset-btn"
+                  onClick={() => {
+                    Modal.confirm({
+                      title: '重置偏好设置',
+                      content: '确定要将所有偏好设置恢复为默认值吗？',
+                      okText: '重置',
+                      cancelText: '取消',
+                      okButtonProps: { type: 'danger', theme: 'solid' },
+                      onOk: () => {
+                        resetPreferences();
+                        setThemeMode('light');
+                      },
+                    });
+                  }}
+                >
+                  重置所有设置
+                </Button>
+              </div>
+
             </div>
           </SideSheet>
         </div>
