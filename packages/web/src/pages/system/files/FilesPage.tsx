@@ -315,19 +315,6 @@ export default function FilesPage() {
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         </>}
         right={<>
-          <div className="files-default-tip">
-            <Text strong>默认文件服务：</Text>
-            {defaultConfig ? (
-              <>
-                <Tag color={defaultConfig.provider === 'local' ? 'blue' : 'orange'} size="small">
-                  {defaultConfig.provider === 'local' ? '本地磁盘' : '阿里云 OSS'}
-                </Tag>
-                <Text>{defaultConfig.name}</Text>
-              </>
-            ) : (
-              <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
-            )}
-          </div>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/files/export', '文件列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:file:upload') && <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
             上传文件
@@ -340,6 +327,20 @@ export default function FilesPage() {
           />
         </>}
       />
+
+      <div className="files-default-tip" style={{ padding: '8px 0' }}>
+        <Text strong>默认文件服务：</Text>
+        {defaultConfig ? (
+          <>
+            <Tag color={defaultConfig.provider === 'local' ? 'blue' : 'orange'} size="small">
+              {defaultConfig.provider === 'local' ? '本地磁盘' : '阿里云 OSS'}
+            </Tag>
+            <Text>{defaultConfig.name}</Text>
+          </>
+        ) : (
+          <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
+        )}
+      </div>
 
       <ImagePreview
         src={previewSrcList}
