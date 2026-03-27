@@ -370,7 +370,7 @@ auth.put('/profile', authMiddleware, async (c) => {
 
   const [updated] = await db
     .update(users)
-    .set({ ...result.data, passwordUpdatedAt: new Date(), updatedAt: new Date() })
+    .set({ ...result.data, updatedAt: new Date() })
     .where(eq(users.id, payload.userId))
     .returning();
 
