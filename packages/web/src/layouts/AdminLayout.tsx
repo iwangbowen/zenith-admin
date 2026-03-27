@@ -651,43 +651,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           {/* Vertical mode has its own header bar */}
           {navLayout === 'vertical' && (
             <header className="admin-header">
-              {preferences.showBreadcrumb && breadcrumbs.length > 0 ? (
-                <Breadcrumb className="admin-breadcrumb" style={{ fontSize: 13 }}>
-                  {breadcrumbs.map((crumb, index) => (
-                    <Breadcrumb.Item key={crumb.title}>
-                      {index === 0 && crumb.path === '/' ? (
-                        <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</span>
-                      ) : (
-                        crumb.title
-                      )}
-                    </Breadcrumb.Item>
-                  ))}
-                </Breadcrumb>
-              ) : <div />}
+              <div />
               {headerActions}
             </header>
           )}
-          {/* Breadcrumb bar for horizontal/mixed layouts */}
-          {navLayout !== 'vertical' && preferences.showBreadcrumb && breadcrumbs.length > 0 && (
-            <div className="admin-breadcrumb-bar">
-              <Breadcrumb className="admin-breadcrumb" style={{ fontSize: 13 }}>
-                {breadcrumbs.map((crumb, index) => (
-                  <Breadcrumb.Item key={crumb.title}>
-                    {index === 0 && crumb.path === '/' ? (
-                      <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</span>
-                    ) : (
-                      crumb.title
-                    )}
-                  </Breadcrumb.Item>
-                ))}
-              </Breadcrumb>
-            </div>
-          )}
-          <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
-            {/* Tabs bar */}
-            {preferences.enableTabs && tabs.length > 0 && (
-              <div className="admin-tabs-bar" data-tab-animation={preferences.tabAnimation}>
-                {tabs.map((tab) => {
+          {/* Tabs bar — shown above breadcrumb for all layouts */}
+          {preferences.enableTabs && tabs.length > 0 && (
+            <div className="admin-tabs-bar" data-tab-animation={preferences.tabAnimation}>
+              {tabs.map((tab) => {
                   const isEntering = enteringTabKeys.has(tab.key);
                   const isExiting = exitingTabKeys.has(tab.key);
                   const tabClass = [
@@ -763,9 +734,26 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     )}
                   </div>
                   );
-                })}
-              </div>
-            )}
+              })}
+            </div>
+          )}
+          {/* Breadcrumb bar — below tabs for all layouts */}
+          {preferences.showBreadcrumb && breadcrumbs.length > 0 && (
+            <div className="admin-breadcrumb-bar">
+              <Breadcrumb className="admin-breadcrumb" style={{ fontSize: 13 }}>
+                {breadcrumbs.map((crumb, index) => (
+                  <Breadcrumb.Item key={crumb.title}>
+                    {index === 0 && crumb.path === '/' ? (
+                      <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</span>
+                    ) : (
+                      crumb.title
+                    )}
+                  </Breadcrumb.Item>
+                ))}
+              </Breadcrumb>
+            </div>
+          )}
+          <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
             <Outlet />
           </div>
 
