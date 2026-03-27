@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Button, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
-import { Bell, Building2, Check, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
+import { Bell, Building2, Check, Maximize2, Minimize2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
 import type { User, Menu, Notice, Tenant, WsMessage } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, type NavLayout, type TabAnimation } from '@/hooks/usePreferences';
@@ -103,6 +103,21 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
   const { mode, setThemeMode } = useTheme();
   const { preferences, setPreferences, resetPreferences } = usePreferences();
+
+  // Fullscreen
+  const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }, []);
 
   // Apply theme color when dark/light mode changes
   useEffect(() => {
@@ -539,6 +554,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             {themeLabelMap[mode].icon}
           </button>
         </Dropdown>
+      </Tooltip>
+      <Tooltip content={isFullscreen ? '退出全屏' : '全屏显示'} position="bottom">
+        <button className="admin-theme-btn" title={isFullscreen ? '退出全屏' : '全屏显示'} onClick={toggleFullscreen}>
+          {isFullscreen ? <Minimize2 size={16} strokeWidth={1.5} /> : <Maximize2 size={16} strokeWidth={1.5} />}
+        </button>
       </Tooltip>
       <div style={{ width: 1, height: 16, backgroundColor: 'var(--color-border)', margin: '0 4px' }} />
       <Dropdown
