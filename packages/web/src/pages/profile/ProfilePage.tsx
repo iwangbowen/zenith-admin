@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Card, Form, Button, Typography, Toast, Avatar, Tag, Space, Spin, Table, Popconfirm,
+  Card, Form, Button, Typography, Toast, Avatar, Tag, Space, Spin, Table,
   Modal, Cropper, Input, Tabs,
 } from '@douyinfe/semi-ui';
 import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle } from 'lucide-react';
@@ -46,9 +46,13 @@ function SessionList({ sessions, onKick }: { readonly sessions: UserSession[]; r
             </Text>
           </div>
           {!session.isCurrent && (
-            <Popconfirm title="确定要退出该设备吗？" onConfirm={() => onKick(session.tokenId)}>
-              <Button theme="borderless" type="danger" size="small">退出</Button>
-            </Popconfirm>
+            <Button theme="borderless" type="danger" size="small" onClick={() => {
+              Modal.confirm({
+                title: '确定要退出该设备吗？',
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => onKick(session.tokenId),
+              });
+            }}>退出</Button>
           )}
         </div>
       ))}
@@ -427,9 +431,13 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                               )}
                             </Space>
                             {bound ? (
-                              <Popconfirm title={`确定要解绑 ${info.label} 账号吗？`} onConfirm={() => handleOAuthUnbind(provider)}>
-                                <Button theme="borderless" type="danger" size="small">解绑</Button>
-                              </Popconfirm>
+                              <Button theme="borderless" type="danger" size="small" onClick={() => {
+                                Modal.confirm({
+                                  title: `确定要解绑 ${info.label} 账号吗？`,
+                                  okButtonProps: { type: 'danger', theme: 'solid' },
+                                  onOk: () => handleOAuthUnbind(provider),
+                                });
+                              }}>解绑</Button>
                             ) : (
                               <Button theme="borderless" size="small" onClick={() => handleOAuthBind(provider)}>绑定</Button>
                             )}
@@ -449,11 +457,16 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
               <div className="profile-section">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                     <div className="section-title" style={{ margin: 0 }}>在线设备</div>
-                    <Popconfirm title="确定要退出其他所有设备吗？" onConfirm={handleKickOthers}>
-                      <Button type="danger" theme="light" size="small" loading={kickOthersLoading} icon={<LogOut size={14} />}>
-                        退出其他设备
-                      </Button>
-                    </Popconfirm>
+                    <Button type="danger" theme="light" size="small" loading={kickOthersLoading} icon={<LogOut size={14} />} onClick={() => {
+                      Modal.confirm({
+                        title: '确定要退出其他所有设备吗？',
+                        content: '退出后其他设备将需要重新登录。',
+                        okButtonProps: { type: 'danger', theme: 'solid' },
+                        onOk: handleKickOthers,
+                      });
+                    }}>
+                      退出其他设备
+                    </Button>
                   </div>
                   {sessionsLoading ? (
                     <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
@@ -556,9 +569,14 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                         {
                           title: '操作', dataIndex: 'id', width: 80, fixed: 'right',
                           render: (id: number) => (
-                            <Popconfirm title="撤销后将无法恢复，确定吗？" onConfirm={() => handleDeleteToken(id)}>
-                              <Button theme="borderless" type="danger" size="small">撤销</Button>
-                            </Popconfirm>
+                            <Button theme="borderless" type="danger" size="small" onClick={() => {
+                              Modal.confirm({
+                                title: '确定要撤销该 Token 吗？',
+                                content: '撤销后将无法恢复，使用该 Token 的调用将立即失效。',
+                                okButtonProps: { type: 'danger', theme: 'solid' },
+                                onOk: () => handleDeleteToken(id),
+                              });
+                            }}>撤销</Button>
                           ),
                         },
                       ]}
