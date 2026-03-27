@@ -54,7 +54,7 @@ loginLogsRoute.get('/', guard({ permission: 'system:log:login' }), async (c) => 
   });
 });
 
-loginLogsRoute.get('/export', guard({ permission: 'system:loginlog:list' }), async (c) => {
+loginLogsRoute.get('/export', guard({ permission: 'system:log:login' }), async (c) => {
   const rows = await db.select().from(loginLogs).orderBy(desc(loginLogs.id));
   const buffer = await exportToExcel(
     [

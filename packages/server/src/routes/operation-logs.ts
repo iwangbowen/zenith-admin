@@ -113,7 +113,7 @@ operationLogsRoute.get('/stats', guard({ permission: 'system:log:operation' }), 
   });
 });
 
-operationLogsRoute.get('/export', guard({ permission: 'system:operationlog:list' }), async (c) => {
+operationLogsRoute.get('/export', guard({ permission: 'system:log:operation' }), async (c) => {
   const rows = await db.select().from(operationLogs).orderBy(desc(operationLogs.id));
   const buffer = await exportToExcel(
     [
