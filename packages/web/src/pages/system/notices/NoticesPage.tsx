@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import {
   Table,
   Button,
@@ -8,6 +8,7 @@ import {
   Modal,
   SideSheet,
   Form,
+  Spin,
   Toast,
   Select,
   DatePicker,
@@ -20,7 +21,22 @@ import { formatDateTime } from '@/utils/date';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
 import { usePermission } from '@/hooks/usePermission';
-import RichTextEditor from '@/components/RichTextEditor';
+
+const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
+const editorLoadingFallback = (
+  <div
+    style={{
+      height: 500,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      border: '1px solid var(--semi-color-border)',
+      borderRadius: 4,
+    }}
+  >
+    <Spin />
+  </div>
+);
 
 type SearchParams = {
   title: string;
@@ -390,13 +406,17 @@ export default function NoticesPage() {
           </div>
           <div style={{ marginBottom: 16 }}>
             <div style={{ marginBottom: 4, fontSize: 14, fontWeight: 500 }}>内容</div>
-            <RichTextEditor
-              key={editorKey}
-              value={contentHtml}
-              onChange={setContentHtml}
-              placeholder="请输入通知内容"
-              height={500}
-            />
+            {modalVisible ? (
+              <Suspense fallback={editorLoadingFallback}>
+                <RichTextEditor
+                  key={editorKey}
+                  value={contentHtml}
+                  onChange={setContentHtml}
+                  placeholder="请输入通知内容"
+                  height={500}
+                />
+              </Suspense>
+            ) : null}
           </div>
         </Form>
       </SideSheet>
