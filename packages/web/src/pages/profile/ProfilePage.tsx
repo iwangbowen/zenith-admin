@@ -374,7 +374,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
             >
               <div className="profile-section">
                   <div className="section-title">修改密码</div>
-                  <Form onSubmit={handleChangePassword} labelPosition="left" labelWidth={80}>
+                  <Form onSubmit={handleChangePassword} labelPosition="left" labelWidth={100}>
                     <Form.Input
                       field="oldPassword"
                       label="原密码"

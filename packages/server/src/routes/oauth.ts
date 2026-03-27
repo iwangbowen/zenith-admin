@@ -45,6 +45,28 @@ function issueTokens(user: { id: number; username: string }, roleCodes: string[]
   return { accessToken, refreshToken, tokenId };
 }
 
+// ─── 获取当前用户绑定的 OAuth 账号列表 ──────────────────────────────────
+oauth.get('/accounts', authMiddleware, async (c) => {
+  const payload = c.get('user') as JwtPayload;
+  const accounts = await db
+    .select({
+      id: userOauthAccounts.id,
+      provider: userOauthAccounts.provider,
+      openId: userOauthAccounts.openId,
+      nickname: userOauthAccounts.nickname,
+      avatar: userOauthAccounts.avatar,
+      createdAt: userOauthAccounts.createdAt,
+    })
+    .from(userOauthAccounts)
+    .where(eq(userOauthAccounts.userId, payload.userId));
+
+  return c.json({
+    code: 0,
+    message: 'ok',
+    data: accounts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() })),
+  });
+});
+
 // ─── 获取 OAuth 授权链接 ─────────────────────────────────────────────────
 oauth.get('/:provider', async (c) => {
   const provider = c.req.param('provider');
@@ -244,28 +266,6 @@ oauth.delete('/unbind/:provider', authMiddleware, async (c) => {
   }
 
   return c.json({ code: 0, message: '已解绑', data: null });
-});
-
-// ─── 获取当前用户绑定的 OAuth 账号列表 ──────────────────────────────────
-oauth.get('/accounts', authMiddleware, async (c) => {
-  const payload = c.get('user') as JwtPayload;
-  const accounts = await db
-    .select({
-      id: userOauthAccounts.id,
-      provider: userOauthAccounts.provider,
-      openId: userOauthAccounts.openId,
-      nickname: userOauthAccounts.nickname,
-      avatar: userOauthAccounts.avatar,
-      createdAt: userOauthAccounts.createdAt,
-    })
-    .from(userOauthAccounts)
-    .where(eq(userOauthAccounts.userId, payload.userId));
-
-  return c.json({
-    code: 0,
-    message: 'ok',
-    data: accounts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() })),
-  });
 });
 
 export default oauth;
