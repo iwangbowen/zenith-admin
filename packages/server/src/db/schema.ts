@@ -400,3 +400,17 @@ export const dbBackups = pgTable('db_backups', {
 
 export type DbBackupRow = typeof dbBackups.$inferSelect;
 export type NewDbBackup = typeof dbBackups.$inferInsert;
+
+// ─── 个人 API Token 表 ─────────────────────────────────────────────────────────
+export const userApiTokens = pgTable('user_api_tokens', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 64 }).notNull(),
+  token: varchar('token', { length: 128 }).notNull().unique(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type UserApiTokenRow = typeof userApiTokens.$inferSelect;
+export type NewUserApiToken = typeof userApiTokens.$inferInsert;

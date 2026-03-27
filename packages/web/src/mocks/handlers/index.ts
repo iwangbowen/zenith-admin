@@ -19,6 +19,7 @@ import { dashboardHandlers } from './dashboard';
 import { oauthHandlers } from './oauth';
 import { oauthConfigHandlers } from './oauth-config';
 import { dbBackupsHandlers } from './db-backups';
+import { apiTokensHandlers } from './api-tokens';
 
 export const handlers = [
   ...authHandlers,
@@ -42,4 +43,5 @@ export const handlers = [
   ...oauthHandlers,
   ...oauthConfigHandlers,
   ...dbBackupsHandlers,
+  ...apiTokensHandlers,
 ];

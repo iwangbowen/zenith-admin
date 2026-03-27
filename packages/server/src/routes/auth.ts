@@ -12,7 +12,7 @@ import type { JwtPayload } from '../middleware/auth';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { generateCaptcha, verifyCaptcha } from '../lib/captcha';
 import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
-import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts } from '../lib/session-manager';
+import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
 
 const auth = new Hono();
 
@@ -488,6 +488,55 @@ auth.get('/my-operation-logs', authMiddleware, async (c) => {
       pageSize,
     },
   });
+});
+
+// ─── 我的会话管理 ─────────────────────────────────────────────────────────────
+auth.get('/my-sessions', authMiddleware, async (c) => {
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
+  const allSessions = await getOnlineSessions();
+  const mySessions = allSessions.filter((s) => s.userId === payload.userId);
+  return c.json({
+    code: 0,
+    message: 'ok',
+    data: mySessions.map((s) => ({
+      tokenId: s.tokenId,
+      ip: s.ip,
+      browser: s.browser,
+      os: s.os,
+      loginAt: s.loginAt.toISOString(),
+      lastActiveAt: s.lastActiveAt.toISOString(),
+      isCurrent: s.tokenId === payload.jti,
+    })),
+  });
+});
+
+// 退出全部其他设备（保留当前会话）
+auth.delete('/my-sessions/others', authMiddleware, async (c) => {
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
+  const allSessions = await getOnlineSessions();
+  const others = allSessions.filter((s) => s.userId === payload.userId && s.tokenId !== payload.jti);
+  await Promise.all(others.map((s) => forceLogout(s.tokenId)));
+  return c.json({
+    code: 0,
+    message: `已退出 ${others.length} 个其他设备`,
+    data: { count: others.length },
+  });
+});
+
+// 退出指定设备（不能退出自己当前的设备）
+auth.delete('/my-sessions/:tokenId', authMiddleware, async (c) => {
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
+  const tokenId = c.req.param('tokenId');
+  if (tokenId === payload.jti) {
+    return c.json({ code: 400, message: '不能退出当前设备，请使用退出登录功能', data: null }, 400);
+  }
+  const allSessions = await getOnlineSessions();
+  const session = allSessions.find((s) => s.tokenId === tokenId && s.userId === payload.userId);
+  if (!session) {
+    return c.json({ code: 404, message: '会话不存在或已过期', data: null }, 404);
+  }
+  await forceLogout(tokenId);
+  return c.json({ code: 0, message: '已退出该设备', data: null });
 });
 
 export default auth;

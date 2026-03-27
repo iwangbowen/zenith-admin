@@ -364,3 +364,31 @@ export interface DbBackup {
   createdByName?: string | null;
   createdAt: string;
 }
+
+// ─── 个人会话 ──────────────────────────────────────────────────────────────────
+export interface UserSession {
+  tokenId: string;
+  ip: string;
+  browser: string;
+  os: string;
+  loginAt: string;
+  lastActiveAt: string;
+  isCurrent: boolean;
+}
+
+// ─── 个人 API Token ────────────────────────────────────────────────────────────
+export interface UserApiToken {
+  id: number;
+  name: string;
+  tokenPrefix: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface UserApiTokenCreated {
+  id: number;
+  name: string;
+  token: string; // 完整 token，仅创建时返回
+  createdAt: string;
+}

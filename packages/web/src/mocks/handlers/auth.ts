@@ -109,4 +109,70 @@ export const authHandlers = [
     const paged = list.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });
   }),
+
+  // 我的在线设备列表
+  http.get('/api/auth/my-sessions', () => {
+    return HttpResponse.json({
+      code: 0, message: 'ok',
+      data: mockMySessionStore,
+    });
+  }),
+
+  // 退出其他所有设备（必须在 /:tokenId 之前注册，否则 MSW 会把 "others" 当作 tokenId）
+  http.delete('/api/auth/my-sessions/others', () => {
+    const before = mockMySessionStore.length;
+    mockMySessionStore.splice(
+      0,
+      mockMySessionStore.length,
+      ...mockMySessionStore.filter((s) => s.isCurrent),
+    );
+    const count = before - mockMySessionStore.length;
+    return HttpResponse.json({ code: 0, message: `已退出其他 ${count} 台设备`, data: { count } });
+  }),
+
+  // 退出指定设备
+  http.delete('/api/auth/my-sessions/:tokenId', ({ params }) => {
+    const idx = mockMySessionStore.findIndex((s) => s.tokenId === params.tokenId);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '会话不存在', data: null });
+    if (mockMySessionStore[idx].isCurrent)
+      return HttpResponse.json({ code: 400, message: '不能退出当前设备', data: null });
+    mockMySessionStore.splice(idx, 1);
+    return HttpResponse.json({ code: 0, message: '已退出该设备', data: null });
+  }),
+
+  // OAuth 账号绑定列表（demo 模式默认未绑定任何账号）
+  http.get('/api/auth/oauth/accounts', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: [] });
+  }),
+];
+
+// ─── 我的设备 mock 状态（模块级可变，支持踢人操作）────────────────────────────
+const mockMySessionStore: import('@zenith/shared').UserSession[] = [
+  {
+    tokenId: 'current-session-mock',
+    ip: '127.0.0.1',
+    browser: 'Chrome 124',
+    os: 'Windows 11',
+    loginAt: new Date(Date.now() - 1800 * 1000).toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    isCurrent: true,
+  },
+  {
+    tokenId: 'other-session-001',
+    ip: '192.168.1.42',
+    browser: 'Safari 17',
+    os: 'macOS Sonoma',
+    loginAt: new Date(Date.now() - 86400 * 1000).toISOString(),
+    lastActiveAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+    isCurrent: false,
+  },
+  {
+    tokenId: 'other-session-002',
+    ip: '10.0.0.5',
+    browser: 'Firefox 125',
+    os: 'Ubuntu 22.04',
+    loginAt: new Date(Date.now() - 3 * 86400 * 1000).toISOString(),
+    lastActiveAt: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
+    isCurrent: false,
+  },
 ];

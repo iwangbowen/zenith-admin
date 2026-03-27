@@ -162,6 +162,13 @@
       "when": 1774536385806,
       "tag": "0022_minor_slayback",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1774620000000,
+      "tag": "0023_user_api_tokens",
+      "breakpoints": true
     }
   ]
 }

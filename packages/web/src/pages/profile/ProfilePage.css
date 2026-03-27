@@ -31,8 +31,117 @@
   min-width: 0;
 }
 
+/* 右侧内容卡片 */
+.profile-content-card {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Semi Tabs 垂直导航覆盖 */
+.profile-tabs {
+  min-height: 480px;
+}
+
+.profile-tabs .semi-tabs-bar-left {
+  width: 150px;
+  flex-shrink: 0;
+  padding: 8px 0;
+  border-right: 1px solid var(--semi-color-border);
+  background: transparent;
+}
+
+.profile-tabs .semi-tabs-tab {
+  padding: 0;
+  margin: 0;
+  height: auto;
+}
+
+.profile-tabs .semi-tabs-content-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-tabs .semi-tabs-pane {
+  padding: 0;
+}
+
+/* tab 标签：图标 + 文字 */
+.profile-tab-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 13px;
+  width: 150px;
+  box-sizing: border-box;
+}
+
+/* 内容区 */
+.profile-section {
+  padding: 24px 28px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+  margin-bottom: 20px;
+}
+
+.section-divider {
+  border: none;
+  border-top: 1px solid var(--semi-color-border);
+  margin: 28px 0;
+}
+
 .profile-tab-content {
   padding: 20px 0 8px;
+}
+
+/* OAuth 绑定项 */
+.oauth-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--semi-color-border);
+}
+
+/* 会话设备项 */
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--semi-color-border);
+  gap: 12px;
+}
+
+.session-item.current {
+  border-color: var(--semi-color-primary-light-active);
+  background: var(--semi-color-primary-light-default);
+}
+
+.session-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Token 显示框 */
+.token-display {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--semi-color-fill-0);
+  border-radius: 8px;
+  border: 1px solid var(--semi-color-border);
 }
 
 /* 头像上传 */
@@ -44,6 +153,9 @@
   position: relative;
   display: inline-block;
   cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
 }
 
 .avatar-upload-mask {
