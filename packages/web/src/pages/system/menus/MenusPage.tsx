@@ -268,7 +268,7 @@ export default function MenusPage() {
           loading={loading}
           pagination={{ pageSize: 10, showSizeChanger: true }}
           expandedRowKeys={expandedRowKeys}
-          onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.map((r) => r.id) ?? [])}
+          onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Menu => 'id' in r).map((r) => r.id) ?? [])}
         />
       </div>
 
