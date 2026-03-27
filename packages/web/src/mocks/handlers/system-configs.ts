@@ -18,9 +18,11 @@ export const systemConfigsHandlers = [
     const page = Number(url.searchParams.get('page')) || 1;
     const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const keyword = url.searchParams.get('keyword') ?? '';
+    const configType = url.searchParams.get('configType') ?? '';
 
     let list = mockSystemConfigs.filter((c) => {
       if (keyword && !c.configKey.includes(keyword) && !c.description.includes(keyword)) return false;
+      if (configType && c.configType !== configType) return false;
       return true;
     });
     const total = list.length;

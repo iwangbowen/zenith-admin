@@ -140,6 +140,7 @@ export const SEED_DICTS: Dict[] = [
   { id: 6, name: '通知类型',     code: 'notice_type',           description: '通知公告类型',       status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 7, name: '通知发布状态', code: 'notice_publish_status', description: '通知公告的发布状态', status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 8, name: '通知优先级',   code: 'notice_priority',       description: '通知公告优先级',     status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 9, name: '系统配置类型', code: 'system_config_type',    description: '系统配置项值类型',   status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 字典项 ───────────────────────────────────────────────────────────────────
@@ -171,6 +172,11 @@ export const SEED_DICT_ITEMS: DictItem[] = [
   { id: 17, dictId: 8, label: '低',     value: 'low',          color: 'grey',   sort: 1, status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 18, dictId: 8, label: '中',     value: 'medium',       color: 'blue',   sort: 2, status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 19, dictId: 8, label: '高',     value: 'high',         color: 'red',    sort: 3, status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // 系统配置类型 (dictId: 9)
+  { id: 20, dictId: 9, label: '字符串', value: 'string',       color: 'blue',   sort: 1, status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 21, dictId: 9, label: '数字',   value: 'number',       color: 'green',  sort: 2, status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 22, dictId: 9, label: '布尔值', value: 'boolean',      color: 'orange', sort: 3, status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 23, dictId: 9, label: 'JSON',   value: 'json',         color: 'cyan',   sort: 4, status: 'active', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 系统配置 ─────────────────────────────────────────────────────────────────

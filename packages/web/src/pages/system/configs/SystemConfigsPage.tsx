@@ -14,6 +14,8 @@ import type { SystemConfig, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '../../../utils/request';
 import { formatDateTime } from '../../../utils/date';
+import DictTag from '../../../components/DictTag';
+import { useDictItems } from '../../../hooks/useDictItems';
 import { usePermission } from '../../../hooks/usePermission';
 
 interface SearchParams {
@@ -23,16 +25,9 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', configType: '' };
 
-const configTypeOptions = [
-  { value: '', label: '全部类型' },
-  { value: 'string', label: '字符串' },
-  { value: 'number', label: '数字' },
-  { value: 'boolean', label: '布尔值' },
-  { value: 'json', label: 'JSON' },
-];
-
 export default function SystemConfigsPage() {
   const { hasPermission } = usePermission();
+  const { items: configTypeItems, loading: configTypeLoading } = useDictItems('system_config_type');
   const formApi = useRef<any>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -115,14 +110,21 @@ export default function SystemConfigsPage() {
       }
     : { configType: 'string' };
 
+  const configTypeFilterOptions = [
+    { value: '', label: '全部类型' },
+    ...configTypeItems.map((item) => ({ value: item.value, label: item.label })),
+  ];
+
+  const configTypeOptions = configTypeItems.map((item) => ({ value: item.value, label: item.label }));
+
   const columns: ColumnProps<SystemConfig>[] = [
     { title: '配置键', dataIndex: 'configKey', width: 220, ellipsis: true },
     { title: '配置值', dataIndex: 'configValue', width: 260, ellipsis: true },
     {
       title: '类型',
       dataIndex: 'configType',
-      width: 100,
-      render: (v: string) => configTypeOptions.find((o) => o.value === v)?.label ?? v,
+      width: 110,
+      render: (v: string) => <DictTag dictCode="system_config_type" value={v} />,
     },
     { title: '描述', dataIndex: 'description', ellipsis: true },
     {
@@ -171,7 +173,8 @@ export default function SystemConfigsPage() {
               value={searchParams.configType || undefined}
               onChange={(v) => setSearchParams((p) => ({ ...p, configType: (v as string) ?? '' }))}
               style={{ width: 140 }}
-              optionList={configTypeOptions}
+              optionList={configTypeFilterOptions}
+              loading={configTypeLoading}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -225,8 +228,9 @@ export default function SystemConfigsPage() {
           <Form.Select
             field="configType"
             label="类型"
-            optionList={configTypeOptions.filter((o) => o.value !== '')}
+            optionList={configTypeOptions}
             style={{ width: '100%' }}
+            loading={configTypeLoading}
           />
           <Form.TextArea field="description" label="描述" maxCount={256} />
         </Form>

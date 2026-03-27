@@ -9,6 +9,7 @@ import { exportToExcel } from '../lib/excel-export';
 import { getPasswordPolicy } from '../lib/password-policy';
 
 const systemConfigsRoute = new Hono();
+const configTypeValues = ['string', 'number', 'boolean', 'json'] as const;
 
 // Public endpoint: get a config value by key (used before login, e.g., captcha_enabled)
 systemConfigsRoute.get('/public/:key', async (c) => {
@@ -37,10 +38,14 @@ systemConfigsRoute.get('/', guard({ permission: 'system:config:list' }), async (
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const keyword = c.req.query('keyword');
+  const configType = c.req.query('configType');
 
   const conditions = [];
   if (keyword) {
     conditions.push(like(systemConfigs.configKey, `%${keyword}%`));
+  }
+  if (configType && configTypeValues.includes(configType as typeof configTypeValues[number])) {
+    conditions.push(eq(systemConfigs.configType, configType as typeof configTypeValues[number]));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
