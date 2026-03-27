@@ -169,6 +169,13 @@
       "when": 1774620000000,
       "tag": "0023_user_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1774596626394,
+      "tag": "0024_secret_bruce_banner",
+      "breakpoints": true
     }
   ]
 }
