@@ -10,6 +10,7 @@ export interface UserPreferences {
   showTabIcon: boolean;
   colorMode: ThemeMode;
   navLayout: NavLayout;
+  showBreadcrumb: boolean;
 }
 
 const defaultPreferences: UserPreferences = {
@@ -18,6 +19,7 @@ const defaultPreferences: UserPreferences = {
   showTabIcon: true,
   colorMode: 'light',
   navLayout: 'vertical',
+  showBreadcrumb: true,
 };
 
 function loadPreferences(): UserPreferences {

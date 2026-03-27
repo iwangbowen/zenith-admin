@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Badge, Dropdown, Empty, List, Notification, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
+import { Avatar, Badge, Breadcrumb, Dropdown, Empty, List, Notification, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
 import type { User, Menu, Notice, WsMessage } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
@@ -68,6 +68,22 @@ function findAncestorKeys(menuTree: Menu[], targetPath: string): string[] {
         if (found !== null) return found;
       } else if (node.path === targetPath) {
         return ancestors;
+      }
+    }
+    return null;
+  }
+  return traverse(menuTree, []) ?? [];
+}
+
+function findBreadcrumbs(menuTree: Menu[], targetPath: string): { title: string; path?: string }[] {
+  function traverse(nodes: Menu[], ancestors: { title: string; path?: string }[]): { title: string; path?: string }[] | null {
+    for (const node of nodes) {
+      if (!node.visible || node.type === 'button') continue;
+      if (node.type === 'directory') {
+        const found = traverse(node.children ?? [], [...ancestors, { title: node.title }]);
+        if (found !== null) return found;
+      } else if (node.path === targetPath) {
+        return [...ancestors, { title: node.title, path: node.path ?? undefined }];
       }
     }
     return null;
@@ -191,6 +207,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   const currentSectionKeys = useMemo(
     () => findAncestorKeys(menuTree, location.pathname),
+    [menuTree, location.pathname]
+  );
+
+  const breadcrumbs = useMemo(
+    () => findBreadcrumbs(menuTree, location.pathname),
     [menuTree, location.pathname]
   );
   const [openKeys, setOpenKeys] = useState<string[]>([]);
@@ -533,9 +554,27 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           {/* Vertical mode has its own header bar */}
           {navLayout === 'vertical' && (
             <header className="admin-header">
-              <div />
+              {preferences.showBreadcrumb && breadcrumbs.length > 0 ? (
+                <Breadcrumb className="admin-breadcrumb" style={{ fontSize: 13 }}>
+                  <Breadcrumb.Item onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</Breadcrumb.Item>
+                  {breadcrumbs.map((crumb) => (
+                    <Breadcrumb.Item key={crumb.title}>{crumb.title}</Breadcrumb.Item>
+                  ))}
+                </Breadcrumb>
+              ) : <div />}
               {headerActions}
             </header>
+          )}
+          {/* Breadcrumb bar for horizontal/mixed layouts */}
+          {navLayout !== 'vertical' && preferences.showBreadcrumb && breadcrumbs.length > 0 && (
+            <div className="admin-breadcrumb-bar">
+              <Breadcrumb className="admin-breadcrumb" style={{ fontSize: 13 }}>
+                <Breadcrumb.Item onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</Breadcrumb.Item>
+                {breadcrumbs.map((crumb) => (
+                  <Breadcrumb.Item key={crumb.title}>{crumb.title}</Breadcrumb.Item>
+                ))}
+              </Breadcrumb>
+            </div>
           )}
           <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
             {/* Tabs bar */}
@@ -658,6 +697,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   <Radio value="dark">深色</Radio>
                   <Radio value="system">系统</Radio>
                 </RadioGroup>
+              </div>
+              {/* Breadcrumb setting */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>显示面包屑导航</span>
+                <Switch checked={preferences.showBreadcrumb} onChange={(v) => setPreferences({ showBreadcrumb: v })} />
               </div>
               {/* Tabs settings */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
