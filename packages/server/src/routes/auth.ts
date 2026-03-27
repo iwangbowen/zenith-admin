@@ -12,7 +12,7 @@ import type { JwtPayload } from '../middleware/auth';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { generateCaptcha, verifyCaptcha } from '../lib/captcha';
 import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
-import { generateTokenId, registerSession, checkLoginLock, recordLoginFailure, clearLoginAttempts } from '../lib/session-manager';
+import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts } from '../lib/session-manager';
 
 const auth = new Hono();
 
@@ -223,7 +223,25 @@ auth.post('/register', async (c) => {
     { expiresIn: '30d' }
   );
 
-  await recordLoginLog(c, username, 'success', '注册并在自动登录成功', user.id);
+  // Register session for online user tracking (same as login)
+  const regIp = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
+  const regUa = c.req.header('user-agent') || '';
+  const regParser = new UAParser(regUa);
+  const regBrowser = regParser.getBrowser();
+  const regOs = regParser.getOS();
+
+  await registerSession({
+    tokenId,
+    userId: user.id,
+    username: user.username,
+    nickname: user.nickname,
+    ip: regIp,
+    browser: regBrowser.name ? `${regBrowser.name} ${regBrowser.version || ''}`.trim() : 'Unknown',
+    os: regOs.name ? `${regOs.name} ${regOs.version || ''}`.trim() : 'Unknown',
+    loginAt: new Date(),
+  });
+
+  await recordLoginLog(c, username, 'success', '注册并自动登录成功', user.id);
 
   const { password: _, ...userInfo } = user;
   return c.json({
@@ -250,9 +268,20 @@ auth.post('/refresh', async (c) => {
       return c.json({ code: 401, message: '无效的 refresh token', data: null }, 401);
     }
 
+    // Check user status — disabled users must not be allowed to refresh
+    const [refreshUser] = await db.select({ status: users.status }).from(users).where(eq(users.id, payload.userId)).limit(1);
+    if (!refreshUser) {
+      return c.json({ code: 401, message: '用户不存在', data: null }, 401);
+    }
+    if (refreshUser.status === 'disabled') {
+      return c.json({ code: 403, message: '账号已被禁用', data: null }, 403);
+    }
+
+    // Reuse the original jti so the existing Redis session remains valid
+    const tokenId = payload.jti ?? generateTokenId();
+
     // Get fresh user roles
     const userRoleList = await getUserRoles(payload.userId);
-    const tokenId = generateTokenId();
 
     const accessToken = jwt.sign(
       { userId: payload.userId, username: payload.username, roles: userRoleList.map((r) => r.code), jti: tokenId } satisfies JwtPayload,
@@ -268,6 +297,15 @@ auth.post('/refresh', async (c) => {
   } catch {
     return c.json({ code: 401, message: 'refresh token 已过期', data: null }, 401);
   }
+});
+
+// 退出登录
+auth.post('/logout', authMiddleware, async (c) => {
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
+  if (payload.jti) {
+    await removeSession(payload.jti);
+  }
+  return c.json({ code: 0, message: '已退出登录', data: null });
 });
 
 auth.get('/me', authMiddleware, async (c) => {

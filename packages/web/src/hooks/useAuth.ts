@@ -60,9 +60,12 @@ export function useAuth() {
   };
 
   const logout = () => {
+    // Immediately clear local state first
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     setState({ user: null, permissions: [], loading: false });
+    // Best-effort: notify server to remove session from Redis (fire-and-forget)
+    request.post('/api/auth/logout', {}, { silent: true }).catch(() => {});
   };
 
   const updateUser = (user: Omit<User, 'password'>) => {
