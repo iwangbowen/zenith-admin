@@ -1,21 +1,23 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Spin } from '@douyinfe/semi-ui';
-import { useAuth } from './hooks/useAuth';
-import { PermissionContext } from './hooks/usePermission';
-import { request } from './utils/request';
+import { useAuth } from '@/hooks/useAuth';
+import { PermissionContext } from '@/hooks/usePermission';
+import { request } from '@/utils/request';
 import type { Menu } from '@zenith/shared';
 
-import AdminLayout from './layouts/AdminLayout';
-import LoginPage from './pages/login/LoginPage';
-import DashboardPage from './pages/dashboard/DashboardPage';
-import ProfilePage from './pages/profile/ProfilePage';
-import NotificationsPage from './pages/notifications/NotificationsPage';
-import NotFoundPage from './pages/not-found/NotFoundPage';
-import ForbiddenPage from './pages/forbidden/ForbiddenPage';
-import OAuthCallbackPage from './pages/oauth/OAuthCallbackPage';
+import AdminLayout from '@/layouts/AdminLayout';
 
 const modules = import.meta.glob('./pages/**/*.tsx');
+const LoginPage = React.lazy(() => import('@/pages/login/LoginPage'));
+const DashboardPage = React.lazy(() => import('@/pages/dashboard/DashboardPage'));
+const ProfilePage = React.lazy(() => import('@/pages/profile/ProfilePage'));
+const NotificationsPage = React.lazy(() => import('@/pages/notifications/NotificationsPage'));
+const NotFoundPage = React.lazy(() => import('@/pages/not-found/NotFoundPage'));
+const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage'));
+const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
+
+const routeFallback = <div style={{ padding: 24 }}><Spin /></div>;
 
 /** 固定路由路径，不通过菜单动态加载 */
 const FIXED_ROUTES = new Set(['/profile', '/notifications']);
@@ -61,11 +63,11 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: any) {
       <Routes>
         <Route path="/" element={<AdminLayout user={user} onLogout={logout} presetMenus={menus} />}>
         {/* 固定路由 */}
-        <Route index element={<DashboardPage />} />
-        <Route path="profile" element={<ProfilePage user={user} onUserUpdate={updateUser} />} />
-        <Route path="notifications" element={<NotificationsPage />} />
+        <Route index element={<Suspense fallback={routeFallback}><DashboardPage /></Suspense>} />
+        <Route path="profile" element={<Suspense fallback={routeFallback}><ProfilePage user={user} onUserUpdate={updateUser} /></Suspense>} />
+        <Route path="notifications" element={<Suspense fallback={routeFallback}><NotificationsPage /></Suspense>} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
-        <Route path="forbidden" element={<ForbiddenPage />} />
+        <Route path="forbidden" element={<Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
 
         {/* 动态路由 */}
         {dynamicRoutes.map(m => {
@@ -87,7 +89,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: any) {
               key={m.id}
               path={routePath}
               element={
-                <Suspense fallback={<div style={{ padding: 24 }}><Spin /></div>}>
+                <Suspense fallback={routeFallback}>
                   <Component />
                 </Suspense>
               }
@@ -95,9 +97,9 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: any) {
           );
         })}
 
-        <Route path="*" element={<NotFoundPage />} />
+        <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundPage /></Suspense>} />
       </Route>
-      <Route path="*" element={<NotFoundPage />} />
+      <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundPage /></Suspense>} />
     </Routes>
     </PermissionContext.Provider>
   );
@@ -120,8 +122,8 @@ export default function App() {
         <AdminRouteLoader user={user} permissions={permissions} logout={logout} updateUser={updateUser} />
       ) : (
         <Routes>
-          <Route path="/login" element={<LoginPage onLogin={login} onRegister={register} />} />
-          <Route path="/oauth/callback/:provider" element={<OAuthCallbackPage />} />
+          <Route path="/login" element={<Suspense fallback={routeFallback}><LoginPage onLogin={login} onRegister={register} /></Suspense>} />
+          <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       )}
