@@ -1,13 +1,15 @@
 import { Hono } from 'hono';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, and } from 'drizzle-orm';
 import { db } from '../db';
 import { dicts, dictItems } from '../db/schema';
 import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 
-const dictsRouter = new Hono();
+const dictsRouter = new Hono<{ Variables: { user: JwtPayload } }>();
 dictsRouter.use('*', authMiddleware);
 
 function toDict(row: typeof dicts.$inferSelect) {
@@ -22,7 +24,8 @@ function toDictItem(row: typeof dictItems.$inferSelect) {
 
 dictsRouter.get('/', guard({ permission: 'system:dict:list' }), async (c) => {
   const keyword = c.req.query('keyword') ?? '';
-  const list = await db.select().from(dicts).orderBy(dicts.id);
+  const tc = tenantCondition(dicts, c.get('user'));
+  const list = await db.select().from(dicts).where(tc).orderBy(dicts.id);
   const filtered = keyword
     ? list.filter((d) => d.name.includes(keyword) || d.code.includes(keyword))
     : list;
@@ -36,7 +39,7 @@ dictsRouter.post('/', guard({ permission: 'system:dict:create', audit: { descrip
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
   try {
-    const [dict] = await db.insert(dicts).values(result.data).returning();
+    const [dict] = await db.insert(dicts).values({ ...result.data, tenantId: getCreateTenantId(c.get('user')) }).returning();
     return c.json({ code: 0, message: '创建成功', data: toDict(dict) });
   } catch (err: unknown) {
     if ((err as { code?: string }).code === '23505') {
@@ -53,14 +56,14 @@ dictsRouter.put('/:id', guard({ permission: 'system:dict:update', audit: { descr
   if (!result.success) {
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
-  const [dict] = await db.update(dicts).set({ ...result.data, updatedAt: new Date() }).where(eq(dicts.id, id)).returning();
+  const [dict] = await db.update(dicts).set({ ...result.data, updatedAt: new Date() }).where(and(eq(dicts.id, id), tenantCondition(dicts, c.get('user')))).returning();
   if (!dict) return c.json({ code: 404, message: '字典不存在', data: null }, 404);
   return c.json({ code: 0, message: '更新成功', data: toDict(dict) });
 });
 
 dictsRouter.delete('/:id', guard({ permission: 'system:dict:delete', audit: { description: '删除字典', module: '字典管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [deleted] = await db.delete(dicts).where(eq(dicts.id, id)).returning();
+  const [deleted] = await db.delete(dicts).where(and(eq(dicts.id, id), tenantCondition(dicts, c.get('user')))).returning();
   if (!deleted) return c.json({ code: 404, message: '字典不存在', data: null }, 404);
   return c.json({ code: 0, message: '删除成功', data: null });
 });
@@ -114,7 +117,7 @@ dictsRouter.delete('/:id/items/:itemId', guard({ permission: 'system:dict:item',
 });
 
 dictsRouter.get('/export', guard({ permission: 'system:dict:list' }), async (c) => {
-  const rows = await db.select().from(dicts).orderBy(asc(dicts.id));
+  const rows = await db.select().from(dicts).where(tenantCondition(dicts, c.get('user'))).orderBy(asc(dicts.id));
   const buffer = await exportToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

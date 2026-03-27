@@ -39,8 +39,8 @@ export function useAuth() {
     fetchUser();
   }, [fetchUser]);
 
-  const login = async (username: string, password: string, captchaId?: string, captchaCode?: string) => {
-    const res = await request.post<LoginResponse>('/api/auth/login', { username, password, captchaId, captchaCode }, { silent: true });
+  const login = async (username: string, password: string, captchaId?: string, captchaCode?: string, tenantCode?: string) => {
+    const res = await request.post<LoginResponse>('/api/auth/login', { username, password, captchaId, captchaCode, tenantCode }, { silent: true });
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
       localStorage.setItem(REFRESH_TOKEN_KEY, res.data.token.refreshToken);

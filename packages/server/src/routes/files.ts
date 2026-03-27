@@ -3,11 +3,13 @@ import { and, desc, eq, like, or, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
 import { exportToExcel } from '../lib/excel-export';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 
-const filesRouter = new Hono();
+const filesRouter = new Hono<{ Variables: { user: JwtPayload } }>();
 
 // 文件内容公开访问（用于头像等展示场景，浏览器 img src 无法携带 Token）
 filesRouter.get('/:id/content', async (c) => {
@@ -79,16 +81,19 @@ filesRouter.get('/', guard({ permission: 'system:file:list' }), async (c) => {
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const user = c.get('user');
+  const tc = tenantCondition(managedFiles, user);
+  const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
   const [{ count }] = await db
     .select({ count: sql<number>`cast(count(*) as integer)` })
     .from(managedFiles)
-    .where(where);
+    .where(finalWhere);
 
   const paginated = await db
     .select()
     .from(managedFiles)
-    .where(where)
+    .where(finalWhere)
     .orderBy(desc(managedFiles.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
@@ -130,6 +135,7 @@ filesRouter.post('/upload', guard({ permission: 'system:file:upload', audit: { d
     size: uploaded.size,
     mimeType: uploaded.mimeType,
     extension: uploaded.extension,
+    tenantId: getCreateTenantId(c.get('user')),
   }).returning();
 
   return c.json({ code: 0, message: '上传成功', data: toManagedFile(created) });
@@ -145,12 +151,12 @@ filesRouter.delete('/:id', guard({ permission: 'system:file:delete', audit: { de
     await deleteStoredFile(file, storageConfig);
   }
 
-  await db.delete(managedFiles).where(eq(managedFiles.id, id));
+  await db.delete(managedFiles).where(and(eq(managedFiles.id, id), tenantCondition(managedFiles, c.get('user'))));
   return c.json({ code: 0, message: '删除成功', data: null });
 });
 
 filesRouter.get('/export', guard({ permission: 'system:file:list' }), async (c) => {
-  const rows = await db.select().from(managedFiles).orderBy(desc(managedFiles.id));
+  const rows = await db.select().from(managedFiles).where(tenantCondition(managedFiles, c.get('user'))).orderBy(desc(managedFiles.id));
   const buffer = await exportToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

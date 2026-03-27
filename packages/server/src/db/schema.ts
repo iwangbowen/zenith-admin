@@ -5,20 +5,40 @@ export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button'])
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss']);
 export const dataScopeEnum = pgEnum('data_scope', ['all', 'dept', 'self']);
 
+// ─── 租户表 ───────────────────────────────────────────────────────────────────
+export const tenants = pgTable('tenants', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  logo: varchar('logo', { length: 500 }),
+  contactName: varchar('contact_name', { length: 50 }),
+  contactPhone: varchar('contact_phone', { length: 20 }),
+  status: statusEnum('status').notNull().default('active'),
+  expireAt: timestamp('expire_at', { withTimezone: true }),
+  maxUsers: integer('max_users'),
+  remark: text('remark'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type TenantRow = typeof tenants.$inferSelect;
+export type NewTenant = typeof tenants.$inferInsert;
+
 // ─── 部门表 ───────────────────────────────────────────────────────────────────
 export const departments = pgTable('departments', {
   id: serial('id').primaryKey(),
   parentId: integer('parent_id').notNull().default(0),
   name: varchar('name', { length: 64 }).notNull(),
-  code: varchar('code', { length: 64 }).notNull().unique(),
+  code: varchar('code', { length: 64 }).notNull(),
   leader: varchar('leader', { length: 32 }),
   phone: varchar('phone', { length: 32 }),
   email: varchar('email', { length: 128 }),
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('active'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => [unique('departments_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type DepartmentRow = typeof departments.$inferSelect;
 export type NewDepartment = typeof departments.$inferInsert;
@@ -27,30 +47,35 @@ export type NewDepartment = typeof departments.$inferInsert;
 export const positions = pgTable('positions', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 64 }).notNull(),
-  code: varchar('code', { length: 64 }).notNull().unique(),
+  code: varchar('code', { length: 64 }).notNull(),
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('active'),
   remark: varchar('remark', { length: 256 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => [unique('positions_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type PositionRow = typeof positions.$inferSelect;
 export type NewPosition = typeof positions.$inferInsert;
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
-  username: varchar('username', { length: 32 }).notNull().unique(),
+  username: varchar('username', { length: 32 }).notNull(),
   nickname: varchar('nickname', { length: 32 }).notNull(),
-  email: varchar('email', { length: 128 }).notNull().unique(),
+  email: varchar('email', { length: 128 }).notNull(),
   password: varchar('password', { length: 128 }).notNull(),
   avatar: varchar('avatar', { length: 256 }),
   departmentId: integer('department_id').references(() => departments.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   status: statusEnum('status').notNull().default('active'),
   passwordUpdatedAt: timestamp('password_updated_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => [
+  unique('users_tenant_username_unique').on(t.tenantId, t.username),
+  unique('users_tenant_email_unique').on(t.tenantId, t.email),
+]);
 
 export type UserRow = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -80,13 +105,14 @@ export type NewMenu = typeof menus.$inferInsert;
 export const roles = pgTable('roles', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 64 }).notNull(),
-  code: varchar('code', { length: 64 }).notNull().unique(),
+  code: varchar('code', { length: 64 }).notNull(),
   description: varchar('description', { length: 256 }),
   status: statusEnum('status').notNull().default('active'),
   dataScope: dataScopeEnum('data_scope').notNull().default('all'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => [unique('roles_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type RoleRow = typeof roles.$inferSelect;
 export type NewRole = typeof roles.$inferInsert;
@@ -113,12 +139,13 @@ export const roleMenus = pgTable('role_menus', {
 export const dicts = pgTable('dicts', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 64 }).notNull(),
-  code: varchar('code', { length: 64 }).notNull().unique(),
+  code: varchar('code', { length: 64 }).notNull(),
   description: varchar('description', { length: 256 }),
   status: statusEnum('status').notNull().default('active'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => [unique('dicts_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type DictRow = typeof dicts.$inferSelect;
 export type NewDict = typeof dicts.$inferInsert;
@@ -175,6 +202,7 @@ export const managedFiles = pgTable('managed_files', {
   size: integer('size').notNull().default(0),
   mimeType: varchar('mime_type', { length: 128 }),
   extension: varchar('extension', { length: 32 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -194,6 +222,7 @@ export const loginLogs = pgTable('login_logs', {
   os: varchar('os', { length: 64 }),
   status: loginStatusEnum('status').notNull(),
   message: varchar('message', { length: 256 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -215,6 +244,7 @@ export const operationLogs = pgTable('operation_logs', {
   userAgent: varchar('user_agent', { length: 512 }),
   os: varchar('os', { length: 64 }),
   browser: varchar('browser', { length: 64 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -226,12 +256,13 @@ export const notices = pgTable('notices', {
   id: serial('id').primaryKey(),
   title: varchar('title', { length: 128 }).notNull(),
   content: text('content').notNull(),
-  type: varchar('type', { length: 32 }).notNull().default('notice'),        // 字典 notice_type
-  publishStatus: varchar('publish_status', { length: 32 }).notNull().default('draft'), // 字典 notice_publish_status
-  priority: varchar('priority', { length: 32 }).notNull().default('medium'), // 字典 notice_priority
+  type: varchar('type', { length: 32 }).notNull().default('notice'),
+  publishStatus: varchar('publish_status', { length: 32 }).notNull().default('draft'),
+  priority: varchar('priority', { length: 32 }).notNull().default('medium'),
   publishTime: timestamp('publish_time', { withTimezone: true }),
   createById: integer('create_by_id'),
   createByName: varchar('create_by_name', { length: 32 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -254,13 +285,14 @@ export const configTypeEnum = pgEnum('config_type', ['string', 'number', 'boolea
 
 export const systemConfigs = pgTable('system_configs', {
   id: serial('id').primaryKey(),
-  configKey: varchar('config_key', { length: 128 }).notNull().unique(),
+  configKey: varchar('config_key', { length: 128 }).notNull(),
   configValue: varchar('config_value', { length: 4096 }).notNull().default(''),
   configType: configTypeEnum('config_type').notNull().default('string'),
   description: varchar('description', { length: 256 }).notNull().default(''),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => [unique('system_configs_tenant_key_unique').on(t.tenantId, t.configKey)]);
 
 export type SystemConfigRow = typeof systemConfigs.$inferSelect;
 export type NewSystemConfig = typeof systemConfigs.$inferInsert;

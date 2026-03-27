@@ -176,6 +176,13 @@
       "when": 1774596626394,
       "tag": "0024_secret_bruce_banner",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1774598529370,
+      "tag": "0025_shallow_maddog",
+      "breakpoints": true
     }
   ]
 }

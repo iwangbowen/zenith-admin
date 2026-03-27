@@ -6,6 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { isSuperAdmin } from '../lib/permissions';
 import { getOnlineCount } from '../lib/session-manager';
 import type { JwtPayload } from '../middleware/auth';
+import { tenantCondition } from '../lib/tenant';
 
 const dashboardRoute = new Hono<{ Variables: { user: JwtPayload } }>();
 
@@ -25,24 +26,31 @@ dashboardRoute.get('/stats', async (c) => {
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayEnd.getDate() + 1);
 
+  const utc = tenantCondition(users, user);
+  const ltc = tenantCondition(loginLogs, user);
+  const otc = tenantCondition(operationLogs, user);
+
   const [totalUsersResult] = await db
     .select({ count: sql<number>`cast(count(*) as integer)` })
-    .from(users);
+    .from(users)
+    .where(utc);
 
   const [activeUsersResult] = await db
     .select({ count: sql<number>`cast(count(*) as integer)` })
     .from(users)
-    .where(sql`${users.status} = 'active'`);
+    .where(utc ? and(sql`${users.status} = 'active'`, utc) : sql`${users.status} = 'active'`);
 
+  const todayLoginWhere = ltc ? and(gte(loginLogs.createdAt, todayStart), lt(loginLogs.createdAt, todayEnd), ltc) : and(gte(loginLogs.createdAt, todayStart), lt(loginLogs.createdAt, todayEnd));
   const [todayLoginsResult] = await db
     .select({ count: sql<number>`cast(count(*) as integer)` })
     .from(loginLogs)
-    .where(and(gte(loginLogs.createdAt, todayStart), lt(loginLogs.createdAt, todayEnd)));
+    .where(todayLoginWhere);
 
+  const todayOpWhere = otc ? and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd), otc) : and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd));
   const [todayOperationsResult] = await db
     .select({ count: sql<number>`cast(count(*) as integer)` })
     .from(operationLogs)
-    .where(and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd)));
+    .where(todayOpWhere);
 
   const onlineUsers = await getOnlineCount();
 

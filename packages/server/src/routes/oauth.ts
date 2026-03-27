@@ -33,7 +33,7 @@ async function getUserRoles(userId: number) {
 function issueTokens(user: { id: number; username: string }, roleCodes: string[]) {
   const tokenId = generateTokenId();
   const accessToken = jwt.sign(
-    { userId: user.id, username: user.username, roles: roleCodes, jti: tokenId } satisfies JwtPayload,
+    { userId: user.id, username: user.username, roles: roleCodes, tenantId: null, jti: tokenId } satisfies JwtPayload,
     config.jwtSecret,
     { expiresIn: '2h' },
   );

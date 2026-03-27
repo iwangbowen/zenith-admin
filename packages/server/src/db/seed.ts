@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants } from './schema';
 import bcrypt from 'bcryptjs';
 import { eq, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
@@ -213,6 +213,28 @@ async function seed() {
     inserted += batch.length;
   }
   logger.info(`  ✔ Regions seeded (onConflictDoNothing) — ${inserted} records`);
+
+  // ─── 租户示例数据 ──────────────────────────────────────────────────────────
+  await db.insert(tenants).values([
+    {
+      name: '示例租户A',
+      code: 'tenant_a',
+      contactName: '张三',
+      contactPhone: '13800001111',
+      status: 'active',
+      maxUsers: 50,
+      remark: '演示用租户A',
+    },
+    {
+      name: '示例租户B',
+      code: 'tenant_b',
+      contactName: '李四',
+      contactPhone: '13800002222',
+      status: 'active',
+      remark: '演示用租户B',
+    },
+  ]).onConflictDoNothing({ target: tenants.code });
+  logger.info('  ✔ Tenants seeded (onConflictDoNothing)');
 
   logger.info('🎉 Seed complete.');
   process.exit(0);

@@ -4,11 +4,13 @@ import { db } from '../db';
 import { roles, roleMenus, userRoles, users } from '../db/schema';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 
-const rolesRouter = new Hono();
+const rolesRouter = new Hono<{ Variables: { user: JwtPayload } }>();
 rolesRouter.use('*', authMiddleware);
 
 function toRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
@@ -42,10 +44,13 @@ rolesRouter.get('/', guard({ permission: 'system:role:list' }), async (c) => {
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const user = c.get('user');
+  const tc = tenantCondition(roles, user);
+  const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
   const list = await db
     .select()
     .from(roles)
-    .where(where)
+    .where(finalWhere)
     .orderBy(roles.id);
 
   return c.json({
@@ -58,7 +63,7 @@ rolesRouter.get('/', guard({ permission: 'system:role:list' }), async (c) => {
 // 获取单个角色（含 menuIds）
 rolesRouter.get('/:id', guard({ permission: 'system:role:list' }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [role] = await db.select().from(roles).where(eq(roles.id, id)).limit(1);
+  const [role] = await db.select().from(roles).where(and(eq(roles.id, id), tenantCondition(roles, c.get('user')))).limit(1);
   if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
 
   const assignments = await db.select({ menuId: roleMenus.menuId }).from(roleMenus).where(eq(roleMenus.roleId, id));
@@ -74,7 +79,7 @@ rolesRouter.post('/', guard({ permission: 'system:role:create', audit: { descrip
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
   try {
-    const [role] = await db.insert(roles).values(result.data).returning();
+    const [role] = await db.insert(roles).values({ ...result.data, tenantId: getCreateTenantId(c.get('user')) }).returning();
     return c.json({ code: 0, message: '创建成功', data: toRole(role) });
   } catch (err: unknown) {
     if ((err as { code?: string }).code === '23505') {
@@ -95,7 +100,7 @@ rolesRouter.put('/:id', guard({ permission: 'system:role:update', audit: { descr
   const [role] = await db
     .update(roles)
     .set({ ...result.data, updatedAt: new Date() })
-    .where(eq(roles.id, id))
+    .where(and(eq(roles.id, id), tenantCondition(roles, c.get('user'))))
     .returning();
   if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
   return c.json({ code: 0, message: '更新成功', data: toRole(role) });
@@ -104,7 +109,7 @@ rolesRouter.put('/:id', guard({ permission: 'system:role:update', audit: { descr
 // 删除角色
 rolesRouter.delete('/:id', guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [deleted] = await db.delete(roles).where(eq(roles.id, id)).returning();
+  const [deleted] = await db.delete(roles).where(and(eq(roles.id, id), tenantCondition(roles, c.get('user')))).returning();
   if (!deleted) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
   return c.json({ code: 0, message: '删除成功', data: null });
 });
@@ -118,7 +123,7 @@ rolesRouter.put('/:id/menus', guard({ permission: 'system:role:assign', audit: {
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
-  const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.id, id)).limit(1);
+  const [role] = await db.select({ id: roles.id }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, c.get('user')))).limit(1);
   if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
 
   // 先删除旧关联，再批量插入
@@ -135,7 +140,7 @@ rolesRouter.put('/:id/menus', guard({ permission: 'system:role:assign', audit: {
 
 rolesRouter.get('/:id/users', guard({ permission: 'system:role:list' }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.id, id)).limit(1);
+  const [role] = await db.select({ id: roles.id }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, c.get('user')))).limit(1);
   if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
 
   const rows = await db
@@ -160,7 +165,7 @@ rolesRouter.put('/:id/users', guard({ permission: 'system:role:assign', audit: {
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
-  const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.id, id)).limit(1);
+  const [role] = await db.select({ id: roles.id }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, c.get('user')))).limit(1);
   if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
 
   await db.delete(userRoles).where(eq(userRoles.roleId, id));
@@ -175,7 +180,7 @@ rolesRouter.put('/:id/users', guard({ permission: 'system:role:assign', audit: {
 });
 
 rolesRouter.get('/export', guard({ permission: 'system:role:list' }), async (c) => {
-  const rows = await db.select().from(roles);
+  const rows = await db.select().from(roles).where(tenantCondition(roles, c.get('user')));
   const buffer = await exportToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

@@ -20,6 +20,7 @@ import { oauthHandlers } from './oauth';
 import { oauthConfigHandlers } from './oauth-config';
 import { dbBackupsHandlers } from './db-backups';
 import { apiTokensHandlers } from './api-tokens';
+import { tenantsHandlers } from './tenants';
 
 export const handlers = [
   ...authHandlers,
@@ -44,4 +45,5 @@ export const handlers = [
   ...oauthConfigHandlers,
   ...dbBackupsHandlers,
   ...apiTokensHandlers,
+  ...tenantsHandlers,
 ];

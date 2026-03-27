@@ -5,6 +5,7 @@ export const loginSchema = z.object({
   password: z.string().min(6, '密码至少6个字符').max(64),
   captchaId: z.string().optional(),
   captchaCode: z.string().optional(),
+  tenantCode: z.string().max(50).optional(),
 });
 
 export const registerSchema = z.object({
@@ -275,4 +276,27 @@ export const updateOauthConfigSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+
+// ─── 租户 Schema ────────────────────────────────────────────────────────────
+export const createTenantSchema = z.object({
+  name: z.string().min(1, '租户名称不能为空').max(100),
+  code: z.string().min(1, '租户编码不能为空').max(50).regex(/^[a-z][a-z0-9_]*$/, '租户编码只能包含小写字母、数字和下划线，且以字母开头'),
+  logo: z.string().max(500).optional(),
+  contactName: z.string().max(50).optional(),
+  contactPhone: z.string().max(20).optional(),
+  status: z.enum(['active', 'disabled']).default('active'),
+  expireAt: z.string().datetime({ offset: true }).optional().nullable(),
+  maxUsers: z.number().int().positive().optional().nullable(),
+  remark: z.string().max(500).optional(),
+});
+
+export const updateTenantSchema = createTenantSchema.partial();
+
+export const switchTenantSchema = z.object({
+  tenantId: z.number().int().positive().nullable(),
+});
+
+export type CreateTenantInput = z.infer<typeof createTenantSchema>;
+export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
+export type SwitchTenantInput = z.infer<typeof switchTenantSchema>;
 export type UpdateOauthConfigInput = z.infer<typeof updateOauthConfigSchema>;

@@ -8,6 +8,7 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { broadcast } from '../lib/ws-manager';
 import type { JwtPayload } from '../middleware/auth';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 
 type Env = { Variables: { user: JwtPayload } };
 const noticesRouter = new Hono<Env>();
@@ -25,10 +26,12 @@ function toNotice(row: typeof notices.$inferSelect) {
 // 获取已发布的通知（供铃铛使用，无需分页，返回最近 20 条，含已读标记）
 noticesRouter.get('/published', async (c) => {
   const user = c.get('user');
+  const tc = tenantCondition(notices, user);
+  const publishedWhere = tc ? and(eq(notices.publishStatus, 'published'), tc) : eq(notices.publishStatus, 'published');
   const rows = await db
     .select()
     .from(notices)
-    .where(eq(notices.publishStatus, 'published'))
+    .where(publishedWhere)
     .orderBy(desc(notices.publishTime))
     .limit(20);
 
@@ -94,6 +97,8 @@ noticesRouter.get('/inbox', async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const isRead = c.req.query('isRead'); // 'true' | 'false' | undefined
+  const tc = tenantCondition(notices, user);
+  const publishedWhere = tc ? and(eq(notices.publishStatus, 'published'), tc) : eq(notices.publishStatus, 'published');
 
   const [readRows, allRows] = await Promise.all([
     db
@@ -103,7 +108,7 @@ noticesRouter.get('/inbox', async (c) => {
     db
       .select()
       .from(notices)
-      .where(eq(notices.publishStatus, 'published'))
+      .where(publishedWhere)
       .orderBy(desc(notices.publishTime)),
   ]);
 
@@ -137,16 +142,19 @@ noticesRouter.get('/', guard({ permission: 'system:notice:list' }), async (c) =>
   if (endTime) conditions.push(lte(notices.createdAt, new Date(endTime)));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const user = c.get('user');
+  const tc = tenantCondition(notices, user);
+  const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
   const [{ count }] = await db
     .select({ count: sql<number>`cast(count(*) as integer)` })
     .from(notices)
-    .where(where);
+    .where(finalWhere);
 
   const rows = await db
     .select()
     .from(notices)
-    .where(where)
+    .where(finalWhere)
     .orderBy(desc(notices.createdAt))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
@@ -161,7 +169,7 @@ noticesRouter.get('/', guard({ permission: 'system:notice:list' }), async (c) =>
 // 获取单条
 noticesRouter.get('/:id', guard({ permission: 'system:notice:list' }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [row] = await db.select().from(notices).where(eq(notices.id, id));
+  const [row] = await db.select().from(notices).where(and(eq(notices.id, id), tenantCondition(notices, c.get('user'))));
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
   return c.json({ code: 0, message: 'ok', data: toNotice(row) });
 });
@@ -193,6 +201,7 @@ noticesRouter.post('/', guard({ permission: 'system:notice:create', audit: { des
       publishTime,
       createById: user?.userId ?? null,
       createByName: user?.username ?? null,
+      tenantId: getCreateTenantId(user),
     })
     .returning();
   const notice = toNotice(row);
@@ -228,7 +237,7 @@ noticesRouter.put('/:id', guard({ permission: 'system:notice:update', audit: { d
   const [row] = await db
     .update(notices)
     .set(updateData)
-    .where(eq(notices.id, id))
+    .where(and(eq(notices.id, id), tenantCondition(notices, c.get('user'))))
     .returning();
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
   const notice = toNotice(row);
@@ -249,20 +258,20 @@ noticesRouter.delete('/batch', guard({ permission: 'system:notice:delete', audit
   if (validIds.length === 0) {
     return c.json({ code: 400, message: '通知ID格式无效', data: null }, 400);
   }
-  await db.delete(notices).where(inArray(notices.id, validIds));
+  await db.delete(notices).where(and(inArray(notices.id, validIds), tenantCondition(notices, c.get('user'))));
   return c.json({ code: 0, message: `已删除 ${validIds.length} 条通知`, data: null });
 });
 
 // 删除
 noticesRouter.delete('/:id', guard({ permission: 'system:notice:delete', audit: { description: '删除通知公告', module: '通知公告' } }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [row] = await db.delete(notices).where(eq(notices.id, id)).returning();
+  const [row] = await db.delete(notices).where(and(eq(notices.id, id), tenantCondition(notices, c.get('user')))).returning();
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
   return c.json({ code: 0, message: '删除成功', data: null });
 });
 
 noticesRouter.get('/export', guard({ permission: 'system:notice:list' }), async (c) => {
-  const rows = await db.select().from(notices).orderBy(desc(notices.id));
+  const rows = await db.select().from(notices).where(tenantCondition(notices, c.get('user'))).orderBy(desc(notices.id));
   const buffer = await exportToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

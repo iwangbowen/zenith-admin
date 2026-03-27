@@ -3,12 +3,14 @@ import { eq, like, and, sql, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { systemConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createSystemConfigSchema, updateSystemConfigSchema } from '@zenith/shared';
 import { exportToExcel } from '../lib/excel-export';
 import { getPasswordPolicy } from '../lib/password-policy';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 
-const systemConfigsRoute = new Hono();
+const systemConfigsRoute = new Hono<{ Variables: { user: JwtPayload } }>();
 const configTypeValues = ['string', 'number', 'boolean', 'json'] as const;
 
 // Public endpoint: get a config value by key (used before login, e.g., captcha_enabled)
@@ -49,16 +51,19 @@ systemConfigsRoute.get('/', guard({ permission: 'system:config:list' }), async (
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const user = c.get('user');
+  const tc = tenantCondition(systemConfigs, user);
+  const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
   const [{ count }] = await db
     .select({ count: sql<number>`cast(count(*) as integer)` })
     .from(systemConfigs)
-    .where(where);
+    .where(finalWhere);
 
   const rows = await db
     .select()
     .from(systemConfigs)
-    .where(where)
+    .where(finalWhere)
     .orderBy(desc(systemConfigs.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
@@ -86,12 +91,14 @@ systemConfigsRoute.post('/', guard({ permission: 'system:config:create', audit: 
     return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
   }
 
-  const [existing] = await db.select().from(systemConfigs).where(eq(systemConfigs.configKey, result.data.configKey)).limit(1);
+  const [existing] = await db.select().from(systemConfigs)
+    .where(and(eq(systemConfigs.configKey, result.data.configKey), tenantCondition(systemConfigs, c.get('user')) ?? sql`1=1`))
+    .limit(1);
   if (existing) {
     return c.json({ code: 400, message: '配置键已存在', data: null }, 400);
   }
 
-  const [row] = await db.insert(systemConfigs).values(result.data).returning();
+  const [row] = await db.insert(systemConfigs).values({ ...result.data, tenantId: getCreateTenantId(c.get('user')) }).returning();
   return c.json({ code: 0, message: '创建成功', data: { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() } });
 });
 
@@ -104,17 +111,22 @@ systemConfigsRoute.put('/:id', guard({ permission: 'system:config:update', audit
   }
 
   if (result.data.configKey) {
+    const tc = tenantCondition(systemConfigs, c.get('user'));
+    const dupWhere = tc
+      ? and(eq(systemConfigs.configKey, result.data.configKey), sql`${systemConfigs.id} != ${id}`, tc)
+      : and(eq(systemConfigs.configKey, result.data.configKey), sql`${systemConfigs.id} != ${id}`);
     const [dup] = await db.select().from(systemConfigs)
-      .where(and(eq(systemConfigs.configKey, result.data.configKey), sql`${systemConfigs.id} != ${id}`))
+      .where(dupWhere)
       .limit(1);
     if (dup) {
       return c.json({ code: 400, message: '配置键已存在', data: null }, 400);
     }
   }
 
+  const tenantCond = tenantCondition(systemConfigs, c.get('user'));
   const [row] = await db.update(systemConfigs)
     .set({ ...result.data, updatedAt: new Date() })
-    .where(eq(systemConfigs.id, id))
+    .where(tenantCond ? and(eq(systemConfigs.id, id), tenantCond) : eq(systemConfigs.id, id))
     .returning();
 
   if (!row) {
@@ -126,7 +138,8 @@ systemConfigsRoute.put('/:id', guard({ permission: 'system:config:update', audit
 
 systemConfigsRoute.delete('/:id', guard({ permission: 'system:config:delete', audit: { module: '系统配置', description: '删除配置' } }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [row] = await db.delete(systemConfigs).where(eq(systemConfigs.id, id)).returning();
+  const tc = tenantCondition(systemConfigs, c.get('user'));
+  const [row] = await db.delete(systemConfigs).where(tc ? and(eq(systemConfigs.id, id), tc) : eq(systemConfigs.id, id)).returning();
   if (!row) {
     return c.json({ code: 404, message: '配置不存在', data: null }, 404);
   }
@@ -134,7 +147,7 @@ systemConfigsRoute.delete('/:id', guard({ permission: 'system:config:delete', au
 });
 
 systemConfigsRoute.get('/export', guard({ permission: 'system:config:list' }), async (c) => {
-  const rows = await db.select().from(systemConfigs).orderBy(desc(systemConfigs.id));
+  const rows = await db.select().from(systemConfigs).where(tenantCondition(systemConfigs, c.get('user'))).orderBy(desc(systemConfigs.id));
   const buffer = await exportToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

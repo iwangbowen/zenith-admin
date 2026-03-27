@@ -1,22 +1,23 @@
 import { Hono } from 'hono';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq, desc, sql, gte, lte, like, and } from 'drizzle-orm';
+import { eq, desc, sql, gte, lte, like, and, isNull } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
-import { users, userRoles, roles, loginLogs, operationLogs } from '../db/schema';
+import { users, userRoles, roles, loginLogs, tenants, operationLogs } from '../db/schema';
 import { config } from '../config';
-import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema } from '@zenith/shared';
+import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema, switchTenantSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { generateCaptcha, verifyCaptcha } from '../lib/captcha';
 import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
 import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
+import { isPlatformAdmin, getEffectiveTenantId } from '../lib/tenant';
 
 const auth = new Hono();
 
-async function recordLoginLog(c: any, username: string, status: 'success' | 'fail', message: string, userId?: number) {
+async function recordLoginLog(c: any, username: string, status: 'success' | 'fail', message: string, userId?: number, tenantId?: number | null) {
   const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
   const ua = c.req.header('user-agent') || '';
   const parser = new UAParser(ua);
@@ -30,7 +31,8 @@ async function recordLoginLog(c: any, username: string, status: 'success' | 'fai
     browser: browser.name ? `${browser.name} ${browser.version || ''}`.trim() : 'Unknown',
     os: os.name ? `${os.name} ${os.version || ''}`.trim() : 'Unknown',
     status,
-    message
+    message,
+    tenantId: tenantId ?? null,
   });
 }
 
@@ -77,6 +79,22 @@ auth.post('/login', async (c) => {
 
   const { username, password } = result.data;
 
+  // ─── 多租户：解析 tenantCode ───────────────────────────────────────────────
+  let tenantId: number | null = null;
+  if (config.multiTenantMode && result.data.tenantCode) {
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.code, result.data.tenantCode)).limit(1);
+    if (!tenant) {
+      return c.json({ code: 400, message: '租户不存在', data: null }, 400);
+    }
+    if (tenant.status === 'disabled') {
+      return c.json({ code: 403, message: '租户已被禁用', data: null }, 403);
+    }
+    if (tenant.expireAt && new Date(tenant.expireAt) < new Date()) {
+      return c.json({ code: 403, message: '租户已过期', data: null }, 403);
+    }
+    tenantId = tenant.id;
+  }
+
   // ─── 登录失败锁定检查 ────────────────────────────────────────────────────
   const remainingLockSeconds = await checkLoginLock(username);
   if (remainingLockSeconds > 0) {
@@ -90,25 +108,31 @@ auth.post('/login', async (c) => {
   ]);
   const lockDurationSeconds = loginLockDurationMinutes * 60;
 
-  const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
+  const userWhere = config.multiTenantMode && tenantId !== null
+    ? and(eq(users.username, username), eq(users.tenantId, tenantId))
+    : config.multiTenantMode
+      ? and(eq(users.username, username), isNull(users.tenantId))
+      : eq(users.username, username);
+
+  const [user] = await db.select().from(users).where(userWhere).limit(1);
 
   if (!user) {
     await Promise.all([
-      recordLoginLog(c, username, 'fail', '用户名或密码错误'),
+      recordLoginLog(c, username, 'fail', '用户名或密码错误', undefined, tenantId),
       recordLoginFailure(username, loginMaxAttempts, lockDurationSeconds),
     ]);
     return c.json({ code: 400, message: '用户名或密码错误', data: null }, 400);
   }
 
   if (user.status === 'disabled') {
-    await recordLoginLog(c, username, 'fail', '账号已被禁用', user.id);
+    await recordLoginLog(c, username, 'fail', '账号已被禁用', user.id, tenantId);
     return c.json({ code: 403, message: '账号已被禁用', data: null }, 403);
   }
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) {
     await Promise.all([
-      recordLoginLog(c, username, 'fail', '用户名或密码错误', user.id),
+      recordLoginLog(c, username, 'fail', '用户名或密码错误', user.id, tenantId),
       recordLoginFailure(username, loginMaxAttempts, lockDurationSeconds),
     ]);
     return c.json({ code: 400, message: '用户名或密码错误', data: null }, 400);
@@ -135,13 +159,13 @@ auth.post('/login', async (c) => {
   const tokenId = generateTokenId();
 
   const accessToken = jwt.sign(
-    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), jti: tokenId } satisfies JwtPayload,
+    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), tenantId: user.tenantId ?? null, jti: tokenId } satisfies JwtPayload,
     config.jwtSecret,
     { expiresIn: '2h' }
   );
 
   const refreshToken = jwt.sign(
-    { userId: user.id, username: user.username, type: 'refresh', jti: tokenId },
+    { userId: user.id, username: user.username, type: 'refresh', tenantId: user.tenantId ?? null, jti: tokenId },
     config.jwtSecret,
     { expiresIn: '30d' }
   );
@@ -158,13 +182,14 @@ auth.post('/login', async (c) => {
     userId: user.id,
     username: user.username,
     nickname: user.nickname,
+    tenantId: user.tenantId ?? null,
     ip,
     browser: browserInfo.name ? `${browserInfo.name} ${browserInfo.version || ''}`.trim() : 'Unknown',
     os: osInfo.name ? `${osInfo.name} ${osInfo.version || ''}`.trim() : 'Unknown',
     loginAt: new Date(),
   });
 
-  await recordLoginLog(c, username, 'success', '登录成功', user.id);
+  await recordLoginLog(c, username, 'success', '登录成功', user.id, tenantId);
 
   const { password: _, ...userInfo } = user;
   return c.json({
@@ -212,13 +237,13 @@ auth.post('/register', async (c) => {
   const tokenId = generateTokenId();
 
   const accessToken = jwt.sign(
-    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), jti: tokenId } satisfies JwtPayload,
+    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), tenantId: user.tenantId ?? null, jti: tokenId } satisfies JwtPayload,
     config.jwtSecret,
     { expiresIn: '2h' }
   );
 
   const refreshToken = jwt.sign(
-    { userId: user.id, username: user.username, type: 'refresh', jti: tokenId },
+    { userId: user.id, username: user.username, type: 'refresh', tenantId: user.tenantId ?? null, jti: tokenId },
     config.jwtSecret,
     { expiresIn: '30d' }
   );
@@ -235,6 +260,7 @@ auth.post('/register', async (c) => {
     userId: user.id,
     username: user.username,
     nickname: user.nickname,
+    tenantId: user.tenantId ?? null,
     ip: regIp,
     browser: regBrowser.name ? `${regBrowser.name} ${regBrowser.version || ''}`.trim() : 'Unknown',
     os: regOs.name ? `${regOs.name} ${regOs.version || ''}`.trim() : 'Unknown',
@@ -263,7 +289,7 @@ auth.post('/refresh', async (c) => {
   }
 
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as { userId: number; username: string; type?: string; jti?: string };
+    const payload = jwt.verify(token, config.jwtSecret) as { userId: number; username: string; type?: string; jti?: string; tenantId?: number | null };
     if (payload.type !== 'refresh') {
       return c.json({ code: 401, message: '无效的 refresh token', data: null }, 401);
     }
@@ -284,7 +310,7 @@ auth.post('/refresh', async (c) => {
     const userRoleList = await getUserRoles(payload.userId);
 
     const accessToken = jwt.sign(
-      { userId: payload.userId, username: payload.username, roles: userRoleList.map((r) => r.code), jti: tokenId } satisfies JwtPayload,
+      { userId: payload.userId, username: payload.username, roles: userRoleList.map((r) => r.code), tenantId: payload.tenantId ?? null, jti: tokenId } satisfies JwtPayload,
       config.jwtSecret,
       { expiresIn: '2h' }
     );
@@ -338,11 +364,20 @@ auth.get('/me', authMiddleware, async (c) => {
   }
 
   const { password: _, ...userInfo } = user;
+
+  // Resolve tenant name
+  let tenantName: string | null = null;
+  if (user.tenantId) {
+    const [tenant] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, user.tenantId)).limit(1);
+    tenantName = tenant?.name ?? null;
+  }
+
   return c.json({
     code: 0,
     message: 'ok',
     data: {
       ...userInfo,
+      tenantName,
       roles: userRoleList,
       permissions,
       requirePasswordChange,
@@ -535,8 +570,91 @@ auth.delete('/my-sessions/:tokenId', authMiddleware, async (c) => {
   if (!session) {
     return c.json({ code: 404, message: '会话不存在或已过期', data: null }, 404);
   }
-  await forceLogout(tokenId);
+  await forceLogout(tokenId!);
   return c.json({ code: 0, message: '已退出该设备', data: null });
+});
+
+// ─── 切换租户视角（仅平台超管） ─────────────────────────────────────────────
+auth.post('/switch-tenant', authMiddleware, async (c) => {
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
+
+  if (!isPlatformAdmin(payload)) {
+    return c.json({ code: 403, message: '仅平台超管可切换租户', data: null }, 403);
+  }
+
+  const body = await c.req.json();
+  const result = switchTenantSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+  }
+
+  const { tenantId: targetTenantId } = result.data;
+
+  // Validate target tenant exists (if not null)
+  if (targetTenantId !== null) {
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, targetTenantId)).limit(1);
+    if (!tenant) {
+      return c.json({ code: 404, message: '租户不存在', data: null }, 404);
+    }
+  }
+
+  const tokenId = generateTokenId();
+  const newAccessToken = jwt.sign(
+    { userId: payload.userId, username: payload.username, roles: payload.roles, tenantId: payload.tenantId, viewingTenantId: targetTenantId, jti: tokenId } satisfies JwtPayload,
+    config.jwtSecret,
+    { expiresIn: '2h' }
+  );
+
+  const newRefreshToken = jwt.sign(
+    { userId: payload.userId, username: payload.username, type: 'refresh', tenantId: payload.tenantId, viewingTenantId: targetTenantId, jti: tokenId },
+    config.jwtSecret,
+    { expiresIn: '30d' }
+  );
+
+  // Re-register session
+  const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
+  const ua = c.req.header('user-agent') || '';
+  const uaParser = new UAParser(ua);
+  const browserInfo = uaParser.getBrowser();
+  const osInfo = uaParser.getOS();
+
+  // Remove old session
+  if (payload.jti) await removeSession(payload.jti);
+
+  await registerSession({
+    tokenId,
+    userId: payload.userId,
+    username: payload.username,
+    nickname: payload.username,
+    tenantId: payload.tenantId,
+    ip,
+    browser: browserInfo.name ? `${browserInfo.name} ${browserInfo.version || ''}`.trim() : 'Unknown',
+    os: osInfo.name ? `${osInfo.name} ${osInfo.version || ''}`.trim() : 'Unknown',
+    loginAt: new Date(),
+  });
+
+  return c.json({
+    code: 0,
+    message: targetTenantId === null ? '已切换回平台视角' : '已切换租户视角',
+    data: { accessToken: newAccessToken, refreshToken: newRefreshToken, viewingTenantId: targetTenantId },
+  });
+});
+
+// ─── 获取租户列表（仅平台超管，用于前端租户切换选择器）──────────────────────
+auth.get('/tenants', authMiddleware, async (c) => {
+  const payload = getAuthUser(c as { get: (key: 'user') => unknown });
+  if (!isPlatformAdmin(payload)) {
+    return c.json({ code: 403, message: '无权限', data: null }, 403);
+  }
+
+  const rows = await db.select({
+    id: tenants.id,
+    name: tenants.name,
+    code: tenants.code,
+    status: tenants.status,
+  }).from(tenants).where(eq(tenants.status, 'active'));
+
+  return c.json({ code: 0, message: 'ok', data: rows });
 });
 
 export default auth;

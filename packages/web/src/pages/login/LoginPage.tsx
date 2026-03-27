@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
-import { User, Lock, Mail, AtSign } from 'lucide-react';
+import { User, Lock, Mail, AtSign, Building2 } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import type { RegisterInput, OAuthProviderType } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { config } from '@/config';
 import './LoginPage.css';
 
 const { Title, Text } = Typography;
 
 interface LoginPageProps {
-  onLogin: (username: string, password: string, captchaId?: string, captchaCode?: string) => Promise<{ code: number; message: string }>;
+  onLogin: (username: string, password: string, captchaId?: string, captchaCode?: string, tenantCode?: string) => Promise<{ code: number; message: string }>;
   onRegister: (data: { username: string; nickname: string; email: string; password: string }) => Promise<{ code: number; message: string }>;
 }
 
@@ -54,7 +55,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   const handleLogin = async (values: Record<string, string>) => {
     setLoading(true);
     try {
-      const res = await onLogin(values.username, values.password, captchaId, values.captchaCode);
+      const res = await onLogin(values.username, values.password, captchaId, values.captchaCode, values.tenantCode);
       if (res.code === 0) {
         navigate('/', { replace: true });
         return;
@@ -84,6 +85,15 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
 
   const renderLoginForm = () => (
     <Form onSubmit={handleLogin} style={{ marginTop: 12 }}>
+      {config.multiTenantMode && (
+        <Form.Input
+          field="tenantCode"
+          label="租户编码"
+          placeholder="留空则登录平台管理员"
+          prefix={<Building2 />}
+          size="large"
+        />
+      )}
       <Form.Input
         field="username"
         label="用户名"

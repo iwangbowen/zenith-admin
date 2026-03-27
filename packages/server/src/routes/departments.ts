@@ -1,14 +1,16 @@
 import { Hono } from 'hono';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, and } from 'drizzle-orm';
 import { db } from '../db';
 import { departments, users } from '../db/schema';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import type { Department } from '@zenith/shared';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 
-const departmentsRouter = new Hono();
+const departmentsRouter = new Hono<{ Variables: { user: JwtPayload } }>();
 
 departmentsRouter.use('*', authMiddleware);
 
@@ -107,15 +109,19 @@ async function ensureParentValid(parentId: number, currentId?: number) {
 departmentsRouter.get('/', guard({ permission: 'system:department:list' }), async (c) => {
   const keyword = c.req.query('keyword') ?? '';
   const status = c.req.query('status');
+  const user = c.get('user');
+  const tc = tenantCondition(departments, user);
 
-  const rows = await db.select().from(departments).orderBy(asc(departments.sort), asc(departments.id));
+  const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
   const tree = buildTree(rows.map(toDepartment));
   const data = keyword || status ? filterTree(tree, keyword, status) : tree;
   return c.json({ code: 0, message: 'ok', data });
 });
 
 departmentsRouter.get('/flat', guard({ permission: 'system:department:list' }), async (c) => {
-  const rows = await db.select().from(departments).orderBy(asc(departments.sort), asc(departments.id));
+  const user = c.get('user');
+  const tc = tenantCondition(departments, user);
+  const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
   return c.json({ code: 0, message: 'ok', data: rows.map(toDepartment) });
 });
 
@@ -131,8 +137,9 @@ departmentsRouter.post('/', guard({ permission: 'system:department:create', audi
     return c.json({ code: 400, message: parentError, data: null }, 400);
   }
 
+  const user = c.get('user');
   try {
-    const [department] = await db.insert(departments).values(result.data).returning();
+    const [department] = await db.insert(departments).values({ ...result.data, tenantId: getCreateTenantId(user) }).returning();
     return c.json({ code: 0, message: '创建成功', data: toDepartment(department) });
   } catch (error: unknown) {
     if ((error as { code?: string }).code === '23505') {
@@ -161,7 +168,7 @@ departmentsRouter.put('/:id', guard({ permission: 'system:department:update', au
     const [department] = await db
       .update(departments)
       .set({ ...result.data, updatedAt: new Date() })
-      .where(eq(departments.id, id))
+      .where(and(eq(departments.id, id), tenantCondition(departments, c.get('user'))))
       .returning();
 
     if (!department) {
@@ -179,7 +186,9 @@ departmentsRouter.put('/:id', guard({ permission: 'system:department:update', au
 
 departmentsRouter.delete('/:id', guard({ permission: 'system:department:delete', audit: { description: '删除部门', module: '部门管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [department] = await db.select({ id: departments.id }).from(departments).where(eq(departments.id, id)).limit(1);
+  const user = c.get('user');
+  const tc = tenantCondition(departments, user);
+  const [department] = await db.select({ id: departments.id }).from(departments).where(and(eq(departments.id, id), tc)).limit(1);
   if (!department) {
     return c.json({ code: 404, message: '部门不存在', data: null }, 404);
   }
@@ -202,12 +211,14 @@ departmentsRouter.delete('/:id', guard({ permission: 'system:department:delete',
     return c.json({ code: 400, message: '该部门下仍有关联用户，无法删除', data: null }, 400);
   }
 
-  await db.delete(departments).where(eq(departments.id, id));
+  await db.delete(departments).where(and(eq(departments.id, id), tc));
   return c.json({ code: 0, message: '删除成功', data: null });
 });
 
 departmentsRouter.get('/export', guard({ permission: 'system:department:list' }), async (c) => {
-  const rows = await db.select().from(departments).orderBy(asc(departments.sort));
+  const user = c.get('user');
+  const tc = tenantCondition(departments, user);
+  const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort));
   const buffer = await exportToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

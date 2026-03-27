@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Badge, Breadcrumb, Dropdown, Empty, List, Notification, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
-import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
-import type { User, Menu, Notice, WsMessage } from '@zenith/shared';
+import { Avatar, Badge, Breadcrumb, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
+import { Bell, Building2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
+import type { User, Menu, Notice, Tenant, WsMessage } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, type NavLayout } from '@/hooks/usePreferences';
 import { useTabsStore } from '@/hooks/useTabsStore';
@@ -127,6 +127,29 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     }, 100);
     return () => clearTimeout(timer);
   }, [activeKey, tabs.length]);
+
+  // ─── 租户切换（仅平台管理员） ─────────────────────────────────────────────
+  const isPlatformAdmin = config.multiTenantMode && !user.tenantId && user.roles?.some((r) => r.code === 'super_admin');
+  const [tenantList, setTenantList] = useState<Tenant[]>([]);
+  const [viewingTenantId, setViewingTenantId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (isPlatformAdmin) {
+      request.get<{ list: Tenant[] }>('/api/tenants?page=1&pageSize=1000&status=active', { silent: true }).then((res) => {
+        if (res.code === 0 && res.data) setTenantList(res.data.list);
+      });
+    }
+  }, [isPlatformAdmin]);
+
+  const handleSwitchTenant = async (tenantId: number | null) => {
+    const res = await request.post<{ accessToken: string; refreshToken: string }>('/api/auth/switch-tenant', { tenantId });
+    if (res.code === 0 && res.data) {
+      localStorage.setItem('zenith_token', res.data.accessToken);
+      localStorage.setItem('zenith_refresh_token', res.data.refreshToken);
+      setViewingTenantId(tenantId);
+      globalThis.location.reload();
+    }
+  };
 
   // ─── 通知公告 ─────────────────────────────────────────────────────────────
   const [notices, setNotices] = useState<(Notice & { isRead?: boolean })[]>([]);
@@ -376,6 +399,22 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   // ─── Header actions (reused in both topbar and vertical header) ────────────
   const headerActions = (
     <div className="admin-header__actions">
+      {isPlatformAdmin && tenantList.length > 0 && (
+        <>
+          <Select
+            prefix={<Building2 size={14} />}
+            placeholder="平台视角"
+            value={viewingTenantId ?? undefined}
+            onChange={(v) => handleSwitchTenant((v as number) ?? null)}
+            style={{ width: 180 }}
+            showClear
+            onClear={() => handleSwitchTenant(null)}
+            optionList={tenantList.map((t) => ({ value: t.id, label: t.name }))}
+            size="small"
+          />
+          <div style={{ width: 1, height: 16, backgroundColor: 'var(--color-border)', margin: '0 4px' }} />
+        </>
+      )}
       <Popover
         visible={noticePopVisible}
         onVisibleChange={setNoticePopVisible}

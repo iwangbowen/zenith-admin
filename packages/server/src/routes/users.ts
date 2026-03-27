@@ -13,6 +13,7 @@ import { exportToExcel } from '../lib/excel-export';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { unlockUser } from '../lib/session-manager';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import type { Role, Position, User } from '@zenith/shared';
 
 const usersRouter = new Hono<{ Variables: { user: JwtPayload } }>();
@@ -97,44 +98,62 @@ async function setUserPositions(userId: number, positionIds: number[]) {
   }
 }
 
-async function ensureDepartmentExists(departmentId?: number | null) {
+async function ensureDepartmentExists(departmentId?: number | null, user?: JwtPayload) {
   if (departmentId === undefined || departmentId === null) {
     return null;
+  }
+
+  const conditions = [eq(departments.id, departmentId)];
+  if (user) {
+    const tc = tenantCondition(departments, user);
+    if (tc) conditions.push(tc);
   }
 
   const [department] = await db
     .select({ id: departments.id })
     .from(departments)
-    .where(eq(departments.id, departmentId))
+    .where(and(...conditions))
     .limit(1);
 
   return department ? null : '所属部门不存在';
 }
 
-async function ensureRoleIdsExist(roleIds: number[]) {
+async function ensureRoleIdsExist(roleIds: number[], user?: JwtPayload) {
   const uniqueRoleIds = Array.from(new Set(roleIds));
   if (uniqueRoleIds.length === 0) {
     return null;
   }
 
+  const conditions = [inArray(roles.id, uniqueRoleIds)];
+  if (user) {
+    const tc = tenantCondition(roles, user);
+    if (tc) conditions.push(tc);
+  }
+
   const existingRoles = await db
     .select({ id: roles.id })
     .from(roles)
-    .where(inArray(roles.id, uniqueRoleIds));
+    .where(and(...conditions));
 
   return existingRoles.length === uniqueRoleIds.length ? null : '存在无效角色';
 }
 
-async function ensurePositionIdsExist(positionIds: number[]) {
+async function ensurePositionIdsExist(positionIds: number[], user?: JwtPayload) {
   const uniquePositionIds = Array.from(new Set(positionIds));
   if (uniquePositionIds.length === 0) {
     return null;
   }
 
+  const conditions = [inArray(positions.id, uniquePositionIds)];
+  if (user) {
+    const tc = tenantCondition(positions, user);
+    if (tc) conditions.push(tc);
+  }
+
   const existingPositions = await db
     .select({ id: positions.id })
     .from(positions)
-    .where(inArray(positions.id, uniquePositionIds));
+    .where(and(...conditions));
 
   return existingPositions.length === uniquePositionIds.length ? null : '存在无效岗位';
 }
@@ -217,6 +236,10 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
   });
   if (scopeCondition) conditions.push(scopeCondition);
 
+  // 多租户过滤
+  const tc = tenantCondition(users, payload);
+  if (tc) conditions.push(tc);
+
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(users).where(where);
@@ -271,9 +294,9 @@ usersRouter.post('/', guard({ permission: 'system:user:create', audit: { descrip
   const nextPositionIds = Array.from(new Set(positionIds));
 
   const [departmentError, roleError, positionError] = await Promise.all([
-    ensureDepartmentExists(departmentId),
-    ensureRoleIdsExist(nextRoleIds),
-    ensurePositionIdsExist(nextPositionIds),
+    ensureDepartmentExists(departmentId, c.get('user')),
+    ensureRoleIdsExist(nextRoleIds, c.get('user')),
+    ensurePositionIdsExist(nextPositionIds, c.get('user')),
   ]);
 
   const referenceError = departmentError ?? roleError ?? positionError;
@@ -288,6 +311,7 @@ usersRouter.post('/', guard({ permission: 'system:user:create', audit: { descrip
       ...rest,
       password: hashedPassword,
       departmentId: departmentId ?? null,
+      tenantId: getCreateTenantId(c.get('user')),
     }).returning();
     await setUserRoles(user.id, nextRoleIds);
     await setUserPositions(user.id, nextPositionIds);
@@ -338,9 +362,9 @@ usersRouter.put('/:id', guard({ permission: 'system:user:update', audit: { descr
   const nextPositionIds = positionIds ? Array.from(new Set(positionIds)) : undefined;
 
   const [departmentError, roleError, positionError] = await Promise.all([
-    ensureDepartmentExists(departmentId),
-    ensureRoleIdsExist(nextRoleIds ?? []),
-    ensurePositionIdsExist(nextPositionIds ?? []),
+    ensureDepartmentExists(departmentId, c.get('user')),
+    ensureRoleIdsExist(nextRoleIds ?? [], c.get('user')),
+    ensurePositionIdsExist(nextPositionIds ?? [], c.get('user')),
   ]);
 
   const referenceError = departmentError ?? roleError ?? positionError;
@@ -357,7 +381,7 @@ usersRouter.put('/:id', guard({ permission: 'system:user:update', audit: { descr
   const [user] = await db
     .update(users)
     .set(nextValues)
-    .where(eq(users.id, id))
+    .where((() => { const tc = tenantCondition(users, c.get('user')); return tc ? and(eq(users.id, id), tc) : eq(users.id, id); })())
     .returning();
 
   if (!user) {
@@ -408,7 +432,7 @@ usersRouter.put('/:id/password', guard({ permission: 'system:user:update', audit
   const policyError = validatePassword(result.data.password, policy);
   if (policyError) return c.json({ code: 400, message: policyError, data: null }, 400);
 
-  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, id)).limit(1);
+  const [user] = await db.select({ id: users.id }).from(users).where((() => { const tc = tenantCondition(users, c.get('user')); return tc ? and(eq(users.id, id), tc) : eq(users.id, id); })()).limit(1);
   if (!user) {
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }
@@ -430,7 +454,7 @@ usersRouter.delete('/batch', guard({ permission: 'system:user:delete', audit: { 
   if (validIds.length === 0) {
     return c.json({ code: 400, message: '用户ID格式无效', data: null }, 400);
   }
-  await db.delete(users).where(inArray(users.id, validIds));
+  await db.delete(users).where((() => { const tc = tenantCondition(users, c.get('user')); return tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds); })());
   return c.json({ code: 0, message: `已删除 ${validIds.length} 个用户`, data: null });
 });
 
@@ -445,7 +469,7 @@ usersRouter.put('/batch-status', guard({ permission: 'system:user:update', audit
     return c.json({ code: 400, message: '状态值无效', data: null }, 400);
   }
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
-  await db.update(users).set({ status, updatedAt: new Date() }).where(inArray(users.id, validIds));
+  await db.update(users).set({ status, updatedAt: new Date() }).where((() => { const tc = tenantCondition(users, c.get('user')); return tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds); })());
   return c.json({ code: 0, message: '状态已更新', data: null });
 });
 
@@ -458,7 +482,7 @@ usersRouter.delete('/:id', guard({ permission: 'system:user:delete', audit: { de
     const { password: _pw, ...safeBeforeUser } = beforeUser;
     setAuditBeforeData(c, safeBeforeUser);
   }
-  const [deleted] = await db.delete(users).where(eq(users.id, id)).returning();
+  const [deleted] = await db.delete(users).where((() => { const tc = tenantCondition(users, c.get('user')); return tc ? and(eq(users.id, id), tc) : eq(users.id, id); })()).returning();
   if (!deleted) {
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }
@@ -618,6 +642,7 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
     try {
       const [newUser] = await db.insert(users).values({
         username, nickname, email, password: hashedPassword, departmentId, status,
+        tenantId: getCreateTenantId(c.get('user')),
       }).returning();
       if (roleIds.length > 0) await setUserRoles(newUser.id, roleIds);
       if (positionIds.length > 0) await setUserPositions(newUser.id, positionIds);
@@ -638,6 +663,7 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
 });
 
 usersRouter.get('/export', guard({ permission: 'system:user:list' }), async (c) => {
+  const tc = tenantCondition(users, c.get('user'));
   const list = await db
     .select({
       id: users.id,
@@ -651,6 +677,7 @@ usersRouter.get('/export', guard({ permission: 'system:user:list' }), async (c) 
     })
     .from(users)
     .leftJoin(departments, eq(users.departmentId, departments.id))
+    .where(tc)
     .orderBy(users.id);
 
   const buffer = await exportToExcel(
@@ -673,7 +700,7 @@ usersRouter.get('/export', guard({ permission: 'system:user:list' }), async (c) 
 
 usersRouter.post('/:id/unlock', guard({ permission: 'system:user:update', audit: { description: '解除账号锁定', module: '用户管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [user] = await db.select({ username: users.username }).from(users).where(eq(users.id, id)).limit(1);
+  const [user] = await db.select({ username: users.username }).from(users).where((() => { const tc = tenantCondition(users, c.get('user')); return tc ? and(eq(users.id, id), tc) : eq(users.id, id); })()).limit(1);
   if (!user) {
     return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   }

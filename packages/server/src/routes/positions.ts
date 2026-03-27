@@ -4,10 +4,12 @@ import { db } from '../db';
 import { positions, userPositions } from '../db/schema';
 import { createPositionSchema, updatePositionSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 
-const positionsRouter = new Hono();
+const positionsRouter = new Hono<{ Variables: { user: JwtPayload } }>();
 
 positionsRouter.use('*', authMiddleware);
 
@@ -45,7 +47,10 @@ positionsRouter.get('/', guard({ permission: 'system:position:list' }), async (c
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
-  const list = await db.select().from(positions).where(where).orderBy(asc(positions.sort), asc(positions.id));
+  const user = c.get('user');
+  const tc = tenantCondition(positions, user);
+  const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
+  const list = await db.select().from(positions).where(finalWhere).orderBy(asc(positions.sort), asc(positions.id));
   return c.json({ code: 0, message: 'ok', data: list.map(toPosition) });
 });
 
@@ -57,7 +62,7 @@ positionsRouter.post('/', guard({ permission: 'system:position:create', audit: {
   }
 
   try {
-    const [position] = await db.insert(positions).values(result.data).returning();
+    const [position] = await db.insert(positions).values({ ...result.data, tenantId: getCreateTenantId(c.get('user')) }).returning();
     return c.json({ code: 0, message: '创建成功', data: toPosition(position) });
   } catch (error: unknown) {
     if ((error as { code?: string }).code === '23505') {
@@ -79,7 +84,7 @@ positionsRouter.put('/:id', guard({ permission: 'system:position:update', audit:
     const [position] = await db
       .update(positions)
       .set({ ...result.data, updatedAt: new Date() })
-      .where(eq(positions.id, id))
+      .where(and(eq(positions.id, id), tenantCondition(positions, c.get('user'))))
       .returning();
     if (!position) {
       return c.json({ code: 404, message: '岗位不存在', data: null }, 404);
@@ -112,13 +117,13 @@ positionsRouter.delete('/batch', guard({ permission: 'system:position:delete', a
   if (bindings.length > 0) {
     return c.json({ code: 400, message: '所选岗位中存在关联用户，无法删除', data: null }, 400);
   }
-  await db.delete(positions).where(inArray(positions.id, validIds));
+  await db.delete(positions).where(and(inArray(positions.id, validIds), tenantCondition(positions, c.get('user'))));
   return c.json({ code: 0, message: `已删除 ${validIds.length} 个岗位`, data: null });
 });
 
 positionsRouter.delete('/:id', guard({ permission: 'system:position:delete', audit: { description: '删除岗位', module: '岗位管理' } }), async (c) => {
   const id = Number(c.req.param('id'));
-  const [position] = await db.select({ id: positions.id }).from(positions).where(eq(positions.id, id)).limit(1);
+  const [position] = await db.select({ id: positions.id }).from(positions).where(and(eq(positions.id, id), tenantCondition(positions, c.get('user')))).limit(1);
   if (!position) {
     return c.json({ code: 404, message: '岗位不存在', data: null }, 404);
   }
@@ -132,12 +137,12 @@ positionsRouter.delete('/:id', guard({ permission: 'system:position:delete', aud
     return c.json({ code: 400, message: '该岗位下仍有关联用户，无法删除', data: null }, 400);
   }
 
-  await db.delete(positions).where(eq(positions.id, id));
+  await db.delete(positions).where(and(eq(positions.id, id), tenantCondition(positions, c.get('user'))));
   return c.json({ code: 0, message: '删除成功', data: null });
 });
 
 positionsRouter.get('/export', guard({ permission: 'system:position:list' }), async (c) => {
-  const rows = await db.select().from(positions).orderBy(asc(positions.sort));
+  const rows = await db.select().from(positions).where(tenantCondition(positions, c.get('user'))).orderBy(asc(positions.sort));
   const buffer = await exportToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

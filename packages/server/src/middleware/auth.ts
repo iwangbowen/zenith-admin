@@ -7,6 +7,9 @@ export interface JwtPayload {
   userId: number;
   username: string;
   roles: string[];
+  tenantId: number | null;
+  /** 超管切换租户视角时，存放目标租户 ID */
+  viewingTenantId?: number | null;
   jti?: string;
 }
 

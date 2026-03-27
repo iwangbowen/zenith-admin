@@ -3,10 +3,12 @@ import { desc, eq, like, and, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { loginLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
+import { tenantCondition } from '../lib/tenant';
 
-const loginLogsRoute = new Hono();
+const loginLogsRoute = new Hono<{ Variables: { user: JwtPayload } }>();
 
 loginLogsRoute.use('/*', authMiddleware);
 
@@ -25,16 +27,19 @@ loginLogsRoute.get('/', guard({ permission: 'system:log:login' }), async (c) => 
   if (endTime) conditions.push(lte(loginLogs.createdAt, new Date(endTime)));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const user = c.get('user');
+  const tc = tenantCondition(loginLogs, user);
+  const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
   const [{ count }] = await db
     .select({ count: sql<number>`cast(count(*) as integer)` })
     .from(loginLogs)
-    .where(where);
+    .where(finalWhere);
 
   const rows = await db
     .select()
     .from(loginLogs)
-    .where(where)
+    .where(finalWhere)
     .orderBy(desc(loginLogs.createdAt))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
@@ -55,7 +60,7 @@ loginLogsRoute.get('/', guard({ permission: 'system:log:login' }), async (c) => 
 });
 
 loginLogsRoute.get('/export', guard({ permission: 'system:log:login' }), async (c) => {
-  const rows = await db.select().from(loginLogs).orderBy(desc(loginLogs.id));
+  const rows = await db.select().from(loginLogs).where(tenantCondition(loginLogs, c.get('user'))).orderBy(desc(loginLogs.id));
   const buffer = await exportToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

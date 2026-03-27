@@ -1,3 +1,19 @@
+// ─── 租户 ─────────────────────────────────────────────────────────────────────
+export interface Tenant {
+  id: number;
+  name: string;
+  code: string;
+  logo?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  status: 'active' | 'disabled';
+  expireAt?: string | null;
+  maxUsers?: number | null;
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: number;
   username: string;
@@ -6,6 +22,8 @@ export interface User {
   avatar?: string;
   departmentId?: number | null;
   departmentName?: string | null;
+  tenantId?: number | null;
+  tenantName?: string | null;
   positionIds?: number[];
   positions?: Position[];
   roles: Role[];
@@ -40,6 +58,17 @@ export interface LoginResponse {
   requirePasswordChange?: boolean;
 }
 
+// ─── JWT Payload ──────────────────────────────────────────────────────────────
+export interface JwtPayload {
+  userId: number;
+  username: string;
+  roles: string[];
+  tenantId: number | null;
+  /** 超管切换租户视角时，存放目标租户 ID */
+  viewingTenantId?: number | null;
+  jti?: string;
+}
+
 // ─── 菜单 ─────────────────────────────────────────────────────────────────────
 export type MenuType = 'directory' | 'menu' | 'button';
 
@@ -70,6 +99,7 @@ export interface Role {
   code: string;
   description?: string;
   dataScope: DataScope;
+  tenantId?: number | null;
   status: 'active' | 'disabled';
   createdAt: string;
   updatedAt: string;
@@ -261,6 +291,7 @@ export interface OnlineUser {
   userId: number;
   username: string;
   nickname: string;
+  tenantId?: number | null;
   ip: string;
   browser: string;
   os: string;
