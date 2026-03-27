@@ -13,6 +13,7 @@ import {
   Select,
   DatePicker,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { Notice, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -60,7 +61,7 @@ export default function NoticesPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [formApi, setFormApi] = useState<any>(null);
+  const [formApi, setFormApi] = useState<FormApi | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [contentHtml, setContentHtml] = useState('');
   const [editorKey, setEditorKey] = useState(0);
@@ -99,7 +100,7 @@ export default function NoticesPage() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleSearch = () => {
     setSubmittedParams({ ...searchParams });

@@ -13,5 +13,5 @@ import { enableMocking } from './mocks';
 	 );
  }
 
-// eslint-disable-next-line unicorn/prefer-top-level-await
- void bootstrap();
+
+ bootstrap();

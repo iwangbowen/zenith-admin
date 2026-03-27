@@ -98,7 +98,10 @@ function disconnectSharedSocket() {
  */
 export function useWebSocket(onMessage: MessageHandler) {
   const onMessageRef = useRef(onMessage);
-  onMessageRef.current = onMessage;
+
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  });
 
   const listener = useCallback((message: WsMessage) => {
     onMessageRef.current(message);

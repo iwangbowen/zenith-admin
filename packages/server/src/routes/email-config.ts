@@ -19,7 +19,7 @@ emailConfigRouter.get('/', guard({ permission: 'system:email-config:view' }), as
     config = created;
   }
   // Mask password field before returning to avoid leaking credentials
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const { smtpPassword: _masked, ...safeConfig } = config;
   return c.json({ code: 0, message: 'success', data: safeConfig });
 });
@@ -35,7 +35,7 @@ emailConfigRouter.put(
       return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
     }
 
-    let [config] = await db.select().from(emailConfigs).limit(1);
+    const [config] = await db.select().from(emailConfigs).limit(1);
     if (!config) {
       const [created] = await db
         .insert(emailConfigs)
@@ -93,8 +93,8 @@ emailConfigRouter.post('/test', guard({ permission: 'system:email-config:update'
     });
 
     return c.json({ code: 0, message: '测试邮件发送成功', data: null });
-  } catch (err: any) {
-    return c.json({ code: 500, message: `发送失败: ${err.message ?? String(err)}`, data: null }, 500);
+  } catch (err: unknown) {
+    return c.json({ code: 500, message: `发送失败: ${err instanceof Error ? err.message : String(err)}`, data: null }, 500);
   }
 });
 

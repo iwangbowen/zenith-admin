@@ -30,7 +30,7 @@ export function validatePassword(password: string, policy: PasswordPolicy): stri
   if (policy.requireUppercase && !/[A-Z]/.test(password)) {
     return '密码必须包含至少一个大写字母';
   }
-  if (policy.requireSpecialChar && !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]/.test(password)) {
+  if (policy.requireSpecialChar && !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
     return '密码必须包含至少一个特殊字符';
   }
   return null;

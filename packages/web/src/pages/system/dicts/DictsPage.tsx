@@ -10,6 +10,7 @@ import {
   Toast,
   SideSheet,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, List, RotateCcw, Download } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -22,8 +23,8 @@ import './DictsPage.css';
 
 export default function DictsPage() {
   const { hasPermission } = usePermission();
-  const dictFormApi = useRef<any>(null);
-  const itemFormApi = useRef<any>(null);
+  const dictFormApi = useRef<FormApi | null>(null);
+  const itemFormApi = useRef<FormApi | null>(null);
 
   // ─── 字典列表 ──────────────────────────────────────────────────────────────
   const [dicts, setDicts] = useState<Dict[]>([]);
@@ -89,7 +90,7 @@ export default function DictsPage() {
 
   // ─── 字典 CRUD ─────────────────────────────────────────────────────────────
   const handleDictModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await dictFormApi.current!.validate();
     } catch {
@@ -122,7 +123,7 @@ export default function DictsPage() {
   // ─── 字典项 CRUD ───────────────────────────────────────────────────────────
   const handleItemModalOk = async () => {
     if (!selectedDict) return;
-    let values: any;
+    let values;
     try {
       values = await itemFormApi.current!.validate();
     } catch {

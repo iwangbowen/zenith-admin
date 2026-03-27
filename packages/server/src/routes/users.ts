@@ -333,8 +333,8 @@ usersRouter.post('/', guard({ permission: 'system:user:create', audit: { descrip
       message: '创建成功',
       data: publicUser,
     });
-  } catch (err: any) {
-    if (err.code === '23505') {
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === '23505') {
       return c.json({ code: 400, message: '用户名或邮箱已存在', data: null }, 400);
     }
     throw err;
@@ -650,8 +650,8 @@ usersRouter.post('/import', guard({ permission: 'system:user:import', audit: { d
       existingUsernames.add(username);
       existingEmails.add(email);
       success++;
-    } catch (e: any) {
-      errors.push({ row: rowNum, message: `插入失败: ${(e.message as string | undefined) ?? '未知错误'}` });
+    } catch (e: unknown) {
+      errors.push({ row: rowNum, message: `插入失败: ${e instanceof Error ? e.message : '未知错误'}` });
     }
   }
 

@@ -8,13 +8,19 @@ interface Props {
   readonly onLogout: () => void;
 }
 
+interface FormValues {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 export default function ForceChangePasswordModal({ user, onLogout }: Props) {
   const [loading, setLoading] = useState(false);
 
   // We show the modal if requirePasswordChange is true.
   const visible = !!user.requirePasswordChange;
 
-  const handleSubmit = async (values: any) => {
+  const handleSubmit = async (values: FormValues) => {
     if (values.newPassword !== values.confirmPassword) {
       Notification.error({ title: '两次输入的密码不一致' });
       return;

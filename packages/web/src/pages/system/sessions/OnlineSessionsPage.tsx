@@ -34,7 +34,7 @@ export default function OnlineSessionsPage() {
 
   useEffect(() => {
     void fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleForceLogout = (tokenId: string, username: string) => {
     Modal.confirm({

@@ -20,7 +20,9 @@
     "db:seed": "npm run db:seed -w @zenith/server",
     "test": "npm run test -w @zenith/server && npm run test -w @zenith/web",
     "test:server": "npm run test -w @zenith/server",
-    "test:web": "npm run test -w @zenith/web"
+    "test:web": "npm run test -w @zenith/web",
+    "lint": "npm run lint -w @zenith/server && npm run lint -w @zenith/web",
+    "lint:fix": "npm run lint:fix -w @zenith/server && npm run lint:fix -w @zenith/web"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

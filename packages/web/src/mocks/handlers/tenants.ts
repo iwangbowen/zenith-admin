@@ -11,7 +11,7 @@ export const tenantsHandlers = [
     const page = Number(url.searchParams.get('page') ?? '1');
     const pageSize = Number(url.searchParams.get('pageSize') ?? '10');
 
-    let filtered = mockTenants.filter((t) => {
+    const filtered = mockTenants.filter((t) => {
       if (keyword && !t.name.includes(keyword) && !t.code.includes(keyword)) return false;
       if (status && t.status !== status) return false;
       return true;

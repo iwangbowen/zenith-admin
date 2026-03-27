@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
@@ -106,7 +106,7 @@ export default function OperationLogsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
   const [detailLog, setDetailLog] = useState<OperationLog | null>(null);
 
-  const fetchData = async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
     try {
       const query = new URLSearchParams({
@@ -131,11 +131,12 @@ export default function OperationLogsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleSearch = () => {
     setPage(1);

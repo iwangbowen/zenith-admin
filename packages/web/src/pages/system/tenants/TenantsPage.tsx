@@ -9,8 +9,8 @@ import {
   Form,
   Toast,
   Tag,
-  DatePicker,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Tenant } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -27,7 +27,7 @@ export default function TenantsPage() {
   }
 
   const defaultSearchParams: SearchParams = { keyword: '', status: '' };
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<Tenant[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -57,7 +57,7 @@ export default function TenantsPage() {
     }
   }, [page, pageSize, searchParams]);
 
-  useEffect(() => { void fetchData(); }, []);
+  useEffect(() => { void fetchData(); }, [fetchData]);
 
   function handleSearch() {
     setPage(1);
@@ -71,7 +71,7 @@ export default function TenantsPage() {
   }
 
   const handleModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await formApi.current!.validate();
     } catch {

@@ -11,7 +11,9 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
@@ -37,6 +39,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/ali-oss": "^6.23.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.9",
@@ -44,8 +47,10 @@
     "@types/nodemailer": "^6.4.17",
     "@types/ua-parser-js": "^0.7.39",
     "drizzle-kit": "^0.30.5",
+    "eslint": "^10.1.0",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3",
+    "typescript-eslint": "^8.57.2",
     "vitest": "^4.1.1"
   }
 }

@@ -32,7 +32,7 @@ export default function DbBackupsPage() {
     }
   }, [page, pageSize, filterStatus, filterType]);
 
-  useEffect(() => { fetchList(1); }, [filterStatus, filterType]);
+  useEffect(() => { fetchList(1); }, [filterStatus, filterType, fetchList]);
 
   const handleSearch = () => fetchList(1);
   const handleReset = () => { setFilterStatus(''); setFilterType(''); };

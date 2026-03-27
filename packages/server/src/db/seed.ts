@@ -7,7 +7,7 @@ import logger from '../lib/logger';
 import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const { provinces, cities, areas } = require('china-division') as {
   provinces: Array<{ code: string; name: string }>;
   cities: Array<{ code: string; name: string; provinceCode: string }>;

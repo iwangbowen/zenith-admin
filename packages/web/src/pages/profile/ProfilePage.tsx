@@ -116,13 +116,13 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     if (activeSection === 'devices') void fetchSessions();
     if (activeSection === 'logs' && !logsLoaded) { void fetchLoginLogs(1); setLogsLoaded(true); }
     if (activeSection === 'api-tokens') void fetchApiTokens();
-  }, [activeSection]);
+  }, [activeSection, oauthLoaded, logsLoaded]);
 
   useEffect(() => {
     if (activeSection !== 'logs') return;
     if (logTab === 'login') void fetchLoginLogs(loginLogsPage);
     else void fetchOperationLogs(operationLogsPage);
-  }, [logTab]);
+  }, [logTab, activeSection, loginLogsPage, operationLogsPage]);
 
   // ─── 数据获取 ────────────────────────────────────────────────────────────────
 

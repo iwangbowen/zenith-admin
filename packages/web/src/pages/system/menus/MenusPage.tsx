@@ -11,6 +11,7 @@ import {
   Row,
   Col,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Plus } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
@@ -24,7 +25,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 
 export default function MenusPage() {
   const { hasPermission } = usePermission();
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -85,7 +86,7 @@ export default function MenusPage() {
   };
 
   const handleMenuModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await formApi.current!.validate();
     } catch {

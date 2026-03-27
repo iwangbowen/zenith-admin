@@ -10,7 +10,9 @@
     "build:demo": "tsc -b && vite build --mode demo",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix"
   },
   "dependencies": {
     "@douyinfe/semi-ui": "^2.93.0",
@@ -26,6 +28,7 @@
     "recharts": "^3.8.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -33,9 +36,13 @@
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "china-division": "^2.7.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
     "jsdom": "^29.0.1",
     "msw": "^2.12.14",
     "typescript": "^5.7.3",
+    "typescript-eslint": "^8.57.2",
     "vite": "^6.2.2",
     "vitest": "^4.1.1"
   },

@@ -10,6 +10,7 @@ import {
   Toast,
   Popconfirm,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Region } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -41,7 +42,7 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '', level: '' }
 
 export default function RegionsPage() {
   const { hasPermission } = usePermission();
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Region[]>([]);
@@ -126,12 +127,13 @@ export default function RegionsPage() {
     : { level: 'province', sort: 0, status: 'active' };
 
   async function handleModalOk() {
-    let values: any;
+    let values;
     try {
       values = await formApi.current?.validate();
     } catch {
       throw new Error('validation');
     }
+    if (!values) throw new Error('validation');
 
     const payload = {
       ...values,

@@ -14,6 +14,7 @@ import {
   Upload,
   Typography,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -36,8 +37,8 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: 
 
 export default function UsersPage() {
   const { hasPermission } = usePermission();
-  const formApi = useRef<any>(null);
-  const passwordFormApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
+  const passwordFormApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -181,7 +182,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     void fetchUsers();
-  }, []);
+  }, [fetchUsers]);
 
   function handleSearch() {
     setPage(1);
@@ -195,12 +196,13 @@ export default function UsersPage() {
   }
 
   const handleModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await formApi.current?.validate();
     } catch {
       throw new Error('validation');
     }
+    if (!values) throw new Error('validation');
 
     const payload = {
       ...values,
@@ -223,12 +225,13 @@ export default function UsersPage() {
   };
 
   const handlePasswordModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await passwordFormApi.current?.validate();
     } catch {
       throw new Error('validation');
     }
+    if (!values) throw new Error('validation');
 
     if (values.password !== values.confirmPassword) {
       Toast.error('两次密码输入不一致');

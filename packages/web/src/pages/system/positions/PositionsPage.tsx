@@ -10,6 +10,7 @@ import {
   Table,
   Toast,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { Position } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -33,7 +34,7 @@ const defaultSearchParams: SearchParams = {
 
 export default function PositionsPage() {
   const { hasPermission } = usePermission();
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<Position[]>([]);
@@ -67,7 +68,7 @@ export default function PositionsPage() {
 
   useEffect(() => {
     void fetchPositions();
-  }, []);
+  }, [fetchPositions]);
 
   const formInitValues = editingPosition
     ? {
@@ -92,7 +93,7 @@ export default function PositionsPage() {
   };
 
   const handleModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await formApi.current?.validate();
     } catch {

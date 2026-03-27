@@ -1,6 +1,5 @@
-import type { Context } from 'hono';
 import type { SQL } from 'drizzle-orm';
-import { eq, isNull, or } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { config } from '../config';
 import type { JwtPayload } from '../middleware/auth';
 
@@ -27,6 +26,7 @@ export function getEffectiveTenantId(user: JwtPayload): number | null {
  * - Platform admin with viewingTenantId → filter by that tenant
  * - Normal user → filter by their tenantId
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function tenantCondition<T extends { tenantId: any }>(
   table: T,
   user: JwtPayload,

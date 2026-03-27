@@ -12,6 +12,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, Search, RotateCcw, Download } from 'lucide-react';
 import type {
   CreateFileStorageConfigInput,
@@ -77,7 +78,7 @@ export default function FileStorageConfigsPage() {
   }
 
   const defaultSearchParams: SearchParams = { status: '', timeRange: null };
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [configs, setConfigs] = useState<FileStorageConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
@@ -111,7 +112,7 @@ export default function FileStorageConfigsPage() {
 
   useEffect(() => {
     void fetchConfigs();
-  }, []);
+  }, [fetchConfigs]);
 
   const handleSearch = () => {
     void fetchConfigs();
@@ -137,13 +138,14 @@ export default function FileStorageConfigsPage() {
   };
 
   const handleModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await formApi.current!.validate();
     } catch {
       throw new Error('validation');
     }
-    const payload = buildPayload(formProvider, formIsDefault, values);
+    if (!values) throw new Error('validation');
+    const payload = buildPayload(formProvider, formIsDefault, values as FileStorageConfigFormValues);
     const res = editingConfig
       ? await request.put<FileStorageConfig>(`/api/file-storage-configs/${editingConfig.id}`, payload)
       : await request.post<FileStorageConfig>('/api/file-storage-configs', payload);

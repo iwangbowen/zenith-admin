@@ -9,6 +9,7 @@ import {
   Table,
   Toast,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Department } from '@zenith/shared';
@@ -96,7 +97,7 @@ function buildDepartmentTreeData(items: Department[], excludedIds: Set<number>):
 
 export default function DepartmentsPage() {
   const { hasPermission } = usePermission();
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<Department[]>([]);
@@ -126,7 +127,7 @@ export default function DepartmentsPage() {
 
   useEffect(() => {
     void fetchDepartments();
-  }, []);
+  }, [fetchDepartments]);
 
   const parentTreeData = useMemo(() => {
     const excludedIds = editingDepartment
@@ -166,7 +167,7 @@ export default function DepartmentsPage() {
   };
 
   const handleModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await formApi.current?.validate();
     } catch {

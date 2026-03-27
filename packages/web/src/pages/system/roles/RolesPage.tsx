@@ -13,6 +13,7 @@ import {
   Avatar,
   DatePicker,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Role, Menu, User } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -31,7 +32,7 @@ export default function RolesPage() {
   }
 
   const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: null };
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<Role[]>([]);
   const { items: statusItems } = useDictItems('common_status');
   const [loading, setLoading] = useState(false);
@@ -71,7 +72,7 @@ export default function RolesPage() {
     }
   }, [searchParams]);
 
-  useEffect(() => { void fetchRoles(); }, []);
+  useEffect(() => { void fetchRoles(); }, [fetchRoles]);
 
   function handleSearch() {
     void fetchRoles();
@@ -143,7 +144,7 @@ export default function RolesPage() {
   };
 
   const handleRoleModalOk = async () => {
-    let values: any;
+    let values;
     try {
       values = await formApi.current!.validate();
     } catch {

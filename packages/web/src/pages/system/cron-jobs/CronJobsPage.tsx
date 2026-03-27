@@ -11,6 +11,7 @@ import {
   Tag,
   Toast,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { CronJob, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -39,7 +40,7 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function CronJobsPage() {
   const { hasPermission } = usePermission();
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<CronJob[]>([]);
@@ -84,7 +85,7 @@ export default function CronJobsPage() {
     request.get<string[]>('/api/cron-jobs/handlers').then((res) => {
       if (res.code === 0) setHandlers(res.data);
     });
-  }, []);
+  }, [fetchData]);
 
   const handleSearch = () => { setPage(1); void fetchData(1); };
   const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, defaultSearchParams); };
@@ -113,7 +114,7 @@ export default function CronJobsPage() {
   };
 
   const handleModalOk = async () => {
-    let values: any;
+    let values;
     try { values = await formApi.current?.validate(); } catch { throw new Error('validation'); }
 
     const res = editingJob

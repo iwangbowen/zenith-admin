@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { eq, desc, sql, gte, lte, like, and, isNull } from 'drizzle-orm';
@@ -13,11 +14,11 @@ import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { generateCaptcha, verifyCaptcha } from '../lib/captcha';
 import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
 import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
-import { isPlatformAdmin, getEffectiveTenantId } from '../lib/tenant';
+import { isPlatformAdmin } from '../lib/tenant';
 
 const auth = new Hono();
 
-async function recordLoginLog(c: any, username: string, status: 'success' | 'fail', message: string, userId?: number, tenantId?: number | null) {
+async function recordLoginLog(c: Context, username: string, status: 'success' | 'fail', message: string, userId?: number, tenantId?: number | null) {
   const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
   const ua = c.req.header('user-agent') || '';
   const parser = new UAParser(ua);

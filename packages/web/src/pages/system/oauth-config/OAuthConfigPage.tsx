@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form, Button, Toast, Space, Spin, Typography, Divider, Tabs, TabPane } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Save } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import type { OAuthConfig, OAuthProviderType } from '@zenith/shared';
@@ -41,7 +42,7 @@ export default function OAuthConfigPage() {
   const [loading, setLoading] = useState(false);
   const [configs, setConfigs] = useState<OAuthConfig[]>([]);
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
-  const [formApis, setFormApis] = useState<Record<string, any>>({});
+  const [formApis, setFormApis] = useState<Record<string, FormApi>>({});
 
   useEffect(() => {
     setLoading(true);

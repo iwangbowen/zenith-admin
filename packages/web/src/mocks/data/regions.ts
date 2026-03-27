@@ -1,9 +1,6 @@
 import type { Region } from '@zenith/shared';
-// @ts-ignore — china-division lacks TypeScript types
 import provincesJson from 'china-division/dist/provinces.json';
-// @ts-ignore
 import citiesJson from 'china-division/dist/cities.json';
-// @ts-ignore
 import areasJson from 'china-division/dist/areas.json';
 
 interface ProvinceItem { code: string; name: string }

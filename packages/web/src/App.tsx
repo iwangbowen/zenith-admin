@@ -4,7 +4,7 @@ import { Spin } from '@douyinfe/semi-ui';
 import { useAuth } from '@/hooks/useAuth';
 import { PermissionContext } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
-import type { Menu } from '@zenith/shared';
+import type { Menu, User } from '@zenith/shared';
 
 import AdminLayout from '@/layouts/AdminLayout';
 
@@ -24,7 +24,7 @@ const FIXED_ROUTES = new Set(['/profile', '/notifications']);
 
 /** 扁平化菜单以便注册路由 */
 function flattenMenus(menus: Menu[]): Menu[] {
-  let routes: Menu[] = [];
+  const routes: Menu[] = [];
   for (const m of menus) {
     if (m.path && m.component && !FIXED_ROUTES.has(m.path)) {
       routes.push(m);
@@ -36,7 +36,14 @@ function flattenMenus(menus: Menu[]): Menu[] {
   return routes;
 }
 
-function AdminRouteLoader({ user, permissions, logout, updateUser }: any) {
+interface AdminRouteLoaderProps {
+  user: Omit<User, 'password'>;
+  permissions: string[];
+  logout: () => void;
+  updateUser: (user: Omit<User, 'password'>) => void;
+}
+
+function AdminRouteLoader({ user, permissions, logout, updateUser }: AdminRouteLoaderProps) {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -73,7 +80,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: any) {
         {dynamicRoutes.map(m => {
           // 由于 vite glob 是以 ./pages 开头的，我们需要拼接
           const importPath = `./pages/${m.component}.tsx`;
-          const importFn = modules[importPath] as () => Promise<{ default: React.ComponentType<any> }>;
+          const importFn = modules[importPath] as () => Promise<{ default: React.ComponentType }>;
 
           if (!importFn) {
             console.warn(`[Router] Component not found for path: ${m.path} -> ${importPath}`);

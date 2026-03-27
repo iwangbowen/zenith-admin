@@ -9,6 +9,7 @@ import {
   Table,
   Toast,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { SystemConfig, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -28,7 +29,7 @@ const defaultSearchParams: SearchParams = { keyword: '', configType: '' };
 export default function SystemConfigsPage() {
   const { hasPermission } = usePermission();
   const { items: configTypeItems, loading: configTypeLoading } = useDictItems('system_config_type');
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<SystemConfig[]>([]);
@@ -60,7 +61,7 @@ export default function SystemConfigsPage() {
 
   useEffect(() => {
     void fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleSearch = () => { setPage(1); void fetchData(1); };
   const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, defaultSearchParams); };
@@ -76,7 +77,7 @@ export default function SystemConfigsPage() {
   };
 
   const handleModalOk = async () => {
-    let values: any;
+    let values;
     try { values = await formApi.current?.validate(); } catch { throw new Error('validation'); }
 
     const res = editingConfig

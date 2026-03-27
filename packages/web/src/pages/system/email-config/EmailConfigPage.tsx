@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Form, Button, Select, Toast, Space, Spin, Typography, Divider, Modal, Input } from '@douyinfe/semi-ui';
+import { Form, Button, Toast, Space, Spin, Typography, Divider, Modal, Input } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Save, Send, Mail } from 'lucide-react';
 import type { EmailConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -9,7 +10,7 @@ const { Title, Text } = Typography;
 
 export default function EmailConfigPage() {
   const { hasPermission } = usePermission();
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [testModalVisible, setTestModalVisible] = useState(false);
