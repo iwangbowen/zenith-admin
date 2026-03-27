@@ -16,6 +16,7 @@ import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Plus, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { renderLucideIcon } from '@/utils/icons';
 import IconPicker from '@/components/IconPicker';
 import { usePermission } from '@/hooks/usePermission';
@@ -237,26 +238,20 @@ export default function MenusPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div className="responsive-toolbar">
-          <div className="responsive-toolbar__left">
-            <Space wrap>
-              <Button
-                type="tertiary"
-                icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-                onClick={toggleExpandAll}
-              >
-                {isAllExpanded ? '全部折叠' : '全部展开'}
-              </Button>
-            </Space>
-          </div>
-          <div className="responsive-toolbar__right">
-            <Space>
-              {hasPermission('system:menu:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>}
-            </Space>
-          </div>
-        </div>
-      </div>
+      <SearchToolbar
+        left={
+          <Button
+            type="tertiary"
+            icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+            onClick={toggleExpandAll}
+          >
+            {isAllExpanded ? '全部折叠' : '全部展开'}
+          </Button>
+        }
+        right={
+          hasPermission('system:menu:create') ? <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button> : undefined
+        }
+      />
 
       <div>
         <Table

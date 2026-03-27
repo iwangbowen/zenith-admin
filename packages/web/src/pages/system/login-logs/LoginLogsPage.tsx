@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Input, Button, Tag, Select, Space, DatePicker, Modal } from '@douyinfe/semi-ui';
+import { Table, Input, Button, Tag, Select, DatePicker, Modal } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
 import type { LoginLog, PaginatedResponse } from '@zenith/shared';
 
@@ -105,51 +106,45 @@ export default function LoginLogsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div className="responsive-toolbar">
-          <div className="responsive-toolbar__left">
-            <Space wrap>
-              <Input
-                prefix={<Search size={14} />}
-                placeholder="请输入用户名"
-                value={searchParams.username}
-                onChange={(v) => setSearchParams({ ...searchParams, username: v })}
-                onEnterPress={handleSearch}
-                style={{ width: 180 }}
-                showClear
-              />
-              <Select
-                placeholder="请选择状态"
-                value={searchParams.status || undefined}
-                onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
-                style={{ width: 150 }}
-              >
-                <Select.Option value="">全部</Select.Option>
-                <Select.Option value="success">成功</Select.Option>
-                <Select.Option value="fail">失败</Select.Option>
-              </Select>
-              <DatePicker
-                type="dateTimeRange"
-                placeholder={["开始时间", "结束时间"]}
-                value={searchParams.timeRange ?? undefined}
-                onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
-                style={{ width: 360 }}
-              />
-              <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-                查询
-              </Button>
-              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-                重置
-              </Button>
-            </Space>
-          </div>
-          <div className="responsive-toolbar__right">
-            <Space>
-              <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            </Space>
-          </div>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="请输入用户名"
+            value={searchParams.username}
+            onChange={(v) => setSearchParams({ ...searchParams, username: v })}
+            onEnterPress={handleSearch}
+            style={{ width: 180 }}
+            showClear
+          />
+          <Select
+            placeholder="请选择状态"
+            value={searchParams.status || undefined}
+            onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
+            style={{ width: 150 }}
+          >
+            <Select.Option value="">全部</Select.Option>
+            <Select.Option value="success">成功</Select.Option>
+            <Select.Option value="fail">失败</Select.Option>
+          </Select>
+          <DatePicker
+            type="dateTimeRange"
+            placeholder={["开始时间", "结束时间"]}
+            value={searchParams.timeRange ?? undefined}
+            onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
+            style={{ width: 360 }}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
+            查询
+          </Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
+            重置
+          </Button>
+        </>}
+        right={
+          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+        }
+      />
 
       <div>
         <Table

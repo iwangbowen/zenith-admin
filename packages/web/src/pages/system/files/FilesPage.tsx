@@ -20,6 +20,7 @@ import { config } from '@/config';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import './FilesPage.css';
 
 const { Text } = Typography;
@@ -280,68 +281,65 @@ export default function FilesPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div className="responsive-toolbar files-toolbar">
-          <div className="responsive-toolbar__left files-toolbar__left">
-            <Space wrap>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索文件名 / 对象键 / 文件服务"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-              onEnterPress={handleSearch}
-              style={{ width: 'min(280px, 100%)' }}
-              showClear
-            />
-            <Select
-              placeholder="存储类型"
-              value={searchParams.provider || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
-              style={{ width: 140 }}
-              optionList={[
-                { value: '', label: '全部类型' },
-                { value: 'local', label: '本地磁盘' },
-                { value: 'oss', label: '阿里云 OSS' },
-              ]}
-            />
-            <DatePicker
-              type="dateTimeRange"
-              placeholder={["开始时间", "结束时间"]}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-              style={{ width: 'min(360px, 100%)' }}
-            />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            </Space>
+      <SearchToolbar
+        className="files-toolbar"
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索文件名 / 对象键 / 文件服务"
+            value={searchParams.keyword}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+            onEnterPress={handleSearch}
+            style={{ width: 'min(280px, 100%)' }}
+            showClear
+          />
+          <Select
+            placeholder="存储类型"
+            value={searchParams.provider || undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
+            style={{ width: 140 }}
+            optionList={[
+              { value: '', label: '全部类型' },
+              { value: 'local', label: '本地磁盘' },
+              { value: 'oss', label: '阿里云 OSS' },
+            ]}
+          />
+          <DatePicker
+            type="dateTimeRange"
+            placeholder={["开始时间", "结束时间"]}
+            value={searchParams.timeRange ?? undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+            style={{ width: 'min(360px, 100%)' }}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<>
+          <div className="files-default-tip">
+            <Text strong>默认文件服务：</Text>
+            {defaultConfig ? (
+              <>
+                <Tag color={defaultConfig.provider === 'local' ? 'blue' : 'orange'} size="small">
+                  {defaultConfig.provider === 'local' ? '本地磁盘' : '阿里云 OSS'}
+                </Tag>
+                <Text>{defaultConfig.name}</Text>
+              </>
+            ) : (
+              <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
+            )}
           </div>
-          <div className="responsive-toolbar__right files-toolbar__right">
-            <div className="files-default-tip">
-              <Text strong>默认文件服务：</Text>
-              {defaultConfig ? (
-                <>
-                  <Tag color={defaultConfig.provider === 'local' ? 'blue' : 'orange'} size="small">
-                    {defaultConfig.provider === 'local' ? '本地磁盘' : '阿里云 OSS'}
-                  </Tag>
-                  <Text>{defaultConfig.name}</Text>
-                </>
-              ) : (
-                <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
-              )}
-            </div>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/files/export', '文件列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            {hasPermission('system:file:upload') && <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
-              上传文件
-            </Button>}
-            <input
-              ref={fileInputRef}
-              type="file"
-              hidden
-              onChange={handleUpload}
-            />
-          </div>
-        </div>
-      </div>
+          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/files/export', '文件列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          {hasPermission('system:file:upload') && <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
+            上传文件
+          </Button>}
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            onChange={handleUpload}
+          />
+        </>}
+      />
 
       <ImagePreview
         src={previewSrcList}

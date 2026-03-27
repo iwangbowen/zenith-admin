@@ -132,8 +132,9 @@ body {
 .responsive-toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .responsive-toolbar__left {
@@ -147,7 +148,7 @@ body {
 
 .responsive-toolbar__right {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-end;
   gap: 12px;
   flex-wrap: wrap;

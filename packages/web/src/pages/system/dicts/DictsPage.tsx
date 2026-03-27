@@ -14,6 +14,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, List, RotateCcw, Download } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -245,37 +246,31 @@ export default function DictsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div className="responsive-toolbar">
-          <div className="responsive-toolbar__left">
-            <Space wrap>
-              <Input
-                prefix={<Search size={14} />}
-                placeholder="搜索字典名称/编码"
-                value={keyword}
-                onChange={(v) => setKeyword(v)}
-                onEnterPress={handleSearch}
-                showClear
-                style={{ width: 'min(280px, 100%)' }}
-              />
-              <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            </Space>
-          </div>
-          <div className="responsive-toolbar__right">
-            <Space>
-              <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-              {hasPermission('system:dict:create') && <Button
-                type="secondary"
-                icon={<Plus size={14} />}
-                onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
-              >
-                新增
-              </Button>}
-            </Space>
-          </div>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索字典名称/编码"
+            value={keyword}
+            onChange={(v) => setKeyword(v)}
+            onEnterPress={handleSearch}
+            showClear
+            style={{ width: 'min(280px, 100%)' }}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<Space>
+          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          {hasPermission('system:dict:create') && <Button
+            type="secondary"
+            icon={<Plus size={14} />}
+            onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
+          >
+            新增
+          </Button>}
+        </Space>}
+      />
       <Table
         bordered
         className="admin-table-nowrap"

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Table, Input, Button, Tag, DatePicker, Modal, JsonViewer, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
 import './OperationLogsPage.css';
@@ -210,10 +211,8 @@ export default function OperationLogsPage() {
       </Tabs>
       {activeTab === 'list' && (
         <>
-          <div className="search-area">
-        <div className="responsive-toolbar">
-          <div className="responsive-toolbar__left">
-            <Space wrap>
+          <SearchToolbar
+            left={<>
               <Input
                 prefix={<Search size={14} />}
                 placeholder="请输入操作人"
@@ -295,15 +294,11 @@ export default function OperationLogsPage() {
               <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
                 重置
               </Button>
-            </Space>
-          </div>
-          <div className="responsive-toolbar__right">
-            <Space>
+            </>}
+            right={
               <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/operation-logs/export', '操作日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            </Space>
-          </div>
-        </div>
-      </div>
+            }
+          />
 
       <div>
         <Table

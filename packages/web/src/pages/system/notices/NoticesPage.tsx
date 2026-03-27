@@ -18,6 +18,7 @@ import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { Notice, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
@@ -262,59 +263,53 @@ export default function NoticesPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div className="responsive-toolbar">
-          <div className="responsive-toolbar__left">
-            <Space wrap>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索标题"
-              value={searchParams.title}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
-              onEnterPress={handleSearch}
-              style={{ width: 200 }}
-              showClear
-            />
-            <Select
-              placeholder="通知类型"
-              value={searchParams.type || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
-              optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
-              showClear
-              style={{ width: 140 }}
-            />
-            <Select
-              placeholder="发布状态"
-              value={searchParams.publishStatus || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
-              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
-              showClear
-              style={{ width: 140 }}
-            />
-            <DatePicker
-              type="dateTimeRange"
-              placeholder={["开始时间", "结束时间"]}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
-              style={{ width: 360 }}
-            />
-            <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
-            <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
-          </Space>
-          </div>
-          <div className="responsive-toolbar__right">
-          <Space>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/notices/export', '通知列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            {selectedRowKeys.length > 0 && hasPermission('system:notice:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
-            )}
-            {hasPermission('system:notice:create') && <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>}
-            </Space>
-          </div>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索标题"
+            value={searchParams.title}
+            onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
+            onEnterPress={handleSearch}
+            style={{ width: 200 }}
+            showClear
+          />
+          <Select
+            placeholder="通知类型"
+            value={searchParams.type || undefined}
+            onChange={(v) => setSearchParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
+            optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
+            showClear
+            style={{ width: 140 }}
+          />
+          <Select
+            placeholder="发布状态"
+            value={searchParams.publishStatus || undefined}
+            onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
+            optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
+            showClear
+            style={{ width: 140 }}
+          />
+          <DatePicker
+            type="dateTimeRange"
+            placeholder={["开始时间", "结束时间"]}
+            value={searchParams.timeRange ?? undefined}
+            onChange={(v) => setSearchParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
+            style={{ width: 360 }}
+          />
+          <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
+          <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
+        </>}
+        right={<Space>
+          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/notices/export', '通知列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          {selectedRowKeys.length > 0 && hasPermission('system:notice:delete') && (
+            <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+              批量删除 ({selectedRowKeys.length})
+            </Button>
+          )}
+          {hasPermission('system:notice:create') && <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>}
+        </Space>}
+      />
 
       <div>
         <Table

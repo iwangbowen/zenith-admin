@@ -14,6 +14,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Tenant } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -172,60 +173,54 @@ export default function TenantsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div className="responsive-toolbar">
-          <div className="responsive-toolbar__left">
-            <Space wrap>
-              <Input
-                prefix={<Search size={14} />}
-                placeholder="搜索租户名称/编码"
-                value={searchParams.keyword}
-                onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-                onEnterPress={handleSearch}
-                style={{ width: 220 }}
-                showClear
-              />
-              <Select
-                placeholder="请选择状态"
-                value={searchParams.status || undefined}
-                onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-                style={{ width: 140 }}
-                optionList={[
-                  { value: '', label: '全部状态' },
-                  { value: 'active', label: '正常' },
-                  { value: 'disabled', label: '停用' },
-                ]}
-              />
-              <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            </Space>
-          </div>
-          <div className="responsive-toolbar__right">
-            <Space>
-              <Button
-                icon={<Download size={14} />}
-                loading={exportLoading}
-                onClick={async () => {
-                  setExportLoading(true);
-                  try { await request.download('/api/tenants/export', '租户列表.xlsx'); }
-                  finally { setExportLoading(false); }
-                }}
-              >
-                导出
-              </Button>
-              {hasPermission('system:tenant:create') && (
-                <Button
-                  type="secondary"
-                  icon={<Plus size={14} />}
-                  onClick={() => { setEditingTenant(null); setModalVisible(true); }}
-                >
-                  新增
-                </Button>
-              )}
-            </Space>
-          </div>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索租户名称/编码"
+            value={searchParams.keyword}
+            onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+            onEnterPress={handleSearch}
+            style={{ width: 220 }}
+            showClear
+          />
+          <Select
+            placeholder="请选择状态"
+            value={searchParams.status || undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+            style={{ width: 140 }}
+            optionList={[
+              { value: '', label: '全部状态' },
+              { value: 'active', label: '正常' },
+              { value: 'disabled', label: '停用' },
+            ]}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<Space>
+          <Button
+            icon={<Download size={14} />}
+            loading={exportLoading}
+            onClick={async () => {
+              setExportLoading(true);
+              try { await request.download('/api/tenants/export', '租户列表.xlsx'); }
+              finally { setExportLoading(false); }
+            }}
+          >
+            导出
+          </Button>
+          {hasPermission('system:tenant:create') && (
+            <Button
+              type="secondary"
+              icon={<Plus size={14} />}
+              onClick={() => { setEditingTenant(null); setModalVisible(true); }}
+            >
+              新增
+            </Button>
+          )}
+        </Space>}
+      />
 
       <div>
         <Table
