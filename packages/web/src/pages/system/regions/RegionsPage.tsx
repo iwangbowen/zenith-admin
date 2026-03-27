@@ -338,7 +338,7 @@ export default function RegionsPage() {
         rowKey="id"
         size="small"
         expandedRowKeys={expandedRowKeys}
-        onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.map((r: Region) => r.id) ?? [])}
+        onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.map((r) => r.id) ?? [])}
         childrenRecordName="children"
         pagination={false}
         scroll={{ x: 'max-content' }}
