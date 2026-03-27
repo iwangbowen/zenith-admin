@@ -329,7 +329,7 @@ export default function RegionsPage() {
           getFormApi={(api) => { formApi.current = api; }}
           initValues={formInitValues}
           labelPosition="left"
-          labelWidth={80}
+          labelWidth={90}
         >
           <Form.Select
             field="level"
