@@ -30,7 +30,7 @@ async function seed() {
     email: 'admin@zenith.dev',
     password: hashedPassword,
     status: 'active',
-  }).onConflictDoNothing({ target: users.username });
+  }).onConflictDoNothing();
   logger.info('  ✔ Admin user seeded (onConflictDoNothing)');
 
   // ─── 2. 菜单数据（数据来源：@zenith/shared SEED_MENUS）─────────────────────
