@@ -312,8 +312,6 @@ export default function RegionsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
               重置
             </Button>
-          </Space>
-          <Space>
             <Button
               type="tertiary"
               icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
@@ -321,6 +319,8 @@ export default function RegionsPage() {
             >
               {isAllExpanded ? '全部折叠' : '全部展开'}
             </Button>
+          </Space>
+          <Space>
             {hasPermission('system:region:create') && (
               <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>
                 新增
