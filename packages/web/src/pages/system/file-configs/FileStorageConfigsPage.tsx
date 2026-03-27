@@ -215,13 +215,13 @@ export default function FileStorageConfigsPage() {
       title: '存储信息',
       key: 'storageSummary',
       dataIndex: 'storageSummary',
-      ellipsis: { showTitle: false },
-      render: (_: unknown, record: FileStorageConfig) => (
-        <div className="storage-summary-cell" title={getStorageSummary(record)}>
-          <Text strong>{record.provider === 'local' ? '目录' : 'Bucket / Region'}</Text>
-          <span className="table-cell-ellipsis">{getStorageSummary(record)}</span>
-        </div>
-      ),
+      width: 180,
+      ellipsis: true,
+      render: (_: unknown, record: FileStorageConfig) => {
+        const label = record.provider === 'local' ? '目录' : 'Bucket';
+        const summary = getStorageSummary(record);
+        return `${label}: ${summary}`;
+      },
     },
     {
       title: '基础路径',

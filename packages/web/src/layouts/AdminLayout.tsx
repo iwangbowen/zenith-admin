@@ -656,7 +656,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           )}
           {/* Tabs bar — shown above breadcrumb for all layouts */}
           {preferences.enableTabs && tabs.length > 0 && (
-            <div className="admin-tabs-bar" data-tab-animation={preferences.tabAnimation}>
+            <div className={`admin-tabs-bar${preferences.showBreadcrumb ? ' admin-tabs-bar--with-breadcrumb' : ''}`} data-tab-animation={preferences.tabAnimation}>
               {tabs.map((tab) => {
                   const isEntering = enteringTabKeys.has(tab.key);
                   const isExiting = exitingTabKeys.has(tab.key);

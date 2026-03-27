@@ -20,7 +20,7 @@
   --color-border: #e1e3e6;
   --radius: 6px;
   --topbar-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-  --tabsbar-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  --tabsbar-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 /* 深色模式变量 */
@@ -39,7 +39,7 @@
   --color-text-secondary: #8f96a3;
   --color-border: #2e3340;
   --topbar-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
-  --tabsbar-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --tabsbar-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   color-scheme: dark;
 }
 
