@@ -84,9 +84,9 @@ export default function FilesPage() {
         ...(params.provider ? { provider: params.provider } : {}),
         ...(params.timeRange
           ? {
-              startTime: params.timeRange[0].toISOString(),
-              endTime: params.timeRange[1].toISOString(),
-            }
+            startTime: params.timeRange[0].toISOString(),
+            endTime: params.timeRange[1].toISOString(),
+          }
           : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<ManagedFile>>(`/api/files?${query}`);
@@ -357,29 +357,27 @@ export default function FilesPage() {
         infinite
       />
 
-      <div>
-        <Table
-          bordered
-          className="admin-table-nowrap"
-          columns={columns}
-          dataSource={data?.list || []}
-          rowKey="id"
-          loading={loading}
-          size="small"
-          empty="暂无文件记录"
-          pagination={{
-            currentPage: page,
-            pageSize: pageSize,
-            total: data?.total || 0,
-            onPageChange: (currentPage) => { void fetchFiles(currentPage, pageSize); },
-            onPageSizeChange: (size) => {
-              void fetchFiles(1, size);
-            },
-            showTotal: true,
-            showSizeChanger: true,
-          }}
-        />
-      </div>
+      <Table
+        bordered
+        className="admin-table-nowrap"
+        columns={columns}
+        dataSource={data?.list || []}
+        rowKey="id"
+        loading={loading}
+        size="small"
+        empty="暂无文件记录"
+        pagination={{
+          currentPage: page,
+          pageSize: pageSize,
+          total: data?.total || 0,
+          onPageChange: (currentPage) => { void fetchFiles(currentPage, pageSize); },
+          onPageSizeChange: (size) => {
+            void fetchFiles(1, size);
+          },
+          showTotal: true,
+          showSizeChanger: true,
+        }}
+      />
     </div>
   );
 }

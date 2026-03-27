@@ -82,9 +82,9 @@ export default function NoticesPage() {
         ...(params.publishStatus ? { publishStatus: params.publishStatus } : {}),
         ...(params.timeRange
           ? {
-              startTime: params.timeRange[0].toISOString(),
-              endTime: params.timeRange[1].toISOString(),
-            }
+            startTime: params.timeRange[0].toISOString(),
+            endTime: params.timeRange[1].toISOString(),
+          }
           : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<Notice>>(`/api/notices?${query}`);
@@ -215,7 +215,7 @@ export default function NoticesPage() {
       width: 110,
       render: (v: string) => {
         const item = statusItems.find((i) => i.value === v);
-        return <Tag         color={publishStatusColorMap[v] as 'grey' | 'green' | 'orange'}>{item?.label ?? v}</Tag>;
+        return <Tag color={publishStatusColorMap[v] as 'grey' | 'green' | 'orange'}>{item?.label ?? v}</Tag>;
       },
     },
     {
@@ -311,36 +311,34 @@ export default function NoticesPage() {
         </Space>}
       />
 
-      <div>
-        <Table
-          bordered
-          columns={columns}
-          dataSource={data}
-          loading={loading}
-          rowKey="id"
-          scroll={{ x: 1200 }}
-          rowSelection={{
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(keys as number[]),
-          }}
-          pagination={{
-            total,
-            currentPage: page,
-            pageSize,
-            showSizeChanger: true,
-            pageSizeOpts: [10, 20, 50],
-            onPageChange: (p: number) => {
-              setPage(p);
-              void fetchData(p, pageSize, submittedParams);
-            },
-            onPageSizeChange: (ps: number) => {
-              setPageSize(ps);
-              setPage(1);
-              void fetchData(1, ps, submittedParams);
-            },
-          }}
-        />
-      </div>
+      <Table
+        bordered
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        rowKey="id"
+        scroll={{ x: 1200 }}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as number[]),
+        }}
+        pagination={{
+          total,
+          currentPage: page,
+          pageSize,
+          showSizeChanger: true,
+          pageSizeOpts: [10, 20, 50],
+          onPageChange: (p: number) => {
+            setPage(p);
+            void fetchData(p, pageSize, submittedParams);
+          },
+          onPageSizeChange: (ps: number) => {
+            setPageSize(ps);
+            setPage(1);
+            void fetchData(1, ps, submittedParams);
+          },
+        }}
+      />
 
       <SideSheet
         title={editingNotice ? '编辑通知' : '新增通知'}
@@ -363,11 +361,11 @@ export default function NoticesPage() {
           initValues={
             editingNotice
               ? {
-                  title: editingNotice.title,
-                  type: editingNotice.type,
-                  publishStatus: editingNotice.publishStatus,
-                  priority: editingNotice.priority,
-                }
+                title: editingNotice.title,
+                type: editingNotice.type,
+                publishStatus: editingNotice.publishStatus,
+                priority: editingNotice.priority,
+              }
               : { type: 'notice', publishStatus: 'draft', priority: 'medium' }
           }
         >

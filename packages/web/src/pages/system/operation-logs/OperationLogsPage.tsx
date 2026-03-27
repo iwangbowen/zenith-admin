@@ -132,7 +132,7 @@ export default function OperationLogsPage() {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -300,22 +300,20 @@ export default function OperationLogsPage() {
             }
           />
 
-      <div>
-        <Table
-          bordered
-          columns={columns}
-          dataSource={data}
-          loading={loading}
-          scroll={{ x: 1600 }}
-          pagination={{
-            currentPage: page,
-            pageSize,
-            total,
-            onPageChange: (c) => { void fetchData(c, pageSize); },
-            onPageSizeChange: (s) => { void fetchData(1, s); },
-          }}
-        />
-      </div>
+          <Table
+            bordered
+            columns={columns}
+            dataSource={data}
+            loading={loading}
+            scroll={{ x: 1600 }}
+            pagination={{
+              currentPage: page,
+              pageSize,
+              total,
+              onPageChange: (c) => { void fetchData(c, pageSize); },
+              onPageSizeChange: (s) => { void fetchData(1, s); },
+            }}
+          />
         </>
       )}
       {activeTab === 'stats' && (

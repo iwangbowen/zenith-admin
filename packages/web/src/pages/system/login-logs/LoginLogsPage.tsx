@@ -146,21 +146,19 @@ export default function LoginLogsPage() {
         }
       />
 
-      <div>
-        <Table
-          bordered
-          columns={columns}
-          dataSource={data}
-          loading={loading}
-          pagination={{
-            currentPage: page,
-            pageSize,
-            total,
-            onPageChange: (c) => { void fetchData(c, pageSize); },
-            onPageSizeChange: (s) => { void fetchData(1, s); }
-          }}
-        />
-      </div>
+      <Table
+        bordered
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+        pagination={{
+          currentPage: page,
+          pageSize,
+          total,
+          onPageChange: (c) => { void fetchData(c, pageSize); },
+          onPageSizeChange: (s) => { void fetchData(1, s); }
+        }}
+      />
 
       <Modal
         title="登录日志详情"
@@ -188,8 +186,8 @@ export default function LoginLogsPage() {
                   <div style={{ fontSize: 13, wordBreak: 'break-all' }}>
                     {label === '状态'
                       ? <Tag color={detailLog.status === 'success' ? 'green' : 'red'} size="small">
-                          {detailLog.status === 'success' ? '成功' : '失败'}
-                        </Tag>
+                        {detailLog.status === 'success' ? '成功' : '失败'}
+                      </Tag>
                       : value}
                   </div>
                 </div>

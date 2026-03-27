@@ -96,9 +96,9 @@ export default function FileStorageConfigsPage() {
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
           ? {
-              startTime: params.timeRange[0].toISOString(),
-              endTime: params.timeRange[1].toISOString(),
-            }
+            startTime: params.timeRange[0].toISOString(),
+            endTime: params.timeRange[1].toISOString(),
+          }
           : {}),
       }).toString();
       const url = query ? `/api/file-storage-configs?${query}` : '/api/file-storage-configs';
@@ -268,25 +268,25 @@ export default function FileStorageConfigsPage() {
 
   const initValues: FileStorageConfigFormValues = editingConfig
     ? {
-        ...editingConfig,
-        basePath: editingConfig.basePath ?? '',
-        localRootPath: editingConfig.localRootPath ?? '',
-        ossRegion: editingConfig.ossRegion ?? '',
-        ossEndpoint: editingConfig.ossEndpoint ?? '',
-        ossBucket: editingConfig.ossBucket ?? '',
-        ossAccessKeyId: editingConfig.ossAccessKeyId ?? '',
-        ossAccessKeySecret: editingConfig.ossAccessKeySecret ?? '',
-        remark: editingConfig.remark ?? '',
-      }
+      ...editingConfig,
+      basePath: editingConfig.basePath ?? '',
+      localRootPath: editingConfig.localRootPath ?? '',
+      ossRegion: editingConfig.ossRegion ?? '',
+      ossEndpoint: editingConfig.ossEndpoint ?? '',
+      ossBucket: editingConfig.ossBucket ?? '',
+      ossAccessKeyId: editingConfig.ossAccessKeyId ?? '',
+      ossAccessKeySecret: editingConfig.ossAccessKeySecret ?? '',
+      remark: editingConfig.remark ?? '',
+    }
     : {
-        name: '',
-        provider: 'local',
-        status: 'active',
-        isDefault: false,
-        basePath: 'uploads',
-        localRootPath: 'storage/local',
-        remark: '',
-      };
+      name: '',
+      provider: 'local',
+      status: 'active',
+      isDefault: false,
+      basePath: 'uploads',
+      localRootPath: 'storage/local',
+      remark: '',
+    };
 
   return (
     <div className="page-container">
@@ -322,18 +322,16 @@ export default function FileStorageConfigsPage() {
         </div>
       </SearchToolbar>
 
-      <div>
-        <Table
-          bordered
-          className="admin-table-nowrap"
-          columns={columns}
-          dataSource={configs}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
-          size="small"
-        />
-      </div>
+      <Table
+        bordered
+        className="admin-table-nowrap"
+        columns={columns}
+        dataSource={configs}
+        rowKey="id"
+        loading={loading}
+        pagination={{ pageSize: 10, showSizeChanger: true }}
+        size="small"
+      />
 
       <Modal
         title={editingConfig ? '编辑文件配置' : '新增文件配置'}

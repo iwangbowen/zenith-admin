@@ -222,24 +222,22 @@ export default function TenantsPage() {
         </Space>}
       />
 
-      <div>
-        <Table
-          bordered
-          className="admin-table-nowrap"
-          columns={columns}
-          dataSource={data}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            currentPage: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            onPageChange: (p) => { setPage(p); void fetchData(p, pageSize); },
-            onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); void fetchData(1, ps); },
-          }}
-        />
-      </div>
+      <Table
+        bordered
+        className="admin-table-nowrap"
+        columns={columns}
+        dataSource={data}
+        rowKey="id"
+        loading={loading}
+        pagination={{
+          currentPage: page,
+          pageSize,
+          total,
+          showSizeChanger: true,
+          onPageChange: (p) => { setPage(p); void fetchData(p, pageSize); },
+          onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); void fetchData(1, ps); },
+        }}
+      />
 
       <Modal
         title={editingTenant ? '编辑租户' : '新增租户'}

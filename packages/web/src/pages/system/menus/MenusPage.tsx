@@ -253,19 +253,17 @@ export default function MenusPage() {
         }
       />
 
-      <div>
-        <Table
-          bordered
-          className="admin-table-nowrap"
-          columns={columns}
-          dataSource={data}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
-          expandedRowKeys={expandedRowKeys}
-          onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Menu => 'id' in r).map((r) => r.id) ?? [])}
-        />
-      </div>
+      <Table
+        bordered
+        className="admin-table-nowrap"
+        columns={columns}
+        dataSource={data}
+        rowKey="id"
+        loading={loading}
+        pagination={{ pageSize: 10, showSizeChanger: true }}
+        expandedRowKeys={expandedRowKeys}
+        onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Menu => 'id' in r).map((r) => r.id) ?? [])}
+      />
 
       <Modal
         title={editingMenu ? '编辑菜单' : '新增菜单'}

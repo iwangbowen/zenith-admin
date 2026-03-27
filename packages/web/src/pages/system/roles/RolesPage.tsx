@@ -60,13 +60,13 @@ export default function RolesPage() {
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
           ? {
-              startTime: params.timeRange[0].toISOString(),
-              endTime: params.timeRange[1].toISOString(),
-            }
+            startTime: params.timeRange[0].toISOString(),
+            endTime: params.timeRange[1].toISOString(),
+          }
           : {}),
       }).toString();
-          const url = query ? `/api/roles?${query}` : '/api/roles';
-          const res = await request.get<Role[]>(url);
+      const url = query ? `/api/roles?${query}` : '/api/roles';
+      const res = await request.get<Role[]>(url);
       if (res.code === 0) setData(res.data);
     } finally {
       setLoading(false);
@@ -276,17 +276,15 @@ export default function RolesPage() {
         </Space>}
       />
 
-      <div>
-        <Table
-          bordered
-          className="admin-table-nowrap"
-          columns={columns}
-          dataSource={data}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
-        />
-      </div>
+      <Table
+        bordered
+        className="admin-table-nowrap"
+        columns={columns}
+        dataSource={data}
+        rowKey="id"
+        loading={loading}
+        pagination={{ pageSize: 10, showSizeChanger: true }}
+      />
 
       {/* 创建/编辑 Modal */}
       <Modal
