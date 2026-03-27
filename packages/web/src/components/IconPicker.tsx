@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Popover, Input, List, Pagination } from '@douyinfe/semi-ui';
 import { Search, ChevronDown, X } from 'lucide-react';
-import { ALL_ICON_NAMES, renderLucideIcon } from '../utils/icons';
+import { ALL_ICON_NAMES, renderLucideIcon } from '@/utils/icons';
 import './IconPicker.css';
 
 interface IconPickerProps {

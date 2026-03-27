@@ -16,10 +16,10 @@ import { Plus, Search, RotateCcw, Download } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { config } from '../../../config';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import { usePermission } from '../../../hooks/usePermission';
+import { config } from '@/config';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { usePermission } from '@/hooks/usePermission';
 import './FilesPage.css';
 
 const { Text } = Typography;

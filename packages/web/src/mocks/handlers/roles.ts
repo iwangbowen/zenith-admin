@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
-import { mockRoles, getNextRoleId } from '../data/roles';
-import { mockMenus } from '../data/menus';
+import { mockRoles, getNextRoleId } from '@/mocks/data/roles';
+import { mockMenus } from '@/mocks/data/menus';
 import type { Role } from '@zenith/shared';
 
 export const rolesHandlers = [

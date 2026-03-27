@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Tag, Space, DatePicker, Modal, JsonViewer, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
 import './OperationLogsPage.css';
 import OperationLogStatsPanel from './OperationLogStatsPanel';

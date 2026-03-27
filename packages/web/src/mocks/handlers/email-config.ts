@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockEmailConfig } from '../data/email-config';
+import { mockEmailConfig } from '@/mocks/data/email-config';
 import type { EmailConfig } from '@zenith/shared';
 
 let emailConfig: EmailConfig = { ...mockEmailConfig };

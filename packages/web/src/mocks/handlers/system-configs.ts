@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockSystemConfigs } from '../data/system';
+import { mockSystemConfigs } from '@/mocks/data/system';
 import type { SystemConfig } from '@zenith/shared';
 
 export const systemConfigsHandlers = [

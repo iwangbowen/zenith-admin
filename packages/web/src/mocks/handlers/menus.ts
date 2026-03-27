@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockMenus, buildMenuTree, getNextMenuId } from '../data/menus';
+import { mockMenus, buildMenuTree, getNextMenuId } from '@/mocks/data/menus';
 import type { Menu } from '@zenith/shared';
 
 export const menusHandlers = [

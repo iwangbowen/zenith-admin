@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockOperationLogs } from '../data/logs';
+import { mockOperationLogs } from '@/mocks/data/logs';
 import dayjs from 'dayjs';
 
 const MOCK_MODULE_STATS = [

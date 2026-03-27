@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Space, Tag, Select, Popconfirm, Toast, Modal, Form } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Plus } from 'lucide-react';
 import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 
 export default function DbBackupsPage() {
   const [list, setList] = useState<DbBackup[]>([]);

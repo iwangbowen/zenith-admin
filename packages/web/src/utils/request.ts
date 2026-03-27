@@ -1,7 +1,7 @@
 import { Toast } from '@douyinfe/semi-ui';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { ApiResponse } from '@zenith/shared';
-import { config } from '../config';
+import { config } from '@/config';
 
 export interface RequestOptions {
   /** 静默模式：为 true 时不自动弹出错误提示，由调用方自行处理 */

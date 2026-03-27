@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Spin, Toast } from '@douyinfe/semi-ui';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
-import { request } from '../../utils/request';
+import { request } from '@/utils/request';
 
 export default function OAuthCallbackPage() {
   const { provider } = useParams<{ provider: string }>();

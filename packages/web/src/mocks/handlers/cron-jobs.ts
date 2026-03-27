@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockCronJobs, getNextCronJobId } from '../data/system';
+import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
 import type { CronJob } from '@zenith/shared';
 
 export const cronJobsHandlers = [

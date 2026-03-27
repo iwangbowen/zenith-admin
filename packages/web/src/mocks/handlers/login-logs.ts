@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockLoginLogs } from '../data/logs';
+import { mockLoginLogs } from '@/mocks/data/logs';
 
 export const loginLogsHandlers = [
   http.get('/api/login-logs', ({ request }) => {

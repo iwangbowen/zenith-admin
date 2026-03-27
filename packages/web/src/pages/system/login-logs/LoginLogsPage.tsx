@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Tag, Select, Space, DatePicker, Modal } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 import type { LoginLog, PaginatedResponse } from '@zenith/shared';
 
 export default function LoginLogsPage() {

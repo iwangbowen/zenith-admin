@@ -14,12 +14,12 @@ import {
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Plus } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
-import { request } from '../../../utils/request';
-import { renderLucideIcon } from '../../../utils/icons';
-import IconPicker from '../../../components/IconPicker';
-import { usePermission } from '../../../hooks/usePermission';
-import DictTag from '../../../components/DictTag';
-import { useDictItems } from '../../../hooks/useDictItems';
+import { request } from '@/utils/request';
+import { renderLucideIcon } from '@/utils/icons';
+import IconPicker from '@/components/IconPicker';
+import { usePermission } from '@/hooks/usePermission';
+import DictTag from '@/components/DictTag';
+import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 
 export default function MenusPage() {

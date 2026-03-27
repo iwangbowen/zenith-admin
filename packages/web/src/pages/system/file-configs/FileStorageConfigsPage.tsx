@@ -20,9 +20,9 @@ import type {
   UpdateFileStorageConfigInput,
 } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import { usePermission } from '../../../hooks/usePermission';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { usePermission } from '@/hooks/usePermission';
 import './FileStorageConfigsPage.css';
 
 const { Text } = Typography;

@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockFileStorageConfigs } from '../data/system';
+import { mockFileStorageConfigs } from '@/mocks/data/system';
 import type { ManagedFile, FileStorageConfig } from '@zenith/shared';
 
 export const mockManagedFiles: ManagedFile[] = [

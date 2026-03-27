@@ -13,11 +13,11 @@ import {
 import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Region } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import DictTag from '../../../components/DictTag';
-import { useDictItems } from '../../../hooks/useDictItems';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import { usePermission } from '../../../hooks/usePermission';
+import DictTag from '@/components/DictTag';
+import { useDictItems } from '@/hooks/useDictItems';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { usePermission } from '@/hooks/usePermission';
 
 const LEVEL_LABELS: Record<string, string> = {
   province: '省级',

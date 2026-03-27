@@ -1,6 +1,6 @@
 import { Tag } from '@douyinfe/semi-ui';
 import type { TagProps } from '@douyinfe/semi-ui/lib/es/tag';
-import { useDictItems } from '../hooks/useDictItems';
+import { useDictItems } from '@/hooks/useDictItems';
 
 interface DictTagProps extends Omit<TagProps, 'color' | 'children'> {
   /** 字典编码，如 'common_status' */

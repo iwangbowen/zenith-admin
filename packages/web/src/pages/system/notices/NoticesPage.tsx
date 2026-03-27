@@ -15,12 +15,12 @@ import {
 import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { Notice, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import { useDictItems } from '../../../hooks/useDictItems';
-import DictTag from '../../../components/DictTag';
-import { usePermission } from '../../../hooks/usePermission';
-import RichTextEditor from '../../../components/RichTextEditor';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { useDictItems } from '@/hooks/useDictItems';
+import DictTag from '@/components/DictTag';
+import { usePermission } from '@/hooks/usePermission';
+import RichTextEditor from '@/components/RichTextEditor';
 
 type SearchParams = {
   title: string;

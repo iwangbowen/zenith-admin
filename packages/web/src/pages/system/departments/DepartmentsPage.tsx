@@ -13,11 +13,11 @@ import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Department } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import DictTag from '../../../components/DictTag';
-import { useDictItems } from '../../../hooks/useDictItems';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import { usePermission } from '../../../hooks/usePermission';
+import DictTag from '@/components/DictTag';
+import { useDictItems } from '@/hooks/useDictItems';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { usePermission } from '@/hooks/usePermission';
 
 interface SearchParams {
   keyword: string;

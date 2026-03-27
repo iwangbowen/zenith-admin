@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Calendar, Typography, Tag, Space, Spin, Empty, Toast, List } from '@douyinfe/semi-ui';
 import { Bell, Github, BookOpen, MonitorPlay, Users, UserCheck, Wifi, LogIn, Activity } from 'lucide-react';
-import { request } from '../../utils/request';
-import { formatDateTime } from '../../utils/date';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 import type { Notice } from '@zenith/shared';
-import { usePermission } from '../../hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import './DashboardPage.css';
 
 const { Text } = Typography;

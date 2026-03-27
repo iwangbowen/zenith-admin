@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
-import { mockUsers, getNextUserId, type MockUser } from '../data/users';
-import { mockRoles } from '../data/roles';
-import { mockPositions } from '../data/positions';
-import { mockDepartments } from '../data/departments';
+import { mockUsers, getNextUserId, type MockUser } from '@/mocks/data/users';
+import { mockRoles } from '@/mocks/data/roles';
+import { mockPositions } from '@/mocks/data/positions';
+import { mockDepartments } from '@/mocks/data/departments';
 
 // Demo 模式下新增/重置用户时使用的默认初始口令（明文仅用于演示环境）
 const DEMO_INITIAL_CREDENTIAL = ['1', '2', '3', '4', '5', '6'].join('');

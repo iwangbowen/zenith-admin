@@ -15,11 +15,11 @@ import {
 } from '@douyinfe/semi-ui';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Role, Menu, User } from '@zenith/shared';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import { usePermission } from '../../../hooks/usePermission';
-import DictTag from '../../../components/DictTag';
-import { useDictItems } from '../../../hooks/useDictItems';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { usePermission } from '@/hooks/usePermission';
+import DictTag from '@/components/DictTag';
+import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 
 export default function RolesPage() {

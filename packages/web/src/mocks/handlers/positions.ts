@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockPositions, getNextPositionId } from '../data/positions';
+import { mockPositions, getNextPositionId } from '@/mocks/data/positions';
 import type { Position } from '@zenith/shared';
 
 export const positionsHandlers = [

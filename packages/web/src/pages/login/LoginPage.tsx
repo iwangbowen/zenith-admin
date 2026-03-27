@@ -4,7 +4,7 @@ import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-u
 import { User, Lock, Mail, AtSign } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import type { RegisterInput, OAuthProviderType } from '@zenith/shared';
-import { request } from '../../utils/request';
+import { request } from '@/utils/request';
 import './LoginPage.css';
 
 const { Title, Text } = Typography;

@@ -12,11 +12,11 @@ import {
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { SystemConfig, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import DictTag from '../../../components/DictTag';
-import { useDictItems } from '../../../hooks/useDictItems';
-import { usePermission } from '../../../hooks/usePermission';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import DictTag from '@/components/DictTag';
+import { useDictItems } from '@/hooks/useDictItems';
+import { usePermission } from '@/hooks/usePermission';
 
 interface SearchParams {
   keyword: string;

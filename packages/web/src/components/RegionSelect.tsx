@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Cascader } from '@douyinfe/semi-ui';
 import type { CSSProperties } from 'react';
 import type { Region } from '@zenith/shared';
-import { request } from '../utils/request';
+import { request } from '@/utils/request';
 
 interface CascaderItem {
   label: string;

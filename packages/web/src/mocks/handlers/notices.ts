@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockNotices, getNextNoticeId } from '../data/notices';
+import { mockNotices, getNextNoticeId } from '@/mocks/data/notices';
 import type { Notice } from '@zenith/shared';
 
 export const noticesHandlers = [

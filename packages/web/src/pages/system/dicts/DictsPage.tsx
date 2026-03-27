@@ -12,12 +12,12 @@ import {
 } from '@douyinfe/semi-ui';
 import { Search, Plus, List, RotateCcw, Download } from 'lucide-react';
 import type { Dict, DictItem } from '@zenith/shared';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import DictTag from '../../../components/DictTag';
-import { useDictItems } from '../../../hooks/useDictItems';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import DictTag from '@/components/DictTag';
+import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { usePermission } from '../../../hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import './DictsPage.css';
 
 export default function DictsPage() {

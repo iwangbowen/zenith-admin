@@ -14,10 +14,10 @@ import {
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { CronJob, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import { usePermission } from '../../../hooks/usePermission';
-import { CronBuilderPopover } from '../../../components/CronBuilderPopover';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { usePermission } from '@/hooks/usePermission';
+import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 
 interface SearchParams {
   keyword: string;

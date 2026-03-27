@@ -3,16 +3,16 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Dropdown, Empty, List, Notification, Popover, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Bell, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
 import type { User, Menu, Notice, WsMessage } from '@zenith/shared';
-import { useTheme, type ThemeMode } from '../hooks/useTheme';
-import { usePreferences, type NavLayout } from '../hooks/usePreferences';
-import { useTabsStore } from '../hooks/useTabsStore';
-import { useWebSocket } from '../hooks/useWebSocket';
-import { request } from '../utils/request';
-import { formatDateTime } from '../utils/date';
-import { config } from '../config';
-import { renderLucideIcon } from '../utils/icons';
-import NProgress from '../components/NProgress';
-import ForceChangePasswordModal from '../components/ForceChangePasswordModal';
+import { useTheme, type ThemeMode } from '@/hooks/useTheme';
+import { usePreferences, type NavLayout } from '@/hooks/usePreferences';
+import { useTabsStore } from '@/hooks/useTabsStore';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { config } from '@/config';
+import { renderLucideIcon } from '@/utils/icons';
+import NProgress from '@/components/NProgress';
+import ForceChangePasswordModal from '@/components/ForceChangePasswordModal';
 import './AdminLayout.css';
 
 // 主题图标

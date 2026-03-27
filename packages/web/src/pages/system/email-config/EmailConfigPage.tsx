@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Form, Button, Select, Toast, Space, Spin, Typography, Divider, Modal, Input } from '@douyinfe/semi-ui';
 import { Save, Send, Mail } from 'lucide-react';
 import type { EmailConfig } from '@zenith/shared';
-import { request } from '../../../utils/request';
-import { usePermission } from '../../../hooks/usePermission';
+import { request } from '@/utils/request';
+import { usePermission } from '@/hooks/usePermission';
 
 const { Title, Text } = Typography;
 

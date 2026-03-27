@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockDicts, mockDictItems, getNextDictId, getNextDictItemId } from '../data/dicts';
+import { mockDicts, mockDictItems, getNextDictId, getNextDictItemId } from '@/mocks/data/dicts';
 import type { Dict, DictItem } from '@zenith/shared';
 
 export const dictsHandlers = [

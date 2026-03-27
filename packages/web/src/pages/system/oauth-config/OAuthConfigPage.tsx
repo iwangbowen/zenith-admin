@@ -3,8 +3,8 @@ import { Form, Button, Toast, Space, Spin, Typography, Divider, Tabs, TabPane } 
 import { Save } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import type { OAuthConfig, OAuthProviderType } from '@zenith/shared';
-import { request } from '../../../utils/request';
-import { usePermission } from '../../../hooks/usePermission';
+import { request } from '@/utils/request';
+import { usePermission } from '@/hooks/usePermission';
 
 const { Title, Text } = Typography;
 

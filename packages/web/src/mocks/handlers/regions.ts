@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockRegions, getNextRegionId, buildRegionTree } from '../data/regions';
+import { mockRegions, getNextRegionId, buildRegionTree } from '@/mocks/data/regions';
 import type { Region } from '@zenith/shared';
 
 function filterTree(nodes: Region[], keyword: string, status: string, level: string): Region[] {

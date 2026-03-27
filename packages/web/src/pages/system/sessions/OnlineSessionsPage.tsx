@@ -10,9 +10,9 @@ import {
 import { Search, RotateCcw } from 'lucide-react';
 import type { OnlineUser } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
-import { usePermission } from '../../../hooks/usePermission';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { usePermission } from '@/hooks/usePermission';
 
 export default function OnlineSessionsPage() {
   const { hasPermission } = usePermission();

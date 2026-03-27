@@ -16,14 +16,14 @@ import {
 } from '@douyinfe/semi-ui';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
-import { request } from '../../utils/request';
-import { formatDateTime } from '../../utils/date';
-import { formatPasswordPolicyHint, type PasswordPolicy } from '../../utils/password-policy';
-import DictTag from '../../components/DictTag';
-import { useDictItems } from '../../hooks/useDictItems';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
+import DictTag from '@/components/DictTag';
+import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { usePermission } from '../../hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import './UsersPage.css';
 
 interface SearchParams {

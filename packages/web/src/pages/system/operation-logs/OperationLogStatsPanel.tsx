@@ -12,7 +12,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import dayjs from 'dayjs';
-import { request } from '../../../utils/request';
+import { request } from '@/utils/request';
 import type { OperationLogStats } from '@zenith/shared';
 
 const DAYS_OPTIONS = [

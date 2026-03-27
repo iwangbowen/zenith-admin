@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Modal, Form, Button, Notification } from '@douyinfe/semi-ui';
 import type { User } from '@zenith/shared';
-import { request } from '../utils/request';
+import { request } from '@/utils/request';
 
 interface Props {
   readonly user: Pick<User, 'requirePasswordChange'>;

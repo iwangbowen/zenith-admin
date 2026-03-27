@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers } from 'lucide-react';
-import { request } from '../../../utils/request';
-import { formatDateTime } from '../../../utils/date';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 import './MonitorPage.css';
 
 const { Text } = Typography;

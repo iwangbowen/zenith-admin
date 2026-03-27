@@ -1,8 +1,8 @@
 import { http, HttpResponse } from 'msw';
-import { mockUsers } from '../data/users';
-import { mockMenus } from '../data/menus';
-import { mockRoles } from '../data/roles';
-import { mockLoginLogs, mockOperationLogs } from '../data/logs';
+import { mockUsers } from '@/mocks/data/users';
+import { mockMenus } from '@/mocks/data/menus';
+import { mockRoles } from '@/mocks/data/roles';
+import { mockLoginLogs, mockOperationLogs } from '@/mocks/data/logs';
 
 const MOCK_TOKEN = 'mock-access-token-demo';
 const MOCK_REFRESH_TOKEN = 'mock-refresh-token-demo';

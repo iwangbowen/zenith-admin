@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { DictItem } from '@zenith/shared';
-import { request } from '../utils/request';
+import { request } from '@/utils/request';
 
 // 简单内存缓存，避免同一 code 重复请求
 const cache = new Map<string, DictItem[]>();

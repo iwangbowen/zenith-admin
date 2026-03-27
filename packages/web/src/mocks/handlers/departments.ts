@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockDepartments, getNextDeptId } from '../data/departments';
+import { mockDepartments, getNextDeptId } from '@/mocks/data/departments';
 import type { Department } from '@zenith/shared';
 
 function buildDeptTree(list: Department[], parentId: number = 0): Department[] {

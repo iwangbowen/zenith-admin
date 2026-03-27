@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { request } from '../utils/request';
+import { request } from '@/utils/request';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { User, LoginResponse } from '@zenith/shared';
 

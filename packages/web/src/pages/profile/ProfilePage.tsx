@@ -6,9 +6,9 @@ import {
 import { Icon } from '@iconify/react';
 
 import type { User, LoginLog, OperationLog, OAuthAccount, OAuthProviderType } from '@zenith/shared';
-import { request } from '../../utils/request';
-import { formatDateTime } from '../../utils/date';
-import { formatPasswordPolicyHint, type PasswordPolicy } from '../../utils/password-policy';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
 import './ProfilePage.css';
 
 const { Title, Text } = Typography;

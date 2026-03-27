@@ -5,8 +5,8 @@ import {
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { CheckCheck, Bell } from 'lucide-react';
 import type { Notice } from '@zenith/shared';
-import { request } from '../../utils/request';
-import { formatDateTime } from '../../utils/date';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 
 const { Text } = Typography;
 

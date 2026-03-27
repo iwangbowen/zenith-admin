@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import RegionSelect from '../../components/RegionSelect';
+import RegionSelect from '@/components/RegionSelect';
 import { Card, Space, Typography, Row, Col } from '@douyinfe/semi-ui';
 import './ComponentsPage.css';
 

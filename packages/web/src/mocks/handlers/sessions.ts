@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockOnlineSessions } from '../data/system';
+import { mockOnlineSessions } from '@/mocks/data/system';
 
 export const sessionsHandlers = [
   // 在线用户列表
