@@ -19,6 +19,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
 
 interface SearchParams {
   keyword: string;
@@ -189,58 +190,56 @@ export default function PositionsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Space wrap>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索岗位名称/编码"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-              onEnterPress={handleSearch}
-              style={{ width: 240 }}
-              showClear
-            />
-            <Select
-              placeholder="请选择状态"
-              value={searchParams.status || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-              style={{ width: 140 }}
-              optionList={[
-                { value: '', label: '全部状态' },
-                ...statusItems.map((item) => ({ value: item.value, label: item.label })),
-              ]}
-            />
-            <DatePicker
-              type="dateTimeRange"
-              placeholder={['开始时间', '结束时间']}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-              style={{ width: 360 }}
-            />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/positions/export', '岗位列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
-            )}
-            {hasPermission('system:position:create') && <Button
-              type="secondary"
-              icon={<Plus size={14} />}
-              onClick={() => {
-                setEditingPosition(null);
-                setModalVisible(true);
-              }}
-            >
-              新增
-            </Button>}
-          </Space>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索岗位名称/编码"
+            value={searchParams.keyword}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+            onEnterPress={handleSearch}
+            style={{ width: 240 }}
+            showClear
+          />
+          <Select
+            placeholder="请选择状态"
+            value={searchParams.status || undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+            style={{ width: 140 }}
+            optionList={[
+              { value: '', label: '全部状态' },
+              ...statusItems.map((item) => ({ value: item.value, label: item.label })),
+            ]}
+          />
+          <DatePicker
+            type="dateTimeRange"
+            placeholder={['开始时间', '结束时间']}
+            value={searchParams.timeRange ?? undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+            style={{ width: 360 }}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<Space>
+          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/positions/export', '岗位列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && (
+            <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+              批量删除 ({selectedRowKeys.length})
+            </Button>
+          )}
+          {hasPermission('system:position:create') && <Button
+            type="secondary"
+            icon={<Plus size={14} />}
+            onClick={() => {
+              setEditingPosition(null);
+              setModalVisible(true);
+            }}
+          >
+            新增
+          </Button>}
+        </Space>}
+      />
 
       <Table
         bordered

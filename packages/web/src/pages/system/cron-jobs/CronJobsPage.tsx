@@ -19,6 +19,7 @@ import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
+import { SearchToolbar } from '@/components/SearchToolbar';
 
 interface SearchParams {
   keyword: string;
@@ -236,40 +237,38 @@ export default function CronJobsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Space wrap>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索任务名称/处理器"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
-              onEnterPress={handleSearch}
-              style={{ width: 240 }}
-              showClear
-            />
-            <Select
-              placeholder="状态"
-              value={searchParams.status || undefined}
-              onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
-              style={{ width: 140 }}
-              optionList={[
-                { value: '', label: '全部' },
-                { value: 'active', label: '启用' },
-                { value: 'disabled', label: '禁用' },
-              ]}
-            />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-            {hasPermission('system:cronjob:create') && (
-              <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
-            )}
-          </Space>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索任务名称/处理器"
+            value={searchParams.keyword}
+            onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+            onEnterPress={handleSearch}
+            style={{ width: 240 }}
+            showClear
+          />
+          <Select
+            placeholder="状态"
+            value={searchParams.status || undefined}
+            onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+            style={{ width: 140 }}
+            optionList={[
+              { value: '', label: '全部' },
+              { value: 'active', label: '启用' },
+              { value: 'disabled', label: '禁用' },
+            ]}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<Space>
+          <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+          {hasPermission('system:cronjob:create') && (
+            <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
+          )}
+        </Space>}
+      />
 
       <Table
         bordered

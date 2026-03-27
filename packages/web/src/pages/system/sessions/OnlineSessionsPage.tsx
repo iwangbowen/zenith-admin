@@ -13,6 +13,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
 
 export default function OnlineSessionsPage() {
   const { hasPermission } = usePermission();
@@ -95,21 +96,19 @@ export default function OnlineSessionsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Space wrap>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索用户名/昵称/IP"
-              value={keyword}
-              onChange={setKeyword}
-              style={{ width: 240 }}
-              showClear
-            />
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { void fetchData(); }}>刷新</Button>
-          </Space>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索用户名/昵称/IP"
+            value={keyword}
+            onChange={setKeyword}
+            style={{ width: 240 }}
+            showClear
+          />
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { void fetchData(); }}>刷新</Button>
+        </>}
+      />
 
       <Table
         bordered

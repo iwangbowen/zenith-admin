@@ -18,6 +18,7 @@ import { formatDateTime } from '@/utils/date';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
 
 interface SearchParams {
   keyword: string;
@@ -157,37 +158,35 @@ export default function SystemConfigsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Space wrap>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索配置键/描述"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((p) => ({ ...p, keyword: value }))}
-              onEnterPress={handleSearch}
-              style={{ width: 240 }}
-              showClear
-            />
-            <Select
-              placeholder="配置类型"
-              value={searchParams.configType || undefined}
-              onChange={(v) => setSearchParams((p) => ({ ...p, configType: (v as string) ?? '' }))}
-              style={{ width: 140 }}
-              optionList={configTypeFilterOptions}
-              loading={configTypeLoading}
-            />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-            {hasPermission('system:config:create') && (
-              <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingConfig(null); setModalVisible(true); }}>新增</Button>
-            )}
-          </Space>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索配置键/描述"
+            value={searchParams.keyword}
+            onChange={(value) => setSearchParams((p) => ({ ...p, keyword: value }))}
+            onEnterPress={handleSearch}
+            style={{ width: 240 }}
+            showClear
+          />
+          <Select
+            placeholder="配置类型"
+            value={searchParams.configType || undefined}
+            onChange={(v) => setSearchParams((p) => ({ ...p, configType: (v as string) ?? '' }))}
+            style={{ width: 140 }}
+            optionList={configTypeFilterOptions}
+            loading={configTypeLoading}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<Space>
+          <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+          {hasPermission('system:config:create') && (
+            <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingConfig(null); setModalVisible(true); }}>新增</Button>
+          )}
+        </Space>}
+      />
 
       <Table
         bordered

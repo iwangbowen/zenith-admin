@@ -25,6 +25,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import './UsersPage.css';
 
 interface SearchParams {
@@ -409,65 +410,63 @@ export default function UsersPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Space wrap>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索用户名/昵称/邮箱"
-              value={searchParams.keyword}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-              onEnterPress={handleSearch}
-              style={{ width: 260 }}
-              showClear
-            />
-            <Select
-              placeholder="请选择状态"
-              value={searchParams.status || undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-              style={{ width: 140 }}
-              optionList={[
-                { value: '', label: '全部状态' },
-                ...statusItems.map((item) => ({ value: item.value, label: item.label })),
-              ]}
-            />
-            <DatePicker
-              type="dateTimeRange"
-              placeholder={["开始时间", "结束时间"]}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-              style={{ width: 360 }}
-            />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
-            {selectedRowKeys.length > 0 && hasPermission('system:user:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
-            )}
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            {hasPermission('system:user:import') && (
-              <Button
-                type="secondary"
-                icon={<FileUp size={14} />}
-                onClick={() => { setImportModalVisible(true); setImportResult(null); importFileRef.current = null; }}
-              >导入</Button>
-            )}
-            {hasPermission('system:user:create') && <Button
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索用户名/昵称/邮箱"
+            value={searchParams.keyword}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+            onEnterPress={handleSearch}
+            style={{ width: 260 }}
+            showClear
+          />
+          <Select
+            placeholder="请选择状态"
+            value={searchParams.status || undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+            style={{ width: 140 }}
+            optionList={[
+              { value: '', label: '全部状态' },
+              ...statusItems.map((item) => ({ value: item.value, label: item.label })),
+            ]}
+          />
+          <DatePicker
+            type="dateTimeRange"
+            placeholder={["开始时间", "结束时间"]}
+            value={searchParams.timeRange ?? undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+            style={{ width: 360 }}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<Space>
+          {selectedRowKeys.length > 0 && hasPermission('system:user:delete') && (
+            <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+              批量删除 ({selectedRowKeys.length})
+            </Button>
+          )}
+          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          {hasPermission('system:user:import') && (
+            <Button
               type="secondary"
-              icon={<Plus size={14} />}
-              onClick={() => {
-                setEditingUser(null);
-                setModalVisible(true);
-              }}
-            >
-              新增
-            </Button>}
-          </Space>
-        </div>
-      </div>
+              icon={<FileUp size={14} />}
+              onClick={() => { setImportModalVisible(true); setImportResult(null); importFileRef.current = null; }}
+            >导入</Button>
+          )}
+          {hasPermission('system:user:create') && <Button
+            type="secondary"
+            icon={<Plus size={14} />}
+            onClick={() => {
+              setEditingUser(null);
+              setModalVisible(true);
+            }}
+          >
+            新增
+          </Button>}
+        </Space>}
+      />
 
       <Table
         className="admin-table-nowrap"

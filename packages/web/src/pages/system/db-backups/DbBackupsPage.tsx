@@ -5,6 +5,7 @@ import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
 
 export default function DbBackupsPage() {
   const [list, setList] = useState<DbBackup[]>([]);
@@ -128,45 +129,43 @@ export default function DbBackupsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space>
-            <Select
-              placeholder="备份类型"
-              value={filterType}
-              onChange={(v) => setFilterType(v as string)}
-              optionList={[
-                { label: '全部类型', value: '' },
-                { label: 'pg_dump', value: 'pg_dump' },
-                { label: 'Drizzle 导出', value: 'drizzle_export' },
-              ]}
-              style={{ width: 150 }}
-              showClear
-            />
-            <Select
-              placeholder="状态"
-              value={filterStatus}
-              onChange={(v) => setFilterStatus(v as string)}
-              optionList={[
-                { label: '全部状态', value: '' },
-                { label: '等待中', value: 'pending' },
-                { label: '执行中', value: 'running' },
-                { label: '成功', value: 'success' },
-                { label: '失败', value: 'failed' },
-              ]}
-              style={{ width: 130 }}
-              showClear
-            />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          </Space>
-          <Space>
-            {hasPermission('system:db-backup:create') && (
-              <Button type="secondary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增备份</Button>
-            )}
-          </Space>
-        </div>
-      </div>
+      <SearchToolbar
+        left={<>
+          <Select
+            placeholder="备份类型"
+            value={filterType}
+            onChange={(v) => setFilterType(v as string)}
+            optionList={[
+              { label: '全部类型', value: '' },
+              { label: 'pg_dump', value: 'pg_dump' },
+              { label: 'Drizzle 导出', value: 'drizzle_export' },
+            ]}
+            style={{ width: 150 }}
+            showClear
+          />
+          <Select
+            placeholder="状态"
+            value={filterStatus}
+            onChange={(v) => setFilterStatus(v as string)}
+            optionList={[
+              { label: '全部状态', value: '' },
+              { label: '等待中', value: 'pending' },
+              { label: '执行中', value: 'running' },
+              { label: '成功', value: 'success' },
+              { label: '失败', value: 'failed' },
+            ]}
+            style={{ width: 130 }}
+            showClear
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        </>}
+        right={<Space>
+          {hasPermission('system:db-backup:create') && (
+            <Button type="secondary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增备份</Button>
+          )}
+        </Space>}
+      />
 
       <Table
         bordered

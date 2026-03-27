@@ -20,6 +20,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
 
 const LEVEL_LABELS: Record<string, string> = {
   province: '省级',
@@ -278,57 +279,55 @@ export default function RegionsPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Space wrap>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索名称或代码..."
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
-              showClear
-              style={{ width: 220 }}
-              onEnterPress={handleSearch}
-            />
-            <Select
-              placeholder="全部级别"
-              value={searchParams.level || undefined}
-              onChange={(v) => setSearchParams((p) => ({ ...p, level: (v as string) ?? '' }))}
-              showClear
-              style={{ width: 110 }}
-              optionList={LEVEL_OPTIONS}
-            />
-            <Select
-              placeholder="全部状态"
-              value={searchParams.status || undefined}
-              onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
-              showClear
-              style={{ width: 110 }}
-              optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
-            />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-              查询
+      <SearchToolbar
+        left={<>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索名称或代码..."
+            value={searchParams.keyword}
+            onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+            showClear
+            style={{ width: 220 }}
+            onEnterPress={handleSearch}
+          />
+          <Select
+            placeholder="全部级别"
+            value={searchParams.level || undefined}
+            onChange={(v) => setSearchParams((p) => ({ ...p, level: (v as string) ?? '' }))}
+            showClear
+            style={{ width: 110 }}
+            optionList={LEVEL_OPTIONS}
+          />
+          <Select
+            placeholder="全部状态"
+            value={searchParams.status || undefined}
+            onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+            showClear
+            style={{ width: 110 }}
+            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+          />
+          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
+            查询
+          </Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
+            重置
+          </Button>
+          <Button
+            type="tertiary"
+            icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+            onClick={toggleExpandAll}
+          >
+            {isAllExpanded ? '全部折叠' : '全部展开'}
+          </Button>
+        </>}
+        right={<Space>
+          {hasPermission('system:region:create') && (
+            <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>
+              新增
             </Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-              重置
-            </Button>
-            <Button
-              type="tertiary"
-              icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-              onClick={toggleExpandAll}
-            >
-              {isAllExpanded ? '全部折叠' : '全部展开'}
-            </Button>
-          </Space>
-          <Space>
-            {hasPermission('system:region:create') && (
-              <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>
-                新增
-              </Button>
-            )}
-          </Space>
-        </div>
-      </div>
+          )}
+        </Space>}
+      />
 
       <Table
         bordered
