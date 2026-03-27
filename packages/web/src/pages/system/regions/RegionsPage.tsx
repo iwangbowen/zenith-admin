@@ -12,7 +12,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw } from 'lucide-react';
+import { Search, Plus, RotateCcw, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import type { Region } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
@@ -52,6 +52,7 @@ export default function RegionsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRegion, setEditingRegion] = useState<Region | null>(null);
   const [editingLevel, setEditingLevel] = useState<string>('province');
+  const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
 
   const { items: statusItems } = useDictItems('common_status');
 
@@ -87,6 +88,25 @@ export default function RegionsPage() {
   function handleReset() {
     setSearchParams(defaultSearchParams);
     void fetchRegions(defaultSearchParams);
+  }
+
+  // 递归收集所有节点 ID
+  const allRowKeys = useMemo(() => {
+    const keys: number[] = [];
+    function collect(items: Region[]) {
+      for (const item of items) {
+        keys.push(item.id);
+        if (item.children?.length) collect(item.children);
+      }
+    }
+    collect(data);
+    return keys;
+  }, [data]);
+
+  const isAllExpanded = expandedRowKeys.length > 0 && expandedRowKeys.length >= allRowKeys.length;
+
+  function toggleExpandAll() {
+    setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
   }
 
   function openCreate() {
@@ -294,6 +314,13 @@ export default function RegionsPage() {
             </Button>
           </Space>
           <Space>
+            <Button
+              type="tertiary"
+              icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+              onClick={toggleExpandAll}
+            >
+              {isAllExpanded ? '全部折叠' : '全部展开'}
+            </Button>
             {hasPermission('system:region:create') && (
               <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>
                 新增
@@ -310,7 +337,8 @@ export default function RegionsPage() {
         loading={loading}
         rowKey="id"
         size="small"
-        expandAllRows={false}
+        expandedRowKeys={expandedRowKeys}
+        onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.map((r: Region) => r.id) ?? [])}
         childrenRecordName="children"
         pagination={false}
         scroll={{ x: 'max-content' }}

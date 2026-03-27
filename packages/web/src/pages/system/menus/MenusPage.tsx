@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Table,
   Button,
@@ -13,7 +13,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { Plus } from 'lucide-react';
+import { Plus, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { renderLucideIcon } from '@/utils/icons';
@@ -34,6 +34,8 @@ export default function MenusPage() {
   const [iconValue, setIconValue] = useState('');
   const [menuType, setMenuType] = useState<string>('menu');
 
+  const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
+
   const { items: menuTypeItems } = useDictItems('menu_type');
   const { items: statusItems } = useDictItems('common_status');
   const { items: menuVisibleItems } = useDictItems('menu_visible');
@@ -49,6 +51,25 @@ export default function MenusPage() {
   }, []);
 
   useEffect(() => { fetchMenus(); }, [fetchMenus]);
+
+  // 递归收集所有节点 ID
+  const allRowKeys = useMemo(() => {
+    const keys: number[] = [];
+    function collect(items: Menu[]) {
+      for (const item of items) {
+        keys.push(item.id);
+        if (item.children?.length) collect(item.children);
+      }
+    }
+    collect(data);
+    return keys;
+  }, [data]);
+
+  const isAllExpanded = expandedRowKeys.length > 0 && expandedRowKeys.length >= allRowKeys.length;
+
+  function toggleExpandAll() {
+    setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
+  }
 
   // Semi Table 原生支持 children 字段树形展示，无需手动 flatten
 
@@ -223,6 +244,15 @@ export default function MenusPage() {
               {hasPermission('system:menu:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>}
             </Space>
           </div>
+          <div className="responsive-toolbar__right">
+            <Button
+              type="tertiary"
+              icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+              onClick={toggleExpandAll}
+            >
+              {isAllExpanded ? '全部折叠' : '全部展开'}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -235,7 +265,8 @@ export default function MenusPage() {
           rowKey="id"
           loading={loading}
           pagination={{ pageSize: 10, showSizeChanger: true }}
-          defaultExpandAllRows
+          expandedRowKeys={expandedRowKeys}
+          onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.map((r: Menu) => r.id) ?? [])}
         />
       </div>
 
