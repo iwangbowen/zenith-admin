@@ -241,17 +241,19 @@ export default function MenusPage() {
         <div className="responsive-toolbar">
           <div className="responsive-toolbar__left">
             <Space wrap>
-              {hasPermission('system:menu:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>}
+              <Button
+                type="tertiary"
+                icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+                onClick={toggleExpandAll}
+              >
+                {isAllExpanded ? '全部折叠' : '全部展开'}
+              </Button>
             </Space>
           </div>
           <div className="responsive-toolbar__right">
-            <Button
-              type="tertiary"
-              icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-              onClick={toggleExpandAll}
-            >
-              {isAllExpanded ? '全部折叠' : '全部展开'}
-            </Button>
+            <Space>
+              {hasPermission('system:menu:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>}
+            </Space>
           </div>
         </div>
       </div>
