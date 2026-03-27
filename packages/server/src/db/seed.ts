@@ -23,15 +23,22 @@ async function seed() {
   logger.info('🌱 Seeding database...');
 
   // ─── 1. 管理员账号 ─────────────────────────────────────────────────────────
-  const hashedPassword = await bcrypt.hash('123456', 10);
-  await db.insert(users).values({
-    username: 'admin',
-    nickname: '管理员',
-    email: 'admin@zenith.dev',
-    password: hashedPassword,
-    status: 'active',
-  }).onConflictDoNothing();
-  logger.info('  ✔ Admin user seeded (onConflictDoNothing)');
+  // 注意：tenant_id 为 NULL 时复合唯一约束 (tenant_id, username) 不生效（NULL != NULL），
+  // 必须先查询是否已存在，再决定是否插入，避免重复创建。
+  const existingAdmin = await db.select({ id: users.id }).from(users)
+    .where(sql`${users.username} = 'admin' AND ${users.tenantId} IS NULL`)
+    .limit(1);
+  if (existingAdmin.length === 0) {
+    const hashedPassword = await bcrypt.hash('123456', 10);
+    await db.insert(users).values({
+      username: 'admin',
+      nickname: '管理员',
+      email: 'admin@zenith.dev',
+      password: hashedPassword,
+      status: 'active',
+    });
+  }
+  logger.info('  ✔ Admin user seeded (skip if exists)');
 
   // ─── 2. 菜单数据（数据来源：@zenith/shared SEED_MENUS）─────────────────────
   for (const row of SEED_MENUS) {
@@ -115,7 +122,9 @@ async function seed() {
   logger.info('  ✔ Positions upserted');
 
   // 管理员账号绑定超级管理员角色
-  const [adminUser] = await db.select({ id: users.id }).from(users).where(eq(users.username, 'admin')).limit(1);
+  const [adminUser] = await db.select({ id: users.id }).from(users)
+    .where(sql`${users.username} = 'admin' AND ${users.tenantId} IS NULL`)
+    .limit(1);
   if (adminUser) {
     await db.update(users).set({ departmentId: 1, updatedAt: new Date() }).where(eq(users.id, adminUser.id));
     await db.insert(userRoles).values({ userId: adminUser.id, roleId: 1 }).onConflictDoNothing();
