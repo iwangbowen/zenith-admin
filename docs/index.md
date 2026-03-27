@@ -5,7 +5,7 @@ titleTemplate: false
 hero:
   name: Zenith Admin
   text: 全栈后台项目底座
-  tagline: 基于 Hono + React + Semi Design + Drizzle ORM 的全栈后台管理底座，内置常用后台能力，原生 AI 友好，一句话生成完整 CRUD 模块。
+  tagline: 基于 Hono + React + Semi Design + Drizzle ORM 的全栈后台管理底座，内置常用后台能力与可选多租户支持，原生 AI 友好，一句话生成完整 CRUD 模块。
   actions:
     - theme: brand
       text: 快速开始 →
@@ -27,6 +27,8 @@ features:
     details: 支持本地存储与阿里云 OSS 两种模式，可在后台配置页面切换。
   - title: JWT 双 Token 鉴权
     details: 采用 Access Token + Refresh Token 双 token 机制，前端自动续期，对业务代码透明，中间件统一处理鉴权逻辑。
+  - title: 多租户支持
+    details: 内置租户管理模块，支持 tenant_id 级数据隔离、平台超管视角切换与登录时租户路由。默认关闭，开启不影响已有单实例部署。
   - title: 数据库迁移
     details: Schema 变更通过 Drizzle 迁移管理，SQL 历史文件可追溯版本变更。
 ---
@@ -59,5 +61,6 @@ features:
     <li><a href="/ai/">AI 辅助开发</a> — 使用 Zenith Skill 一句话生成 CRUD 模块</li>
     <li><a href="/product/features">功能清单</a> — 已实现模块一览</li>
     <li><a href="/backend/api-conventions">接口规范</a> — 响应格式 · 鉴权 · 分页</li>
+    <li><a href="/backend/multi-tenant">多租户指南</a> — 租户配置 · 数据隔离 · 平台视角切换</li>
   </ul>
 </section>

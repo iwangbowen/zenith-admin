@@ -22,6 +22,7 @@
 | 定时任务 | 定时任务与监控相关能力 |
 | 系统监控 | 运行状态信息查看 |
 | 行政区划 | 国家级、省、市、区、街道/乡镇五级行政区划查询 |
+| 租户管理 | 租户 CRUD、状态管理、有效期控制、平台超管视角切换（多租户模式开启后生效） |
 | Swagger UI | 内置 Swagger UI 与 OpenAPI JSON Spec，支持在线调试与导入 Postman / Apifox |
 
 ## 模块特性
@@ -53,3 +54,11 @@
 - `oss`：阿里云 OSS
 
 可通过 `file_storage_configs` 表中的 `is_default` 切换默认存储。
+
+### 多租户
+
+- 环境变量 `MULTI_TENANT_MODE=true`（后端）+ `VITE_MULTI_TENANT_MODE=true`（前端）开启
+- 开启后各业务表按 `tenant_id` 自动隔离，删除租户时级联清理下属数据
+- 平台超管（`super_admin` 且 `tenantId = null`）可在顶栏切换至任意租户视角查看数据
+- 登录时可传入 `tenantCode` 定向进入指定租户，后端自动校验租户状态与有效期
+- 默认关闭，关闭时与普通单实例模式完全兼容，无需修改业务代码

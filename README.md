@@ -5,7 +5,7 @@
 [![Release](https://github.com/iwangbowen/zenith-admin/actions/workflows/release.yml/badge.svg)](https://github.com/iwangbowen/zenith-admin/actions/workflows/release.yml)
 [![License](https://img.shields.io/github/license/iwangbowen/zenith-admin)](./LICENSE)
 
-基于 **Hono v4 + React 19 + Semi Design v2 + Drizzle ORM** 的全栈后台管理系统，覆盖认证授权、组织架构、系统配置、通知公告、日志审计、在线会话、定时任务、文件管理与运行监控等后台场景。
+基于 **Hono v4 + React 19 + Semi Design v2 + Drizzle ORM** 的全栈后台管理系统，覆盖认证授权、组织架构、系统配置、通知公告、日志审计、在线会话、定时任务、文件管理与运行监控等后台场景，并内置可选的**多租户（Multi-Tenant）**支持。
 
 项目采用 **npm monorepo** 结构：后端使用 Hono + PostgreSQL 提供 API 服务，前端使用 React 19 + Vite + **Semi Design v2** 构建后台界面，`shared` 包统一维护前后端共享类型、常量与 Zod 校验 schema。
 
@@ -107,6 +107,9 @@ PORT=3300
 # Redis 连接（URL 格式，支持带密码）
 REDIS_URL=redis://127.0.0.1:6379
 # REDIS_KEY_PREFIX=zenith:   # 所有 Redis key 的命名空间前缀（默认 zenith:）
+
+# 多租户模式（默认关闭；开启后需在前端同步设置 VITE_MULTI_TENANT_MODE=true）
+# MULTI_TENANT_MODE=true
 ```
 
 在 `packages/web/` 下创建 `.env` 文件（可选，有默认值）：
@@ -114,6 +117,8 @@ REDIS_URL=redis://127.0.0.1:6379
 ```env
 VITE_API_BASE_URL=http://localhost:3300
 VITE_APP_TITLE=Zenith Admin
+# 多租户模式（与后端 MULTI_TENANT_MODE 保持一致）
+# VITE_MULTI_TENANT_MODE=true
 ```
 
 ### 初始化数据库
@@ -162,6 +167,16 @@ npm run docs:preview
 - JWT Bearer Token 鉴权，配合 Refresh Token 自动续期
 - 登录支持验证码校验，降低暴力尝试风险
 - 注册控制与密码策略：支持注册全站启停，支持密码定期强制修改
+
+### 多租户
+
+- 租户管理：租户 CRUD、状态启停、有效期与最大用户数控制，仅平台超管可操作
+- 多租户隔离：开启后各业务表自动按 `tenant_id` 隔离数据，删除租户级联清理
+- 平台超管视角切换：超管可在顶栏下拉框一键切换至任意租户视角进行排查
+- 登录时租户路由：前端传入 `tenantCode` 字段，后端验证租户状态与有效期
+- 单租户 / 无租户模式：默认关闭多租户，不影响现有单实例部署
+
+> 默认关闭，通过 `MULTI_TENANT_MODE=true`（后端）+ `VITE_MULTI_TENANT_MODE=true`（前端）开启。
 
 ### 权限与导航
 
