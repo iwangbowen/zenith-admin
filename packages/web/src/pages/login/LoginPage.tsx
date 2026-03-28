@@ -6,6 +6,7 @@ import { Icon } from '@iconify/react';
 import type { RegisterInput, OAuthProviderType } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
+import ForgotPasswordModal from './ForgotPasswordModal';
 import './LoginPage.css';
 
 const { Title, Text } = Typography;
@@ -26,6 +27,8 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   const [captchaId, setCaptchaId] = useState('');
   const [captchaSvg, setCaptchaSvg] = useState('');
   const [allowRegistration, setAllowRegistration] = useState(false);
+  const [forgotPasswordEnabled, setForgotPasswordEnabled] = useState(false);
+  const [forgotPasswordVisible, setForgotPasswordVisible] = useState(false);
 
   const fetchCaptcha = useCallback(async () => {
     try {
@@ -47,6 +50,16 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
       .then(res => {
         if (res.code === 0 && res.data) {
           setAllowRegistration(res.data.configValue === 'true');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    request.get<{ configValue: string }>('/api/system-configs/public/forgot_password_enabled', { silent: true })
+      .then(res => {
+        if (res.code === 0 && res.data) {
+          setForgotPasswordEnabled(res.data.configValue === 'true');
         }
       })
       .catch(() => {});
@@ -153,6 +166,18 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
       >
         登录
       </Button>
+      {forgotPasswordEnabled && (
+        <div style={{ textAlign: 'right', marginTop: 8 }}>
+          <Button
+            type="tertiary"
+            theme="borderless"
+            size="small"
+            onClick={() => setForgotPasswordVisible(true)}
+          >
+            忘记密码？
+          </Button>
+        </div>
+      )}
     </Form>
   );
 
@@ -329,6 +354,10 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
           )}
         </div>
       </div>
+      <ForgotPasswordModal
+        visible={forgotPasswordVisible}
+        onClose={() => setForgotPasswordVisible(false)}
+      />
     </div>
   );
 }

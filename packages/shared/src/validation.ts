@@ -33,6 +33,18 @@ export const changePasswordSchema = z.object({
   newPassword: z.string().min(6, '新密码至少6个字符').max(64),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('邮箱格式不正确'),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'token 不能为空'),
+  newPassword: z.string().min(6, '新密码至少6个字符').max(64),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 export const resetUserPasswordSchema = z.object({
   password: z.string().min(6, '新密码至少6个字符').max(64),
 });

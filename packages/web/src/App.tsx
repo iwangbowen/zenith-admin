@@ -10,6 +10,7 @@ import AdminLayout from '@/layouts/AdminLayout';
 
 const modules = import.meta.glob('./pages/**/*.tsx');
 const LoginPage = React.lazy(() => import('@/pages/login/LoginPage'));
+const ResetPasswordPage = React.lazy(() => import('@/pages/reset-password/ResetPasswordPage'));
 const DashboardPage = React.lazy(() => import('@/pages/dashboard/DashboardPage'));
 const ProfilePage = React.lazy(() => import('@/pages/profile/ProfilePage'));
 const NotificationsPage = React.lazy(() => import('@/pages/notifications/NotificationsPage'));
@@ -130,6 +131,7 @@ export default function App() {
       ) : (
         <Routes>
           <Route path="/login" element={<Suspense fallback={routeFallback}><LoginPage onLogin={login} onRegister={register} /></Suspense>} />
+          <Route path="/reset-password" element={<Suspense fallback={routeFallback}><ResetPasswordPage /></Suspense>} />
           <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

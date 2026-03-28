@@ -93,6 +93,8 @@ export const SEED_MENUS: Menu[] = [
   // ── 内置隐藏菜单（不显示在侧边栏，供面包屑/标签页标题使用）──────────────────────────────
   { id: 202, parentId: 0, title: '个人中心',   name: 'Profile',             path: '/profile',                   component: 'profile/ProfilePage',                            icon: 'UserRound',         type: 'menu',      sort: 99, status: 'active', visible: false, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 203, parentId: 0, title: '通知中心',   name: 'Notifications',       path: '/notifications',             component: 'notifications/NotificationsPage',                icon: 'Bell',              type: 'menu',      sort: 100, status: 'active', visible: false, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 125, parentId: 200, title: 'IP访问控制', name: 'SystemIpAccess',      path: '/system/ip-access',          component: 'system/ip-access/IpAccessPage',                  icon: 'ShieldBan',         type: 'menu',      sort: 11, status: 'active', visible: true,  permission: 'system:ip-access:view',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 126, parentId: 125, title: '保存配置',   name: undefined,             path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 1,  status: 'active', visible: true,  permission: 'system:ip-access:update',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -199,6 +201,11 @@ export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
   { id: 9, configKey: 'password_expiry_enabled',       configValue: 'false', configType: 'boolean', description: '是否开启密码过期强制重置',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 10, configKey: 'password_expiry_days',         configValue: '90',    configType: 'number',  description: '密码过期天数',                       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 11, configKey: 'allow_registration',           configValue: 'false', configType: 'boolean', description: '是否允许新用户注册',                 createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 12, configKey: 'forgot_password_enabled',       configValue: 'false', configType: 'boolean', description: '是否开启忘记密码/邮件重置功能',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 13, configKey: 'ip_whitelist_enabled',          configValue: 'false', configType: 'boolean', description: '是否开启IP白名单访问控制',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 14, configKey: 'ip_whitelist',                  configValue: '[]',    configType: 'json',    description: 'IP白名单列表（支持CIDR，JSON数组）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 15, configKey: 'ip_blacklist_enabled',          configValue: 'false', configType: 'boolean', description: '是否开启IP黑名单访问控制',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 16, configKey: 'ip_blacklist',                  configValue: '[]',    configType: 'json',    description: 'IP黑名单列表（支持CIDR，JSON数组）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 定时任务 ─────────────────────────────────────────────────────────────────

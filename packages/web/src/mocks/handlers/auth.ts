@@ -144,6 +144,20 @@ export const authHandlers = [
   http.get('/api/auth/oauth/accounts', () => {
     return HttpResponse.json({ code: 0, message: 'ok', data: [] });
   }),
+
+  // 忘记密码（演示模式始终返回成功，不真正发送邮件）
+  http.post('/api/auth/forgot-password', () => {
+    return HttpResponse.json({ code: 0, message: '如邮箱已注册，重置链接已发送至您的邮箱', data: null });
+  }),
+
+  // 重置密码（仅 mock-reset-token 有效）
+  http.post('/api/auth/reset-password', async ({ request }) => {
+    const body = await request.json() as { token: string; newPassword: string };
+    if (body.token !== 'mock-reset-token') {
+      return HttpResponse.json({ code: 400, message: '重置链接无效或已过期', data: null });
+    }
+    return HttpResponse.json({ code: 0, message: '密码已重置，请使用新密码登录', data: null });
+  }),
 ];
 
 // ─── 我的设备 mock 状态（模块级可变，支持踢人操作）────────────────────────────

@@ -2,12 +2,14 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq, desc, sql, gte, lte, like, and, isNull } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
+import { eq, desc, sql, gte, lte, like, and, isNull, gt } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
-import { users, userRoles, roles, loginLogs, tenants, operationLogs } from '../db/schema';
+import { users, userRoles, roles, loginLogs, tenants, operationLogs, passwordResetTokens } from '../db/schema';
 import { config } from '../config';
-import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema, switchTenantSchema } from '@zenith/shared';
+import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema, switchTenantSchema, forgotPasswordSchema, resetPasswordSchema } from '@zenith/shared';
+import { sendMail } from '../lib/email';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
@@ -656,6 +658,89 @@ auth.get('/tenants', authMiddleware, async (c) => {
   }).from(tenants).where(eq(tenants.status, 'active'));
 
   return c.json({ code: 0, message: 'ok', data: rows });
+});
+
+// ─── 忘记密码 ─────────────────────────────────────────────────────────────────
+auth.post('/forgot-password', async (c) => {
+  const body = await c.req.json();
+  const result = forgotPasswordSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+  }
+
+  const enabled = await getConfigBoolean('forgot_password_enabled');
+  if (!enabled) {
+    return c.json({ code: 403, message: '忘记密码功能未开启', data: null }, 403);
+  }
+
+  const { email } = result.data;
+
+  // 始终返回成功，防止邮箱枚举攻击
+  const [user] = await db.select({ id: users.id, username: users.username })
+    .from(users).where(and(eq(users.email, email), isNull(users.deletedAt))).limit(1);
+
+  if (user) {
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 分钟
+
+    await db.insert(passwordResetTokens).values({
+      userId: user.id,
+      token,
+      expiresAt,
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5373';
+    const resetLink = `${frontendUrl}/reset-password?token=${token}`;
+
+    try {
+      await sendMail(
+        email,
+        '【Zenith Admin】密码重置',
+        `<p>您好，${user.username}！</p>
+<p>我们收到了您的密码重置请求。请点击下方链接重置密码（链接 30 分钟内有效）：</p>
+<p><a href="${resetLink}">${resetLink}</a></p>
+<p>如果您没有发起此请求，请忽略本邮件。</p>`,
+      );
+    } catch {
+      // 邮件发送失败不影响响应，避免暴露内部错误
+    }
+  }
+
+  return c.json({ code: 0, message: '如邮箱已注册，重置链接已发送至您的邮箱', data: null });
+});
+
+// ─── 重置密码 ─────────────────────────────────────────────────────────────────
+auth.post('/reset-password', async (c) => {
+  const body = await c.req.json();
+  const result = resetPasswordSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+  }
+
+  const { token, newPassword } = result.data;
+  const now = new Date();
+
+  const [record] = await db.select()
+    .from(passwordResetTokens)
+    .where(and(
+      eq(passwordResetTokens.token, token),
+      gt(passwordResetTokens.expiresAt, now),
+      isNull(passwordResetTokens.usedAt),
+    ))
+    .limit(1);
+
+  if (!record) {
+    return c.json({ code: 400, message: '重置链接无效或已过期', data: null }, 400);
+  }
+
+  const hashed = await bcrypt.hash(newPassword, 10);
+
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ password: hashed }).where(eq(users.id, record.userId));
+    await tx.update(passwordResetTokens).set({ usedAt: now }).where(eq(passwordResetTokens.id, record.id));
+  });
+
+  return c.json({ code: 0, message: '密码已重置，请使用新密码登录', data: null });
 });
 
 export default auth;

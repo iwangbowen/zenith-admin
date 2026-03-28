@@ -27,6 +27,7 @@
     "drizzle-orm": "^0.45.1",
     "exceljs": "^4.4.0",
     "hono": "^4.12.9",
+    "ip-range-check": "^0.2.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.2.1",

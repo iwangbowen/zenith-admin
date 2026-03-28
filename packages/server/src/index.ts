@@ -10,6 +10,7 @@ import { db } from './db/index';
 import redis from './lib/redis';
 import { sql } from 'drizzle-orm';
 import { httpLogger } from './middleware/logger';
+import { ipAccessMiddleware } from './middleware/ip-access';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import departmentsRoutes from './routes/departments';
@@ -44,6 +45,7 @@ const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
 app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
 app.use('*', httpLogger);
+app.use('/api/*', ipAccessMiddleware);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/users', usersRoutes);
