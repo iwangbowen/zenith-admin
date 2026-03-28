@@ -35,11 +35,11 @@ async function loadConfig(): Promise<IpAccessConfig> {
     getConfigValue('ip_blacklist', '[]'),
   ]);
 
-  let whitelist: string[] = [];
-  let blacklist: string[] = [];
+  let whitelist: string[];
+  let blacklist: string[];
 
-  try { whitelist = JSON.parse(whitelistRaw); } catch { whitelist = []; }
-  try { blacklist = JSON.parse(blacklistRaw); } catch { blacklist = []; }
+  try { whitelist = JSON.parse(whitelistRaw) as string[]; } catch { whitelist = []; }
+  try { blacklist = JSON.parse(blacklistRaw) as string[]; } catch { blacklist = []; }
 
   cache = { whitelistEnabled, whitelist, blacklistEnabled, blacklist, cachedAt: Date.now() };
   return cache;
