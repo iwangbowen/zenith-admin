@@ -111,11 +111,14 @@ auth.post('/login', async (c) => {
   ]);
   const lockDurationSeconds = loginLockDurationMinutes * 60;
 
-  const userWhere = config.multiTenantMode && tenantId !== null
-    ? and(eq(users.username, username), eq(users.tenantId, tenantId))
-    : config.multiTenantMode
-      ? and(eq(users.username, username), isNull(users.tenantId))
-      : eq(users.username, username);
+  let userWhere;
+  if (config.multiTenantMode && tenantId !== null) {
+    userWhere = and(eq(users.username, username), eq(users.tenantId, tenantId));
+  } else if (config.multiTenantMode) {
+    userWhere = and(eq(users.username, username), isNull(users.tenantId));
+  } else {
+    userWhere = eq(users.username, username);
+  }
 
   const [user] = await db.select().from(users).where(userWhere).limit(1);
 
@@ -677,7 +680,7 @@ auth.post('/forgot-password', async (c) => {
 
   // 始终返回成功，防止邮箱枚举攻击
   const [user] = await db.select({ id: users.id, username: users.username })
-    .from(users).where(and(eq(users.email, email), isNull(users.deletedAt))).limit(1);
+    .from(users).where(and(eq(users.email, email), eq(users.status, 'active'))).limit(1);
 
   if (user) {
     const token = randomBytes(32).toString('hex');
