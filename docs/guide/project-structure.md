@@ -21,9 +21,31 @@ zenith-admin/
 
 - `src/routes/`：API 路由（认证、用户、部门、岗位、角色、菜单、字典、通知、日志、监控、会话、定时任务等）
 - `src/db/`：Drizzle schema、迁移与 seed
-- `src/middleware/`：认证、日志等中间件
-- `src/lib/`：通用能力封装（文件存储、权限过滤、Redis 会话、定时调度、Excel 导出、验证码等）
+- `src/middleware/`：认证（`auth.ts`）、IP 访问控制（`ip-access.ts`）、权限守卫（`guard.ts`）、请求日志（`logger.ts`）
+- `src/lib/`：通用能力封装，详见下方列表
 - `drizzle/`：生成的迁移文件
+
+`src/lib/` 主要模块：
+
+| 文件 | 说明 |
+|------|------|
+| `session-manager.ts` | Redis 会话管理（在线会话 + 黑名单）|
+| `redis.ts` | ioredis 客户端单例与工具 |
+| `oauth/` | OAuth 提供方抽象（GitHub / 钉钉 / 企业微信）|
+| `cron-scheduler.ts` | 定时任务调度器（基于 node-cron）|
+| `db-backup.ts` | 基于 pg_dump 的数据库备份 |
+| `file-storage.ts` | 文件存储抽象（本地 / 阿里云 OSS）|
+| `email.ts` | SMTP 邮件发送 |
+| `password-policy.ts` | 密码复杂度校验与过期策略 |
+| `system-config.ts` | 系统配置读取封装 |
+| `tenant.ts` | 多租户数据隔离工具 |
+| `data-scope.ts` | 数据权限过滤（全部 / 部门 / 本人）|
+| `permissions.ts` | 菜单与按钮权限判断 |
+| `excel-export.ts` | Excel 导出工具 |
+| `captcha.ts` | 图形验证码生成 |
+| `sanitize.ts` | XSS 输入清洗 |
+| `ws-manager.ts` | WebSocket 连接管理 |
+| `logger.ts` | 日志工具（基于 pino）|
 
 ## `packages/web`
 
