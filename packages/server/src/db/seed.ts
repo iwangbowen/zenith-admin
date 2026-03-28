@@ -1,13 +1,13 @@
 import { db } from './index';
 import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants } from './schema';
 import bcrypt from 'bcryptjs';
-import { eq, sql } from 'drizzle-orm';
+import { eq, isNull, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
- 
+
 const { provinces, cities, areas } = require('china-division') as {
   provinces: Array<{ code: string; name: string }>;
   cities: Array<{ code: string; name: string; provinceCode: string }>;
@@ -169,13 +169,21 @@ async function seed() {
   logger.info('  ✔ Dict items seeded (onConflictDoUpdate)');
 
   // ─── 8. 系统配置种子数据（数据来源：@zenith/shared SEED_SYSTEM_CONFIGS）────
-  for (const cfg of SEED_SYSTEM_CONFIGS) {
-    await db.insert(systemConfigs).values({
+  // 注意：PostgreSQL 唯一约束中 NULL != NULL，因此 (NULL, key) 无法触发冲突。
+  // 改用先查询再按需插入的方式确保幂等性。
+  const existingCfgKeys = await db
+    .select({ configKey: systemConfigs.configKey })
+    .from(systemConfigs)
+    .where(isNull(systemConfigs.tenantId));
+  const existingCfgKeySet = new Set(existingCfgKeys.map((r) => r.configKey));
+  const cfgsToInsert = SEED_SYSTEM_CONFIGS.filter((c) => !existingCfgKeySet.has(c.configKey));
+  if (cfgsToInsert.length > 0) {
+    await db.insert(systemConfigs).values(cfgsToInsert.map((cfg) => ({
       configKey:   cfg.configKey,
       configValue: cfg.configValue,
       configType:  cfg.configType as 'boolean' | 'string' | 'number' | 'json',
       description: cfg.description ?? '',
-    }).onConflictDoNothing();
+    })));
   }
   logger.info('  ✔ System configs seeded');
 
