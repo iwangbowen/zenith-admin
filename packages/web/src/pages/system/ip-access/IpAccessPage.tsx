@@ -66,24 +66,31 @@ export default function IpAccessPage() {
 
   useEffect(() => { fetchConfigs(); }, [fetchConfigs]);
 
+  const upsertConfig = (
+    existing: SystemConfig | undefined,
+    configKey: string,
+    configType: string,
+    configValue: string,
+    description: string,
+  ) => {
+    if (existing?.id) {
+      return request.put(`/api/system-configs/${existing.id}`, { configValue });
+    }
+    return request.post('/api/system-configs', { configKey, configType, configValue, description });
+  };
+
   const saveSection = async (section: 'whitelist' | 'blacklist') => {
     setSaving(section);
     try {
       if (section === 'whitelist') {
-        const enabledId = configs.ip_whitelist_enabled?.id;
-        const listId = configs.ip_whitelist?.id;
-        if (!enabledId || !listId) { Toast.error('配置项未找到，请刷新后重试'); return; }
         await Promise.all([
-          request.put(`/api/system-configs/${enabledId}`, { configValue: String(whitelistEnabled) }),
-          request.put(`/api/system-configs/${listId}`, { configValue: toJsonArray(whitelistText) }),
+          upsertConfig(configs.ip_whitelist_enabled, 'ip_whitelist_enabled', 'boolean', String(whitelistEnabled), '是否开启IP白名单访问控制'),
+          upsertConfig(configs.ip_whitelist, 'ip_whitelist', 'json', toJsonArray(whitelistText), 'IP白名单列表（支持CIDR，JSON数组）'),
         ]);
       } else {
-        const enabledId = configs.ip_blacklist_enabled?.id;
-        const listId = configs.ip_blacklist?.id;
-        if (!enabledId || !listId) { Toast.error('配置项未找到，请刷新后重试'); return; }
         await Promise.all([
-          request.put(`/api/system-configs/${enabledId}`, { configValue: String(blacklistEnabled) }),
-          request.put(`/api/system-configs/${listId}`, { configValue: toJsonArray(blacklistText) }),
+          upsertConfig(configs.ip_blacklist_enabled, 'ip_blacklist_enabled', 'boolean', String(blacklistEnabled), '是否开启IP黑名单访问控制'),
+          upsertConfig(configs.ip_blacklist, 'ip_blacklist', 'json', toJsonArray(blacklistText), 'IP黑名单列表（支持CIDR，JSON数组）'),
         ]);
       }
       Toast.success('保存成功');
