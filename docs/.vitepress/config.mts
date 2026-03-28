@@ -60,6 +60,7 @@ export default defineConfig({
           { text: '项目结构', link: '/guide/project-structure' },
           { text: '部署说明', link: '/guide/deployment' },
           { text: '项目维护', link: '/guide/contributing' },
+          { text: 'Demo 演示模式', link: '/guide/demo-mode' },
         ],
       },
       {
@@ -89,6 +90,9 @@ export default defineConfig({
           { text: '多租户指南', link: '/backend/multi-tenant' },
           { text: '系统内置配置', link: '/backend/system-configs' },
           { text: '操作日志与变更记录', link: '/backend/audit-log-changes' },
+          { text: '安全体系', link: '/backend/security' },
+          { text: 'OAuth 第三方登录', link: '/backend/oauth' },
+          { text: '定时任务与数据库备份', link: '/backend/jobs-and-backup' },
         ],
       },
       {
@@ -97,6 +101,8 @@ export default defineConfig({
         items: [
           { text: 'UI 规范', link: '/frontend/ui-conventions' },
           { text: '认证与请求', link: '/frontend/auth-request' },
+          { text: '公共组件', link: '/frontend/components' },
+          { text: '路由与菜单', link: '/frontend/routing' },
         ],
       },
       {

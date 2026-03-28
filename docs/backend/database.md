@@ -48,11 +48,17 @@ npm run db:seed
 
 ## 主要表
 
+### 多租户（可选）
+
+| 表名 | 说明 |
+|------|------|
+| `tenants` | 租户定义（名称、唯一编码、有效期、最大用户数）|
+
 ### 权限与用户体系
 
 | 表名 | 说明 |
 |------|------|
-| `users` | 用户信息 |
+| `users` | 用户信息（含 `tenant_id`、`locked_until`、`passwordUpdatedAt`）|
 | `roles` | 角色定义 |
 | `menus` | 菜单与按钮权限 |
 | `user_roles` | 用户与角色多对多 |
@@ -62,8 +68,8 @@ npm run db:seed
 
 | 表名 | 说明 |
 |------|------|
-| `departments` | 部门（树形结构）|
-| `positions` | 岗位 |
+| `departments` | 部门（树形结构，含 `tenant_id`）|
+| `positions` | 岗位（含 `tenant_id`）|
 | `user_positions` | 用户与岗位多对多 |
 
 ### 基础配置
@@ -72,26 +78,44 @@ npm run db:seed
 |------|------|
 | `dicts` | 字典类型 |
 | `dict_items` | 字典项 |
-| `system_configs` | 系统配置项 |
+| `system_configs` | 系统配置项（key-value 格式，含 configType 枚举）|
 
 ### 文件存储
 
 | 表名 | 说明 |
 |------|------|
 | `file_storage_configs` | 存储配置（local / OSS）|
-| `managed_files` | 已上传文件记录（`url` 字段为服务端动态拼接，不存入数据库）|
+| `managed_files` | 已上传文件记录（`url` 字段由服务端动态拼接，不存入数据库）|
 
 ### 通知与审计
 
 | 表名 | 说明 |
 |------|------|
-| `notices` | 通知公告 |
+| `notices` | 通知公告（富文本 `text` 字段）|
 | `notice_reads` | 通知已读记录 |
 | `login_logs` | 登录日志 |
-| `operation_logs` | 操作日志 |
+| `operation_logs` | 操作日志（含 `before_data` / `after_data` JSON 快照）|
 
 ### 任务调度
 
 | 表名 | 说明 |
 |------|------|
-| `cron_jobs` | 定时任务配置与执行记录 |
+| `cron_jobs` | 定时任务配置（名称、Handler、Cron 表达式、启用状态）|
+| `cron_job_logs` | 任务执行日志（开始时间、结束时间、状态、输出）|
+
+### 行政区划
+
+| 表名 | 说明 |
+|------|------|
+| `regions` | 行政区划数据（五级：省/市/区/街道/乡镇，`parent_code` 树形结构）|
+
+### 安全与认证
+
+| 表名 | 说明 |
+|------|------|
+| `email_configs` | SMTP 邮件配置（主机、端口、加密方式、授权密码）|
+| `oauth_configs` | OAuth 提供方配置（Client ID / Secret，按 provider 区分）|
+| `user_oauth_accounts` | 用户第三方账号绑定（openId、nickname、avatar）|
+| `user_api_tokens` | 用户个人 API Token（用于第三方接口调用）|
+| `password_reset_tokens` | 密码重置 Token（含过期时间，支持找回密码流程）|
+| `db_backups` | 数据库备份记录（文件名、大小、状态、备份类型）|
