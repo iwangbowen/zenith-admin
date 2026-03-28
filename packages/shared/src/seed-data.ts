@@ -202,10 +202,6 @@ export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
   { id: 10, configKey: 'password_expiry_days',         configValue: '90',    configType: 'number',  description: '密码过期天数',                       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 11, configKey: 'allow_registration',           configValue: 'false', configType: 'boolean', description: '是否允许新用户注册',                 createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 12, configKey: 'forgot_password_enabled',       configValue: 'false', configType: 'boolean', description: '是否开启忘记密码/邮件重置功能',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 13, configKey: 'ip_whitelist_enabled',          configValue: 'false', configType: 'boolean', description: '是否开启IP白名单访问控制',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 14, configKey: 'ip_whitelist',                  configValue: '[]',    configType: 'json',    description: 'IP白名单列表（支持CIDR，JSON数组）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 15, configKey: 'ip_blacklist_enabled',          configValue: 'false', configType: 'boolean', description: '是否开启IP黑名单访问控制',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 16, configKey: 'ip_blacklist',                  configValue: '[]',    configType: 'json',    description: 'IP黑名单列表（支持CIDR，JSON数组）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 定时任务 ─────────────────────────────────────────────────────────────────
