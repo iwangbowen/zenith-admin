@@ -78,6 +78,7 @@ export const noticesHandlers = [
       publishTime: null,
       createById: 1,
       createByName: '管理员',
+      targetType: body.targetType ?? 'all',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
