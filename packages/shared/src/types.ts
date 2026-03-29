@@ -238,6 +238,14 @@ export interface OperationLogStats {
 export type NoticePublishStatus = 'draft' | 'published' | 'recalled';
 export type NoticeType = 'notice' | 'announcement' | 'warning';
 export type NoticePriority = 'low' | 'medium' | 'high';
+export type NoticeTargetType = 'all' | 'specific';
+export type NoticeRecipientType = 'user' | 'role' | 'dept';
+
+export interface NoticeRecipient {
+  recipientType: NoticeRecipientType;
+  recipientId: number;
+  recipientLabel?: string;
+}
 
 export interface Notice {
   id: number;
@@ -246,11 +254,13 @@ export interface Notice {
   type: string;
   publishStatus: string;
   priority: string;
+  targetType: NoticeTargetType;
   publishTime: string | null;
   createById: number | null;
   createByName: string | null;
   createdAt: string;
   updatedAt: string;
+  recipients?: NoticeRecipient[];
 }
 
 // ─── 系统参数配置 ──────────────────────────────────────────

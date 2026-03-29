@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import {
   Table,
   Button,
@@ -12,10 +12,12 @@ import {
   Toast,
   Select,
   DatePicker,
+  RadioGroup,
+  Radio,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
-import type { Notice, PaginatedResponse } from '@zenith/shared';
+import type { Notice, NoticeRecipient, NoticeTargetType, PaginatedResponse, User, Role, Department } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -39,6 +41,14 @@ const editorLoadingFallback = (
     <Spin />
   </div>
 );
+
+type SelectOption = { value: number; label: string };
+
+function mergeUserOptions(prev: SelectOption[], newResults: SelectOption[], selectedSet: Set<number>): SelectOption[] {
+  const retained = prev.filter((o) => selectedSet.has(o.value));
+  const retainedIds = new Set(retained.map((o) => o.value));
+  return [...retained, ...newResults.filter((o) => !retainedIds.has(o.value))];
+}
 
 type SearchParams = {
   title: string;
@@ -66,6 +76,17 @@ export default function NoticesPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [contentHtml, setContentHtml] = useState('');
   const [editorKey, setEditorKey] = useState(0);
+
+  // 收件人相关状态
+  const [targetType, setTargetType] = useState<NoticeTargetType>('all');
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
+  const [selectedDeptIds, setSelectedDeptIds] = useState<number[]>([]);
+  const [userOptions, setUserOptions] = useState<{ value: number; label: string }[]>([]);
+  const [roleOptions, setRoleOptions] = useState<{ value: number; label: string }[]>([]);
+  const [deptOptions, setDeptOptions] = useState<{ value: number; label: string }[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const userSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { items: typeItems } = useDictItems('notice_type');
   const { items: statusItems } = useDictItems('notice_publish_status');
@@ -117,18 +138,91 @@ export default function NoticesPage() {
     fetchData(1, pageSize, empty);
   };
 
+  const loadRecipientOptions = async () => {
+    setLoadingOptions(true);
+    try {
+      const [rolesRes, deptsRes] = await Promise.all([
+        request.get<Role[]>('/api/roles'),
+        request.get<Department[]>('/api/departments/flat'),
+      ]);
+      if (rolesRes.code === 0) {
+        setRoleOptions(rolesRes.data.map((r) => ({ value: r.id, label: r.name })));
+      }
+      if (deptsRes.code === 0) {
+        setDeptOptions(deptsRes.data.map((d) => ({ value: d.id, label: d.name })));
+      }
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
+
+  const handleUserSearch = (keyword: string) => {
+    if (userSearchTimer.current) clearTimeout(userSearchTimer.current);
+    if (!keyword.trim()) return;
+    const trimmed = keyword.trim();
+    const currentSelectedIds = [...selectedUserIds];
+    userSearchTimer.current = setTimeout(() => {
+      void doFetchUsers(trimmed, currentSelectedIds);
+    }, 300);
+  };
+
+  const doFetchUsers = async (keyword: string, currentSelectedIds: number[]) => {
+    const res = await request.get<PaginatedResponse<User>>(
+      `/api/users?page=1&pageSize=20&username=${encodeURIComponent(keyword)}`,
+    );
+    if (res.code !== 0) return;
+    const newResults = res.data.list.map((u) => ({ value: u.id, label: `${u.nickname}（${u.username}）` }));
+    setUserOptions((prev) => mergeUserOptions(prev, newResults, new Set(currentSelectedIds)));
+  };
+
   const openCreateModal = () => {
     setEditingNotice(null);
     setContentHtml('');
     setEditorKey((k) => k + 1);
+    setTargetType('all');
+    setSelectedUserIds([]);
+    setSelectedRoleIds([]);
+    setSelectedDeptIds([]);
+    setUserOptions([]);
+    void loadRecipientOptions();
     setModalVisible(true);
   };
 
-  const openEditModal = (record: Notice) => {
+  const openEditModal = async (record: Notice) => {
     setContentHtml(record.content ?? '');
     setEditorKey((k) => k + 1);
     setEditingNotice(record);
+    setTargetType('all');
+    setSelectedUserIds([]);
+    setSelectedRoleIds([]);
+    setSelectedDeptIds([]);
+    setUserOptions([]);
     setModalVisible(true);
+
+    // 异步加载选项和收件人详情
+    const [, detailRes] = await Promise.all([
+      loadRecipientOptions(),
+      request.get<Notice & { recipients: NoticeRecipient[] }>(`/api/notices/${record.id}`),
+    ]);
+
+    if (detailRes.code === 0 && detailRes.data) {
+      const { targetType: t, recipients = [] } = detailRes.data;
+      setTargetType(t ?? 'all');
+      setSelectedUserIds(recipients.filter((r) => r.recipientType === 'user').map((r) => r.recipientId));
+      setSelectedRoleIds(recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId));
+      setSelectedDeptIds(recipients.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId));
+      // 预填用户选项（含 label）
+      const userRecipients = recipients.filter((r) => r.recipientType === 'user');
+      if (userRecipients.length > 0) {
+        setUserOptions((prev) => {
+          const existingIds = new Set(prev.map((o) => o.value));
+          const newOpts = userRecipients
+            .filter((r) => !existingIds.has(r.recipientId))
+            .map((r) => ({ value: r.recipientId, label: r.recipientLabel ?? String(r.recipientId) }));
+          return [...prev, ...newOpts];
+        });
+      }
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -171,12 +265,22 @@ export default function NoticesPage() {
         setSubmitting(false);
         return;
       }
+      const recipients =
+        targetType === 'specific'
+          ? [
+              ...selectedUserIds.map((id) => ({ recipientType: 'user' as const, recipientId: id })),
+              ...selectedRoleIds.map((id) => ({ recipientType: 'role' as const, recipientId: id })),
+              ...selectedDeptIds.map((id) => ({ recipientType: 'dept' as const, recipientId: id })),
+            ]
+          : [];
       const payload = {
         title: values.title,
         content: contentHtml,
         type: values.type || 'notice',
         publishStatus: values.publishStatus || 'draft',
         priority: values.priority || 'medium',
+        targetType,
+        recipients,
       };
       let res;
       if (editingNotice) {
@@ -223,6 +327,17 @@ export default function NoticesPage() {
       dataIndex: 'priority',
       width: 100,
       render: (v: string) => <DictTag dictCode="notice_priority" value={v} />,
+    },
+    {
+      title: '收件对象',
+      dataIndex: 'targetType',
+      width: 110,
+      render: (v: string) =>
+        v === 'all' ? (
+          <Tag color="blue">全体用户</Tag>
+        ) : (
+          <Tag color="purple">指定范围</Tag>
+        ),
     },
     { title: '创建人', dataIndex: 'createByName', width: 110 },
     {
@@ -317,7 +432,7 @@ export default function NoticesPage() {
         dataSource={data}
         loading={loading}
         rowKey="id"
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1400 }}
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys as number[]),
@@ -398,6 +513,66 @@ export default function NoticesPage() {
               style={{ width: '100%' }}
             />
           </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 8, fontSize: 14, fontWeight: 500 }}>收件对象</div>
+            <RadioGroup
+              value={targetType}
+              onChange={(e) => setTargetType(e.target.value as NoticeTargetType)}
+              style={{ marginBottom: targetType === 'specific' ? 12 : 0 }}
+            >
+              <Radio value="all">全体用户</Radio>
+              <Radio value="specific">指定范围</Radio>
+            </RadioGroup>
+            {targetType === 'specific' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  <div style={{ marginBottom: 4, fontSize: 13, color: 'var(--semi-color-text-1)' }}>用户</div>
+                  <Select
+                    multiple
+                    showClear
+                    filter
+                    remote
+                    loading={false}
+                    placeholder="输入姓名或账号搜索"
+                    value={selectedUserIds}
+                    optionList={userOptions}
+                    onSearch={handleUserSearch}
+                    onChange={(v) => setSelectedUserIds(v as number[])}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ marginBottom: 4, fontSize: 13, color: 'var(--semi-color-text-1)' }}>角色</div>
+                  <Select
+                    multiple
+                    showClear
+                    filter
+                    loading={loadingOptions}
+                    placeholder="请选择角色"
+                    value={selectedRoleIds}
+                    optionList={roleOptions}
+                    onChange={(v) => setSelectedRoleIds(v as number[])}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ marginBottom: 4, fontSize: 13, color: 'var(--semi-color-text-1)' }}>部门</div>
+                  <Select
+                    multiple
+                    showClear
+                    filter
+                    loading={loadingOptions}
+                    placeholder="请选择部门"
+                    value={selectedDeptIds}
+                    optionList={deptOptions}
+                    onChange={(v) => setSelectedDeptIds(v as number[])}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div style={{ marginBottom: 16 }}>
             <div style={{ marginBottom: 4, fontSize: 14, fontWeight: 500 }}>内容</div>
             {modalVisible ? (

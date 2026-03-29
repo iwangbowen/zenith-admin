@@ -259,6 +259,7 @@ export const notices = pgTable('notices', {
   type: varchar('type', { length: 32 }).notNull().default('notice'),
   publishStatus: varchar('publish_status', { length: 32 }).notNull().default('draft'),
   priority: varchar('priority', { length: 32 }).notNull().default('medium'),
+  targetType: varchar('target_type', { length: 16 }).notNull().default('all'),
   publishTime: timestamp('publish_time', { withTimezone: true }),
   createById: integer('create_by_id'),
   createByName: varchar('create_by_name', { length: 32 }),
@@ -279,6 +280,16 @@ export const noticeReads = pgTable('notice_reads', {
 }, (t) => [unique('uniq_notice_user').on(t.noticeId, t.userId)]);
 
 export type NoticeReadRow = typeof noticeReads.$inferSelect;
+
+// ─── 通知收件人表 ─────────────────────────────────────────────────────────────
+export const noticeRecipients = pgTable('notice_recipients', {
+  id: serial('id').primaryKey(),
+  noticeId: integer('notice_id').notNull().references(() => notices.id, { onDelete: 'cascade' }),
+  recipientType: varchar('recipient_type', { length: 16 }).notNull(), // 'user' | 'role' | 'dept'
+  recipientId: integer('recipient_id').notNull(),
+}, (t) => [unique('uniq_notice_recipient').on(t.noticeId, t.recipientType, t.recipientId)]);
+
+export type NoticeRecipientRow = typeof noticeRecipients.$inferSelect;
 
 // ─── 系统参数配置表 ──────────────────────────────────────────────────────────
 export const configTypeEnum = pgEnum('config_type', ['string', 'number', 'boolean', 'json']);

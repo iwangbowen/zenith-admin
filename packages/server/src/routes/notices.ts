@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
-import { desc, eq, like, and, sql, gte, lte, inArray } from 'drizzle-orm';
+import { desc, eq, like, and, or, sql, gte, lte, inArray } from 'drizzle-orm';
 import { db } from '../db';
-import { notices, noticeReads } from '../db/schema';
+import { notices, noticeReads, noticeRecipients, users, userRoles, roles, departments } from '../db/schema';
 import { createNoticeSchema, updateNoticeSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
-import { broadcast } from '../lib/ws-manager';
+import { broadcast, sendToUser } from '../lib/ws-manager';
 import type { JwtPayload } from '../middleware/auth';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 
@@ -23,11 +23,75 @@ function toNotice(row: typeof notices.$inferSelect) {
   };
 }
 
+/** 构建当前用户可见的通知访问过滤（target_type='all' 或在 notice_recipients 中） */
+function buildAccessFilter(userId: number) {
+  return or(
+    eq(notices.targetType, 'all'),
+    sql`EXISTS (
+      SELECT 1 FROM notice_recipients nr
+      WHERE nr.notice_id = ${notices.id}
+      AND (
+        (nr.recipient_type = 'user' AND nr.recipient_id = ${userId})
+        OR (nr.recipient_type = 'role' AND nr.recipient_id IN (
+          SELECT role_id FROM user_roles WHERE user_id = ${userId}
+        ))
+        OR (nr.recipient_type = 'dept' AND nr.recipient_id = (
+          SELECT department_id FROM users WHERE id = ${userId}
+        ))
+      )
+    )`,
+  );
+}
+
+/** 保存通知收件人（先清除旧记录再插入新记录） */
+async function saveRecipients(noticeId: number, recipientList: Array<{ recipientType: string; recipientId: number }>) {
+  await db.delete(noticeRecipients).where(eq(noticeRecipients.noticeId, noticeId));
+  if (recipientList.length > 0) {
+    await db.insert(noticeRecipients).values(
+      recipientList.map((r) => ({ noticeId, recipientType: r.recipientType, recipientId: r.recipientId })),
+    ).onConflictDoNothing();
+  }
+}
+
+/** 发布通知时向目标用户推送 WebSocket 消息 */
+async function broadcastNotice(notice: ReturnType<typeof toNotice>, noticeId: number) {
+  if (notice.targetType === 'all') {
+    broadcast({ type: 'notice:new', payload: notice });
+    return;
+  }
+  // specific: 解析所有目标 userId
+  const recipientRows = await db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, noticeId));
+  const userIdSet = new Set<number>();
+
+  recipientRows.filter((r) => r.recipientType === 'user').forEach((r) => userIdSet.add(r.recipientId));
+
+  const roleIds = recipientRows.filter((r) => r.recipientType === 'role').map((r) => r.recipientId);
+  if (roleIds.length > 0) {
+    const roleUsers = await db.select({ userId: userRoles.userId }).from(userRoles).where(inArray(userRoles.roleId, roleIds));
+    roleUsers.forEach((r) => userIdSet.add(r.userId));
+  }
+
+  const deptIds = recipientRows.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId);
+  if (deptIds.length > 0) {
+    const deptUsers = await db.select({ id: users.id }).from(users).where(inArray(users.departmentId, deptIds));
+    deptUsers.forEach((u) => userIdSet.add(u.id));
+  }
+
+  for (const uid of userIdSet) {
+    sendToUser(uid, { type: 'notice:new', payload: notice });
+  }
+}
+
 // 获取已发布的通知（供铃铛使用，无需分页，返回最近 20 条，含已读标记）
 noticesRouter.get('/published', async (c) => {
   const user = c.get('user');
   const tc = tenantCondition(notices, user);
-  const publishedWhere = tc ? and(eq(notices.publishStatus, 'published'), tc) : eq(notices.publishStatus, 'published');
+  const accessFilter = buildAccessFilter(user.userId);
+  const publishedWhere = and(
+    eq(notices.publishStatus, 'published'),
+    accessFilter,
+    ...(tc ? [tc] : []),
+  );
   const rows = await db
     .select()
     .from(notices)
@@ -64,11 +128,12 @@ noticesRouter.post('/:id/read', async (c) => {
 // 全部标记为已读（将所有已发布且未读的通知批量写入 noticeReads）
 noticesRouter.post('/read-all', async (c) => {
   const user = c.get('user');
+  const accessFilter = buildAccessFilter(user.userId);
 
   const allPublished = await db
     .select({ id: notices.id })
     .from(notices)
-    .where(eq(notices.publishStatus, 'published'));
+    .where(and(eq(notices.publishStatus, 'published'), accessFilter));
 
   if (allPublished.length === 0) {
     return c.json({ code: 0, message: 'ok', data: null });
@@ -98,7 +163,12 @@ noticesRouter.get('/inbox', async (c) => {
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const isRead = c.req.query('isRead'); // 'true' | 'false' | undefined
   const tc = tenantCondition(notices, user);
-  const publishedWhere = tc ? and(eq(notices.publishStatus, 'published'), tc) : eq(notices.publishStatus, 'published');
+  const accessFilter = buildAccessFilter(user.userId);
+  const publishedWhere = and(
+    eq(notices.publishStatus, 'published'),
+    accessFilter,
+    ...(tc ? [tc] : []),
+  );
 
   const [readRows, allRows] = await Promise.all([
     db
@@ -171,7 +241,32 @@ noticesRouter.get('/:id', guard({ permission: 'system:notice:list' }), async (c)
   const id = Number(c.req.param('id'));
   const [row] = await db.select().from(notices).where(and(eq(notices.id, id), tenantCondition(notices, c.get('user'))));
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
-  return c.json({ code: 0, message: 'ok', data: toNotice(row) });
+
+  // 查询收件人列表并附带显示名称
+  const recipientRows = await db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, id));
+  const userIds = recipientRows.filter((r) => r.recipientType === 'user').map((r) => r.recipientId);
+  const roleIds = recipientRows.filter((r) => r.recipientType === 'role').map((r) => r.recipientId);
+  const deptIds = recipientRows.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId);
+
+  const [userRows, roleRows, deptRows] = await Promise.all([
+    userIds.length ? db.select({ id: users.id, label: users.nickname }).from(users).where(inArray(users.id, userIds)) : Promise.resolve([]),
+    roleIds.length ? db.select({ id: roles.id, label: roles.name }).from(roles).where(inArray(roles.id, roleIds)) : Promise.resolve([]),
+    deptIds.length ? db.select({ id: departments.id, label: departments.name }).from(departments).where(inArray(departments.id, deptIds)) : Promise.resolve([]),
+  ]);
+
+  const labelMap = new Map([
+    ...userRows.map((r) => [`user:${r.id}`, r.label ?? ''] as [string, string]),
+    ...roleRows.map((r) => [`role:${r.id}`, r.label] as [string, string]),
+    ...deptRows.map((r) => [`dept:${r.id}`, r.label] as [string, string]),
+  ]);
+
+  const recipients = recipientRows.map((r) => ({
+    recipientType: r.recipientType,
+    recipientId: r.recipientId,
+    recipientLabel: labelMap.get(`${r.recipientType}:${r.recipientId}`) ?? '',
+  }));
+
+  return c.json({ code: 0, message: 'ok', data: { ...toNotice(row), recipients } });
 });
 
 // 创建
@@ -198,15 +293,21 @@ noticesRouter.post('/', guard({ permission: 'system:notice:create', audit: { des
       type: result.data.type,
       publishStatus: result.data.publishStatus,
       priority: result.data.priority,
+      targetType: result.data.targetType ?? 'all',
       publishTime,
       createById: user?.userId ?? null,
       createByName: user?.username ?? null,
       tenantId: getCreateTenantId(user),
     })
     .returning();
+
+  // 保存收件人（仅 specific 时有意义，但 all 也可存空）
+  const recipientList = result.data.targetType === 'specific' ? (result.data.recipients ?? []) : [];
+  await saveRecipients(row.id, recipientList);
+
   const notice = toNotice(row);
   if (row.publishStatus === 'published') {
-    broadcast({ type: 'notice:new', payload: notice });
+    await broadcastNotice(notice, row.id);
   }
   return c.json({ code: 0, message: '创建成功', data: notice });
 });
@@ -232,6 +333,8 @@ noticesRouter.put('/:id', guard({ permission: 'system:notice:update', audit: { d
   }
 
   const updateData: Record<string, unknown> = { ...result.data, updatedAt: now };
+  // 不把 recipients 写入 notices 表
+  delete updateData.recipients;
   if (publishTime !== undefined) updateData.publishTime = publishTime;
 
   const [row] = await db
@@ -240,9 +343,17 @@ noticesRouter.put('/:id', guard({ permission: 'system:notice:update', audit: { d
     .where(and(eq(notices.id, id), tenantCondition(notices, c.get('user'))))
     .returning();
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
+
+  // 更新收件人
+  if (result.data.targetType !== undefined || result.data.recipients !== undefined) {
+    const newTargetType = result.data.targetType ?? row.targetType;
+    const recipientList = newTargetType === 'specific' ? (result.data.recipients ?? []) : [];
+    await saveRecipients(id, recipientList);
+  }
+
   const notice = toNotice(row);
   if (result.data.publishStatus === 'published') {
-    broadcast({ type: 'notice:new', payload: notice });
+    await broadcastNotice(notice, row.id);
   }
   return c.json({ code: 0, message: '更新成功', data: notice });
 });
