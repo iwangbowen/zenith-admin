@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Calendar, Typography, Tag, Space, Spin, Empty, Toast, List } from '@douyinfe/semi-ui';
+import { Button, Card, Calendar, Typography, Tag, Space, Spin, Empty, List, Modal } from '@douyinfe/semi-ui';
 import { Bell, BookOpen, MonitorPlay, Users, UserCheck, Wifi, LogIn, Activity } from 'lucide-react';
 
 const GithubIcon = ({ size = 18 }: { size?: number }) => (
@@ -62,6 +62,7 @@ export default function DashboardPage() {
   const isAdmin = permissions.includes('*');
   const [notices, setNotices] = useState<NoticeWithRead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedNotice, setSelectedNotice] = useState<NoticeWithRead | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
 
@@ -96,8 +97,12 @@ export default function DashboardPage() {
     request.post(`/api/notices/${id}/read`, undefined, { silent: true }).then((res) => {
       if (res.code !== 0) return;
       setNotices((prev) => prev.map(markReadById(id)));
-      Toast.success('已标记为已读');
     });
+  }
+
+  function openNotice(n: NoticeWithRead) {
+    setSelectedNotice(n);
+    if (!n.isRead) markAsRead(n.id);
   }
 
   function renderNotices() {
@@ -113,7 +118,9 @@ export default function DashboardPage() {
           const priInfo = NOTICE_PRIORITY_MAP[n.priority] ?? { label: n.priority, color: 'grey' as TagColor };
           return (
             <List.Item
-              className="notice-item"
+              className="notice-item notice-item--clickable"
+              style={{ cursor: 'pointer' }}
+              onClick={() => openNotice(n)}
               header={n.isRead ? <div className="notice-read-placeholder" /> : <div className="unread-dot" />}
               main={(
                 <div className="notice-content">
@@ -131,17 +138,6 @@ export default function DashboardPage() {
                     <Text type="tertiary" size="small">
                       {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}
                     </Text>
-                    {!n.isRead && (
-                      <Button
-                        size="small"
-                        theme="borderless"
-                        type="tertiary"
-                        className="notice-mark-read"
-                        onClick={() => markAsRead(n.id)}
-                      >
-                        标记已读
-                      </Button>
-                    )}
                   </div>
                 </div>
               )}
@@ -151,6 +147,13 @@ export default function DashboardPage() {
       />
     );
   }
+
+  const noticeTypeInfo = selectedNotice
+    ? (NOTICE_TYPE_MAP[selectedNotice.type] ?? { label: selectedNotice.type, color: 'blue' as TagColor })
+    : null;
+  const noticePriInfo = selectedNotice
+    ? (NOTICE_PRIORITY_MAP[selectedNotice.priority] ?? { label: selectedNotice.priority, color: 'grey' as TagColor })
+    : null;
 
   return (
     <div className="page-container dashboard-page">
@@ -260,6 +263,34 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      {/* ===== 通知详情 Modal ===== */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span>{selectedNotice?.title}</span>
+            {noticeTypeInfo && <Tag color={noticeTypeInfo.color} size="small">{noticeTypeInfo.label}</Tag>}
+            {noticePriInfo && <Tag color={noticePriInfo.color} size="small">{noticePriInfo.label}</Tag>}
+          </div>
+        }
+        visible={selectedNotice !== null}
+        onCancel={() => setSelectedNotice(null)}
+        footer={null}
+        width={640}
+        closeOnEsc
+      >
+        {selectedNotice && (
+          <div>
+            <div style={{ marginBottom: 12, color: 'var(--semi-color-text-3)', fontSize: 12 }}>
+              {selectedNotice.createByName ?? '-'} · {formatDateTime(selectedNotice.publishTime ?? selectedNotice.createdAt)}
+            </div>
+            <div
+              className="notice-modal-content"
+              dangerouslySetInnerHTML={{ __html: selectedNotice.content }}
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

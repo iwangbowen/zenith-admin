@@ -179,6 +179,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   // ─── 通知公告 ─────────────────────────────────────────────────────────────
   const [notices, setNotices] = useState<(Notice & { isRead?: boolean })[]>([]);
   const [noticePopVisible, setNoticePopVisible] = useState(false);
+  const [selectedNotice, setSelectedNotice] = useState<(Notice & { isRead?: boolean }) | null>(null);
   const recentNoticeMessageRef = useRef(new Map<string, number>());
 
   const fetchNotices = () => {
@@ -487,8 +488,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 renderItem={(item: Notice & { isRead?: boolean }) => (
                   <List.Item
                     key={item.id}
-                    style={{ padding: '10px 16px', cursor: item.isRead ? 'default' : 'pointer', opacity: item.isRead ? 0.55 : 1 }}
-                    onClick={() => { if (!item.isRead) markAsRead(item.id); }}
+                    style={{ padding: '10px 16px', cursor: 'pointer', opacity: item.isRead ? 0.55 : 1 }}
+                    onClick={() => {
+                      if (!item.isRead) markAsRead(item.id);
+                      setNoticePopVisible(false);
+                      setSelectedNotice(item);
+                    }}
                     header={null}
                     main={
                       <div>
@@ -915,6 +920,28 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </SideSheet>
         </div>
       </div>
+
+      {/* ===== 通知详情 Modal ===== */}
+      <Modal
+        title={selectedNotice?.title ?? ''}
+        visible={selectedNotice !== null}
+        onCancel={() => setSelectedNotice(null)}
+        footer={null}
+        width={640}
+        closeOnEsc
+      >
+        {selectedNotice && (
+          <div>
+            <div style={{ marginBottom: 12, color: 'var(--semi-color-text-3)', fontSize: 12 }}>
+              {selectedNotice.createByName ?? '-'} · {formatDateTime(selectedNotice.publishTime ?? selectedNotice.createdAt)}
+            </div>
+            <div
+              style={{ lineHeight: 1.7 }}
+              dangerouslySetInnerHTML={{ __html: selectedNotice.content }}
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

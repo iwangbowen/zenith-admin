@@ -238,6 +238,34 @@
   text-overflow: ellipsis;
 }
 
+/* 可点击列表项 hover */
+.notice-item--clickable:hover {
+  background: var(--semi-color-fill-0);
+  transition: background 0.15s ease;
+}
+
+/* 通知详情 Modal 富文本内容 */
+.notice-modal-content {
+  line-height: 1.75;
+  color: var(--semi-color-text-0);
+}
+
+.notice-modal-content p {
+  margin: 0 0 0.75em;
+}
+
+.notice-modal-content ul,
+.notice-modal-content ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.notice-modal-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
 .notice-summary {
   display: -webkit-box;
   line-clamp: 1;
