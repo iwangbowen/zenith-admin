@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Progress, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Progress, Skeleton, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -134,13 +134,55 @@ export default function MonitorPage() {
     return () => clearInterval(timer);
   }, [fetchData]);
 
+  function renderSkeleton() {
+    // 与实际卡片顺序对应: 系统信息, CPU, 内存, 磁盘, Node.js, Redis
+    // 前 4 张有进度条（CPU/内存/磁盘/Node），后 2 张只有信息行
+    const cards = [
+      { key: 'os',   hasProgress: false, rows: 5 },
+      { key: 'cpu',  hasProgress: true,  rows: 4 },
+      { key: 'mem',  hasProgress: true,  rows: 3 },
+      { key: 'disk', hasProgress: true,  rows: 3 },
+      { key: 'node', hasProgress: true,  rows: 6 },
+      { key: 'redis',hasProgress: false, rows: 8 },
+    ];
+    return (
+      <div className="monitor-grid">
+        {cards.map(({ key, hasProgress, rows }) => (
+          <Card key={key} className="monitor-card">
+            <Skeleton
+              active
+              loading
+              placeholder={
+                <div>
+                  {/* 卡片标题：图标 + 标题文字 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+                    <Skeleton.Button style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0 }} />
+                    <Skeleton.Title style={{ width: '36%', margin: 0 }} />
+                  </div>
+                  {/* 进度条区域 */}
+                  {hasProgress && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Skeleton.Title style={{ width: '32%', margin: 0 }} />
+                        <Skeleton.Title style={{ width: '12%', margin: 0 }} />
+                      </div>
+                      <Skeleton.Button style={{ width: '100%', height: 8, borderRadius: 4 }} />
+                    </div>
+                  )}
+                  {/* 信息行列表 */}
+                  <Skeleton.Paragraph rows={rows} />
+                </div>
+              }
+            />
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
   function renderContent() {
     if (loading && !data) {
-      return (
-        <div className="monitor-loading">
-          <Spin size="large" />
-        </div>
-      );
+      return renderSkeleton();
     }
     if (!data) {
       return (
