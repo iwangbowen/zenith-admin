@@ -1,141 +1,147 @@
+/* ===== 整体布局 ===== */
 .login-page {
   display: flex;
   height: 100vh;
-  min-height: 580px;
+  min-height: 600px;
 }
 
-/* ===== 左侧装饰区 ===== */
+/* ===== 左侧品牌区 ===== */
 .login-left {
   width: 50%;
-  min-width: 440px;
-  background:
-    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.86) 0%, rgba(255, 255, 255, 0.18) 34%, transparent 35%),
-    linear-gradient(145deg, #eef3ff 0%, #dce8ff 56%, #cee0ff 100%);
+  min-width: 460px;
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
+  background: linear-gradient(145deg, #1a5de8 0%, #1045c6 55%, #0a33a2 100%);
 }
 
-/* 有机 blob 装饰 */
-.login-blob {
+/* 点阵网格背景 */
+.login-left::before {
+  content: '';
   position: absolute;
-  border-radius: 50%;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 0);
+  background-size: 28px 28px;
+  z-index: 0;
 }
 
-.login-blob-1 {
-  width: 560px;
-  height: 560px;
-  border-radius: 41% 59% 53% 47% / 43% 44% 56% 57%;
-  background: radial-gradient(circle at 38% 34%, rgba(255, 255, 255, 0.72) 0%, rgba(167, 198, 255, 0.44) 52%, rgba(132, 174, 255, 0.24) 100%);
-  top: -200px;
-  left: -140px;
-  filter: blur(4px);
-}
-
-.login-blob-2 {
-  width: 440px;
-  height: 440px;
-  border-radius: 57% 43% 43% 57% / 51% 55% 45% 49%;
-  background: radial-gradient(circle at 50% 38%, rgba(193, 231, 255, 0.88) 0%, rgba(127, 191, 255, 0.44) 58%, rgba(92, 153, 255, 0.24) 100%);
-  bottom: -150px;
-  right: -120px;
-  filter: blur(2px);
-}
-
-.login-blob-3 {
-  width: 220px;
-  height: 220px;
-  border-radius: 50% 50% 30% 70% / 50% 50% 70% 30%;
-  background: rgba(160, 200, 255, 0.28);
-  top: 52%;
-  right: 30px;
+/* 隐藏圆圈装饰（极简扁平风格不使用） */
+.login-circle {
+  display: none;
 }
 
 /* 品牌内容 */
 .login-brand {
+  position: relative;
   z-index: 1;
-  padding: 0 52px;
-  max-width: 480px;
+  padding: 0 56px;
+  max-width: 500px;
+  width: 100%;
 }
 
 .login-logo-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 48px;
+  gap: 12px;
+  margin-bottom: 56px;
 }
 
 .login-logo {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: 10px;
   background: linear-gradient(135deg, #1f5cff 0%, #173fc2 100%);
-  color: #f8fbff;
+  color: #ffffff;
   font-size: 20px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 14px 30px rgba(39, 92, 226, 0.26);
+  box-shadow: 0 8px 20px rgba(39, 92, 226, 0.28);
 }
+
+/* 左侧品牌栏 logo 扁平白色 */
+.login-brand .login-logo {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  box-shadow: none;
+}
+
+/* 右侧（移动端品牌栏）logo 沿用基础蓝色即可，无需 override */
 
 .login-brand-name {
   font-size: 18px;
   font-weight: 600;
-  color: #1d2129;
+  color: #ffffff;
+  letter-spacing: 0.02em;
 }
 
 .login-headline {
-  font-size: 42px;
+  font-size: 40px;
   font-weight: 700;
-  line-height: 1.22;
-  letter-spacing: -0.03em;
-  color: #1d2129;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: #ffffff;
   margin: 0 0 16px;
 }
 
 .login-headline-highlight {
-  color: #2f5cff;
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .login-desc {
   font-size: 15px;
-  color: #646a73;
-  line-height: 1.8;
-  margin: 0 0 36px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.85;
+  margin: 0 0 40px;
 }
 
-.login-badges {
+/* 功能特性列表 */
+.login-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.login-badge {
+.login-features li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 400;
+}
+
+/* CSS 绘制的对勾圆形图标 */
+.login-feature-check {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 16px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(100, 160, 255, 0.26);
-  box-shadow: 0 10px 24px rgba(74, 123, 224, 0.10);
-  font-size: 13px;
-  font-weight: 500;
-  color: #1d2129;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1.5px solid rgba(255, 255, 255, 0.36);
+  flex-shrink: 0;
+  position: relative;
 }
 
-.login-badge-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3370ff;
-  flex-shrink: 0;
+.login-feature-check::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border-right: 2px solid rgba(255, 255, 255, 0.9);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.9);
+  transform: rotate(40deg);
 }
 
 /* ===== 右侧表单区 ===== */
@@ -144,19 +150,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 登录页始终用浅色背景，避免深色模式下表单区域变暗 */
   background: #ffffff;
   min-width: 0;
 }
 
 [data-theme='dark'] .login-right {
-  background: #1e2130;
+  background: #181c2a;
 }
 
 .login-form-wrapper {
-  width: 400px;
+  width: 420px;
   max-width: 100%;
-  padding: 0 24px;
+  padding: 0 32px;
 }
 
 .login-mobile-brand {
@@ -164,17 +169,17 @@
 }
 
 .login-form-header {
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
-[data-theme='dark'] .login-right .login-brand-name,
-[data-theme='dark'] .login-right .semi-typography,
-[data-theme='dark'] .login-right .semi-tabs-tab {
+[data-theme='dark'] .login-form-wrapper .login-brand-name,
+[data-theme='dark'] .login-form-wrapper .semi-typography,
+[data-theme='dark'] .login-form-wrapper .semi-tabs-tab {
   color: #f4f6fb;
 }
 
-[data-theme='dark'] .login-right .semi-typography-tertiary {
-  color: rgba(244, 246, 251, 0.72);
+[data-theme='dark'] .login-form-wrapper .semi-typography-tertiary {
+  color: rgba(244, 246, 251, 0.65);
 }
 
 /* ===== 窄屏响应式 ===== */
@@ -187,16 +192,18 @@
     background: #ffffff;
   }
 
-  [data-theme='dark'] .login-page {
-    background: #1e2130;
-  }
-
   .login-right {
-    padding: 40px 0;
+    padding: 40px 20px;
     flex-direction: column;
     justify-content: flex-start;
     overflow-y: auto;
     align-items: stretch;
+    background: #ffffff;
+  }
+
+  [data-theme='dark'] .login-page,
+  [data-theme='dark'] .login-right {
+    background: #181c2a;
   }
 
   .login-form-wrapper {
@@ -210,7 +217,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 36px;
+    margin-bottom: 32px;
     justify-content: center;
   }
 }
@@ -218,11 +225,11 @@
 @media (max-width: 1200px) {
   .login-left {
     width: 48%;
-    min-width: 400px;
+    min-width: 420px;
   }
 
   .login-brand {
-    padding: 0 40px;
+    padding: 0 44px;
   }
 
   .login-headline {
@@ -232,34 +239,41 @@
 
 @media (max-width: 480px) {
   .login-form-wrapper {
-    padding: 0 20px;
-  }
-
-  .login-headline {
-    font-size: 32px;
+    padding: 28px 20px;
   }
 }
 
-/* 保持 form item 紧凑 */
+/* ===== 表单样式优化 ===== */
 .login-form-wrapper .semi-form-field {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
+
 .login-form-wrapper .semi-input-wrapper {
   border-radius: 8px;
 }
+
 .login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
-  font-size: 14px;
-}
-.login-form-wrapper .semi-button.semi-button-primary {
-  border-radius: 10px;
-  height: 44px;
-  box-shadow: 0 12px 28px rgba(47, 92, 255, 0.22);
+  font-size: 15px;
 }
 
-/* OAuth 按钮 */
+.login-form-wrapper .semi-button.semi-button-primary {
+  border-radius: 10px;
+  height: 46px;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 6px 20px rgba(21, 88, 214, 0.3);
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+
+.login-form-wrapper .semi-button.semi-button-primary:hover {
+  box-shadow: 0 10px 28px rgba(21, 88, 214, 0.38);
+  transform: translateY(-1px);
+}
+
+/* ===== OAuth 按钮 ===== */
 .oauth-btn {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 1px solid var(--semi-color-border);
   background: var(--semi-color-bg-2);
@@ -270,8 +284,11 @@
   justify-content: center;
   transition: all 0.2s;
 }
+
 .oauth-btn:hover {
   border-color: var(--semi-color-primary);
   color: var(--semi-color-primary);
   background: var(--semi-color-primary-light-default);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(21, 88, 214, 0.14);
 }

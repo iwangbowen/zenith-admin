@@ -250,9 +250,9 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   return (
     <div className="login-page">
       <div className="login-left">
-        <div className="login-blob login-blob-1" />
-        <div className="login-blob login-blob-2" />
-        <div className="login-blob login-blob-3" />
+        <div className="login-circle login-circle-1" />
+        <div className="login-circle login-circle-2" />
+        <div className="login-circle login-circle-3" />
         <div className="login-brand">
           <div className="login-logo-wrap">
             <div className="login-logo">Z</div>
@@ -264,15 +264,14 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
             <span className="login-headline-highlight">赋能业务增长</span>
           </h1>
           <p className="login-desc">
-            企业级后台管理系统，为团队提供高效、
-            <br />
-            稳定、安全的管理解决方案。
+            企业级后台管理系统，为团队提供
+            高效、稳定、安全的一站式管理解决方案。
           </p>
-          <div className="login-badges">
-            <span className="login-badge"><span className="login-badge-dot" />稳定运行</span>
-            <span className="login-badge"><span className="login-badge-dot" />高效管理</span>
-            <span className="login-badge"><span className="login-badge-dot" />安全防护</span>
-          </div>
+          <ul className="login-features">
+            <li><span className="login-feature-check" />稳定可靠的系统运行保障</li>
+            <li><span className="login-feature-check" />精细化权限与角色管理</li>
+            <li><span className="login-feature-check" />完善的安全审计机制</li>
+          </ul>
         </div>
       </div>
       <div className="login-right">
