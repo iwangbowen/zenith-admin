@@ -35,6 +35,23 @@ function getCpuUsage(): Promise<number> {
 
 function getDiskInfo() {
   try {
+    if (process.platform === 'win32') {
+      // Windows: use PowerShell to query C: drive
+      const output = execSync(
+        'powershell.exe -NoProfile -NonInteractive -Command "Get-PSDrive C | Format-List Used,Free"',
+        { encoding: 'utf8', timeout: 5000 },
+      );
+      const usedMatch = /Used\s*:\s*(\d+)/.exec(output);
+      const freeMatch = /Free\s*:\s*(\d+)/.exec(output);
+      if (usedMatch && freeMatch) {
+        const used = Number.parseInt(usedMatch[1], 10);
+        const free = Number.parseInt(freeMatch[1], 10);
+        const total = used + free;
+        return { total, used, free };
+      }
+      return null;
+    }
+    // Unix/Linux/macOS
     const output = execSync('df -B1 / --output=size,used,avail 2>/dev/null || df -B1 /', { encoding: 'utf8', timeout: 3000 });
     const lines = output.trim().split('\n');
     if (lines.length >= 2) {

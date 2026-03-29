@@ -20,68 +20,82 @@
   height: 300px;
 }
 
-.monitor-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-@media (max-width: 1200px) {
-  .monitor-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 700px) {
-  .monitor-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.monitor-card {
-  height: 100%;
-}
-
-.monitor-card.semi-card {
+/* ===== Tab 卡片 ===== */
+.monitor-tab-card.semi-card {
   background: var(--color-layout-bg);
   border: 1px solid var(--color-border);
   border-radius: 10px !important;
   box-shadow: none;
 }
 
-.monitor-card.semi-card .semi-card-header {
+.monitor-tab-card.semi-card .semi-card-body {
   background: transparent;
-  border-bottom-color: var(--color-border);
+  padding: 0 20px 20px;
 }
 
-.monitor-card.semi-card .semi-card-body {
-  background: transparent;
+.monitor-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.monitor-card-title {
+/* ===== 总览 Tab ===== */
+.monitor-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1100px) {
+  .monitor-overview-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .monitor-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.monitor-overview-metric {
+  background: var(--semi-color-fill-0);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.monitor-overview-metric__header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: 6px;
+  color: var(--semi-color-text-1);
 }
 
-.monitor-progress-section {
-  margin-bottom: 16px;
+.monitor-overview-metric__value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--semi-color-text-0);
 }
 
-.monitor-progress-header {
+.monitor-overview-metric__info {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
+/* ===== 信息行 ===== */
 .monitor-info-row {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 6px 0;
+  gap: 4px;
+  padding: 10px 12px 10px 0;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -90,20 +104,67 @@
 }
 
 .monitor-info-label {
-  flex-shrink: 0;
-  min-width: 0;
+  font-size: 12px;
 }
 
 .monitor-info-value {
-  text-align: left;
   word-break: break-word;
   overflow-wrap: anywhere;
+  font-size: 13px;
 }
 
+/* 系统基本信息网格（总览下方） */
+.monitor-overview-sys {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: 4px;
+}
+
+@media (max-width: 600px) {
+  .monitor-overview-sys {
+    grid-template-columns: 1fr;
+  }
+}
+
+.monitor-overview-sys .monitor-info-row:nth-child(2n) {
+  padding-left: 16px;
+  border-left: 1px solid var(--color-border);
+}
+
+/* ===== 详情 Tab 两列网格 ===== */
+.monitor-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .monitor-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.monitor-detail-grid .monitor-info-row:nth-child(2n) {
+  padding-left: 16px;
+  border-left: 1px solid var(--color-border);
+}
+
+/* ===== 进度条颜色 ===== */
 .monitor-progress-warning :global(.semi-progress-stroke) {
   background: var(--semi-color-warning) !important;
 }
 
 .monitor-progress-danger :global(.semi-progress-stroke) {
   background: var(--semi-color-danger) !important;
+}
+
+.monitor-progress-warning.monitor-overview-metric__value {
+  color: var(--semi-color-warning);
+}
+
+.monitor-progress-danger.monitor-overview-metric__value {
+  color: var(--semi-color-danger);
 }

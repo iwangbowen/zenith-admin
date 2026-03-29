@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Progress, Skeleton, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Progress, Skeleton, Tag, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -106,6 +106,8 @@ function InfoRow({ label, value }: InfoRowProps) {
   );
 }
 
+const SKELETON_ROW_KEYS = ['r0','r1','r2','r3','r4','r5','r6','r7','r8','r9','r10','r11'] as const;
+
 export default function MonitorPage() {
   const [data, setData] = useState<MonitorData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -135,48 +137,26 @@ export default function MonitorPage() {
   }, [fetchData]);
 
   function renderSkeleton() {
-    // 与实际卡片顺序对应: 系统信息, CPU, 内存, 磁盘, Node.js, Redis
-    // 前 4 张有进度条（CPU/内存/磁盘/Node），后 2 张只有信息行
-    const cards = [
-      { key: 'os',   hasProgress: false, rows: 5 },
-      { key: 'cpu',  hasProgress: true,  rows: 4 },
-      { key: 'mem',  hasProgress: true,  rows: 3 },
-      { key: 'disk', hasProgress: true,  rows: 3 },
-      { key: 'node', hasProgress: true,  rows: 6 },
-      { key: 'redis',hasProgress: false, rows: 8 },
-    ];
     return (
-      <div className="monitor-grid">
-        {cards.map(({ key, hasProgress, rows }) => (
-          <Card key={key} className="monitor-card">
-            <Skeleton
-              active
-              loading
-              placeholder={
-                <div>
-                  {/* 卡片标题：图标 + 标题文字 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
-                    <Skeleton.Button style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0 }} />
-                    <Skeleton.Title style={{ width: '36%', margin: 0 }} />
-                  </div>
-                  {/* 进度条区域 */}
-                  {hasProgress && (
-                    <div style={{ marginBottom: 20 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <Skeleton.Title style={{ width: '32%', margin: 0 }} />
-                        <Skeleton.Title style={{ width: '12%', margin: 0 }} />
-                      </div>
-                      <Skeleton.Button style={{ width: '100%', height: 8, borderRadius: 4 }} />
-                    </div>
-                  )}
-                  {/* 信息行列表 */}
-                  <Skeleton.Paragraph rows={rows} />
+      <Card className="monitor-tab-card">
+        <Skeleton active loading placeholder={
+          <div>
+            <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
+              {['a', 'b', 'c', 'd', 'e', 'f'].map((k) => (
+                <Skeleton.Button key={k} style={{ width: 64, height: 32, borderRadius: 4 }} />
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+              {SKELETON_ROW_KEYS.map((k) => (
+                <div key={k} style={{ padding: '10px 12px 10px 0', borderBottom: '1px solid var(--color-border)' }}>
+                  <Skeleton.Title style={{ width: '40%', height: 12, margin: '0 0 8px' }} />
+                  <Skeleton.Title style={{ width: '70%', height: 14, margin: 0 }} />
                 </div>
-              }
-            />
-          </Card>
-        ))}
-      </div>
+              ))}
+            </div>
+          </div>
+        } />
+      </Card>
     );
   }
 
@@ -194,188 +174,196 @@ export default function MonitorPage() {
     const heapPercent = Math.round(
       (data.node.memoryUsage.heapUsed / data.node.memoryUsage.heapTotal) * 100,
     );
+
     return (
-      <div className="monitor-grid">
-        <Card
-          className="monitor-card"
-          title={
-            <div className="monitor-card-title">
-              <Server size={16} />
-              <span>系统信息</span>
-            </div>
-          }
-        >
-          <InfoRow label="主机名" value={data.os.hostname} />
-          <InfoRow label="操作系统" value={`${data.os.platform} ${data.os.release}`} />
-          <InfoRow label="系统架构" value={data.os.arch} />
-          <InfoRow label="系统运行时长" value={formatUptime(data.os.uptimeSeconds)} />
-          <InfoRow label="系统状态" value={<Tag color="green" size="small">运行中</Tag>} />
-        </Card>
-
-        <Card
-          className="monitor-card"
-          title={
-            <div className="monitor-card-title">
-              <Cpu size={16} />
-              <span>CPU</span>
-            </div>
-          }
-        >
-          <div className="monitor-progress-section">
-            <div className="monitor-progress-header">
-              <Text>CPU 使用率</Text>
-              <Text strong>{data.cpu.usage}%</Text>
-            </div>
-            <div className={getProgressClass(data.cpu.usage)}>
-              <Progress percent={data.cpu.usage} showInfo={false} size="large" />
-            </div>
-          </div>
-          <InfoRow label="处理器型号" value={data.cpu.model} />
-          <InfoRow label="核心数量" value={`${data.cpu.cores} 核`} />
-          <InfoRow label="主频" value={`${data.cpu.speed} MHz`} />
-          <InfoRow
-            label="系统负载 (1/5/15min)"
-            value={data.cpu.loadAvg.map((v) => v.toFixed(2)).join(' / ')}
-          />
-        </Card>
-
-        <Card
-          className="monitor-card"
-          title={
-            <div className="monitor-card-title">
-              <MemoryStick size={16} />
-              <span>内存</span>
-            </div>
-          }
-        >
-          <div className="monitor-progress-section">
-            <div className="monitor-progress-header">
-              <Text>内存使用率</Text>
-              <Text strong>{data.memory.usagePercent}%</Text>
-            </div>
-            <div className={getProgressClass(data.memory.usagePercent)}>
-              <Progress percent={data.memory.usagePercent} showInfo={false} size="large" />
-            </div>
-          </div>
-          <InfoRow label="总内存" value={formatBytes(data.memory.total)} />
-          <InfoRow label="已使用" value={formatBytes(data.memory.used)} />
-          <InfoRow label="可用内存" value={formatBytes(data.memory.free)} />
-        </Card>
-
-        <Card
-          className="monitor-card"
-          title={
-            <div className="monitor-card-title">
-              <HardDrive size={16} />
-              <span>磁盘 (/)</span>
-            </div>
-          }
-        >
-          {data.disk ? (
-            <>
-              <div className="monitor-progress-section">
-                <div className="monitor-progress-header">
-                  <Text>磁盘使用率</Text>
-                  <Text strong>{data.disk.usagePercent}%</Text>
+      <Card className="monitor-tab-card">
+        <Tabs type="line">
+          {/* ===== 总览 ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><Server size={14} />总览</span>} itemKey="overview">
+            <div className="monitor-overview-grid">
+              {/* CPU */}
+              <div className="monitor-overview-metric">
+                <div className="monitor-overview-metric__header">
+                  <Cpu size={15} />
+                  <Text strong>CPU</Text>
                 </div>
-                <div className={getProgressClass(data.disk.usagePercent)}>
-                  <Progress percent={data.disk.usagePercent} showInfo={false} size="large" />
+                <div className={`monitor-overview-metric__value ${getProgressClass(data.cpu.usage)}`}>
+                  {data.cpu.usage}%
+                </div>
+                <div className={getProgressClass(data.cpu.usage)}>
+                  <Progress percent={data.cpu.usage} showInfo={false} />
+                </div>
+                <div className="monitor-overview-metric__info">
+                  <Text type="tertiary" size="small">{data.cpu.cores} 核 · {data.cpu.speed} MHz</Text>
+                  <Text type="tertiary" size="small">负载 {data.cpu.loadAvg.map((v) => v.toFixed(2)).join(' / ')}</Text>
                 </div>
               </div>
-              <InfoRow label="总容量" value={formatBytes(data.disk.total)} />
-              <InfoRow label="已使用" value={formatBytes(data.disk.used)} />
-              <InfoRow label="可用空间" value={formatBytes(data.disk.free)} />
-            </>
-          ) : (
-            <Text type="tertiary">磁盘信息不可用</Text>
-          )}
-        </Card>
 
-        <Card
-          className="monitor-card"
-          title={
-            <div className="monitor-card-title">
-              <Server size={16} />
-              <span>Node.js 进程</span>
-            </div>
-          }
-        >
-          <div className="monitor-progress-section">
-            <div className="monitor-progress-header">
-              <Text>堆内存使用率</Text>
-              <Text strong>{heapPercent}%</Text>
-            </div>
-            <Progress percent={heapPercent} showInfo={false} size="large" />
-          </div>
-          <InfoRow label="进程 PID" value={data.node.pid} />
-          <InfoRow label="Node 版本" value={data.node.version} />
-          <InfoRow label="进程运行时长" value={formatUptime(data.node.uptime)} />
-          <InfoRow label="RSS 内存" value={formatBytes(data.node.memoryUsage.rss)} />
-          <InfoRow label="堆内存总量" value={formatBytes(data.node.memoryUsage.heapTotal)} />
-          <InfoRow label="堆内存已用" value={formatBytes(data.node.memoryUsage.heapUsed)} />
-          <InfoRow label="进程状态" value={<Tag color="green" size="small">运行中</Tag>} />
-        </Card>
+              {/* 内存 */}
+              <div className="monitor-overview-metric">
+                <div className="monitor-overview-metric__header">
+                  <MemoryStick size={15} />
+                  <Text strong>内存</Text>
+                </div>
+                <div className={`monitor-overview-metric__value ${getProgressClass(data.memory.usagePercent)}`}>
+                  {data.memory.usagePercent}%
+                </div>
+                <div className={getProgressClass(data.memory.usagePercent)}>
+                  <Progress percent={data.memory.usagePercent} showInfo={false} />
+                </div>
+                <div className="monitor-overview-metric__info">
+                  <Text type="tertiary" size="small">已用 {formatBytes(data.memory.used)}</Text>
+                  <Text type="tertiary" size="small">共 {formatBytes(data.memory.total)}</Text>
+                </div>
+              </div>
 
-        <Card
-          className="monitor-card"
-          title={
-            <div className="monitor-card-title">
-              <Database size={16} />
-              <span>数据库</span>
-            </div>
-          }
-        >
-          {data.database ? (
-            <>
-              <InfoRow label="数据库名称" value={data.database.name} />
-              <InfoRow label="数据库大小" value={formatBytes(data.database.size)} />
-              <InfoRow label="数据表数量" value={`${data.database.tableCount} 张`} />
-              <InfoRow label="活跃连接数" value={data.database.activeConnections} />
-              <InfoRow label="总连接数" value={data.database.totalConnections} />
-              <InfoRow
-                label="数据库状态"
-                value={<Tag color="green" size="small">运行中</Tag>}
-              />
-            </>
-          ) : (
-            <Text type="tertiary">数据库信息不可用</Text>
-          )}
-        </Card>
+              {/* 磁盘 */}
+              <div className="monitor-overview-metric">
+                <div className="monitor-overview-metric__header">
+                  <HardDrive size={15} />
+                  <Text strong>磁盘</Text>
+                </div>
+                {data.disk ? (
+                  <>
+                    <div className={`monitor-overview-metric__value ${getProgressClass(data.disk.usagePercent)}`}>
+                      {data.disk.usagePercent}%
+                    </div>
+                    <div className={getProgressClass(data.disk.usagePercent)}>
+                      <Progress percent={data.disk.usagePercent} showInfo={false} />
+                    </div>
+                    <div className="monitor-overview-metric__info">
+                      <Text type="tertiary" size="small">已用 {formatBytes(data.disk.used)}</Text>
+                      <Text type="tertiary" size="small">共 {formatBytes(data.disk.total)}</Text>
+                    </div>
+                  </>
+                ) : (
+                  <Text type="tertiary" size="small">不可用</Text>
+                )}
+              </div>
 
-        <Card
-          className="monitor-card"
-          title={
-            <div className="monitor-card-title">
-              <Layers size={16} />
-              <span>Redis</span>
+              {/* Node 堆内存 */}
+              <div className="monitor-overview-metric">
+                <div className="monitor-overview-metric__header">
+                  <Server size={15} />
+                  <Text strong>Node 堆内存</Text>
+                </div>
+                <div className={`monitor-overview-metric__value ${getProgressClass(heapPercent)}`}>
+                  {heapPercent}%
+                </div>
+                <div className={getProgressClass(heapPercent)}>
+                  <Progress percent={heapPercent} showInfo={false} />
+                </div>
+                <div className="monitor-overview-metric__info">
+                  <Text type="tertiary" size="small">已用 {formatBytes(data.node.memoryUsage.heapUsed)}</Text>
+                  <Text type="tertiary" size="small">共 {formatBytes(data.node.memoryUsage.heapTotal)}</Text>
+                </div>
+              </div>
             </div>
-          }
-        >
-          {data.redis ? (
-            <>
-              <InfoRow label="版本" value={data.redis.version} />
-              <InfoRow label="运行时长" value={formatUptime(data.redis.uptimeSeconds)} />
-              <InfoRow label="角色" value={data.redis.role} />
-              <InfoRow label="已用内存" value={`${data.redis.usedMemoryHuman} (${formatBytes(data.redis.usedMemory)})`} />
-              <InfoRow label="已连接客户端" value={data.redis.connectedClients} />
-              <InfoRow label="Key 总数" value={data.redis.keyCount} />
-              <InfoRow label="命令总执行数" value={data.redis.totalCommandsProcessed.toLocaleString()} />
-              <InfoRow
-                label="命中率"
-                value={(() => {
-                  const total = data.redis.keyspaceHits + data.redis.keyspaceMisses;
-                  return total > 0
-                    ? `${((data.redis.keyspaceHits / total) * 100).toFixed(1)}%`
-                    : 'N/A';
-                })()}
-              />
-              <InfoRow label="Redis 状态" value={<Tag color="green" size="small">运行中</Tag>} />
-            </>
-          ) : (
-            <Text type="tertiary">Redis 信息不可用</Text>
-          )}
-        </Card>
-      </div>
+
+            {/* 系统基本信息 */}
+            <div className="monitor-overview-sys">
+              <InfoRow label="主机名" value={data.os.hostname} />
+              <InfoRow label="操作系统" value={`${data.os.platform} ${data.os.release} (${data.os.arch})`} />
+              <InfoRow label="系统运行时长" value={formatUptime(data.os.uptimeSeconds)} />
+              <InfoRow label="Node 版本" value={data.node.version} />
+              <InfoRow label="进程 PID" value={data.node.pid} />
+              <InfoRow label="进程运行时长" value={formatUptime(data.node.uptime)} />
+            </div>
+          </TabPane>
+
+          {/* ===== CPU ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><Cpu size={14} />CPU</span>} itemKey="cpu">
+            <div className="monitor-detail-grid">
+              <InfoRow label="处理器型号" value={data.cpu.model} />
+              <InfoRow label="核心数量" value={`${data.cpu.cores} 核`} />
+              <InfoRow label="主频" value={`${data.cpu.speed} MHz`} />
+              <InfoRow label="CPU 使用率" value={`${data.cpu.usage}%`} />
+              <InfoRow label="系统负载 (1/5/15min)" value={data.cpu.loadAvg.map((v) => v.toFixed(2)).join(' / ')} />
+            </div>
+          </TabPane>
+
+          {/* ===== 内存 ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><MemoryStick size={14} />内存</span>} itemKey="mem">
+            <div className="monitor-detail-grid">
+              <InfoRow label="总内存" value={formatBytes(data.memory.total)} />
+              <InfoRow label="已使用" value={formatBytes(data.memory.used)} />
+              <InfoRow label="可用内存" value={formatBytes(data.memory.free)} />
+              <InfoRow label="使用率" value={`${data.memory.usagePercent}%`} />
+            </div>
+          </TabPane>
+
+          {/* ===== 磁盘 ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><HardDrive size={14} />磁盘</span>} itemKey="disk">
+            {data.disk ? (
+              <div className="monitor-detail-grid">
+                <InfoRow label="总容量" value={formatBytes(data.disk.total)} />
+                <InfoRow label="已使用" value={formatBytes(data.disk.used)} />
+                <InfoRow label="可用空间" value={formatBytes(data.disk.free)} />
+                <InfoRow label="使用率" value={`${data.disk.usagePercent}%`} />
+              </div>
+            ) : (
+              <Text type="tertiary">磁盘信息不可用</Text>
+            )}
+          </TabPane>
+
+          {/* ===== Node.js ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><Server size={14} />Node.js</span>} itemKey="node">
+            <div className="monitor-detail-grid">
+              <InfoRow label="进程 PID" value={data.node.pid} />
+              <InfoRow label="Node 版本" value={data.node.version} />
+              <InfoRow label="进程运行时长" value={formatUptime(data.node.uptime)} />
+              <InfoRow label="堆内存使用率" value={`${heapPercent}%`} />
+              <InfoRow label="RSS 内存" value={formatBytes(data.node.memoryUsage.rss)} />
+              <InfoRow label="堆内存总量" value={formatBytes(data.node.memoryUsage.heapTotal)} />
+              <InfoRow label="堆内存已用" value={formatBytes(data.node.memoryUsage.heapUsed)} />
+              <InfoRow label="进程状态" value={<Tag color="green" size="small">运行中</Tag>} />
+            </div>
+          </TabPane>
+
+          {/* ===== 数据库 ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><Database size={14} />数据库</span>} itemKey="db">
+            {data.database ? (
+              <div className="monitor-detail-grid">
+                <InfoRow label="数据库名称" value={data.database.name} />
+                <InfoRow label="数据库大小" value={formatBytes(data.database.size)} />
+                <InfoRow label="数据表数量" value={`${data.database.tableCount} 张`} />
+                <InfoRow label="活跃连接数" value={data.database.activeConnections} />
+                <InfoRow label="总连接数" value={data.database.totalConnections} />
+                <InfoRow label="数据库状态" value={<Tag color="green" size="small">运行中</Tag>} />
+              </div>
+            ) : (
+              <Text type="tertiary">数据库信息不可用</Text>
+            )}
+          </TabPane>
+
+          {/* ===== Redis ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><Layers size={14} />Redis</span>} itemKey="redis">
+            {data.redis ? (
+              <div className="monitor-detail-grid">
+                <InfoRow label="版本" value={data.redis.version} />
+                <InfoRow label="运行时长" value={formatUptime(data.redis.uptimeSeconds)} />
+                <InfoRow label="角色" value={data.redis.role} />
+                <InfoRow label="已用内存" value={`${data.redis.usedMemoryHuman} (${formatBytes(data.redis.usedMemory)})`} />
+                <InfoRow label="已连接客户端" value={data.redis.connectedClients} />
+                <InfoRow label="Key 总数" value={data.redis.keyCount} />
+                <InfoRow label="命令总执行数" value={data.redis.totalCommandsProcessed.toLocaleString()} />
+                <InfoRow
+                  label="命中率"
+                  value={(() => {
+                    const total = data.redis.keyspaceHits + data.redis.keyspaceMisses;
+                    return total > 0
+                      ? `${((data.redis.keyspaceHits / total) * 100).toFixed(1)}%`
+                      : 'N/A';
+                  })()}
+                />
+                <InfoRow label="Redis 状态" value={<Tag color="green" size="small">运行中</Tag>} />
+              </div>
+            ) : (
+              <Text type="tertiary">Redis 信息不可用</Text>
+            )}
+          </TabPane>
+        </Tabs>
+      </Card>
     );
   }
 
