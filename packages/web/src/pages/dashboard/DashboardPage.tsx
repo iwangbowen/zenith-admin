@@ -56,6 +56,12 @@ const NOTICE_PRIORITY_MAP: Record<string, { label: string; color: TagColor }> = 
 const markReadById = (id: number) => (n: NoticeWithRead) =>
   n.id === id ? { ...n, isRead: true } : n;
 
+function stripHtml(html: string): string {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return (tmp.textContent ?? tmp.innerText ?? '').replaceAll(/\s+/g, ' ').trim();
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { permissions } = usePermission();
@@ -132,8 +138,9 @@ export default function DashboardPage() {
                   <div
                     className="notice-summary"
                     style={{ maxHeight: 40, overflow: 'hidden', lineHeight: 1.5 }}
-                    dangerouslySetInnerHTML={{ __html: n.content || '' }}
-                  />
+                  >
+                    {stripHtml(n.content || '')}
+                  </div>
                   <div className="notice-item-footer">
                     <Text type="tertiary" size="small">
                       {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}

@@ -97,6 +97,12 @@ interface AdminLayoutProps {
   readonly presetMenus?: Menu[];
 }
 
+function stripHtml(html: string): string {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return (tmp.textContent ?? tmp.innerText ?? '').replaceAll(/\s+/g, ' ').trim();
+}
+
 export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
@@ -500,8 +506,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                         <Typography.Text strong style={{ fontSize: 13 }}>{item.title}</Typography.Text>
                         <div
                           style={{ fontSize: 12, color: 'var(--semi-color-text-2)', margin: '3px 0 4px', maxHeight: 40, overflow: 'hidden', lineHeight: 1.5 }}
-                          dangerouslySetInnerHTML={{ __html: item.content }}
-                        />
+                        >
+                          {stripHtml(item.content)}
+                        </div>
                         <Typography.Text style={{ fontSize: 11, color: 'var(--semi-color-text-3)' }}>
                           {item.publishTime ? formatDateTime(item.publishTime) : formatDateTime(item.createdAt)}
                         </Typography.Text>
