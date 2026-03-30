@@ -10,6 +10,26 @@ cacheRouter.use('*', authMiddleware);
 
 const { keyPrefix } = config.redis;
 
+const CATEGORY_MAP: Record<string, string> = {
+  session: '会话 Token',
+  blacklist: '强制下线黑名单',
+  perm: '权限缓存',
+  login_attempt: '登录失败计数',
+  login_lock: '登录锁定',
+};
+
+/** 从 key 提取原始前缀段（如 session、blacklist） */
+function getSegment(key: string): string {
+  const stripped = key.startsWith(keyPrefix) ? key.slice(keyPrefix.length) : key;
+  return stripped.split(':')[0] ?? stripped;
+}
+
+/** 根据 key 提取中文分类标签 */
+function getCategory(key: string): string {
+  const seg = getSegment(key);
+  return CATEGORY_MAP[seg] ?? '其他';
+}
+
 /** 用 SCAN 命令安全枚举匹配 pattern 的所有 key */
 async function scanKeys(pattern: string): Promise<string[]> {
   const keys: string[] = [];
@@ -55,6 +75,8 @@ async function getKeyMeta(key: string) {
   return {
     key,
     displayKey: key.startsWith(keyPrefix) ? key.slice(keyPrefix.length) : key,
+    segment: getSegment(key),
+    category: getCategory(key),
     type,
     ttl,
     size,
@@ -99,6 +121,20 @@ cacheRouter.delete('/', guard({ permission: 'system:cache:delete', audit: { modu
   }
 
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+/** DELETE /api/cache/by-category - 删除指定分类下的所有缓存（body: { segment }） */
+cacheRouter.delete('/by-category', guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '删除分类缓存' } }), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const segment: string | undefined = body?.segment;
+  if (!segment) {
+    return c.json({ code: 400, message: '参数错误：缺少 segment', data: null }, 400);
+  }
+  const keys = await scanKeys(`${keyPrefix}${segment}:*`);
+  if (keys.length > 0) {
+    await redis.del(...keys);
+  }
+  return c.json({ code: 0, message: `已删除 ${keys.length} 条缓存`, data: { count: keys.length } });
 });
 
 /** DELETE /api/cache/all - 清空当前命名空间所有缓存 */

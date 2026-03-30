@@ -3,6 +3,8 @@ import { http, HttpResponse } from 'msw';
 interface MockCacheItem {
   key: string;
   displayKey: string;
+  segment: string;
+  category: string;
   type: string;
   ttl: number;
   size: number;
@@ -13,6 +15,8 @@ const mockCacheItems: MockCacheItem[] = [
   {
     key: 'zenith:session:550e8400-e29b-41d4-a716-446655440000',
     displayKey: 'session:550e8400-e29b-41d4-a716-446655440000',
+    segment: 'session',
+    category: '会话 Token',
     type: 'string',
     ttl: 28800,
     size: 210,
@@ -21,6 +25,8 @@ const mockCacheItems: MockCacheItem[] = [
   {
     key: 'zenith:session:6ba7b810-9dad-11d1-80b4-00c04fd430c8',
     displayKey: 'session:6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+    segment: 'session',
+    category: '会话 Token',
     type: 'string',
     ttl: 14400,
     size: 198,
@@ -29,6 +35,8 @@ const mockCacheItems: MockCacheItem[] = [
   {
     key: 'zenith:blacklist:3f2504e0-4f89-11d3-9a0c-0305e82c3301',
     displayKey: 'blacklist:3f2504e0-4f89-11d3-9a0c-0305e82c3301',
+    segment: 'blacklist',
+    category: '强制下线黑名单',
     type: 'string',
     ttl: 3600,
     size: 1,
@@ -37,6 +45,8 @@ const mockCacheItems: MockCacheItem[] = [
   {
     key: 'zenith:perm:1',
     displayKey: 'perm:1',
+    segment: 'perm',
+    category: '权限缓存',
     type: 'string',
     ttl: 600,
     size: 320,
@@ -45,6 +55,8 @@ const mockCacheItems: MockCacheItem[] = [
   {
     key: 'zenith:perm:2',
     displayKey: 'perm:2',
+    segment: 'perm',
+    category: '权限缓存',
     type: 'string',
     ttl: 450,
     size: 48,
@@ -53,6 +65,8 @@ const mockCacheItems: MockCacheItem[] = [
   {
     key: 'zenith:login_attempt:admin',
     displayKey: 'login_attempt:admin',
+    segment: 'login_attempt',
+    category: '登录失败计数',
     type: 'string',
     ttl: 180,
     size: 1,
@@ -72,6 +86,23 @@ export const cacheHandlers = [
     }
 
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: list.length } });
+  }),
+
+  // 删除指定分类下的所有 key
+  http.delete('/api/cache/by-category', async ({ request }) => {
+    const body = await request.json() as { segment?: string };
+    const segment = body?.segment;
+    if (!segment) {
+      return HttpResponse.json({ code: 400, message: '参数错误：缺少 segment', data: null }, { status: 400 });
+    }
+    let count = 0;
+    for (let i = mockCacheItems.length - 1; i >= 0; i--) {
+      if (mockCacheItems[i].segment === segment) {
+        mockCacheItems.splice(i, 1);
+        count++;
+      }
+    }
+    return HttpResponse.json({ code: 0, message: `已删除 ${count} 条缓存`, data: { count } });
   }),
 
   // 删除单个 key
