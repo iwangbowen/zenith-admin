@@ -467,6 +467,92 @@ export interface UserApiTokenCreated {
   createdAt: string;
 }
 
+// ─── 工作流引擎 ───────────────────────────────────────────────────────────────
+export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
+export type WorkflowInstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
+export type WorkflowTaskStatus = 'pending' | 'approved' | 'rejected' | 'skipped';
+export type WorkflowNodeType = 'start' | 'approve' | 'end';
+
+// 流程节点配置（存在 flowData JSON 中）
+export interface WorkflowNodeConfig {
+  key: string;       // 节点唯一标识
+  type: WorkflowNodeType;
+  label: string;     // 显示名称
+  assigneeId?: number | null;  // 审批人 ID（approve 节点）
+  assigneeName?: string | null;
+}
+
+// React Flow 数据结构（flowData JSON）
+export interface WorkflowFlowData {
+  nodes: Array<{
+    id: string;
+    type?: string;
+    position: { x: number; y: number };
+    data: WorkflowNodeConfig;
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    type?: string;
+  }>;
+}
+
+// 表单字段配置
+export interface WorkflowFormField {
+  key: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'date' | 'select';
+  required?: boolean;
+  options?: string[];  // select 类型的选项
+}
+
+export interface WorkflowDefinition {
+  id: number;
+  name: string;
+  description: string | null;
+  flowData: WorkflowFlowData | null;
+  formFields: WorkflowFormField[] | null;
+  status: WorkflowDefinitionStatus;
+  version: number;
+  tenantId: number | null;
+  createdBy: number | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowTask {
+  id: number;
+  instanceId: number;
+  nodeKey: string;
+  nodeName: string;
+  assigneeId: number | null;
+  assigneeName?: string | null;
+  assigneeAvatar?: string | null;
+  status: WorkflowTaskStatus;
+  comment: string | null;
+  actionAt: string | null;
+  createdAt: string;
+}
+
+export interface WorkflowInstance {
+  id: number;
+  definitionId: number;
+  definitionName?: string;
+  title: string;
+  formData: Record<string, unknown> | null;
+  status: WorkflowInstanceStatus;
+  currentNodeKey: string | null;
+  initiatorId: number;
+  initiatorName?: string | null;
+  initiatorAvatar?: string | null;
+  tenantId: number | null;
+  tasks?: WorkflowTask[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── 消息模板 ─────────────────────────────────────────────────────────────────
 export type MessageChannelType = 'email' | 'sms' | 'in_app';
 

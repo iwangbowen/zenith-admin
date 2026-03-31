@@ -18,6 +18,7 @@ const NotificationsPage = React.lazy(() => import('@/pages/notifications/Notific
 const NotFoundPage = React.lazy(() => import('@/pages/not-found/NotFoundPage'));
 const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage'));
 const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
+const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/definitions/WorkflowDesignerPage'));
 
 const routeFallback = <div style={{ padding: 24 }}><Spin /></div>;
 
@@ -45,7 +46,7 @@ interface AdminRouteLoaderProps {
   updateUser: (user: Omit<User, 'password'>) => void;
 }
 
-function AdminRouteLoader({ user, permissions, logout, updateUser }: AdminRouteLoaderProps) {
+function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<AdminRouteLoaderProps>) {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -75,6 +76,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: AdminRouteL
         <Route index element={<Suspense fallback={<DashboardSkeleton />}><DashboardPage /></Suspense>} />
         <Route path="profile" element={<Suspense fallback={routeFallback}><ProfilePage user={user} onUserUpdate={updateUser} /></Suspense>} />
         <Route path="notifications" element={<Suspense fallback={routeFallback}><NotificationsPage /></Suspense>} />
+        <Route path="workflow/designer/:id" element={<Suspense fallback={routeFallback}><WorkflowDesignerPage /></Suspense>} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
         <Route path="forbidden" element={<Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
 

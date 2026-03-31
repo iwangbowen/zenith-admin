@@ -37,6 +37,8 @@ import dbBackupsRoutes from './routes/db-backups';
 import apiTokensRoutes from './routes/api-tokens';
 import cacheRoutes from './routes/cache';
 import messageTemplatesRoutes from './routes/message-templates';
+import workflowDefinitionsRoutes from './routes/workflow-definitions';
+import workflowInstancesRoutes from './routes/workflow-instances';
 import { createWsRoute } from './routes/ws';
 import { initCronScheduler } from './lib/cron-scheduler';
 
@@ -75,6 +77,8 @@ app.route('/api/db-backups', dbBackupsRoutes);
 app.route('/api/api-tokens', apiTokensRoutes);
 app.route('/api/cache', cacheRoutes);
 app.route('/api/message-templates', messageTemplatesRoutes);
+app.route('/api/workflows/definitions', workflowDefinitionsRoutes);
+app.route('/api/workflows', workflowInstancesRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 
 app.get('/api/health', async (c) => {

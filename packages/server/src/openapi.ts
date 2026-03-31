@@ -873,6 +873,44 @@ export const openapiSpec = {
         responses: { '200': { description: '密码策略', content: { 'application/json': { schema: { type: 'object', properties: { minLength: { type: 'integer', example: 8 }, requireUppercase: { type: 'boolean' }, requireSpecialChar: { type: 'boolean' } } } } } } },
       },
     },
+    // ─── Workflow Engine ──────────────────────────────────────────────────────
+    '/workflows/definitions': {
+      get: { tags: ['工作流引擎'], summary: '流程定义列表（分页）', parameters: [{ $ref: '#/components/parameters/PageParam' }, { $ref: '#/components/parameters/PageSizeParam' }, { name: 'keyword', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'published', 'disabled'] } }], responses: { '200': { description: '分页列表' } } },
+      post: { tags: ['工作流引擎'], summary: '创建流程定义', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['name'], properties: { name: { type: 'string' }, description: { type: 'string' }, flowData: { type: 'object' }, formFields: { type: 'array', items: { type: 'object' } } } } } } }, responses: { '200': { description: '创建成功' } } },
+    },
+    '/workflows/definitions/published': {
+      get: { tags: ['工作流引擎'], summary: '已发布流程列表（发起申请时选择）', responses: { '200': { description: '列表' } } },
+    },
+    '/workflows/definitions/{id}': {
+      get: { tags: ['工作流引擎'], summary: '获取流程定义详情', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: '详情' } } },
+      put: { tags: ['工作流引擎'], summary: '更新流程定义', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: '更新成功' } } },
+      delete: { tags: ['工作流引擎'], summary: '删除流程定义（仅草稿）', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: '删除成功' } } },
+    },
+    '/workflows/definitions/{id}/publish': {
+      post: { tags: ['工作流引擎'], summary: '发布流程定义', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: '发布成功' } } },
+    },
+    '/workflows/definitions/{id}/disable': {
+      post: { tags: ['工作流引擎'], summary: '禁用流程定义', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: '禁用成功' } } },
+    },
+    '/workflows/instances': {
+      get: { tags: ['工作流引擎'], summary: '我的申请列表（分页）', parameters: [{ $ref: '#/components/parameters/PageParam' }, { $ref: '#/components/parameters/PageSizeParam' }, { name: 'status', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: '分页列表' } } },
+      post: { tags: ['工作流引擎'], summary: '发起流程申请', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['definitionId', 'title'], properties: { definitionId: { type: 'integer' }, title: { type: 'string' }, formData: { type: 'object' } } } } } }, responses: { '200': { description: '发起成功' } } },
+    },
+    '/workflows/instances/pending-mine': {
+      get: { tags: ['工作流引擎'], summary: '待我审批列表（分页）', parameters: [{ $ref: '#/components/parameters/PageParam' }], responses: { '200': { description: '分页列表' } } },
+    },
+    '/workflows/instances/{id}': {
+      get: { tags: ['工作流引擎'], summary: '流程实例详情（含任务记录）', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: '详情' } } },
+    },
+    '/workflows/instances/{id}/withdraw': {
+      post: { tags: ['工作流引擎'], summary: '撤回流程申请', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: '撤回成功' } } },
+    },
+    '/workflows/tasks/{taskId}/approve': {
+      post: { tags: ['工作流引擎'], summary: '审批通过', parameters: [{ name: 'taskId', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { comment: { type: 'string' } } } } } }, responses: { '200': { description: '操作成功' } } },
+    },
+    '/workflows/tasks/{taskId}/reject': {
+      post: { tags: ['工作流引擎'], summary: '审批驳回', parameters: [{ name: 'taskId', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['comment'], properties: { comment: { type: 'string' } } } } } }, responses: { '200': { description: '操作成功' } } },
+    },
     // ─── Health ───────────────────────────────────────────────────────────────
     '/health': {
       get: {
@@ -928,6 +966,7 @@ export const openapiSpec = {
     { name: '系统配置', description: '内置系统配置项的读写、密码策略' },
     { name: '定时任务', description: '定时任务管理及执行历史' },
     { name: '邮件配置', description: 'SMTP 邮件服务器配置及测试' },
+    { name: '工作流引擎', description: '流程定义管理、流程实例发起与审批' },
     { name: '服务状态', description: '健康检查，无需认证' },
   ],
 };

@@ -19,6 +19,7 @@
     "@iconify/react": "^6.0.2",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-react": "^1.0.6",
+    "@xyflow/react": "^12.10.2",
     "@zenith/shared": "*",
     "dayjs": "^1.11.20",
     "lucide-react": "^1.7.0",

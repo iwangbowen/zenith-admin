@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex, jsonb } from 'drizzle-orm/pg-core';
 
 export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -502,3 +502,61 @@ export const messageTemplates = pgTable('message_templates', {
 
 export type MessageTemplateRow = typeof messageTemplates.$inferSelect;
 export type NewMessageTemplate = typeof messageTemplates.$inferInsert;
+
+// ─── 工作流引擎 ───────────────────────────────────────────────────────────────
+
+export const workflowDefinitionStatusEnum = pgEnum('workflow_definition_status', ['draft', 'published', 'disabled']);
+export const workflowInstanceStatusEnum = pgEnum('workflow_instance_status', ['draft', 'running', 'approved', 'rejected', 'withdrawn']);
+export const workflowTaskStatusEnum = pgEnum('workflow_task_status', ['pending', 'approved', 'rejected', 'skipped']);
+
+// 流程定义
+export const workflowDefinitions = pgTable('workflow_definitions', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  description: text('description'),
+  flowData: jsonb('flow_data'), // React Flow 节点+边 JSON
+  formFields: jsonb('form_fields'), // 表单字段配置 JSON
+  status: workflowDefinitionStatusEnum('status').default('draft').notNull(),
+  version: integer('version').default(1).notNull(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type WorkflowDefinitionRow = typeof workflowDefinitions.$inferSelect;
+export type NewWorkflowDefinition = typeof workflowDefinitions.$inferInsert;
+
+// 流程实例
+export const workflowInstances = pgTable('workflow_instances', {
+  id: serial('id').primaryKey(),
+  definitionId: integer('definition_id').notNull().references(() => workflowDefinitions.id, { onDelete: 'restrict' }),
+  definitionSnapshot: jsonb('definition_snapshot').notNull(), // 发起时的定义快照
+  title: varchar('title', { length: 128 }).notNull(),
+  formData: jsonb('form_data'), // 填写的表单数据
+  status: workflowInstanceStatusEnum('status').default('draft').notNull(),
+  currentNodeKey: varchar('current_node_key', { length: 64 }),
+  initiatorId: integer('initiator_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type WorkflowInstanceRow = typeof workflowInstances.$inferSelect;
+export type NewWorkflowInstance = typeof workflowInstances.$inferInsert;
+
+// 审批任务
+export const workflowTasks = pgTable('workflow_tasks', {
+  id: serial('id').primaryKey(),
+  instanceId: integer('instance_id').notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  nodeKey: varchar('node_key', { length: 64 }).notNull(),
+  nodeName: varchar('node_name', { length: 64 }).notNull(),
+  assigneeId: integer('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+  status: workflowTaskStatusEnum('status').default('pending').notNull(),
+  comment: text('comment'),
+  actionAt: timestamp('action_at', { withTimezone: true }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type WorkflowTaskRow = typeof workflowTasks.$inferSelect;
+export type NewWorkflowTask = typeof workflowTasks.$inferInsert;

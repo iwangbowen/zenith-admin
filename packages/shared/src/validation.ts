@@ -369,3 +369,50 @@ export const previewMessageTemplateSchema = z.object({
 export type CreateMessageTemplateInput = z.infer<typeof createMessageTemplateSchema>;
 export type UpdateMessageTemplateInput = z.infer<typeof updateMessageTemplateSchema>;
 export type PreviewMessageTemplateInput = z.infer<typeof previewMessageTemplateSchema>;
+
+// ─── 工作流引擎 Schema ────────────────────────────────────────────────────────
+export const workflowNodeConfigSchema = z.object({
+  key: z.string().min(1),
+  type: z.enum(['start', 'approve', 'end']),
+  label: z.string().min(1),
+  assigneeId: z.number().int().nullable().optional(),
+  assigneeName: z.string().nullable().optional(),
+});
+
+export const workflowFormFieldSchema = z.object({
+  key: z.string().min(1, '字段 key 不能为空'),
+  label: z.string().min(1, '字段标签不能为空'),
+  type: z.enum(['text', 'textarea', 'number', 'date', 'select']),
+  required: z.boolean().optional(),
+  options: z.array(z.string()).optional(),
+});
+
+export const createWorkflowDefinitionSchema = z.object({
+  name: z.string().min(1, '流程名称不能为空').max(64),
+  description: z.string().max(500).nullable().optional(),
+  flowData: z.record(z.unknown()).nullable().optional(),
+  formFields: z.array(workflowFormFieldSchema).nullable().optional(),
+  status: z.enum(['draft', 'published', 'disabled']).default('draft'),
+});
+
+export const updateWorkflowDefinitionSchema = createWorkflowDefinitionSchema.partial();
+
+export const createWorkflowInstanceSchema = z.object({
+  definitionId: z.number().int().positive('请选择流程'),
+  title: z.string().min(1, '申请标题不能为空').max(128),
+  formData: z.record(z.unknown()).nullable().optional(),
+});
+
+export const approveWorkflowTaskSchema = z.object({
+  comment: z.string().max(500).optional(),
+});
+
+export const rejectWorkflowTaskSchema = z.object({
+  comment: z.string().min(1, '驳回原因不能为空').max(500),
+});
+
+export type CreateWorkflowDefinitionInput = z.infer<typeof createWorkflowDefinitionSchema>;
+export type UpdateWorkflowDefinitionInput = z.infer<typeof updateWorkflowDefinitionSchema>;
+export type CreateWorkflowInstanceInput = z.infer<typeof createWorkflowInstanceSchema>;
+export type ApproveWorkflowTaskInput = z.infer<typeof approveWorkflowTaskSchema>;
+export type RejectWorkflowTaskInput = z.infer<typeof rejectWorkflowTaskSchema>;
