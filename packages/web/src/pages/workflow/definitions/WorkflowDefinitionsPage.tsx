@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Input, Popconfirm, Select, Space, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Input, Modal, Select, Space, Table, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -94,17 +94,19 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '流程名称',
       dataIndex: 'name',
-      width: 200,
+      width: 160,
+      ellipsis: true,
     },
     {
       title: '描述',
       dataIndex: 'description',
+      ellipsis: true,
       render: (v: string | null) => v ?? '—',
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 100,
+      width: 90,
       render: (v: string) => {
         const s = STATUS_MAP[v];
         return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
@@ -113,25 +115,26 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '版本',
       dataIndex: 'version',
-      width: 80,
+      width: 70,
       render: (v: number) => `v${v}`,
     },
     {
       title: '创建人',
       dataIndex: 'createdByName',
-      width: 120,
+      width: 90,
+      ellipsis: true,
       render: (v: string | null) => v ?? '—',
     },
     {
       title: '更新时间',
       dataIndex: 'updatedAt',
-      width: 180,
+      width: 170,
       render: (v: string) => formatDateTime(v),
     },
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 180,
       fixed: 'right',
       render: (_: unknown, record: WorkflowDefinition) => (
         <Space>
@@ -139,19 +142,32 @@ export default function WorkflowDefinitionsPage() {
             设计
           </Button>
           {record.status === 'draft' && hasPermission('workflow:definition:publish') && (
-            <Popconfirm title="确定发布此流程？发布后不可删除" onConfirm={() => void handlePublish(record)}>
-              <Button theme="borderless" size="small" type="primary">发布</Button>
-            </Popconfirm>
+            <Button theme="borderless" size="small" type="primary" onClick={() => {
+              Modal.confirm({
+                title: '确定发布此流程？',
+                content: '发布后不可删除，请确认流程配置正确。',
+                onOk: () => handlePublish(record),
+              });
+            }}>发布</Button>
           )}
           {record.status === 'published' && hasPermission('workflow:definition:publish') && (
-            <Popconfirm title="禁用后该流程不可发起新申请，是否继续？" onConfirm={() => void handleDisable(record)}>
-              <Button theme="borderless" size="small" type="warning">禁用</Button>
-            </Popconfirm>
+            <Button theme="borderless" size="small" type="warning" onClick={() => {
+              Modal.confirm({
+                title: '确定禁用此流程？',
+                content: '禁用后该流程不可发起新申请，是否继续？',
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => handleDisable(record),
+              });
+            }}>禁用</Button>
           )}
           {record.status !== 'published' && hasPermission('workflow:definition:delete') && (
-            <Popconfirm title="确定要删除吗？" onConfirm={() => void handleDelete(record.id)}>
-              <Button theme="borderless" type="danger" size="small">删除</Button>
-            </Popconfirm>
+            <Button theme="borderless" type="danger" size="small" onClick={() => {
+              Modal.confirm({
+                title: '确定要删除该流程吗？',
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => handleDelete(record.id),
+              });
+            }}>删除</Button>
           )}
         </Space>
       ),

@@ -61,7 +61,7 @@ describe('exportToExcel', () => {
 
   it('should transform data when transform function is present', async () => {
     const columns: ExcelColumn[] = [
-      { header: 'Date', key: 'date', transform: (v) => `Date: ${String(v)}` }
+      { header: 'Date', key: 'date', transform: (v) => `Date: ${v as string}` }
     ];
     const data = [{ date: '2026-01-01' }];
     const buffer = await exportToExcel(columns, data);

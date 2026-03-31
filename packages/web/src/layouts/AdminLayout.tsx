@@ -300,6 +300,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     [menuTree]
   );
 
+  // 固定路由的标题映射（不在菜单中但需要中文标签页名称的路由）
+  const FIXED_ROUTE_TITLES: { prefix: string; title: string }[] = [
+    { prefix: '/workflow/designer', title: '流程设计' },
+    { prefix: '/profile', title: '个人中心' },
+  ];
+
   const pathTitleMap = useMemo(() => {
     const map: Record<string, string> = {};
     function traverse(nodes: Menu[]) {
@@ -311,6 +317,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     traverse(menuTree);
     return map;
   }, [menuTree]);
+
+  const resolveTitle = useCallback((pathname: string) => {
+    if (pathTitleMap[pathname]) return pathTitleMap[pathname];
+    const match = FIXED_ROUTE_TITLES.find(r => pathname.startsWith(r.prefix));
+    return match ? match.title : pathname;
+  }, [pathTitleMap]);
 
   const pathIconMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -360,17 +372,17 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const showSidebar = navLayout === 'vertical' || (navLayout === 'mixed' && mixedSidebarItems.length > 0);
 
   useEffect(() => {
-    const pageTitle = pathTitleMap[location.pathname];
-    document.title = pageTitle ? `${pageTitle} - ${config.appTitle}` : config.appTitle;
-  }, [location.pathname, pathTitleMap]);
+    const pageTitle = resolveTitle(location.pathname);
+    document.title = pageTitle !== location.pathname ? `${pageTitle} - ${config.appTitle}` : config.appTitle;
+  }, [location.pathname, resolveTitle]);
 
   // Sync current route to tabs
   useEffect(() => {
     if (preferences.enableTabs) {
-      const title = pathTitleMap[location.pathname] || location.pathname;
+      const title = resolveTitle(location.pathname);
       addTab(location.pathname, title);
     }
-  }, [location.pathname, preferences.enableTabs, pathTitleMap, addTab]);
+  }, [location.pathname, preferences.enableTabs, resolveTitle, addTab]);
 
   // Track entering tabs (new tab added since last render)
   useEffect(() => {
