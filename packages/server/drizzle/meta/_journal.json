@@ -197,6 +197,13 @@
       "when": 1774779975212,
       "tag": "0027_loud_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1775001600000,
+      "tag": "0028_s3_cos_storage",
+      "breakpoints": true
     }
   ]
 }

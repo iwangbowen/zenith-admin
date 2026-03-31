@@ -143,32 +143,56 @@ export const updateDictItemSchema = createDictItemSchema.partial();
 // ─── 文件管理 Schema ─────────────────────────────────────────────────────────
 export const createFileStorageConfigSchema = z.object({
   name: z.string().min(1, '配置名称不能为空').max(64),
-  provider: z.enum(['local', 'oss']),
+  provider: z.enum(['local', 'oss', 's3', 'cos']),
   status: z.enum(['active', 'disabled']).default('active'),
   isDefault: z.boolean().default(false),
   basePath: z.string().max(256).optional(),
+  // 本地存储
   localRootPath: z.string().max(512).optional(),
+  // 阿里云 OSS
   ossRegion: z.string().max(64).optional(),
   ossEndpoint: z.string().max(128).optional(),
   ossBucket: z.string().max(128).optional(),
   ossAccessKeyId: z.string().max(128).optional(),
   ossAccessKeySecret: z.string().max(256).optional(),
+  // S3 兼容存储
+  s3Region: z.string().max(64).optional(),
+  s3Endpoint: z.string().max(256).optional(),
+  s3Bucket: z.string().max(128).optional(),
+  s3AccessKeyId: z.string().max(128).optional(),
+  s3SecretAccessKey: z.string().max(256).optional(),
+  s3ForcePathStyle: z.boolean().optional(),
+  // 腾讯云 COS
+  cosRegion: z.string().max(64).optional(),
+  cosBucket: z.string().max(128).optional(),
+  cosSecretId: z.string().max(128).optional(),
+  cosSecretKey: z.string().max(256).optional(),
   remark: z.string().max(256).optional(),
 }).superRefine((data, ctx) => {
   if (data.provider === 'local' && !data.localRootPath) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: '本地磁盘配置需要填写存储目录', path: ['localRootPath'] });
   }
   if (data.provider === 'oss') {
-    const requiredFields: Array<keyof typeof data> = [
-      'ossRegion',
-      'ossEndpoint',
-      'ossBucket',
-      'ossAccessKeyId',
-      'ossAccessKeySecret',
-    ];
+    const requiredFields: Array<keyof typeof data> = ['ossRegion', 'ossEndpoint', 'ossBucket', 'ossAccessKeyId', 'ossAccessKeySecret'];
     for (const field of requiredFields) {
       if (!data[field]) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'OSS 配置项不能为空', path: [field] });
+      }
+    }
+  }
+  if (data.provider === 's3') {
+    const requiredFields: Array<keyof typeof data> = ['s3Region', 's3Bucket', 's3AccessKeyId', 's3SecretAccessKey'];
+    for (const field of requiredFields) {
+      if (!data[field]) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'S3 配置项不能为空', path: [field] });
+      }
+    }
+  }
+  if (data.provider === 'cos') {
+    const requiredFields: Array<keyof typeof data> = ['cosRegion', 'cosBucket', 'cosSecretId', 'cosSecretKey'];
+    for (const field of requiredFields) {
+      if (!data[field]) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '腾讯云 COS 配置项不能为空', path: [field] });
       }
     }
   }

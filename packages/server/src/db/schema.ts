@@ -2,7 +2,7 @@ import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryK
 
 export const statusEnum = pgEnum('status', ['active', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
-export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss']);
+export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss', 's3', 'cos']);
 export const dataScopeEnum = pgEnum('data_scope', ['all', 'dept', 'self']);
 
 // ─── 租户表 ───────────────────────────────────────────────────────────────────
@@ -183,6 +183,18 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   ossBucket: varchar('oss_bucket', { length: 128 }),
   ossAccessKeyId: varchar('oss_access_key_id', { length: 128 }),
   ossAccessKeySecret: varchar('oss_access_key_secret', { length: 256 }),
+  // S3 兼容存储（AWS S3 / MinIO / Cloudflare R2 等）
+  s3Region: varchar('s3_region', { length: 64 }),
+  s3Endpoint: varchar('s3_endpoint', { length: 256 }),
+  s3Bucket: varchar('s3_bucket', { length: 128 }),
+  s3AccessKeyId: varchar('s3_access_key_id', { length: 128 }),
+  s3SecretAccessKey: varchar('s3_secret_access_key', { length: 256 }),
+  s3ForcePathStyle: boolean('s3_force_path_style').default(false),
+  // 腾讯云 COS
+  cosRegion: varchar('cos_region', { length: 64 }),
+  cosBucket: varchar('cos_bucket', { length: 128 }),
+  cosSecretId: varchar('cos_secret_id', { length: 128 }),
+  cosSecretKey: varchar('cos_secret_key', { length: 256 }),
   remark: varchar('remark', { length: 256 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

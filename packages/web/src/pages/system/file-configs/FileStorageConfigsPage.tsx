@@ -49,26 +49,60 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
     };
   }
 
+  if (provider === 'oss') {
+    return {
+      name: values.name?.trim() ?? '',
+      provider,
+      status: values.status ?? 'active',
+      isDefault,
+      basePath: normalizeOptional(values.basePath),
+      ossRegion: normalizeOptional(values.ossRegion),
+      ossEndpoint: normalizeOptional(values.ossEndpoint),
+      ossBucket: normalizeOptional(values.ossBucket),
+      ossAccessKeyId: normalizeOptional(values.ossAccessKeyId),
+      ossAccessKeySecret: normalizeOptional(values.ossAccessKeySecret),
+      remark: normalizeOptional(values.remark),
+    };
+  }
+
+  if (provider === 's3') {
+    return {
+      name: values.name?.trim() ?? '',
+      provider,
+      status: values.status ?? 'active',
+      isDefault,
+      basePath: normalizeOptional(values.basePath),
+      s3Region: normalizeOptional(values.s3Region),
+      s3Endpoint: normalizeOptional(values.s3Endpoint),
+      s3Bucket: normalizeOptional(values.s3Bucket),
+      s3AccessKeyId: normalizeOptional(values.s3AccessKeyId),
+      s3AccessKeySecret: normalizeOptional(values.s3AccessKeySecret),
+      remark: normalizeOptional(values.remark),
+    };
+  }
+
+  // cos
   return {
     name: values.name?.trim() ?? '',
     provider,
     status: values.status ?? 'active',
     isDefault,
     basePath: normalizeOptional(values.basePath),
-    ossRegion: normalizeOptional(values.ossRegion),
-    ossEndpoint: normalizeOptional(values.ossEndpoint),
-    ossBucket: normalizeOptional(values.ossBucket),
-    ossAccessKeyId: normalizeOptional(values.ossAccessKeyId),
-    ossAccessKeySecret: normalizeOptional(values.ossAccessKeySecret),
+    cosRegion: normalizeOptional(values.cosRegion),
+    cosBucket: normalizeOptional(values.cosBucket),
+    cosSecretId: normalizeOptional(values.cosSecretId),
+    cosSecretKey: normalizeOptional(values.cosSecretKey),
+    cosAppId: normalizeOptional(values.cosAppId),
     remark: normalizeOptional(values.remark),
   };
 }
 
 function getStorageSummary(config: FileStorageConfig) {
-  if (config.provider === 'local') {
-    return config.localRootPath || '—';
-  }
-  return [config.ossBucket, config.ossRegion].filter(Boolean).join(' / ') || '—';
+  if (config.provider === 'local') return config.localRootPath || '—';
+  if (config.provider === 'oss') return [config.ossBucket, config.ossRegion].filter(Boolean).join(' / ') || '—';
+  if (config.provider === 's3') return [config.s3Bucket, config.s3Region].filter(Boolean).join(' / ') || '—';
+  if (config.provider === 'cos') return [config.cosBucket, config.cosRegion].filter(Boolean).join(' / ') || '—';
+  return '—';
 }
 
 export default function FileStorageConfigsPage() {
@@ -187,11 +221,16 @@ export default function FileStorageConfigsPage() {
       title: '存储类型',
       dataIndex: 'provider',
       width: 120,
-      render: (provider: FileStorageProvider) => (
-        <Tag color={provider === 'local' ? 'blue' : 'orange'} size="small">
-          {provider === 'local' ? '本地磁盘' : '阿里云 OSS'}
-        </Tag>
-      ),
+      render: (provider: FileStorageProvider) => {
+        const map: Record<FileStorageProvider, { color: string; label: string }> = {
+          local: { color: 'blue', label: '本地磁盘' },
+          oss: { color: 'orange', label: '阿里云 OSS' },
+          s3: { color: 'purple', label: 'Amazon S3' },
+          cos: { color: 'teal', label: '腾讯云 COS' },
+        };
+        const { color, label } = map[provider] ?? { color: 'grey', label: provider };
+        return <Tag color={color} size="small">{label}</Tag>;
+      },
     },
     {
       title: '默认服务',
@@ -218,7 +257,13 @@ export default function FileStorageConfigsPage() {
       width: 180,
       ellipsis: true,
       render: (_: unknown, record: FileStorageConfig) => {
-        const label = record.provider === 'local' ? '目录' : 'Bucket';
+        const labelMap: Record<FileStorageProvider, string> = {
+          local: '目录',
+          oss: 'Bucket',
+          s3: 'Bucket',
+          cos: 'Bucket',
+        };
+        const label = labelMap[record.provider] ?? 'Bucket';
         const summary = getStorageSummary(record);
         return `${label}: ${summary}`;
       },
@@ -276,6 +321,16 @@ export default function FileStorageConfigsPage() {
       ossBucket: editingConfig.ossBucket ?? '',
       ossAccessKeyId: editingConfig.ossAccessKeyId ?? '',
       ossAccessKeySecret: editingConfig.ossAccessKeySecret ?? '',
+      s3Region: editingConfig.s3Region ?? '',
+      s3Endpoint: editingConfig.s3Endpoint ?? '',
+      s3Bucket: editingConfig.s3Bucket ?? '',
+      s3AccessKeyId: editingConfig.s3AccessKeyId ?? '',
+      s3AccessKeySecret: editingConfig.s3AccessKeySecret ?? '',
+      cosRegion: editingConfig.cosRegion ?? '',
+      cosBucket: editingConfig.cosBucket ?? '',
+      cosSecretId: editingConfig.cosSecretId ?? '',
+      cosSecretKey: editingConfig.cosSecretKey ?? '',
+      cosAppId: editingConfig.cosAppId ?? '',
       remark: editingConfig.remark ?? '',
     }
     : {
@@ -367,6 +422,8 @@ export default function FileStorageConfigsPage() {
           >
             <Select.Option value="local">本地磁盘</Select.Option>
             <Select.Option value="oss">阿里云 OSS</Select.Option>
+            <Select.Option value="s3">Amazon S3</Select.Option>
+            <Select.Option value="cos">腾讯云 COS</Select.Option>
           </Form.Select>
           <Form.Select field="status" label="状态" style={{ width: '100%' }}>
             <Select.Option value="active">启用</Select.Option>
@@ -374,14 +431,16 @@ export default function FileStorageConfigsPage() {
           </Form.Select>
           <Form.Input field="basePath" label="基础路径" placeholder="例如 uploads / images" />
 
-          {formProvider === 'local' ? (
+          {formProvider === 'local' && (
             <Form.Input
               field="localRootPath"
               label="存储目录"
               placeholder="例如 storage/local 或 D:/uploads"
               rules={[{ required: true, message: '请输入本地磁盘存储目录' }]}
             />
-          ) : (
+          )}
+
+          {formProvider === 'oss' && (
             <>
               <Form.Input field="ossRegion" label="Region" rules={[{ required: true, message: '请输入 OSS Region' }]} />
               <Form.Input field="ossEndpoint" label="Endpoint" rules={[{ required: true, message: '请输入 OSS Endpoint' }]} />
@@ -392,6 +451,36 @@ export default function FileStorageConfigsPage() {
                 label="AccessKey Secret"
                 type="password"
                 rules={[{ required: true, message: '请输入 AccessKey Secret' }]}
+              />
+            </>
+          )}
+
+          {formProvider === 's3' && (
+            <>
+              <Form.Input field="s3Region" label="Region" rules={[{ required: true, message: '请输入 S3 Region' }]} />
+              <Form.Input field="s3Endpoint" label="Endpoint" placeholder="可选，用于兼容 S3 协议的自定义存储" />
+              <Form.Input field="s3Bucket" label="Bucket" rules={[{ required: true, message: '请输入 S3 Bucket' }]} />
+              <Form.Input field="s3AccessKeyId" label="Access Key ID" rules={[{ required: true, message: '请输入 Access Key ID' }]} />
+              <Form.Input
+                field="s3AccessKeySecret"
+                label="Secret Access Key"
+                type="password"
+                rules={[{ required: true, message: '请输入 Secret Access Key' }]}
+              />
+            </>
+          )}
+
+          {formProvider === 'cos' && (
+            <>
+              <Form.Input field="cosRegion" label="Region" placeholder="例如 ap-guangzhou" rules={[{ required: true, message: '请输入 COS Region' }]} />
+              <Form.Input field="cosBucket" label="Bucket" placeholder="例如 my-bucket-1250000000" rules={[{ required: true, message: '请输入 COS Bucket' }]} />
+              <Form.Input field="cosAppId" label="AppId" placeholder="腾讯云账户 AppId" rules={[{ required: true, message: '请输入 AppId' }]} />
+              <Form.Input field="cosSecretId" label="SecretId" rules={[{ required: true, message: '请输入 SecretId' }]} />
+              <Form.Input
+                field="cosSecretKey"
+                label="SecretKey"
+                type="password"
+                rules={[{ required: true, message: '请输入 SecretKey' }]}
               />
             </>
           )}

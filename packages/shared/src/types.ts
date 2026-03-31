@@ -159,7 +159,7 @@ export interface DictItem {
 }
 
 // ─── 文件管理 ─────────────────────────────────────────────────────────────────
-export type FileStorageProvider = 'local' | 'oss';
+export type FileStorageProvider = 'local' | 'oss' | 's3' | 'cos';
 
 export interface FileStorageConfig {
   id: number;
@@ -169,11 +169,24 @@ export interface FileStorageConfig {
   isDefault: boolean;
   basePath?: string;
   localRootPath?: string;
+  // 阿里云 OSS
   ossRegion?: string;
   ossEndpoint?: string;
   ossBucket?: string;
   ossAccessKeyId?: string;
   ossAccessKeySecret?: string;
+  // S3 兼容存储
+  s3Region?: string;
+  s3Endpoint?: string;
+  s3Bucket?: string;
+  s3AccessKeyId?: string;
+  s3SecretAccessKey?: string;
+  s3ForcePathStyle?: boolean;
+  // 腾讯云 COS
+  cosRegion?: string;
+  cosBucket?: string;
+  cosSecretId?: string;
+  cosSecretKey?: string;
   remark?: string;
   createdAt: string;
   updatedAt: string;

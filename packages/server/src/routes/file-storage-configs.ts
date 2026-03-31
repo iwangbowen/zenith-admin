@@ -19,6 +19,16 @@ function toFileStorageConfig(row: typeof fileStorageConfigs.$inferSelect) {
     ossBucket: row.ossBucket ?? undefined,
     ossAccessKeyId: row.ossAccessKeyId ?? undefined,
     ossAccessKeySecret: row.ossAccessKeySecret ?? undefined,
+    s3Region: row.s3Region ?? undefined,
+    s3Endpoint: row.s3Endpoint ?? undefined,
+    s3Bucket: row.s3Bucket ?? undefined,
+    s3AccessKeyId: row.s3AccessKeyId ?? undefined,
+    s3SecretAccessKey: row.s3SecretAccessKey ?? undefined,
+    s3ForcePathStyle: row.s3ForcePathStyle ?? undefined,
+    cosRegion: row.cosRegion ?? undefined,
+    cosBucket: row.cosBucket ?? undefined,
+    cosSecretId: row.cosSecretId ?? undefined,
+    cosSecretKey: row.cosSecretKey ?? undefined,
     remark: row.remark ?? undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -35,26 +45,53 @@ function toStoragePayload(input: ReturnType<typeof createFileStorageConfigSchema
     remark: input.remark ?? null,
   };
 
+  const nullS3 = { s3Region: null, s3Endpoint: null, s3Bucket: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3ForcePathStyle: null };
+  const nullCos = { cosRegion: null, cosBucket: null, cosSecretId: null, cosSecretKey: null };
+  const nullOss = { ossRegion: null, ossEndpoint: null, ossBucket: null, ossAccessKeyId: null, ossAccessKeySecret: null };
+
   if (input.provider === 'local') {
+    return { ...common, localRootPath: input.localRootPath ?? null, ...nullOss, ...nullS3, ...nullCos };
+  }
+
+  if (input.provider === 'oss') {
     return {
       ...common,
-      localRootPath: input.localRootPath ?? null,
-      ossRegion: null,
-      ossEndpoint: null,
-      ossBucket: null,
-      ossAccessKeyId: null,
-      ossAccessKeySecret: null,
+      localRootPath: null,
+      ossRegion: input.ossRegion ?? null,
+      ossEndpoint: input.ossEndpoint ?? null,
+      ossBucket: input.ossBucket ?? null,
+      ossAccessKeyId: input.ossAccessKeyId ?? null,
+      ossAccessKeySecret: input.ossAccessKeySecret ?? null,
+      ...nullS3,
+      ...nullCos,
     };
   }
 
+  if (input.provider === 's3') {
+    return {
+      ...common,
+      localRootPath: null,
+      ...nullOss,
+      s3Region: input.s3Region ?? null,
+      s3Endpoint: input.s3Endpoint ?? null,
+      s3Bucket: input.s3Bucket ?? null,
+      s3AccessKeyId: input.s3AccessKeyId ?? null,
+      s3SecretAccessKey: input.s3SecretAccessKey ?? null,
+      s3ForcePathStyle: input.s3ForcePathStyle ?? null,
+      ...nullCos,
+    };
+  }
+
+  // cos
   return {
     ...common,
     localRootPath: null,
-    ossRegion: input.ossRegion ?? null,
-    ossEndpoint: input.ossEndpoint ?? null,
-    ossBucket: input.ossBucket ?? null,
-    ossAccessKeyId: input.ossAccessKeyId ?? null,
-    ossAccessKeySecret: input.ossAccessKeySecret ?? null,
+    ...nullOss,
+    ...nullS3,
+    cosRegion: input.cosRegion ?? null,
+    cosBucket: input.cosBucket ?? null,
+    cosSecretId: input.cosSecretId ?? null,
+    cosSecretKey: input.cosSecretKey ?? null,
   };
 }
 
