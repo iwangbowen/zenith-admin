@@ -133,6 +133,46 @@ export const noticesHandlers = [
     return HttpResponse.json({ code: 0, message: '删除成功', data: null });
   }),
 
+  // 已读统计详情（管理视角）
+  http.get('/api/notices/:id/read-stats', ({ params, request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
+    const tab = url.searchParams.get('tab') === 'unread' ? 'unread' : 'read';
+    const notice = mockNotices.find((n) => n.id === Number(params.id));
+    if (!notice) return HttpResponse.json({ code: 404, message: '通知不存在', data: null });
+
+    // 模拟已读和未读用户列表
+    const mockReadUsers = [
+      { id: 1, username: 'admin', nickname: '管理员', avatar: null, readAt: '2024-01-01T09:00:00.000Z' },
+      { id: 2, username: 'zhangsan', nickname: '张三', avatar: null, readAt: '2024-01-01T10:30:00.000Z' },
+      { id: 3, username: 'lisi', nickname: '李四', avatar: null, readAt: '2024-01-02T08:15:00.000Z' },
+      { id: 4, username: 'wangwu', nickname: '王五', avatar: null, readAt: '2024-01-02T14:20:00.000Z' },
+      { id: 5, username: 'zhaoliu', nickname: '赵六', avatar: null, readAt: '2024-01-03T11:00:00.000Z' },
+      { id: 6, username: 'sunqi', nickname: '孙七', avatar: null, readAt: '2024-01-03T16:45:00.000Z' },
+      { id: 7, username: 'zhouba', nickname: '周八', avatar: null, readAt: '2024-01-04T09:30:00.000Z' },
+      { id: 8, username: 'wujiu', nickname: '吴九', avatar: null, readAt: '2024-01-04T13:10:00.000Z' },
+    ];
+    const mockUnreadUsers = [
+      { id: 9, username: 'zhengshi', nickname: '郑十', avatar: null },
+      { id: 10, username: 'qianyi', nickname: '镰一', avatar: null },
+    ];
+
+    const readCount = notice.readCount ?? 0;
+    const totalCount = readCount + mockUnreadUsers.length;
+
+    const list = tab === 'read'
+      ? mockReadUsers.slice(0, readCount)
+      : mockUnreadUsers;
+    const total = list.length;
+    const paged = list.slice((page - 1) * pageSize, page * pageSize);
+
+    return HttpResponse.json({
+      code: 0, message: 'ok',
+      data: { readCount, totalCount, list: paged, total, page, pageSize },
+    });
+  }),
+
   // 标记通知已读
   http.post('/api/notices/:id/read', () => {
     return HttpResponse.json({ code: 0, message: 'ok', data: null });

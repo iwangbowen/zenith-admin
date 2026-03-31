@@ -229,10 +229,26 @@ noticesRouter.get('/', guard({ permission: 'system:notice:list' }), async (c) =>
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
+  // 批量查询每条通知的已读人数
+  const noticeIds = rows.map((r) => r.id);
+  const readCountRows = noticeIds.length > 0
+    ? await db
+      .select({ noticeId: noticeReads.noticeId, cnt: sql<number>`cast(count(*) as integer)` })
+      .from(noticeReads)
+      .where(inArray(noticeReads.noticeId, noticeIds))
+      .groupBy(noticeReads.noticeId)
+    : [];
+  const readCountMap = new Map(readCountRows.map((r) => [r.noticeId, r.cnt]));
+
   return c.json({
     code: 0,
     message: 'ok',
-    data: { list: rows.map(toNotice), total: count, page, pageSize },
+    data: {
+      list: rows.map((r) => ({ ...toNotice(r), readCount: readCountMap.get(r.id) ?? 0 })),
+      total: count,
+      page,
+      pageSize,
+    },
   });
 });
 
@@ -379,6 +395,94 @@ noticesRouter.delete('/:id', guard({ permission: 'system:notice:delete', audit: 
   const [row] = await db.delete(notices).where(and(eq(notices.id, id), tenantCondition(notices, c.get('user')))).returning();
   if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
   return c.json({ code: 0, message: '删除成功', data: null });
+});
+
+// 已读统计详情（管理视角）
+noticesRouter.get('/:id/read-stats', guard({ permission: 'system:notice:list' }), async (c) => {
+  const id = Number(c.req.param('id'));
+  const page = Number(c.req.query('page')) || 1;
+  const pageSize = Number(c.req.query('pageSize')) || 10;
+  const tab = c.req.query('tab') === 'unread' ? 'unread' : 'read';
+  const authUser = c.get('user');
+
+  const [notice] = await db.select().from(notices).where(eq(notices.id, id));
+  if (!notice) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
+
+  // 获取所有已读记录
+  const reads = await db
+    .select({ userId: noticeReads.userId, readAt: noticeReads.readAt })
+    .from(noticeReads)
+    .where(eq(noticeReads.noticeId, id));
+  const readMap = new Map(reads.map((r) => [r.userId, r.readAt]));
+
+  // 确定目标用户 ID 集合
+  let targetUserIds: number[];
+  if (notice.targetType === 'all') {
+    const tc = tenantCondition(users, authUser);
+    const allUsers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.status, 'active'), ...(tc ? [tc] : [])));
+    targetUserIds = allUsers.map((u) => u.id);
+  } else {
+    const recipients = await db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, id));
+    const userIdSet = new Set<number>();
+    recipients.filter((r) => r.recipientType === 'user').forEach((r) => userIdSet.add(r.recipientId));
+
+    const roleIds = recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId);
+    if (roleIds.length > 0) {
+      const roleUsers = await db
+        .select({ userId: userRoles.userId })
+        .from(userRoles)
+        .where(inArray(userRoles.roleId, roleIds));
+      roleUsers.forEach((r) => userIdSet.add(r.userId));
+    }
+
+    const deptIds = recipients.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId);
+    if (deptIds.length > 0) {
+      const deptUsers = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(inArray(users.departmentId, deptIds));
+      deptUsers.forEach((u) => userIdSet.add(u.id));
+    }
+    targetUserIds = [...userIdSet];
+  }
+
+  const readCount = targetUserIds.filter((uid) => readMap.has(uid)).length;
+  const totalCount = targetUserIds.length;
+
+  const filteredIds = tab === 'read'
+    ? targetUserIds.filter((uid) => readMap.has(uid))
+    : targetUserIds.filter((uid) => !readMap.has(uid));
+
+  const total = filteredIds.length;
+  const pagedIds = filteredIds.slice((page - 1) * pageSize, page * pageSize);
+
+  let list: Array<{ id: number; username: string; nickname: string; avatar: string | null; readAt?: string }> = [];
+  if (pagedIds.length > 0) {
+    const userRows = await db
+      .select({ id: users.id, username: users.username, nickname: users.nickname, avatar: users.avatar })
+      .from(users)
+      .where(inArray(users.id, pagedIds));
+    const userMap = new Map(userRows.map((u) => [u.id, u]));
+    list = pagedIds
+      .map((uid) => userMap.get(uid))
+      .filter((u): u is NonNullable<typeof u> => u !== undefined)
+      .map((u) => ({
+        id: u.id,
+        username: u.username,
+        nickname: u.nickname,
+        avatar: u.avatar,
+        ...(tab === 'read' ? { readAt: readMap.get(u.id)?.toISOString() } : {}),
+      }));
+  }
+
+  return c.json({
+    code: 0,
+    message: 'ok',
+    data: { readCount, totalCount, list, total, page, pageSize },
+  });
 });
 
 noticesRouter.get('/export', guard({ permission: 'system:notice:list' }), async (c) => {

@@ -261,6 +261,26 @@ export interface Notice {
   createdAt: string;
   updatedAt: string;
   recipients?: NoticeRecipient[];
+  /** 已读人数（管理列表额外返回） */
+  readCount?: number;
+}
+
+export interface NoticeReadStatsUser {
+  id: number;
+  username: string;
+  nickname: string;
+  avatar: string | null;
+  /** 已读时间，仅 tab=read 时有值 */
+  readAt?: string;
+}
+
+export interface NoticeReadStats {
+  readCount: number;
+  totalCount: number;
+  list: NoticeReadStatsUser[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 // ─── 系统参数配置 ──────────────────────────────────────────

@@ -14,6 +14,7 @@ export const mockNotices: Notice[] = [
     targetType: 'all',
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
+    readCount: 8,
   },
   {
     id: 2,
@@ -28,6 +29,7 @@ export const mockNotices: Notice[] = [
     targetType: 'all',
     createdAt: '2024-01-02T00:00:00.000Z',
     updatedAt: '2024-01-02T00:00:00.000Z',
+    readCount: 3,
   },
   {
     id: 3,
@@ -42,6 +44,7 @@ export const mockNotices: Notice[] = [
     targetType: 'all',
     createdAt: '2024-01-03T00:00:00.000Z',
     updatedAt: '2024-01-03T00:00:00.000Z',
+    readCount: 0,
   },
 ];
 

@@ -14,10 +14,15 @@ import {
   DatePicker,
   RadioGroup,
   Radio,
+  Tabs,
+  TabPane,
+  Avatar,
+  Progress,
+  Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
-import type { Notice, NoticeRecipient, NoticeTargetType, PaginatedResponse, User, Role, Department } from '@zenith/shared';
+import type { Notice, NoticeRecipient, NoticeTargetType, PaginatedResponse, User, Role, Department, NoticeReadStats } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -92,6 +97,13 @@ export default function NoticesPage() {
   const { items: statusItems } = useDictItems('notice_publish_status');
   const { items: priorityItems } = useDictItems('notice_priority');
 
+  // ─── 已读统计 ─────────────────────────────────────────────────────────────────────────────
+  const [statsDrawerVisible, setStatsDrawerVisible] = useState(false);
+  const [statsNotice, setStatsNotice] = useState<Notice | null>(null);
+  const [statsData, setStatsData] = useState<NoticeReadStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsTab, setStatsTab] = useState<'read' | 'unread'>('read');
+
   const fetchData = useCallback(async (p = page, ps = pageSize, params = submittedParams) => {
     setLoading(true);
     try {
@@ -136,6 +148,26 @@ export default function NoticesPage() {
     setSubmittedParams(empty);
     setPage(1);
     fetchData(1, pageSize, empty);
+  };
+
+  const fetchStatsData = async (notice: Notice, page: number, tab: 'read' | 'unread') => {
+    setStatsLoading(true);
+    try {
+      const res = await request.get<NoticeReadStats>(
+        `/api/notices/${notice.id}/read-stats?tab=${tab}&page=${page}&pageSize=10`,
+      );
+      if (res.code === 0) setStatsData(res.data);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const openStatsDrawer = (notice: Notice) => {
+    setStatsNotice(notice);
+    setStatsTab('read');
+    setStatsData(null);
+    setStatsDrawerVisible(true);
+    void fetchStatsData(notice, 1, 'read');
   };
 
   const loadRecipientOptions = async () => {
@@ -339,6 +371,26 @@ export default function NoticesPage() {
           <Tag color="purple">指定范围</Tag>
         ),
     },
+    {
+      title: '已读统计',
+      dataIndex: 'readCount',
+      width: 110,
+      render: (v: number, record: Notice) => {
+        if (record.publishStatus !== 'published') {
+          return <span style={{ color: 'var(--semi-color-text-3)' }}>—</span>;
+        }
+        const count = v ?? 0;
+        return (
+          <Tag
+            color={count > 0 ? 'green' : 'grey'}
+            style={{ cursor: 'pointer' }}
+            onClick={() => openStatsDrawer(record)}
+          >
+            {count} 已读
+          </Tag>
+        );
+      },
+    },
     { title: '创建人', dataIndex: 'createByName', width: 110 },
     {
       title: '发布时间',
@@ -432,7 +484,7 @@ export default function NoticesPage() {
         dataSource={data}
         loading={loading}
         rowKey="id"
-        scroll={{ x: 1400 }}
+        scroll={{ x: 1520 }}
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys as number[]),
@@ -588,6 +640,130 @@ export default function NoticesPage() {
             ) : null}
           </div>
         </Form>
+      </SideSheet>
+
+      {/* 已读统计 SideSheet */}
+      <SideSheet
+        title={`《${statsNotice?.title ?? ''}》已读统计`}
+        visible={statsDrawerVisible}
+        onCancel={() => setStatsDrawerVisible(false)}
+        width={640}
+        footer={null}
+      >
+        {statsLoading && !statsData ? (
+          <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
+        ) : statsData ? (
+          <>
+            {/* 概要统计卡片 */}
+            <div style={{ display: 'flex', gap: 24, padding: '0 0 20px', alignItems: 'center' }}>
+              <div style={{ textAlign: 'center', minWidth: 64 }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--semi-color-success)' }}>{statsData.readCount}</div>
+                <Typography.Text type="tertiary" size="small">已读人数</Typography.Text>
+              </div>
+              <div style={{ textAlign: 'center', minWidth: 64 }}>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{statsData.totalCount}</div>
+                <Typography.Text type="tertiary" size="small">收件人数</Typography.Text>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography.Text size="small">阅读率</Typography.Text>
+                  <Typography.Text size="small" strong>
+                    {statsData.totalCount > 0 ? Math.round((statsData.readCount / statsData.totalCount) * 100) : 0}%
+                  </Typography.Text>
+                </div>
+                <Progress
+                  percent={statsData.totalCount > 0 ? Math.round((statsData.readCount / statsData.totalCount) * 100) : 0}
+                  stroke="var(--semi-color-success)"
+                  size="large"
+                />
+              </div>
+            </div>
+
+            <Tabs
+              activeKey={statsTab}
+              onChange={(tab) => {
+                const t = tab as 'read' | 'unread';
+                setStatsTab(t);
+                if (statsNotice) void fetchStatsData(statsNotice, 1, t);
+              }}
+            >
+              <TabPane tab={`已读 (${statsData.readCount})`} itemKey="read">
+                <Table
+                  bordered
+                  size="small"
+                  loading={statsLoading}
+                  dataSource={statsTab === 'read' ? statsData.list : []}
+                  rowKey="id"
+                  pagination={{
+                    total: statsTab === 'read' ? statsData.total : statsData.readCount,
+                    currentPage: statsData.page,
+                    pageSize: statsData.pageSize,
+                    onPageChange: (p: number) => {
+                      if (statsNotice) void fetchStatsData(statsNotice, p, 'read');
+                    },
+                  }}
+                  columns={[
+                    {
+                      title: '用户',
+                      dataIndex: 'username',
+                      render: (_: unknown, u: NoticeReadStats['list'][number]) => (
+                        <Space>
+                          <Avatar size="extra-extra-small" src={u.avatar ?? undefined}>
+                            {u.nickname?.[0] ?? 'U'}
+                          </Avatar>
+                          <span>
+                            {u.nickname}
+                            <Typography.Text type="tertiary" size="small" style={{ marginLeft: 4 }}>({u.username})</Typography.Text>
+                          </span>
+                        </Space>
+                      ),
+                    },
+                    {
+                      title: '已读时间',
+                      dataIndex: 'readAt',
+                      width: 180,
+                      render: (v: string) => (v ? formatDateTime(v) : '—'),
+                    },
+                  ]}
+                />
+              </TabPane>
+              <TabPane tab={`未读 (${statsData.totalCount - statsData.readCount})`} itemKey="unread">
+                <Table
+                  bordered
+                  size="small"
+                  loading={statsLoading}
+                  dataSource={statsTab === 'unread' ? statsData.list : []}
+                  rowKey="id"
+                  pagination={{
+                    total: statsTab === 'unread' ? statsData.total : statsData.totalCount - statsData.readCount,
+                    currentPage: statsData.page,
+                    pageSize: statsData.pageSize,
+                    onPageChange: (p: number) => {
+                      if (statsNotice) void fetchStatsData(statsNotice, p, 'unread');
+                    },
+                  }}
+                  columns={[
+                    {
+                      title: '用户',
+                      dataIndex: 'username',
+                      render: (_: unknown, u: NoticeReadStats['list'][number]) => (
+                        <Space>
+                          <Avatar size="extra-extra-small" src={u.avatar ?? undefined}>
+                            {u.nickname?.[0] ?? 'U'}
+                          </Avatar>
+                          <span>
+                            {u.nickname}
+                            <Typography.Text type="tertiary" size="small" style={{ marginLeft: 4 }}>({u.username})</Typography.Text>
+                          </span>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+              </TabPane>
+            </Tabs>
+          </>
+        ) : null}
       </SideSheet>
     </div>
   );
