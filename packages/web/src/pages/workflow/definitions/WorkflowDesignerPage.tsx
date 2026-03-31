@@ -35,6 +35,8 @@ interface WorkflowNodeData extends WorkflowNodeConfig {
   [key: string]: unknown;
 }
 
+type WorkflowNode = Node<WorkflowNodeData>;
+
 const NODE_STYLE_MAP: Record<string, React.CSSProperties> = {
   start: { background: '#3CB371', color: '#fff', border: '2px solid #2e8b57' },
   approve: { background: '#1e90ff', color: '#fff', border: '2px solid #1565c0' },
@@ -74,7 +76,7 @@ const nodeTypes = { workflowNode: WorkflowNodeComponent };
 
 // ─── 默认初始流程模板 ─────────────────────────────────────────────────────────
 
-function getDefaultNodes(): Node[] {
+function getDefaultNodes(): WorkflowNode[] {
   return [
     {
       id: 'node-start',
@@ -134,7 +136,7 @@ export default function WorkflowDesignerPage() {
           setDefinition(res.data);
           const fd = res.data.flowData;
           if (fd?.nodes?.length) {
-            setNodes(fd.nodes.map(n => ({ ...n, type: 'workflowNode' })));
+            setNodes(fd.nodes.map(n => ({ ...n, type: 'workflowNode' } as WorkflowNode)));
             setEdges(fd.edges ?? []);
           }
         }
@@ -159,7 +161,7 @@ export default function WorkflowDesignerPage() {
   // 添加新审批节点
   const addApproveNode = () => {
     const newKey = `approve-${Date.now()}`;
-    const newNode: Node = {
+    const newNode: WorkflowNode = {
       id: `node-${newKey}`,
       type: 'workflowNode',
       position: { x: Math.random() * 300 + 200, y: Math.random() * 100 + 100 },
