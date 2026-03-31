@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Calendar, Typography, Tag, Space, Spin, Empty, List, Modal } from '@douyinfe/semi-ui';
+import {
+  LineChart, Line,
+  AreaChart, Area,
+  PieChart, Pie,
+  XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 import { Bell, BookOpen, MonitorPlay, Users, UserCheck, Wifi, LogIn, Activity } from 'lucide-react';
 
 const GithubIcon = ({ size = 18 }: { size?: number }) => (
@@ -24,6 +31,24 @@ interface DashboardStats {
   onlineUsers: number;
   todayLogins: number;
   todayOperations: number;
+}
+
+interface LoginTrendItem { date: string; successCount: number; failCount: number; }
+interface OperationTypeItem { module: string; count: number; fill?: string; }
+interface UserActivityItem { date: string; activeUsers: number; }
+interface DashboardCharts {
+  loginTrend: LoginTrendItem[];
+  operationTypes: OperationTypeItem[];
+  userActivity: UserActivityItem[];
+}
+
+const PIE_COLORS = [
+  '#4A90E2', '#52C41A', '#FA8C16', '#13C2C2',
+  '#722ED1', '#F5222D', '#EB2F96', '#1677FF',
+];
+
+function shortDate(dateStr: string) {
+  return dateStr.slice(5); // MM-DD
 }
 
 const STAT_ITEMS: Array<{
@@ -71,6 +96,8 @@ export default function DashboardPage() {
   const [selectedNotice, setSelectedNotice] = useState<NoticeWithRead | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [charts, setCharts] = useState<DashboardCharts | null>(null);
+  const [chartsLoading, setChartsLoading] = useState(false);
 
   const architectureItems = [
     { key: '前端框架', value: 'React 19 + Vite' },
@@ -99,6 +126,16 @@ export default function DashboardPage() {
       .finally(() => setStatsLoading(false));
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    setChartsLoading(true);
+    request.get<DashboardCharts>('/api/dashboard/charts', { silent: true })
+      .then((res) => {
+        if (res.code === 0) setCharts(res.data);
+      })
+      .finally(() => setChartsLoading(false));
+  }, [isAdmin]);
+
   function markAsRead(id: number) {
     request.post(`/api/notices/${id}/read`, undefined, { silent: true }).then((res) => {
       if (res.code !== 0) return;
@@ -109,6 +146,32 @@ export default function DashboardPage() {
   function openNotice(n: NoticeWithRead) {
     setSelectedNotice(n);
     if (!n.isRead) markAsRead(n.id);
+  }
+
+  function renderOperationPie() {
+    if (chartsLoading) return <div className="dashboard-chart-placeholder"><Spin /></div>;
+    const pieData = charts?.operationTypes ?? [];
+    if (pieData.length === 0) {
+      return <div className="dashboard-chart-placeholder"><Empty description="今日暂无操作记录" /></div>;
+    }
+    const coloredData = pieData.map((item, idx) => ({ ...item, fill: PIE_COLORS[idx % PIE_COLORS.length] }));
+    return (
+      <ResponsiveContainer width="100%" height={200}>
+        <PieChart>
+          <Pie
+            data={coloredData}
+            dataKey="count"
+            nameKey="module"
+            cx="50%"
+            cy="50%"
+            outerRadius={72}
+            label={({ module, percent }: { module: string; percent: number }) => `${module} ${(percent * 100).toFixed(0)}%`}
+            labelLine={false}
+          />
+          <Tooltip formatter={(value, name) => [value, name === 'count' ? '次数' : name]} />
+        </PieChart>
+      </ResponsiveContainer>
+    );
   }
 
   function renderNotices() {
@@ -194,6 +257,77 @@ export default function DashboardPage() {
           }
         </div>
       )}
+      {isAdmin && (
+        <div className="dashboard-charts-row">
+          {/* 7 天登录趋势 */}
+          <Card
+            title={<Text strong style={{ fontSize: 14 }}>7 天登录趋势</Text>}
+            className="dashboard-card dashboard-chart-card"
+            bodyStyle={{ padding: '12px 16px 8px' }}
+          >
+            {chartsLoading
+              ? <div className="dashboard-chart-placeholder"><Spin /></div>
+              : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={charts?.loginTrend ?? []} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                    <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      labelFormatter={(l) => `日期：${l}`}
+                      formatter={(value, name) => [value, name === 'successCount' ? '成功' : '失败']}
+                    />
+                    <Legend formatter={(v) => v === 'successCount' ? '成功' : '失败'} wrapperStyle={{ fontSize: 12 }} />
+                    <Line type="monotone" dataKey="successCount" stroke="#52C41A" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="failCount" stroke="#F5222D" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )
+            }
+          </Card>
+
+          {/* 今日操作类型分布 */}
+          <Card
+            title={<Text strong style={{ fontSize: 14 }}>今日操作分布</Text>}
+            className="dashboard-card dashboard-chart-card"
+            bodyStyle={{ padding: '12px 16px 8px' }}
+          >
+            {renderOperationPie()}
+          </Card>
+
+          {/* 用户活跃度曲线 */}
+          <Card
+            title={<Text strong style={{ fontSize: 14 }}>7 天用户活跃度</Text>}
+            className="dashboard-card dashboard-chart-card"
+            bodyStyle={{ padding: '12px 16px 8px' }}
+          >
+            {chartsLoading
+              ? <div className="dashboard-chart-placeholder"><Spin /></div>
+              : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={charts?.userActivity ?? []} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorActivity" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#4A90E2" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#4A90E2" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                    <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      labelFormatter={(l) => `日期：${l}`}
+                      formatter={(value) => [value, '活跃用户']}
+                    />
+                    <Area type="monotone" dataKey="activeUsers" stroke="#4A90E2" strokeWidth={2} fill="url(#colorActivity)" dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )
+            }
+          </Card>
+        </div>
+      )}
+
       <div className="dashboard-top-grid">
         <div className="dashboard-column dashboard-column--notice">
           <Card
