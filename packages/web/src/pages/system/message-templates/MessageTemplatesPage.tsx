@@ -15,6 +15,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Eye } from 'lucide-react';
 import type { MessageTemplate, MessageChannelType } from '@zenith/shared';
+import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
@@ -27,7 +28,7 @@ const CHANNEL_LABELS: Record<MessageChannelType, string> = {
   in_app: '站内通知',
 };
 
-const CHANNEL_COLORS: Record<MessageChannelType, string> = {
+const CHANNEL_COLORS: Record<MessageChannelType, TagColor> = {
   email: 'blue',
   sms: 'orange',
   in_app: 'green',
