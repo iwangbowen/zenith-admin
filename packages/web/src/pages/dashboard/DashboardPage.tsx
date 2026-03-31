@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Calendar, Typography, Tag, Space, Spin, Empty, List, Modal } from '@douyinfe/semi-ui';
+import { Button, Card, Calendar, Typography, Tag, Space, Skeleton, Empty, List, Modal } from '@douyinfe/semi-ui';
 import {
   LineChart, Line,
   AreaChart, Area,
@@ -150,7 +150,17 @@ export default function DashboardPage() {
   }
 
   function renderOperationPie() {
-    if (chartsLoading) return <div className="dashboard-chart-placeholder"><Spin /></div>;
+    if (chartsLoading) return (
+      <div className="dashboard-chart-placeholder">
+        <Skeleton active loading placeholder={
+          <div style={{ width: '100%', height: 200, display: 'flex', alignItems: 'flex-end', gap: 12, padding: '0 8px' }}>
+            {[60, 80, 45, 90, 55, 70].map((h) => (
+              <Skeleton.Button key={h} style={{ flex: 1, height: `${h}%`, borderRadius: 4 }} />
+            ))}
+          </div>
+        } />
+      </div>
+    );
     const pieData = charts?.operationTypes ?? [];
     if (pieData.length === 0) {
       return <div className="dashboard-chart-placeholder"><Empty description="今日暂无操作记录" /></div>;
@@ -176,7 +186,24 @@ export default function DashboardPage() {
   }
 
   function renderNotices() {
-    if (loading) return <div className="dashboard-empty-state"><Spin /></div>;
+    if (loading) return (
+      <div style={{ padding: '8px 16px' }}>
+        <Skeleton active loading placeholder={
+          <>
+            {[1, 2, 3, 4].map((k) => (
+              <div key={k} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', borderBottom: '1px solid var(--color-border)' }}>
+                <Skeleton.Avatar size="small" style={{ width: 8, height: 8, borderRadius: '50%', marginTop: 6, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <Skeleton.Title style={{ width: '60%', height: 14, marginBottom: 8 }} />
+                  <Skeleton.Paragraph rows={1} style={{ width: '90%' }} />
+                  <Skeleton.Title style={{ width: 120, height: 10, marginTop: 8 }} />
+                </div>
+              </div>
+            ))}
+          </>
+        } />
+      </div>
+    );
     if (notices.length === 0) return <Empty description="暂无通知公告" className="dashboard-empty" />;
     return (
       <List
@@ -231,7 +258,19 @@ export default function DashboardPage() {
       {isAdmin && (
         <div className="dashboard-stats-row">
           {statsLoading
-            ? <div style={{ padding: '20px 0', textAlign: 'center' }}><Spin /></div>
+            ? STAT_ITEMS.map((item) => (
+              <Card key={item.key} className="dashboard-stat-card" bodyStyle={{ padding: '16px 20px' }}>
+                <Skeleton active loading placeholder={
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <Skeleton.Avatar style={{ width: 44, height: 44, borderRadius: 10 }} />
+                    <div style={{ flex: 1 }}>
+                      <Skeleton.Title style={{ width: 60, height: 22, marginBottom: 6 }} />
+                      <Skeleton.Paragraph rows={1} style={{ width: 80 }} />
+                    </div>
+                  </div>
+                } />
+              </Card>
+            ))
             : STAT_ITEMS.map((item) => (
               <Card key={item.key} className="dashboard-stat-card" bodyStyle={{ padding: '16px 20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -267,7 +306,13 @@ export default function DashboardPage() {
             bodyStyle={{ padding: '12px 16px 8px' }}
           >
             {chartsLoading
-              ? <div className="dashboard-chart-placeholder"><Spin /></div>
+              ? <div className="dashboard-chart-placeholder">
+                  <Skeleton active loading placeholder={
+                    <div style={{ width: '100%', height: 200, padding: '12px 0' }}>
+                      <Skeleton.Paragraph rows={6} style={{ width: '100%' }} />
+                    </div>
+                  } />
+                </div>
               : (
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={charts?.loginTrend ?? []} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
@@ -303,7 +348,13 @@ export default function DashboardPage() {
             bodyStyle={{ padding: '12px 16px 8px' }}
           >
             {chartsLoading
-              ? <div className="dashboard-chart-placeholder"><Spin /></div>
+              ? <div className="dashboard-chart-placeholder">
+                  <Skeleton active loading placeholder={
+                    <div style={{ width: '100%', height: 200, padding: '12px 0' }}>
+                      <Skeleton.Paragraph rows={6} style={{ width: '100%' }} />
+                    </div>
+                  } />
+                </div>
               : (
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={charts?.userActivity ?? []} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>

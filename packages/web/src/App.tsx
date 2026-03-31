@@ -12,6 +12,7 @@ const modules = import.meta.glob('./pages/**/*.tsx');
 const LoginPage = React.lazy(() => import('@/pages/login/LoginPage'));
 const ResetPasswordPage = React.lazy(() => import('@/pages/reset-password/ResetPasswordPage'));
 const DashboardPage = React.lazy(() => import('@/pages/dashboard/DashboardPage'));
+import DashboardSkeleton from '@/pages/dashboard/DashboardSkeleton';
 const ProfilePage = React.lazy(() => import('@/pages/profile/ProfilePage'));
 const NotificationsPage = React.lazy(() => import('@/pages/notifications/NotificationsPage'));
 const NotFoundPage = React.lazy(() => import('@/pages/not-found/NotFoundPage'));
@@ -71,7 +72,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: AdminRouteL
       <Routes>
         <Route path="/" element={<AdminLayout user={user} onLogout={logout} presetMenus={menus} />}>
         {/* 固定路由 */}
-        <Route index element={<Suspense fallback={routeFallback}><DashboardPage /></Suspense>} />
+        <Route index element={<Suspense fallback={<DashboardSkeleton />}><DashboardPage /></Suspense>} />
         <Route path="profile" element={<Suspense fallback={routeFallback}><ProfilePage user={user} onUserUpdate={updateUser} /></Suspense>} />
         <Route path="notifications" element={<Suspense fallback={routeFallback}><NotificationsPage /></Suspense>} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
