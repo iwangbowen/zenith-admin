@@ -248,15 +248,12 @@ describe('updateUser()', () => {
         nickname: '新昵称',
         email: 'admin@example.com',
         status: 'active',
+        roles: [],
+        passwordUpdatedAt: '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         departmentId: null,
         tenantId: null,
-        avatar: undefined,
-        phone: null,
-        remark: null,
-        lastLoginAt: null,
-        lastLoginIp: null,
       });
     });
 
