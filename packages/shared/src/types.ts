@@ -466,3 +466,20 @@ export interface UserApiTokenCreated {
   token: string; // 完整 token，仅创建时返回
   createdAt: string;
 }
+
+// ─── 消息模板 ─────────────────────────────────────────────────────────────────
+export type MessageChannelType = 'email' | 'sms' | 'in_app';
+
+export interface MessageTemplate {
+  id: number;
+  name: string;
+  code: string;
+  channel: MessageChannelType;
+  subject: string | null;
+  content: string;
+  variables: string | null;
+  status: 'active' | 'disabled';
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

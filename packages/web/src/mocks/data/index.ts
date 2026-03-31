@@ -9,3 +9,4 @@ export * from './notices';
 export * from './logs';
 export * from './regions';
 export * from './tenants';
+export * from './message-templates';

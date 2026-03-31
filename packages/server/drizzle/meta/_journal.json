@@ -204,6 +204,13 @@
       "when": 1775001600000,
       "tag": "0028_s3_cos_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1774962597007,
+      "tag": "0029_cuddly_havok",
+      "breakpoints": true
     }
   ]
 }

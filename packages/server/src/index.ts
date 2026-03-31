@@ -36,6 +36,7 @@ import oauthConfigRoutes from './routes/oauth-config';
 import dbBackupsRoutes from './routes/db-backups';
 import apiTokensRoutes from './routes/api-tokens';
 import cacheRoutes from './routes/cache';
+import messageTemplatesRoutes from './routes/message-templates';
 import { createWsRoute } from './routes/ws';
 import { initCronScheduler } from './lib/cron-scheduler';
 
@@ -73,6 +74,7 @@ app.route('/api/oauth-config', oauthConfigRoutes);
 app.route('/api/db-backups', dbBackupsRoutes);
 app.route('/api/api-tokens', apiTokensRoutes);
 app.route('/api/cache', cacheRoutes);
+app.route('/api/message-templates', messageTemplatesRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 
 app.get('/api/health', async (c) => {

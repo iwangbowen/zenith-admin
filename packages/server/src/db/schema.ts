@@ -482,3 +482,23 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 
 export type PasswordResetTokenRow = typeof passwordResetTokens.$inferSelect;
 export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+
+// ─── 消息模板 ─────────────────────────────────────────────────────────────────
+export const messageChannelEnum = pgEnum('message_channel', ['email', 'sms', 'in_app']);
+
+export const messageTemplates = pgTable('message_templates', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  code: varchar('code', { length: 100 }).notNull().unique(),
+  channel: messageChannelEnum('channel').notNull(),
+  subject: varchar('subject', { length: 200 }),
+  content: text('content').notNull(),
+  variables: text('variables'),
+  status: statusEnum('status').default('active').notNull(),
+  remark: text('remark'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type MessageTemplateRow = typeof messageTemplates.$inferSelect;
+export type NewMessageTemplate = typeof messageTemplates.$inferInsert;

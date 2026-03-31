@@ -22,6 +22,7 @@ import { dbBackupsHandlers } from './db-backups';
 import { apiTokensHandlers } from './api-tokens';
 import { tenantsHandlers } from './tenants';
 import { cacheHandlers } from './cache';
+import { messageTemplatesHandlers } from './message-templates';
 
 export const handlers = [
   ...authHandlers,
@@ -48,4 +49,5 @@ export const handlers = [
   ...apiTokensHandlers,
   ...tenantsHandlers,
   ...cacheHandlers,
+  ...messageTemplatesHandlers,
 ];

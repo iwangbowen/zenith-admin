@@ -344,3 +344,28 @@ export type CreateTenantInput = z.infer<typeof createTenantSchema>;
 export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
 export type SwitchTenantInput = z.infer<typeof switchTenantSchema>;
 export type UpdateOauthConfigInput = z.infer<typeof updateOauthConfigSchema>;
+
+// ─── 消息模板 ─────────────────────────────────────────────────────────────────
+export const MESSAGE_CHANNELS = ['email', 'sms', 'in_app'] as const;
+export type MessageChannel = typeof MESSAGE_CHANNELS[number];
+
+export const createMessageTemplateSchema = z.object({
+  name: z.string().min(1, '模板名称不能为空').max(100),
+  code: z.string().min(1, '模板编码不能为空').max(100).regex(/^[a-zA-Z]\w*$/, '编码只能包含字母、数字和下划线，且以字母开头'),
+  channel: z.enum(['email', 'sms', 'in_app'], { required_error: '请选择渠道类型' }),
+  subject: z.string().max(200).optional(),
+  content: z.string().min(1, '模板内容不能为空'),
+  variables: z.string().optional(),
+  status: z.enum(['active', 'disabled']).default('active'),
+  remark: z.string().max(500).optional(),
+});
+
+export const updateMessageTemplateSchema = createMessageTemplateSchema.partial();
+
+export const previewMessageTemplateSchema = z.object({
+  variables: z.record(z.string()),
+});
+
+export type CreateMessageTemplateInput = z.infer<typeof createMessageTemplateSchema>;
+export type UpdateMessageTemplateInput = z.infer<typeof updateMessageTemplateSchema>;
+export type PreviewMessageTemplateInput = z.infer<typeof previewMessageTemplateSchema>;
