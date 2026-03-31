@@ -222,13 +222,13 @@ export default function FileStorageConfigsPage() {
       dataIndex: 'provider',
       width: 120,
       render: (provider: FileStorageProvider) => {
-        const map: Record<FileStorageProvider, { color: string; label: string }> = {
+        const map: Record<FileStorageProvider, { color: 'blue' | 'orange' | 'purple' | 'teal'; label: string }> = {
           local: { color: 'blue', label: '本地磁盘' },
           oss: { color: 'orange', label: '阿里云 OSS' },
           s3: { color: 'purple', label: 'Amazon S3' },
           cos: { color: 'teal', label: '腾讯云 COS' },
         };
-        const { color, label } = map[provider] ?? { color: 'grey', label: provider };
+        const { color, label } = map[provider];
         return <Tag color={color} size="small">{label}</Tag>;
       },
     },

@@ -7,6 +7,7 @@ import {
   PieChart, Pie,
   XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
+  type PieLabelRenderProps,
 } from 'recharts';
 import { Bell, BookOpen, MonitorPlay, Users, UserCheck, Wifi, LogIn, Activity } from 'lucide-react';
 
@@ -165,7 +166,7 @@ export default function DashboardPage() {
             cx="50%"
             cy="50%"
             outerRadius={72}
-            label={({ module, percent }: { module: string; percent: number }) => `${module} ${(percent * 100).toFixed(0)}%`}
+            label={({ name, percent }: PieLabelRenderProps) => `${String(name)} ${(((percent as number) ?? 0) * 100).toFixed(0)}%`}
             labelLine={false}
           />
           <Tooltip formatter={(value, name) => [value, name === 'count' ? '次数' : name]} />
