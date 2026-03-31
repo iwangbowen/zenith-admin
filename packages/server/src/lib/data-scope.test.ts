@@ -92,6 +92,18 @@ describe('全量访问（返回 undefined）', () => {
 
     expect(result).toBeUndefined();
   });
+
+  it('用户无角色但传了 ownerColumn → 返回 eq 条件（self 兜底）', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([])); // 无角色
+
+    const result = await getDataScopeCondition({
+      currentUserId: 3,
+      ownerColumn: mockOrderTable.createdBy,
+    });
+
+    // scopeSet 为空，不命中 all/dept/self，但 ownerColumn 提供了 → eq(ownerColumn, userId)
+    expect(result).toBeDefined();
+  });
 });
 
 // ─── dept 权限分支 ────────────────────────────────────────────────────────────

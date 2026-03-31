@@ -10,7 +10,7 @@
  * 测试策略：mock `../db`，避免真实数据库连接；
  * db.select().from().where() 整条链均通过可 await 的 mock chain 模拟。
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { db } from '../db';
 import {
   isSuperAdmin,
@@ -46,6 +46,11 @@ const dbMock = vi.mocked(db);
 beforeEach(() => {
   vi.clearAllMocks();
   clearUserPermissionCache(); // 每轮测试前清空缓存，防止相互干扰
+});
+
+// 确保 fake timers 在每次测试后恢复，防止影响后续测试
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 // ─── isSuperAdmin ─────────────────────────────────────────────────────────────
@@ -141,6 +146,27 @@ describe('getUserPermissions', () => {
     await getUserPermissions(10); // 命中缓存
 
     expect(dbMock.select).toHaveBeenCalledTimes(3); // 只查了一次（3次链式调用）
+  });
+
+  it('缓存 TTL 过期后重新查询 DB', async () => {
+    vi.useFakeTimers();
+
+    dbMock.select
+      .mockReturnValueOnce(createChain([{ roleId: 1 }]))
+      .mockReturnValueOnce(createChain([{ menuId: 20 }]))
+      .mockReturnValueOnce(createChain([{ id: 20, permission: 'perm:a' }]));
+
+    await getUserPermissions(50);
+    expect(dbMock.select).toHaveBeenCalledTimes(3);
+
+    // 推进 5 分钟 + 1ms，超过 CACHE_TTL
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+
+    dbMock.select
+      .mockReturnValueOnce(createChain([]))  // 重新查询（空角色）
+    await getUserPermissions(50);
+
+    expect(dbMock.select).toHaveBeenCalledTimes(4); // 缓存失效，多查一次
   });
 });
 
