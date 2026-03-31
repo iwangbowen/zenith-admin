@@ -318,7 +318,7 @@ export default function MessageTemplatesPage() {
         <Form
           getFormApi={(api) => { formApi.current = api; }}
           labelPosition="left"
-          labelWidth={80}
+          labelWidth={90}
           initValues={editingTemplate ?? { status: 'active' }}
         >
           <Form.Input
