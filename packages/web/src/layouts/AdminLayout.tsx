@@ -300,12 +300,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     [menuTree]
   );
 
-  // 固定路由的标题映射（不在菜单中但需要中文标签页名称的路由）
-  const FIXED_ROUTE_TITLES: { prefix: string; title: string }[] = [
-    { prefix: '/workflow/designer', title: '流程设计' },
-    { prefix: '/profile', title: '个人中心' },
-  ];
-
   const pathTitleMap = useMemo(() => {
     const map: Record<string, string> = {};
     function traverse(nodes: Menu[]) {
@@ -320,8 +314,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   const resolveTitle = useCallback((pathname: string) => {
     if (pathTitleMap[pathname]) return pathTitleMap[pathname];
-    const match = FIXED_ROUTE_TITLES.find(r => pathname.startsWith(r.prefix));
-    return match ? match.title : pathname;
+    // 前缀匹配：用于带动态参数的隐藏菜单（如 /workflow/designer → /workflow/designer/1）
+    const prefixMatch = Object.entries(pathTitleMap).find(([p]) => pathname.startsWith(p + '/'));
+    return prefixMatch ? prefixMatch[1] : pathname;
   }, [pathTitleMap]);
 
   const pathIconMap = useMemo(() => {

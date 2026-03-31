@@ -135,7 +135,6 @@ export default function WorkflowDefinitionsPage() {
       title: '操作',
       key: 'action',
       width: 180,
-      fixed: 'right',
       render: (_: unknown, record: WorkflowDefinition) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => navigate(`/workflow/designer/${record.id}`)}>
