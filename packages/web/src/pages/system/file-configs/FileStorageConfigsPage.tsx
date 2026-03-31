@@ -76,7 +76,8 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
       s3Endpoint: normalizeOptional(values.s3Endpoint),
       s3Bucket: normalizeOptional(values.s3Bucket),
       s3AccessKeyId: normalizeOptional(values.s3AccessKeyId),
-      s3AccessKeySecret: normalizeOptional(values.s3AccessKeySecret),
+      s3SecretAccessKey: normalizeOptional(values.s3SecretAccessKey),
+      s3ForcePathStyle: values.s3ForcePathStyle ?? false,
       remark: normalizeOptional(values.remark),
     };
   }
@@ -92,7 +93,6 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
     cosBucket: normalizeOptional(values.cosBucket),
     cosSecretId: normalizeOptional(values.cosSecretId),
     cosSecretKey: normalizeOptional(values.cosSecretKey),
-    cosAppId: normalizeOptional(values.cosAppId),
     remark: normalizeOptional(values.remark),
   };
 }
@@ -325,12 +325,12 @@ export default function FileStorageConfigsPage() {
       s3Endpoint: editingConfig.s3Endpoint ?? '',
       s3Bucket: editingConfig.s3Bucket ?? '',
       s3AccessKeyId: editingConfig.s3AccessKeyId ?? '',
-      s3AccessKeySecret: editingConfig.s3AccessKeySecret ?? '',
+      s3SecretAccessKey: editingConfig.s3SecretAccessKey ?? '',
+      s3ForcePathStyle: editingConfig.s3ForcePathStyle ?? false,
       cosRegion: editingConfig.cosRegion ?? '',
       cosBucket: editingConfig.cosBucket ?? '',
       cosSecretId: editingConfig.cosSecretId ?? '',
       cosSecretKey: editingConfig.cosSecretKey ?? '',
-      cosAppId: editingConfig.cosAppId ?? '',
       remark: editingConfig.remark ?? '',
     }
     : {
@@ -462,11 +462,12 @@ export default function FileStorageConfigsPage() {
               <Form.Input field="s3Bucket" label="Bucket" rules={[{ required: true, message: '请输入 S3 Bucket' }]} />
               <Form.Input field="s3AccessKeyId" label="Access Key ID" rules={[{ required: true, message: '请输入 Access Key ID' }]} />
               <Form.Input
-                field="s3AccessKeySecret"
+                field="s3SecretAccessKey"
                 label="Secret Access Key"
                 type="password"
                 rules={[{ required: true, message: '请输入 Secret Access Key' }]}
               />
+              <Form.Checkbox field="s3ForcePathStyle" noLabel>强制路径样式（MinIO / Ceph 等兼容当需开启）</Form.Checkbox>
             </>
           )}
 
@@ -474,7 +475,6 @@ export default function FileStorageConfigsPage() {
             <>
               <Form.Input field="cosRegion" label="Region" placeholder="例如 ap-guangzhou" rules={[{ required: true, message: '请输入 COS Region' }]} />
               <Form.Input field="cosBucket" label="Bucket" placeholder="例如 my-bucket-1250000000" rules={[{ required: true, message: '请输入 COS Bucket' }]} />
-              <Form.Input field="cosAppId" label="AppId" placeholder="腾讯云账户 AppId" rules={[{ required: true, message: '请输入 AppId' }]} />
               <Form.Input field="cosSecretId" label="SecretId" rules={[{ required: true, message: '请输入 SecretId' }]} />
               <Form.Input
                 field="cosSecretKey"

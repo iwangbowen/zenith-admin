@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Button, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Bell, Building2, Check, Maximize2, Minimize2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
-import type { User, Menu, Notice, Tenant, WsMessage } from '@zenith/shared';
+import type { User, Menu, Notice, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, type NavLayout, type TabAnimation } from '@/hooks/usePreferences';
 import { applyThemeColor, THEME_COLOR_PRESETS } from '@/lib/theme-color';
@@ -13,6 +13,7 @@ import { formatDateTime } from '@/utils/date';
 import { config } from '@/config';
 import { renderLucideIcon } from '@/utils/icons';
 import NProgress from '@/components/NProgress';
+import Watermark from '@/components/Watermark';
 import './AdminLayout.css';
 
 // 主题图标
@@ -107,6 +108,23 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [collapsed, setCollapsed] = useState(false);
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
   const { mode, setThemeMode } = useTheme();
+
+  // ─── 水印配置 ──────────────────────────────────────────────────────────────
+  const [watermarkConfig, setWatermarkConfig] = useState({ enabled: false, content: '', fontSize: 14, opacity: 0.15 });
+
+  useEffect(() => {
+    request.get<{ list: SystemConfig[]; total: number }>('/api/system-configs?keyword=watermark_&pageSize=10', { silent: true })
+      .then((res) => {
+        if (res.code === 0 && res.data?.list) {
+          const list = res.data.list;
+          const enabled = list.find((c) => c.configKey === 'watermark_enabled')?.configValue === 'true';
+          const content = list.find((c) => c.configKey === 'watermark_content')?.configValue ?? '';
+          const fontSize = Number(list.find((c) => c.configKey === 'watermark_font_size')?.configValue) || 14;
+          const opacity = (Number(list.find((c) => c.configKey === 'watermark_opacity')?.configValue) || 15) / 100;
+          setWatermarkConfig({ enabled, content, fontSize, opacity });
+        }
+      });
+  }, []);
   const { preferences, setPreferences, resetPreferences } = usePreferences();
 
   // Fullscreen
@@ -605,7 +623,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     </div>
   );
 
-  return (
+  const adminLayoutEl = (
     <div className="admin-layout">
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && (
@@ -950,5 +968,20 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         )}
       </Modal>
     </div>
+  );
+
+  if (!watermarkConfig.enabled) return adminLayoutEl;
+  return (
+    <Watermark
+      content={watermarkConfig.content || [user.nickname, user.username].filter((x): x is string => Boolean(x))}
+      fontSize={watermarkConfig.fontSize}
+      opacity={watermarkConfig.opacity}
+      gapX={212}
+      gapY={120}
+      rotate={-22}
+      zIndex={9}
+    >
+      {adminLayoutEl}
+    </Watermark>
   );
 }
