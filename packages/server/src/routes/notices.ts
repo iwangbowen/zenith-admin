@@ -17,6 +17,7 @@ noticesRouter.use('*', authMiddleware);
 function toNotice(row: typeof notices.$inferSelect) {
   return {
     ...row,
+    targetType: row.targetType as 'all' | 'specific',
     publishTime: row.publishTime ? row.publishTime.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

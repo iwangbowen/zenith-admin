@@ -330,6 +330,107 @@ export default function NoticesPage() {
     }
   };
 
+  /** 渲染已读统计 SideSheet 内容 */
+  const renderStatsContent = () => {
+    if (!statsData) return null;
+    const readRatePercent = statsData.totalCount > 0
+      ? Math.round((statsData.readCount / statsData.totalCount) * 100)
+      : 0;
+    const userColumns = [
+      {
+        title: '用户',
+        dataIndex: 'username',
+        render: (_: unknown, u: NoticeReadStats['list'][number]) => (
+          <Space>
+            <Avatar size="extra-extra-small" src={u.avatar ?? undefined}>
+              {u.nickname?.[0] ?? 'U'}
+            </Avatar>
+            <span>
+              {u.nickname}
+              <Typography.Text type="tertiary" size="small" style={{ marginLeft: 4 }}>({u.username})</Typography.Text>
+            </span>
+          </Space>
+        ),
+      },
+    ];
+    return (
+      <>
+        {/* 概要统计卡片 */}
+        <div style={{ display: 'flex', gap: 24, padding: '0 0 20px', alignItems: 'center' }}>
+          <div style={{ textAlign: 'center', minWidth: 64 }}>
+            <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--semi-color-success)' }}>{statsData.readCount}</div>
+            <Typography.Text type="tertiary" size="small">已读人数</Typography.Text>
+          </div>
+          <div style={{ textAlign: 'center', minWidth: 64 }}>
+            <div style={{ fontSize: 28, fontWeight: 700 }}>{statsData.totalCount}</div>
+            <Typography.Text type="tertiary" size="small">收件人数</Typography.Text>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+              <Typography.Text size="small">阅读率</Typography.Text>
+              <Typography.Text size="small" strong>{readRatePercent}%</Typography.Text>
+            </div>
+            <Progress percent={readRatePercent} size="large" />
+          </div>
+        </div>
+
+        <Tabs
+          activeKey={statsTab}
+          onChange={(tab) => {
+            const t = tab as 'read' | 'unread';
+            setStatsTab(t);
+            if (statsNotice) void fetchStatsData(statsNotice, 1, t);
+          }}
+        >
+          <TabPane tab={`已读 (${statsData.readCount})`} itemKey="read">
+            <Table
+              bordered
+              size="small"
+              loading={statsLoading}
+              dataSource={statsTab === 'read' ? statsData.list : []}
+              rowKey="id"
+              pagination={{
+                total: statsTab === 'read' ? statsData.total : statsData.readCount,
+                currentPage: statsData.page,
+                pageSize: statsData.pageSize,
+                onPageChange: (p: number) => {
+                  if (statsNotice) void fetchStatsData(statsNotice, p, 'read');
+                },
+              }}
+              columns={[
+                ...userColumns,
+                {
+                  title: '已读时间',
+                  dataIndex: 'readAt',
+                  width: 180,
+                  render: (v: string) => (v ? formatDateTime(v) : '—'),
+                },
+              ]}
+            />
+          </TabPane>
+          <TabPane tab={`未读 (${statsData.totalCount - statsData.readCount})`} itemKey="unread">
+            <Table
+              bordered
+              size="small"
+              loading={statsLoading}
+              dataSource={statsTab === 'unread' ? statsData.list : []}
+              rowKey="id"
+              pagination={{
+                total: statsTab === 'unread' ? statsData.total : statsData.totalCount - statsData.readCount,
+                currentPage: statsData.page,
+                pageSize: statsData.pageSize,
+                onPageChange: (p: number) => {
+                  if (statsNotice) void fetchStatsData(statsNotice, p, 'unread');
+                },
+              }}
+              columns={userColumns}
+            />
+          </TabPane>
+        </Tabs>
+      </>
+    );
+  };
+
   const publishStatusColorMap: Record<string, string> = {
     draft: 'grey',
     published: 'green',
@@ -650,120 +751,9 @@ export default function NoticesPage() {
         width={640}
         footer={null}
       >
-        {statsLoading && !statsData ? (
-          <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
-        ) : statsData ? (
-          <>
-            {/* 概要统计卡片 */}
-            <div style={{ display: 'flex', gap: 24, padding: '0 0 20px', alignItems: 'center' }}>
-              <div style={{ textAlign: 'center', minWidth: 64 }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--semi-color-success)' }}>{statsData.readCount}</div>
-                <Typography.Text type="tertiary" size="small">已读人数</Typography.Text>
-              </div>
-              <div style={{ textAlign: 'center', minWidth: 64 }}>
-                <div style={{ fontSize: 28, fontWeight: 700 }}>{statsData.totalCount}</div>
-                <Typography.Text type="tertiary" size="small">收件人数</Typography.Text>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography.Text size="small">阅读率</Typography.Text>
-                  <Typography.Text size="small" strong>
-                    {statsData.totalCount > 0 ? Math.round((statsData.readCount / statsData.totalCount) * 100) : 0}%
-                  </Typography.Text>
-                </div>
-                <Progress
-                  percent={statsData.totalCount > 0 ? Math.round((statsData.readCount / statsData.totalCount) * 100) : 0}
-                  stroke="var(--semi-color-success)"
-                  size="large"
-                />
-              </div>
-            </div>
-
-            <Tabs
-              activeKey={statsTab}
-              onChange={(tab) => {
-                const t = tab as 'read' | 'unread';
-                setStatsTab(t);
-                if (statsNotice) void fetchStatsData(statsNotice, 1, t);
-              }}
-            >
-              <TabPane tab={`已读 (${statsData.readCount})`} itemKey="read">
-                <Table
-                  bordered
-                  size="small"
-                  loading={statsLoading}
-                  dataSource={statsTab === 'read' ? statsData.list : []}
-                  rowKey="id"
-                  pagination={{
-                    total: statsTab === 'read' ? statsData.total : statsData.readCount,
-                    currentPage: statsData.page,
-                    pageSize: statsData.pageSize,
-                    onPageChange: (p: number) => {
-                      if (statsNotice) void fetchStatsData(statsNotice, p, 'read');
-                    },
-                  }}
-                  columns={[
-                    {
-                      title: '用户',
-                      dataIndex: 'username',
-                      render: (_: unknown, u: NoticeReadStats['list'][number]) => (
-                        <Space>
-                          <Avatar size="extra-extra-small" src={u.avatar ?? undefined}>
-                            {u.nickname?.[0] ?? 'U'}
-                          </Avatar>
-                          <span>
-                            {u.nickname}
-                            <Typography.Text type="tertiary" size="small" style={{ marginLeft: 4 }}>({u.username})</Typography.Text>
-                          </span>
-                        </Space>
-                      ),
-                    },
-                    {
-                      title: '已读时间',
-                      dataIndex: 'readAt',
-                      width: 180,
-                      render: (v: string) => (v ? formatDateTime(v) : '—'),
-                    },
-                  ]}
-                />
-              </TabPane>
-              <TabPane tab={`未读 (${statsData.totalCount - statsData.readCount})`} itemKey="unread">
-                <Table
-                  bordered
-                  size="small"
-                  loading={statsLoading}
-                  dataSource={statsTab === 'unread' ? statsData.list : []}
-                  rowKey="id"
-                  pagination={{
-                    total: statsTab === 'unread' ? statsData.total : statsData.totalCount - statsData.readCount,
-                    currentPage: statsData.page,
-                    pageSize: statsData.pageSize,
-                    onPageChange: (p: number) => {
-                      if (statsNotice) void fetchStatsData(statsNotice, p, 'unread');
-                    },
-                  }}
-                  columns={[
-                    {
-                      title: '用户',
-                      dataIndex: 'username',
-                      render: (_: unknown, u: NoticeReadStats['list'][number]) => (
-                        <Space>
-                          <Avatar size="extra-extra-small" src={u.avatar ?? undefined}>
-                            {u.nickname?.[0] ?? 'U'}
-                          </Avatar>
-                          <span>
-                            {u.nickname}
-                            <Typography.Text type="tertiary" size="small" style={{ marginLeft: 4 }}>({u.username})</Typography.Text>
-                          </span>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                />
-              </TabPane>
-            </Tabs>
-          </>
-        ) : null}
+        {statsLoading && !statsData
+          ? <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
+          : renderStatsContent()}
       </SideSheet>
     </div>
   );
