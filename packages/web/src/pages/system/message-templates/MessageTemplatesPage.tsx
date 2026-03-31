@@ -207,7 +207,7 @@ export default function MessageTemplatesPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 180,
+      width: 220,
       align: 'center',
       render: (_v, row) => (
         <Space>
