@@ -25,7 +25,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { ArrowLeft, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Trash2 } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowNodeConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
 
