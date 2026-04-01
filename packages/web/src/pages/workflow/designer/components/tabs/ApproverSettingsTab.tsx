@@ -48,6 +48,7 @@ export default function ApproverSettingsTab({
   approveMethod,
   multiLevelEndType = 'topLevel',
   multiLevelEndLevel = 1,
+  multiLevelEndRoleId,
   nodeApproverNodeId,
   userGroupIds = [],
   formDeptField,
