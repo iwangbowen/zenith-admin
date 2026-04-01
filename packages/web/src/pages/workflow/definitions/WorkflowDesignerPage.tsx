@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -185,9 +185,9 @@ function computeLayout(tree: DingFlowNode) {
 }
 
 // ─── Tree mutations ────────────────────────────────────────────────────────────
-let _idCounter = 1000;
-const genId = () => `n${++_idCounter}`;
-const genBranchId = () => `b${++_idCounter}`;
+const MIN_GATEWAY_BRANCHES = 2;
+const genId = () => `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const genBranchId = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 function insertAfterInTree(tree: DingFlowNode | null | undefined, targetId: string, newNode: DingFlowNode): DingFlowNode | null {
   if (!tree) return null;
@@ -306,7 +306,7 @@ function deleteBranchInTree(tree: DingFlowNode | null | undefined, gatewayId: st
   if (tree.id === gatewayId && (tree as DingFlowGateway).type === 'gateway') {
     const gw = tree as DingFlowGateway;
     const remaining = gw.branches.filter(b => b.id !== branchId);
-    if (remaining.length < 2) return tree; // keep at least 2 branches
+    if (remaining.length < MIN_GATEWAY_BRANCHES) return tree; // keep at least MIN_GATEWAY_BRANCHES branches
     return { ...gw, branches: remaining };
   }
   if ((tree as DingFlowGateway).type === 'gateway') {
@@ -336,6 +336,14 @@ const GATEWAY_LABELS: Record<DingGatewayType, string> = {
   parallel: '添加分支',
   inclusive: '包容分支',
   route: '路由分支',
+};
+
+/** Prefix used for auto-generated branch labels (e.g. "条件1", "并行1") */
+const BRANCH_LABEL_PREFIX: Record<DingGatewayType, string> = {
+  condition: '条件',
+  parallel: '并行',
+  inclusive: '包容',
+  route: '路由',
 };
 
 const NODE_ACCENT = '#ff6b35';
@@ -668,10 +676,9 @@ function WorkflowDesignerInner() {
       data: { tree, cbs, totalW, totalH } as unknown as Record<string, unknown>,
       style: { border: 'none', background: 'transparent', padding: 0 },
     }]);
-    // fitView after a tick
+    // fitView after a tick to let xyflow measure the new node size
     setTimeout(() => fitView({ padding: 0.1, duration: 200 }), 50);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree, isEditable]);
+  }, [tree, cbs, fitView, setRfNodes]);
 
   // ─── Callbacks ───────────────────────────────────────────────────────────────
   const handleAddButtonClick = useCallback((el: LayoutElement, e: React.MouseEvent) => {
@@ -690,7 +697,7 @@ function WorkflowDesignerInner() {
       const newGateway: DingFlowGateway = {
         id: genId(), type: 'gateway', gatewayType,
         branches: [
-          { id: genBranchId(), label: `${GATEWAY_LABELS[gatewayType].replace('添加', '')}1`, priority: 1, isDefault: false },
+          { id: genBranchId(), label: `${BRANCH_LABEL_PREFIX[gatewayType]}1`, priority: 1, isDefault: false },
           { id: genBranchId(), label: '其它情况', priority: 2, isDefault: true },
         ],
         next: null,
@@ -725,7 +732,7 @@ function WorkflowDesignerInner() {
   const handleGatewayClick = useCallback((gw: DingFlowGateway) => {
     const newBranch: DingFlowBranch = {
       id: genBranchId(),
-      label: `${GATEWAY_LABELS[gw.gatewayType].replace('添加', '')}${gw.branches.length}`,
+      label: `${BRANCH_LABEL_PREFIX[gw.gatewayType]}${gw.branches.length}`,
       priority: gw.branches.length,
       isDefault: false,
     };
@@ -740,7 +747,8 @@ function WorkflowDesignerInner() {
     setTree(prev => deleteBranchInTree(prev, gatewayId, branchId) ?? prev);
   }, []);
 
-  const cbs: FlowCallbacks = {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const cbs: FlowCallbacks = useMemo(() => ({
     onAddButtonClick: handleAddButtonClick,
     onNodeClick: handleNodeClick,
     onBranchCardClick: handleBranchCardClick,
@@ -748,7 +756,7 @@ function WorkflowDesignerInner() {
     onDeleteNode: handleDeleteNode,
     onDeleteBranch: handleDeleteBranch,
     isEditable,
-  };
+  }), [handleAddButtonClick, handleNodeClick, handleBranchCardClick, handleGatewayClick, handleDeleteNode, handleDeleteBranch, isEditable]);
 
   // Save
   const doSave = async (meta: { name: string; description?: string | null }) => {

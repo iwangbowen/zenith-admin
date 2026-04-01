@@ -48,51 +48,44 @@ function addEdge(state: GraphBuildState, source: string, target: string, conditi
   state.edges.push({ id: `e-${source}-${target}`, source, target, ...(condition ? { condition } : {}) });
 }
 
+// Map DingNodeType to engine WorkflowNodeConfig types
+const DING_TO_ENGINE_TYPE: Record<string, WorkflowNodeConfig['type']> = {
+  start: 'start', end: 'end',
+  approve: 'approve', handler: 'approve',
+  cc: 'ccNode',
+  delay: 'approve', trigger: 'approve', subprocess: 'approve',
+};
+
 /**
- * 将 DingTalk 树节点链转换为图格式，返回链中第一个图节点 ID 和最后一个（尾部）节点 ID。
- * tailId 是调用方需要从该节点发出后续边的节点 ID。
+ * 将 DingTalk 树节点链转换为图格式，返回链的最后一个节点 ID。
+ * condition 参数用于附加到从 fromId 出发的第一条边上。
  */
 function convertChain(
   node: DingFlowNode | null | undefined,
   state: GraphBuildState,
   fromId: string,
   endId: string,
+  condition?: WorkflowEdgeCondition | null,
 ): string {
   if (!node) {
-    addEdge(state, fromId, endId);
+    addEdge(state, fromId, endId, condition);
     return fromId;
   }
 
   if ((node as DingFlowGateway).type === 'gateway') {
     const gw = node as DingFlowGateway;
     const counter = ++state.counter;
-    const forkType = gw.gatewayType === 'parallel' ? 'parallelGateway' : 'exclusiveGateway';
-    const joinType = gw.gatewayType === 'parallel' ? 'parallelGateway' : 'exclusiveGateway';
+    const isParallel = gw.gatewayType === 'parallel';
+    const gwType = isParallel ? 'parallelGateway' : 'exclusiveGateway';
 
-    const forkKey = `fork-${gw.id}-${counter}`;
-    const joinKey = `join-${gw.id}-${counter}`;
-    const forkId = addNode(state, forkKey, forkType, forkType === 'parallelGateway' ? '并行-分叉' : '条件-分叉');
-    const joinId = addNode(state, joinKey, joinType, forkType === 'parallelGateway' ? '并行-汇聚' : '条件-汇聚');
+    const forkId = addNode(state, `fork-${gw.id}-${counter}`, gwType, isParallel ? '并行-分叉' : '条件-分叉');
+    const joinId = addNode(state, `join-${gw.id}-${counter}`, gwType, isParallel ? '并行-汇聚' : '条件-汇聚');
 
-    addEdge(state, fromId, forkId);
+    addEdge(state, fromId, forkId, condition);
 
     for (const branch of gw.branches) {
-      if (branch.head) {
-        // Convert branch chain; branch chain ends at joinId
-        const branchFirstId = convertChain(branch.head, state, forkId, joinId);
-        // The edge from fork to first branch node with condition
-        if (branchFirstId !== forkId) {
-          // Remove the edge we just added from forkId to joinId (since branch has content)
-          // Actually convertChain adds edges from fromId → first_node → ... → joinId
-          // We need to attach condition to the first edge from forkId
-          const firstEdge = state.edges.find(e => e.source === forkId && e.target === `n-${branch.head!.id}`);
-          if (firstEdge && branch.condition) firstEdge.condition = branch.condition;
-          if (firstEdge && branch.isDefault) (firstEdge as Record<string, unknown>).isDefault = true;
-        }
-      } else {
-        // Empty branch: direct edge fork → join
-        addEdge(state, forkId, joinId, branch.condition ?? null);
-      }
+      // Pass branch condition to the first edge in each branch chain
+      convertChain(branch.head ?? null, state, forkId, joinId, branch.condition ?? null);
     }
 
     // Continue after gateway
@@ -101,14 +94,14 @@ function convertChain(
 
   // Simple node
   const n = node as DingFlowSimpleNode;
-  const nodeType: string = n.type === 'cc' ? 'ccNode' : n.type === 'approve' ? 'approve' : n.type === 'start' ? 'start' : 'approve';
-  const nodeId = addNode(state, n.id, nodeType, n.label, {
+  const engineType = DING_TO_ENGINE_TYPE[n.type] ?? 'approve';
+  const nodeId = addNode(state, n.id, engineType, n.label, {
     assigneeId: n.config?.assigneeId ?? null,
     assigneeName: n.config?.assigneeName ?? null,
     assigneeIds: (n.config?.assigneeIds as number[] | undefined) ?? null,
     assigneeNames: (n.config?.assigneeNames as string[] | undefined) ?? null,
   });
-  addEdge(state, fromId, nodeId);
+  addEdge(state, fromId, nodeId, condition);
   return convertChain(n.next ?? null, state, nodeId, endId);
 }
 
@@ -131,7 +124,7 @@ export function dingTreeToGraph(tree: DingFlowNode): WorkflowFlowData {
  */
 export function resolveFlowData(flowData: WorkflowFlowData): WorkflowFlowData {
   if (flowData.tree) return dingTreeToGraph(flowData.tree);
-  if (flowData.nodes?.length) return flowData as Required<Pick<WorkflowFlowData, 'nodes' | 'edges'>> & WorkflowFlowData;
+  if (flowData.nodes?.length) return { nodes: flowData.nodes, edges: flowData.edges ?? [] };
   return { nodes: [], edges: [] };
 }
 
