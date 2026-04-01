@@ -120,6 +120,7 @@ export default function NodeConfigDrawer({
                 <ApproverSettingsTab
                   nodeType={node?.type ?? 'approver'}
                   approvalType={(props.approvalType as ApprovalType) ?? 'manual'}
+                  excludeFromStats={(props.excludeFromStats as boolean) ?? false}
                   assigneeType={(props.assigneeType as AssigneeType) ?? 'user'}
                   assigneeIds={(props.assigneeIds as number[]) ?? []}
                   roleIds={(props.roleIds as number[]) ?? []}
@@ -340,6 +341,7 @@ function getDefaultProps(type: FlowNodeType): Record<string, unknown> {
     case 'approver':
       return {
         approvalType: 'manual',
+        excludeFromStats: false,
         assigneeType: 'user',
         assigneeIds: [],
         assigneeNames: [],

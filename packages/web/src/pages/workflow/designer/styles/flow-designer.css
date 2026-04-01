@@ -715,3 +715,132 @@ button.fd-node-card {
   color: var(--semi-color-danger);
   background: var(--semi-color-danger-light-default);
 }
+
+/* ─── 审批人类型 Radio 网格（飞书风格） ─────────────────────────────── */
+
+.fd-assignee-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.fd-assignee-type-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--semi-color-text-0);
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.fd-assignee-type-item:hover {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.fd-assignee-type-item--active {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+  font-weight: 500;
+}
+
+/* ─── 操作权限分组布局 ─────────────────────────────────────────────── */
+
+.fd-operation-group {
+  margin-bottom: 20px;
+}
+
+.fd-operation-group__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--semi-color-text-0);
+  margin-bottom: 8px;
+}
+
+.fd-operation-group__items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fd-operation-group__item-desc {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+  margin-left: 24px;
+  margin-top: 2px;
+}
+
+/* ─── 表单权限 Checkbox 表格（飞书风格） ──────────────────────────── */
+
+.fd-form-perm-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--semi-color-fill-0);
+  border: 1px solid var(--semi-color-border);
+  border-radius: 4px 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-1);
+}
+
+.fd-form-perm-header__field {
+  flex: 1;
+}
+
+.fd-form-perm-header__check {
+  width: 60px;
+  text-align: center;
+}
+
+.fd-form-perm-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-top: none;
+  font-size: 13px;
+  transition: background 0.1s;
+}
+
+.fd-form-perm-row:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.fd-form-perm-row:last-child {
+  border-radius: 0 0 4px 4px;
+}
+
+.fd-form-perm-row__field {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--semi-color-text-0);
+}
+
+.fd-form-perm-row__check {
+  width: 60px;
+  display: flex;
+  justify-content: center;
+}
+
+/* ─── 高级设置 Radio 列表（飞书风格） ──────────────────────────────── */
+
+.fd-radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.fd-radio-list .semi-radio {
+  padding: 4px 0;
+}

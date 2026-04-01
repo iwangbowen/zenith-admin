@@ -2,7 +2,7 @@
  * 高级设置 Tab
  * 拒绝策略、审批人与发起人同一人策略、审批人去重、空审批人策略、超时处理
  */
-import { Form, InputNumber, Select, Switch, Typography } from '@douyinfe/semi-ui';
+import { Form, InputNumber, Select, Switch, Typography, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import type {
   RejectStrategy,
   EmptyAssigneeStrategy,
@@ -74,12 +74,16 @@ export default function AdvancedSettingsTab({
         <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
           当审批节点找不到审批人时的处理方式
         </Typography.Text>
-        <Select
+        <RadioGroup
           value={emptyStrategy}
-          onChange={(v) => onChange({ emptyStrategy: v })}
-          style={{ width: '100%' }}
-          optionList={EMPTY_ASSIGNEE_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
-        />
+          onChange={(e) => onChange({ emptyStrategy: e.target.value })}
+          direction="vertical"
+          className="fd-radio-list"
+        >
+          {EMPTY_ASSIGNEE_OPTIONS.map(o => (
+            <Radio key={o.value} value={o.value}>{o.label}</Radio>
+          ))}
+        </RadioGroup>
         {emptyStrategy === 'assignTo' && (
           <div style={{ marginTop: 12 }}>
             <Form.Slot label="转交给">
@@ -105,12 +109,16 @@ export default function AdvancedSettingsTab({
         <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
           当审批人与流程发起人相同时的处理方式
         </Typography.Text>
-        <Select
+        <RadioGroup
           value={sameInitiatorStrategy}
-          onChange={(v) => onChange({ sameInitiatorStrategy: v })}
-          style={{ width: '100%' }}
-          optionList={SAME_INITIATOR_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
-        />
+          onChange={(e) => onChange({ sameInitiatorStrategy: e.target.value })}
+          direction="vertical"
+          className="fd-radio-list"
+        >
+          {SAME_INITIATOR_OPTIONS.map(o => (
+            <Radio key={o.value} value={o.value}>{o.label}</Radio>
+          ))}
+        </RadioGroup>
       </div>
 
       {/* 审批人去重 */}

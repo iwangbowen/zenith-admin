@@ -3,13 +3,14 @@
  * 支持多种指定策略：指定成员、角色、主管、发起人自己、表单联系人、发起人自选、
  * 连续多级上级、连续多级部门负责人、节点审批人、用户组、表单内部门
  */
-import { Form, Select, InputNumber, Typography, RadioGroup, Radio } from '@douyinfe/semi-ui';
+import { Form, Select, InputNumber, Typography, RadioGroup, Radio, Tooltip, Checkbox } from '@douyinfe/semi-ui';
 import type { AssigneeType, ApproveMethod, ApprovalType, FlowNodeType } from '../../types';
 import {
   ASSIGNEE_TYPE_OPTIONS,
   APPROVE_METHOD_OPTIONS,
   APPROVAL_TYPE_OPTIONS,
 } from '../../constants';
+import { CircleHelp } from 'lucide-react';
 
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
@@ -17,6 +18,7 @@ interface RoleOption { id: number; name: string; }
 interface ApproverSettingsTabProps {
   nodeType: FlowNodeType;
   approvalType?: ApprovalType;
+  excludeFromStats?: boolean;
   assigneeType: AssigneeType;
   assigneeIds: number[];
   roleIds: number[];
@@ -40,6 +42,7 @@ interface ApproverSettingsTabProps {
 export default function ApproverSettingsTab({
   nodeType,
   approvalType = 'manual',
+  excludeFromStats = false,
   assigneeType,
   assigneeIds,
   roleIds,
@@ -74,7 +77,16 @@ export default function ApproverSettingsTab({
       {/* 审批类型（仅审批人节点） */}
       {isApprover && (
         <>
-          <Typography.Title heading={6} style={{ marginBottom: 12 }}>审批类型</Typography.Title>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Typography.Title heading={6} style={{ margin: 0 }}>审批类型</Typography.Title>
+            <Checkbox
+              checked={excludeFromStats}
+              onChange={(e) => onChange({ excludeFromStats: !!e.target.checked })}
+              style={{ fontSize: 12 }}
+            >
+              不计入审批效率统计
+            </Checkbox>
+          </div>
           <RadioGroup
             type="button"
             value={approvalType}
@@ -101,18 +113,27 @@ export default function ApproverSettingsTab({
         <>
           <Typography.Title heading={6} style={{ marginBottom: 16 }}>{label}设置</Typography.Title>
 
-          {/* 指定策略 */}
-          <Form.Slot label="指定方式">
-            <Select
-              value={assigneeType}
-              onChange={(v) => onChange({ assigneeType: v })}
-              style={{ width: '100%' }}
-              optionList={ASSIGNEE_TYPE_OPTIONS.map(o => ({
-                value: o.value,
-                label: `${o.label} - ${o.description}`,
-              }))}
-            />
-          </Form.Slot>
+          {/* 指定策略 — Radio 网格布局 */}
+          <Typography.Text style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>{label}</Typography.Text>
+          <div className="fd-assignee-type-grid">
+            {ASSIGNEE_TYPE_OPTIONS.map(o => (
+              <label
+                key={o.value}
+                className={`fd-assignee-type-item ${assigneeType === o.value ? 'fd-assignee-type-item--active' : ''}`}
+              >
+                <Radio
+                  value={o.value}
+                  checked={assigneeType === o.value}
+                  onChange={() => onChange({ assigneeType: o.value })}
+                  style={{ display: 'none' }}
+                />
+                <span>{o.label}</span>
+                <Tooltip content={o.description}>
+                  <CircleHelp size={12} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
+                </Tooltip>
+              </label>
+            ))}
+          </div>
 
           {/* 指定成员 */}
           {assigneeType === 'user' && (
