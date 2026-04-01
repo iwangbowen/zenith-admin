@@ -471,18 +471,38 @@ export interface UserApiTokenCreated {
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
 export type WorkflowInstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
 export type WorkflowTaskStatus = 'pending' | 'approved' | 'rejected' | 'skipped';
-export type WorkflowNodeType = 'start' | 'approve' | 'end';
+export type WorkflowNodeType = 'start' | 'approve' | 'end' | 'exclusiveGateway' | 'parallelGateway' | 'ccNode';
+export type WorkflowConditionOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'contains';
+
+// 连线条件表达式（排他网关出边使用）
+export interface WorkflowEdgeCondition {
+  field: string;         // 表单字段 key
+  operator: WorkflowConditionOperator;
+  value: string | number | boolean;
+}
 
 // 流程节点配置（存在 flowData JSON 中）
 export interface WorkflowNodeConfig {
   key: string;       // 节点唯一标识
   type: WorkflowNodeType;
   label: string;     // 显示名称
-  assigneeId?: number | null;  // 审批人 ID（approve 节点）
+  assigneeId?: number | null;   // 审批人 ID（approve 节点）
   assigneeName?: string | null;
+  assigneeIds?: number[] | null;  // 抄送节点：多个接收人 ID
+  assigneeNames?: string[] | null;
+  isDefault?: boolean;            // 排他网关：是否默认出口
 }
 
 // React Flow 数据结构（flowData JSON）
+export interface WorkflowEdge {
+  id: string;
+  source: string;
+  target: string;
+  type?: string;
+  label?: string;
+  condition?: WorkflowEdgeCondition | null;  // 排他网关出边的条件
+}
+
 export interface WorkflowFlowData {
   nodes: Array<{
     id: string;
@@ -490,12 +510,7 @@ export interface WorkflowFlowData {
     position: { x: number; y: number };
     data: WorkflowNodeConfig;
   }>;
-  edges: Array<{
-    id: string;
-    source: string;
-    target: string;
-    type?: string;
-  }>;
+  edges: WorkflowEdge[];
 }
 
 // 表单字段配置
@@ -527,6 +542,7 @@ export interface WorkflowTask {
   instanceId: number;
   nodeKey: string;
   nodeName: string;
+  nodeType: WorkflowNodeType | null;
   assigneeId: number | null;
   assigneeName?: string | null;
   assigneeAvatar?: string | null;

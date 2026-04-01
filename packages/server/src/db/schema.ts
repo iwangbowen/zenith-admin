@@ -508,6 +508,7 @@ export type NewMessageTemplate = typeof messageTemplates.$inferInsert;
 export const workflowDefinitionStatusEnum = pgEnum('workflow_definition_status', ['draft', 'published', 'disabled']);
 export const workflowInstanceStatusEnum = pgEnum('workflow_instance_status', ['draft', 'running', 'approved', 'rejected', 'withdrawn']);
 export const workflowTaskStatusEnum = pgEnum('workflow_task_status', ['pending', 'approved', 'rejected', 'skipped']);
+export const workflowNodeTypeEnum = pgEnum('workflow_node_type', ['start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode']);
 
 // 流程定义
 export const workflowDefinitions = pgTable('workflow_definitions', {
@@ -551,6 +552,7 @@ export const workflowTasks = pgTable('workflow_tasks', {
   instanceId: integer('instance_id').notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
   nodeKey: varchar('node_key', { length: 64 }).notNull(),
   nodeName: varchar('node_name', { length: 64 }).notNull(),
+  nodeType: workflowNodeTypeEnum('node_type'),
   assigneeId: integer('assignee_id').references(() => users.id, { onDelete: 'set null' }),
   status: workflowTaskStatusEnum('status').default('pending').notNull(),
   comment: text('comment'),

@@ -16,4 +16,5 @@ export const BACKUP_STATUSES = ['pending', 'running', 'success', 'failed'] as co
 export const WORKFLOW_DEFINITION_STATUSES = ['draft', 'published', 'disabled'] as const;
 export const WORKFLOW_INSTANCE_STATUSES = ['draft', 'running', 'approved', 'rejected', 'withdrawn'] as const;
 export const WORKFLOW_TASK_STATUSES = ['pending', 'approved', 'rejected', 'skipped'] as const;
-export const WORKFLOW_NODE_TYPES = ['start', 'approve', 'end'] as const;
+export const WORKFLOW_NODE_TYPES = ['start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode'] as const;
+export const WORKFLOW_CONDITION_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains'] as const;

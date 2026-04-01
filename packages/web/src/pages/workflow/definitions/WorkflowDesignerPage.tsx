@@ -14,10 +14,15 @@ import {
   type Edge,
   type Connection,
   type NodeProps,
+  type EdgeProps,
+  BaseEdge,
+  getSmoothStepPath,
+  EdgeLabelRenderer,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
   Button,
+  Dropdown,
   Form,
   Modal,
   Spin,
@@ -25,8 +30,9 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { ArrowLeft, Plus, Save, Trash2 } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowNodeConfig } from '@zenith/shared';
+import { ArrowLeft, Copy, Diamond, GitFork, Plus, Save, Trash2 } from 'lucide-react';
+import type { WorkflowDefinition, WorkflowNodeConfig, WorkflowEdgeCondition, WorkflowConditionOperator } from '@zenith/shared';
+import { WORKFLOW_CONDITION_OPERATORS } from '@zenith/shared';
 import { request } from '@/utils/request';
 
 // ─── Custom Node Component ────────────────────────────────────────────────────
@@ -38,24 +44,58 @@ interface WorkflowNodeData extends WorkflowNodeConfig {
 type WorkflowNode = Node<WorkflowNodeData>;
 
 const NODE_STYLE_MAP: Record<string, React.CSSProperties> = {
-  start: { background: '#3CB371', color: '#fff', border: '2px solid #2e8b57' },
-  approve: { background: '#1e90ff', color: '#fff', border: '2px solid #1565c0' },
-  end: { background: '#e53e3e', color: '#fff', border: '2px solid #c53030' },
+  start: { background: '#fff', color: '#333', border: '1px solid #d9d9d9', borderRadius: 24 },
+  approve: { background: '#fff', color: '#333', border: '1px solid #d9d9d9' },
+  end: { background: '#fff', color: '#333', border: '1px solid #d9d9d9', borderRadius: 24 },
+  exclusiveGateway: { background: '#fff', color: '#333', border: '1px solid #d9d9d9', transform: 'rotate(45deg)', width: 48, height: 48 },
+  parallelGateway: { background: '#fff', color: '#333', border: '1px solid #d9d9d9', transform: 'rotate(45deg)', width: 48, height: 48 },
+  ccNode: { background: '#fff', color: '#333', border: '1px solid #d9d9d9' },
 };
 
+const NODE_ACCENT_MAP: Record<string, string> = {
+  start: '#52c41a',
+  approve: '#1677ff',
+  end: '#999',
+  exclusiveGateway: '#faad14',
+  parallelGateway: '#722ed1',
+  ccNode: '#13c2c2',
+};
 
 function WorkflowNodeComponent({ data }: NodeProps) {
   const nodeData = data as WorkflowNodeData;
   const typeStyle = NODE_STYLE_MAP[nodeData.type] || {};
+  const accent = NODE_ACCENT_MAP[nodeData.type] || '#999';
+  const isGateway = nodeData.type === 'exclusiveGateway' || nodeData.type === 'parallelGateway';
+
+  if (isGateway) {
+    return (
+      <div style={{
+        width: 48, height: 48,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'default',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+        ...typeStyle,
+      }}>
+        <Handle type="target" position={Position.Left} style={{ transform: 'rotate(-45deg)', left: -6 }} />
+        <div style={{ transform: 'rotate(-45deg)', fontSize: 18, fontWeight: 700, color: accent }}>
+          {nodeData.type === 'exclusiveGateway' ? '×' : '+'}
+        </div>
+        <Handle type="source" position={Position.Right} style={{ transform: 'rotate(-45deg)', right: -6 }} />
+      </div>
+    );
+  }
+
   const style: React.CSSProperties = {
     padding: '8px 16px',
-    borderRadius: 6,
+    borderRadius: typeStyle.borderRadius ?? 6,
     minWidth: 120,
     textAlign: 'center',
     cursor: 'default',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+    borderLeft: `3px solid ${accent}`,
     ...typeStyle,
   };
+
   return (
     <div style={style}>
       {nodeData.type !== 'start' && (
@@ -63,7 +103,10 @@ function WorkflowNodeComponent({ data }: NodeProps) {
       )}
       <div style={{ fontWeight: 600, fontSize: 13 }}>{nodeData.label}</div>
       {nodeData.type === 'approve' && nodeData.assigneeName && (
-        <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{nodeData.assigneeName}</div>
+        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>{nodeData.assigneeName}</div>
+      )}
+      {nodeData.type === 'ccNode' && nodeData.assigneeNames?.length && (
+        <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>{nodeData.assigneeNames.join(', ')}</div>
       )}
       {nodeData.type !== 'end' && (
         <Handle type="source" position={Position.Right} />
@@ -72,7 +115,92 @@ function WorkflowNodeComponent({ data }: NodeProps) {
   );
 }
 
+// ─── Custom Edge with Condition Label ─────────────────────────────────────────
+
+interface ConditionEdgeData {
+  condition?: WorkflowEdgeCondition | null;
+  label?: string;
+  [key: string]: unknown;
+}
+
+function ConditionEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, style: edgeStyle }: EdgeProps) {
+  const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  const edgeData = data as ConditionEdgeData | undefined;
+  const condLabel = edgeData?.condition
+    ? `${edgeData.condition.field} ${edgeData.condition.operator} ${edgeData.condition.value}`
+    : edgeData?.label ?? '';
+
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={edgeStyle} />
+      {condLabel && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              background: 'rgba(255,255,255,0.9)',
+              padding: '2px 6px',
+              borderRadius: 4,
+              fontSize: 11,
+              color: '#555',
+              border: '1px solid #ddd',
+              pointerEvents: 'none',
+            }}
+          >
+            {condLabel}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+
 const nodeTypes = { workflowNode: WorkflowNodeComponent };
+const edgeTypes = { conditionEdge: ConditionEdge };
+
+const OPERATOR_LABELS: Record<string, string> = {
+  eq: '等于', neq: '不等于', gt: '大于', gte: '大于等于',
+  lt: '小于', lte: '小于等于', 'in': '包含在', contains: '包含',
+};
+
+function buildUpdatedNode(
+  n: WorkflowNode,
+  nodeData: WorkflowNodeData,
+  values: Record<string, unknown>,
+  userList: UserOption[],
+): WorkflowNode {
+  if (nodeData.type === 'approve') {
+    const matched = userList.find(u => u.id === values.assigneeId);
+    return {
+      ...n,
+      data: {
+        ...n.data,
+        label: values.label as string,
+        assigneeId: values.assigneeId as number | null ?? null,
+        assigneeName: matched?.nickname ?? null,
+      },
+    };
+  }
+
+  if (nodeData.type === 'ccNode') {
+    const selectedIds = (values.assigneeIds as number[]) ?? [];
+    const names = selectedIds
+      .map(uid => userList.find(u => u.id === uid)?.nickname ?? '')
+      .filter(Boolean);
+    return {
+      ...n,
+      data: {
+        ...n.data,
+        label: values.label as string,
+        assigneeIds: selectedIds,
+        assigneeNames: names,
+      },
+    };
+  }
+
+  return { ...n, data: { ...n.data, label: values.label as string } };
+}
 
 // ─── 默认初始流程模板 ─────────────────────────────────────────────────────────
 
@@ -116,6 +244,7 @@ export default function WorkflowDesignerPage() {
   const isNew = id === 'new';
   const formApi = useRef<FormApi | null>(null);
   const editFormApi = useRef<FormApi | null>(null);
+  const condFormApi = useRef<FormApi | null>(null);
 
   const [pageLoading, setPageLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -125,6 +254,8 @@ export default function WorkflowDesignerPage() {
   const [metaModalVisible, setMetaModalVisible] = useState(false);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [nodeEditVisible, setNodeEditVisible] = useState(false);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
+  const [edgeEditVisible, setEdgeEditVisible] = useState(false);
   const [users, setUsers] = useState<UserOption[]>([]);
 
   // 加载现有流程定义
@@ -155,7 +286,7 @@ export default function WorkflowDesignerPage() {
   }, []);
 
   const onConnect = useCallback((params: Connection) => {
-    setEdges(eds => addEdge({ ...params, type: 'smoothstep' }, eds));
+    setEdges(eds => addEdge({ ...params, type: 'conditionEdge' }, eds));
   }, [setEdges]);
 
   // 添加新审批节点
@@ -166,6 +297,42 @@ export default function WorkflowDesignerPage() {
       type: 'workflowNode',
       position: { x: Math.random() * 300 + 200, y: Math.random() * 100 + 100 },
       data: { key: newKey, type: 'approve', label: '审批节点', assigneeId: null, assigneeName: null },
+    };
+    setNodes(nds => [...nds, newNode]);
+  };
+
+  // 添加排他网关
+  const addExclusiveGateway = () => {
+    const newKey = `xgw-${Date.now()}`;
+    const newNode: WorkflowNode = {
+      id: `node-${newKey}`,
+      type: 'workflowNode',
+      position: { x: Math.random() * 300 + 200, y: Math.random() * 100 + 100 },
+      data: { key: newKey, type: 'exclusiveGateway', label: '条件判断' },
+    };
+    setNodes(nds => [...nds, newNode]);
+  };
+
+  // 添加并行网关
+  const addParallelGateway = () => {
+    const newKey = `pgw-${Date.now()}`;
+    const newNode: WorkflowNode = {
+      id: `node-${newKey}`,
+      type: 'workflowNode',
+      position: { x: Math.random() * 300 + 200, y: Math.random() * 100 + 100 },
+      data: { key: newKey, type: 'parallelGateway', label: '并行网关' },
+    };
+    setNodes(nds => [...nds, newNode]);
+  };
+
+  // 添加抄送节点
+  const addCcNode = () => {
+    const newKey = `cc-${Date.now()}`;
+    const newNode: WorkflowNode = {
+      id: `node-${newKey}`,
+      type: 'workflowNode',
+      position: { x: Math.random() * 300 + 200, y: Math.random() * 100 + 100 },
+      data: { key: newKey, type: 'ccNode', label: '抄送', assigneeIds: [], assigneeNames: [] },
     };
     setNodes(nds => [...nds, newNode]);
   };
@@ -192,21 +359,45 @@ export default function WorkflowDesignerPage() {
   // 保存节点属性
   const handleSaveNodeProps = (values: Record<string, unknown>) => {
     if (!selectedNode) return;
-    const user = users.find(u => u.id === values.assigneeId);
+    const nodeData = selectedNode.data as WorkflowNodeData;
+
     setNodes(nds => nds.map(n => {
       if (n.id !== selectedNode.id) return n;
-      return {
-        ...n,
-        data: {
-          ...n.data,
-          label: values.label as string,
-          assigneeId: values.assigneeId as number | null ?? null,
-          assigneeName: user?.nickname ?? null,
-        },
-      };
+      return buildUpdatedNode(n, nodeData, values, users);
     }));
     setNodeEditVisible(false);
   };
+
+  // 保存连线条件
+  const handleSaveEdgeCondition = (values: Record<string, unknown>) => {
+    if (!selectedEdge) return;
+    setEdges(eds => eds.map(e => {
+      if (e.id !== selectedEdge.id) return e;
+      const hasCondition = values.field && values.operator;
+      return {
+        ...e,
+        data: {
+          ...((e.data ?? {}) as ConditionEdgeData),
+          condition: hasCondition ? {
+            field: values.field as string,
+            operator: values.operator as WorkflowConditionOperator,
+            value: values.value as string | number,
+          } : null,
+        },
+      };
+    }));
+    setEdgeEditVisible(false);
+  };
+
+  // 边点击 — 编辑条件
+  const handleEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    // 只允许排他网关出边编辑条件
+    const sourceNode = nodes.find(n => n.id === edge.source);
+    if (sourceNode?.data.type === 'exclusiveGateway') {
+      setSelectedEdge(edge);
+      setEdgeEditVisible(true);
+    }
+  }, [nodes]);
 
   // 保存整个流程定义
   const handleSave = async () => {
@@ -250,7 +441,9 @@ export default function WorkflowDesignerPage() {
     }
   };
 
+  const isEditable = definition?.status !== 'published';
   const selectedNodeData = selectedNode?.data as WorkflowNodeData | undefined;
+  const selectedEdgeData = selectedEdge?.data as ConditionEdgeData | undefined;
 
   if (pageLoading) {
     return (
@@ -282,23 +475,36 @@ export default function WorkflowDesignerPage() {
         <Typography.Title heading={6} style={{ margin: 0, flex: 1 }}>
           {isNew ? '新建流程' : `设计流程：${definition?.name ?? ''}`}
           {definition?.status === 'published' && (
-            <span style={{ marginLeft: 8, fontSize: 12, color: '#3CB371', fontWeight: 400 }}>（已发布）</span>
+            <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--semi-color-success)', fontWeight: 400 }}>（已发布）</span>
           )}
         </Typography.Title>
-        <Button
-          icon={<Plus size={14} />}
-          type="secondary"
-          onClick={addApproveNode}
-          disabled={definition?.status === 'published'}
+
+        <Dropdown
+          trigger="click"
+          render={
+            <Dropdown.Menu>
+              <Dropdown.Item icon={<Plus size={14} />} onClick={addApproveNode}>审批节点</Dropdown.Item>
+              <Dropdown.Item icon={<Diamond size={14} />} onClick={addExclusiveGateway}>排他网关 (XOR)</Dropdown.Item>
+              <Dropdown.Item icon={<GitFork size={14} />} onClick={addParallelGateway}>并行网关 (AND)</Dropdown.Item>
+              <Dropdown.Item icon={<Copy size={14} />} onClick={addCcNode}>抄送节点</Dropdown.Item>
+            </Dropdown.Menu>
+          }
         >
-          添加审批节点
-        </Button>
-        {selectedNode && (selectedNode.data as WorkflowNodeData).type === 'approve' && (
+          <Button
+            icon={<Plus size={14} />}
+            type="secondary"
+            disabled={!isEditable}
+          >
+            添加节点
+          </Button>
+        </Dropdown>
+
+        {selectedNode && !['start', 'end'].includes((selectedNode.data as WorkflowNodeData).type) && (
           <Button
             icon={<Trash2 size={14} />}
             type="danger"
             onClick={deleteSelectedNode}
-            disabled={definition?.status === 'published'}
+            disabled={!isEditable}
           >
             删除选中节点
           </Button>
@@ -308,7 +514,7 @@ export default function WorkflowDesignerPage() {
           type="primary"
           loading={saving}
           onClick={() => void handleSave()}
-          disabled={definition?.status === 'published'}
+          disabled={!isEditable}
         >
           保存
         </Button>
@@ -319,16 +525,18 @@ export default function WorkflowDesignerPage() {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={definition?.status === 'published' ? undefined : onNodesChange}
-          onEdgesChange={definition?.status === 'published' ? undefined : onEdgesChange}
-          onConnect={definition?.status === 'published' ? undefined : onConnect}
+          onNodesChange={isEditable ? onNodesChange : undefined}
+          onEdgesChange={isEditable ? onEdgesChange : undefined}
+          onConnect={isEditable ? onConnect : undefined}
           onNodeClick={handleNodeClick}
+          onEdgeClick={handleEdgeClick}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           fitView
-          defaultEdgeOptions={{ type: 'smoothstep', animated: true }}
-          nodesDraggable={definition?.status !== 'published'}
-          nodesConnectable={definition?.status !== 'published'}
-          edgesReconnectable={definition?.status !== 'published'}
+          defaultEdgeOptions={{ type: 'conditionEdge', animated: true }}
+          nodesDraggable={isEditable}
+          nodesConnectable={isEditable}
+          edgesReconnectable={isEditable}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
           <Controls />
@@ -370,6 +578,7 @@ export default function WorkflowDesignerPage() {
           initValues={{
             label: selectedNodeData?.label ?? '',
             assigneeId: selectedNodeData?.assigneeId ?? undefined,
+            assigneeIds: selectedNodeData?.assigneeIds ?? [],
           }}
         >
           <Form.Input
@@ -387,6 +596,70 @@ export default function WorkflowDesignerPage() {
               filter
             />
           )}
+          {selectedNodeData?.type === 'ccNode' && (
+            <Form.Select
+              field="assigneeIds"
+              label="抄送人"
+              placeholder="请选择抄送人（可多选）"
+              optionList={users.map(u => ({ value: u.id, label: u.nickname }))}
+              multiple
+              filter
+            />
+          )}
+          {(selectedNodeData?.type === 'exclusiveGateway' || selectedNodeData?.type === 'parallelGateway') && (
+            <div style={{ color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+              {selectedNodeData.type === 'exclusiveGateway'
+                ? '排他网关：根据条件分支走不同路径。点击从此网关出发的连线可编辑条件。'
+                : '并行网关：所有分支同时执行，全部完成后汇聚继续。需配合成对使用（fork + join）。'}
+            </div>
+          )}
+        </Form>
+      </Modal>
+
+      {/* 连线条件编辑弹窗 */}
+      <Modal
+        title="编辑分支条件"
+        visible={edgeEditVisible}
+        onCancel={() => setEdgeEditVisible(false)}
+        onOk={() => {
+          condFormApi.current?.validate().then((values: Record<string, unknown>) => {
+            handleSaveEdgeCondition(values);
+          }).catch(() => undefined);
+        }}
+        style={{ width: 480 }}
+      >
+        <Form
+          getFormApi={api => { condFormApi.current = api; }}
+          initValues={{
+            field: selectedEdgeData?.condition?.field ?? '',
+            operator: selectedEdgeData?.condition?.operator ?? 'eq',
+            value: selectedEdgeData?.condition?.value ?? '',
+          }}
+        >
+          <Form.Input
+            field="field"
+            label="表单字段 Key"
+            placeholder="如 amount, type, department"
+            rules={[{ required: true, message: '请输入字段名' }]}
+          />
+          <Form.Select
+            field="operator"
+            label="运算符"
+            optionList={WORKFLOW_CONDITION_OPERATORS.map(op => ({
+              value: op,
+              label: `${OPERATOR_LABELS[op] ?? op} (${op})`,
+            }))}
+          />
+          <Form.Input
+            field="value"
+            label="比较值"
+            placeholder="如 1000, leave, 技术部"
+            rules={[{ required: true, message: '请输入比较值' }]}
+          />
+          <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12, marginTop: 4 }}>
+            <p>条件不满足时将走无条件（默认）分支。</p>
+            <p>若要清除条件，将字段名留空后保存。</p>
+          </div>
         </Form>
       </Modal>
     </div>

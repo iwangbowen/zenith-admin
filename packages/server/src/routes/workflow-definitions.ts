@@ -6,7 +6,9 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createWorkflowDefinitionSchema, updateWorkflowDefinitionSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
+import { validateFlowData } from '../lib/workflow-engine';
 import type { JwtPayload } from '../middleware/auth';
+import type { WorkflowFlowData } from '@zenith/shared';
 
 type Env = { Variables: { user: JwtPayload } };
 const router = new Hono<Env>();
@@ -171,13 +173,11 @@ router.post('/:id/publish', guard({ permission: 'workflow:definition:publish', a
   const [existing] = await db.select().from(workflowDefinitions).where(and(...conditions)).limit(1);
   if (!existing) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
 
-  // 校验流程图至少有 start、一个 approve、end
-  const flowData = existing.flowData as { nodes?: Array<{ data?: { type?: string } }> } | null;
+  // 使用引擎校验流程图
+  const flowData = existing.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes) return c.json({ code: 400, message: '请先在设计器中设计流程', data: null }, 400);
-  const types = new Set(flowData.nodes.map((n: { data?: { type?: string } }) => n.data?.type));
-  if (!types.has('start')) return c.json({ code: 400, message: '流程缺少开始节点', data: null }, 400);
-  if (!types.has('end')) return c.json({ code: 400, message: '流程缺少结束节点', data: null }, 400);
-  if (!types.has('approve')) return c.json({ code: 400, message: '流程至少需要一个审批节点', data: null }, 400);
+  const validation = validateFlowData(flowData);
+  if (!validation.valid) return c.json({ code: 400, message: validation.errors[0], data: null }, 400);
 
   const [updated] = await db
     .update(workflowDefinitions)

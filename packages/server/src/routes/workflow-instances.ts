@@ -10,8 +10,9 @@ import {
   rejectWorkflowTaskSchema,
 } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
+import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-engine';
 import type { JwtPayload } from '../middleware/auth';
-import type { WorkflowFlowData, WorkflowNodeConfig } from '@zenith/shared';
+import type { WorkflowFlowData } from '@zenith/shared';
 
 type Env = { Variables: { user: JwtPayload } };
 const router = new Hono<Env>();
@@ -19,46 +20,13 @@ router.use('*', authMiddleware);
 
 // ─── 内部工具函数 ─────────────────────────────────────────────────────────────
 
-/** 按拓扑顺序遍历节点（线性流程）*/
-function getNodeOrder(flowData: WorkflowFlowData): WorkflowNodeConfig[] {
-  const nodeMap = new Map(flowData.nodes.map(n => [n.id, n]));
-  const adjacency = new Map<string, string>();
-  for (const edge of flowData.edges) {
-    adjacency.set(edge.source, edge.target);
-  }
-
-  const startNode = flowData.nodes.find(n => n.data.type === 'start');
-  if (!startNode) return [];
-
-  const result: WorkflowNodeConfig[] = [];
-  let currentId: string | undefined = startNode.id;
-  const visited = new Set<string>();
-
-  while (currentId && !visited.has(currentId)) {
-    visited.add(currentId);
-    const node = nodeMap.get(currentId);
-    if (!node) break;
-    result.push(node.data);
-    currentId = adjacency.get(currentId);
-  }
-
-  return result;
-}
-
-/** 获取指定节点后的下一个节点 */
-function getNextNode(flowData: WorkflowFlowData, currentNodeKey: string): WorkflowNodeConfig | null {
-  const ordered = getNodeOrder(flowData);
-  const idx = ordered.findIndex(n => n.key === currentNodeKey);
-  if (idx === -1 || idx + 1 >= ordered.length) return null;
-  return ordered[idx + 1];
-}
-
 function toTask(row: typeof workflowTasks.$inferSelect, assigneeName?: string | null, assigneeAvatar?: string | null) {
   return {
     id: row.id,
     instanceId: row.instanceId,
     nodeKey: row.nodeKey,
     nodeName: row.nodeName,
+    nodeType: row.nodeType ?? null,
     assigneeId: row.assigneeId,
     assigneeName: assigneeName ?? null,
     assigneeAvatar: assigneeAvatar ?? null,
@@ -288,30 +256,41 @@ router.post('/instances', guard({ permission: 'workflow:instance:create', audit:
   const flowData = def.flowData as WorkflowFlowData;
   if (!flowData?.nodes?.length) return c.json({ code: 400, message: '流程定义无效', data: null }, 400);
 
-  const ordered = getNodeOrder(flowData);
-  const firstApprove = ordered.find(n => n.type === 'approve');
-  if (!firstApprove) return c.json({ code: 400, message: '流程定义中无审批节点', data: null }, 400);
+  // 使用新引擎校验流程定义
+  const validation = validateFlowData(flowData);
+  if (!validation.valid) return c.json({ code: 400, message: validation.errors[0], data: null }, 400);
 
-  // 创建实例（事务）
+  const formData: Record<string, unknown> = result.data.formData ?? {};
+  const initialResult = getInitialTasks(flowData, formData);
+  if (initialResult.tasksToCreate.length === 0 && !initialResult.finished) {
+    return c.json({ code: 400, message: '流程定义中无可执行节点', data: null }, 400);
+  }
+
+  // 创建实例
   const [instance] = await db.insert(workflowInstances).values({
     definitionId: def.id,
     definitionSnapshot: def as unknown as Record<string, unknown>,
     title: result.data.title,
-    formData: (result.data.formData ?? null) as Record<string, unknown>,
-    status: 'running',
-    currentNodeKey: firstApprove.key,
+    formData,
+    status: initialResult.finished ? 'approved' : 'running',
+    currentNodeKey: initialResult.currentNodeKeys[0] ?? null,
     initiatorId: user.userId,
     tenantId: getCreateTenantId(user),
   }).returning();
 
-  // 创建第一个审批任务
-  await db.insert(workflowTasks).values({
-    instanceId: instance.id,
-    nodeKey: firstApprove.key,
-    nodeName: firstApprove.label,
-    assigneeId: firstApprove.assigneeId ?? null,
-    status: 'pending',
-  });
+  // 创建初始任务
+  if (initialResult.tasksToCreate.length > 0) {
+    await db.insert(workflowTasks).values(
+      initialResult.tasksToCreate.map(t => ({
+        instanceId: instance.id,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: t.nodeType,
+        assigneeId: t.assigneeId,
+        status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
+      })),
+    );
+  }
 
   return c.json({ code: 0, message: '申请已提交', data: toInstance(instance) });
 });
@@ -379,9 +358,17 @@ router.post('/tasks/:taskId/approve', guard({ permission: 'workflow:task:handle'
   const flowData = snapshot?.flowData;
   if (!flowData) return c.json({ code: 500, message: '流程快照数据异常', data: null }, 500);
 
-  const nextNode = getNextNode(flowData, task.nodeKey);
+  // 收集所有已完成节点
+  const allTasks = await db.select().from(workflowTasks)
+    .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')));
+  const completedKeys = new Set(allTasks.map(t => t.nodeKey));
+  // 也把 start 加入已完成集合
+  completedKeys.add('start');
 
-  if (!nextNode || nextNode.type === 'end') {
+  const formData = (inst.formData ?? {}) as Record<string, unknown>;
+  const advanceResult = advanceFlow(flowData, task.nodeKey, formData, completedKeys);
+
+  if (advanceResult.finished && advanceResult.tasksToCreate.length === 0) {
     // 流程结束
     const [updated] = await db.update(workflowInstances)
       .set({ status: 'approved', currentNodeKey: null, updatedAt: new Date() })
@@ -390,24 +377,35 @@ router.post('/tasks/:taskId/approve', guard({ permission: 'workflow:task:handle'
     return c.json({ code: 0, message: '审批通过，流程已完成', data: toInstance(updated) });
   }
 
-  if (nextNode.type === 'approve') {
-    // 推进到下一个审批节点
-    await db.insert(workflowTasks).values({
-      instanceId: inst.id,
-      nodeKey: nextNode.key,
-      nodeName: nextNode.label,
-      assigneeId: nextNode.assigneeId ?? null,
-      status: 'pending',
-    });
-
-    const [updated] = await db.update(workflowInstances)
-      .set({ currentNodeKey: nextNode.key, updatedAt: new Date() })
-      .where(eq(workflowInstances.id, inst.id))
-      .returning();
-    return c.json({ code: 0, message: '审批通过，流程已推进', data: toInstance(updated) });
+  // 创建后续任务
+  if (advanceResult.tasksToCreate.length > 0) {
+    await db.insert(workflowTasks).values(
+      advanceResult.tasksToCreate.map(t => ({
+        instanceId: inst.id,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: t.nodeType,
+        assigneeId: t.assigneeId,
+        status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
+      })),
+    );
   }
 
-  return c.json({ code: 0, message: '审批通过', data: null });
+  if (advanceResult.finished) {
+    // 创建了抄送任务但流程已结束
+    const [updated] = await db.update(workflowInstances)
+      .set({ status: 'approved', currentNodeKey: null, updatedAt: new Date() })
+      .where(eq(workflowInstances.id, inst.id))
+      .returning();
+    return c.json({ code: 0, message: '审批通过，流程已完成', data: toInstance(updated) });
+  }
+
+  // 流程推进到新节点
+  const [updated] = await db.update(workflowInstances)
+    .set({ currentNodeKey: advanceResult.currentNodeKeys[0] ?? null, updatedAt: new Date() })
+    .where(eq(workflowInstances.id, inst.id))
+    .returning();
+  return c.json({ code: 0, message: '审批通过，流程已推进', data: toInstance(updated) });
 });
 
 /** POST /tasks/:taskId/reject — 审批驳回 */

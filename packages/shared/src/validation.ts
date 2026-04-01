@@ -371,12 +371,23 @@ export type UpdateMessageTemplateInput = z.infer<typeof updateMessageTemplateSch
 export type PreviewMessageTemplateInput = z.infer<typeof previewMessageTemplateSchema>;
 
 // ─── 工作流引擎 Schema ────────────────────────────────────────────────────────
+export const workflowConditionOperatorSchema = z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains']);
+
+export const workflowEdgeConditionSchema = z.object({
+  field: z.string().min(1),
+  operator: workflowConditionOperatorSchema,
+  value: z.union([z.string(), z.number(), z.boolean()]),
+});
+
 export const workflowNodeConfigSchema = z.object({
   key: z.string().min(1),
-  type: z.enum(['start', 'approve', 'end']),
+  type: z.enum(['start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode']),
   label: z.string().min(1),
   assigneeId: z.number().int().nullable().optional(),
   assigneeName: z.string().nullable().optional(),
+  assigneeIds: z.array(z.number().int()).nullable().optional(),
+  assigneeNames: z.array(z.string()).nullable().optional(),
+  isDefault: z.boolean().optional(),
 });
 
 export const workflowFormFieldSchema = z.object({
