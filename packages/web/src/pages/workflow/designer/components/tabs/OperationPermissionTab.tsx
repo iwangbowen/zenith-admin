@@ -39,10 +39,8 @@ export default function OperationPermissionTab({
   onChange,
 }: Readonly<OperationPermissionTabProps>) {
 
-  const toggle = (value: OperationPermission, checked: boolean) => {
-    if (checked) onChange([...operations, value]);
-    else onChange(operations.filter(v => v !== value));
-  };
+  const addOp = (value: OperationPermission) => onChange([...operations, value]);
+  const removeOp = (value: OperationPermission) => onChange(operations.filter(v => v !== value));
 
   return (
     <div className="fd-drawer-tab-content">
@@ -55,7 +53,10 @@ export default function OperationPermissionTab({
                 <div key={item.value}>
                   <Checkbox
                     checked={operations.includes(item.value)}
-                    onChange={(e) => toggle(item.value, !!e.target.checked)}
+                    onChange={(e) => {
+                      if (e.target.checked) addOp(item.value);
+                      else removeOp(item.value);
+                    }}
                   >
                     {item.label}
                   </Checkbox>
