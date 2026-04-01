@@ -504,14 +504,71 @@ export interface WorkflowEdge {
 }
 
 export interface WorkflowFlowData {
-  nodes: Array<{
+  // Legacy graph format (kept for backward compatibility with existing engine)
+  nodes?: Array<{
     id: string;
     type?: string;
     position: { x: number; y: number };
     data: WorkflowNodeConfig;
   }>;
-  edges: WorkflowEdge[];
+  edges?: WorkflowEdge[];
+  // DingTalk-style tree format (new designer)
+  tree?: DingFlowNode | null;
 }
+
+// ─── 钉钉风格流程设计器类型 ───────────────────────────────────────────────────
+
+export type DingNodeType =
+  | 'start'       // 发起人
+  | 'approve'     // 审批人
+  | 'handler'     // 办理人
+  | 'cc'          // 抄送
+  | 'delay'       // 延迟器
+  | 'trigger'     // 触发器
+  | 'subprocess'; // 子流程
+
+export type DingGatewayType =
+  | 'condition'   // 条件分支
+  | 'parallel'    // 并行分支
+  | 'inclusive'   // 包容分支
+  | 'route';      // 路由分支
+
+export interface DingFlowNodeConfig {
+  assigneeId?: number | null;
+  assigneeName?: string | null;
+  assigneeIds?: number[];
+  assigneeNames?: string[];
+  [key: string]: unknown;
+}
+
+export interface DingFlowSimpleNode {
+  id: string;
+  type: DingNodeType;
+  label: string;
+  description?: string | null;
+  config?: DingFlowNodeConfig | null;
+  next?: DingFlowNode | null;
+}
+
+export interface DingFlowBranch {
+  id: string;
+  label: string;
+  description?: string | null;
+  priority?: number;
+  isDefault?: boolean;
+  condition?: WorkflowEdgeCondition | null;
+  head?: DingFlowNode | null;
+}
+
+export interface DingFlowGateway {
+  id: string;
+  type: 'gateway';
+  gatewayType: DingGatewayType;
+  branches: DingFlowBranch[];
+  next?: DingFlowNode | null;
+}
+
+export type DingFlowNode = DingFlowSimpleNode | DingFlowGateway;
 
 // 表单字段配置
 export interface WorkflowFormField {

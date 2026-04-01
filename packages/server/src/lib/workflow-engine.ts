@@ -14,7 +14,126 @@ import type {
   WorkflowNodeConfig,
   WorkflowEdge,
   WorkflowEdgeCondition,
+  DingFlowNode,
+  DingFlowSimpleNode,
+  DingFlowGateway,
+  DingFlowBranch,
 } from '@zenith/shared';
+
+// ─── DingTalk 树格式 → 图格式转换 ─────────────────────────────────────────────
+
+interface GraphFlowNode {
+  id: string;
+  position: { x: number; y: number };
+  data: WorkflowNodeConfig;
+}
+
+interface GraphBuildState {
+  nodes: GraphFlowNode[];
+  edges: WorkflowEdge[];
+  counter: number;
+}
+
+function addNode(state: GraphBuildState, key: string, type: string, label: string, extra?: Partial<WorkflowNodeConfig>) {
+  const id = `n-${key}`;
+  state.nodes.push({
+    id,
+    position: { x: 0, y: 0 },
+    data: { key, type: type as WorkflowNodeConfig['type'], label, ...(extra ?? {}) },
+  });
+  return id;
+}
+
+function addEdge(state: GraphBuildState, source: string, target: string, condition?: WorkflowEdgeCondition | null) {
+  state.edges.push({ id: `e-${source}-${target}`, source, target, ...(condition ? { condition } : {}) });
+}
+
+/**
+ * 将 DingTalk 树节点链转换为图格式，返回链中第一个图节点 ID 和最后一个（尾部）节点 ID。
+ * tailId 是调用方需要从该节点发出后续边的节点 ID。
+ */
+function convertChain(
+  node: DingFlowNode | null | undefined,
+  state: GraphBuildState,
+  fromId: string,
+  endId: string,
+): string {
+  if (!node) {
+    addEdge(state, fromId, endId);
+    return fromId;
+  }
+
+  if ((node as DingFlowGateway).type === 'gateway') {
+    const gw = node as DingFlowGateway;
+    const counter = ++state.counter;
+    const forkType = gw.gatewayType === 'parallel' ? 'parallelGateway' : 'exclusiveGateway';
+    const joinType = gw.gatewayType === 'parallel' ? 'parallelGateway' : 'exclusiveGateway';
+
+    const forkKey = `fork-${gw.id}-${counter}`;
+    const joinKey = `join-${gw.id}-${counter}`;
+    const forkId = addNode(state, forkKey, forkType, forkType === 'parallelGateway' ? '并行-分叉' : '条件-分叉');
+    const joinId = addNode(state, joinKey, joinType, forkType === 'parallelGateway' ? '并行-汇聚' : '条件-汇聚');
+
+    addEdge(state, fromId, forkId);
+
+    for (const branch of gw.branches) {
+      if (branch.head) {
+        // Convert branch chain; branch chain ends at joinId
+        const branchFirstId = convertChain(branch.head, state, forkId, joinId);
+        // The edge from fork to first branch node with condition
+        if (branchFirstId !== forkId) {
+          // Remove the edge we just added from forkId to joinId (since branch has content)
+          // Actually convertChain adds edges from fromId → first_node → ... → joinId
+          // We need to attach condition to the first edge from forkId
+          const firstEdge = state.edges.find(e => e.source === forkId && e.target === `n-${branch.head!.id}`);
+          if (firstEdge && branch.condition) firstEdge.condition = branch.condition;
+          if (firstEdge && branch.isDefault) (firstEdge as Record<string, unknown>).isDefault = true;
+        }
+      } else {
+        // Empty branch: direct edge fork → join
+        addEdge(state, forkId, joinId, branch.condition ?? null);
+      }
+    }
+
+    // Continue after gateway
+    return convertChain(gw.next ?? null, state, joinId, endId);
+  }
+
+  // Simple node
+  const n = node as DingFlowSimpleNode;
+  const nodeType: string = n.type === 'cc' ? 'ccNode' : n.type === 'approve' ? 'approve' : n.type === 'start' ? 'start' : 'approve';
+  const nodeId = addNode(state, n.id, nodeType, n.label, {
+    assigneeId: n.config?.assigneeId ?? null,
+    assigneeName: n.config?.assigneeName ?? null,
+    assigneeIds: (n.config?.assigneeIds as number[] | undefined) ?? null,
+    assigneeNames: (n.config?.assigneeNames as string[] | undefined) ?? null,
+  });
+  addEdge(state, fromId, nodeId);
+  return convertChain(n.next ?? null, state, nodeId, endId);
+}
+
+/**
+ * 将钉钉风格树结构转换为引擎可执行的图格式（含 start + end 节点）
+ */
+export function dingTreeToGraph(tree: DingFlowNode): WorkflowFlowData {
+  const state: GraphBuildState = { nodes: [], edges: [], counter: 0 };
+
+  const startId = addNode(state, 'sys-start', 'start', '开始');
+  const endId = addNode(state, 'sys-end', 'end', '结束');
+
+  convertChain(tree, state, startId, endId);
+
+  return { nodes: state.nodes, edges: state.edges };
+}
+
+/**
+ * 从 flowData 中获取可供引擎执行的图数据（自动识别树格式和图格式）
+ */
+export function resolveFlowData(flowData: WorkflowFlowData): WorkflowFlowData {
+  if (flowData.tree) return dingTreeToGraph(flowData.tree);
+  if (flowData.nodes?.length) return flowData as Required<Pick<WorkflowFlowData, 'nodes' | 'edges'>> & WorkflowFlowData;
+  return { nodes: [], edges: [] };
+}
 
 // ─── 图遍历工具 ───────────────────────────────────────────────────────────────
 
@@ -26,7 +145,7 @@ export interface FlowNode {
 /** 构建邻接表 */
 function buildAdjacency(flowData: WorkflowFlowData) {
   const nodeMap = new Map<string, FlowNode>();
-  for (const n of flowData.nodes) {
+  for (const n of (flowData.nodes ?? [])) {
     nodeMap.set(n.id, { id: n.id, data: n.data });
   }
 
@@ -35,7 +154,7 @@ function buildAdjacency(flowData: WorkflowFlowData) {
   // target -> [source]
   const inEdges = new Map<string, string[]>();
 
-  for (const edge of flowData.edges) {
+  for (const edge of (flowData.edges ?? [])) {
     const out = outEdges.get(edge.source) ?? [];
     out.push({ target: edge.target, edge });
     outEdges.set(edge.source, out);
@@ -130,7 +249,7 @@ export function advanceFlow(
   const { nodeMap, outEdges, inEdges } = buildAdjacency(flowData);
 
   // 找到当前节点对应的 flowNode ID
-  const currentFlowNode = flowData.nodes.find(n => n.data.key === currentNodeKey);
+  const currentFlowNode = flowData.nodes?.find(n => n.data.key === currentNodeKey);
   if (!currentFlowNode) {
     return { finished: false, tasksToCreate: [], currentNodeKeys: [] };
   }
@@ -313,7 +432,7 @@ export function getInitialTasks(
   flowData: WorkflowFlowData,
   formData: Record<string, unknown> = {},
 ): AdvanceResult {
-  const startNode = flowData.nodes.find(n => n.data.type === 'start');
+  const startNode = flowData.nodes?.find(n => n.data.type === 'start');
   if (!startNode) {
     return { finished: false, tasksToCreate: [], currentNodeKeys: [] };
   }
@@ -326,19 +445,19 @@ export function getInitialTasks(
 export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  const startNodes = flowData.nodes.filter(n => n.data.type === 'start');
+  const startNodes = (flowData.nodes ?? []).filter(n => n.data.type === 'start');
   if (startNodes.length === 0) errors.push('流程缺少开始节点');
   if (startNodes.length > 1) errors.push('流程只能有一个开始节点');
 
-  const endNodes = flowData.nodes.filter(n => n.data.type === 'end');
+  const endNodes = (flowData.nodes ?? []).filter(n => n.data.type === 'end');
   if (endNodes.length === 0) errors.push('流程缺少结束节点');
 
-  const approveNodes = flowData.nodes.filter(n => n.data.type === 'approve');
+  const approveNodes = (flowData.nodes ?? []).filter(n => n.data.type === 'approve');
   if (approveNodes.length === 0) errors.push('流程至少需要一个审批节点');
 
   // 检查排他网关出边是否配置了条件
   const { outEdges } = buildAdjacency(flowData);
-  for (const node of flowData.nodes) {
+  for (const node of (flowData.nodes ?? [])) {
     if (node.data.type === 'exclusiveGateway') {
       const outs = outEdges.get(node.id) ?? [];
       if (outs.length < 2) {
@@ -371,7 +490,7 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
         queue.push(target);
       }
     }
-    for (const node of flowData.nodes) {
+    for (const node of (flowData.nodes ?? [])) {
       if (!visited.has(node.id)) {
         errors.push(`节点"${node.data.label}"不可达`);
       }
@@ -385,13 +504,14 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
 
 /** 按拓扑顺序遍历节点（线性流程后向兼容） */
 export function getNodeOrder(flowData: WorkflowFlowData): WorkflowNodeConfig[] {
-  const nodeMap = new Map(flowData.nodes.map(n => [n.id, n]));
+  const nodes = flowData.nodes ?? [];
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
   const adjacency = new Map<string, string>();
-  for (const edge of flowData.edges) {
+  for (const edge of (flowData.edges ?? [])) {
     adjacency.set(edge.source, edge.target);
   }
 
-  const startNode = flowData.nodes.find(n => n.data.type === 'start');
+  const startNode = nodes.find(n => n.data.type === 'start');
   if (!startNode) return [];
 
   const result: WorkflowNodeConfig[] = [];

@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createWorkflowDefinitionSchema, updateWorkflowDefinitionSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { validateFlowData } from '../lib/workflow-engine';
+import { validateFlowData, resolveFlowData } from '../lib/workflow-engine';
 import type { JwtPayload } from '../middleware/auth';
 import type { WorkflowFlowData } from '@zenith/shared';
 
@@ -175,8 +175,9 @@ router.post('/:id/publish', guard({ permission: 'workflow:definition:publish', a
 
   // 使用引擎校验流程图
   const flowData = existing.flowData as WorkflowFlowData | null;
-  if (!flowData?.nodes) return c.json({ code: 400, message: '请先在设计器中设计流程', data: null }, 400);
-  const validation = validateFlowData(flowData);
+  if (!flowData?.nodes && !flowData?.tree) return c.json({ code: 400, message: '请先在设计器中设计流程', data: null }, 400);
+  const resolvedFlow = resolveFlowData(flowData);
+  const validation = validateFlowData(resolvedFlow);
   if (!validation.valid) return c.json({ code: 400, message: validation.errors[0], data: null }, 400);
 
   const [updated] = await db

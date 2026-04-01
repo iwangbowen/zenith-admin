@@ -10,7 +10,7 @@ import {
   rejectWorkflowTaskSchema,
 } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-engine';
+import { advanceFlow, getInitialTasks, validateFlowData, resolveFlowData } from '../lib/workflow-engine';
 import type { JwtPayload } from '../middleware/auth';
 import type { WorkflowFlowData } from '@zenith/shared';
 
@@ -253,8 +253,9 @@ router.post('/instances', guard({ permission: 'workflow:instance:create', audit:
 
   if (!def) return c.json({ code: 404, message: '流程定义不存在或未发布', data: null }, 404);
 
-  const flowData = def.flowData as WorkflowFlowData;
-  if (!flowData?.nodes?.length) return c.json({ code: 400, message: '流程定义无效', data: null }, 400);
+  const rawFlowData = def.flowData as WorkflowFlowData;
+  if (!rawFlowData?.nodes?.length && !rawFlowData?.tree) return c.json({ code: 400, message: '流程定义无效', data: null }, 400);
+  const flowData = resolveFlowData(rawFlowData);
 
   // 使用新引擎校验流程定义
   const validation = validateFlowData(flowData);
@@ -355,8 +356,9 @@ router.post('/tasks/:taskId/approve', guard({ permission: 'workflow:task:handle'
 
   // 获取流程定义以确定下一步
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };
-  const flowData = snapshot?.flowData;
-  if (!flowData) return c.json({ code: 500, message: '流程快照数据异常', data: null }, 500);
+  const rawSnapshotFlow = snapshot?.flowData;
+  if (!rawSnapshotFlow) return c.json({ code: 500, message: '流程快照数据异常', data: null }, 500);
+  const flowData = resolveFlowData(rawSnapshotFlow);
 
   // 收集所有已完成节点
   const allTasks = await db.select().from(workflowTasks)
