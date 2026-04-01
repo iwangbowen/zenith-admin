@@ -18,10 +18,13 @@ import type {
   BranchNodeType,
   AssigneeType,
   ApproveMethod,
+  ApprovalType,
   EmptyAssigneeStrategy,
   RejectStrategy,
   OperationPermission,
   FieldPermission,
+  SameInitiatorStrategy,
+  DeduplicateStrategy,
 } from './types';
 
 // ─── 节点类型注册信息 ────────────────────────────────────────────────
@@ -128,13 +131,18 @@ export const OPERATOR_LABELS: Record<string, string> = {
 // ─── 审批人策略选项 ──────────────────────────────────────────────────
 
 export const ASSIGNEE_TYPE_OPTIONS: Array<{ value: AssigneeType; label: string; description: string }> = [
-  { value: 'user',            label: '指定成员',    description: '选择一个或多个具体人员' },
-  { value: 'role',            label: '指定角色',    description: '角色对应的所有成员' },
-  { value: 'department',      label: '部门负责人',  description: '发起人所在部门的负责人' },
-  { value: 'initiator',       label: '发起人自己',  description: '流程发起人自行处理' },
-  { value: 'manager',         label: '直属主管',    description: '发起人的直属上级（支持多层级）' },
-  { value: 'formUser',        label: '表单联系人',  description: '表单中联系人字段对应的人员' },
-  { value: 'initiatorSelect', label: '发起人自选',  description: '发起时由发起人选择审批人' },
+  { value: 'user',                label: '指定成员',        description: '选择一个或多个具体人员' },
+  { value: 'role',                label: '指定角色',        description: '角色对应的所有成员' },
+  { value: 'department',          label: '部门负责人',    description: '发起人所在部门的负责人' },
+  { value: 'initiator',           label: '发起人自己',    description: '流程发起人自行处理' },
+  { value: 'manager',             label: '直属主管',        description: '发起人的直属上级（支持多层级）' },
+  { value: 'formUser',            label: '表单联系人',    description: '表单中联系人字段对应的人员' },
+  { value: 'initiatorSelect',     label: '发起人自选',    description: '发起时由发起人选择审批人' },
+  { value: 'multiLevelManager',   label: '连续多级上级',  description: '从直属上级开始逐级向上审批' },
+  { value: 'multiLevelDeptHead',  label: '连续多级部门负责人', description: '从直属部门负责人逐级向上' },
+  { value: 'nodeApprover',        label: '节点审批人',    description: '关联前序节点的实际审批人' },
+  { value: 'userGroup',           label: '用户组',          description: '指定用户组的成员' },
+  { value: 'formDepartment',      label: '表单内部门',    description: '关联表单中部门字段的负责人' },
 ];
 
 export const APPROVE_METHOD_OPTIONS: Array<{ value: ApproveMethod; label: string; description: string }> = [
@@ -158,12 +166,14 @@ export const REJECT_STRATEGY_OPTIONS: Array<{ value: RejectStrategy; label: stri
 ];
 
 export const OPERATION_PERMISSION_OPTIONS: Array<{ value: OperationPermission; label: string }> = [
-  { value: 'approve',  label: '通过' },
-  { value: 'reject',   label: '拒绝' },
-  { value: 'transfer', label: '转办' },
-  { value: 'addSign',  label: '加签' },
-  { value: 'return',   label: '退回' },
-  { value: 'comment',  label: '评论' },
+  { value: 'approve',          label: '通过' },
+  { value: 'reject',           label: '拒绝' },
+  { value: 'transfer',         label: '转办' },
+  { value: 'addSign',          label: '加签' },
+  { value: 'return',           label: '退回' },
+  { value: 'comment',          label: '评论' },
+  { value: 'signature',        label: '手写签名' },
+  { value: 'opinionRequired',  label: '审批意见必填' },
 ];
 
 export const FIELD_PERMISSION_OPTIONS: Array<{ value: FieldPermission; label: string }> = [
@@ -188,4 +198,28 @@ export const TRIGGER_TYPE_OPTIONS = [
   { value: 'callback',   label: 'HTTP 回调' },
   { value: 'updateData', label: '更新数据' },
   { value: 'deleteData', label: '删除数据' },
+];
+
+// ─── 审批类型选项 ──────────────────────────────────────────────
+
+export const APPROVAL_TYPE_OPTIONS: Array<{ value: ApprovalType; label: string; description: string }> = [
+  { value: 'manual',      label: '人工审批',  description: '由审批人手动处理' },
+  { value: 'autoApprove', label: '自动通过',  description: '无需人工审批，自动同意' },
+  { value: 'autoReject',  label: '自动拒绝',  description: '无需人工审批，自动拒绝' },
+];
+
+// ─── 审批人与发起人同一人策略 ──────────────────────────────
+
+export const SAME_INITIATOR_OPTIONS: Array<{ value: SameInitiatorStrategy; label: string }> = [
+  { value: 'selfApprove',     label: '由发起人自己审批' },
+  { value: 'autoSkip',        label: '自动跳过' },
+  { value: 'toDirectManager', label: '转交给直接上级审批' },
+  { value: 'toDeptHead',      label: '转交给部门负责人审批' },
+];
+
+// ─── 审批人去重策略 ──────────────────────────────────────────
+
+export const DEDUPLICATE_OPTIONS: Array<{ value: DeduplicateStrategy; label: string }> = [
+  { value: 'autoSkip',       label: '自动跳过（后续节点自动同意）' },
+  { value: 'repeatApprove',  label: '仍需审批' },
 ];

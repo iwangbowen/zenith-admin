@@ -1,16 +1,20 @@
 /**
  * 高级设置 Tab
- * 超时处理、拒绝策略、空审批人策略
+ * 拒绝策略、审批人与发起人同一人策略、审批人去重、空审批人策略、超时处理
  */
 import { Form, InputNumber, Select, Switch, Typography } from '@douyinfe/semi-ui';
 import type {
   RejectStrategy,
   EmptyAssigneeStrategy,
   TimeoutConfig,
+  SameInitiatorStrategy,
+  DeduplicateStrategy,
 } from '../../types';
 import {
   REJECT_STRATEGY_OPTIONS,
   EMPTY_ASSIGNEE_OPTIONS,
+  SAME_INITIATOR_OPTIONS,
+  DEDUPLICATE_OPTIONS,
 } from '../../constants';
 
 interface UserOption { id: number; nickname: string; }
@@ -19,6 +23,8 @@ interface AdvancedSettingsTabProps {
   rejectStrategy: RejectStrategy;
   emptyStrategy: EmptyAssigneeStrategy;
   emptyAssignTo?: number;
+  sameInitiatorStrategy?: SameInitiatorStrategy;
+  deduplicateStrategy?: DeduplicateStrategy;
   timeout?: TimeoutConfig;
   users: UserOption[];
   onChange: (updates: Record<string, unknown>) => void;
@@ -28,6 +34,8 @@ export default function AdvancedSettingsTab({
   rejectStrategy,
   emptyStrategy,
   emptyAssignTo,
+  sameInitiatorStrategy = 'selfApprove',
+  deduplicateStrategy = 'autoSkip',
   timeout,
   users,
   onChange,
@@ -89,6 +97,34 @@ export default function AdvancedSettingsTab({
             </Form.Slot>
           </div>
         )}
+      </div>
+
+      {/* 审批人与发起人同一人 */}
+      <div style={{ borderTop: '1px solid var(--semi-color-border)', paddingTop: 16, marginBottom: 24 }}>
+        <Typography.Title heading={6} style={{ marginBottom: 12 }}>审批人与发起人为同一人时</Typography.Title>
+        <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
+          当审批人与流程发起人相同时的处理方式
+        </Typography.Text>
+        <Select
+          value={sameInitiatorStrategy}
+          onChange={(v) => onChange({ sameInitiatorStrategy: v })}
+          style={{ width: '100%' }}
+          optionList={SAME_INITIATOR_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+        />
+      </div>
+
+      {/* 审批人去重 */}
+      <div style={{ borderTop: '1px solid var(--semi-color-border)', paddingTop: 16, marginBottom: 24 }}>
+        <Typography.Title heading={6} style={{ marginBottom: 12 }}>审批人去重</Typography.Title>
+        <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
+          当同一审批人出现在多个审批节点时的处理方式
+        </Typography.Text>
+        <Select
+          value={deduplicateStrategy}
+          onChange={(v) => onChange({ deduplicateStrategy: v })}
+          style={{ width: '100%' }}
+          optionList={DEDUPLICATE_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+        />
       </div>
 
       {/* 超时处理 */}

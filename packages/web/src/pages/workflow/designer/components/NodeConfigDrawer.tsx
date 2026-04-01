@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from 'react';
 import { SideSheet, Tabs, TabPane, Input, Typography, Form, Select, InputNumber, Switch } from '@douyinfe/semi-ui';
-import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig } from '../types';
+import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy } from '../types';
 import { ADDABLE_NODE_TYPES, DEFAULT_APPROVER_OPERATIONS, DELAY_UNIT_OPTIONS, TRIGGER_TYPE_OPTIONS } from '../constants';
 import ApproverSettingsTab from './tabs/ApproverSettingsTab';
 import FormPermissionTab from './tabs/FormPermissionTab';
@@ -27,6 +27,7 @@ interface NodeConfigDrawerProps {
   users: UserOption[];
   roles: RoleOption[];
   formFields: FormField[];
+  allNodes?: Array<{ id: string; name: string; type: FlowNodeType }>;
   onSave: (nodeId: string, updates: { name?: string; props?: Record<string, unknown> }) => void;
   onCancel: () => void;
 }
@@ -37,6 +38,7 @@ export default function NodeConfigDrawer({
   users,
   roles,
   formFields,
+  allNodes = [],
   onSave,
   onCancel,
 }: Readonly<NodeConfigDrawerProps>) {
@@ -117,17 +119,42 @@ export default function NodeConfigDrawer({
               <TabPane tab={tabLabel} itemKey="assignee">
                 <ApproverSettingsTab
                   nodeType={node?.type ?? 'approver'}
+                  approvalType={(props.approvalType as ApprovalType) ?? 'manual'}
                   assigneeType={(props.assigneeType as AssigneeType) ?? 'user'}
                   assigneeIds={(props.assigneeIds as number[]) ?? []}
                   roleIds={(props.roleIds as number[]) ?? []}
                   managerLevel={(props.managerLevel as number) ?? 1}
                   formUserField={(props.formUserField as string) ?? ''}
                   approveMethod={(props.approveMethod as ApproveMethod) ?? 'or'}
+                  multiLevelEndType={(props.multiLevelEndType as 'topLevel' | 'level' | 'role') ?? 'topLevel'}
+                  multiLevelEndLevel={(props.multiLevelEndLevel as number) ?? 1}
+                  multiLevelEndRoleId={(props.multiLevelEndRoleId as number) ?? undefined}
+                  nodeApproverNodeId={(props.nodeApproverNodeId as string) ?? undefined}
+                  userGroupIds={(props.userGroupIds as number[]) ?? []}
+                  formDeptField={(props.formDeptField as string) ?? undefined}
+                  formDeptHeadLevel={(props.formDeptHeadLevel as number) ?? 1}
                   users={users}
                   roles={roles}
                   formFields={formFields}
+                  allNodes={allNodes}
                   onChange={handlePropsChange}
                 />
+                {/* 抄送人节点特有：仅同意时抄送 */}
+                {isCc && (
+                  <div style={{ borderTop: '1px solid var(--semi-color-border)', margin: '16px 0', padding: '12px 0 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Switch
+                        checked={(props.onlyOnApprove as boolean) ?? false}
+                        onChange={(v) => handlePropsChange({ onlyOnApprove: v })}
+                        size="small"
+                      />
+                      <Typography.Text>仅同意时抄送</Typography.Text>
+                    </div>
+                    <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+                      开启后，仅当审批通过时才会发送抄送通知
+                    </Typography.Text>
+                  </div>
+                )}
               </TabPane>
             );
           })()}
@@ -176,6 +203,8 @@ export default function NodeConfigDrawer({
                 rejectStrategy={(props.rejectStrategy as RejectStrategy) ?? 'terminate'}
                 emptyStrategy={(props.emptyStrategy as EmptyAssigneeStrategy) ?? 'autoApprove'}
                 emptyAssignTo={props.emptyAssignTo as number | undefined}
+                sameInitiatorStrategy={(props.sameInitiatorStrategy as SameInitiatorStrategy) ?? 'selfApprove'}
+                deduplicateStrategy={(props.deduplicateStrategy as DeduplicateStrategy) ?? 'autoSkip'}
                 timeout={props.timeout as TimeoutConfig | undefined}
                 users={users}
                 onChange={handlePropsChange}
@@ -310,12 +339,15 @@ function getDefaultProps(type: FlowNodeType): Record<string, unknown> {
   switch (type) {
     case 'approver':
       return {
+        approvalType: 'manual',
         assigneeType: 'user',
         assigneeIds: [],
         assigneeNames: [],
         approveMethod: 'or',
         rejectStrategy: 'terminate',
         emptyStrategy: 'autoApprove',
+        sameInitiatorStrategy: 'selfApprove',
+        deduplicateStrategy: 'autoSkip',
         operations: DEFAULT_APPROVER_OPERATIONS,
         fieldPermissions: {},
       };
@@ -332,6 +364,7 @@ function getDefaultProps(type: FlowNodeType): Record<string, unknown> {
         assigneeType: 'user',
         assigneeIds: [],
         assigneeNames: [],
+        onlyOnApprove: false,
         fieldPermissions: {},
       };
     case 'initiator':

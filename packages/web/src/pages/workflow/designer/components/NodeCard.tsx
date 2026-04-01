@@ -4,8 +4,8 @@
  * Body 区域根据节点属性显示丰富的配置摘要
  */
 import { ChevronRight, X } from 'lucide-react';
-import type { FlowNode, AssigneeType, ApproveMethod, OperationPermission, FieldPermission } from '../types';
-import { NODE_COLOR_MAP, ADDABLE_NODE_TYPES, ASSIGNEE_TYPE_OPTIONS, APPROVE_METHOD_OPTIONS } from '../constants';
+import type { FlowNode, AssigneeType, ApproveMethod, ApprovalType, OperationPermission, FieldPermission } from '../types';
+import { NODE_COLOR_MAP, ADDABLE_NODE_TYPES, ASSIGNEE_TYPE_OPTIONS, APPROVE_METHOD_OPTIONS, APPROVAL_TYPE_OPTIONS } from '../constants';
 
 interface NodeCardProps {
   node: FlowNode;
@@ -24,6 +24,12 @@ function getBodySummary(node: FlowNode): string {
   switch (node.type) {
     case 'approver':
     case 'handler': {
+      const approvalType = p.approvalType as ApprovalType | undefined;
+      // 自动通过/自动拒绝时显示类型而非审批人
+      if (node.type === 'approver' && approvalType && approvalType !== 'manual') {
+        return APPROVAL_TYPE_OPTIONS.find(o => o.value === approvalType)?.label ?? '';
+      }
+
       const assigneeType = p.assigneeType as AssigneeType | undefined;
       if (!assigneeType) return '请设置';
 
@@ -55,11 +61,15 @@ function getBodySummary(node: FlowNode): string {
     case 'cc': {
       const assigneeType = p.assigneeType as AssigneeType | undefined;
       if (!assigneeType) return '请设置抄送人';
+      const parts: string[] = [];
       if (assigneeType === 'user') {
         const names = p.assigneeNames as string[] | undefined;
-        return names?.length ? names.join('、') : '请选择抄送人';
+        parts.push(names?.length ? names.join('、') : '请选择抄送人');
+      } else {
+        parts.push(ASSIGNEE_TYPE_OPTIONS.find(o => o.value === assigneeType)?.label ?? '请设置');
       }
-      return ASSIGNEE_TYPE_OPTIONS.find(o => o.value === assigneeType)?.label ?? '请设置';
+      if (p.onlyOnApprove) parts.push('仅同意时抄送');
+      return parts.join(' · ');
     }
 
     case 'delay': {
@@ -103,6 +113,11 @@ function getNodeTags(node: FlowNode): string[] {
   const p = node.props;
 
   if (node.type === 'approver') {
+    const approvalType = p.approvalType as ApprovalType | undefined;
+    if (approvalType && approvalType !== 'manual') {
+      tags.push(approvalType === 'autoApprove' ? '自动通过' : '自动拒绝');
+    }
+
     const ops = p.operations as OperationPermission[] | undefined;
     if (ops && !ops.includes('reject')) tags.push('不可拒绝');
     if (ops?.includes('transfer')) tags.push('可转办');

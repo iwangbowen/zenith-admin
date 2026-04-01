@@ -83,6 +83,23 @@ export function deepClone<T>(obj: T): T {
   return structuredClone(obj);
 }
 
+/** 收集流程树中所有节点（用于"节点审批人"等下拉选择） */
+export function collectAllNodes(root: FlowNode | undefined): Array<{ id: string; name: string; type: FlowNodeType }> {
+  const result: Array<{ id: string; name: string; type: FlowNodeType }> = [];
+  function walk(node: FlowNode | undefined) {
+    if (!node) return;
+    result.push({ id: node.id, name: node.name, type: node.type });
+    if (node.children) walk(node.children);
+    if (node.branches) {
+      for (const b of node.branches) {
+        if (b.children) walk(b.children);
+      }
+    }
+  }
+  walk(root);
+  return result;
+}
+
 // ─── 节点链表操作 ────────────────────────────────────────────────────
 
 /**

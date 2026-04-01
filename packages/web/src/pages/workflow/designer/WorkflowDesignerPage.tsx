@@ -22,6 +22,7 @@ import {
   removeBranch as removeBranchFromProcess,
   treeToFlat,
   deepClone,
+  collectAllNodes,
 } from './utils';
 import FlowRenderer from './components/FlowRenderer';
 import NodeConfigDrawer from './components/NodeConfigDrawer';
@@ -332,6 +333,7 @@ export default function WorkflowDesignerPage() {
         users={users}
         roles={roles}
         formFields={formFields}
+        allNodes={collectAllNodes(process.initiator)}
         onSave={handleSaveNode}
         onCancel={() => { setDrawerVisible(false); setEditingNode(null); }}
       />
