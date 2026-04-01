@@ -1,16 +1,16 @@
 /**
- * "+" 按钮组件 — 点击弹出节点类型选择器
+ * "+" 按钮组件 — 点击弹出分组节点类型选择器
  */
 import { useState, useRef, useEffect } from 'react';
 import { Plus } from 'lucide-react';
-import { ADDABLE_NODE_TYPES, type NodeTypeInfo } from '../constants';
+import { NODE_TYPE_GROUPS, type NodeTypeInfo } from '../constants';
 import type { FlowNodeType } from '../types';
 
 interface AddNodeButtonProps {
   onAdd: (type: FlowNodeType) => void;
 }
 
-export default function AddNodeButton({ onAdd }: AddNodeButtonProps) {
+export default function AddNodeButton({ onAdd }: Readonly<AddNodeButtonProps>) {
   const [visible, setVisible] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -43,35 +43,31 @@ export default function AddNodeButton({ onAdd }: AddNodeButtonProps) {
       </button>
 
       {visible && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: 'calc(50% + 24px)',
-            zIndex: 10,
-            background: '#fff',
-            borderRadius: 12,
-            boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
-            padding: 4,
-          }}
-        >
-          <div className="fd-node-picker">
-            {ADDABLE_NODE_TYPES.map(info => (
-              <div
-                key={info.type}
-                className="fd-node-picker__item"
-                onClick={() => handleSelect(info)}
-              >
-                <div
-                  className="fd-node-picker__icon"
-                  style={{ borderColor: info.color, color: info.color }}
-                >
-                  <info.icon size={20} />
-                </div>
-                <span className="fd-node-picker__label">{info.label}</span>
+        <div className="fd-node-picker-panel">
+          {NODE_TYPE_GROUPS.map(group => (
+            <div key={group.label} className="fd-node-picker-group">
+              <div className="fd-node-picker-group__title">{group.label}</div>
+              <div className="fd-node-picker">
+                {group.types.map(info => (
+                  <button
+                    key={info.type}
+                    type="button"
+                    className="fd-node-picker__item"
+                    onClick={() => handleSelect(info)}
+                    title={info.description}
+                  >
+                    <div
+                      className="fd-node-picker__icon"
+                      style={{ borderColor: info.color, color: info.color }}
+                    >
+                      <info.icon size={20} />
+                    </div>
+                    <span className="fd-node-picker__label">{info.label}</span>
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

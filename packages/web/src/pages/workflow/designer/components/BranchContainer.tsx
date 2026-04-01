@@ -29,12 +29,16 @@ function getBranchNameClass(type: BranchNodeType, isDefault?: boolean): string {
 
 function getBranchDesc(branch: FlowBranch, branchType: BranchNodeType): string {
   if (branch.isDefault) return '未满足其它条件时，将进入此分支';
-  if (branchType === 'parallelBranch') return '无需配置条件同时执行';
+  if (branchType === 'parallelBranch') return '无需配置条件，同时执行';
   if (branch.conditions?.length) {
-    const ruleCount = branch.conditions.reduce((s, g) => s + g.rules.length, 0);
-    return `已配置 ${ruleCount} 个条件`;
+    const totalRules = branch.conditions.reduce((s, g) => s + g.rules.length, 0);
+    const groupInfo = branch.conditions.map(g => {
+      const logicLabel = g.type === 'and' ? '且' : '或';
+      return `${g.rules.length}条件(${logicLabel})`;
+    }).join(' + ');
+    return `${totalRules} 个条件：${groupInfo}`;
   }
-  return '请设置条件';
+  return '点击配置条件';
 }
 
 export default function BranchContainer({

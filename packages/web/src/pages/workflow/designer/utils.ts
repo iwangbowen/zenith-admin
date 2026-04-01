@@ -470,9 +470,9 @@ function mapNodeType(type: FlowNodeType): string {
     case 'approver': return 'approve';
     case 'handler': return 'approve';
     case 'cc': return 'ccNode';
-    case 'delay': return 'approve';
-    case 'trigger': return 'approve';
-    case 'subProcess': return 'approve';
+    case 'delay': return 'timerEvent';
+    case 'trigger': return 'receiveTask';
+    case 'subProcess': return 'callActivity';
     default: return 'approve';
   }
 }

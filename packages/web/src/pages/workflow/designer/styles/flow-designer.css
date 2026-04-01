@@ -195,12 +195,40 @@
 
 /* ─── 节点选择器 Popover ────────────────────────────────────────────── */
 
+.fd-node-picker-panel {
+  position: absolute;
+  top: 50%;
+  left: calc(50% + 24px);
+  z-index: 10;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  padding: 8px 4px;
+  width: 340px;
+}
+
+.fd-node-picker-group {
+  padding: 4px 0;
+}
+
+.fd-node-picker-group + .fd-node-picker-group {
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.fd-node-picker-group__title {
+  padding: 6px 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--semi-color-text-2);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
 .fd-node-picker {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 8px;
   padding: 8px;
-  width: 320px;
 }
 
 .fd-node-picker__item {
@@ -212,6 +240,9 @@
   padding: 8px 4px;
   border-radius: 8px;
   transition: background 0.15s;
+  background: transparent;
+  border: none;
+  font-family: inherit;
 }
 
 .fd-node-picker__item:hover {
@@ -451,4 +482,230 @@
   gap: 4px;
   color: var(--semi-color-text-2);
   font-size: 13px;
+}
+
+/* ─── 节点卡片（button 版本） ──────────────────────────────────────── */
+
+button.fd-node-card {
+  text-align: left;
+  font-family: inherit;
+}
+
+/* ─── 节点卡片 Body 内容增强 ──────────────────────────────────────── */
+
+.fd-node-card__body-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fd-node-card__body-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fd-node-card__tag {
+  display: inline-block;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 3px;
+  background: #f0f5ff;
+  color: #1d6cc0;
+  white-space: nowrap;
+}
+
+/* ─── 抽屉面板 ─────────────────────────────────────────────────────── */
+
+.fd-config-drawer .semi-sidesheet-body {
+  padding: 16px;
+}
+
+.fd-drawer-tab-content {
+  padding: 16px 0;
+}
+
+.fd-drawer-btn {
+  padding: 6px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+}
+
+.fd-drawer-btn--cancel {
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-0);
+}
+
+.fd-drawer-btn--cancel:hover {
+  background: var(--semi-color-fill-1);
+}
+
+.fd-drawer-btn--save {
+  background: var(--semi-color-primary);
+  color: #fff;
+}
+
+.fd-drawer-btn--save:hover {
+  background: var(--semi-color-primary-hover);
+}
+
+/* ─── 审批方式卡片 ─────────────────────────────────────────────────── */
+
+.fd-approve-method-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.fd-approve-method-card {
+  padding: 10px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--semi-color-bg-1);
+  text-align: left;
+  font-family: inherit;
+}
+
+.fd-approve-method-card:hover {
+  border-color: var(--semi-color-primary);
+}
+
+.fd-approve-method-card--active {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.fd-approve-method-card__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+  margin-bottom: 2px;
+}
+
+.fd-approve-method-card__desc {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+/* ─── 批量设置按钮 ─────────────────────────────────────────────────── */
+
+.fd-batch-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 4px;
+  background: var(--semi-color-bg-1);
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fd-batch-btn:hover {
+  border-color: var(--semi-color-primary);
+  color: var(--semi-color-primary);
+}
+
+/* ─── 操作权限列表 ─────────────────────────────────────────────────── */
+
+.fd-operation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fd-operation-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  background: var(--semi-color-bg-1);
+}
+
+/* ─── 条件编辑器 ──────────────────────────────────────────────────── */
+
+.fd-condition-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.fd-condition-group {
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--semi-color-bg-0);
+}
+
+.fd-condition-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.fd-condition-logic-btn {
+  padding: 2px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fd-condition-logic-btn:hover {
+  background: var(--semi-color-primary);
+  color: #fff;
+}
+
+.fd-condition-remove-group {
+  background: none;
+  border: none;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.fd-condition-remove-group:hover {
+  color: var(--semi-color-danger);
+  background: var(--semi-color-danger-light-default);
+}
+
+.fd-condition-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fd-condition-rule__remove {
+  background: none;
+  border: none;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.fd-condition-rule__remove:hover {
+  color: var(--semi-color-danger);
+  background: var(--semi-color-danger-light-default);
 }

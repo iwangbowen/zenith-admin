@@ -5,10 +5,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Form, Modal, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Minus, Plus, RotateCcw, Save, Upload } from 'lucide-react';
-import type { WorkflowDefinition } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowFormField } from '@zenith/shared';
 import { request } from '@/utils/request';
 
-import type { FlowNode, FlowBranch, FlowNodeType, FlowProcess, BranchNodeType } from './types';
+import type { FlowNode, FlowBranch, FlowNodeType, FlowProcess, BranchNodeType, ConditionGroup } from './types';
 import {
   createDefaultProcess,
   createNode,
@@ -17,18 +17,21 @@ import {
   insertNodeInBranch,
   removeNode,
   updateNode,
+  updateBranch,
   addBranch as addBranchToProcess,
   removeBranch as removeBranchFromProcess,
   treeToFlat,
   deepClone,
 } from './utils';
 import FlowRenderer from './components/FlowRenderer';
-import NodeConfigModal from './components/NodeConfigModal';
+import NodeConfigDrawer from './components/NodeConfigDrawer';
+import ConditionEditor from './components/ConditionEditor';
 import './styles/flow-designer.css';
 
-// ─── 用户选项 ─────────────────────────────────────────────────────────
+// ─── 选项数据类型 ─────────────────────────────────────────────────────
 
 interface UserOption { id: number; nickname: string; }
+interface RoleOption { id: number; name: string; }
 
 // ─── 主组件 ───────────────────────────────────────────────────────────
 
@@ -43,13 +46,22 @@ export default function WorkflowDesignerPage() {
   const [process, setProcess] = useState<FlowProcess>(createDefaultProcess());
   const [metaModalVisible, setMetaModalVisible] = useState(false);
   const [users, setUsers] = useState<UserOption[]>([]);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
 
-  // 节点编辑弹窗
+  // 节点编辑抽屉
   const [editingNode, setEditingNode] = useState<FlowNode | null>(null);
-  const [nodeModalVisible, setNodeModalVisible] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+
+  // 分支条件编辑
+  const [editingBranch, setEditingBranch] = useState<FlowBranch | null>(null);
+  const [conditionEditorVisible, setConditionEditorVisible] = useState(false);
 
   // 缩放
   const [zoom, setZoom] = useState(100);
+
+  // 表单字段（从定义中获取）
+  const formFields: Array<{ key: string; label: string; type: WorkflowFormField['type']; options?: string[] }> =
+    definition?.formFields?.map(f => ({ key: f.key, label: f.label, type: f.type, options: f.options ?? undefined })) ?? [];
 
   // ─── 加载数据 ─────────────────────────────────────────────────────
 
@@ -59,12 +71,10 @@ export default function WorkflowDesignerPage() {
       request.get<WorkflowDefinition>(`/api/workflows/definitions/${id}`).then(res => {
         if (res.code === 0 && res.data) {
           setDefinition(res.data);
-          // 如果有 process 字段（新格式），直接使用
           const fd = res.data.flowData;
           if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
             setProcess((fd as unknown as Record<string, unknown>).process as FlowProcess);
           }
-          // 否则保持默认
         }
       }).finally(() => setPageLoading(false));
     }
@@ -74,6 +84,11 @@ export default function WorkflowDesignerPage() {
     request.get<{ list: UserOption[] }>('/api/users?page=1&pageSize=200').then(res => {
       if (res.code === 0 && res.data?.list) {
         setUsers(res.data.list);
+      }
+    });
+    request.get<{ list: RoleOption[] }>('/api/roles?page=1&pageSize=200').then(res => {
+      if (res.code === 0 && res.data?.list) {
+        setRoles(res.data.list);
       }
     });
   }, []);
@@ -96,12 +111,12 @@ export default function WorkflowDesignerPage() {
 
   const handleEditNode = useCallback((node: FlowNode) => {
     setEditingNode(deepClone(node));
-    setNodeModalVisible(true);
+    setDrawerVisible(true);
   }, []);
 
   const handleSaveNode = useCallback((nodeId: string, updates: { name?: string; props?: Record<string, unknown> }) => {
     setProcess(prev => updateNode(prev, nodeId, updates));
-    setNodeModalVisible(false);
+    setDrawerVisible(false);
     setEditingNode(null);
   }, []);
 
@@ -109,7 +124,6 @@ export default function WorkflowDesignerPage() {
 
   const handleAddBranch = useCallback((branchNodeId: string) => {
     setProcess(prev => {
-      // 找到当前分支节点，计算新分支序号
       const cloned = deepClone(prev);
       const findNode = (n: FlowNode | undefined): FlowNode | undefined => {
         if (!n) return undefined;
@@ -139,9 +153,15 @@ export default function WorkflowDesignerPage() {
     setProcess(prev => removeBranchFromProcess(prev, branchNodeId, branchId));
   }, []);
 
-  const handleEditBranch = useCallback((_branch: FlowBranch, _branchNodeId: string) => {
-    // 分支条件编辑（待扩展）
-    Toast.info('分支条件编辑功能开发中');
+  const handleEditBranch = useCallback((branch: FlowBranch, _branchNodeId: string) => {
+    setEditingBranch(deepClone(branch));
+    setConditionEditorVisible(true);
+  }, []);
+
+  const handleSaveBranchConditions = useCallback((branchId: string, conditions: ConditionGroup[]) => {
+    setProcess(prev => updateBranch(prev, branchId, { conditions }));
+    setConditionEditorVisible(false);
+    setEditingBranch(null);
   }, []);
 
   // ─── 导入导出 ─────────────────────────────────────────────────────
@@ -196,7 +216,6 @@ export default function WorkflowDesignerPage() {
   const doSave = async (meta: { name: string; description?: string | null }) => {
     setSaving(true);
     try {
-      // 生成扁平 nodes+edges 供引擎使用，同时保存 process 树结构
       const flat = treeToFlat(process);
       const flowData = { ...flat, process };
       const payload = {
@@ -265,7 +284,6 @@ export default function WorkflowDesignerPage() {
           )}
         </div>
 
-        {/* 导出/导入 */}
         <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
           导出
         </Button>
@@ -273,7 +291,6 @@ export default function WorkflowDesignerPage() {
           导入
         </Button>
 
-        {/* 缩放 */}
         <div className="fd-toolbar__zoom">
           <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomOut} />
           <span>{zoom}%</span>
@@ -281,7 +298,6 @@ export default function WorkflowDesignerPage() {
           <Button icon={<RotateCcw size={12} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomReset} />
         </div>
 
-        {/* 保存 */}
         <Button
           icon={<Save size={14} />}
           type="primary"
@@ -309,13 +325,24 @@ export default function WorkflowDesignerPage() {
         </div>
       </div>
 
-      {/* 节点配置弹窗 */}
-      <NodeConfigModal
-        visible={nodeModalVisible}
+      {/* 节点配置抽屉 */}
+      <NodeConfigDrawer
+        visible={drawerVisible}
         node={editingNode}
         users={users}
+        roles={roles}
+        formFields={formFields}
         onSave={handleSaveNode}
-        onCancel={() => { setNodeModalVisible(false); setEditingNode(null); }}
+        onCancel={() => { setDrawerVisible(false); setEditingNode(null); }}
+      />
+
+      {/* 条件规则编辑器 */}
+      <ConditionEditor
+        visible={conditionEditorVisible}
+        branch={editingBranch}
+        formFields={formFields}
+        onSave={handleSaveBranchConditions}
+        onCancel={() => { setConditionEditorVisible(false); setEditingBranch(null); }}
       />
 
       {/* 流程元信息弹窗（新建时填写名称） */}
