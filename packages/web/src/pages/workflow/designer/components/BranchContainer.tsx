@@ -57,18 +57,18 @@ export default function BranchContainer({
 
   return (
     <div className="fd-branch-wrap">
+      {/* 添加条件/分支按钮 */}
+      <button
+        className="fd-branch-add-btn"
+        type="button"
+        style={{ borderColor: color, color }}
+        onClick={() => onAddBranch(node.id)}
+      >
+        {addLabel}
+      </button>
+
       {/* 分支列容器 */}
       <div className="fd-branch-box">
-        {/* 添加条件/分支按钮 */}
-        <button
-          className="fd-branch-add-btn"
-          type="button"
-          style={{ borderColor: color, color }}
-          onClick={() => onAddBranch(node.id)}
-        >
-          {addLabel}
-        </button>
-
         {branches.map((branch, index) => (
           <div key={branch.id} className="fd-branch-col">
             {/* 顶部竖线 */}
@@ -92,14 +92,14 @@ export default function BranchContainer({
 
               {/* 删除分支按钮 */}
               {canRemoveBranch && !branch.isDefault && (
-                <button
+                <span
                   className="fd-branch-title__close"
-                  type="button"
+                  role="none"
                   onClick={(e) => { e.stopPropagation(); onRemoveBranch(node.id, branch.id); }}
                   title={`删除${branch.name}`}
                 >
                   <X size={10} />
-                </button>
+                </span>
               )}
             </button>
 

@@ -271,19 +271,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
   width: fit-content;
 }
 
 .fd-branch-box {
   display: flex;
   position: relative;
-  margin-top: 0;
 }
 
-/* 添加条件/分支按钮 */
+/* 添加条件/分支按钮（位于 fd-branch-wrap 内，fd-branch-box 之前） */
 .fd-branch-add-btn {
   position: absolute;
-  top: -16px;
+  top: -8px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -324,6 +324,16 @@
   background: #cacaca;
 }
 
+/* 第一列：顶部线只从中心向右 */
+.fd-branch-col:first-child::before {
+  left: 50%;
+}
+
+/* 最后一列：顶部线只从左到中心 */
+.fd-branch-col:last-child::before {
+  right: 50%;
+}
+
 /* 分支底部连接线 */
 .fd-branch-col::after {
   content: '';
@@ -335,18 +345,14 @@
   background: #cacaca;
 }
 
-/* 第一个分支左侧圆角 */
-.fd-branch-col:first-child::before,
+/* 第一列：底部线只从中心向右 */
 .fd-branch-col:first-child::after {
   left: 50%;
-  border-radius: 0;
 }
 
-/* 最后一个分支右侧限制 */
-.fd-branch-col:last-child::before,
+/* 最后一列：底部线只从左到中心 */
 .fd-branch-col:last-child::after {
   right: 50%;
-  border-radius: 0;
 }
 
 /* 分支顶部竖线 */

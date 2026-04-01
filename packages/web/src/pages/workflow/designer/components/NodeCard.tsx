@@ -144,13 +144,14 @@ export default function NodeCard({ node, onEdit, onDelete }: Readonly<NodeCardPr
         )}
         <span className="fd-node-card__header-title">{node.name || info?.label || '节点'}</span>
         <span className="fd-node-card__header-actions">
-          <button
-            type="button"
+          <span
+            role="none"
+            className="fd-node-card__delete-btn"
             onClick={(e) => { e.stopPropagation(); onDelete(node.id); }}
             title="删除"
           >
             <X size={12} />
-          </button>
+          </span>
         </span>
       </div>
 
