@@ -53,7 +53,6 @@ export default function FormPermissionTab({
             value={current}
             onChange={(e) => handleChange(record.key, e.target.value as FieldPermission)}
             type="button"
-            size="small"
           >
             <Radio value="read">只读</Radio>
             <Radio value="edit">可编辑</Radio>
