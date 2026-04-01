@@ -18,7 +18,7 @@ const NotificationsPage = React.lazy(() => import('@/pages/notifications/Notific
 const NotFoundPage = React.lazy(() => import('@/pages/not-found/NotFoundPage'));
 const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage'));
 const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
-const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/definitions/WorkflowDesignerPage'));
+const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
 
 const routeFallback = <div style={{ padding: 24 }}><Spin /></div>;
 

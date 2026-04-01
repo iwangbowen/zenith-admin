@@ -1,0 +1,454 @@
+/**
+ * 钉钉/飞书风格流程设计器样式
+ *
+ * 所有类名以 .fd- (flow-designer) 为前缀避免冲突
+ */
+
+/* ─── 画布容器 ─────────────────────────────────────────────────────── */
+
+.fd-canvas {
+  flex: 1;
+  overflow: auto;
+  background:
+    radial-gradient(circle, #e5e5e5 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-color: #f5f5f5;
+  padding: 40px 0 80px;
+}
+
+.fd-flow-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 600px;
+  width: fit-content;
+  margin: 0 auto;
+}
+
+/* ─── 节点卡片 ─────────────────────────────────────────────────────── */
+
+.fd-node-card {
+  position: relative;
+  width: 220px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.fd-node-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.fd-node-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px 8px 0 0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.fd-node-card__header-icon {
+  flex-shrink: 0;
+}
+
+.fd-node-card__header-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fd-node-card__header-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.fd-node-card:hover .fd-node-card__header-actions {
+  opacity: 1;
+}
+
+.fd-node-card__header-actions button {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+}
+
+.fd-node-card__header-actions button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.fd-node-card__body {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #666;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fd-node-card__body-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fd-node-card__body-arrow {
+  flex-shrink: 0;
+  color: #ccc;
+}
+
+/* 发起人特殊边框 */
+.fd-node-card--initiator {
+  border: 2px solid #ff943e;
+}
+
+/* ─── Initiator 节点（发起人） ──────────────────────────────────────── */
+
+.fd-initiator-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ─── 结束节点 ─────────────────────────────────────────────────────── */
+
+.fd-end-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.fd-end-node__circle {
+  width: 72px;
+  height: 32px;
+  border-radius: 16px;
+  background: #dbdfe2;
+  color: #666;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── 添加节点按钮 ─────────────────────────────────────────────────── */
+
+.fd-add-node-btn-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  width: 220px;
+  padding: 20px 0;
+}
+
+/* 垂直连接线 */
+.fd-add-node-btn-wrap::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 100%;
+  background: #cacaca;
+}
+
+.fd-add-node-btn {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #3296fa;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  box-shadow: 0 1px 4px rgba(50, 150, 250, 0.4);
+}
+
+.fd-add-node-btn:hover {
+  background: #1677ff;
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.5);
+}
+
+/* ─── 节点选择器 Popover ────────────────────────────────────────────── */
+
+.fd-node-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 8px;
+  width: 320px;
+}
+
+.fd-node-picker__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 8px 4px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.fd-node-picker__item:hover {
+  background: #f0f0f0;
+}
+
+.fd-node-picker__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid;
+}
+
+.fd-node-picker__label {
+  font-size: 12px;
+  color: #333;
+  text-align: center;
+}
+
+/* ─── 分支容器 ─────────────────────────────────────────────────────── */
+
+.fd-branch-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: fit-content;
+}
+
+.fd-branch-box {
+  display: flex;
+  position: relative;
+  margin-top: 0;
+}
+
+/* 添加条件/分支按钮 */
+.fd-branch-add-btn {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 2px 16px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #3296fa;
+  color: #3296fa;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.fd-branch-add-btn:hover {
+  background: #3296fa;
+  color: #fff;
+}
+
+/* 每条分支列 */
+.fd-branch-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  min-width: 260px;
+  padding: 0 20px;
+}
+
+/* 分支顶部连接线 */
+.fd-branch-col::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #cacaca;
+}
+
+/* 分支底部连接线 */
+.fd-branch-col::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #cacaca;
+}
+
+/* 第一个分支左侧圆角 */
+.fd-branch-col:first-child::before,
+.fd-branch-col:first-child::after {
+  left: 50%;
+  border-radius: 0;
+}
+
+/* 最后一个分支右侧限制 */
+.fd-branch-col:last-child::before,
+.fd-branch-col:last-child::after {
+  right: 50%;
+  border-radius: 0;
+}
+
+/* 分支顶部竖线 */
+.fd-branch-col-top-line {
+  width: 2px;
+  height: 20px;
+  background: #cacaca;
+}
+
+/* 分支底部竖线 */
+.fd-branch-col-bottom-line {
+  width: 2px;
+  height: 20px;
+  background: #cacaca;
+}
+
+/* ─── 分支条件标题 ─────────────────────────────────────────────────── */
+
+.fd-branch-title {
+  width: 220px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #e8e8e8;
+  margin-bottom: 0;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  position: relative;
+}
+
+.fd-branch-title:hover {
+  border-color: #3296fa;
+}
+
+.fd-branch-title__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.fd-branch-title__name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fd-branch-title__name--condition {
+  color: #ff943e;
+}
+
+.fd-branch-title__name--default {
+  color: #40a9ff;
+}
+
+.fd-branch-title__name--parallel {
+  color: #718dff;
+}
+
+.fd-branch-title__name--inclusive {
+  color: #13c2c2;
+}
+
+.fd-branch-title__priority {
+  font-size: 12px;
+  color: #999;
+}
+
+.fd-branch-title__desc {
+  font-size: 12px;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fd-branch-title__close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.fd-branch-title:hover .fd-branch-title__close {
+  opacity: 1;
+}
+
+.fd-branch-title__close:hover {
+  background: #ff4d4f;
+  color: #fff;
+}
+
+/* ─── 汇聚连接线 ──────────────────────────────────────────────────── */
+
+.fd-merge-line {
+  width: 2px;
+  height: 20px;
+  background: #cacaca;
+}
+
+/* ─── 顶部工具栏 ──────────────────────────────────────────────────── */
+
+.fd-toolbar {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--semi-color-border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--semi-color-bg-1);
+  flex-shrink: 0;
+}
+
+.fd-toolbar__title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fd-toolbar__zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}
