@@ -1,0 +1,349 @@
+/* ─── 表单设计器样式 ──────────────────────────────────────────────── */
+
+/* 三栏布局 */
+.fd-form-designer {
+  display: flex;
+  height: 100%;
+  gap: 0;
+  background: var(--semi-color-bg-0);
+}
+
+.fd-form-designer__palette {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--semi-color-border);
+  overflow-y: auto;
+}
+
+.fd-form-designer__canvas {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--semi-color-fill-0);
+  padding: 16px;
+}
+
+.fd-form-designer__config {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--semi-color-border);
+  overflow-y: auto;
+}
+
+.fd-form-designer__config-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}
+
+/* ─── 左侧控件面板 ──────────────────────────────────────────────── */
+
+.fd-form-palette {
+  padding: 12px;
+}
+
+.fd-form-palette__group {
+  margin-bottom: 16px;
+}
+
+.fd-form-palette__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.fd-form-palette__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  background: var(--semi-color-bg-0);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--semi-color-text-0);
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.fd-form-palette__item:hover {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+}
+
+.fd-form-palette__item:active {
+  transform: scale(0.97);
+}
+
+/* ─── 中间画布 ───────────────────────────────────────────────────── */
+
+.fd-form-canvas {
+  max-width: 600px;
+  margin: 0 auto;
+  background: var(--semi-color-bg-0);
+  border-radius: 8px;
+  border: 1px solid var(--semi-color-border);
+  min-height: 400px;
+}
+
+.fd-form-canvas--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fd-form-canvas__placeholder {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.fd-form-canvas__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.fd-form-canvas__list {
+  padding: 8px;
+}
+
+.fd-form-canvas__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 4px 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  width: 100%;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.fd-form-canvas__item:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.fd-form-canvas__item--selected {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.fd-form-canvas__item--dragging {
+  opacity: 0.4;
+}
+
+.fd-form-canvas__item--drop-target {
+  border-top: 2px solid var(--semi-color-primary);
+}
+
+.fd-form-canvas__item-grip {
+  color: var(--semi-color-text-3);
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.fd-form-canvas__item-grip:active {
+  cursor: grabbing;
+}
+
+.fd-form-canvas__item-icon {
+  color: var(--semi-color-text-2);
+  flex-shrink: 0;
+}
+
+.fd-form-canvas__item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.fd-form-canvas__item-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--semi-color-text-0);
+}
+
+.fd-form-canvas__item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.fd-form-canvas__item-delete {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--semi-color-danger);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.fd-form-canvas__item-delete:hover {
+  background: var(--semi-color-danger-light-default);
+}
+
+.fd-form-canvas__item:hover .fd-form-canvas__item-delete {
+  display: flex;
+}
+
+/* ─── 右侧属性配置面板 ──────────────────────────────────────────── */
+
+.fd-form-config {
+  padding: 0;
+}
+
+.fd-form-config__header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.fd-form-config__type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.fd-form-config__tabs {
+  display: flex;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.fd-form-config__tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.fd-form-config__tab:hover {
+  color: var(--semi-color-text-0);
+}
+
+.fd-form-config__tab--active {
+  color: var(--semi-color-primary);
+  border-bottom-color: var(--semi-color-primary);
+}
+
+.fd-form-config__section {
+  padding: 16px;
+}
+
+.fd-form-config__field {
+  margin-bottom: 16px;
+}
+
+.fd-form-config__field > .semi-typography {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.fd-form-config__field--inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fd-form-config__field--inline > .semi-typography {
+  margin-bottom: 0;
+}
+
+.fd-form-config__visibility {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--semi-color-fill-0);
+  border-radius: 6px;
+  margin-top: 12px;
+}
+
+/* ─── 选项编辑器 ─────────────────────────────────────────────────── */
+
+.fd-options-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fd-options-editor__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fd-options-editor__delete {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--semi-color-danger);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.fd-options-editor__delete:hover {
+  background: var(--semi-color-danger-light-default);
+}
+
+/* ─── 明细子字段编辑器 ───────────────────────────────────────────── */
+
+.fd-detail-children {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fd-detail-children__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fd-detail-children__delete {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--semi-color-danger);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.fd-detail-children__delete:hover {
+  background: var(--semi-color-danger-light-default);
+}

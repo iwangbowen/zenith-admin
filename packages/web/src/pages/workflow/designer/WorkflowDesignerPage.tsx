@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Form, Modal, Spin, Toast, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, Download, Minus, Plus, RotateCcw, Save, Upload } from 'lucide-react';
+import { ArrowLeft, Download, FileText, Minus, Plus, RotateCcw, Save, Upload, Workflow } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowFormField } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -27,6 +27,7 @@ import {
 import FlowRenderer from './components/FlowRenderer';
 import NodeConfigDrawer from './components/NodeConfigDrawer';
 import ConditionEditor from './components/ConditionEditor';
+import FormDesigner from './components/FormDesigner';
 import './styles/flow-designer.css';
 
 // ─── 选项数据类型 ─────────────────────────────────────────────────────
@@ -60,9 +61,15 @@ export default function WorkflowDesignerPage() {
   // 缩放
   const [zoom, setZoom] = useState(100);
 
-  // 表单字段（从定义中获取）
+  // 设计器模式：流程设计 / 表单设计
+  const [designerTab, setDesignerTab] = useState<'flow' | 'form'>('flow');
+
+  // 表单字段
+  const [localFormFields, setLocalFormFields] = useState<WorkflowFormField[]>([]);
+
+  // 同步表单字段到视图
   const formFields: Array<{ key: string; label: string; type: WorkflowFormField['type']; options?: string[] }> =
-    definition?.formFields?.map(f => ({ key: f.key, label: f.label, type: f.type, options: f.options ?? undefined })) ?? [];
+    localFormFields.map(f => ({ key: f.key, label: f.label, type: f.type, options: f.options ?? undefined }));
 
   // ─── 加载数据 ─────────────────────────────────────────────────────
 
@@ -72,6 +79,7 @@ export default function WorkflowDesignerPage() {
       request.get<WorkflowDefinition>(`/api/workflows/definitions/${id}`).then(res => {
         if (res.code === 0 && res.data) {
           setDefinition(res.data);
+          if (res.data.formFields) setLocalFormFields(res.data.formFields);
           const fd = res.data.flowData;
           if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
             setProcess((fd as unknown as Record<string, unknown>).process as FlowProcess);
@@ -223,6 +231,7 @@ export default function WorkflowDesignerPage() {
         name: meta.name,
         description: meta.description ?? null,
         flowData,
+        formFields: localFormFields.length > 0 ? localFormFields : null,
       };
 
       let res;
@@ -285,6 +294,26 @@ export default function WorkflowDesignerPage() {
           )}
         </div>
 
+        {/* 设计器 Tab 切换 */}
+        <div className="fd-toolbar__tabs">
+          <button
+            type="button"
+            className={`fd-toolbar__tab ${designerTab === 'flow' ? 'fd-toolbar__tab--active' : ''}`}
+            onClick={() => setDesignerTab('flow')}
+          >
+            <Workflow size={14} />
+            流程设计
+          </button>
+          <button
+            type="button"
+            className={`fd-toolbar__tab ${designerTab === 'form' ? 'fd-toolbar__tab--active' : ''}`}
+            onClick={() => setDesignerTab('form')}
+          >
+            <FileText size={14} />
+            表单设计
+          </button>
+        </div>
+
         <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
           导出
         </Button>
@@ -310,21 +339,33 @@ export default function WorkflowDesignerPage() {
         </Button>
       </div>
 
-      {/* 画布 */}
-      <div className="fd-canvas">
-        <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
-          <FlowRenderer
-            process={process}
-            onEditNode={handleEditNode}
-            onDeleteNode={handleDeleteNode}
-            onAddNodeAfter={handleAddNodeAfter}
-            onAddNodeInBranch={handleAddNodeInBranch}
-            onAddBranch={handleAddBranch}
-            onRemoveBranch={handleRemoveBranch}
-            onEditBranch={handleEditBranch}
+      {/* 流程设计画布 */}
+      {designerTab === 'flow' && (
+        <div className="fd-canvas">
+          <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
+            <FlowRenderer
+              process={process}
+              onEditNode={handleEditNode}
+              onDeleteNode={handleDeleteNode}
+              onAddNodeAfter={handleAddNodeAfter}
+              onAddNodeInBranch={handleAddNodeInBranch}
+              onAddBranch={handleAddBranch}
+              onRemoveBranch={handleRemoveBranch}
+              onEditBranch={handleEditBranch}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 表单设计器 */}
+      {designerTab === 'form' && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <FormDesigner
+            fields={localFormFields}
+            onChange={setLocalFormFields}
           />
         </div>
-      </div>
+      )}
 
       {/* 节点配置抽屉 */}
       <NodeConfigDrawer

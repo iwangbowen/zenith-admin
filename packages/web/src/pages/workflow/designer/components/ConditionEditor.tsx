@@ -15,7 +15,7 @@ import { OPERATOR_LABELS } from '../constants';
 interface FormField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'date' | 'select';
+  type: string;
   options?: string[];
 }
 

@@ -515,13 +515,48 @@ export interface WorkflowFlowData {
   process?: Record<string, unknown>;
 }
 
+// 表单字段类型
+export type WorkflowFormFieldType =
+  | 'text'          // 单行文本
+  | 'textarea'      // 多行文本
+  | 'number'        // 数字
+  | 'date'          // 日期
+  | 'dateRange'     // 日期区间
+  | 'select'        // 单选
+  | 'multiSelect'   // 多选
+  | 'amount'        // 金额
+  | 'attachment'    // 附件
+  | 'image'         // 图片
+  | 'contact'       // 联系人（人员选择）
+  | 'department'    // 部门选择
+  | 'detail'        // 明细/表格
+  | 'description'   // 说明文字
+  | 'serialNumber'; // 流水号
+
+// 字段显隐条件
+export interface WorkflowFieldVisibilityCondition {
+  field: string;
+  operator: 'eq' | 'neq' | 'in' | 'contains';
+  value: unknown;
+}
+
 // 表单字段配置
 export interface WorkflowFormField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'date' | 'select';
+  type: WorkflowFormFieldType;
   required?: boolean;
-  options?: string[];  // select 类型的选项
+  placeholder?: string;
+  options?: string[];              // select/multiSelect 的选项
+  defaultValue?: unknown;
+  visibilityCondition?: WorkflowFieldVisibilityCondition;
+  children?: WorkflowFormField[];  // 明细子字段
+  precision?: number;              // 数字/金额精度
+  currency?: string;               // 金额币种
+  dateFormat?: string;             // 日期格式
+  maxCount?: number;               // 附件/图片限制数
+  description?: string;            // 说明文字内容
+  serialPrefix?: string;           // 流水号前缀
 }
 
 export interface WorkflowDefinition {

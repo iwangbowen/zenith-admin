@@ -390,13 +390,35 @@ export const workflowNodeConfigSchema = z.object({
   isDefault: z.boolean().optional(),
 });
 
-export const workflowFormFieldSchema = z.object({
-  key: z.string().min(1, '字段 key 不能为空'),
-  label: z.string().min(1, '字段标签不能为空'),
-  type: z.enum(['text', 'textarea', 'number', 'date', 'select']),
-  required: z.boolean().optional(),
-  options: z.array(z.string()).optional(),
+export const workflowFieldVisibilityConditionSchema = z.object({
+  field: z.string().min(1),
+  operator: z.enum(['eq', 'neq', 'in', 'contains']),
+  value: z.unknown(),
 });
+
+export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.object({
+    key: z.string().min(1, '字段 key 不能为空'),
+    label: z.string().min(1, '字段标签不能为空'),
+    type: z.enum([
+      'text', 'textarea', 'number', 'date', 'dateRange',
+      'select', 'multiSelect', 'amount', 'attachment', 'image',
+      'contact', 'department', 'detail', 'description', 'serialNumber',
+    ]),
+    required: z.boolean().optional(),
+    placeholder: z.string().optional(),
+    options: z.array(z.string()).optional(),
+    defaultValue: z.unknown().optional(),
+    visibilityCondition: workflowFieldVisibilityConditionSchema.optional(),
+    children: z.array(workflowFormFieldSchema).optional(),
+    precision: z.number().int().min(0).max(6).optional(),
+    currency: z.string().optional(),
+    dateFormat: z.string().optional(),
+    maxCount: z.number().int().min(1).optional(),
+    description: z.string().optional(),
+    serialPrefix: z.string().optional(),
+  })
+);
 
 export const createWorkflowDefinitionSchema = z.object({
   name: z.string().min(1, '流程名称不能为空').max(64),

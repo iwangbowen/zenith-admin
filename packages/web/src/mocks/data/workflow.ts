@@ -67,9 +67,10 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     flowData: EXPENSE_FLOW_DATA,
     formFields: [
       { key: 'expenseType', label: '报销类型', type: 'select', required: true, options: ['差旅费', '交通费', '餐饮费', '办公用品', '其他'] },
-      { key: 'amount', label: '报销金额（元）', type: 'number', required: true },
+      { key: 'amount', label: '报销金额', type: 'amount', required: true, currency: 'CNY', precision: 2 },
       { key: 'occurDate', label: '发生日期', type: 'date', required: true },
       { key: 'description', label: '费用说明', type: 'textarea', required: true },
+      { key: 'receipts', label: '票据附件', type: 'attachment', maxCount: 10 },
     ],
     status: 'published',
     version: 2,
@@ -87,8 +88,10 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     formFields: [
       { key: 'itemName', label: '采购物品', type: 'text', required: true },
       { key: 'quantity', label: '数量', type: 'number', required: true },
-      { key: 'estimatedCost', label: '预估金额（元）', type: 'number', required: true },
+      { key: 'estimatedCost', label: '预估金额', type: 'amount', required: true, currency: 'CNY', precision: 2 },
       { key: 'purpose', label: '用途说明', type: 'textarea', required: true },
+      { key: 'tags', label: '物品标签', type: 'multiSelect', options: ['办公用品', '电子设备', '家具', '软件', '其他'] },
+      { key: 'photos', label: '参考图片', type: 'image', maxCount: 5 },
     ],
     status: 'draft',
     version: 1,

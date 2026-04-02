@@ -490,6 +490,41 @@
   font-size: 13px;
 }
 
+/* ─── 设计器 Tab 切换 ─────────────────────────────────────────────── */
+
+.fd-toolbar__tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--semi-color-fill-0);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.fd-toolbar__tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--semi-color-text-2);
+  transition: all 0.15s;
+}
+
+.fd-toolbar__tab:hover {
+  color: var(--semi-color-text-0);
+}
+
+.fd-toolbar__tab--active {
+  background: var(--semi-color-bg-0);
+  color: var(--semi-color-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
 /* ─── 节点卡片（button 版本） ──────────────────────────────────────── */
 
 button.fd-node-card {
