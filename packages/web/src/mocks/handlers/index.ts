@@ -23,6 +23,7 @@ import { apiTokensHandlers } from './api-tokens';
 import { tenantsHandlers } from './tenants';
 import { cacheHandlers } from './cache';
 import { messageTemplatesHandlers } from './message-templates';
+import { workflowHandlers } from './workflow';
 
 export const handlers = [
   ...authHandlers,
@@ -50,4 +51,5 @@ export const handlers = [
   ...tenantsHandlers,
   ...cacheHandlers,
   ...messageTemplatesHandlers,
+  ...workflowHandlers,
 ];
