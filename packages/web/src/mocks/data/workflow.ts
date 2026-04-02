@@ -67,10 +67,21 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     flowData: EXPENSE_FLOW_DATA,
     formFields: [
       { key: 'expenseType', label: '报销类型', type: 'select', required: true, options: ['差旅费', '交通费', '餐饮费', '办公用品', '其他'] },
-      { key: 'amount', label: '报销金额', type: 'amount', required: true, currency: 'CNY', precision: 2 },
-      { key: 'occurDate', label: '发生日期', type: 'date', required: true },
-      { key: 'description', label: '费用说明', type: 'textarea', required: true },
-      { key: 'receipts', label: '票据附件', type: 'attachment', maxCount: 10 },
+      {
+        key: 'row_amount_date', label: '金额与日期', type: 'row',
+        columns: [
+          { span: 12, fields: [{ key: 'amount', label: '报销金额', type: 'amount', required: true, currency: 'CNY', precision: 2 }] },
+          { span: 12, fields: [{ key: 'occurDate', label: '发生日期', type: 'date', required: true }] },
+        ],
+      },
+      { key: 'divider_1', label: '分割线', type: 'divider' },
+      {
+        key: 'group_detail', label: '报销详情', type: 'group', title: '报销详情',
+        children: [
+          { key: 'description', label: '费用说明', type: 'textarea', required: true },
+          { key: 'receipts', label: '票据附件', type: 'attachment', maxCount: 10 },
+        ],
+      },
     ],
     status: 'published',
     version: 2,
