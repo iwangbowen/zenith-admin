@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Avatar,
   Button,
   Descriptions,
   Form,
@@ -8,7 +9,6 @@ import {
   Select,
   Space,
   Spin,
-  Steps,
   Table,
   Tag,
   Toast,
@@ -16,7 +16,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Eye, FileInput, Plus, RotateCcw, Search } from 'lucide-react';
+import { CheckCircle2, Clock, Eye, FileInput, Mail, Plus, RotateCcw, Search, XCircle } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowInstance, WorkflowTask, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -44,6 +44,114 @@ const TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   rejected: { text: '已驳回', color: 'red' },
   skipped: { text: '已跳过', color: 'grey' },
 };
+
+/** 飞书风格审批时间线 */
+function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTask[] }>) {
+  return (
+    <div style={{ paddingLeft: 4 }}>
+      {tasks.map((task, idx) => {
+        const isLast = idx === tasks.length - 1;
+        const isApproved = task.status === 'approved';
+        const isRejected = task.status === 'rejected';
+        const isPending = task.status === 'pending';
+        const isSkipped = task.status === 'skipped';
+        const isCc = task.nodeType === 'ccNode';
+
+        // 图标颜色
+        let iconColor = 'var(--semi-color-primary)';
+        if (isApproved) iconColor = '#0dc87c';
+        else if (isRejected) iconColor = '#ff4d4f';
+        else if (isSkipped) iconColor = '#c0c0c0';
+
+        // 状态图标
+        let StatusIcon = Clock;
+        if (isApproved) StatusIcon = CheckCircle2;
+        else if (isRejected) StatusIcon = XCircle;
+        else if (isCc) StatusIcon = Mail;
+
+        // 操作文字
+        let actionText = '';
+        if (isApproved && !isCc) actionText = '已同意';
+        else if (isRejected) actionText = '已驳回';
+        else if (isSkipped) actionText = '已跳过';
+        else if (isCc && isApproved) actionText = '已抄送';
+        else if (isPending) actionText = '待处理';
+
+        return (
+          <div key={task.id} style={{ display: 'flex', gap: 12, position: 'relative' }}>
+            {/* 左侧时间线 */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+              <div style={{
+                width: 28,
+                height: 28,
+                borderRadius: '50%',
+                backgroundColor: isSkipped ? '#f0f0f0' : `${iconColor}18`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <StatusIcon size={15} color={iconColor} />
+              </div>
+              {!isLast && (
+                <div style={{ width: 2, flex: 1, minHeight: 20, backgroundColor: 'var(--semi-color-border)', margin: '4px 0' }} />
+              )}
+            </div>
+
+            {/* 右侧内容 */}
+            <div style={{ flex: 1, paddingBottom: isLast ? 0 : 16 }}>
+              {/* 节点名称行 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <Typography.Text strong style={{ fontSize: 13 }}>{task.nodeName}</Typography.Text>
+                {actionText && (
+                  <Tag
+                    color={TASK_STATUS_MAP[task.status]?.color ?? 'grey'}
+                    size="small"
+                    style={{ flexShrink: 0 }}
+                  >
+                    {actionText}
+                  </Tag>
+                )}
+              </div>
+
+              {/* 审批人行 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: task.comment ? 6 : 0 }}>
+                <Avatar
+                  size="extra-extra-small"
+                  style={{ backgroundColor: isSkipped ? '#c0c0c0' : 'var(--semi-color-primary-light-active)', flexShrink: 0 }}
+                  src={task.assigneeAvatar ?? undefined}
+                >
+                  {(task.assigneeName ?? '?').charAt(0)}
+                </Avatar>
+                <Typography.Text size="small" type="tertiary">
+                  {task.assigneeName ?? '未指定'}
+                </Typography.Text>
+                {task.actionAt && (
+                  <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto' }}>
+                    {formatDateTime(task.actionAt)}
+                  </Typography.Text>
+                )}
+              </div>
+
+              {/* 审批意见 */}
+              {task.comment && (
+                <div style={{
+                  marginTop: 6,
+                  padding: '8px 10px',
+                  backgroundColor: 'var(--semi-color-fill-0)',
+                  borderRadius: 6,
+                  borderLeft: `3px solid ${iconColor}`,
+                }}>
+                  <Typography.Text size="small" type="secondary">{task.comment}</Typography.Text>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function InstanceDetailDrawer({
   instanceId,
@@ -122,36 +230,8 @@ function InstanceDetailDrawer({
           )}
           {data.tasks && data.tasks.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <Typography.Title heading={6} style={{ marginBottom: 8 }}>审批记录</Typography.Title>
-              <Steps
-                direction="vertical"
-                type="basic"
-                current={data.tasks.filter(t => t.status !== 'pending').length}
-                style={{ padding: '0 8px' }}
-              >
-                {data.tasks.map((task: WorkflowTask) => {
-                  const ts = TASK_STATUS_MAP[task.status];
-                  const approved = task.status === 'approved';
-                  const rejected = task.status === 'rejected';
-                  let stepStatus: 'finish' | 'error' | 'process' = 'process';
-                  if (approved) { stepStatus = 'finish'; } else if (rejected) { stepStatus = 'error'; }
-                  return (
-                    <Steps.Step
-                      key={task.id}
-                      title={task.nodeName}
-                      status={stepStatus}
-                      description={
-                        <div>
-                          <div>审批人：{task.assigneeName ?? '未指定'}</div>
-                          {task.comment && <div>意见：{task.comment}</div>}
-                          {task.actionAt && <div>时间：{formatDateTime(task.actionAt)}</div>}
-                          <Tag color={ts.color} style={{ marginTop: 4 }}>{ts.text}</Tag>
-                        </div>
-                      }
-                    />
-                  );
-                })}
-              </Steps>
+              <Typography.Title heading={6} style={{ marginBottom: 12 }}>审批记录</Typography.Title>
+              <ApprovalTimeline tasks={data.tasks} />
             </div>
           )}
         </div>
