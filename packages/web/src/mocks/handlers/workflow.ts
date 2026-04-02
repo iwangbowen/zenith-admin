@@ -163,6 +163,36 @@ export const workflowHandlers = [
     return ok({ list: paged, total, page, pageSize });
   }),
 
+  // 全局流程监控（管理员看板）— 必须在 /instances/:id 之前注册，避免被参数路由捕获
+  http.get('/api/workflows/instances/all', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 20;
+    const keyword = url.searchParams.get('keyword') ?? '';
+    const status = url.searchParams.get('status') ?? '';
+
+    const stats = {
+      total: mockWorkflowInstances.length,
+      running:   mockWorkflowInstances.filter(i => i.status === 'running').length,
+      approved:  mockWorkflowInstances.filter(i => i.status === 'approved').length,
+      rejected:  mockWorkflowInstances.filter(i => i.status === 'rejected').length,
+      withdrawn: mockWorkflowInstances.filter(i => i.status === 'withdrawn').length,
+    };
+
+    let list = [...mockWorkflowInstances];
+    if (keyword) list = list.filter(i => i.title.includes(keyword) || (i.definitionName ?? '').includes(keyword));
+    if (status) list = list.filter(i => i.status === status);
+
+    const total = list.length;
+    const paged = list
+      .slice()
+      .sort((a, b) => b.id - a.id)
+      .slice((page - 1) * pageSize, page * pageSize)
+      .map(i => ({ ...i, tasks: undefined }));
+
+    return ok({ stats, list: paged, total, page, pageSize });
+  }),
+
   // 获取流程实例详情（含任务列表）
   http.get('/api/workflows/instances/:id', ({ params }) => {
     const inst = mockWorkflowInstances.find(i => i.id === Number(params.id));

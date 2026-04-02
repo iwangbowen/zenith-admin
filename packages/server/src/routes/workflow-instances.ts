@@ -172,6 +172,70 @@ router.get('/instances/pending-mine', guard({ permission: 'workflow:task:handle'
   });
 });
 
+/** GET /instances/all — 管理员：全局流程实例列表（含筛选、统计），必须在 /:id 之前注册 */
+router.get('/instances/all', guard({ permission: 'workflow:instance:monitor' }), async (c) => {
+  const page = Number(c.req.query('page') ?? 1);
+  const pageSize = Number(c.req.query('pageSize') ?? 20);
+  const status = c.req.query('status');
+  const keyword = c.req.query('keyword');
+
+  const conditions = [];
+  if (status) conditions.push(eq(workflowInstances.status, status as 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn'));
+  if (keyword) {
+    const like = `%${keyword}%`;
+    conditions.push(sql`(${workflowInstances.title} ilike ${like} or ${workflowDefinitions.name} ilike ${like})`);
+  }
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const statRows = await db
+    .select({ status: workflowInstances.status, cnt: sql<number>`count(*)::int` })
+    .from(workflowInstances)
+    .groupBy(workflowInstances.status);
+
+  const stats: Record<string, number> = { total: 0, running: 0, approved: 0, rejected: 0, withdrawn: 0 };
+  for (const r of statRows) {
+    stats[r.status] = r.cnt;
+    stats.total += r.cnt;
+  }
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(workflowInstances)
+    .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+    .where(where);
+
+  const rows = await db
+    .select({
+      inst: workflowInstances,
+      definitionName: workflowDefinitions.name,
+      initiatorName: users.nickname,
+      initiatorAvatar: users.avatar,
+    })
+    .from(workflowInstances)
+    .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+    .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+    .where(where)
+    .orderBy(desc(workflowInstances.id))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  return c.json({
+    code: 0,
+    message: 'ok',
+    data: {
+      stats,
+      list: rows.map(r => toInstance(r.inst, {
+        definitionName: r.definitionName,
+        initiatorName: r.initiatorName,
+        initiatorAvatar: r.initiatorAvatar,
+      })),
+      total,
+      page,
+      pageSize,
+    },
+  });
+});
+
 /** GET /instances/:id — 实例详情（含任务列表） */
 router.get('/instances/:id', guard({ permission: 'workflow:instance:list' }), async (c) => {
   const user = c.get('user');
