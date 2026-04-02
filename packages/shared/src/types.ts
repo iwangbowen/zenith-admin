@@ -531,13 +531,21 @@ export type WorkflowFormFieldType =
   | 'department'    // 部门选择
   | 'detail'        // 明细/表格
   | 'description'   // 说明文字
-  | 'serialNumber'; // 流水号
+  | 'serialNumber'  // 流水号
+  | 'row'           // 栅格行
+  | 'divider'       // 分割线
+  | 'group';        // 分组标题
 
 // 字段显隐条件
 export interface WorkflowFieldVisibilityCondition {
   field: string;
   operator: 'eq' | 'neq' | 'in' | 'contains';
   value: unknown;
+}
+
+export interface WorkflowFormFieldColumn {
+  span: number;          // 1-24 grid span
+  fields: WorkflowFormField[];
 }
 
 // 表单字段配置
@@ -557,6 +565,9 @@ export interface WorkflowFormField {
   maxCount?: number;               // 附件/图片限制数
   description?: string;            // 说明文字内容
   serialPrefix?: string;           // 流水号前缀
+  // Layout fields
+  columns?: WorkflowFormFieldColumn[];  // for 'row' type
+  title?: string;                       // for 'group' type header
 }
 
 export interface WorkflowDefinition {

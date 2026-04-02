@@ -404,6 +404,7 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
       'text', 'textarea', 'number', 'date', 'dateRange',
       'select', 'multiSelect', 'amount', 'attachment', 'image',
       'contact', 'department', 'detail', 'description', 'serialNumber',
+      'row', 'divider', 'group',
     ]),
     required: z.boolean().optional(),
     placeholder: z.string().optional(),
@@ -417,6 +418,11 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
     maxCount: z.number().int().min(1).optional(),
     description: z.string().optional(),
     serialPrefix: z.string().optional(),
+    columns: z.array(z.object({
+      span: z.number().min(1).max(24),
+      fields: z.array(workflowFormFieldSchema),
+    })).optional(),
+    title: z.string().optional(),
   })
 );
 

@@ -35,6 +35,7 @@ export default function FieldConfigPanel({
   const isAmount = field.type === 'amount';
   const isDate = field.type === 'date' || field.type === 'dateRange';
   const isFileType = field.type === 'attachment' || field.type === 'image';
+  const isLayout = field.type === 'row' || field.type === 'divider' || field.type === 'group';
 
   return (
     <div className="fd-form-config">
@@ -79,8 +80,8 @@ export default function FieldConfigPanel({
             />
           </div>
 
-          {/* 占位文字（非说明文字、流水号） */}
-          {!isDescription && !isSerialNumber && (
+          {/* 占位文字（非说明文字、流水号、布局类型） */}
+          {!isDescription && !isSerialNumber && !isLayout && (
             <div className="fd-form-config__field">
               <Typography.Text strong size="small">提示文字</Typography.Text>
               <Input
@@ -91,8 +92,8 @@ export default function FieldConfigPanel({
             </div>
           )}
 
-          {/* 必填开关（非说明文字、流水号） */}
-          {!isDescription && !isSerialNumber && (
+          {/* 必填开关（非说明文字、流水号、布局类型） */}
+          {!isDescription && !isSerialNumber && !isLayout && (
             <div className="fd-form-config__field fd-form-config__field--inline">
               <Typography.Text strong size="small">必填</Typography.Text>
               <Switch
@@ -201,6 +202,74 @@ export default function FieldConfigPanel({
                 items={field.children ?? []}
                 onChange={(children) => onChange({ children })}
               />
+            </div>
+          )}
+
+          {/* --- 分栏设置 --- */}
+          {field.type === 'row' && (
+            <div className="fd-form-config__section" style={{ borderTop: 'none', padding: 0, marginTop: 12 }}>
+              <div className="fd-form-config__section-title">分栏设置</div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small" style={{ marginBottom: 4, display: 'block' }}>列数</Typography.Text>
+                <InputNumber
+                  min={2} max={4}
+                  value={field.columns?.length || 2}
+                  onChange={(val) => {
+                    const num = Number(val) || 2;
+                    const existing = field.columns || [];
+                    const newCols = Array.from({ length: num }, (_, i) =>
+                      existing[i] || { span: Math.floor(24 / num), fields: [] }
+                    );
+                    onChange({ columns: newCols });
+                  }}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              {field.columns?.map((col, i) => (
+                <div className="fd-form-config__field" key={i}>
+                  <Typography.Text size="small" style={{ marginBottom: 4, display: 'block' }}>第 {i + 1} 列宽度 (24栅格)</Typography.Text>
+                  <InputNumber
+                    min={1} max={24}
+                    value={col.span}
+                    onChange={(val) => {
+                      const newCols = [...(field.columns || [])];
+                      newCols[i] = { ...newCols[i], span: Number(val) || 1 };
+                      onChange({ columns: newCols });
+                    }}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              ))}
+              <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12, marginTop: 4 }}>
+                总宽度: {field.columns?.reduce((s, c) => s + c.span, 0) || 0} / 24
+                {(field.columns?.reduce((s, c) => s + c.span, 0) || 0) !== 24 && (
+                  <span style={{ color: 'var(--semi-color-danger)', marginLeft: 8 }}>⚠ 建议总宽度为24</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* --- 分割线设置 --- */}
+          {field.type === 'divider' && (
+            <div className="fd-form-config__field" style={{ marginTop: 12 }}>
+              <div style={{ color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+                分割线用于视觉分隔表单区域，除了上方可配置的"名称"外无需额外配置。
+              </div>
+            </div>
+          )}
+
+          {/* --- 分组设置 --- */}
+          {field.type === 'group' && (
+            <div className="fd-form-config__section" style={{ borderTop: 'none', padding: 0, marginTop: 12 }}>
+              <div className="fd-form-config__section-title">分组设置</div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small" style={{ marginBottom: 4, display: 'block' }}>分组标题</Typography.Text>
+                <Input
+                  value={field.title || ''}
+                  onChange={(val) => onChange({ title: val })}
+                  placeholder="输入分组标题"
+                />
+              </div>
             </div>
           )}
         </div>

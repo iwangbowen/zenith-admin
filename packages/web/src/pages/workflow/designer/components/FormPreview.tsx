@@ -1,7 +1,7 @@
 /**
  * 表单预览组件 — 在 Modal 中渲染真实表单控件预览
  */
-import { Modal, Form, Select, DatePicker, InputNumber, Upload, Button, Tag, Typography } from '@douyinfe/semi-ui';
+import { Modal, Form, Select, DatePicker, InputNumber, Upload, Button, Tag, Typography, Row, Col, Divider } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
 import type { WorkflowFormField } from '@zenith/shared';
 import { CURRENCY_OPTIONS } from '../form-types';
@@ -231,6 +231,42 @@ function PreviewField({ field }: Readonly<{ field: WorkflowFormField }>) {
         </div>
       );
     }
+
+    case 'row':
+      return (
+        <Row gutter={16}>
+          {(field.columns || []).map((col, ci) => (
+            // eslint-disable-next-line react/no-array-index-key
+            <Col span={col.span} key={ci}>
+              {(col.fields || []).map(childField => (
+                <PreviewField key={childField.key} field={childField} />
+              ))}
+            </Col>
+          ))}
+        </Row>
+      );
+
+    case 'divider':
+      return <Divider style={{ margin: '16px 0' }} />;
+
+    case 'group':
+      return (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            fontSize: 15,
+            fontWeight: 600,
+            color: 'var(--semi-color-text-0)',
+            borderBottom: '1px solid var(--semi-color-border)',
+            paddingBottom: 8,
+            marginBottom: 16,
+          }}>
+            {field.title || field.label}
+          </div>
+          {(field.children || []).map(childField => (
+            <PreviewField key={childField.key} field={childField} />
+          ))}
+        </div>
+      );
 
     default:
       return (

@@ -36,6 +36,30 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
 
   // 类型特定默认值
   switch (type) {
+    case 'row':
+      return {
+        key: `field_${Date.now()}`,
+        label: '分栏',
+        type: 'row',
+        columns: [
+          { span: 12, fields: [] },
+          { span: 12, fields: [] },
+        ],
+      } as WorkflowFormField;
+    case 'divider':
+      return {
+        key: `field_${Date.now()}`,
+        label: '分割线',
+        type: 'divider',
+      } as WorkflowFormField;
+    case 'group':
+      return {
+        key: `field_${Date.now()}`,
+        label: '分组',
+        type: 'group',
+        title: '分组标题',
+        children: [],
+      } as WorkflowFormField;
     case 'select':
     case 'multiSelect':
       field.options = ['选项1', '选项2', '选项3'];

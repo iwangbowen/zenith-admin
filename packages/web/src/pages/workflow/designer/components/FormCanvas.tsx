@@ -160,6 +160,7 @@ export default function FormCanvas({
                 isDropTarget && 'fd-form-canvas__item--drop-target',
               ].filter(Boolean).join(' ')}
               draggable
+              data-type={field.type}
               onClick={(e) => { e.stopPropagation(); onSelect(field.key); }}
               onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={(e) => handleDragOver(e, index)}
@@ -179,14 +180,72 @@ export default function FormCanvas({
                   {field.required && <Asterisk size={10} style={{ color: 'var(--semi-color-danger)' }} />}
                   {field.label}
                 </div>
-                <div className="fd-form-canvas__item-meta">
-                  <Tag size="small" color="blue">{info?.label ?? field.type}</Tag>
-                  {field.placeholder && (
-                    <Typography.Text type="quaternary" size="small" ellipsis style={{ maxWidth: 160 }}>
-                      {field.placeholder}
-                    </Typography.Text>
-                  )}
-                </div>
+
+                {(field.type as string) === 'row' && (
+                  <div className="fd-form-canvas__row-preview">
+                    {field.columns?.map((col, ci) => {
+                      // eslint-disable-next-line react/no-array-index-key
+                      return (
+                        <div key={ci} className="fd-form-canvas__row-col" style={{ flex: col.span }}>
+                          <span className="fd-form-canvas__row-col-label">{col.span}/{24}</span>
+                        {col.fields?.length > 0 ? (
+                          col.fields.map((f: any) => (
+                            <button
+                              type="button"
+                              key={f.key}
+                              className={`fd-form-canvas__row-col-field ${selectedKey === f.key ? 'fd-form-canvas__row-col-field--selected' : ''}`}
+                              onClick={(e) => { e.stopPropagation(); onSelect(f.key); }}
+                            >
+                              {f.label}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="fd-form-canvas__row-col-empty">拖入字段</div>
+                        )}
+                      </div>
+                    );
+                    })}
+                  </div>
+                )}
+
+                {(field.type as string) === 'divider' && (
+                  <div className="fd-form-canvas__divider-preview">
+                    <hr />
+                  </div>
+                )}
+
+                {(field.type as string) === 'group' && (
+                  <div className="fd-form-canvas__group-preview">
+                    <div className="fd-form-canvas__group-title">{field.title || '分组标题'}</div>
+                    <div className="fd-form-canvas__group-body">
+                      {(field.children && field.children.length > 0) ? (
+                        field.children.map((f) => (
+                          <button
+                            type="button"
+                            key={f.key}
+                            className={`fd-form-canvas__group-child ${selectedKey === f.key ? 'fd-form-canvas__group-child--selected' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); onSelect(f.key); }}
+                          >
+                            {f.label}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="fd-form-canvas__group-empty">拖入字段</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {(field.type as string) !== 'row' && (field.type as string) !== 'divider' && (field.type as string) !== 'group' && (
+                  <div className="fd-form-canvas__item-meta">
+                    <Tag size="small" color="blue">{info?.label ?? field.type}</Tag>
+                    {field.placeholder && (
+                      <Typography.Text type="quaternary" size="small" ellipsis style={{ maxWidth: 160 }}>
+                        {field.placeholder}
+                      </Typography.Text>
+                    )}
+                  </div>
+                )}
               </div>
 
               <button

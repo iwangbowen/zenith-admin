@@ -347,3 +347,107 @@
 .fd-detail-children__delete:hover {
   background: var(--semi-color-danger-light-default);
 }
+
+/* ===== Layout Components in Canvas ===== */
+
+/* Row (分栏) preview in canvas */
+.fd-form-canvas__row-preview {
+  display: flex;
+  gap: 4px;
+  min-height: 52px;
+  margin-top: 4px;
+}
+
+.fd-form-canvas__row-col {
+  background: var(--semi-color-fill-0);
+  border: 1px dashed var(--semi-color-border);
+  border-radius: 4px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 44px;
+}
+
+.fd-form-canvas__row-col-label {
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+  text-align: center;
+  line-height: 1;
+}
+
+.fd-form-canvas__row-col-field {
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--semi-color-text-1);
+}
+
+.fd-form-canvas__row-col-empty {
+  color: var(--semi-color-text-3);
+  font-size: 12px;
+  text-align: center;
+  padding: 8px 0;
+}
+
+/* Divider (分割线) preview in canvas */
+.fd-form-canvas__divider-preview {
+  padding: 4px 0;
+}
+
+.fd-form-canvas__divider-preview hr {
+  border: none;
+  border-top: 1px solid var(--semi-color-border);
+  margin: 0;
+}
+
+/* Group (分组) preview in canvas */
+.fd-form-canvas__group-preview {
+  margin-top: 4px;
+}
+
+.fd-form-canvas__group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+  border-bottom: 1px solid var(--semi-color-border);
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+
+.fd-form-canvas__group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.fd-form-canvas__group-child {
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--semi-color-text-1);
+}
+
+.fd-form-canvas__group-empty {
+  color: var(--semi-color-text-3);
+  font-size: 12px;
+  text-align: center;
+  padding: 8px 0;
+  border: 1px dashed var(--semi-color-border);
+  border-radius: 4px;
+}
+
+/* Layout item styling in canvas - wider for layout containers */
+.fd-form-canvas__item[data-type="row"],
+.fd-form-canvas__item[data-type="group"] {
+  background: var(--semi-color-bg-1);
+}
+
+.fd-form-canvas__item[data-type="divider"] .fd-form-canvas__item-body {
+  padding: 0 4px;
+}
