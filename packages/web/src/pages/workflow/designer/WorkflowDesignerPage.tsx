@@ -3,8 +3,8 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Form, Modal, Spin, Toast, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, Download, FileText, Minus, Plus, RotateCcw, Save, Upload, Workflow } from 'lucide-react';
+import { Button, Spin, Toast, Typography } from '@douyinfe/semi-ui';
+import { ArrowLeft, Download, Eye, Minus, Plus, RotateCcw, Save, Send, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowFormField } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -28,6 +28,10 @@ import FlowRenderer from './components/FlowRenderer';
 import NodeConfigDrawer from './components/NodeConfigDrawer';
 import ConditionEditor from './components/ConditionEditor';
 import FormDesigner from './components/FormDesigner';
+import FormPreview from './components/FormPreview';
+import BasicInfoPanel from './components/BasicInfoPanel';
+import AdvancedSettingsPanel, { DEFAULT_ADVANCED_SETTINGS } from './components/AdvancedSettingsPanel';
+import type { AdvancedSettingsData } from './components/AdvancedSettingsPanel';
 import './styles/flow-designer.css';
 
 // ─── 选项数据类型 ─────────────────────────────────────────────────────
@@ -46,7 +50,6 @@ export default function WorkflowDesignerPage() {
   const [saving, setSaving] = useState(false);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [process, setProcess] = useState<FlowProcess>(createDefaultProcess());
-  const [metaModalVisible, setMetaModalVisible] = useState(false);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [roles, setRoles] = useState<RoleOption[]>([]);
 
@@ -61,11 +64,21 @@ export default function WorkflowDesignerPage() {
   // 缩放
   const [zoom, setZoom] = useState(100);
 
-  // 设计器模式：流程设计 / 表单设计
-  const [designerTab, setDesignerTab] = useState<'flow' | 'form'>('flow');
+  // 步骤导航：① 基础信息 → ② 表单设计 → ③ 流程设计 → ④ 更多设置
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
 
   // 表单字段
   const [localFormFields, setLocalFormFields] = useState<WorkflowFormField[]>([]);
+
+  // 预览
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  // 更多设置
+  const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettingsData>(DEFAULT_ADVANCED_SETTINGS);
+
+  // 基础信息（内联编辑）
+  const [metaName, setMetaName] = useState('');
+  const [metaDesc, setMetaDesc] = useState('');
 
   // 同步表单字段到视图
   const formFields: Array<{ key: string; label: string; type: WorkflowFormField['type']; options?: string[] }> =
@@ -79,6 +92,8 @@ export default function WorkflowDesignerPage() {
       request.get<WorkflowDefinition>(`/api/workflows/definitions/${id}`).then(res => {
         if (res.code === 0 && res.data) {
           setDefinition(res.data);
+          setMetaName(res.data.name);
+          setMetaDesc(res.data.description ?? '');
           if (res.data.formFields) setLocalFormFields(res.data.formFields);
           const fd = res.data.flowData;
           if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
@@ -212,13 +227,14 @@ export default function WorkflowDesignerPage() {
   // ─── 保存 ─────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (isNew) {
-      setMetaModalVisible(true);
+    if (!metaName.trim()) {
+      Toast.warning('请先填写流程名称');
+      setCurrentStep(1);
       return;
     }
     await doSave({
-      name: definition?.name ?? '未命名流程',
-      description: definition?.description ?? '',
+      name: metaName,
+      description: metaDesc || null,
     });
   };
 
@@ -246,7 +262,6 @@ export default function WorkflowDesignerPage() {
         if (isNew && res.data) {
           navigate(`/workflow/designer/${res.data.id}`, { replace: true });
         }
-        setMetaModalVisible(false);
         setDefinition(res.data ?? null);
       }
     } finally {
@@ -259,6 +274,22 @@ export default function WorkflowDesignerPage() {
   const handleZoomIn = () => setZoom(z => Math.min(z + 10, 200));
   const handleZoomOut = () => setZoom(z => Math.max(z - 10, 50));
   const handleZoomReset = () => setZoom(100);
+
+  // ─── 步骤导航标签 ──────────────────────────────────────────────────
+
+  const STEPS = [
+    { step: 1 as const, label: '基础信息' },
+    { step: 2 as const, label: '表单设计' },
+    { step: 3 as const, label: '流程设计' },
+    { step: 4 as const, label: '更多设置' },
+  ];
+
+  // ─── 基础信息回调 ─────────────────────────────────────────────────
+
+  const handleMetaFieldChange = useCallback((field: string, value: string) => {
+    if (field === 'name') setMetaName(value);
+    if (field === 'description') setMetaDesc(value);
+  }, []);
 
   // ─── 渲染 ─────────────────────────────────────────────────────────
 
@@ -287,60 +318,102 @@ export default function WorkflowDesignerPage() {
 
         <div className="fd-toolbar__title">
           <Typography.Title heading={6} style={{ margin: 0 }}>
-            {isNew ? '新建流程' : `设计流程：${definition?.name ?? ''}`}
+            {isNew ? '新建流程' : (metaName || definition?.name || '')}
           </Typography.Title>
-          {definition?.status === 'published' && (
-            <span style={{ fontSize: 12, color: 'var(--semi-color-success)', fontWeight: 400 }}>（已发布）</span>
+        </div>
+
+        {/* 步骤导航 */}
+        <div className="fd-steps-nav">
+          {STEPS.map(({ step, label }) => (
+            <button
+              type="button"
+              key={step}
+              className={`fd-steps-nav__item ${currentStep === step ? 'fd-steps-nav__item--active' : ''}`}
+              onClick={() => setCurrentStep(step)}
+            >
+              <span className="fd-steps-nav__number">{step}</span>
+              <span className="fd-steps-nav__label">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* 右侧操作 */}
+        <div className="fd-toolbar__actions">
+          {currentStep === 2 && (
+            <Button
+              icon={<Eye size={14} />}
+              type="tertiary"
+              theme="borderless"
+              onClick={() => setPreviewVisible(true)}
+            >
+              预览
+            </Button>
+          )}
+          {currentStep === 3 && (
+            <>
+              <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
+                导出
+              </Button>
+              <Button icon={<Upload size={14} />} type="tertiary" theme="borderless" onClick={handleImport} disabled={!isEditable}>
+                导入
+              </Button>
+              <div className="fd-toolbar__zoom">
+                <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomOut} />
+                <span>{zoom}%</span>
+                <Button icon={<Plus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomIn} />
+                <Button icon={<RotateCcw size={12} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomReset} />
+              </div>
+            </>
+          )}
+          <Button
+            icon={<Save size={14} />}
+            type="primary"
+            loading={saving}
+            onClick={() => void handleSave()}
+            disabled={!isEditable}
+          >
+            保存
+          </Button>
+          {definition?.status === 'draft' && (
+            <Button
+              icon={<Send size={14} />}
+              type="primary"
+              theme="solid"
+              onClick={async () => {
+                const res = await request.put(`/api/workflows/definitions/${id}/publish`);
+                if (res.code === 0) {
+                  Toast.success('发布成功');
+                  setDefinition(prev => prev ? { ...prev, status: 'published' } : prev);
+                }
+              }}
+            >
+              发布
+            </Button>
           )}
         </div>
-
-        {/* 设计器 Tab 切换 */}
-        <div className="fd-toolbar__tabs">
-          <button
-            type="button"
-            className={`fd-toolbar__tab ${designerTab === 'flow' ? 'fd-toolbar__tab--active' : ''}`}
-            onClick={() => setDesignerTab('flow')}
-          >
-            <Workflow size={14} />
-            流程设计
-          </button>
-          <button
-            type="button"
-            className={`fd-toolbar__tab ${designerTab === 'form' ? 'fd-toolbar__tab--active' : ''}`}
-            onClick={() => setDesignerTab('form')}
-          >
-            <FileText size={14} />
-            表单设计
-          </button>
-        </div>
-
-        <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
-          导出
-        </Button>
-        <Button icon={<Upload size={14} />} type="tertiary" theme="borderless" onClick={handleImport} disabled={!isEditable}>
-          导入
-        </Button>
-
-        <div className="fd-toolbar__zoom">
-          <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomOut} />
-          <span>{zoom}%</span>
-          <Button icon={<Plus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomIn} />
-          <Button icon={<RotateCcw size={12} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomReset} />
-        </div>
-
-        <Button
-          icon={<Save size={14} />}
-          type="primary"
-          loading={saving}
-          onClick={() => void handleSave()}
-          disabled={!isEditable}
-        >
-          保存
-        </Button>
       </div>
 
-      {/* 流程设计画布 */}
-      {designerTab === 'flow' && (
+      {/* 步骤 ① 基础信息 */}
+      {currentStep === 1 && (
+        <BasicInfoPanel
+          definition={definition}
+          isNew={isNew}
+          onFieldChange={handleMetaFieldChange}
+        />
+      )}
+
+      {/* 步骤 ② 表单设计 */}
+      {currentStep === 2 && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <FormDesigner
+            fields={localFormFields}
+            onChange={setLocalFormFields}
+          />
+        </div>
+      )}
+
+      {/* 步骤 ③ 流程设计画布 */}
+      {currentStep === 3 && (
         <div className="fd-canvas">
           <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
             <FlowRenderer
@@ -357,15 +430,20 @@ export default function WorkflowDesignerPage() {
         </div>
       )}
 
-      {/* 表单设计器 */}
-      {designerTab === 'form' && (
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <FormDesigner
-            fields={localFormFields}
-            onChange={setLocalFormFields}
-          />
-        </div>
+      {/* 步骤 ④ 更多设置 */}
+      {currentStep === 4 && (
+        <AdvancedSettingsPanel
+          settings={advancedSettings}
+          onChange={setAdvancedSettings}
+        />
       )}
+
+      {/* 表单预览 */}
+      <FormPreview
+        visible={previewVisible}
+        fields={localFormFields}
+        onClose={() => setPreviewVisible(false)}
+      />
 
       {/* 节点配置抽屉 */}
       <NodeConfigDrawer
@@ -387,22 +465,6 @@ export default function WorkflowDesignerPage() {
         onSave={handleSaveBranchConditions}
         onCancel={() => { setConditionEditorVisible(false); setEditingBranch(null); }}
       />
-
-      {/* 流程元信息弹窗（新建时填写名称） */}
-      <Modal
-        title="填写流程信息"
-        visible={metaModalVisible}
-        onCancel={() => setMetaModalVisible(false)}
-        onOk={() => {
-          const formEl = document.querySelector('#fd-meta-form') as HTMLFormElement | null;
-          if (formEl) {
-            // 使用 Semi Form 的 ref 方式
-          }
-        }}
-        okButtonProps={{ loading: saving }}
-      >
-        <MetaForm onSubmit={(meta) => void doSave(meta)} saving={saving} onCancel={() => setMetaModalVisible(false)} />
-      </Modal>
     </div>
   );
 }
@@ -423,24 +485,4 @@ function getDefaultName(type: FlowNodeType): string {
     routeBranch: '路由分支',
   };
   return map[type] ?? '节点';
-}
-
-interface MetaFormProps {
-  onSubmit: (meta: { name: string; description?: string | null }) => void;
-  saving: boolean;
-  onCancel: () => void;
-}
-
-function MetaForm({ onSubmit }: Readonly<MetaFormProps>) {
-  return (
-    <Form
-      onSubmit={(values: Record<string, unknown>) => {
-        onSubmit({ name: values.name as string, description: values.description as string | null });
-      }}
-    >
-      <Form.Input field="name" label="流程名称" rules={[{ required: true, message: '请输入流程名称' }]} />
-      <Form.TextArea field="description" label="描述" />
-      <Button htmlType="submit" type="primary" style={{ display: 'none' }}>提交</Button>
-    </Form>
-  );
 }

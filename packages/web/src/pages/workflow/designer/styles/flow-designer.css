@@ -476,10 +476,17 @@
 }
 
 .fd-toolbar__title {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.fd-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .fd-toolbar__zoom {
@@ -490,39 +497,83 @@
   font-size: 13px;
 }
 
-/* ─── 设计器 Tab 切换 ─────────────────────────────────────────────── */
+/* ─── 步骤导航 ────────────────────────────────────────────────────── */
 
-.fd-toolbar__tabs {
-  display: flex;
-  gap: 2px;
-  background: var(--semi-color-fill-0);
-  border-radius: 6px;
-  padding: 2px;
-}
-
-.fd-toolbar__tab {
+.fd-steps-nav {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 14px;
+  margin: 0 auto;
+}
+
+.fd-steps-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
   border: none;
-  border-radius: 4px;
+  border-radius: 20px;
   background: transparent;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
   color: var(--semi-color-text-2);
-  transition: all 0.15s;
+  transition: all 0.2s;
+  white-space: nowrap;
 }
 
-.fd-toolbar__tab:hover {
+.fd-steps-nav__item:hover {
   color: var(--semi-color-text-0);
+  background: var(--semi-color-fill-0);
 }
 
-.fd-toolbar__tab--active {
-  background: var(--semi-color-bg-0);
+.fd-steps-nav__item--active {
   color: var(--semi-color-primary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: var(--semi-color-primary-light-default);
+}
+
+.fd-steps-nav__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--semi-color-text-3);
+  background: var(--semi-color-fill-1);
+  transition: all 0.2s;
+}
+
+.fd-steps-nav__item--active .fd-steps-nav__number {
+  background: var(--semi-color-primary);
+  color: #fff;
+}
+
+.fd-steps-nav__label {
+  font-size: 14px;
+}
+
+/* ─── 基础信息 & 更多设置面板 ─────────────────────────────────────── */
+
+.fd-basic-info {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-y: auto;
+  padding: 40px 16px;
+  background: var(--semi-color-bg-2);
+}
+
+.fd-basic-info__inner {
+  width: 100%;
+  max-width: 560px;
+  background: var(--semi-color-bg-0);
+  border-radius: 8px;
+  padding: 32px 40px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 /* ─── 节点卡片（button 版本） ──────────────────────────────────────── */
