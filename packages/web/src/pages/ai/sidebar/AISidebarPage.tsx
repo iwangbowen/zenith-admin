@@ -5,6 +5,12 @@ import { PanelRight, PanelRightClose, Search, FileText, Code2, Wrench, Bot, Pale
 const { Title, Text, Paragraph } = Typography;
 const { Container, CodeContent, FileContent, FileItem, CodeItem } = Sidebar;
 
+// 内嵌在 Tab 中时隐藏 Container 自带的标题栏
+const embeddedContainerStyle = `
+  .embedded-container .semi-sidebar-container-header { display: none !important; }
+  .embedded-container.semi-resizable-resizable { min-width: 0 !important; width: auto !important; }
+`;
+
 const DEMO_ANNOTATIONS = [
   {
     header: (
@@ -206,6 +212,7 @@ export default function AISidebarPage() {
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden', gap: 0 }}>
+      <style>{embeddedContainerStyle}</style>
       {/* 主内容区 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         {/* 顶栏 */}
@@ -326,8 +333,8 @@ export default function AISidebarPage() {
                 <MCPConfigure
                   visible
                   motion={false}
-                  showClose={false}
                   resizable={false}
+                  className="embedded-container"
                   options={mcpOptions}
                   onStatusChange={(options) => {
                     setMcpOptions(options);
@@ -350,8 +357,8 @@ export default function AISidebarPage() {
                     }
                   }}
                   visible
-                  showClose={false}
                   motion={false}
+                  className="embedded-container"
                   style={{ border: 'none', boxShadow: 'none' }}
                 />
               </div>
