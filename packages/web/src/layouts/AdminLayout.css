@@ -256,7 +256,7 @@
 
 .admin-sidebar__nav .semi-navigation-item-selected,
 .admin-sidebar__nav .semi-navigation-sub-selected {
-  background: rgba(51, 112, 255, 0.05) !important;
+  background: var(--color-sidebar-active) !important;
   position: relative;
 }
 

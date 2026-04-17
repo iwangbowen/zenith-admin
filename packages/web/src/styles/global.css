@@ -79,6 +79,14 @@ body {
   min-height: 100vh;
 }
 
+/* Semi Tabs: active tab text follows theme color */
+.semi-tabs-bar .semi-tabs-tab-active,
+.semi-tabs-bar .semi-tabs-tab-active:hover,
+.semi-tabs-tab-single.semi-tabs-tab-active,
+.semi-tabs-tab-single.semi-tabs-tab-active:hover {
+  color: var(--semi-color-primary);
+}
+
 /* Semi override for compact feel */
 .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
   padding: 8px 12px;

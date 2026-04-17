@@ -105,7 +105,7 @@
 
 .dashboard-stat-card:hover {
   transform: translateY(-1px);
-  border-color: rgba(51, 112, 255, 0.32);
+  border-color: var(--semi-color-primary-light-active);
 }
 
 .dashboard-stat-card__inner {
