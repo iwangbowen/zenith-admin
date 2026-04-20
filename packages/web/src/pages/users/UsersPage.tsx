@@ -435,9 +435,9 @@ export default function UsersPage() {
           <div className="users-dept-sidebar-title">组织架构</div>
           <Tree
             treeData={deptTreeData}
-            selectedKeys={[searchParams.departmentId == null ? '__all__' : String(searchParams.departmentId)]}
-            onSelect={(selectedKeys) => {
-              const key = (selectedKeys as string[])[0];
+            value={searchParams.departmentId == null ? '__all__' : String(searchParams.departmentId)}
+            onSelect={(selectedKey) => {
+              const key = selectedKey;
               const newDeptId = !key || key === '__all__' ? null : Number(key);
               const newParams = { ...searchParams, departmentId: newDeptId };
               setSearchParams(newParams);
