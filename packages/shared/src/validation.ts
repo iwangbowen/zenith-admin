@@ -20,6 +20,10 @@ export const createUserSchema = z.object({
   nickname: z.string().min(1).max(32),
   email: z.string().email(),
   password: z.string().min(6).max(64),
+  phone: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().regex(/^1[3-9]\d{9}$/, '请输入正确的手机号码').optional()
+  ),
   departmentId: z.number().int().positive().nullable().optional(),
   positionIds: z.array(z.number().int().positive()).default([]),
   roleIds: z.array(z.number().int()).default([]),

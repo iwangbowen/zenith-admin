@@ -19,6 +19,7 @@ export interface User {
   username: string;
   nickname: string;
   email: string;
+  phone?: string | null;
   avatar?: string;
   departmentId?: number | null;
   departmentName?: string | null;

@@ -72,6 +72,7 @@ export const usersHandlers = [
       username: body.username ?? '',
       nickname: body.nickname ?? '',
       email: body.email ?? '',
+      phone: body.phone ?? undefined,
       password: DEMO_INITIAL_CREDENTIAL,
       avatar: body.avatar,
       departmentId: body.departmentId ?? null,

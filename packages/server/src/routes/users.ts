@@ -163,6 +163,7 @@ type UserListRow = {
   username: string;
   nickname: string;
   email: string;
+  phone: string | null;
   avatar: string | null;
   departmentId: number | null;
   departmentName: string | null;
@@ -187,6 +188,7 @@ async function toPublicUsers(rows: UserListRow[]): Promise<User[]> {
       username: row.username,
       nickname: row.nickname,
       email: row.email,
+      phone: row.phone ?? undefined,
       avatar: row.avatar ?? undefined,
       departmentId: row.departmentId,
       departmentName: row.departmentName,
@@ -249,6 +251,7 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
       username: users.username,
       nickname: users.nickname,
       email: users.email,
+      phone: users.phone,
       avatar: users.avatar,
       departmentId: users.departmentId,
       departmentName: departments.name,
@@ -320,6 +323,7 @@ usersRouter.post('/', guard({ permission: 'system:user:create', audit: { descrip
       username: user.username,
       nickname: user.nickname,
       email: user.email,
+      phone: user.phone,
       avatar: user.avatar,
       departmentId: user.departmentId,
       departmentName: departmentId ? (await db.select({ name: departments.name }).from(departments).where(eq(departments.id, departmentId)).limit(1))[0]?.name ?? null : null,
@@ -404,11 +408,12 @@ usersRouter.put('/:id', guard({ permission: 'system:user:update', audit: { descr
     username: user.username,
     nickname: user.nickname,
     email: user.email,
+    phone: user.phone,
     avatar: user.avatar,
     departmentId: user.departmentId,
     departmentName,
     status: user.status,
-      passwordUpdatedAt: user.passwordUpdatedAt,
+    passwordUpdatedAt: user.passwordUpdatedAt,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   }]))[0];

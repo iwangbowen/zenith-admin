@@ -146,6 +146,7 @@ export default function UsersPage() {
         username: editingUser.username,
         nickname: editingUser.nickname,
         email: editingUser.email,
+        phone: editingUser.phone ?? undefined,
         departmentId: editingUser.departmentId ?? undefined,
         positionIds: editingUser.positionIds ?? editingUser.positions?.map((item) => item.id) ?? [],
         roleIds: editingUser.roles.map((r) => r.id),
@@ -323,6 +324,13 @@ export default function UsersPage() {
       dataIndex: 'email',
       width: 220,
       ellipsis: true,
+    },
+    {
+      title: '手机号码',
+      dataIndex: 'phone',
+      width: 150,
+      ellipsis: true,
+      render: (value: string | null | undefined) => value || '—',
     },
     {
       title: '部门',
@@ -513,14 +521,26 @@ export default function UsersPage() {
           labelPosition="top"
         >
           {editingUser ? (
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
-              </Col>
-              <Col span={12}>
-                <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
-              </Col>
-            </Row>
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input
+                    field="phone"
+                    label="手机号码"
+                    placeholder="请输入手机号码"
+                    rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
+                  />
+                </Col>
+              </Row>
+            </>
           ) : (
             <>
               <Row gutter={16}>
@@ -542,6 +562,16 @@ export default function UsersPage() {
                     type="password"
                     rules={[{ required: true, message: '请输入密码' }]}
                     helpText={formatPasswordPolicyHint(passwordPolicy)}
+                  />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input
+                    field="phone"
+                    label="手机号码"
+                    placeholder="请输入手机号码"
+                    rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
                   />
                 </Col>
               </Row>

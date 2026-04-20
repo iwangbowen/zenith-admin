@@ -66,6 +66,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 128 }).notNull(),
   password: varchar('password', { length: 128 }).notNull(),
   avatar: varchar('avatar', { length: 256 }),
+  phone: varchar('phone', { length: 20 }),
   departmentId: integer('department_id').references(() => departments.id, { onDelete: 'set null' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   status: statusEnum('status').notNull().default('active'),
