@@ -208,6 +208,7 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
   const page = Number(c.req.query('page')) || 1;
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const keyword = c.req.query('keyword') || '';
+  const phone = c.req.query('phone') || '';
   const status = c.req.query('status');
   const startTime = c.req.query('startTime');
   const endTime = c.req.query('endTime');
@@ -217,6 +218,9 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
     conditions.push(
       or(like(users.username, `%${keyword}%`), like(users.nickname, `%${keyword}%`), like(users.email, `%${keyword}%`))
     );
+  }
+  if (phone) {
+    conditions.push(like(users.phone, `%${phone}%`));
   }
   if (status && (status === 'active' || status === 'disabled')) {
     conditions.push(eq(users.status, status));

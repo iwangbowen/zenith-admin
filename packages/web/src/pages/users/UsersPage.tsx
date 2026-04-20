@@ -32,11 +32,12 @@ import './UsersPage.css';
 
 interface SearchParams {
   keyword: string;
+  phone: string;
   status: string;
   timeRange: [Date, Date] | null;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: null };
+const defaultSearchParams: SearchParams = { keyword: '', phone: '', status: '', timeRange: null };
 
 export default function UsersPage() {
   const { hasPermission } = usePermission();
@@ -165,6 +166,7 @@ export default function UsersPage() {
         page: String(p),
         pageSize: String(ps),
         ...(params.keyword ? { keyword: params.keyword } : {}),
+        ...(params.phone ? { phone: params.phone } : {}),
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
           ? {
@@ -429,6 +431,15 @@ export default function UsersPage() {
             onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
             onEnterPress={handleSearch}
             style={{ width: 260 }}
+            showClear
+          />
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索手机号码"
+            value={searchParams.phone}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, phone: value }))}
+            onEnterPress={handleSearch}
+            style={{ width: 180 }}
             showClear
           />
           <Select
