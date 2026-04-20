@@ -521,26 +521,14 @@ export default function UsersPage() {
           labelPosition="top"
         >
           {editingUser ? (
-            <>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
-                </Col>
-                <Col span={12}>
-                  <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Input
-                    field="phone"
-                    label="手机号码"
-                    placeholder="请输入手机号码"
-                    rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
-                  />
-                </Col>
-              </Row>
-            </>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
+              </Col>
+              <Col span={12}>
+                <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+              </Col>
+            </Row>
           ) : (
             <>
               <Row gutter={16}>
@@ -565,19 +553,17 @@ export default function UsersPage() {
                   />
                 </Col>
               </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Input
-                    field="phone"
-                    label="手机号码"
-                    placeholder="请输入手机号码"
-                    rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
-                  />
-                </Col>
-              </Row>
             </>
           )}
           <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input
+                field="phone"
+                label="手机号码"
+                placeholder="请输入手机号码"
+                rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
+              />
+            </Col>
             <Col span={12}>
               <Form.TreeSelect
                 field="departmentId"
@@ -590,6 +576,8 @@ export default function UsersPage() {
                 showClear
               />
             </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}>
               <Form.Select
                 field="positionIds"
@@ -601,8 +589,6 @@ export default function UsersPage() {
                 optionList={positionOptionList}
               />
             </Col>
-          </Row>
-          <Row gutter={16}>
             <Col span={12}>
               <Form.Select
                 field="roleIds"
@@ -613,6 +599,8 @@ export default function UsersPage() {
                 optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
               />
             </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}>
               <Form.Select
                 field="status"
