@@ -412,7 +412,7 @@ export default function CronJobsPage() {
             {
               title: '第几次执行',
               dataIndex: 'executionCount',
-              width: 80,
+              width: 100,
             },
             {
               title: '开始时间',
@@ -479,7 +479,7 @@ export default function CronJobsPage() {
             {
               title: '第几次执行',
               dataIndex: 'executionCount',
-              width: 80,
+              width: 100,
             },
             {
               title: '开始时间',
