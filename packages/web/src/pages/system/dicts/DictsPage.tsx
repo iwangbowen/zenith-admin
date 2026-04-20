@@ -343,9 +343,9 @@ export default function DictsPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Input field="name" label="字典名称" rules={[{ required: true, message: '请输入字典名称' }]} />
-          <Form.Input field="code" label="字典编码" rules={[{ required: true, message: '请输入字典编码' }]} />
-          <Form.Input field="description" label="描述" />
+          <Form.Input field="name" label="字典名称" style={{ width: '100%' }} rules={[{ required: true, message: '请输入字典名称' }]} />
+          <Form.Input field="code" label="字典编码" style={{ width: '100%' }} rules={[{ required: true, message: '请输入字典编码' }]} />
+          <Form.Input field="description" label="描述" style={{ width: '100%' }} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           />
@@ -368,13 +368,13 @@ export default function DictsPage() {
           labelPosition="left"
           labelWidth={80}
         >
-          <Form.Input field="label" label="标签" rules={[{ required: true, message: '请输入标签' }]} />
-          <Form.Input field="value" label="键值" rules={[{ required: true, message: '请输入键值' }]} />
+          <Form.Input field="label" label="标签" style={{ width: '100%' }} rules={[{ required: true, message: '请输入标签' }]} />
+          <Form.Input field="value" label="键值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入键值' }]} />
           <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           />
-          <Form.Input field="remark" label="备注" />
+          <Form.Input field="remark" label="备注" style={{ width: '100%' }} />
         </Form>
       </Modal>
     </div>
