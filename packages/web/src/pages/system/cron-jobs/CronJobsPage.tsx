@@ -225,7 +225,7 @@ export default function CronJobsPage() {
       title: '上次执行时间', dataIndex: 'lastRunAt', width: 180,
       render: (v: string | null) => v ? formatDateTime(v) : '—',
     },
-    { title: '描述', dataIndex: 'description', ellipsis: true },
+    { title: '描述', dataIndex: 'description', width: 200, ellipsis: true },
     {
       title: '操作',
       fixed: 'right',
