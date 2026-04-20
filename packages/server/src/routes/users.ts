@@ -209,6 +209,8 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
   const pageSize = Number(c.req.query('pageSize')) || 10;
   const keyword = c.req.query('keyword') || '';
   const phone = c.req.query('phone') || '';
+  const deptIdParam = c.req.query('departmentId');
+  const departmentId = deptIdParam ? Number(deptIdParam) : null;
   const status = c.req.query('status');
   const startTime = c.req.query('startTime');
   const endTime = c.req.query('endTime');
@@ -221,6 +223,9 @@ usersRouter.get('/', guard({ permission: 'system:user:list' }), async (c) => {
   }
   if (phone) {
     conditions.push(like(users.phone, `%${phone}%`));
+  }
+  if (departmentId) {
+    conditions.push(eq(users.departmentId, departmentId));
   }
   if (status && (status === 'active' || status === 'disabled')) {
     conditions.push(eq(users.status, status));

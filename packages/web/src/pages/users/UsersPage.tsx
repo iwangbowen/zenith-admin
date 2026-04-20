@@ -15,6 +15,7 @@ import {
   Typography,
   Row,
   Col,
+  Tree,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp } from 'lucide-react';
@@ -35,9 +36,10 @@ interface SearchParams {
   phone: string;
   status: string;
   timeRange: [Date, Date] | null;
+  departmentId: number | null;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', phone: '', status: '', timeRange: null };
+const defaultSearchParams: SearchParams = { keyword: '', phone: '', status: '', timeRange: null, departmentId: null };
 
 export default function UsersPage() {
   const { hasPermission } = usePermission();
@@ -137,6 +139,11 @@ export default function UsersPage() {
     [allDepartments]
   );
 
+  const deptTreeData = useMemo<TreeNodeData[]>(
+    () => [{ key: '__all__', value: '__all__', label: '全部部门' }, ...departmentTreeData],
+    [departmentTreeData]
+  );
+
   const positionOptionList = useMemo(
     () => allPositions.map((item) => ({ value: item.id, label: item.name })),
     [allPositions]
@@ -167,6 +174,7 @@ export default function UsersPage() {
         pageSize: String(ps),
         ...(params.keyword ? { keyword: params.keyword } : {}),
         ...(params.phone ? { phone: params.phone } : {}),
+        ...(params.departmentId ? { departmentId: String(params.departmentId) } : {}),
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
           ? {
@@ -422,6 +430,25 @@ export default function UsersPage() {
 
   return (
     <div className="page-container">
+      <div className="users-layout">
+        <div className="users-dept-sidebar">
+          <div className="users-dept-sidebar-title">组织架构</div>
+          <Tree
+            treeData={deptTreeData}
+            selectedKeys={[searchParams.departmentId == null ? '__all__' : String(searchParams.departmentId)]}
+            onSelect={(selectedKeys) => {
+              const key = (selectedKeys as string[])[0];
+              const newDeptId = !key || key === '__all__' ? null : Number(key);
+              const newParams = { ...searchParams, departmentId: newDeptId };
+              setSearchParams(newParams);
+              setPage(1);
+              void fetchUsers(1, pageSize, newParams);
+            }}
+            defaultExpandAll
+            style={{ width: '100%' }}
+          />
+        </div>
+        <div className="users-content">
       <SearchToolbar
         left={<>
           <Input
@@ -512,6 +539,8 @@ export default function UsersPage() {
           onChange: (keys) => setSelectedRowKeys(keys as number[]),
         }}
       />
+        </div>
+      </div>
 
       <Modal
         title={editingUser ? '编辑用户' : '新增用户'}

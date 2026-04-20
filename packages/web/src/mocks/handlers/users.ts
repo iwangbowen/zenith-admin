@@ -39,12 +39,15 @@ export const usersHandlers = [
     const phone = url.searchParams.get('phone') ?? '';
     const status = url.searchParams.get('status') ?? '';
     const roleId = url.searchParams.get('roleId') ?? '';
+    const departmentIdParam = url.searchParams.get('departmentId');
+    const departmentId = departmentIdParam ? Number(departmentIdParam) : null;
 
     let list = mockUsers.filter((u) => {
       if (keyword && !u.username.includes(keyword) && !u.nickname.includes(keyword)) return false;
       if (phone && !(u.phone ?? '').includes(phone)) return false;
       if (status && u.status !== status) return false;
       if (roleId && !u.roles.some((r) => String(r.id) === roleId)) return false;
+      if (departmentId && u.departmentId !== departmentId) return false;
       return true;
     });
 

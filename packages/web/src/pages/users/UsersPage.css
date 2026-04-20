@@ -9,3 +9,38 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
 }
+
+.users-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+.users-dept-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--semi-color-border);
+  margin-right: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.users-dept-sidebar-title {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 12px;
+  color: var(--semi-color-text-0);
+  border-bottom: 1px solid var(--semi-color-border);
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.users-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
