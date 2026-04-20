@@ -6,14 +6,13 @@
 
 ## SearchToolbar
 
-搜索工具栏组件，用于所有 CRUD 列表页面的顶部筛选区域。采用左右分栏布局：左侧为搜索条件，右侧为操作按钮。
+搜索工具栏组件，用于所有 CRUD 列表页面的顶部筛选区域。
 
 ### Props
 
 | Prop | 类型 | 说明 |
 |------|------|------|
-| `left` | `ReactNode` | 左侧内容（搜索输入框、下拉筛选、查询/重置按钮），自动用 `<Space wrap>` 包裹 |
-| `right` | `ReactNode` | 右侧内容（新增等操作按钮），不自动包裹 |
+| `left` | `ReactNode` | 搜索输入框、下拉筛选、查询/重置按钮、新增等操作按钮，自动用 `<Space wrap>` 包裹 |
 | `className` | `string` | 附加 CSS 类名，应用到外层容器 |
 | `children` | `ReactNode` | 工具栏下方的附加内容（如提示文字） |
 
@@ -46,10 +45,8 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
     </Select>
     <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
     <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-  </>}
-  right={
     <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
-  }
+  </>}
 />
 ```
 
@@ -57,7 +54,6 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
 
 - 按钮文案统一为**「查询」「重置」「新增」**
 - `left` 内的元素会自动换行（`wrap`），响应式友好
-- 右侧操作按钮不自动包裹，由调用方决定是否使用 `<Space>`
 
 ---
 

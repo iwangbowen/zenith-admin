@@ -118,8 +118,6 @@ import { SearchToolbar } from '../../components/SearchToolbar';
       value={keyword} onChange={setKeyword} />
     <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
     <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-  </>}
-  right={<>
     <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
   </>}
 />

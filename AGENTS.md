@@ -139,12 +139,10 @@ import { SearchToolbar } from '../../components/SearchToolbar';
 
 <SearchToolbar
   left={<>
-    {/* 搜索输入框 + 下拉筛选 + 查询/重置按钮 */}
+    {/* 搜索输入框 + 下拉筛选 + 查询/重置按钮 + 操作按钮，全部放在 left 区域 */}
     <Input prefix={<Search size={14} />} placeholder="..." showClear />
     <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
     <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-  </>}
-  right={<>
     <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
   </>}
 />
@@ -152,9 +150,7 @@ import { SearchToolbar } from '../../components/SearchToolbar';
 
 要点：
 
-- `left`：搜索条件（输入框、下拉框）+ 查询/重置按钮
-- `right`：新增等操作按钮
-- `left` 内部自动用 `<Space wrap>` 包裹，`right` 不自动包裹（由调用方控制）
+- `left` 内部自动用 `<Space wrap>` 包裹，按需换行
 - 按钮文案统一为「查询」「重置」「新增」
 - 可选 props：`className`（附加 CSS 类名）、`children`（工具栏下方附加内容）
 

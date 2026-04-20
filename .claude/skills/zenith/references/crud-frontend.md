@@ -252,7 +252,7 @@ export default function XxxPage() {
   // ════════════════════════════════════════════════════════════════════════
   return (
     <div className="page-container">
-      {/* 搜索区：使用 SearchToolbar 组件，left 放搜索控件，right 放操作按钮 */}
+      {/* 搜索区：使用 SearchToolbar 组件 */}
       {/* 具体写法参考 packages/web/src/pages/users/UsersPage.tsx */}
       <SearchToolbar
         left={<>
@@ -277,8 +277,6 @@ export default function XxxPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={<>
           {hasPermission('system:xxx:create') && (
             <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
           )}
