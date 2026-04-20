@@ -198,14 +198,12 @@ export default function WorkflowDefinitionsPage() {
           </Select>
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={
-          hasPermission('workflow:definition:create') ? (
+          {hasPermission('workflow:definition:create') && (
             <Button type="secondary" icon={<Plus size={14} />} onClick={() => navigate('/workflow/designer/new')}>
               新建流程
             </Button>
-          ) : undefined
-        }
+          )}
+        </>}
       />
       <Table
         bordered

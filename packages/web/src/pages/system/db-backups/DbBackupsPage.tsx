@@ -159,12 +159,10 @@ export default function DbBackupsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={<Space>
           {hasPermission('system:db-backup:create') && (
             <Button type="secondary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增备份</Button>
           )}
-        </Space>}
+        </>}
       />
 
       <Table

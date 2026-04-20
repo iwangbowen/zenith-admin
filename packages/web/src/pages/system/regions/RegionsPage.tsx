@@ -319,14 +319,12 @@ export default function RegionsPage() {
           >
             {isAllExpanded ? '全部折叠' : '全部展开'}
           </Button>
-        </>}
-        right={<Space>
           {hasPermission('system:region:create') && (
             <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>
               新增
             </Button>
           )}
-        </Space>}
+        </>}
       />
 
       <Table

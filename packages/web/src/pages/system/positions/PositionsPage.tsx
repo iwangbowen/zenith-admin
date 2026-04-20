@@ -220,8 +220,6 @@ export default function PositionsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={<Space>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/positions/export', '岗位列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && (
             <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
@@ -238,7 +236,7 @@ export default function PositionsPage() {
           >
             新增
           </Button>}
-        </Space>}
+        </>}
       />
 
       <Table

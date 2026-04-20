@@ -263,8 +263,6 @@ export default function RolesPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={<Space>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/roles/export', '角色列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:role:create') && <Button
             type="secondary"
@@ -273,7 +271,7 @@ export default function RolesPage() {
           >
             新增
           </Button>}
-        </Space>}
+        </>}
       />
 
       <Table
