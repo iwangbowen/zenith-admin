@@ -592,6 +592,7 @@ export default function WorkflowDesignerPage() {
               field="assigneeId"
               label="审批人"
               placeholder="请选择审批人"
+              style={{ width: '100%' }}
               optionList={users.map(u => ({ value: u.id, label: u.nickname }))}
               showClear
               filter
@@ -602,6 +603,7 @@ export default function WorkflowDesignerPage() {
               field="assigneeIds"
               label="抄送人"
               placeholder="请选择抄送人（可多选）"
+              style={{ width: '100%' }}
               optionList={users.map(u => ({ value: u.id, label: u.nickname }))}
               multiple
               filter
@@ -651,6 +653,7 @@ export default function WorkflowDesignerPage() {
               label: `${OPERATOR_LABELS[op] ?? op} (${op})`,
             }))}
             placeholder="请选择运算符"
+            style={{ width: '100%' }}
           />
           <Form.Input
             field="value"

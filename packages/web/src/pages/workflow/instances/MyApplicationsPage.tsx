@@ -429,6 +429,7 @@ export default function MyApplicationsPage() {
             label="选择流程"
             placeholder="请选择要发起的流程"
             rules={[{ required: true, message: '请选择流程' }]}
+            style={{ width: '100%' }}
             optionList={definitions.map(d => ({ value: d.id, label: d.name }))}
             onChange={v => {
               const def = definitions.find(d => d.id === v);

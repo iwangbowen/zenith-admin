@@ -89,6 +89,7 @@ export default function NodeConfigModal({
               field="assigneeId"
               label="审批人"
               placeholder="请选择审批人"
+              style={{ width: '100%' }}
               optionList={users.map(u => ({ value: u.id, label: u.nickname }))}
               showClear
               filter
@@ -97,6 +98,7 @@ export default function NodeConfigModal({
               field="approveType"
               label="审批方式"
               initValue="single"
+              style={{ width: '100%' }}
               optionList={[
                 { value: 'single', label: '或签（一人通过即可）' },
                 { value: 'all', label: '会签（所有人通过）' },
@@ -113,6 +115,7 @@ export default function NodeConfigModal({
             field="assigneeId"
             label="办理人"
             placeholder="请选择办理人"
+            style={{ width: '100%' }}
             optionList={users.map(u => ({ value: u.id, label: u.nickname }))}
             showClear
             filter
@@ -125,6 +128,7 @@ export default function NodeConfigModal({
             field="assigneeIds"
             label="抄送人"
             placeholder="请选择抄送人（可多选）"
+            style={{ width: '100%' }}
             optionList={users.map(u => ({ value: u.id, label: u.nickname }))}
             multiple
             filter

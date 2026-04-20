@@ -118,6 +118,7 @@ export default function EmailConfigPage() {
           field="encryption"
           label="加密方式"
           placeholder="请选择加密方式"
+          style={{ width: '100%' }}
           optionList={[
             { label: '无加密 (None)', value: 'none' },
             { label: 'SSL/TLS', value: 'ssl' },
@@ -137,6 +138,8 @@ export default function EmailConfigPage() {
         <Form.Select
           field="status"
           label="状态"
+          style={{ width: '100%' }}
+          placeholder="请选择状态"
           optionList={[
             { label: '启用', value: 'active' },
             { label: '禁用', value: 'disabled' },
