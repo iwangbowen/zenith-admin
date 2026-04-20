@@ -196,6 +196,36 @@ cronJobsRoute.get('/export', guard({ permission: 'system:cronjob:list' }), async
   return c.body(buffer);
 });
 
+// GET /logs — 所有定时任务执行日志
+cronJobsRoute.get('/logs', guard({ permission: 'system:cronjob:list' }), async (c) => {
+  const page     = Number(c.req.query('page'))     || 1;
+  const pageSize = Number(c.req.query('pageSize')) || 20;
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(cronJobLogs);
+
+  const rows = await db
+    .select()
+    .from(cronJobLogs)
+    .orderBy(desc(cronJobLogs.startedAt))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  const list = rows.map((r) => ({
+    id: r.id,
+    jobId: r.jobId,
+    jobName: r.jobName,
+    startedAt: r.startedAt.toISOString(),
+    endedAt: r.endedAt?.toISOString() ?? null,
+    durationMs: r.durationMs,
+    status: r.status,
+    output: r.output,
+  }));
+
+  return c.json({ code: 0, message: 'ok', data: { list, total: Number(count), page, pageSize } });
+});
+
 // GET /:id/logs — 定时任务执行日志
 cronJobsRoute.get('/:id/logs', guard({ permission: 'system:cronjob:list' }), async (c) => {
   const id = Number(c.req.param('id'));

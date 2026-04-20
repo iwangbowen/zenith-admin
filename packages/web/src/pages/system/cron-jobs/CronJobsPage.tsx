@@ -12,7 +12,7 @@ import {
   Toast,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, ScrollText } from 'lucide-react';
 import type { CronJob, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -61,6 +61,11 @@ export default function CronJobsPage() {
   const [logsPage, setLogsPage] = useState(1);
   const [logsLoading, setLogsLoading] = useState(false);
   const logsPageSize = 20;;
+  const [allLogsDrawerVisible, setAllLogsDrawerVisible] = useState(false);
+  const [allLogsData, setAllLogsData] = useState<CronJobLog[]>([]);
+  const [allLogsTotal, setAllLogsTotal] = useState(0);
+  const [allLogsPage, setAllLogsPage] = useState(1);
+  const [allLogsLoading, setAllLogsLoading] = useState(false);
 
   const fetchData = useCallback(async (p = page, params = searchParams) => {
     setLoading(true);
@@ -153,6 +158,21 @@ export default function CronJobsPage() {
       }
     } finally {
       setLogsLoading(false);
+    }
+  }, [logsPageSize]);
+
+  const fetchAllLogs = useCallback(async (p = 1) => {
+    setAllLogsLoading(true);
+    try {
+      const query = new URLSearchParams({ page: String(p), pageSize: String(logsPageSize) }).toString();
+      const res = await request.get<PaginatedResponse<CronJobLog>>(`/api/cron-jobs/logs?${query}`);
+      if (res.code === 0) {
+        setAllLogsData(res.data.list);
+        setAllLogsTotal(res.data.total);
+        setAllLogsPage(res.data.page);
+      }
+    } finally {
+      setAllLogsLoading(false);
     }
   }, [logsPageSize]);
 
@@ -261,6 +281,7 @@ export default function CronJobsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsDrawerVisible(true); void fetchAllLogs(1); }}>执行日志</Button>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
           {hasPermission('system:cronjob:create') && (
             <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
@@ -339,6 +360,72 @@ export default function CronJobsPage() {
           <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} />
         </Form>
       </Modal>
+
+      {/* 全量执行日志抽屉 */}
+      <SideSheet
+        title="全部执行日志"
+        visible={allLogsDrawerVisible}
+        onCancel={() => setAllLogsDrawerVisible(false)}
+        width={820}
+        closeOnEsc
+      >
+        <Table
+          bordered
+          size="small"
+          rowKey="id"
+          loading={allLogsLoading}
+          dataSource={allLogsData}
+          columns={[
+            {
+              title: '任务名称',
+              dataIndex: 'jobName',
+              width: 160,
+              ellipsis: true,
+            },
+            {
+              title: '开始时间',
+              dataIndex: 'startedAt',
+              width: 180,
+              render: (v: string) => formatDateTime(v),
+            },
+            {
+              title: '结束时间',
+              dataIndex: 'endedAt',
+              width: 180,
+              render: (v: string | null) => v ? formatDateTime(v) : '—',
+            },
+            {
+              title: '耗时(ms)',
+              dataIndex: 'durationMs',
+              width: 90,
+              render: (v: number | null) => v ?? '—',
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 80,
+              render: (v: string) => (
+                <Tag color={runStatusColor[v] ?? 'grey'} size="small">
+                  {({'success': '成功', 'fail': '失败', 'running': '运行中'} as Record<string, string>)[v] ?? v}
+                </Tag>
+              ),
+            },
+            {
+              title: '输出',
+              dataIndex: 'output',
+              ellipsis: true,
+              render: (v: string | null) => v || '—',
+            },
+          ]}
+          pagination={{
+            currentPage: allLogsPage,
+            pageSize: logsPageSize,
+            total: allLogsTotal,
+            onPageChange: (p) => { setAllLogsPage(p); void fetchAllLogs(p); },
+            showTotal: true,
+          }}
+        />
+      </SideSheet>
 
       {/* 执行日志抽屉 */}
       <SideSheet

@@ -8,6 +8,56 @@ export const cronJobsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: ['emailNotification', 'dataCleanup', 'reportGeneration', 'cacheRefresh'] });
   }),
 
+  // 全量执行日志（必须在 :id 路由之前声明）
+  http.get('/api/cron-jobs/logs', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 20;
+
+    const statuses: Array<'success' | 'fail' | 'running'> = ['success', 'success', 'success', 'fail', 'running'];
+    const allLogs = mockCronJobs.flatMap((job, i) =>
+      Array.from({ length: 5 }, (_, j) => ({
+        id: i * 5 + j + 1,
+        jobId: job.id,
+        jobName: job.name,
+        startedAt: new Date(Date.now() - (i * 5 + j + 1) * 1800000).toISOString(),
+        endedAt: new Date(Date.now() - (i * 5 + j + 1) * 1800000 + 1200 + j * 200).toISOString(),
+        durationMs: 1200 + j * 200,
+        status: statuses[j % statuses.length],
+        output: statuses[j % statuses.length] === 'fail' ? 'Error: Connection timeout' : 'Completed successfully',
+      }))
+    ).sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+
+    const total = allLogs.length;
+    const list = allLogs.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+  }),
+
+  // 按任务 ID 查询执行日志（必须在 :id 路由之前声明）
+  http.get('/api/cron-jobs/:id/logs', ({ params, request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 20;
+    const job = mockCronJobs.find((j) => j.id === Number(params.id));
+    if (!job) return HttpResponse.json({ code: 404, message: '任务不存在', data: null });
+
+    const statuses: Array<'success' | 'fail' | 'running'> = ['success', 'success', 'fail', 'success', 'running'];
+    const logs = Array.from({ length: 10 }, (_, j) => ({
+      id: j + 1,
+      jobId: job.id,
+      jobName: job.name,
+      startedAt: new Date(Date.now() - (j + 1) * 3600000).toISOString(),
+      endedAt: new Date(Date.now() - (j + 1) * 3600000 + 1500 + j * 100).toISOString(),
+      durationMs: 1500 + j * 100,
+      status: statuses[j % statuses.length],
+      output: statuses[j % statuses.length] === 'fail' ? 'Error: timeout' : 'OK',
+    }));
+
+    const total = logs.length;
+    const list = logs.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+  }),
+
   // 定时任务列表（分页）
   http.get('/api/cron-jobs', ({ request }) => {
     const url = new URL(request.url);
