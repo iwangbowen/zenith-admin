@@ -97,7 +97,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   };
 
   const renderLoginForm = () => (
-    <Form onSubmit={handleLogin} style={{ marginTop: 12 }} requiredMark={false}>
+    <Form onSubmit={handleLogin} style={{ marginTop: 12 }}>
       {config.multiTenantMode && (
         <Form.Input
           field="tenantCode"
