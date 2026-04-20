@@ -488,8 +488,6 @@ export default function UsersPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={<Space>
           {selectedRowKeys.length > 0 && hasPermission('system:user:delete') && (
             <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
               批量删除 ({selectedRowKeys.length})
@@ -513,7 +511,7 @@ export default function UsersPage() {
           >
             新增
           </Button>}
-        </Space>}
+        </>}
       />
 
       <Table
