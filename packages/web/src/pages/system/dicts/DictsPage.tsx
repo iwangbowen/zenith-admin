@@ -199,6 +199,7 @@ export default function DictsPage() {
       ),
     },
     { title: '字典编码', dataIndex: 'code', width: 160, ellipsis: true },
+    { title: '描述', dataIndex: 'description', ellipsis: true, render: (v) => v || '—' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -245,7 +246,7 @@ export default function DictsPage() {
       align: 'center',
       render: (v: string) => <DictTag dictCode="common_status" value={v} />,
     },
-    { title: '备注', dataIndex: 'remark', ellipsis: true, render: (v) => v || '—' },
+    { title: '备注', dataIndex: 'remark', width: 200, ellipsis: true, render: (v) => v || '—' },
     { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v) => formatDateTime(v) },
     {
       title: '操作',
