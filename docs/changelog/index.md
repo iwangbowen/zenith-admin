@@ -4,6 +4,38 @@
 
 ---
 
+## v0.4.0 - 2026-04-22
+
+### Added
+
+#### OpenAPI 自动生成支持
+
+- 全面迁移后端路由至 `@hono/zod-openapi`（`OpenAPIHono`），路由定义自动汇总生成 OpenAPI Spec
+- 所有请求参数通过 `createRoute` + Zod schema 声明，支持请求验证与响应格式化
+- 涵盖路由管理、工作流实例、缓存管理等模块的 OpenAPIHono 重构
+
+#### 全局请求上下文存储
+
+- 引入 `hono/context-storage` 中间件，提供 `currentUser()` / `getCtx()` 零参取值函数
+- 辅助函数无需层层透传 `c` 参数，简化请求上下文访问
+
+#### 请求防护
+
+- 新增请求体大小限制（`REQUEST_BODY_LIMIT`）和请求超时（`REQUEST_TIMEOUT_MS`）环境变量配置
+- 默认不启用，超出限制分别返回 `code: 413` / `code: 408`
+
+#### 性能分析
+
+- 新增 `Server-Timing` 响应头支持，可通过环境变量 `ENABLE_SERVER_TIMING` 开启
+
+### Changed
+
+- 切换 JWT 实现为 Hono 官方库（`hono/jwt`），移除 `jsonwebtoken` 依赖
+- 参数校验统一改用 `zValidate` 中间件（`@hono/zod-validator`），覆盖用户、角色、通知、OAuth、岗位、地区、系统配置、租户、工作流等模块
+- 日志中间件重构：替换自定义 `httpLogger` 为 Hono 官方 `logger`，并去除日志中的 ANSI 控制字符
+
+---
+
 ## v0.3.2 - 2026-04-21
 
 ### Added
