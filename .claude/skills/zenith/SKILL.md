@@ -319,6 +319,7 @@ app.route('/api/xxx', xxxRoutes);
 |------|------|
 | **枚举三端同步** | `pgEnum` / TS union type / Zod enum 保持完全一致 |
 | **操作列固定** | 所有表格操作列必须 `fixed: 'right'` |
+| **树形表格展开控制** | 凡是使用 `children` 字段渲染树形结构的 Table（如部门、菜单），必须在搜索栏添加「全部展开/全部折叠」切换按钮，并使用受控的 `expandedRowKeys` + `onExpandedRowsChange`。参考实现：`allRowKeys`（递归收集全部 key）、`isAllExpanded`（判断是否已全展开）、`toggleExpandAll`（切换）。按钮图标：已展开用 `ChevronsDownUp`，未展开用 `ChevronsUpDown`（来自 `lucide-react`）。 |
 | **时间格式** | 时间显示统一使用 `formatDateTime()`，禁止原生 `toLocaleString()` 等 |
 | **图标库** | 统一使用 `lucide-react`，禁止 `@douyinfe/semi-icons` |
 | **操作按钮样式** | `theme="borderless" size="small"`，删除加 `type="danger"` |
