@@ -18,28 +18,6 @@
 - 字典列表新增「描述」列
 - 字典项侧边抽屉加宽（700 → 900），顶部新增标签/键值文本搜索与状态下拉筛选（客户端实时过滤）
 
-#### 服务端请求防护
-
-- 基于 Hono 官方 `hono/body-limit` 与 `hono/timeout` 新增可选的请求防护，均默认不启用
-- 新增环境变量 `REQUEST_BODY_LIMIT`（字节）、`REQUEST_TIMEOUT_MS`（毫秒），`0` 表示不启用
-- Timeout 自动排除长耗时路径：`/api/ws`、`/api/files`、`/api/db-backups` 及所有 `/export` 导出接口
-- 超时与超限返回统一错误体：`{ code: 408/413, message, data: null }`
-
-### Changed
-
-#### JWT 实现切换
-
-- 去除 `jsonwebtoken` / `@types/jsonwebtoken` 运行时依赖，改用 Hono 官方 `hono/jwt`（基于 Web Crypto）
-- 新增统一封装 [packages/server/src/lib/jwt.ts](packages/server/src/lib/jwt.ts)，导出 `signToken` / `verifyToken`，保留 `'2h'` / `'30d'` 等 `expiresIn` 写法
-- 所有原 `jwt.sign` / `jwt.verify` 调用位置（`middleware/auth`、`routes/auth`、`routes/oauth`、`routes/ws` 以及测试）统一替换为异步 API
-- 对外行为不变，保留原有 Bearer Token + blacklist + touchSession 业务链路
-
-#### 引入请求上下文存储
-
-- 全局启用 Hono 官方 `hono/context-storage` 中间件
-- 新增 [packages/server/src/lib/context.ts](packages/server/src/lib/context.ts)，暴露 `currentUser()` / `currentUserOrNull()` / `getCtx()`，允许辅助函数零参取请求上下文
-- `lib/tenant.ts` 新增零参便捷重载 `tenantScope(table)` / `currentCreateTenantId()`，既有 `tenantCondition(table, user)` / `getCreateTenantId(user)` 保持兼容
-
 ---
 
 ## v0.3.1 - 2026-05-03
