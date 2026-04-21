@@ -52,6 +52,9 @@ export default function RolesPage() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
   const [userModalLoading, setUserModalLoading] = useState(false);
+  const [dataScopeModalVisible, setDataScopeModalVisible] = useState(false);
+  const [dataScopeRole, setDataScopeRole] = useState<Role | null>(null);
+  const [selectedDataScope, setSelectedDataScope] = useState<string>('all');
 
   const fetchRoles = useCallback(async (params = searchParams) => {
     setLoading(true);
@@ -156,6 +159,22 @@ export default function RolesPage() {
     }
   };
 
+  const openDataScopeModal = (role: Role) => {
+    setDataScopeRole(role);
+    setSelectedDataScope(role.dataScope);
+    setDataScopeModalVisible(true);
+  };
+
+  const handleSaveDataScope = async () => {
+    if (!dataScopeRole) return;
+    const res = await request.put(`/api/roles/${dataScopeRole.id}`, { dataScope: selectedDataScope });
+    if (res.code === 0) {
+      Toast.success('数据权限已更新');
+      setDataScopeModalVisible(false);
+      void fetchRoles();
+    }
+  };
+
   const handleRoleModalOk = async () => {
     let values;
     try {
@@ -214,7 +233,7 @@ export default function RolesPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 360,
+      width: 420,
       align: 'center',
       render: (_v, row) => (
         <Space>
@@ -223,6 +242,9 @@ export default function RolesPage() {
           </Button>}
           {hasPermission('system:role:assign') && <Button theme="borderless" size="small" onClick={() => openUserModal(row)}>
             分配用户
+          </Button>}
+          {hasPermission('system:role:update') && <Button theme="borderless" size="small" onClick={() => openDataScopeModal(row)}>
+            数据权限
           </Button>}
           {hasPermission('system:role:update') && <Button
             theme="borderless"
@@ -316,14 +338,6 @@ export default function RolesPage() {
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
             placeholder="请选择状态"
           />
-          <Form.Select field="dataScope" label="数据权限" style={{ width: '100%' }}
-            optionList={[
-              { value: 'all', label: '全部数据' },
-              { value: 'dept', label: '本部门及以下' },
-              { value: 'self', label: '仅本人数据' },
-            ]}
-            placeholder="请选择数据权限"
-          />
         </Form>
       </Modal>
 
@@ -363,6 +377,27 @@ export default function RolesPage() {
             />
           </>
         )}
+      </Modal>
+
+      {/* 数据权限 Modal */}
+      <Modal
+        title={`数据权限 — ${dataScopeRole?.name}`}
+        visible={dataScopeModalVisible}
+        onCancel={() => setDataScopeModalVisible(false)}
+        onOk={handleSaveDataScope}
+        width={400}
+        bodyStyle={{ paddingBottom: 24 }}
+      >
+        <Select
+          value={selectedDataScope}
+          onChange={(v) => setSelectedDataScope(v as string)}
+          style={{ width: '100%' }}
+          optionList={[
+            { value: 'all', label: '全部数据' },
+            { value: 'dept', label: '本部门及以下' },
+            { value: 'self', label: '仅本人数据' },
+          ]}
+        />
       </Modal>
 
       {/* 分配用户 Modal */}
