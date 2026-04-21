@@ -46,6 +46,7 @@ export default function RolesPage() {
   const [allMenus, setAllMenus] = useState<Menu[]>([]);
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([]);
   const [menuLoading, setMenuLoading] = useState(false);
+  const [menuExpandedKeys, setMenuExpandedKeys] = useState<string[]>([]);
   const [userModalVisible, setUserModalVisible] = useState(false);
   const [userRole, setUserRole] = useState<Role | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -94,7 +95,10 @@ export default function RolesPage() {
         request.get<Menu[]>('/api/menus'),
         request.get<Role>(`/api/roles/${role.id}`),
       ]);
-      if (menusRes.code === 0) setAllMenus(menusRes.data);
+      if (menusRes.code === 0) {
+        setAllMenus(menusRes.data);
+        setMenuExpandedKeys(getAllMenuKeys(menusRes.data));
+      }
       if (roleRes.code === 0) setCheckedMenuIds(roleRes.data.menuIds ?? []);
     } finally {
       setMenuLoading(false);
@@ -108,6 +112,14 @@ export default function RolesPage() {
       value: m.id,
       children: m.children ? menusToTreeData(m.children) : undefined,
     }));
+  }
+
+  function getAllMenuIds(items: Menu[]): number[] {
+    return items.flatMap((m) => [m.id, ...(m.children ? getAllMenuIds(m.children) : [])]);
+  }
+
+  function getAllMenuKeys(items: Menu[]): string[] {
+    return items.flatMap((m) => [String(m.id), ...(m.children ? getAllMenuKeys(m.children) : [])]);
   }
 
   const handleAssignMenus = async () => {
@@ -329,14 +341,27 @@ export default function RolesPage() {
             <Spin />
           </div>
         ) : (
-          <Tree
-            treeData={menusToTreeData(allMenus)}
-            multiple
-            defaultExpandAll
-            value={checkedMenuIds.map(String)}
-            onChange={(keys) => setCheckedMenuIds((keys as string[]).map(Number))}
-            style={{ maxHeight: 400, overflow: 'auto' }}
-          />
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Space>
+                <Button size="small" theme="borderless" onClick={() => setCheckedMenuIds(getAllMenuIds(allMenus))}>全选</Button>
+                <Button size="small" theme="borderless" onClick={() => setCheckedMenuIds([])}>全不选</Button>
+              </Space>
+              <Space>
+                <Button size="small" theme="borderless" onClick={() => setMenuExpandedKeys(getAllMenuKeys(allMenus))}>展开全部</Button>
+                <Button size="small" theme="borderless" onClick={() => setMenuExpandedKeys([])}>折叠全部</Button>
+              </Space>
+            </div>
+            <Tree
+              treeData={menusToTreeData(allMenus)}
+              multiple
+              expandedKeys={menuExpandedKeys}
+              onExpand={(keys) => setMenuExpandedKeys(keys)}
+              value={checkedMenuIds.map(String)}
+              onChange={(keys) => setCheckedMenuIds((keys as string[]).map(Number))}
+              style={{ maxHeight: 400, overflow: 'auto' }}
+            />
+          </>
         )}
       </Modal>
 
