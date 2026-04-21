@@ -1,6 +1,5 @@
 import type { Context, Next } from 'hono';
-import jwt from 'jsonwebtoken';
-import { config } from '../config';
+import { verifyToken } from '../lib/jwt';
 import { isTokenBlacklisted, touchSession } from '../lib/session-manager';
 
 export interface JwtPayload {
@@ -21,7 +20,7 @@ export async function authMiddleware(c: Context, next: Next) {
 
   const token = authorization.slice(7);
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as JwtPayload;
+    const payload = await verifyToken<JwtPayload>(token);
 
     // Check if this token has been force-logged-out
     if (payload.jti) {

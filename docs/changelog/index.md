@@ -25,6 +25,15 @@
 - Timeout 自动排除长耗时路径：`/api/ws`、`/api/files`、`/api/db-backups` 及所有 `/export` 导出接口
 - 超时与超限返回统一错误体：`{ code: 408/413, message, data: null }`
 
+### Changed
+
+#### JWT 实现切换
+
+- 去除 `jsonwebtoken` / `@types/jsonwebtoken` 运行时依赖，改用 Hono 官方 `hono/jwt`（基于 Web Crypto）
+- 新增统一封装 [packages/server/src/lib/jwt.ts](packages/server/src/lib/jwt.ts)，导出 `signToken` / `verifyToken`，保留 `'2h'` / `'30d'` 等 `expiresIn` 写法
+- 所有原 `jwt.sign` / `jwt.verify` 调用位置（`middleware/auth`、`routes/auth`、`routes/oauth`、`routes/ws` 以及测试）统一替换为异步 API
+- 对外行为不变，保留原有 Bearer Token + blacklist + touchSession 业务链路
+
 ---
 
 ## v0.3.1 - 2026-05-03

@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
-import jwt from 'jsonwebtoken';
+import { sign } from 'hono/jwt';
 
 const TEST_JWT_SECRET = 'unit-test-only-fake-secret-do-not-use-in-production';
 
@@ -111,10 +111,12 @@ function createChain(result: unknown[]): Record<string, any> {
 }
 
 // ─── 工具：生成测试用 JWT ──────────────────────────────────────────────────────
-function makeToken(payload: object = {}) {
-  return jwt.sign(
-    { userId: 1, username: 'admin', roles: ['admin'], tenantId: null, jti: 'test-jti', ...payload },
+async function makeToken(payload: object = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  return sign(
+    { userId: 1, username: 'admin', roles: ['admin'], tenantId: null, jti: 'test-jti', iat: now, exp: now + 3600, ...payload },
     TEST_JWT_SECRET,
+    'HS256',
   );
 }
 
@@ -201,10 +203,11 @@ describe('GET /api/auth/me - 认证中间件', () => {
   });
 
   it('过期的 JWT → 401', async () => {
-    const expiredToken = jwt.sign(
-      { userId: 1, username: 'admin', roles: ['admin'], tenantId: null },
+    const now = Math.floor(Date.now() / 1000);
+    const expiredToken = await sign(
+      { userId: 1, username: 'admin', roles: ['admin'], tenantId: null, iat: now - 10, exp: now - 1 },
       TEST_JWT_SECRET,
-      { expiresIn: -1 }, // already expired
+      'HS256',
     );
     const app = buildApp();
     const res = await app.request('/api/auth/me', {
@@ -214,7 +217,7 @@ describe('GET /api/auth/me - 认证中间件', () => {
   });
 
   it('有效 JWT 但用户不存在 → 404', async () => {
-    const token = makeToken();
+    const token = await makeToken();
     dbMock.select.mockReturnValueOnce(createChain([])); // users 查询 → 空
 
     const app = buildApp();
@@ -228,7 +231,7 @@ describe('GET /api/auth/me - 认证中间件', () => {
   });
 
   it('有效 JWT + 用户存在 → 200 返回用户信息', async () => {
-    const token = makeToken({ userId: 1 });
+    const token = await makeToken({ userId: 1 });
     const now = new Date();
     const mockUser = {
       id: 1,

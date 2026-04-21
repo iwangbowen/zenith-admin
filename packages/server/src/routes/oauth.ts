@@ -1,13 +1,12 @@
 import { Hono } from 'hono';
-import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
 import { users, userRoles, roles, userOauthAccounts } from '../db/schema';
-import { config } from '../config';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
+import { signToken } from '../lib/jwt';
 import { getOAuthProvider, isProviderConfigured } from '../lib/oauth';
 import { generateTokenId, registerSession } from '../lib/session-manager';
 import type { OAuthProviderType } from '@zenith/shared';
@@ -30,17 +29,15 @@ async function getUserRoles(userId: number) {
   return rows;
 }
 
-function issueTokens(user: { id: number; username: string }, roleCodes: string[]) {
+async function issueTokens(user: { id: number; username: string }, roleCodes: string[]) {
   const tokenId = generateTokenId();
-  const accessToken = jwt.sign(
-    { userId: user.id, username: user.username, roles: roleCodes, tenantId: null, jti: tokenId } satisfies JwtPayload,
-    config.jwtSecret,
-    { expiresIn: '2h' },
+  const accessToken = await signToken<JwtPayload>(
+    { userId: user.id, username: user.username, roles: roleCodes, tenantId: null, jti: tokenId },
+    '2h',
   );
-  const refreshToken = jwt.sign(
+  const refreshToken = await signToken(
     { userId: user.id, username: user.username, type: 'refresh', jti: tokenId },
-    config.jwtSecret,
-    { expiresIn: '30d' },
+    '30d',
   );
   return { accessToken, refreshToken, tokenId };
 }
@@ -160,7 +157,7 @@ oauth.post('/:provider/callback', async (c) => {
 
   const userRoleList = await getUserRoles(user.id);
   const roleCodes = userRoleList.map((r) => r.code);
-  const { accessToken, refreshToken, tokenId } = issueTokens(user, roleCodes);
+  const { accessToken, refreshToken, tokenId } = await issueTokens(user, roleCodes);
 
   // 注册 session
   const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';

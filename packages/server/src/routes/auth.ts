@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { randomBytes } from 'node:crypto';
 import { eq, desc, sql, gte, lte, like, and, isNull, gt } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
@@ -12,6 +11,7 @@ import { loginSchema, registerSchema, changePasswordSchema, updateProfileSchema,
 import { sendMail } from '../lib/email';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
+import { signToken, verifyToken } from '../lib/jwt';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { generateCaptcha, verifyCaptcha } from '../lib/captcha';
 import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
@@ -159,16 +159,14 @@ auth.post('/login', zValidate('json', loginSchema), async (c) => {
   const userRoleList = await getUserRoles(user.id);
   const tokenId = generateTokenId();
 
-  const accessToken = jwt.sign(
-    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), tenantId: user.tenantId ?? null, jti: tokenId } satisfies JwtPayload,
-    config.jwtSecret,
-    { expiresIn: '2h' }
+  const accessToken = await signToken<JwtPayload>(
+    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), tenantId: user.tenantId ?? null, jti: tokenId },
+    '2h',
   );
 
-  const refreshToken = jwt.sign(
+  const refreshToken = await signToken(
     { userId: user.id, username: user.username, type: 'refresh', tenantId: user.tenantId ?? null, jti: tokenId },
-    config.jwtSecret,
-    { expiresIn: '30d' }
+    '30d',
   );
 
   // Register session for online user tracking
@@ -231,16 +229,14 @@ auth.post('/register', zValidate('json', registerSchema), async (c) => {
   const userRoleList = await getUserRoles(user.id);
   const tokenId = generateTokenId();
 
-  const accessToken = jwt.sign(
-    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), tenantId: user.tenantId ?? null, jti: tokenId } satisfies JwtPayload,
-    config.jwtSecret,
-    { expiresIn: '2h' }
+  const accessToken = await signToken<JwtPayload>(
+    { userId: user.id, username: user.username, roles: userRoleList.map((r) => r.code), tenantId: user.tenantId ?? null, jti: tokenId },
+    '2h',
   );
 
-  const refreshToken = jwt.sign(
+  const refreshToken = await signToken(
     { userId: user.id, username: user.username, type: 'refresh', tenantId: user.tenantId ?? null, jti: tokenId },
-    config.jwtSecret,
-    { expiresIn: '30d' }
+    '30d',
   );
 
   // Register session for online user tracking (same as login)
@@ -284,7 +280,7 @@ auth.post('/refresh', async (c) => {
   }
 
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as { userId: number; username: string; type?: string; jti?: string; tenantId?: number | null };
+    const payload = await verifyToken<{ userId: number; username: string; type?: string; jti?: string; tenantId?: number | null }>(token);
     if (payload.type !== 'refresh') {
       return c.json({ code: 401, message: '无效的 refresh token', data: null }, 401);
     }
@@ -304,10 +300,9 @@ auth.post('/refresh', async (c) => {
     // Get fresh user roles
     const userRoleList = await getUserRoles(payload.userId);
 
-    const accessToken = jwt.sign(
-      { userId: payload.userId, username: payload.username, roles: userRoleList.map((r) => r.code), tenantId: payload.tenantId ?? null, jti: tokenId } satisfies JwtPayload,
-      config.jwtSecret,
-      { expiresIn: '2h' }
+    const accessToken = await signToken<JwtPayload>(
+      { userId: payload.userId, username: payload.username, roles: userRoleList.map((r) => r.code), tenantId: payload.tenantId ?? null, jti: tokenId },
+      '2h',
     );
 
     return c.json({
@@ -580,16 +575,14 @@ auth.post('/switch-tenant', authMiddleware, zValidate('json', switchTenantSchema
   }
 
   const tokenId = generateTokenId();
-  const newAccessToken = jwt.sign(
-    { userId: payload.userId, username: payload.username, roles: payload.roles, tenantId: payload.tenantId, viewingTenantId: targetTenantId, jti: tokenId } satisfies JwtPayload,
-    config.jwtSecret,
-    { expiresIn: '2h' }
+  const newAccessToken = await signToken<JwtPayload>(
+    { userId: payload.userId, username: payload.username, roles: payload.roles, tenantId: payload.tenantId, viewingTenantId: targetTenantId, jti: tokenId },
+    '2h',
   );
 
-  const newRefreshToken = jwt.sign(
+  const newRefreshToken = await signToken(
     { userId: payload.userId, username: payload.username, type: 'refresh', tenantId: payload.tenantId, viewingTenantId: targetTenantId, jti: tokenId },
-    config.jwtSecret,
-    { expiresIn: '30d' }
+    '30d',
   );
 
   // Re-register session

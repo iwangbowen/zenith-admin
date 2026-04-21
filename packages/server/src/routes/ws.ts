@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
-import jwt from 'jsonwebtoken';
 import type { UpgradeWebSocket } from 'hono/ws';
-import { config } from '../config';
+import { verifyToken } from '../lib/jwt';
 import type { JwtPayload } from '../middleware/auth';
 import { isTokenBlacklisted } from '../lib/session-manager';
 import { registerConnection, removeConnection } from '../lib/ws-manager';
@@ -15,13 +14,13 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
 
   wsApp.get(
     '/',
-    upgradeWebSocket((c) => {
+    upgradeWebSocket(async (c) => {
       const token = c.req.query('token');
       let payload: JwtPayload | null = null;
 
       if (token) {
         try {
-          payload = jwt.verify(token, config.jwtSecret) as JwtPayload;
+          payload = await verifyToken<JwtPayload>(token);
         } catch {
           payload = null;
         }

@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
-import jwt from 'jsonwebtoken';
+import { sign } from 'hono/jwt';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 vi.mock('../config', () => ({
@@ -118,10 +118,12 @@ function createChain(result: unknown[]): Record<string, any> {
   return chain;
 }
 
-function makeToken(payload: object = {}) {
-  return jwt.sign(
-    { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null, jti: 'test-jti', ...payload },
+async function makeToken(payload: object = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  return sign(
+    { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null, jti: 'test-jti', iat: now, exp: now + 3600, ...payload },
     'unit-test-only-fake-secret-do-not-use-in-production',
+    'HS256',
   );
 }
 
@@ -159,7 +161,7 @@ describe('GET /api/users - 认证中间件', () => {
 
 describe('GET /api/users - 列表查询', () => {
   it('有效 JWT + 空数据库 → 200 返回空分页列表', async () => {
-    const token = makeToken();
+    const token = await makeToken();
 
     // count 查询 → 0 条
     dbMock.select.mockReturnValueOnce(createChain([{ count: '0' }]));
@@ -181,7 +183,7 @@ describe('GET /api/users - 列表查询', () => {
 
 describe('POST /api/users - 参数校验', () => {
   it('缺少 username 字段 → 400', async () => {
-    const token = makeToken();
+    const token = await makeToken();
 
     const app = buildApp();
     const res = await app.request('/api/users', {
@@ -199,7 +201,7 @@ describe('POST /api/users - 参数校验', () => {
   });
 
   it('缺少 password 字段 → 400', async () => {
-    const token = makeToken();
+    const token = await makeToken();
 
     const app = buildApp();
     const res = await app.request('/api/users', {
