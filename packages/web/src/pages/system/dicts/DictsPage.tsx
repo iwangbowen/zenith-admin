@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Table,
   Button,
   Input,
   Select,
+  DatePicker,
   Tag,
   Space,
   Modal,
@@ -36,6 +37,8 @@ export default function DictsPage() {
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [submittedStatus, setSubmittedStatus] = useState('');
+  const [timeRange, setTimeRange] = useState<[Date, Date] | null>(null);
+  const [submittedTimeRange, setSubmittedTimeRange] = useState<[Date, Date] | null>(null);
   const [dictModalVisible, setDictModalVisible] = useState(false);
   const [editingDict, setEditingDict] = useState<Dict | null>(null);
 
@@ -46,6 +49,8 @@ export default function DictsPage() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemModalVisible, setItemModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<DictItem | null>(null);
+  const [itemKeyword, setItemKeyword] = useState('');
+  const [itemStatusFilter, setItemStatusFilter] = useState('');
   const { items: statusItems } = useDictItems('common_status');
 
   // ─── 数据获取 ──────────────────────────────────────────────────────────────
@@ -55,6 +60,10 @@ export default function DictsPage() {
       const params = new URLSearchParams();
       if (submittedKeyword) params.set('keyword', submittedKeyword);
       if (submittedStatus) params.set('status', submittedStatus);
+      if (submittedTimeRange) {
+        params.set('startDate', submittedTimeRange[0].toISOString().slice(0, 10));
+        params.set('endDate', submittedTimeRange[1].toISOString().slice(0, 10));
+      }
       const res = await request.get<Dict[]>(`/api/dicts?${params.toString()}`);
       if (res.code === 0) {
         setDicts(res.data);
@@ -66,7 +75,7 @@ export default function DictsPage() {
     } finally {
       setDictsLoading(false);
     }
-  }, [submittedKeyword, submittedStatus, selectedDict]);
+  }, [submittedKeyword, submittedStatus, submittedTimeRange, selectedDict]);
 
   const fetchItems = useCallback(async (dictId: number) => {
     setItemsLoading(true);
@@ -83,6 +92,7 @@ export default function DictsPage() {
   function handleSearch() {
     setSubmittedKeyword(keyword);
     setSubmittedStatus(statusFilter);
+    setSubmittedTimeRange(timeRange);
   }
 
   function handleReset() {
@@ -90,13 +100,23 @@ export default function DictsPage() {
     setSubmittedKeyword('');
     setStatusFilter('');
     setSubmittedStatus('');
+    setTimeRange(null);
+    setSubmittedTimeRange(null);
   }
 
   const selectDict = (dict: Dict) => {
     setSelectedDict(dict);
     fetchItems(dict.id);
+    setItemKeyword('');
+    setItemStatusFilter('');
     setSideSheetVisible(true);
   };
+
+  const filteredItems = useMemo(() => items.filter((item) => {
+    if (itemKeyword && !item.label.includes(itemKeyword) && !item.value.includes(itemKeyword)) return false;
+    if (itemStatusFilter && item.status !== itemStatusFilter) return false;
+    return true;
+  }), [items, itemKeyword, itemStatusFilter]);
 
   // ─── 字典 CRUD ─────────────────────────────────────────────────────────────
   const handleDictModalOk = async () => {
@@ -276,6 +296,13 @@ export default function DictsPage() {
               <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
             ))}
           </Select>
+          <DatePicker
+            type="dateRange"
+            placeholder={['开始日期', '结束日期']}
+            value={timeRange ?? undefined}
+            onChange={(val) => setTimeRange(val as [Date, Date] | null)}
+            style={{ width: 240 }}
+          />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
@@ -314,7 +341,7 @@ export default function DictsPage() {
         }
         visible={sideSheetVisible}
         onCancel={() => setSideSheetVisible(false)}
-        width={700}
+        width={900}
         bodyStyle={{ padding: '16px 24px' }}
         headerStyle={{ borderBottom: '1px solid var(--semi-color-border)' }}
         footer={
@@ -331,11 +358,32 @@ export default function DictsPage() {
           ) : null
         }
       >
+        <Space style={{ marginBottom: 12 }} wrap>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="标签/键值"
+            showClear
+            value={itemKeyword}
+            onChange={(v) => setItemKeyword(v)}
+            style={{ width: 180 }}
+          />
+          <Select
+            placeholder="状态"
+            showClear
+            value={itemStatusFilter || undefined}
+            onChange={(val) => setItemStatusFilter((val as string) ?? '')}
+            style={{ width: 120 }}
+          >
+            {statusItems.map((i) => (
+              <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
+            ))}
+          </Select>
+        </Space>
         <Table
           bordered
           className="admin-table-nowrap"
           columns={itemColumns}
-          dataSource={items}
+          dataSource={filteredItems}
           rowKey="id"
           loading={itemsLoading}
           pagination={{ pageSize: 10, showSizeChanger: true }}

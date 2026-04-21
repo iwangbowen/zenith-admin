@@ -25,11 +25,15 @@ function toDictItem(row: typeof dictItems.$inferSelect) {
 dictsRouter.get('/', guard({ permission: 'system:dict:list' }), async (c) => {
   const keyword = c.req.query('keyword') ?? '';
   const status = c.req.query('status') ?? '';
+  const startDate = c.req.query('startDate') ?? '';
+  const endDate = c.req.query('endDate') ?? '';
   const tc = tenantCondition(dicts, c.get('user'));
   const list = await db.select().from(dicts).where(tc).orderBy(dicts.id);
   const filtered = list.filter((d) => {
     if (keyword && !d.name.includes(keyword) && !d.code.includes(keyword)) return false;
     if (status && d.status !== status) return false;
+    if (startDate && d.createdAt < new Date(startDate)) return false;
+    if (endDate && d.createdAt > new Date(`${endDate}T23:59:59.999Z`)) return false;
     return true;
   });
   return c.json({ code: 0, message: 'ok', data: filtered.map(toDict) });

@@ -8,10 +8,14 @@ export const dictsHandlers = [
     const url = new URL(request.url);
     const keyword = url.searchParams.get('keyword') ?? '';
     const status = url.searchParams.get('status') ?? '';
+    const startDate = url.searchParams.get('startDate') ?? '';
+    const endDate = url.searchParams.get('endDate') ?? '';
 
     const list = mockDicts.filter((d) => {
       if (keyword && !d.name.includes(keyword) && !d.code.includes(keyword)) return false;
       if (status && d.status !== status) return false;
+      if (startDate && d.createdAt < startDate) return false;
+      if (endDate && d.createdAt > `${endDate}T23:59:59.999Z`) return false;
       return true;
     });
     return HttpResponse.json({ code: 0, message: 'ok', data: list });
