@@ -436,6 +436,9 @@ export default function UsersPage() {
           <Tree
             treeData={deptTreeData}
             value={searchParams.departmentId == null ? '__all__' : String(searchParams.departmentId)}
+            filterTreeNode
+            showFilteredOnly
+            searchPlaceholder="搜索部门"
             onSelect={(selectedKey) => {
               const key = selectedKey;
               const newDeptId = !key || key === '__all__' ? null : Number(key);
