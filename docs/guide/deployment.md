@@ -63,6 +63,14 @@ LOG_DIR=./logs
 # 请求超时（毫秒），0 = 不启用。启用后自动排除 /api/ws、/api/files、/api/db-backups 及 /export 接口
 # REQUEST_TIMEOUT_MS=30000
 
+# Prometheus 指标默认暴露在 GET /metrics
+# OpenTelemetry tracing（可选）
+# OTEL_ENABLED=true
+# OTEL_SERVICE_NAME=zenith-admin-server
+# OTEL_SERVICE_VERSION=0.5.0
+# OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
+# OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer xxx
+
 # CSRF 防护（生产环境强烈建议配置，防止跨站请求伪造）
 # 逗号分隔的允许来源，留空则不限制（开发模式）
 ALLOWED_ORIGINS=https://your-domain.com
@@ -137,6 +145,14 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
+    # Prometheus 指标（建议仅对内网或采集器开放）
+    location = /metrics {
+        proxy_pass http://localhost:3300;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
     # WebSocket 支持
     location /ws {
         proxy_pass http://localhost:3300;
@@ -168,6 +184,36 @@ curl http://localhost:3300/api/health
 ```
 
 返回 `200 OK` 表示服务正常。
+
+## Prometheus 指标抓取
+
+若已完成部署，可通过以下接口确认指标端点可用：
+
+```bash
+curl http://localhost:3300/metrics
+```
+
+若服务位于 Nginx 后面并通过同域名暴露，请确保已按上文示例代理 `/metrics`，否则 Prometheus 会抓到前端静态站点而不是后端指标。
+
+::: warning
+`/metrics` 默认无需鉴权，生产环境建议仅对内网、VPN 或 Prometheus 所在网段开放，避免把内部运行指标暴露到公网。
+:::
+
+## OpenTelemetry Tracing
+
+如需将 Trace 导出到 OTLP Collector、Tempo、Jaeger、Honeycomb 等系统，可在后端 `.env` 中加入：
+
+```env
+OTEL_ENABLED=true
+OTEL_SERVICE_NAME=zenith-admin-server
+OTEL_SERVICE_VERSION=0.5.0
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
+```
+
+说明：
+
+- 若未设置 `OTEL_ENABLED`，但已配置 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` 或 `OTEL_EXPORTER_OTLP_ENDPOINT`，服务也会自动启用 tracing
+- 当前 Trace 基于 `@hono/otel`，覆盖整个 Hono 请求生命周期；若后续需要 PostgreSQL / Redis 更细粒度 spans，可继续叠加 OpenTelemetry Node auto instrumentation
 
 ---
 

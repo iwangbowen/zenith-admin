@@ -160,7 +160,40 @@ const listXxxRoute = defineOpenAPIRoute({
 
 ## 健康检查
 
-`GET /api/health` — 无需鉴权，返回服务运行状态（包含 Node.js 版本、内存占用、运行时长）。
+`GET /api/health` — 无需鉴权，返回服务健康状态、运行时长以及数据库 / Redis 连通性检查结果。
+
+## Prometheus 指标
+
+`GET /metrics` — 无需鉴权，返回 Prometheus 文本格式指标，可直接被 Prometheus Server 抓取。
+
+当前指标来源包括：
+
+- `@hono/prometheus` 自动生成的 HTTP RED 指标（请求总量、请求耗时）
+- `prom-client` 默认进程指标（事件循环、GC、进程 / Node.js 运行时指标等）
+
+该端点返回 `text/plain`，**不属于 OpenAPI / Swagger 文档的一部分**。
+
+## OpenTelemetry Trace
+
+服务端已接入 `@hono/otel`，可对 Hono 请求生命周期生成 Trace Span。
+
+### 当前行为
+
+- 默认关闭，避免在未配置 OTLP Collector 时产生无效导出
+- 当 `OTEL_ENABLED=true` 时强制启用
+- 若未显式设置 `OTEL_ENABLED`，但配置了 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` 或 `OTEL_EXPORTER_OTLP_ENDPOINT`，也会自动启用
+- 当前会附带采集以下请求 / 响应头：`x-request-id`、`user-agent`
+
+### 常用环境变量
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `OTEL_ENABLED` | `false` | 是否启用 Trace。若未设置但存在 OTLP endpoint，也会自动启用 |
+| `OTEL_SERVICE_NAME` | `zenith-admin-server` | 服务名，写入 Span 资源属性 |
+| `OTEL_SERVICE_VERSION` | 当前 `npm package version` | 服务版本，便于在可观测平台区分发布版本 |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | 空 | OTLP traces 专用导出地址，推荐显式配置为 `http://host:4318/v1/traces` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | 空 | 通用 OTLP 导出地址；未设置 traces 专用地址时可使用该项 |
+| `OTEL_EXPORTER_OTLP_HEADERS` | 空 | 导出请求头，适用于 SaaS 观测平台鉴权 |
 
 ## 共享约定
 
