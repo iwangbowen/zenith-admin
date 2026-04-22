@@ -115,7 +115,7 @@ export default function PendingApprovalsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<PendingItem> | null>(null);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(20);
   const [selectedItem, setSelectedItem] = useState<PendingItem | null>(null);
   const [approveVisible, setApproveVisible] = useState(false);
   const [rejectVisible, setRejectVisible] = useState(false);
@@ -124,12 +124,12 @@ export default function PendingApprovalsPage() {
   const [detail, setDetail] = useState<WorkflowInstance | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const fetchList = useCallback(async (p = page) => {
+  const fetchList = useCallback(async (p = page, ps = pageSize) => {
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
-        pageSize: String(pageSize),
+        pageSize: String(ps),
       }).toString();
       const res = await request.get<PaginatedResponse<PendingItem>>(`/api/workflows/instances/pending-mine?${query}`);
       if (res.code === 0) {
@@ -267,6 +267,8 @@ export default function PendingApprovalsPage() {
           pageSize,
           total: data?.total ?? 0,
           onPageChange: (p) => { void fetchList(p); },
+          onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, ps); },
+          showSizeChanger: true,
         }}
       />
 

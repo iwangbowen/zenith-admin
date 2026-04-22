@@ -179,7 +179,7 @@ export default function WorkflowMonitorPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<MonitorResponse | null>(null);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(20);
   const [keyword, setKeyword] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -189,10 +189,10 @@ export default function WorkflowMonitorPage() {
   const [detail, setDetail] = useState<WorkflowInstance | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const fetchList = useCallback(async (p = page, kw = keyword, st = statusFilter) => {
+  const fetchList = useCallback(async (p = page, kw = keyword, st = statusFilter, ps = pageSize) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
+      const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
       if (kw) params.set('keyword', kw);
       if (st) params.set('status', st);
       const res = await request.get<MonitorResponse>(`/api/workflows/instances/all?${params.toString()}`);
@@ -346,6 +346,8 @@ export default function WorkflowMonitorPage() {
           pageSize,
           total: data?.total ?? 0,
           onPageChange: (p) => { void fetchList(p); },
+          onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, keyword, statusFilter, ps); },
+          showSizeChanger: true,
         }}
       />
 

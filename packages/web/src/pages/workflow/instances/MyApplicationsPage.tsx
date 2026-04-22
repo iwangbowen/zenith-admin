@@ -245,7 +245,7 @@ export default function MyApplicationsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(20);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchStatus, setSearchStatus] = useState('');
   const [detailVisible, setDetailVisible] = useState(false);
@@ -255,12 +255,12 @@ export default function MyApplicationsPage() {
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchList = useCallback(async (p = page, st = searchStatus) => {
+  const fetchList = useCallback(async (p = page, st = searchStatus, ps = pageSize) => {
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
-        pageSize: String(pageSize),
+        pageSize: String(ps),
         ...(st ? { status: st } : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<WorkflowInstance>>(`/api/workflows/instances?${query}`);
@@ -399,6 +399,8 @@ export default function MyApplicationsPage() {
           pageSize,
           total: data?.total ?? 0,
           onPageChange: (p) => { void fetchList(p); },
+          onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, searchStatus, ps); },
+          showSizeChanger: true,
         }}
       />
 
