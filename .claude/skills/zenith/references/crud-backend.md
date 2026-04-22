@@ -102,7 +102,7 @@ export interface Xxx {
 
 ## Step 5：OpenAPIHono Router（`packages/server/src/routes/xxx.ts`）
 
-> **必读：实体 DTO 必须集中在 `packages/server/src/lib/openapi-dtos.ts`。** 新增实体时先在该文件添加：
+> **必读：实体 DTO 必须集中在 `packages/server/src/lib/dtos/` 子目录中（按业务域拆分：`iam` / `auth` / `dict` / `files` / `logs` / `notices` / `system` / `workflow` / `dashboard` / `region` / `messages`）。** 新增实体时先在对应子文件中添加：
 >
 > ```typescript
 > export const XxxDTO = z

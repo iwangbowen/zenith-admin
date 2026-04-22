@@ -94,7 +94,7 @@ xxxRouter.openapi(createRoute({
 
 ## 响应实体 DTO（中心化）
 
-所有响应实体 DTO 统一定义在 `packages/server/src/lib/openapi-dtos.ts`，由各路由通过 `import { XxxDTO } from '../lib/openapi-dtos'` 引用：
+所有响应实体 DTO 按业务域拆分在 `packages/server/src/lib/dtos/` 下，`openapi-dtos.ts` 作为向后兼容的 re-export 入口。各路由通过 `import { XxxDTO } from '../lib/openapi-dtos'` 引用（无需修改），**新增实体请直接在对应子文件中维护**：
 
 ```typescript
 import { UserDTO, RoleDTO, MenuDTO } from '../lib/openapi-dtos';
@@ -111,9 +111,9 @@ xxxRouter.openapi(createRoute({
 **约束：**
 
 - ❌ **禁止**在路由文件中本地声明带 `.openapi('EntityName')` 的实体 DTO（会导致 Swagger Components 重复或冲突）
-- ✅ 所有实体（`UserDTO` / `RoleDTO` / `MenuDTO` / `DepartmentDTO` / `TenantDTO` / `DictDTO` 等 50+）在 `openapi-dtos.ts` 中集中注册
+- ✅ 所有实体（`UserDTO` / `RoleDTO` / `MenuDTO` / `DepartmentDTO` / `TenantDTO` / `DictDTO` 等 50+）按业务域拆分在 `lib/dtos/` 子目录，`openapi-dtos.ts` 为 re-export barrel
 - ✅ 内联使用的 request body schema、不作为 Component 的一次性匿名对象无需搬到中心文件
-- ✅ 新增实体模块时，先在 `openapi-dtos.ts` 添加 `export const XxxDTO = z.object({...}).openapi('Xxx');`，再在路由中导入
+- ✅ 新增实体模块时，先在 `lib/dtos/` 下对应的子文件（或新建子文件）中添加 `export const XxxDTO = z.object({...}).openapi('Xxx');`，再在路由中从 `'../lib/openapi-dtos'` 导入
 
 这样做的好处：Swagger Components 有单一来源，避免同名冲突；前端/第三方可直接使用稳定的 OpenAPI Components 名称。
 
