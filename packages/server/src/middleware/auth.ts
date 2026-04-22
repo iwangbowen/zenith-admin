@@ -1,6 +1,7 @@
 import { createMiddleware } from 'hono/factory';
-import { verifyToken } from '../lib/jwt';
+import { jwt, type JwtVariables } from 'hono/jwt';
 import { isTokenBlacklisted, touchSession } from '../lib/session-manager';
+import { config } from '../config';
 
 export interface JwtPayload {
   userId: number;
@@ -14,11 +15,16 @@ export interface JwtPayload {
 
 /** Hono Env 类型——声明 Variables 中的 user 字段类型，供中间件消费方推断 */
 export type AuthEnv = {
-  Variables: {
+  Variables: JwtVariables<JwtPayload> & {
     user: JwtPayload;
     auditBeforeData?: string;
   };
 };
+
+const jwtMiddleware = jwt({
+  secret: config.jwtSecret,
+  alg: 'HS256',
+});
 
 export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
   const authorization = c.req.header('Authorization');
@@ -26,9 +32,10 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
     return c.json({ code: 401, message: '未登录', data: null }, 401);
   }
 
-  const token = authorization.slice(7);
   try {
-    const payload = await verifyToken<JwtPayload>(token);
+    // Delegate signature and claims verification to Hono's official JWT middleware.
+    await jwtMiddleware(c, async () => {});
+    const payload = c.get('jwtPayload') as JwtPayload;
 
     // Check if this token has been force-logged-out
     if (payload.jti) {
