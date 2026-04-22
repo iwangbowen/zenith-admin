@@ -7,14 +7,14 @@ describe('exportToExcel', () => {
     const data = [{ name: 'Test' }];
     const buffer = await exportToExcel(columns, data);
     expect(buffer).toBeDefined();
-    expect(buffer).toBeInstanceOf(ArrayBuffer);
+    expect(buffer).toBeInstanceOf(Uint8Array);
   });
 
   it('should handle custom sheet name', async () => {
     const columns: ExcelColumn[] = [{ header: 'Name', key: 'name' }];
     const data = [{ name: 'Test' }];
     const buffer = await exportToExcel(columns, data, 'CustomSheet');
-    expect(buffer).toBeInstanceOf(ArrayBuffer);
+    expect(buffer).toBeInstanceOf(Uint8Array);
   });
 
   it('should format headers with bold', async () => {
