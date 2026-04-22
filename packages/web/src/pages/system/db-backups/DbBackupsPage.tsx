@@ -12,16 +12,16 @@ export default function DbBackupsPage() {
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(10);
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [createVisible, setCreateVisible] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const { hasPermission } = usePermission();
 
-  const fetchList = useCallback(async (p = page) => {
+  const fetchList = useCallback(async (p = page, ps = pageSize) => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
+    const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
     if (filterStatus) params.set('status', filterStatus);
     if (filterType) params.set('type', filterType);
     const res = await request.get<{ list: DbBackup[]; total: number }>(`/api/db-backups?${params}`);
@@ -173,7 +173,9 @@ export default function DbBackupsPage() {
           total,
           currentPage: page,
           pageSize,
-          onPageChange: (p) => fetchList(p),
+          onPageChange: (p) => fetchList(p, pageSize),
+          onPageSizeChange: (size) => { setPageSize(size); fetchList(1, size); },
+          showSizeChanger: true,
         }}
       />
 

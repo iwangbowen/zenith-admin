@@ -308,6 +308,7 @@ export default function OperationLogsPage() {
               total,
               onPageChange: (c) => { void fetchData(c, pageSize); },
               onPageSizeChange: (s) => { void fetchData(1, s); },
+              showSizeChanger: true,
             }}
           />
         </>

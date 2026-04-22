@@ -244,7 +244,7 @@ export default function PositionsPage() {
         dataSource={data}
         loading={loading}
         rowKey="id"
-        pagination={false}
+        pagination={{ showSizeChanger: true }}
         empty="暂无数据"
         rowSelection={{
           selectedRowKeys,

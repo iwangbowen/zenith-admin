@@ -36,17 +36,17 @@ export default function SystemConfigsPage() {
   const [data, setData] = useState<SystemConfig[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(15);
+  const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SystemConfig | null>(null);
 
-  const fetchData = useCallback(async (p = page, params = searchParams) => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
-        pageSize: String(pageSize),
+        pageSize: String(ps),
         ...(params.keyword ? { keyword: params.keyword } : {}),
         ...(params.configType ? { configType: params.configType } : {}),
       }).toString();
@@ -65,9 +65,9 @@ export default function SystemConfigsPage() {
   }, [fetchData]);
 
   const handleSearch = () => { setPage(1); void fetchData(1); };
-  const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, defaultSearchParams); };
+  const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
 
-  const handlePageChange = (p: number) => { setPage(p); void fetchData(p); };
+  const handlePageChange = (p: number) => { setPage(p); void fetchData(p, pageSize); };
 
   const handleExport = async () => {
     setExportLoading(true);
@@ -196,6 +196,8 @@ export default function SystemConfigsPage() {
           pageSize,
           total,
           onPageChange: handlePageChange,
+          onPageSizeChange: (size) => { setPageSize(size); void fetchData(1, size); },
+          showSizeChanger: true,
         }}
         empty="暂无数据"
       />

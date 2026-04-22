@@ -48,7 +48,7 @@ export default function CronJobsPage() {
   const [data, setData] = useState<CronJob[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(15);
+  const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
@@ -68,12 +68,12 @@ export default function CronJobsPage() {
   const [allLogsPage, setAllLogsPage] = useState(1);
   const [allLogsLoading, setAllLogsLoading] = useState(false);
 
-  const fetchData = useCallback(async (p = page, params = searchParams) => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
-        pageSize: String(pageSize),
+        pageSize: String(ps),
         ...(params.keyword ? { keyword: params.keyword } : {}),
         ...(params.status ? { status: params.status } : {}),
       }).toString();
@@ -94,9 +94,9 @@ export default function CronJobsPage() {
     });
   }, [fetchData]);
 
-  const handleSearch = () => { setPage(1); void fetchData(1); };
-  const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, defaultSearchParams); };
-  const handlePageChange = (p: number) => { setPage(p); void fetchData(p); };
+  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
+  const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
+  const handlePageChange = (p: number) => { setPage(p); void fetchData(p, pageSize); };
 
   const handleExport = async () => {
     setExportLoading(true);
@@ -303,6 +303,8 @@ export default function CronJobsPage() {
           pageSize,
           total,
           onPageChange: handlePageChange,
+          onPageSizeChange: (size) => { setPageSize(size); void fetchData(1, size); },
+          showSizeChanger: true,
         }}
         empty="暂无数据"
       />

@@ -115,7 +115,7 @@ export default function OnlineSessionsPage() {
         dataSource={filtered}
         loading={loading}
         rowKey="tokenId"
-        pagination={false}
+        pagination={{ showSizeChanger: true }}
         empty="暂无在线用户"
       />
     </div>

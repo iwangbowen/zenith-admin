@@ -152,7 +152,8 @@ export default function LoginLogsPage() {
           pageSize,
           total,
           onPageChange: (c) => { void fetchData(c, pageSize); },
-          onPageSizeChange: (s) => { void fetchData(1, s); }
+          onPageSizeChange: (s) => { void fetchData(1, s); },
+          showSizeChanger: true,
         }}
       />
 
