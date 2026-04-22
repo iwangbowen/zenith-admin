@@ -51,10 +51,7 @@ const listRoute = defineOpenAPIRoute({
     const tc = tenantCondition(loginLogs, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
-    const [{ count }] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(loginLogs)
-      .where(finalWhere);
+    const count = await db.$count(loginLogs, finalWhere);
 
     const rows = await db
       .select()

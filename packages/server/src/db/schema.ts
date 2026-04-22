@@ -18,7 +18,7 @@ export const tenants = pgTable('tenants', {
   maxUsers: integer('max_users'),
   remark: text('remark'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type TenantRow = typeof tenants.$inferSelect;
@@ -37,7 +37,7 @@ export const departments = pgTable('departments', {
   status: statusEnum('status').notNull().default('active'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('departments_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type DepartmentRow = typeof departments.$inferSelect;
@@ -53,7 +53,7 @@ export const positions = pgTable('positions', {
   remark: varchar('remark', { length: 256 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('positions_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type PositionRow = typeof positions.$inferSelect;
@@ -72,7 +72,7 @@ export const users = pgTable('users', {
   status: statusEnum('status').notNull().default('active'),
   passwordUpdatedAt: timestamp('password_updated_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
   unique('users_tenant_username_unique').on(t.tenantId, t.username),
   unique('users_tenant_email_unique').on(t.tenantId, t.email),
@@ -96,7 +96,7 @@ export const menus = pgTable('menus', {
   status: statusEnum('status').notNull().default('active'),
   visible: boolean('visible').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type MenuRow = typeof menus.$inferSelect;
@@ -112,7 +112,7 @@ export const roles = pgTable('roles', {
   dataScope: dataScopeEnum('data_scope').notNull().default('all'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('roles_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type RoleRow = typeof roles.$inferSelect;
@@ -145,7 +145,7 @@ export const dicts = pgTable('dicts', {
   status: statusEnum('status').notNull().default('active'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('dicts_tenant_code_unique').on(t.tenantId, t.code)]);
 
 export type DictRow = typeof dicts.$inferSelect;
@@ -162,7 +162,7 @@ export const dictItems = pgTable('dict_items', {
   status: statusEnum('status').notNull().default('active'),
   remark: varchar('remark', { length: 256 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (table) => [
   uniqueIndex('dict_items_dict_id_value_unique').on(table.dictId, table.value),
 ]);
@@ -198,7 +198,7 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   cosSecretKey: varchar('cos_secret_key', { length: 256 }),
   remark: varchar('remark', { length: 256 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type FileStorageConfigRow = typeof fileStorageConfigs.$inferSelect;
@@ -217,7 +217,7 @@ export const managedFiles = pgTable('managed_files', {
   extension: varchar('extension', { length: 32 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type ManagedFileRow = typeof managedFiles.$inferSelect;
@@ -279,7 +279,7 @@ export const notices = pgTable('notices', {
   createByName: varchar('create_by_name', { length: 32 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export type NoticeRow = typeof notices.$inferSelect;
@@ -316,7 +316,7 @@ export const systemConfigs = pgTable('system_configs', {
   description: varchar('description', { length: 256 }).notNull().default(''),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('system_configs_tenant_key_unique').on(t.tenantId, t.configKey)]);
 
 export type SystemConfigRow = typeof systemConfigs.$inferSelect;
@@ -341,7 +341,7 @@ export const cronJobs = pgTable('cron_jobs', {
   lastRunStatus: cronRunStatusEnum('last_run_status'),
   lastRunMessage: varchar('last_run_message', { length: 1024 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type CronJobRow = typeof cronJobs.$inferSelect;
@@ -395,7 +395,7 @@ export const emailConfigs = pgTable('email_configs', {
   encryption: emailEncryptionEnum('encryption').notNull().default('ssl'),
   status: statusEnum('status').notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type EmailConfigRow = typeof emailConfigs.$inferSelect;
@@ -417,7 +417,7 @@ export const userOauthAccounts = pgTable('user_oauth_accounts', {
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   raw: text('raw'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('uniq_provider_open_id').on(t.provider, t.openId)]);
 
 export type UserOauthAccountRow = typeof userOauthAccounts.$inferSelect;
@@ -433,7 +433,7 @@ export const oauthConfigs = pgTable('oauth_configs', {
   corpId: varchar('corp_id', { length: 128 }),
   enabled: boolean('enabled').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type OauthConfigRow = typeof oauthConfigs.$inferSelect;
@@ -503,7 +503,7 @@ export const messageTemplates = pgTable('message_templates', {
   status: statusEnum('status').default('active').notNull(),
   remark: text('remark'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type MessageTemplateRow = typeof messageTemplates.$inferSelect;
@@ -528,7 +528,7 @@ export const workflowDefinitions = pgTable('workflow_definitions', {
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type WorkflowDefinitionRow = typeof workflowDefinitions.$inferSelect;
@@ -546,7 +546,7 @@ export const workflowInstances = pgTable('workflow_instances', {
   initiatorId: integer('initiator_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type WorkflowInstanceRow = typeof workflowInstances.$inferSelect;

@@ -116,10 +116,7 @@ const listRoute = defineOpenAPIRoute({
     const tc = tenantCondition(managedFiles, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
-    const [{ count }] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(managedFiles)
-      .where(finalWhere);
+    const count = await db.$count(managedFiles, finalWhere);
 
     const paginated = await db
       .select()

@@ -32,9 +32,17 @@ vi.mock('../config', () => ({
   },
 }));
 
-vi.mock('../db', () => ({
-  db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn() },
-}));
+vi.mock('../db', () => {
+  const db = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    $count: vi.fn(),
+    transaction: vi.fn(async (callback: (tx: typeof db) => unknown) => callback(db)),
+  };
+  return { db };
+});
 
 vi.mock('../lib/redis', () => ({
   default: {
@@ -163,8 +171,7 @@ describe('GET /api/users - 列表查询', () => {
   it('有效 JWT + 空数据库 → 200 返回空分页列表', async () => {
     const token = await makeToken();
 
-    // count 查询 → 0 条
-    dbMock.select.mockReturnValueOnce(createChain([{ count: '0' }]));
+    dbMock.$count.mockResolvedValueOnce(0);
     // list 查询 → 空
     dbMock.select.mockReturnValueOnce(createChain([]));
 

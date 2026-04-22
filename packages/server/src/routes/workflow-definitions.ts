@@ -62,7 +62,7 @@ const listRoute = defineOpenAPIRoute({
     if (keyword) conditions.push(like(workflowDefinitions.name, `%${keyword}%`));
     if (status) conditions.push(eq(workflowDefinitions.status, status as 'draft' | 'published' | 'disabled'));
     const where = conditions.length ? and(...conditions) : undefined;
-    const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(workflowDefinitions).where(where);
+    const total = await db.$count(workflowDefinitions, where);
     const rows = await db
       .select({ def: workflowDefinitions, createdByName: users.nickname })
       .from(workflowDefinitions)
@@ -184,7 +184,7 @@ const updateRouteDef = defineOpenAPIRoute({
     const tc = tenantCondition(workflowDefinitions, user);
     const conditions = [eq(workflowDefinitions.id, id)];
     if (tc) conditions.push(tc);
-    const updateData: Record<string, unknown> = { ...data, updatedAt: new Date() };
+    const updateData: Record<string, unknown> = { ...data };
     if (data.flowData !== undefined) updateData.flowData = data.flowData as Record<string, unknown>;
     if (data.formFields !== undefined) updateData.formFields = data.formFields as unknown[];
     const [updated] = await db
@@ -228,7 +228,7 @@ const publishRoute = defineOpenAPIRoute({
     if (!validation.valid) return c.json({ code: 400, message: validation.errors[0], data: null }, 400);
     const [updated] = await db
       .update(workflowDefinitions)
-      .set({ status: 'published', version: existing.version + 1, updatedAt: new Date() })
+      .set({ status: 'published', version: existing.version + 1 })
       .where(and(...conditions))
       .returning();
     return c.json({ code: 0 as const, message: '发布成功', data: toDefinition(updated) }, 200);
@@ -257,7 +257,7 @@ const disableRoute = defineOpenAPIRoute({
     const tc = tenantCondition(workflowDefinitions, user);
     const conditions = [eq(workflowDefinitions.id, id)];
     if (tc) conditions.push(tc);
-    const [updated] = await db.update(workflowDefinitions).set({ status: 'disabled', updatedAt: new Date() }).where(and(...conditions)).returning();
+    const [updated] = await db.update(workflowDefinitions).set({ status: 'disabled' }).where(and(...conditions)).returning();
     if (!updated) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
     return c.json({ code: 0 as const, message: '禁用成功', data: toDefinition(updated) }, 200);
   },

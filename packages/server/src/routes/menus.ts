@@ -192,7 +192,7 @@ const updateMenuRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     const [menu] = await db
       .update(menus)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data })
       .where(eq(menus.id, id))
       .returning();
     if (!menu) return c.json({ code: 404, message: '菜单不存在', data: null }, 404);

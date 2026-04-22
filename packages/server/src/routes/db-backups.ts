@@ -52,10 +52,7 @@ const listRoute = defineOpenAPIRoute({
     if (q.type) conditions.push(eq(dbBackups.type, q.type));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [{ count }] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(dbBackups)
-      .where(where);
+    const count = await db.$count(dbBackups, where);
 
     const rows = await db
       .select({

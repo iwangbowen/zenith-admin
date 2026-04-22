@@ -18,6 +18,8 @@ import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginated
 import { UserDTO, ImportResultDTO } from '../lib/openapi-dtos';
 
 const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type DbExecutor = typeof db | DbTransaction;
 
 // Schemas (zod v4 local)
 const createUserSchema = z.object({
@@ -104,13 +106,17 @@ async function getUserPositionsMap(userIds: number[]) {
   return map;
 }
 
-async function setUserRoles(userId: number, roleIds: number[]) {
-  await db.delete(userRoles).where(eq(userRoles.userId, userId));
-  if (roleIds.length > 0) await db.insert(userRoles).values(roleIds.map((roleId) => ({ userId, roleId })));
+async function setUserRoles(executor: DbExecutor, userId: number, roleIds: number[]) {
+  await executor.delete(userRoles).where(eq(userRoles.userId, userId));
+  if (roleIds.length > 0) {
+    await executor.insert(userRoles).values(roleIds.map((roleId) => ({ userId, roleId })));
+  }
 }
-async function setUserPositions(userId: number, positionIds: number[]) {
-  await db.delete(userPositions).where(eq(userPositions.userId, userId));
-  if (positionIds.length > 0) await db.insert(userPositions).values(positionIds.map((positionId) => ({ userId, positionId })));
+async function setUserPositions(executor: DbExecutor, userId: number, positionIds: number[]) {
+  await executor.delete(userPositions).where(eq(userPositions.userId, userId));
+  if (positionIds.length > 0) {
+    await executor.insert(userPositions).values(positionIds.map((positionId) => ({ userId, positionId })));
+  }
 }
 
 async function ensureDepartmentExists(departmentId?: number | null, user?: JwtPayload) {
@@ -243,7 +249,7 @@ const listUsersRoute = defineOpenAPIRoute({
     if (tc) conditions.push(tc);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(users).where(where);
+    const count = await db.$count(users, where);
     const list = await db
       .select({
         id: users.id, username: users.username, nickname: users.nickname, email: users.email,
@@ -297,13 +303,17 @@ const createUserRoute = defineOpenAPIRoute({
 
     const hashedPassword = await bcrypt.hash(password, 10);
     try {
-      const [user] = await db.insert(users).values({
-        ...rest, password: hashedPassword,
-        departmentId: departmentId ?? null,
-        tenantId: getCreateTenantId(c.get('user')),
-      }).returning();
-      await setUserRoles(user.id, nextRoleIds);
-      await setUserPositions(user.id, nextPositionIds);
+      const user = await db.transaction(async (tx) => {
+        const [createdUser] = await tx.insert(users).values({
+          ...rest,
+          password: hashedPassword,
+          departmentId: departmentId ?? null,
+          tenantId: getCreateTenantId(c.get('user')),
+        }).returning();
+        await setUserRoles(tx, createdUser.id, nextRoleIds);
+        await setUserPositions(tx, createdUser.id, nextPositionIds);
+        return createdUser;
+      });
       const publicUser = (await toPublicUsers([{
         id: user.id, username: user.username, nickname: user.nickname, email: user.email,
         phone: user.phone, avatar: user.avatar, departmentId: user.departmentId,
@@ -365,7 +375,7 @@ const batchStatusUsersRoute = defineOpenAPIRoute({
     if (!Array.isArray(ids) || ids.length === 0) return c.json({ code: 400, message: '请选择要操作的用户', data: null }, 400);
     const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
     const tc = tenantCondition(users, c.get('user'));
-    await db.update(users).set({ status, updatedAt: new Date() }).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
+    await db.update(users).set({ status }).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
     return c.json({ code: 0 as const, message: '状态已更新', data: null }, 200);
   },
 });
@@ -508,12 +518,19 @@ const importUsersRoute = defineOpenAPIRoute({
 
       const hashedPassword = await bcrypt.hash(password, 10);
       try {
-        const [newUser] = await db.insert(users).values({
-          username, nickname, email, password: hashedPassword, departmentId, status,
-          tenantId: getCreateTenantId(c.get('user')),
-        }).returning();
-        if (roleIds.length > 0) await setUserRoles(newUser.id, roleIds);
-        if (positionIds.length > 0) await setUserPositions(newUser.id, positionIds);
+        await db.transaction(async (tx) => {
+          const [newUser] = await tx.insert(users).values({
+            username,
+            nickname,
+            email,
+            password: hashedPassword,
+            departmentId,
+            status,
+            tenantId: getCreateTenantId(c.get('user')),
+          }).returning();
+          if (roleIds.length > 0) await setUserRoles(tx, newUser.id, roleIds);
+          if (positionIds.length > 0) await setUserPositions(tx, newUser.id, positionIds);
+        });
         existingUsernames.add(username);
         existingEmails.add(email);
         success++;
@@ -593,7 +610,7 @@ const updateUserPasswordRoute = defineOpenAPIRoute({
     const [user] = await db.select({ id: users.id }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
     if (!user) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
     const hashedPassword = await bcrypt.hash(data.password, 10);
-    await db.update(users).set({ password: hashedPassword, updatedAt: new Date() }).where(eq(users.id, id));
+    await db.update(users).set({ password: hashedPassword }).where(eq(users.id, id));
     return c.json({ code: 0 as const, message: '密码修改成功', data: null }, 200);
   },
 });
@@ -660,14 +677,27 @@ const updateUserRoute = defineOpenAPIRoute({
     const nextValues = {
       ...rest,
       ...(departmentId === undefined ? {} : { departmentId: departmentId ?? null }),
-      updatedAt: new Date(),
     };
     const tc = tenantCondition(users, c.get('user'));
-    const [user] = await db.update(users).set(nextValues).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
+    const user = await db.transaction(async (tx) => {
+      const [updatedUser] = await tx.update(users)
+        .set(nextValues)
+        .where(tc ? and(eq(users.id, id), tc) : eq(users.id, id))
+        .returning();
+      if (!updatedUser) return null;
+
+      if (nextRoleIds !== undefined) {
+        await setUserRoles(tx, id, nextRoleIds);
+      }
+      if (nextPositionIds !== undefined) {
+        await setUserPositions(tx, id, nextPositionIds);
+      }
+
+      return updatedUser;
+    });
     if (!user) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
 
-    if (nextRoleIds !== undefined) { await setUserRoles(id, nextRoleIds); clearUserPermissionCache(id); }
-    if (nextPositionIds !== undefined) await setUserPositions(id, nextPositionIds);
+    if (nextRoleIds !== undefined) clearUserPermissionCache(id);
 
     const departmentName = user.departmentId
       ? (await db.select({ name: departments.name }).from(departments).where(eq(departments.id, user.departmentId)).limit(1))[0]?.name ?? null

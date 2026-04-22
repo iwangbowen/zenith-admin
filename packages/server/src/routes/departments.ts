@@ -181,7 +181,7 @@ const updateRouteDef = defineOpenAPIRoute({
     }
     try {
       const [department] = await db.update(departments)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...data })
         .where(and(eq(departments.id, id), tenantCondition(departments, c.get('user'))))
         .returning();
       if (!department) return c.json({ code: 404, message: '部门不存在', data: null }, 404);

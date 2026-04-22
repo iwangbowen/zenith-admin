@@ -67,14 +67,14 @@ const updateRoute = defineOpenAPIRoute({
     if (!config) {
       const [created] = await db
         .insert(emailConfigs)
-        .values({ ...data, updatedAt: new Date() })
+        .values({ ...data })
         .returning();
       return c.json({ code: 0 as const, message: '保存成功', data: created }, 200);
     }
 
     const [updated] = await db
       .update(emailConfigs)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data })
       .where(eq(emailConfigs.id, config.id))
       .returning();
     return c.json({ code: 0 as const, message: '保存成功', data: updated }, 200);

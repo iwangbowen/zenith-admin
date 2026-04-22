@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { desc, eq, like, and, or, sql, gte, lte, inArray } from 'drizzle-orm';
+import { count, desc, eq, like, and, or, sql, gte, lte, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { notices, noticeReads, noticeRecipients, users, userRoles, roles, departments } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -223,17 +223,17 @@ const listRoute = defineOpenAPIRoute({
     const user = c.get('user');
     const tc = tenantCondition(notices, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
-    const [{ count }] = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(notices).where(finalWhere);
+    const total = await db.$count(notices, finalWhere);
     const rows = await db.select().from(notices).where(finalWhere).orderBy(desc(notices.createdAt)).limit(pageSize).offset((page - 1) * pageSize);
     const noticeIds = rows.map((r) => r.id);
     const readCountRows = noticeIds.length > 0
-      ? await db.select({ noticeId: noticeReads.noticeId, cnt: sql<number>`cast(count(*) as integer)` }).from(noticeReads).where(inArray(noticeReads.noticeId, noticeIds)).groupBy(noticeReads.noticeId)
+      ? await db.select({ noticeId: noticeReads.noticeId, cnt: count() }).from(noticeReads).where(inArray(noticeReads.noticeId, noticeIds)).groupBy(noticeReads.noticeId)
       : [];
     const readCountMap = new Map(readCountRows.map((r) => [r.noticeId, r.cnt]));
     return c.json({
       code: 0 as const,
       message: 'ok',
-      data: { list: rows.map((r) => ({ ...toNotice(r), readCount: readCountMap.get(r.id) ?? 0 })), total: Number(count), page, pageSize },
+      data: { list: rows.map((r) => ({ ...toNotice(r), readCount: readCountMap.get(r.id) ?? 0 })), total, page, pageSize },
     }, 200);
   },
 });

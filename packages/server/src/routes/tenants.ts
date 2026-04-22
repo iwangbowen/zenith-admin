@@ -62,9 +62,9 @@ const listRoute = defineOpenAPIRoute({
     if (keyword) conditions.push(like(tenants.name, `%${keyword}%`));
     if (status === 'active' || status === 'disabled') conditions.push(eq(tenants.status, status));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const [{ count }] = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(tenants).where(where);
+    const count = await db.$count(tenants, where);
     const rows = await db.select().from(tenants).where(where).orderBy(desc(tenants.id)).limit(pageSize).offset((page - 1) * pageSize);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toTenant), total: Number(count), page, pageSize } }, 200);
+    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toTenant), total: count, page, pageSize } }, 200);
   },
 });
 
@@ -193,7 +193,6 @@ const updateRouteDef = defineOpenAPIRoute({
     const values = {
       ...rest,
       ...(rawExpireAt === undefined ? {} : { expireAt: rawExpireAt ? new Date(rawExpireAt) : null }),
-      updatedAt: new Date(),
     };
     const [row] = await db.update(tenants).set(values).where(eq(tenants.id, id)).returning();
     if (!row) return c.json({ code: 404, message: '租户不存在', data: null }, 404);

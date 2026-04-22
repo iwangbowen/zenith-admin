@@ -93,7 +93,6 @@ const updateRoute = defineOpenAPIRoute({
       enabled: data.enabled,
       agentId: data.agentId ?? null,
       corpId: data.corpId ?? null,
-      updatedAt: new Date(),
     };
     if (data.clientSecret && data.clientSecret !== '******') {
       updateData.clientSecret = data.clientSecret;

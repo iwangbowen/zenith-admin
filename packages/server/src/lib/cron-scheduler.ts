@@ -121,7 +121,6 @@ async function executeJob(jobId: number, handler: string, params: string | null)
         lastRunAt: startedAt,
         lastRunStatus: 'fail',
         lastRunMessage: msg,
-        updatedAt: new Date(),
       }).where(eq(cronJobs.id, jobId)),
       db.insert(cronJobLogs).values({
         jobId,
@@ -150,7 +149,6 @@ async function executeJob(jobId: number, handler: string, params: string | null)
     lastRunAt: startedAt,
     lastRunStatus: 'running',
     lastRunMessage: null,
-    updatedAt: new Date(),
   }).where(eq(cronJobs.id, jobId));
 
   // 执行任务（含重试逻辑）
@@ -181,7 +179,6 @@ async function executeJob(jobId: number, handler: string, params: string | null)
       db.update(cronJobs).set({
         lastRunStatus: 'success',
         lastRunMessage: resultMessage.slice(0, 1024),
-        updatedAt: new Date(),
       }).where(eq(cronJobs.id, jobId)),
       db.update(cronJobLogs).set({
         endedAt,
@@ -199,7 +196,6 @@ async function executeJob(jobId: number, handler: string, params: string | null)
       db.update(cronJobs).set({
         lastRunStatus: 'fail',
         lastRunMessage: errorMessage.slice(0, 1024),
-        updatedAt: new Date(),
       }).where(eq(cronJobs.id, jobId)),
       db.update(cronJobLogs).set({
         endedAt,

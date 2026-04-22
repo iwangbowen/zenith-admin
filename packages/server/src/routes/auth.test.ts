@@ -35,9 +35,17 @@ vi.mock('../config', () => ({
   },
 }));
 
-vi.mock('../db', () => ({
-  db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), delete: vi.fn() },
-}));
+vi.mock('../db', () => {
+  const db = {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    $count: vi.fn(),
+    transaction: vi.fn(async (callback: (tx: typeof db) => unknown) => callback(db)),
+  };
+  return { db };
+});
 
 vi.mock('../lib/redis', () => ({
   default: {

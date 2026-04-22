@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, like, and, sql, desc } from 'drizzle-orm';
+import { eq, like, and, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { cronJobs, cronJobLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -82,9 +82,9 @@ const listRoute = defineOpenAPIRoute({
     const conditions = [];
     if (keyword) conditions.push(like(cronJobs.name, `%${keyword}%`));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const [{ count }] = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(cronJobs).where(where);
+    const count = await db.$count(cronJobs, where);
     const rows = await db.select().from(cronJobs).where(where).orderBy(desc(cronJobs.id)).limit(pageSize).offset((page - 1) * pageSize);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toCronJob), total: Number(count), page, pageSize } }, 200);
+    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toCronJob), total: count, page, pageSize } }, 200);
   },
 });
 
@@ -136,7 +136,7 @@ const updateRouteDef = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
     if (data.cronExpression && !validateCronExpression(data.cronExpression)) return c.json({ code: 400, message: 'Cron 表达式无效', data: null }, 400);
-    const [row] = await db.update(cronJobs).set({ ...data, updatedAt: new Date() }).where(eq(cronJobs.id, id)).returning();
+    const [row] = await db.update(cronJobs).set({ ...data }).where(eq(cronJobs.id, id)).returning();
     if (!row) return c.json({ code: 404, message: '任务不存在', data: null }, 404);
     if (row.status === 'active') scheduleJob(row.id, row.cronExpression, row.handler, row.params);
     else stopJob(row.id);
@@ -213,7 +213,7 @@ const statusRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { status } = c.req.valid('json');
-    const [row] = await db.update(cronJobs).set({ status, updatedAt: new Date() }).where(eq(cronJobs.id, id)).returning();
+    const [row] = await db.update(cronJobs).set({ status }).where(eq(cronJobs.id, id)).returning();
     if (!row) return c.json({ code: 404, message: '任务不存在', data: null }, 404);
     if (status === 'active') scheduleJob(row.id, row.cronExpression, row.handler, row.params);
     else stopJob(row.id);
@@ -274,14 +274,14 @@ const logsRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { page = 1, pageSize = 20 } = c.req.valid('query');
-    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(cronJobLogs);
+    const count = await db.$count(cronJobLogs);
     const rows = await db.select().from(cronJobLogs).orderBy(desc(cronJobLogs.startedAt)).limit(pageSize).offset((page - 1) * pageSize);
     const list = rows.map((r) => ({
       id: r.id, jobId: r.jobId, jobName: r.jobName, executionCount: r.executionCount,
       startedAt: r.startedAt.toISOString(), endedAt: r.endedAt?.toISOString() ?? null,
       durationMs: r.durationMs, status: r.status, output: r.output,
     }));
-    return c.json({ code: 0 as const, message: 'ok', data: { list, total: Number(count), page, pageSize } }, 200);
+    return c.json({ code: 0 as const, message: 'ok', data: { list, total: count, page, pageSize } }, 200);
   },
 });
 
@@ -303,14 +303,14 @@ const idLogsRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { page = 1, pageSize = 20 } = c.req.valid('query');
-    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(cronJobLogs).where(eq(cronJobLogs.jobId, id));
+    const count = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, id));
     const rows = await db.select().from(cronJobLogs).where(eq(cronJobLogs.jobId, id)).orderBy(desc(cronJobLogs.startedAt)).limit(pageSize).offset((page - 1) * pageSize);
     const list = rows.map((r) => ({
       id: r.id, jobId: r.jobId, jobName: r.jobName, executionCount: r.executionCount,
       startedAt: r.startedAt.toISOString(), endedAt: r.endedAt?.toISOString() ?? null,
       durationMs: r.durationMs, status: r.status, output: r.output,
     }));
-    return c.json({ code: 0 as const, message: 'ok', data: { list, total: Number(count), page, pageSize } }, 200);
+    return c.json({ code: 0 as const, message: 'ok', data: { list, total: count, page, pageSize } }, 200);
   },
 });
 

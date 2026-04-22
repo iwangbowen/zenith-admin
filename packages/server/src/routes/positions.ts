@@ -91,10 +91,7 @@ const listRoute = defineOpenAPIRoute({
     const tc = tenantCondition(positions, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
-    const [{ count }] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(positions)
-      .where(finalWhere);
+    const count = await db.$count(positions, finalWhere);
 
     const list = await db
       .select()
@@ -166,7 +163,7 @@ const updatePositionRoute = defineOpenAPIRoute({
     try {
       const [position] = await db
         .update(positions)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...data })
         .where(and(eq(positions.id, id), tenantCondition(positions, c.get('user'))))
         .returning();
       if (!position) {

@@ -82,7 +82,7 @@ const listRoute = defineOpenAPIRoute({
     const user = c.get('user');
     const tc = tenantCondition(roles, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
-    const [{ total }] = await db.select({ total: sql<number>`cast(count(*) as integer)` }).from(roles).where(finalWhere);
+    const total = await db.$count(roles, finalWhere);
     const list = await db.select().from(roles).where(finalWhere).orderBy(roles.id).limit(pageSize).offset((page - 1) * pageSize);
 
     return c.json({ code: 0 as const, message: 'ok', data: { list: list.map((r) => toRole(r)), total, page, pageSize } }, 200);
@@ -174,7 +174,7 @@ const updateRoleRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     const [role] = await db
       .update(roles)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data })
       .where(and(eq(roles.id, id), tenantCondition(roles, c.get('user'))))
       .returning();
     if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);

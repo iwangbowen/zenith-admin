@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { desc, like, and, gte, lte, sql, eq } from 'drizzle-orm';
+import { count, desc, like, and, gte, lte, sql, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -58,10 +58,7 @@ const listRoute = defineOpenAPIRoute({
     const tc = tenantCondition(operationLogs, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
-    const [{ count }] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(operationLogs)
-      .where(finalWhere);
+    const count = await db.$count(operationLogs, finalWhere);
 
     const rows = await db
       .select()
@@ -108,21 +105,24 @@ const statsRoute = defineOpenAPIRoute({
     const tc = tenantCondition(operationLogs, user);
     const baseWhere = tc ? and(gte(operationLogs.createdAt, startDate), tc) : gte(operationLogs.createdAt, startDate);
 
+    const moduleCount = count();
+    const dailyCount = count();
+    const userCount = count();
     const [moduleStats, dailyStats, userStats] = await Promise.all([
       db
         .select({
           module: operationLogs.module,
-          count: sql<number>`cast(count(*) as integer)`,
+          count: moduleCount,
         })
         .from(operationLogs)
         .where(baseWhere)
         .groupBy(operationLogs.module)
-        .orderBy(desc(sql`count(*)`))
+        .orderBy(desc(moduleCount))
         .limit(20),
       db
         .select({
           date: sql<string>`to_char(date(${operationLogs.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
-          count: sql<number>`cast(count(*) as integer)`,
+          count: dailyCount,
         })
         .from(operationLogs)
         .where(baseWhere)
@@ -131,12 +131,12 @@ const statsRoute = defineOpenAPIRoute({
       db
         .select({
           username: operationLogs.username,
-          count: sql<number>`cast(count(*) as integer)`,
+          count: userCount,
         })
         .from(operationLogs)
         .where(baseWhere)
         .groupBy(operationLogs.username)
-        .orderBy(desc(sql`count(*)`))
+        .orderBy(desc(userCount))
         .limit(10),
     ]);
 

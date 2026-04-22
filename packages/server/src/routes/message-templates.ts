@@ -168,7 +168,7 @@ const updateTemplateRoute = defineOpenAPIRoute({
     try {
       const [row] = await db
         .update(messageTemplates)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...data })
         .where(eq(messageTemplates.id, id))
         .returning();
       if (!row) return c.json({ code: 404, message: '模板不存在', data: null }, 404);

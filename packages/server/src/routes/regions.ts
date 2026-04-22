@@ -202,7 +202,7 @@ const updateRegionRoute = defineOpenAPIRoute({
     try {
       const [row] = await db
         .update(regions)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...data })
         .where(eq(regions.id, id))
         .returning();
       if (!row) return c.json({ code: 404, message: '地区不存在', data: null }, 404);

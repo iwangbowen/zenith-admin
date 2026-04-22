@@ -56,7 +56,7 @@ const listDictsRoute = defineOpenAPIRoute({
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const tc = tenantCondition(dicts, c.get('user'));
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
-    const [{ total }] = await db.select({ total: sql<number>`cast(count(*) as integer)` }).from(dicts).where(finalWhere);
+    const total = await db.$count(dicts, finalWhere);
     const list = await db.select().from(dicts).where(finalWhere).orderBy(dicts.id).limit(pageSize).offset((page - 1) * pageSize);
     return c.json({ code: 0 as const, message: 'ok', data: { list: list.map(toDict), total, page, pageSize } }, 200);
   },
@@ -123,7 +123,7 @@ const updateDictRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     const [dict] = await db
       .update(dicts)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data })
       .where(and(eq(dicts.id, id), tenantCondition(dicts, c.get('user'))))
       .returning();
     if (!dict) return c.json({ code: 404, message: '字典不存在', data: null }, 404);
@@ -269,7 +269,7 @@ const updateItemRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     const [item] = await db
       .update(dictItems)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data })
       .where(eq(dictItems.id, itemId))
       .returning();
     if (!item) return c.json({ code: 404, message: '字典项不存在', data: null }, 404);

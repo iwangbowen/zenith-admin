@@ -440,7 +440,7 @@ const profileRoute = defineOpenAPIRoute({
       const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, data.email)).limit(1);
       if (existing && existing.id !== payload.userId) return c.json({ code: 400, message: '邮箱已被使用', data: null }, 400);
     }
-    const [updated] = await db.update(users).set({ ...data, updatedAt: new Date() }).where(eq(users.id, payload.userId)).returning();
+    const [updated] = await db.update(users).set({ ...data }).where(eq(users.id, payload.userId)).returning();
     const userRoleList = await getUserRoles(payload.userId);
     const { password: _pw, ...userInfo } = updated;
     return c.json({
@@ -476,7 +476,7 @@ const passwordRoute = defineOpenAPIRoute({
     const valid = await bcrypt.compare(data.oldPassword, user.password);
     if (!valid) return c.json({ code: 400, message: '原密码错误', data: null }, 400);
     const hashed = await bcrypt.hash(data.newPassword, 10);
-    await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date(), updatedAt: new Date() }).where(eq(users.id, payload.userId));
+    await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date() }).where(eq(users.id, payload.userId));
     return c.json({ code: 0 as const, message: '密码修改成功', data: null }, 200);
   },
 });
@@ -504,12 +504,12 @@ const myLoginLogsRoute = defineOpenAPIRoute({
     if (startTime) conditions.push(gte(loginLogs.createdAt, new Date(startTime)));
     if (endTime) conditions.push(lte(loginLogs.createdAt, new Date(endTime)));
     const where = and(...conditions);
-    const [{ count }] = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(loginLogs).where(where);
+    const count = await db.$count(loginLogs, where);
     const rows = await db.select().from(loginLogs).where(where).orderBy(desc(loginLogs.createdAt)).limit(pageSize).offset((page - 1) * pageSize);
     return c.json({
       code: 0 as const,
       message: 'ok',
-      data: { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: Number(count), page, pageSize },
+      data: { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: count, page, pageSize },
     }, 200);
   },
 });
@@ -537,12 +537,12 @@ const myOperationLogsRoute = defineOpenAPIRoute({
     if (startTime) conditions.push(gte(operationLogs.createdAt, new Date(startTime)));
     if (endTime) conditions.push(lte(operationLogs.createdAt, new Date(endTime)));
     const where = and(...conditions);
-    const [{ count }] = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(operationLogs).where(where);
+    const count = await db.$count(operationLogs, where);
     const rows = await db.select().from(operationLogs).where(where).orderBy(desc(operationLogs.createdAt)).limit(pageSize).offset((page - 1) * pageSize);
     return c.json({
       code: 0 as const,
       message: 'ok',
-      data: { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: Number(count), page, pageSize },
+      data: { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: count, page, pageSize },
     }, 200);
   },
 });

@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
-import { sql, and, gte, lt, eq, desc } from 'drizzle-orm';
+import { count, countDistinct, sql, and, gte, lt, eq, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { users, loginLogs, operationLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -40,31 +40,19 @@ const statsRouteDef = defineOpenAPIRoute({
     const ltc = tenantCondition(loginLogs, user);
     const otc = tenantCondition(operationLogs, user);
 
-    const [totalUsersResult] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(users)
-      .where(utc);
-
-    const [activeUsersResult] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(users)
-      .where(utc ? and(sql`${users.status} = 'active'`, utc) : sql`${users.status} = 'active'`);
+    const activeUsersWhere = utc ? and(eq(users.status, 'active'), utc) : eq(users.status, 'active');
+    const totalUsers = await db.$count(users, utc);
+    const activeUsers = await db.$count(users, activeUsersWhere);
 
     const todayLoginWhere = ltc
       ? and(gte(loginLogs.createdAt, todayStart), lt(loginLogs.createdAt, todayEnd), ltc)
       : and(gte(loginLogs.createdAt, todayStart), lt(loginLogs.createdAt, todayEnd));
-    const [todayLoginsResult] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(loginLogs)
-      .where(todayLoginWhere);
+    const todayLogins = await db.$count(loginLogs, todayLoginWhere);
 
     const todayOpWhere = otc
       ? and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd), otc)
       : and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd));
-    const [todayOperationsResult] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(operationLogs)
-      .where(todayOpWhere);
+    const todayOperations = await db.$count(operationLogs, todayOpWhere);
 
     const onlineUsers = await getOnlineCount();
 
@@ -73,11 +61,11 @@ const statsRouteDef = defineOpenAPIRoute({
         code: 0 as const,
         message: 'success',
         data: {
-          totalUsers: totalUsersResult.count,
-          activeUsers: activeUsersResult.count,
+          totalUsers,
+          activeUsers,
           onlineUsers,
-          todayLogins: todayLoginsResult.count,
-          todayOperations: todayOperationsResult.count,
+          todayLogins,
+          todayOperations,
         },
       },
       200,
@@ -129,12 +117,15 @@ const chartsRouteDef = defineOpenAPIRoute({
       ? and(gte(loginLogs.createdAt, sevenDaysAgo), eq(loginLogs.status, 'success'), ltc)
       : and(gte(loginLogs.createdAt, sevenDaysAgo), eq(loginLogs.status, 'success'));
 
+    const loginTrendCount = count();
+    const operationTypeCount = count();
+    const activeUserCount = countDistinct(loginLogs.username);
     const [loginTrendRows, operationTypeRows, userActivityRows] = await Promise.all([
       db
         .select({
           date: sql<string>`to_char(date(${loginLogs.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
           status: loginLogs.status,
-          count: sql<number>`cast(count(*) as integer)`,
+          count: loginTrendCount,
         })
         .from(loginLogs)
         .where(loginRangeWhere)
@@ -143,17 +134,17 @@ const chartsRouteDef = defineOpenAPIRoute({
       db
         .select({
           module: operationLogs.module,
-          count: sql<number>`cast(count(*) as integer)`,
+          count: operationTypeCount,
         })
         .from(operationLogs)
         .where(todayOpWhere)
         .groupBy(operationLogs.module)
-        .orderBy(desc(sql`count(*)`))
+        .orderBy(desc(operationTypeCount))
         .limit(8),
       db
         .select({
           date: sql<string>`to_char(date(${loginLogs.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
-          activeUsers: sql<number>`cast(count(distinct ${loginLogs.username}) as integer)`,
+          activeUsers: activeUserCount,
         })
         .from(loginLogs)
         .where(activityRangeWhere)

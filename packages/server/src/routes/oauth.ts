@@ -157,7 +157,6 @@ const callbackRoute = defineOpenAPIRoute({
           expiresAt: tokenResult.expiresIn ? new Date(Date.now() + tokenResult.expiresIn * 1000) : null,
           nickname: userInfo.nickname,
           avatar: userInfo.avatar || null,
-          updatedAt: new Date(),
         })
         .where(eq(userOauthAccounts.id, existingBind.id));
     } else {

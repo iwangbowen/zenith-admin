@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { count, countDistinct, eq, and, desc, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { workflowDefinitions, workflowInstances, workflowTasks, users } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -80,7 +80,7 @@ const listRoute = defineOpenAPIRoute({
     if (tc) conditions.push(tc);
     if (status) conditions.push(eq(workflowInstances.status, status as 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn'));
     const where = and(...conditions);
-    const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(workflowInstances).where(where);
+    const total = await db.$count(workflowInstances, where);
     const rows = await db
       .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar })
       .from(workflowInstances)
@@ -93,7 +93,7 @@ const listRoute = defineOpenAPIRoute({
     return c.json({
       code: 0 as const,
       message: 'ok',
-      data: { list: rows.map((r) => toInstance(r.inst, r)), total: Number(total), page, pageSize },
+      data: { list: rows.map((r) => toInstance(r.inst, r)), total, page, pageSize },
     }, 200);
   },
 });
@@ -117,7 +117,7 @@ const pendingMineRoute = defineOpenAPIRoute({
     const user = c.get('user');
     const { page = 1, pageSize = 20 } = c.req.valid('query');
     const [{ total }] = await db
-      .select({ total: sql<number>`count(distinct ${workflowInstances.id})::int` })
+      .select({ total: countDistinct(workflowInstances.id) })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .where(and(eq(workflowTasks.assigneeId, user.userId), eq(workflowTasks.status, 'pending'), eq(workflowInstances.status, 'running')));
@@ -168,14 +168,14 @@ const allRoute = defineOpenAPIRoute({
       conditions.push(sql`(${workflowInstances.title} ilike ${like} or ${workflowDefinitions.name} ilike ${like})`);
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const statRows = await db.select({ status: workflowInstances.status, cnt: sql<number>`count(*)::int` }).from(workflowInstances).groupBy(workflowInstances.status);
+    const statRows = await db.select({ status: workflowInstances.status, cnt: count() }).from(workflowInstances).groupBy(workflowInstances.status);
     const stats: Record<string, number> = { total: 0, running: 0, approved: 0, rejected: 0, withdrawn: 0 };
     for (const r of statRows) {
       stats[r.status] = r.cnt;
       stats.total += r.cnt;
     }
     const [{ total }] = await db
-      .select({ total: sql<number>`count(*)::int` })
+      .select({ total: count() })
       .from(workflowInstances)
       .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
       .where(where);
@@ -191,7 +191,7 @@ const allRoute = defineOpenAPIRoute({
     return c.json({
       code: 0 as const,
       message: 'ok',
-      data: { stats, list: rows.map((r) => toInstance(r.inst, r)), total: Number(total), page, pageSize },
+      data: { stats, list: rows.map((r) => toInstance(r.inst, r)), total, page, pageSize },
     }, 200);
   },
 });
@@ -278,28 +278,31 @@ const createInstanceRoute = defineOpenAPIRoute({
     if (initialResult.tasksToCreate.length === 0 && !initialResult.finished) {
       return c.json({ code: 400, message: '流程定义中无可执行节点', data: null }, 400);
     }
-    const [instance] = await db.insert(workflowInstances).values({
-      definitionId: def.id,
-      definitionSnapshot: def as unknown as Record<string, unknown>,
-      title: data.title,
-      formData,
-      status: initialResult.finished ? 'approved' : 'running',
-      currentNodeKey: initialResult.currentNodeKeys[0] ?? null,
-      initiatorId: user.userId,
-      tenantId: getCreateTenantId(user),
-    }).returning();
-    if (initialResult.tasksToCreate.length > 0) {
-      await db.insert(workflowTasks).values(
-        initialResult.tasksToCreate.map((t) => ({
-          instanceId: instance.id,
-          nodeKey: t.nodeKey,
-          nodeName: t.nodeName,
-          nodeType: t.nodeType,
-          assigneeId: t.assigneeId,
-          status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
-        })),
-      );
-    }
+    const instance = await db.transaction(async (tx) => {
+      const [createdInstance] = await tx.insert(workflowInstances).values({
+        definitionId: def.id,
+        definitionSnapshot: def as unknown as Record<string, unknown>,
+        title: data.title,
+        formData,
+        status: initialResult.finished ? 'approved' : 'running',
+        currentNodeKey: initialResult.currentNodeKeys[0] ?? null,
+        initiatorId: user.userId,
+        tenantId: getCreateTenantId(user),
+      }).returning();
+      if (initialResult.tasksToCreate.length > 0) {
+        await tx.insert(workflowTasks).values(
+          initialResult.tasksToCreate.map((t) => ({
+            instanceId: createdInstance.id,
+            nodeKey: t.nodeKey,
+            nodeName: t.nodeName,
+            nodeType: t.nodeType,
+            assigneeId: t.assigneeId,
+            status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
+          })),
+        );
+      }
+      return createdInstance;
+    });
     return c.json({ code: 0 as const, message: '申请已提交', data: toInstance(instance) }, 200);
   },
 });
@@ -332,9 +335,12 @@ const withdrawRoute = defineOpenAPIRoute({
     if (!inst) return c.json({ code: 404, message: '流程实例不存在', data: null }, 404);
     if (inst.initiatorId !== user.userId) return c.json({ code: 403, message: '只有发起人可以撤回', data: null }, 403);
     if (inst.status !== 'running') return c.json({ code: 400, message: '只能撤回进行中的申请', data: null }, 400);
-    await db.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
-      .where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending')));
-    const [updated] = await db.update(workflowInstances).set({ status: 'withdrawn', updatedAt: new Date() }).where(and(...conditions)).returning();
+    const updated = await db.transaction(async (tx) => {
+      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
+        .where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending')));
+      const [row] = await tx.update(workflowInstances).set({ status: 'withdrawn' }).where(and(...conditions)).returning();
+      return row;
+    });
     return c.json({ code: 0 as const, message: '已撤回', data: toInstance(updated) }, 200);
   },
 });
@@ -374,44 +380,56 @@ const approveRoute = defineOpenAPIRoute({
     if (!inst) return c.json({ code: 500, message: '流程数据异常', data: null }, 500);
     if (inst.status !== 'running') return c.json({ code: 400, message: '流程实例不在进行中', data: null }, 400);
 
-    await db.update(workflowTasks).set({
-      status: 'approved',
-      comment: result.data.comment ?? null,
-      actionAt: new Date(),
-    }).where(eq(workflowTasks.id, taskId));
-
     const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };
     const flowData = snapshot?.flowData;
     if (!flowData) return c.json({ code: 500, message: '流程快照数据异常', data: null }, 500);
+    const updated = await db.transaction(async (tx) => {
+      await tx.update(workflowTasks).set({
+        status: 'approved',
+        comment: result.data.comment ?? null,
+        actionAt: new Date(),
+      }).where(eq(workflowTasks.id, taskId));
 
-    const allTasks = await db.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')));
-    const completedKeys = new Set(allTasks.map((t) => t.nodeKey));
-    completedKeys.add('start');
-    const formData = (inst.formData ?? {}) as Record<string, unknown>;
-    const advanceResult = advanceFlow(flowData, task.nodeKey, formData, completedKeys);
+      const allTasks = await tx.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')));
+      const completedKeys = new Set(allTasks.map((t) => t.nodeKey));
+      completedKeys.add('start');
+      const formData = (inst.formData ?? {}) as Record<string, unknown>;
+      const advanceResult = advanceFlow(flowData, task.nodeKey, formData, completedKeys);
 
-    if (advanceResult.finished && advanceResult.tasksToCreate.length === 0) {
-      const [updated] = await db.update(workflowInstances).set({ status: 'approved', currentNodeKey: null, updatedAt: new Date() }).where(eq(workflowInstances.id, inst.id)).returning();
-      return c.json({ code: 0 as const, message: '审批通过，流程已完成', data: toInstance(updated) }, 200);
+      if (advanceResult.finished && advanceResult.tasksToCreate.length === 0) {
+        const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
+        return { row, finished: true };
+      }
+
+      if (advanceResult.tasksToCreate.length > 0) {
+        await tx.insert(workflowTasks).values(
+          advanceResult.tasksToCreate.map((t) => ({
+            instanceId: inst.id,
+            nodeKey: t.nodeKey,
+            nodeName: t.nodeName,
+            nodeType: t.nodeType,
+            assigneeId: t.assigneeId,
+            status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
+          })),
+        );
+      }
+
+      if (advanceResult.finished) {
+        const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
+        return { row, finished: true };
+      }
+
+      const [row] = await tx.update(workflowInstances)
+        .set({ currentNodeKey: advanceResult.currentNodeKeys[0] ?? null })
+        .where(eq(workflowInstances.id, inst.id))
+        .returning();
+      return { row, finished: false };
+    });
+
+    if (updated.finished) {
+      return c.json({ code: 0 as const, message: '审批通过，流程已完成', data: toInstance(updated.row) }, 200);
     }
-    if (advanceResult.tasksToCreate.length > 0) {
-      await db.insert(workflowTasks).values(
-        advanceResult.tasksToCreate.map((t) => ({
-          instanceId: inst.id,
-          nodeKey: t.nodeKey,
-          nodeName: t.nodeName,
-          nodeType: t.nodeType,
-          assigneeId: t.assigneeId,
-          status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
-        })),
-      );
-    }
-    if (advanceResult.finished) {
-      const [updated] = await db.update(workflowInstances).set({ status: 'approved', currentNodeKey: null, updatedAt: new Date() }).where(eq(workflowInstances.id, inst.id)).returning();
-      return c.json({ code: 0 as const, message: '审批通过，流程已完成', data: toInstance(updated) }, 200);
-    }
-    const [updated] = await db.update(workflowInstances).set({ currentNodeKey: advanceResult.currentNodeKeys[0] ?? null, updatedAt: new Date() }).where(eq(workflowInstances.id, inst.id)).returning();
-    return c.json({ code: 0 as const, message: '审批通过，流程已推进', data: toInstance(updated) }, 200);
+    return c.json({ code: 0 as const, message: '审批通过，流程已推进', data: toInstance(updated.row) }, 200);
   },
 });
 
@@ -448,8 +466,16 @@ const rejectRoute = defineOpenAPIRoute({
     const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
     if (!inst) return c.json({ code: 500, message: '流程数据异常', data: null }, 500);
     if (inst.status !== 'running') return c.json({ code: 400, message: '流程实例不在进行中', data: null }, 400);
-    await db.update(workflowTasks).set({ status: 'rejected', comment: result.data.comment, actionAt: new Date() }).where(eq(workflowTasks.id, taskId));
-    const [updated] = await db.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null, updatedAt: new Date() }).where(eq(workflowInstances.id, inst.id)).returning();
+    const updated = await db.transaction(async (tx) => {
+      await tx.update(workflowTasks)
+        .set({ status: 'rejected', comment: result.data.comment, actionAt: new Date() })
+        .where(eq(workflowTasks.id, taskId));
+      const [row] = await tx.update(workflowInstances)
+        .set({ status: 'rejected', currentNodeKey: null })
+        .where(eq(workflowInstances.id, inst.id))
+        .returning();
+      return row;
+    });
     return c.json({ code: 0 as const, message: '已驳回', data: toInstance(updated) }, 200);
   },
 });
