@@ -9,7 +9,7 @@
  * 新代码可选择使用此处零参风格。
  */
 import { getContext } from 'hono/context-storage';
-import type { AuthEnv } from '../middleware/auth';
+import type { AuthEnv, JwtPayload } from '../middleware/auth';
 
 /**
  * 当前请求的 Hono Context 环境类型别名。

@@ -16,6 +16,7 @@ export interface JwtPayload {
 export type AuthEnv = {
   Variables: {
     user: JwtPayload;
+    auditBeforeData?: string;
   };
 };
 
