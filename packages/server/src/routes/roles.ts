@@ -28,6 +28,26 @@ const RoleDTO = z.looseObject({}).openapi('Role');
 const UserDTO = z.looseObject({}).openapi('UserBrief');
 
 // ─── Routes ────────────────────────────────────────────────────────────────
+const allRoute = createRoute({
+  method: 'get',
+  path: '/all',
+  tags: ['Roles'],
+  summary: '全量角色（供下拉框）',
+  security: [{ BearerAuth: [] }],
+  middleware: [guard({ permission: 'system:role:list' })] as const,
+  request: {},
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(RoleDTO))), description: '全量角色' },
+  },
+});
+
+rolesRouter.openapi(allRoute, async (c) => {
+  const tc = tenantCondition(roles, c.get('user'));
+  const list = await db.select().from(roles).where(tc).orderBy(roles.id);
+  return c.json({ code: 0 as const, message: 'ok', data: list.map((r) => toRole(r)) }, 200);
+});
+
 const listRoute = createRoute({
   method: 'get',
   path: '/',

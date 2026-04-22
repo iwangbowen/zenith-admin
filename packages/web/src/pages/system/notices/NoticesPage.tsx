@@ -174,7 +174,7 @@ export default function NoticesPage() {
     setLoadingOptions(true);
     try {
       const [rolesRes, deptsRes] = await Promise.all([
-        request.get<Role[]>('/api/roles'),
+        request.get<Role[]>('/api/roles/all'),
         request.get<Department[]>('/api/departments/flat'),
       ]);
       if (rolesRes.code === 0) {

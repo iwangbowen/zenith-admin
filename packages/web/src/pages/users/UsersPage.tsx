@@ -94,9 +94,9 @@ export default function UsersPage() {
 
   useEffect(() => {
     Promise.all([
-      request.get<Role[]>('/api/roles'),
+      request.get<Role[]>('/api/roles/all'),
       request.get<Department[]>('/api/departments/flat'),
-      request.get<Position[]>('/api/positions'),
+      request.get<Position[]>('/api/positions/all'),
     ]).then(([rolesRes, departmentsRes, positionsRes]) => {
       if (rolesRes.code === 0) setAllRoles(rolesRes.data);
       if (departmentsRes.code === 0) setAllDepartments(departmentsRes.data);

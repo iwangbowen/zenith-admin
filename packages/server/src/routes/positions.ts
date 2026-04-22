@@ -39,6 +39,23 @@ const updatePositionSchema = createPositionSchema.partial();
 const BatchDeleteBody = z.object({ ids: z.array(z.number()) });
 
 // ─── Routes ────────────────────────────────────────────────────────────────
+const allRoute = createRoute({
+  method: 'get',
+  path: '/all',
+  tags: ['Positions'],
+  summary: '全量岗位（供下拉框）',
+  security: [{ BearerAuth: [] }],
+  middleware: [guard({ permission: 'system:position:list' })] as const,
+  request: {},
+  responses: { 200: { content: jsonContent(apiResponse(z.array(PositionDTO))), description: '全量岗位' }, ...commonErrorResponses },
+});
+
+positionsRouter.openapi(allRoute, async (c) => {
+  const tc = tenantCondition(positions, c.get('user'));
+  const list = await db.select().from(positions).where(tc).orderBy(asc(positions.sort), asc(positions.id));
+  return c.json({ code: 0 as const, message: 'ok', data: list.map(toPosition) }, 200);
+});
+
 const listRoute = createRoute({
   method: 'get',
   path: '/',
