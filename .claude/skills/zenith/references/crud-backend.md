@@ -108,16 +108,16 @@ import { and, eq, like, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../db/index';
 import { xxxs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { JwtPayload } from '../middleware/auth';
+import type { AuthEnv } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   apiResponse, paginatedResponse, jsonContent,
-  PaginationQuery, MessageResponse, ErrorResponse, validationHook,
+  PaginationQuery, MessageResponse, ErrorResponse, validationHook, commonErrorResponses,
 } from '../lib/openapi-schemas';
 // 可直接从 @zenith/shared 导入（shared 已升级至 Zod v4）
 // import { createXxxSchema, updateXxxSchema } from '@zenith/shared';
 
-const xxxRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
+const xxxRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 xxxRouter.use('*', authMiddleware);
 
 // 不透明 DTO（避免严格字段类型）
@@ -145,7 +145,10 @@ xxxRouter.openapi(createRoute({
       endTime: z.string().optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(paginatedResponse(XxxDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(XxxDTO)), description: 'ok' },
+  },
 }), async (c) => {
   const { page = 1, pageSize = 10, keyword, status, startTime, endTime } = c.req.valid('query');
   const conditions = [];
@@ -168,8 +171,8 @@ xxxRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:xxx:create', audit: { description: '创建 XXX', module: 'XXX管理' } })] as const,
   request: { body: { content: jsonContent(createXxxSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(XxxDTO)), description: '创建成功' },
-    400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
 }), async (c) => {
   const data = c.req.valid('json');
@@ -195,6 +198,7 @@ xxxRouter.openapi(createRoute({
     body: { content: jsonContent(updateXxxSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(XxxDTO)), description: '更新成功' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
@@ -216,6 +220,7 @@ xxxRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:xxx:delete', audit: { description: '删除 XXX', module: 'XXX管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },

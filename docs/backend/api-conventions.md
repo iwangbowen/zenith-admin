@@ -71,22 +71,26 @@ const user = c.get('user'); // JwtPayload
 
 ```typescript
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { apiResponse, paginatedResponse, jsonContent, MessageResponse, ErrorResponse, PaginationQuery, validationHook } from '../lib/openapi-schemas';
+import type { AuthEnv } from '../middleware/auth';
+import { apiResponse, paginatedResponse, jsonContent, MessageResponse, ErrorResponse, PaginationQuery, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
-const xxxRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
+const xxxRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 
 // 路由内通过 c.req.valid() 取已验证的类型安全数据
 xxxRouter.openapi(createRoute({
   method: 'post', path: '/',
   request: { body: { content: jsonContent(createXxxSchema), required: true } },
-  responses: { 200: { content: jsonContent(apiResponse(XxxDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(XxxDTO)), description: 'ok' },
+  },
 }), async (c) => {
   const data = c.req.valid('json');  // 类型安全，已验证
   // ...
 });
 ```
 
-> `validationHook` 将 Zod 校验失败自动转为 `{ code: 400, message, data: null }` 标准格式，**创建 `OpenAPIHono` 实例时必须传入 `{ defaultHook: validationHook }`**。Zod schema 可直接从 `@zenith/shared/src/validation.ts` 导入（shared 已升级至 Zod v4），或在路由文件内本地声明。共享的辅助类型与工具函数位于 `packages/server/src/lib/openapi-schemas.ts`。
+> `validationHook` 将 Zod 校验失败自动转为 `{ code: 400, message, data: null }` 标准格式，**创建 `OpenAPIHono` 实例时必须传入 `{ defaultHook: validationHook }`**。`commonErrorResponses` 已包含 400/401/403/404/500 标准错误码，所有路由的 `responses:` 块均需通过 `...commonErrorResponses` 展开。Zod schema 可直接从 `@zenith/shared/src/validation.ts` 导入（shared 已升级至 Zod v4），或在路由文件内本地声明。共享的辅助类型与工具函数位于 `packages/server/src/lib/openapi-schemas.ts`。
 
 ## 常用错误码
 

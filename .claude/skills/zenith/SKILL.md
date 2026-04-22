@@ -97,8 +97,8 @@ await db.insert(xxxTable).values({
 ```ts
 import { getDataScopeCondition } from '../lib/data-scope';
 
-// OpenAPIHono 实例必须声明 Variables 类型，才能正确推断 c.get('user') 的返回类型
-const xxxRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+// OpenAPIHono 实例使用 AuthEnv 运行时类型，才能正确推断 c.get('user') 的返回类型
+const xxxRouter = new OpenAPIHono<AuthEnv>();
 
 // 在 GET / 列表接口中追加 conditions：
 const currentUserId = c.get('user').userId;
@@ -272,7 +272,7 @@ npm run db:migrate
 - 时间字段序列化为 `string`（ISO 格式）
 
 **Step 5** — `packages/server/src/routes/xxx.ts`：创建 OpenAPIHono Router
-- 使用 `new OpenAPIHono<Env>({ defaultHook: validationHook })` 初始化（`validationHook` 从 `../lib/openapi-schemas` 导入），确保 Zod 校验失败时返回标准 `{ code: 400, message, data: null }` 格式
+- 使用 `new OpenAPIHono<AuthEnv>({ defaultHook: validationHook })` 初始化（`AuthEnv` 从 `'../middleware/auth'` 导入，`validationHook` 从 `'../lib/openapi-schemas'` 导入），确保 Zod 校验失败时返回标准 `{ code: 400, message, data: null }` 格式
 - `use('*', authMiddleware)` 保护所有路由
 - 使用 `OpenAPIHono + createRoute` 实现标准 5 个端点：`GET /`（list+分页）、`POST /`（create）、`PUT /{id}`（update）、`DELETE /{id}`（delete）、`GET /{id}`（可选，详情）
 - 路径风格用 `/{id}` 而非 `/:id`（OpenAPI 规范）
@@ -320,6 +320,7 @@ app.route('/api/xxx', xxxRoutes);
 
 | 约束 | 规则 |
 |------|------|
+| **commonErrorResponses** | 所有路由的 `responses:` 块必须包含 `...commonErrorResponses`（涵盖 400/401/403/404/500），从 `'../lib/openapi-schemas'` 导入 |
 | **枚举三端同步** | `pgEnum` / TS union type / Zod enum 保持完全一致 |
 | **操作列固定** | 所有表格操作列必须 `fixed: 'right'` |
 | **树形表格展开控制** | 凡是使用 `children` 字段渲染树形结构的 Table（如部门、菜单），必须在搜索栏添加「全部展开/全部折叠」切换按钮，并使用受控的 `expandedRowKeys` + `onExpandedRowsChange`。参考实现：`allRowKeys`（递归收集全部 key）、`isAllExpanded`（判断是否已全展开）、`toggleExpandAll`（切换）。按钮图标：已展开用 `ChevronsDownUp`，未展开用 `ChevronsUpDown`（来自 `lucide-react`）。 |
