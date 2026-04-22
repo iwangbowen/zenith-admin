@@ -92,6 +92,31 @@ xxxRouter.openapi(createRoute({
 
 > `validationHook` 将 Zod 校验失败自动转为 `{ code: 400, message, data: null }` 标准格式，**创建 `OpenAPIHono` 实例时必须传入 `{ defaultHook: validationHook }`**。`commonErrorResponses` 已包含 400/401/403/404/500 标准错误码，所有路由的 `responses:` 块均需通过 `...commonErrorResponses` 展开。Zod schema 可直接从 `@zenith/shared/src/validation.ts` 导入（shared 已升级至 Zod v4），或在路由文件内本地声明。共享的辅助类型与工具函数位于 `packages/server/src/lib/openapi-schemas.ts`。
 
+## 响应实体 DTO（中心化）
+
+所有响应实体 DTO 统一定义在 `packages/server/src/lib/openapi-dtos.ts`，由各路由通过 `import { XxxDTO } from '../lib/openapi-dtos'` 引用：
+
+```typescript
+import { UserDTO, RoleDTO, MenuDTO } from '../lib/openapi-dtos';
+
+xxxRouter.openapi(createRoute({
+  // ...
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(UserDTO)), description: 'ok' },
+  },
+}), handler);
+```
+
+**约束：**
+
+- ❌ **禁止**在路由文件中本地声明带 `.openapi('EntityName')` 的实体 DTO（会导致 Swagger Components 重复或冲突）
+- ✅ 所有实体（`UserDTO` / `RoleDTO` / `MenuDTO` / `DepartmentDTO` / `TenantDTO` / `DictDTO` 等 50+）在 `openapi-dtos.ts` 中集中注册
+- ✅ 内联使用的 request body schema、不作为 Component 的一次性匿名对象无需搬到中心文件
+- ✅ 新增实体模块时，先在 `openapi-dtos.ts` 添加 `export const XxxDTO = z.object({...}).openapi('Xxx');`，再在路由中导入
+
+这样做的好处：Swagger Components 有单一来源，避免同名冲突；前端/第三方可直接使用稳定的 OpenAPI Components 名称。
+
 ## 常用错误码
 
 | code | 含义 |

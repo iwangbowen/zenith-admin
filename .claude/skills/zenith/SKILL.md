@@ -278,7 +278,7 @@ npm run db:migrate
 - 路径风格用 `/{id}` 而非 `/:id`（OpenAPI 规范）
 - 每个写操作在 `middleware: [guard({ permission, audit })] as const` 中包裹
 - Schema 可直接从 `@zenith/shared/src/validation.ts` 导入（shared 已升级至 Zod v4，与 `@hono/zod-openapi` 一致）；若需要 coerce 或特殊处理，可在路由文件内本地声明
-- DTO 响应使用 `z.looseObject({}).openapi('XxxName')` 作为不透明类型
+- **实体 DTO 必须从中心仓库导入**：`import { XxxDTO } from '../lib/openapi-dtos';`。若是全新实体，先在 `packages/server/src/lib/openapi-dtos.ts` 添加 `export const XxxDTO = z.object({...}).openapi('Xxx');`，再在路由中导入。**严禁在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**（会导致 Swagger Components 重复）
 
 **Step 6** — `packages/server/src/index.ts`：注册路由
 ```ts

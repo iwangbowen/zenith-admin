@@ -54,8 +54,10 @@ OpenAPI Spec **自动生成**，由 `@hono/zod-openapi` 在运行时从每个路
 
 - **Spec 生成**：`src/index.ts` 中的 `app.doc31('/api/openapi.json', { openapi: '3.1.0', ... })`（`doc31()` 才能生成真正的 OpenAPI 3.1 格式 schema）
 - **路由定义**：`src/routes/*.ts` 中每个 `xxxRouter.openapi(createRoute({...}), handler)`
-- **公共 Schema 辅助**：`src/lib/openapi-schemas.ts`（`apiResponse`、`paginatedResponse`、`jsonContent` 等）
+- **公共 Schema 辅助**：`src/lib/openapi-schemas.ts`（`apiResponse`、`paginatedResponse`、`jsonContent`、`validationHook`、`commonErrorResponses`、`PaginationQuery`、`IdParam` 等）
+- **实体 DTO 中心仓库**：`src/lib/openapi-dtos.ts`（`UserDTO` / `RoleDTO` / `MenuDTO` / `DepartmentDTO` / `TenantDTO` / `DictDTO` 等 50+ 实体 DTO）—— 所有路由统一从此处导入，保证 Swagger Components 单一来源，**禁止在路由文件内本地重复声明 `.openapi('EntityName')` 的实体 DTO**
 - **认证方案**：`BearerAuth` 在 `src/index.ts` 中一次性注册到 `app.openAPIRegistry`
+- **健康检查**：`src/routes/health.ts` 提供 `GET /api/health`，无需认证，可用于容器编排平台健康探针
 
 ---
 

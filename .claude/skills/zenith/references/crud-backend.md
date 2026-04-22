@@ -102,6 +102,23 @@ export interface Xxx {
 
 ## Step 5：OpenAPIHono Router（`packages/server/src/routes/xxx.ts`）
 
+> **必读：实体 DTO 必须集中在 `packages/server/src/lib/openapi-dtos.ts`。** 新增实体时先在该文件添加：
+>
+> ```typescript
+> export const XxxDTO = z
+>   .object({
+>     id: z.number().int(),
+>     name: z.string(),
+>     description: z.string().nullable().optional(),
+>     status: z.enum(['active', 'disabled']),
+>     createdAt: z.string(),
+>     updatedAt: z.string(),
+>   })
+>   .openapi('Xxx');
+> ```
+>
+> 然后在路由中导入：`import { XxxDTO } from '../lib/openapi-dtos';`。**严禁在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**，以免 Swagger Components 重复/冲突。
+
 ```ts
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { and, eq, like, sql, gte, lte } from 'drizzle-orm';
@@ -114,14 +131,13 @@ import {
   apiResponse, paginatedResponse, jsonContent,
   PaginationQuery, MessageResponse, ErrorResponse, validationHook, commonErrorResponses,
 } from '../lib/openapi-schemas';
+// 实体 DTO 必须从中心仓库导入（严禁路由内本地声明 .openapi('EntityName')）
+import { XxxDTO } from '../lib/openapi-dtos';
 // 可直接从 @zenith/shared 导入（shared 已升级至 Zod v4）
 // import { createXxxSchema, updateXxxSchema } from '@zenith/shared';
 
 const xxxRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 xxxRouter.use('*', authMiddleware);
-
-// 不透明 DTO（避免严格字段类型）
-const XxxDTO = z.looseObject({}).openapi('Xxx');
 
 // 若 @zenith/shared 中的 schema 不满足需求（如需 coerce），可在本地声明
 const createXxxSchema = z.object({
