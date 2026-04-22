@@ -201,7 +201,7 @@ app.openAPIRegistry.registerComponent('securitySchemes', 'BearerAuth', {
   bearerFormat: 'JWT',
   description: '登录后获取的 accessToken，格式：`Bearer <token>`',
 });
-app.doc('/api/openapi.json', (c) => ({
+app.doc31('/api/openapi.json', (c) => ({
   openapi: '3.1.0',
   info: {
     title: 'Zenith Admin API',
