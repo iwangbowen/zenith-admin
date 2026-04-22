@@ -15,7 +15,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { getOnlineSessions, forceLogout } from '../lib/session-manager';
 import { sendToUser, closeUserConnections } from '../lib/ws-manager';
-import { validationHook } from '../lib/openapi-schemas';
+import { validationHook, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
 
 const sessionsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -33,14 +33,7 @@ const SessionItemSchema = z.object({
   loginAt: z.string().openapi({ example: '2026-04-21T10:00:00.000Z' }),
 }).openapi('SessionItem');
 
-const SessionListResponse = z.object({
-  code: z.literal(0),
-  message: z.string(),
-  data: z.object({
-    list: z.array(SessionItemSchema),
-    total: z.number(),
-  }),
-});
+const SessionListResponse = paginatedResponse(SessionItemSchema);
 
 const ForceLogoutResponse = z.object({
   code: z.number(),
@@ -56,22 +49,45 @@ const listRoute = createRoute({
   summary: '获取在线会话列表',
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:session:list' })] as const,
+  request: {
+    query: z.object({
+      page: z.coerce.number().int().min(1).optional().default(1),
+      pageSize: z.coerce.number().int().min(1).max(200).optional().default(10),
+      keyword: z.string().optional(),
+    }),
+  },
   responses: {
     200: {
-      content: { 'application/json': { schema: SessionListResponse } },
+      content: jsonContent(SessionListResponse),
       description: '在线会话列表',
     },
   },
 });
 
 sessionsRoute.openapi(listRoute, async (c) => {
-  const sessions = await getOnlineSessions();
+  const q = c.req.valid('query');
+  const page = q.page ?? 1;
+  const pageSize = q.pageSize ?? 10;
+  const keyword = q.keyword ?? '';
+
+  let sessions = await getOnlineSessions();
+  if (keyword) {
+    sessions = sessions.filter(
+      (s) =>
+        s.username.includes(keyword) ||
+        s.nickname.includes(keyword) ||
+        s.ip.includes(keyword),
+    );
+  }
+  const total = sessions.length;
+  const list = sessions.slice((page - 1) * pageSize, page * pageSize);
+
   return c.json(
     {
       code: 0 as const,
       message: 'ok',
       data: {
-        list: sessions.map((s) => ({
+        list: list.map((s) => ({
           tokenId: s.tokenId,
           userId: s.userId,
           username: s.username,
@@ -81,7 +97,9 @@ sessionsRoute.openapi(listRoute, async (c) => {
           os: s.os,
           loginAt: s.loginAt.toISOString(),
         })),
-        total: sessions.length,
+        total,
+        page,
+        pageSize,
       },
     },
     200,

@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { and, asc, eq, gte, inArray, like, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, like, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { positions, userPositions } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -7,7 +7,7 @@ import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, paginatedResponse } from '../lib/openapi-schemas';
 
 const positionsRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 
@@ -48,17 +48,21 @@ const listRoute = createRoute({
   middleware: [guard({ permission: 'system:position:list' })] as const,
   request: {
     query: z.object({
+      page: z.coerce.number().int().min(1).optional().default(1),
+      pageSize: z.coerce.number().int().min(1).max(200).optional().default(10),
       keyword: z.string().optional(),
       status: z.enum(['active', 'disabled']).optional(),
       startTime: z.string().optional(),
       endTime: z.string().optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(apiResponse(z.array(PositionDTO))), description: '岗位列表' } },
+  responses: { 200: { content: jsonContent(paginatedResponse(PositionDTO)), description: '岗位列表' } },
 });
 
 positionsRouter.openapi(listRoute, async (c) => {
   const q = c.req.valid('query');
+  const page = q.page ?? 1;
+  const pageSize = q.pageSize ?? 10;
   const conditions = [];
   if (q.keyword) {
     conditions.push(or(like(positions.name, `%${q.keyword}%`), like(positions.code, `%${q.keyword}%`)));
@@ -71,8 +75,24 @@ positionsRouter.openapi(listRoute, async (c) => {
   const user = c.get('user');
   const tc = tenantCondition(positions, user);
   const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
-  const list = await db.select().from(positions).where(finalWhere).orderBy(asc(positions.sort), asc(positions.id));
-  return c.json({ code: 0 as const, message: 'ok', data: list.map(toPosition) }, 200);
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(positions)
+    .where(finalWhere);
+
+  const list = await db
+    .select()
+    .from(positions)
+    .where(finalWhere)
+    .orderBy(asc(positions.sort), asc(positions.id))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  return c.json(
+    { code: 0 as const, message: 'ok', data: { list: list.map(toPosition), total: count, page, pageSize } },
+    200,
+  );
 });
 
 const createPositionRoute = createRoute({

@@ -7,7 +7,7 @@ import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
-import { apiResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const operationLogsRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 
@@ -42,7 +42,7 @@ const listRoute = createRoute({
       endTime: z.string().optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(paginatedResponse(OperationLogDTO)), description: '日志列表' } },
+  responses: { 200: { content: jsonContent(paginatedResponse(OperationLogDTO)), description: '日志列表' }, ...commonErrorResponses },
 });
 
 operationLogsRoute.openapi(listRoute, async (c) => {
@@ -103,7 +103,7 @@ const statsRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:log:operation' })] as const,
   request: { query: z.object({ days: z.coerce.number().optional() }) },
-  responses: { 200: { content: jsonContent(apiResponse(StatsDTO)), description: '统计结果' } },
+  responses: { 200: { content: jsonContent(apiResponse(StatsDTO)), description: '统计结果' }, ...commonErrorResponses },
 });
 
 operationLogsRoute.openapi(statsRoute, async (c) => {

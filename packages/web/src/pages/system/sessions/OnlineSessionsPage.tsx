@@ -8,7 +8,7 @@ import {
   Toast,
 } from '@douyinfe/semi-ui';
 import { Search, RotateCcw } from 'lucide-react';
-import type { OnlineUser } from '@zenith/shared';
+import type { OnlineUser, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -19,19 +19,25 @@ export default function OnlineSessionsPage() {
   const { hasPermission } = usePermission();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<OnlineUser[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, kw = keyword) => {
     setLoading(true);
     try {
-      const res = await request.get<{ list: OnlineUser[]; total: number }>('/api/sessions');
+      const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+      if (kw) query.set('keyword', kw);
+      const res = await request.get<PaginatedResponse<OnlineUser>>(`/api/sessions?${query}`);
       if (res.code === 0) {
         setData(res.data.list);
+        setTotal(res.data.total);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, keyword]);
 
   useEffect(() => {
     void fetchData();
@@ -46,20 +52,11 @@ export default function OnlineSessionsPage() {
         const res = await request.delete(`/api/sessions/${tokenId}`);
         if (res.code === 0) {
           Toast.success('已强制下线');
-          void fetchData();
+          void fetchData(page, pageSize, keyword);
         }
       },
     });
   };
-
-  const filtered = keyword
-    ? data.filter(
-        (u) =>
-          u.username.includes(keyword) ||
-          u.nickname.includes(keyword) ||
-          u.ip.includes(keyword)
-      )
-    : data;
 
   const columns: ColumnProps<OnlineUser>[] = [
     { title: '用户名', dataIndex: 'username', width: 140 },
@@ -101,21 +98,30 @@ export default function OnlineSessionsPage() {
             prefix={<Search size={14} />}
             placeholder="搜索用户名/昵称/IP"
             value={keyword}
-            onChange={setKeyword}
+            onChange={(v) => setKeyword(v)}
+            onEnterPress={() => { setPage(1); void fetchData(1, pageSize, keyword); }}
             style={{ width: 240 }}
             showClear
           />
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { void fetchData(); }}>刷新</Button>
+          <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize, keyword); }}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); setPage(1); void fetchData(1, pageSize, ''); }}>重置</Button>
       </SearchToolbar>
 
       <Table
         bordered
         className="admin-table-nowrap"
         columns={columns}
-        dataSource={filtered}
+        dataSource={data}
         loading={loading}
         rowKey="tokenId"
-        pagination={{ showSizeChanger: true }}
+        pagination={{
+          currentPage: page,
+          pageSize,
+          total,
+          onPageChange: (p) => { setPage(p); void fetchData(p, pageSize, keyword); },
+          onPageSizeChange: (size) => { setPageSize(size); void fetchData(1, size, keyword); },
+          showSizeChanger: true,
+        }}
         empty="暂无在线用户"
       />
     </div>

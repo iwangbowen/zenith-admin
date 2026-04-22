@@ -12,7 +12,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
-import type { Position } from '@zenith/shared';
+import type { Position, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -39,16 +39,21 @@ export default function PositionsPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<Position[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems } = useDictItems('common_status');
 
-  const fetchPositions = useCallback(async (params = searchParams) => {
+  const fetchPositions = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
     try {
       const query = new URLSearchParams({
+        page: String(p),
+        pageSize: String(ps),
         ...(params.keyword ? { keyword: params.keyword } : {}),
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
@@ -58,14 +63,15 @@ export default function PositionsPage() {
             }
           : {}),
       }).toString();
-      const res = await request.get<Position[]>(query ? `/api/positions?${query}` : '/api/positions');
+      const res = await request.get<PaginatedResponse<Position>>(`/api/positions?${query}`);
       if (res.code === 0) {
-        setData(res.data);
+        setData(res.data.list);
+        setTotal(res.data.total);
       }
     } finally {
       setLoading(false);
     }
-  }, [searchParams]);
+  }, [page, pageSize, searchParams]);
 
   useEffect(() => {
     void fetchPositions();
@@ -85,12 +91,14 @@ export default function PositionsPage() {
       };
 
   const handleSearch = () => {
-    void fetchPositions();
+    setPage(1);
+    void fetchPositions(1, pageSize);
   };
 
   const handleReset = () => {
     setSearchParams(defaultSearchParams);
-    void fetchPositions(defaultSearchParams);
+    setPage(1);
+    void fetchPositions(1, pageSize, defaultSearchParams);
   };
 
   const handleModalOk = async () => {
@@ -244,7 +252,14 @@ export default function PositionsPage() {
         dataSource={data}
         loading={loading}
         rowKey="id"
-        pagination={{ showSizeChanger: true }}
+        pagination={{
+          currentPage: page,
+          pageSize,
+          total,
+          onPageChange: (p) => { setPage(p); void fetchPositions(p, pageSize); },
+          onPageSizeChange: (size) => { setPageSize(size); void fetchPositions(1, size); },
+          showSizeChanger: true,
+        }}
         empty="暂无数据"
         rowSelection={{
           selectedRowKeys,
