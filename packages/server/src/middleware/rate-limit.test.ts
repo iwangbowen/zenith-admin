@@ -51,7 +51,6 @@ vi.mock('../config', () => ({
 }));
 
 // ─── 导入被测模块（必须在 mock 声明之后） ────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { authRateLimit, captchaRateLimit, sensitiveRateLimit } from './rate-limit';
 
 // ─── 辅助：构造携带指定请求头的 Hono Context ─────────────────────────────────
