@@ -1,6 +1,8 @@
-import type { Context, MiddlewareHandler, Next } from 'hono';
+import type { Context } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import { UAParser } from 'ua-parser-js';
 import type { JwtPayload } from './auth';
+import type { AppEnv } from '../lib/context';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { sanitizeBody } from '../lib/sanitize';
 import { db } from '../db';
@@ -77,11 +79,11 @@ async function writeOperationLog(
  * 统一路由守卫中间件。
  * 按顺序执行：权限校验 → 审计日志（可选）→ next()
  */
-export function guard(opts: GuardOptions): MiddlewareHandler {
-  return async (c: Context, next: Next) => {
+export function guard(opts: GuardOptions) {
+  return createMiddleware<AppEnv>(async (c, next) => {
     // ── 权限校验 ──
     if (opts.permission) {
-      const user = c.get('user') as JwtPayload;
+      const user = c.get('user');
       if (!isSuperAdmin(user.roles)) {
         const perms = Array.isArray(opts.permission)
           ? opts.permission
@@ -123,5 +125,5 @@ export function guard(opts: GuardOptions): MiddlewareHandler {
     }
 
     await next();
-  };
+  });
 }

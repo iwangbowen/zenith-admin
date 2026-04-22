@@ -9,14 +9,13 @@
  * 新代码可选择使用此处零参风格。
  */
 import { getContext } from 'hono/context-storage';
-import type { JwtPayload } from '../middleware/auth';
+import type { AuthEnv } from '../middleware/auth';
 
-/** 当前请求的 Hono Context 环境类型（与路由 `new Hono<{Variables:{user}}>` 保持一致） */
-export type AppEnv = {
-  Variables: {
-    user: JwtPayload;
-  };
-};
+/**
+ * 当前请求的 Hono Context 环境类型别名。
+ * 定义来自 `middleware/auth.ts` 的 `AuthEnv`，此处重新导出供其他模块使用。
+ */
+export type AppEnv = AuthEnv;
 
 /** 获取当前请求 Context；脱离请求作用域（例如 worker、定时任务）时会抛出。 */
 export function getCtx() {

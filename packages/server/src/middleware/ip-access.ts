@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import ipRangeCheck from 'ip-range-check';
 import { getConfigBoolean, getConfigValue } from '../lib/system-config';
 
@@ -50,7 +50,7 @@ export function invalidateIpAccessCache() {
   cache = null;
 }
 
-export const ipAccessMiddleware: MiddlewareHandler = async (c, next) => {
+export const ipAccessMiddleware = createMiddleware(async (c, next) => {
   const path = new URL(c.req.url).pathname;
 
   // 免检路径
@@ -86,4 +86,4 @@ export const ipAccessMiddleware: MiddlewareHandler = async (c, next) => {
   }
 
   return next();
-};
+});

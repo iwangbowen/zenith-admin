@@ -1,4 +1,4 @@
-import type { Context, Next } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import { verifyToken } from '../lib/jwt';
 import { isTokenBlacklisted, touchSession } from '../lib/session-manager';
 
@@ -12,7 +12,14 @@ export interface JwtPayload {
   jti?: string;
 }
 
-export async function authMiddleware(c: Context, next: Next) {
+/** Hono Env 类型——声明 Variables 中的 user 字段类型，供中间件消费方推断 */
+export type AuthEnv = {
+  Variables: {
+    user: JwtPayload;
+  };
+};
+
+export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
   const authorization = c.req.header('Authorization');
   if (!authorization?.startsWith('Bearer ')) {
     return c.json({ code: 401, message: '未登录', data: null }, 401);
@@ -40,4 +47,4 @@ export async function authMiddleware(c: Context, next: Next) {
   } catch {
     return c.json({ code: 401, message: '登录已过期', data: null }, 401);
   }
-}
+});
