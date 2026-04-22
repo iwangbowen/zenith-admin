@@ -8,7 +8,7 @@
  * 注意：既有显式传参的函数（如 `tenantCondition(table, user)`）继续可用，
  * 新代码可选择使用此处零参风格。
  */
-import { getContext } from 'hono/context-storage';
+import { getContext, tryGetContext } from 'hono/context-storage';
 import type { AuthEnv, JwtPayload } from '../middleware/auth';
 
 /**
@@ -24,11 +24,7 @@ export function getCtx() {
 
 /** 获取已登录用户；若当前请求未走认证中间件（如匿名接口）返回 undefined。 */
 export function currentUserOrNull(): JwtPayload | undefined {
-  try {
-    return getCtx().get('user');
-  } catch {
-    return undefined;
-  }
+  return tryGetContext<AppEnv>()?.get('user');
 }
 
 /** 获取已登录用户；若不存在抛错（用于只在鉴权后调用的场景）。 */
