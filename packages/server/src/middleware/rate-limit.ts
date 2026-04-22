@@ -17,7 +17,7 @@ const ioredisAdapter = {
     return redis.evalsha(
       sha1,
       keys.length,
-      ...(keys as string[]),
+      ...keys,
       ...(args as string[]),
     ) as Promise<TData>;
   },
@@ -25,7 +25,7 @@ const ioredisAdapter = {
     return redis.decr(key);
   },
   del(key: string): Promise<number> {
-    return redis.del(key) as Promise<number>;
+    return redis.del(key);
   },
 };
 
