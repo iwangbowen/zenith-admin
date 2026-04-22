@@ -171,10 +171,10 @@ fileStorageConfigsRouter.openapi(updateRouteDef, async (c) => {
   if (current.isDefault && data.status === 'disabled') return c.json({ code: 400, message: '默认文件服务不能被禁用，请先切换默认服务', data: null }, 400);
   if (data.isDefault) await clearDefaultFlag();
   const [updated] = await db.update(fileStorageConfigs)
-    .set({ ...toStoragePayload(data as StorageInput), updatedAt: new Date() })
+    .set({ ...toStoragePayload({ ...current, ...data } as StorageInput), updatedAt: new Date() })
     .where(eq(fileStorageConfigs.id, id))
     .returning();
-  return c.json({ code: 0 as const, message: '更新成功', data: toFileStorageConfig(updated) }, 200);
+  return c.json({ code: 0, message: '更新成功', data: toFileStorageConfig(updated) }, 200);
 });
 
 // PUT /{id}/default
