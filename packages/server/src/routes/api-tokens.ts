@@ -5,7 +5,7 @@ import { db } from '../db';
 import { userApiTokens } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import type { AuthEnv } from '../middleware/auth';
-import { apiResponse, ErrorResponse, jsonContent, MessageResponse , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, jsonContent, MessageResponse, validationHook } from '../lib/openapi-schemas';
 
 const apiTokensRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 apiTokensRoute.use('/*', authMiddleware);

@@ -8,7 +8,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { validateFlowData } from '../lib/workflow-engine';
 import type { JwtPayload } from '../middleware/auth';
 import type { WorkflowFlowData } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 type Env = { Variables: { user: JwtPayload } };
 const router = new OpenAPIHono<Env>({ defaultHook: validationHook });
@@ -51,7 +51,10 @@ const listRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'workflow:definition:list' })] as const,
   request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.string().optional() }) },
-  responses: { 200: { content: jsonContent(paginatedResponse(WorkflowDefinitionDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(WorkflowDefinitionDTO)), description: 'ok' },
+  },
 });
 router.openapi(listRoute, async (c) => {
   const user = c.get('user');
@@ -82,7 +85,10 @@ const publishedRoute = createRoute({
   summary: '已发布列表',
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'workflow:instance:create' })] as const,
-  responses: { 200: { content: jsonContent(apiResponse(z.array(WorkflowDefinitionDTO))), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(WorkflowDefinitionDTO))), description: 'ok' },
+  },
 });
 router.openapi(publishedRoute, async (c) => {
   const user = c.get('user');
@@ -103,6 +109,7 @@ const detailRoute = createRoute({
   middleware: [guard({ permission: 'workflow:definition:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowDefinitionDTO)), description: 'ok' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
@@ -132,7 +139,10 @@ const createRouteDef = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'workflow:definition:create', audit: { description: '创建流程定义', module: '工作流管理' } })] as const,
   request: { body: { content: jsonContent(createWorkflowDefinitionSchema), required: true } },
-  responses: { 200: { content: jsonContent(apiResponse(WorkflowDefinitionDTO)), description: '创建成功' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(WorkflowDefinitionDTO)), description: '创建成功' },
+  },
 });
 router.openapi(createRouteDef, async (c) => {
   const user = c.get('user');
@@ -157,6 +167,7 @@ const updateRouteDef = createRoute({
   middleware: [guard({ permission: 'workflow:definition:edit', audit: { description: '更新流程定义', module: '工作流管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateWorkflowDefinitionSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowDefinitionDTO)), description: '更新成功' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
@@ -190,6 +201,7 @@ const publishRoute = createRoute({
   middleware: [guard({ permission: 'workflow:definition:publish', audit: { description: '发布流程定义', module: '工作流管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowDefinitionDTO)), description: '发布成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
@@ -225,6 +237,7 @@ const disableRoute = createRoute({
   middleware: [guard({ permission: 'workflow:definition:publish', audit: { description: '禁用流程定义', module: '工作流管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowDefinitionDTO)), description: 'ok' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
@@ -250,6 +263,7 @@ const deleteRouteDef = createRoute({
   middleware: [guard({ permission: 'workflow:definition:delete', audit: { description: '删除流程定义', module: '工作流管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },

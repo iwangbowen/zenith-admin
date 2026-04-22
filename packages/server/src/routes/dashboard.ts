@@ -7,7 +7,7 @@ import { isSuperAdmin } from '../lib/permissions';
 import { getOnlineCount } from '../lib/session-manager';
 import type { AuthEnv } from '../middleware/auth';
 import { tenantCondition } from '../lib/tenant';
-import { apiResponse, ErrorResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const dashboardRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 
@@ -34,6 +34,7 @@ const statsRoute = createRoute({
   summary: '仪表盘统计',
   security: [{ BearerAuth: [] }],
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(StatsDTO)), description: '统计数据' },
     403: { content: jsonContent(ErrorResponse), description: '无权限' },
   },
@@ -105,6 +106,7 @@ const chartsRoute = createRoute({
   summary: '仪表盘图表数据',
   security: [{ BearerAuth: [] }],
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(ChartsDTO)), description: '图表数据' },
     403: { content: jsonContent(ErrorResponse), description: '无权限' },
   },

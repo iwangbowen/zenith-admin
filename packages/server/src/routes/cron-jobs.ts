@@ -7,7 +7,7 @@ import { guard } from '../middleware/guard';
 import { scheduleJob, stopJob, runJobOnce, validateCronExpression, getRegisteredHandlers } from '../lib/cron-scheduler';
 import { exportToExcel } from '../lib/excel-export';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook } from '../lib/openapi-schemas';
 
 const cronJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
 cronJobsRoute.use('*', authMiddleware);

@@ -9,7 +9,7 @@ import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const rolesRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 rolesRouter.use('*', authMiddleware);
@@ -43,7 +43,10 @@ const listRoute = createRoute({
       endTime: z.string().optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(apiResponse(z.array(RoleDTO))), description: '角色列表' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(RoleDTO))), description: '角色列表' },
+  },
 });
 
 rolesRouter.openapi(listRoute, async (c) => {
@@ -74,6 +77,7 @@ const getOneRoute = createRoute({
   middleware: [guard({ permission: 'system:role:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(RoleDTO)), description: '角色详情' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
@@ -102,6 +106,7 @@ const createRoleRoute = createRoute({
   middleware: [guard({ permission: 'system:role:create', audit: { description: '创建角色', module: '角色管理' } })] as const,
   request: { body: { content: jsonContent(createRoleSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(RoleDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
   },
@@ -135,6 +140,7 @@ const updateRoleRoute = createRoute({
     body: { content: jsonContent(updateRoleSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(RoleDTO)), description: '更新成功' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
@@ -161,6 +167,7 @@ const deleteRoute = createRoute({
   middleware: [guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
@@ -188,6 +195,7 @@ const assignMenusRoute = createRoute({
     body: { content: jsonContent(assignRoleMenusSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '菜单权限已更新' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
@@ -221,6 +229,7 @@ const getUsersRoute = createRoute({
   middleware: [guard({ permission: 'system:role:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(UserDTO))), description: '用户列表' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
@@ -272,6 +281,7 @@ const assignUsersRoute = createRoute({
     body: { content: jsonContent(assignRoleUsersSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '用户分配已更新' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
@@ -304,6 +314,7 @@ const exportRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:role:list' })] as const,
   responses: {
+    ...commonErrorResponses,
     200: {
       content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } },
       description: 'Excel 文件',

@@ -7,7 +7,7 @@ import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup';
 import logger from '../lib/logger';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 import { createBackupSchema } from '@zenith/shared';
 
@@ -58,6 +58,7 @@ const listRoute = createRoute({
     }),
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(BackupItem)), description: '备份列表' },
   },
 });
@@ -137,6 +138,7 @@ const createRouteDef = createRoute({
     body: { content: jsonContent(createBackupSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(BackupCreated)), description: '备份任务已创建' },
   },
 });
@@ -188,6 +190,7 @@ const deleteRoute = createRoute({
     params: z.object({ id: z.coerce.number() }),
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '已删除' },
     400: { content: jsonContent(ErrorResponse), description: '无效 ID' },
     404: { content: jsonContent(ErrorResponse), description: '备份记录不存在' },

@@ -14,7 +14,7 @@ import { unlockUser } from '../lib/session-manager';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import type { Role, Position, User } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const usersRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 usersRouter.use('*', authMiddleware);
@@ -189,7 +189,10 @@ usersRouter.openapi(createRoute({
     departmentId: z.coerce.number().optional(), status: z.enum(['active', 'disabled']).optional(),
     startTime: z.string().optional(), endTime: z.string().optional(),
   }) },
-  responses: { 200: { content: jsonContent(paginatedResponse(UserDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(UserDTO)), description: 'ok' },
+  },
 }), async (c) => {
   const { page = 1, pageSize = 10, keyword, phone, departmentId, status, startTime, endTime } = c.req.valid('query');
   const conditions = [];
@@ -236,6 +239,7 @@ usersRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:user:create', audit: { description: '创建用户', module: '用户管理' } })] as const,
   request: { body: { content: jsonContent(createUserSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(UserDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
@@ -290,6 +294,7 @@ usersRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:user:delete', audit: { description: '批量删除用户', module: '用户管理' } })] as const,
   request: { body: { content: jsonContent(batchIdsSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
@@ -311,6 +316,7 @@ usersRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:user:update', audit: { description: '批量修改用户状态', module: '用户管理' } })] as const,
   request: { body: { content: jsonContent(batchStatusSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
@@ -329,7 +335,10 @@ usersRouter.openapi(createRoute({
   tags: ['Users'], summary: '下载导入模板',
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:user:import' })] as const,
-  responses: { 200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' },
+  },
 }), async (c) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('用户导入模板');
@@ -368,6 +377,7 @@ usersRouter.openapi(createRoute({
     body: { content: { 'multipart/form-data': { schema: z.object({ file: z.any() }) } }, required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(ImportResultDTO)), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '文件无效' },
   },
@@ -474,7 +484,10 @@ usersRouter.openapi(createRoute({
   tags: ['Users'], summary: '导出用户',
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:user:list' })] as const,
-  responses: { 200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' },
+  },
 }), async (c) => {
   const tc = tenantCondition(users, c.get('user'));
   const list = await db
@@ -513,6 +526,7 @@ usersRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:user:update', audit: { description: '修改用户密码', module: '用户管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(resetUserPasswordSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
@@ -539,6 +553,7 @@ usersRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:user:update', audit: { description: '解除账号锁定', module: '用户管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
   },
@@ -559,6 +574,7 @@ usersRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:user:update', audit: { description: '更新用户', module: '用户管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateUserSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(UserDTO)), description: '更新成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
@@ -615,6 +631,7 @@ usersRouter.openapi(createRoute({
   middleware: [guard({ permission: 'system:user:delete', audit: { description: '删除用户', module: '用户管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
   },

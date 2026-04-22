@@ -18,7 +18,7 @@ export const registerSchema = z.object({
 export const createUserSchema = z.object({
   username: z.string().min(3).max(32),
   nickname: z.string().min(1).max(32),
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(6).max(64),
   phone: z.preprocess(
     (value) => (value === '' ? undefined : value),
@@ -38,7 +38,7 @@ export const changePasswordSchema = z.object({
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email('邮箱格式不正确'),
+  email: z.email('邮箱格式不正确'),
 });
 
 export const resetPasswordSchema = z.object({
@@ -55,7 +55,7 @@ export const resetUserPasswordSchema = z.object({
 
 export const updateProfileSchema = z.object({
   nickname: z.string().min(1, '昵称不能为空').max(32).optional(),
-  email: z.string().email('邮箱格式不正确').optional(),
+  email: z.email('邮箱格式不正确').optional(),
   avatar: z.string().max(256).optional(),
 });
 
@@ -104,7 +104,7 @@ export const createDepartmentSchema = z.object({
   phone: z.string().max(32).optional(),
   email: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    z.string().email('邮箱格式不正确').optional()
+    z.email('邮箱格式不正确').optional()
   ),
   sort: z.number().int().default(0),
   status: z.enum(['active', 'disabled']).default('active'),

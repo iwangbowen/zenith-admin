@@ -7,7 +7,7 @@ import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 
 const dictsRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
@@ -42,7 +42,10 @@ const listDictsRoute = createRoute({
       endDate: z.string().optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(apiResponse(z.array(DictDTO))), description: '字典列表' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(DictDTO))), description: '字典列表' },
+  },
 });
 
 dictsRouter.openapi(listDictsRoute, async (c) => {
@@ -70,6 +73,7 @@ const createDictRoute = createRoute({
   ] as const,
   request: { body: { content: jsonContent(createDictSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(DictDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '字典编码已存在' },
   },
@@ -105,6 +109,7 @@ const updateDictRoute = createRoute({
     body: { content: jsonContent(updateDictSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(DictDTO)), description: '更新成功' },
     404: { content: jsonContent(ErrorResponse), description: '字典不存在' },
   },
@@ -133,6 +138,7 @@ const deleteDictRoute = createRoute({
   ] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '字典不存在' },
   },
@@ -158,7 +164,10 @@ const listItemsRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:dict:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
-  responses: { 200: { content: jsonContent(apiResponse(z.array(DictItemDTO))), description: '字典项列表' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(DictItemDTO))), description: '字典项列表' },
+  },
 });
 
 dictsRouter.openapi(listItemsRoute, async (c) => {
@@ -179,6 +188,7 @@ const getItemsByCodeRoute = createRoute({
   security: [{ BearerAuth: [] }],
   request: { params: z.object({ code: z.string() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(DictItemDTO))), description: '字典项列表' },
     404: { content: jsonContent(ErrorResponse), description: '字典不存在' },
   },
@@ -209,7 +219,10 @@ const createItemRoute = createRoute({
     params: z.object({ id: z.coerce.number() }),
     body: { content: jsonContent(createDictItemSchema), required: true },
   },
-  responses: { 200: { content: jsonContent(apiResponse(DictItemDTO)), description: '创建成功' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(DictItemDTO)), description: '创建成功' },
+  },
 });
 
 dictsRouter.openapi(createItemRoute, async (c) => {
@@ -233,6 +246,7 @@ const updateItemRoute = createRoute({
     body: { content: jsonContent(updateDictItemSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(DictItemDTO)), description: '更新成功' },
     404: { content: jsonContent(ErrorResponse), description: '字典项不存在' },
   },
@@ -261,6 +275,7 @@ const deleteItemRoute = createRoute({
   ] as const,
   request: { params: z.object({ id: z.coerce.number(), itemId: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '字典项不存在' },
   },
@@ -281,6 +296,7 @@ const exportRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:dict:list' })] as const,
   responses: {
+    ...commonErrorResponses,
     200: {
       description: 'Excel 文件',
       content: {

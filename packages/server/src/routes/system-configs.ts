@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { getPasswordPolicy } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const systemConfigsRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 const configTypeValues = ['string', 'number', 'boolean', 'json'] as const;
@@ -37,6 +37,7 @@ const publicGetRoute = createRoute({
   summary: '公开获取单项配置',
   request: { params: z.object({ key: z.string() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(PublicConfigDTO)), description: '配置值' },
     404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
   },
@@ -63,7 +64,10 @@ const passwordPolicyRoute = createRoute({
   path: '/password-policy',
   tags: ['SystemConfigs'],
   summary: '获取当前密码策略',
-  responses: { 200: { content: jsonContent(apiResponse(PasswordPolicyDTO)), description: '密码策略' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(PasswordPolicyDTO)), description: '密码策略' },
+  },
 });
 
 systemConfigsRoute.openapi(passwordPolicyRoute, async (c) => {
@@ -89,7 +93,10 @@ const listRoute = createRoute({
       configType: z.enum(configTypeValues).optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(paginatedResponse(SystemConfigDTO)), description: '配置列表' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(SystemConfigDTO)), description: '配置列表' },
+  },
 });
 
 systemConfigsRoute.openapi(listRoute, async (c) => {
@@ -142,6 +149,7 @@ const createConfigRoute = createRoute({
   middleware: [guard({ permission: 'system:config:create', audit: { module: '系统配置', description: '新增配置' } })] as const,
   request: { body: { content: jsonContent(createSystemConfigSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(SystemConfigDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '配置键已存在' },
   },
@@ -183,6 +191,7 @@ const updateConfigRoute = createRoute({
     body: { content: jsonContent(updateSystemConfigSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(SystemConfigDTO)), description: '更新成功' },
     400: { content: jsonContent(ErrorResponse), description: '配置键已存在' },
     404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
@@ -234,6 +243,7 @@ const deleteRoute = createRoute({
   middleware: [guard({ permission: 'system:config:delete', audit: { module: '系统配置', description: '删除配置' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
   },
@@ -260,6 +270,7 @@ const exportRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:config:list' })] as const,
   responses: {
+    ...commonErrorResponses,
     200: {
       content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } },
       description: 'Excel 文件',

@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import type { AuthEnv } from '../middleware/auth';
 import type { OAuthProviderType } from '@zenith/shared';
-import { apiResponse, ErrorResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 import { updateOauthConfigSchema } from '@zenith/shared';
 
@@ -39,6 +39,7 @@ const listRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:oauth-config:view' })] as const,
   responses: {
+    ...commonErrorResponses,
     200: {
       content: jsonContent(apiResponse(z.array(OAuthConfigItem))),
       description: 'OAuth 配置列表',
@@ -83,6 +84,7 @@ const updateRoute = createRoute({
     },
   },
   responses: {
+    ...commonErrorResponses,
     200: {
       content: jsonContent(apiResponse(OAuthConfigItem.nullable())),
       description: '保存成功',

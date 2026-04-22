@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const filesRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 
@@ -20,6 +20,7 @@ const contentRoute = createRoute({
   summary: '公开访问文件内容',
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: { 'application/octet-stream': { schema: z.string() } }, description: '文件内容' },
     404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
   },
@@ -89,7 +90,10 @@ const listRoute = createRoute({
       endTime: z.string().optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(paginatedResponse(ManagedFileDTO)), description: '文件列表' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(ManagedFileDTO)), description: '文件列表' },
+  },
 });
 
 filesRouter.openapi(listRoute, async (c) => {
@@ -149,6 +153,7 @@ const uploadRoute = createRoute({
     },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(ManagedFileDTO)), description: '上传成功' },
     400: { content: jsonContent(ErrorResponse), description: '未选择文件或无可用存储' },
   },
@@ -202,6 +207,7 @@ const deleteRoute = createRoute({
   middleware: [guard({ permission: 'system:file:delete', audit: { description: '删除文件', module: '文件管理', recordBody: false } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
   },
@@ -233,6 +239,7 @@ const exportRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:file:list' })] as const,
   responses: {
+    ...commonErrorResponses,
     200: {
       content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } },
       description: 'Excel 文件',

@@ -5,7 +5,7 @@ import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createFileStorageConfigSchema as _createSchema, updateFileStorageConfigSchema as _updateSchema } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const fileStorageConfigsRouter = new OpenAPIHono({ defaultHook: validationHook });
 fileStorageConfigsRouter.use('*', authMiddleware);
@@ -90,7 +90,10 @@ const listRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:file:config' })] as const,
   request: { query: z.object({ status: z.string().optional(), startTime: z.string().optional(), endTime: z.string().optional() }) },
-  responses: { 200: { content: jsonContent(apiResponse(z.array(FileStorageConfigDTO))), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(FileStorageConfigDTO))), description: 'ok' },
+  },
 });
 fileStorageConfigsRouter.openapi(listRoute, async (c) => {
   const { status, startTime, endTime } = c.req.valid('query');
@@ -111,7 +114,10 @@ const defaultRoute = createRoute({
   summary: '默认配置',
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:file:config' })] as const,
-  responses: { 200: { content: jsonContent(apiResponse(FileStorageConfigDTO.nullable())), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(FileStorageConfigDTO.nullable())), description: 'ok' },
+  },
 });
 fileStorageConfigsRouter.openapi(defaultRoute, async (c) => {
   const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.isDefault, true)).limit(1);
@@ -127,7 +133,10 @@ const createRouteDef = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:file:config:create', audit: { description: '创建文件存储配置', module: '文件存储配置' } })] as const,
   request: { body: { content: jsonContent(createFileStorageConfigSchema), required: true } },
-  responses: { 200: { content: jsonContent(apiResponse(FileStorageConfigDTO)), description: '创建成功' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(FileStorageConfigDTO)), description: '创建成功' },
+  },
 });
 fileStorageConfigsRouter.openapi(createRouteDef, async (c) => {
   const data = c.req.valid('json');
@@ -148,6 +157,7 @@ const updateRouteDef = createRoute({
   middleware: [guard({ permission: 'system:file:config:update', audit: { description: '更新文件存储配置', module: '文件存储配置' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateFileStorageConfigSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(FileStorageConfigDTO)), description: '更新成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
@@ -177,6 +187,7 @@ const setDefaultRoute = createRoute({
   middleware: [guard({ permission: 'system:file:config:default', audit: { description: '设置默认文件存储', module: '文件存储配置', recordBody: false } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(FileStorageConfigDTO)), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
@@ -202,6 +213,7 @@ const deleteRouteDef = createRoute({
   middleware: [guard({ permission: 'system:file:config:delete', audit: { description: '删除文件存储配置', module: '文件存储配置' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },

@@ -7,7 +7,7 @@ import { guard } from '../middleware/guard';
 import { isSuperAdmin, getUserMenuIds } from '../lib/permissions';
 import type { AuthEnv } from '../middleware/auth';
 import type { Menu } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const menusRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 menusRouter.use('*', authMiddleware);
@@ -80,7 +80,10 @@ const userMenuRoute = createRoute({
   tags: ['Menus'],
   summary: '当前用户可见菜单树',
   security: [{ BearerAuth: [] }],
-  responses: { 200: { content: jsonContent(apiResponse(z.array(MenuDTO))), description: '菜单树' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(MenuDTO))), description: '菜单树' },
+  },
 });
 
 menusRouter.openapi(userMenuRoute, async (c) => {
@@ -113,7 +116,10 @@ const listRoute = createRoute({
   summary: '菜单树（管理用）',
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:menu:list' })] as const,
-  responses: { 200: { content: jsonContent(apiResponse(z.array(MenuDTO))), description: '全量菜单树' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(MenuDTO))), description: '全量菜单树' },
+  },
 });
 
 menusRouter.openapi(listRoute, async (c) => {
@@ -128,7 +134,10 @@ const flatRoute = createRoute({
   summary: '平铺菜单列表',
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:menu:list' })] as const,
-  responses: { 200: { content: jsonContent(apiResponse(z.array(MenuDTO))), description: '平铺菜单' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(MenuDTO))), description: '平铺菜单' },
+  },
 });
 
 menusRouter.openapi(flatRoute, async (c) => {
@@ -144,7 +153,10 @@ const createMenuRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:menu:create', audit: { description: '创建菜单', module: '菜单管理' } })] as const,
   request: { body: { content: jsonContent(createMenuSchema), required: true } },
-  responses: { 200: { content: jsonContent(apiResponse(MenuDTO)), description: '创建成功' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(MenuDTO)), description: '创建成功' },
+  },
 });
 
 menusRouter.openapi(createMenuRoute, async (c) => {
@@ -165,6 +177,7 @@ const updateMenuRoute = createRoute({
     body: { content: jsonContent(updateMenuSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(MenuDTO)), description: '更新成功' },
     404: { content: jsonContent(ErrorResponse), description: '菜单不存在' },
   },
@@ -190,7 +203,10 @@ const deleteMenuRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:menu:delete', audit: { description: '删除菜单', module: '菜单管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
-  responses: { 200: { content: jsonContent(MessageResponse), description: '删除成功' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(MessageResponse), description: '删除成功' },
+  },
 });
 
 menusRouter.openapi(deleteMenuRoute, async (c) => {

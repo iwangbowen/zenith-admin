@@ -7,7 +7,7 @@ import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, paginatedResponse } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, paginatedResponse, commonErrorResponses } from '../lib/openapi-schemas';
 
 const positionsRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 
@@ -56,7 +56,7 @@ const listRoute = createRoute({
       endTime: z.string().optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(paginatedResponse(PositionDTO)), description: '岗位列表' } },
+  responses: { 200: { content: jsonContent(paginatedResponse(PositionDTO)), description: '岗位列表' }, ...commonErrorResponses },
 });
 
 positionsRouter.openapi(listRoute, async (c) => {

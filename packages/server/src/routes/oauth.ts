@@ -11,7 +11,7 @@ import { getOAuthProvider, isProviderConfigured } from '../lib/oauth';
 import { generateTokenId, registerSession } from '../lib/session-manager';
 import type { OAuthProviderType } from '@zenith/shared';
 import { OAUTH_PROVIDERS } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const oauth = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 
@@ -54,7 +54,10 @@ const accountsRoute = createRoute({
   summary: '当前用户绑定列表',
   security: [{ BearerAuth: [] }],
   middleware: [authMiddleware] as const,
-  responses: { 200: { content: jsonContent(apiResponse(z.array(OAuthAccountDTO))), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(OAuthAccountDTO))), description: 'ok' },
+  },
 });
 oauth.openapi(accountsRoute, async (c) => {
   const payload = c.get('user');
@@ -85,6 +88,7 @@ const authUrlRoute = createRoute({
   security: [],
   request: { params: z.object({ provider: z.string() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(OAuthAuthUrlDTO)), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
@@ -111,6 +115,7 @@ const callbackRoute = createRoute({
     body: { content: jsonContent(z.object({ code: z.string() })), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(OAuthCallbackDTO)), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     403: { content: jsonContent(ErrorResponse), description: '账号已禁用' },
@@ -217,6 +222,7 @@ const bindRoute = createRoute({
   middleware: [authMiddleware] as const,
   request: { body: { content: jsonContent(z.object({ provider: z.string(), code: z.string() })), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
@@ -276,6 +282,7 @@ const unbindRoute = createRoute({
   middleware: [authMiddleware] as const,
   request: { params: z.object({ provider: z.string() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '未找到' },

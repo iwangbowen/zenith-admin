@@ -7,7 +7,7 @@ import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { isPlatformAdmin } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const tenantsRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 
@@ -52,7 +52,7 @@ const listRoute = createRoute({
   summary: '租户列表',
   security: [{ BearerAuth: [] }],
   request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.string().optional() }) },
-  responses: { 200: { content: jsonContent(paginatedResponse(TenantDTO)), description: 'ok' } },
+  responses: { 200: { content: jsonContent(paginatedResponse(TenantDTO)), description: 'ok' }, ...commonErrorResponses },
 });
 tenantsRoute.openapi(listRoute, async (c) => {
   const { page = 1, pageSize = 10, keyword, status } = c.req.valid('query');
@@ -72,7 +72,7 @@ const allRoute = createRoute({
   tags: ['Tenants'],
   summary: '全部租户',
   security: [{ BearerAuth: [] }],
-  responses: { 200: { content: jsonContent(apiResponse(z.array(TenantDTO))), description: 'ok' } },
+  responses: { 200: { content: jsonContent(apiResponse(z.array(TenantDTO))), description: 'ok' }, ...commonErrorResponses },
 });
 tenantsRoute.openapi(allRoute, async (c) => {
   const rows = await db.select({ id: tenants.id, name: tenants.name, code: tenants.code, status: tenants.status }).from(tenants).orderBy(tenants.id);

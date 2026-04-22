@@ -9,7 +9,7 @@ import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-
 import type { JwtPayload } from '../middleware/auth';
 import { createWorkflowInstanceSchema, approveWorkflowTaskSchema, rejectWorkflowTaskSchema } from '@zenith/shared';
 import type { WorkflowFlowData } from '@zenith/shared';
-import { apiResponse, ErrorResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 type Env = { Variables: { user: JwtPayload } };
 const router = new OpenAPIHono<Env>({ defaultHook: validationHook });
@@ -72,7 +72,10 @@ const listRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'workflow:instance:list' })] as const,
   request: { query: PaginationQuery.extend({ status: z.string().optional() }) },
-  responses: { 200: { content: jsonContent(paginatedResponse(WorkflowInstanceDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(WorkflowInstanceDTO)), description: 'ok' },
+  },
 });
 router.openapi(listRoute, async (c) => {
   const user = c.get('user');
@@ -108,7 +111,10 @@ const pendingMineRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'workflow:task:handle' })] as const,
   request: { query: PaginationQuery },
-  responses: { 200: { content: jsonContent(paginatedResponse(WorkflowInstanceListDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(WorkflowInstanceListDTO)), description: 'ok' },
+  },
 });
 router.openapi(pendingMineRoute, async (c) => {
   const user = c.get('user');
@@ -149,7 +155,10 @@ const allRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'workflow:instance:monitor' })] as const,
   request: { query: PaginationQuery.extend({ status: z.string().optional(), keyword: z.string().optional() }) },
-  responses: { 200: { content: jsonContent(apiResponse(WorkflowInstanceAllDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(WorkflowInstanceAllDTO)), description: 'ok' },
+  },
 });
 router.openapi(allRoute, async (c) => {
   const { page = 1, pageSize = 20, status, keyword } = c.req.valid('query');
@@ -197,6 +206,7 @@ const detailRoute = createRoute({
   middleware: [guard({ permission: 'workflow:instance:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: 'ok' },
     403: { content: jsonContent(ErrorResponse), description: '无权查看' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
@@ -245,6 +255,7 @@ const createInstanceRoute = createRoute({
   middleware: [guard({ permission: 'workflow:instance:create', audit: { description: '发起流程申请', module: '工作流管理' } })] as const,
   request: { body: { content: jsonContent(createWorkflowInstanceSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: '申请已提交' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '流程定义不存在' },
@@ -299,6 +310,7 @@ const withdrawRoute = createRoute({
   middleware: [guard({ permission: 'workflow:instance:create', audit: { description: '撤回流程申请', module: '工作流管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: '已撤回' },
     400: { content: jsonContent(ErrorResponse), description: '不能撤回' },
     403: { content: jsonContent(ErrorResponse), description: '无权操作' },
@@ -334,6 +346,7 @@ const approveRoute = createRoute({
     body: { content: jsonContent(approveWorkflowTaskSchema), required: false },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
@@ -407,6 +420,7 @@ const rejectRoute = createRoute({
     body: { content: jsonContent(rejectWorkflowTaskSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: '已驳回' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },

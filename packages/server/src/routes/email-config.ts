@@ -5,7 +5,7 @@ import { emailConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import type { AuthEnv } from '../middleware/auth';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 import { emailConfigSchema } from '@zenith/shared';
 
@@ -39,6 +39,7 @@ const getRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:email-config:view' })] as const,
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(EmailConfigDTO)), description: '邮件配置' },
   },
 });
@@ -69,6 +70,7 @@ const updateRoute = createRoute({
     body: { content: jsonContent(emailConfigSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(EmailConfigDTO)), description: '保存成功' },
   },
 });
@@ -103,6 +105,7 @@ const testRoute = createRoute({
     body: { content: jsonContent(TestEmailBody), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '发送成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误或配置不完整' },
     500: { content: jsonContent(ErrorResponse), description: '发送失败' },

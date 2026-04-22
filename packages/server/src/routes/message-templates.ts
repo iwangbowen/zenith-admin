@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { previewMessageTemplateSchema } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const messageTemplatesRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 messageTemplatesRouter.use('*', authMiddleware);
@@ -54,7 +54,10 @@ const listRoute = createRoute({
       pageSize: z.coerce.number().optional(),
     }),
   },
-  responses: { 200: { content: jsonContent(paginatedResponse(MessageTemplateDTO)), description: '模板列表' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(MessageTemplateDTO)), description: '模板列表' },
+  },
 });
 
 messageTemplatesRouter.openapi(listRoute, async (c) => {
@@ -95,6 +98,7 @@ const getRoute = createRoute({
   middleware: [guard({ permission: 'system:message-template:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(MessageTemplateDTO)), description: '模板详情' },
     404: { content: jsonContent(ErrorResponse), description: '模板不存在' },
   },
@@ -118,6 +122,7 @@ const createTemplateRoute = createRoute({
   ] as const,
   request: { body: { content: jsonContent(createMessageTemplateSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(MessageTemplateDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
   },
@@ -150,6 +155,7 @@ const updateTemplateRoute = createRoute({
     body: { content: jsonContent(updateMessageTemplateSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(MessageTemplateDTO)), description: '更新成功' },
     400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
     404: { content: jsonContent(ErrorResponse), description: '模板不存在' },
@@ -186,6 +192,7 @@ const deleteRoute = createRoute({
   ] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '模板不存在' },
   },
@@ -210,6 +217,7 @@ const previewRoute = createRoute({
     body: { content: jsonContent(previewMessageTemplateSchema), required: true },
   },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(PreviewResultDTO)), description: '预览结果' },
     404: { content: jsonContent(ErrorResponse), description: '模板不存在' },
   },

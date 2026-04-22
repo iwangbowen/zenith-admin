@@ -7,7 +7,7 @@ import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
-import { paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 const loginLogsRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
 loginLogsRoute.use('/*', authMiddleware);
@@ -46,6 +46,7 @@ const listRoute = createRoute({
   },
   responses: {
     200: { content: jsonContent(paginatedResponse(LoginLogItem)), description: '登录日志列表' },
+    ...commonErrorResponses,
   },
 });
 

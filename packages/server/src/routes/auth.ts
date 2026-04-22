@@ -31,7 +31,7 @@ const loginSchema = z.object({
 const registerSchema = z.object({
   username: z.string().min(3).max(32),
   nickname: z.string().min(1).max(32),
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(6).max(64),
 });
 const changePasswordSchema = z.object({
@@ -40,11 +40,11 @@ const changePasswordSchema = z.object({
 });
 const updateProfileSchema = z.object({
   nickname: z.string().min(1).max(32).optional(),
-  email: z.string().email().optional(),
+  email: z.email().optional(),
   avatar: z.string().max(256).optional(),
 });
 const switchTenantSchema = z.object({ tenantId: z.number().int().positive().nullable() });
-const forgotPasswordSchema = z.object({ email: z.string().email() });
+const forgotPasswordSchema = z.object({ email: z.email() });
 const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(6).max(64) });
 const refreshSchema = z.object({ refreshToken: z.string().min(1) });
 

@@ -9,7 +9,7 @@ import { broadcast, sendToUser } from '../lib/ws-manager';
 import type { JwtPayload } from '../middleware/auth';
 import { noticeRecipientSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 
 type Env = { Variables: { user: JwtPayload } };
 const noticesRouter = new OpenAPIHono<Env>({ defaultHook: validationHook });
@@ -96,7 +96,10 @@ const publishedRoute = createRoute({
   tags: ['Notices'],
   summary: '最近 20 条已发布通知',
   security: [{ BearerAuth: [] }],
-  responses: { 200: { content: jsonContent(apiResponse(z.array(NoticeDTO))), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(z.array(NoticeDTO))), description: 'ok' },
+  },
 });
 noticesRouter.openapi(publishedRoute, async (c) => {
   const user = c.get('user');
@@ -118,7 +121,10 @@ const readRoute = createRoute({
   summary: '标记已读',
   security: [{ BearerAuth: [] }],
   request: { params: z.object({ id: z.coerce.number() }) },
-  responses: { 200: { content: jsonContent(MessageResponse), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(MessageResponse), description: 'ok' },
+  },
 });
 noticesRouter.openapi(readRoute, async (c) => {
   const user = c.get('user');
@@ -134,7 +140,10 @@ const readAllRoute = createRoute({
   tags: ['Notices'],
   summary: '全部标记已读',
   security: [{ BearerAuth: [] }],
-  responses: { 200: { content: jsonContent(MessageResponse), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(MessageResponse), description: 'ok' },
+  },
 });
 noticesRouter.openapi(readAllRoute, async (c) => {
   const user = c.get('user');
@@ -158,7 +167,10 @@ const inboxRoute = createRoute({
   summary: '收件箱',
   security: [{ BearerAuth: [] }],
   request: { query: PaginationQuery.extend({ isRead: z.string().optional() }) },
-  responses: { 200: { content: jsonContent(paginatedResponse(NoticeDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(NoticeDTO)), description: 'ok' },
+  },
 });
 noticesRouter.openapi(inboxRoute, async (c) => {
   const user = c.get('user');
@@ -188,7 +200,10 @@ const listRoute = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:notice:list' })] as const,
   request: { query: PaginationQuery.extend({ title: z.string().optional(), type: z.string().optional(), publishStatus: z.string().optional(), startTime: z.string().optional(), endTime: z.string().optional() }) },
-  responses: { 200: { content: jsonContent(paginatedResponse(NoticeDTO)), description: 'ok' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(paginatedResponse(NoticeDTO)), description: 'ok' },
+  },
 });
 noticesRouter.openapi(listRoute, async (c) => {
   const { page = 1, pageSize = 10, title, type, publishStatus, startTime, endTime } = c.req.valid('query');
@@ -224,7 +239,10 @@ const exportRouteDef = createRoute({
   summary: '导出',
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:notice:list' })] as const,
-  responses: { 200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' },
+  },
 });
 noticesRouter.openapi(exportRouteDef, async (c) => {
   const rows = await db.select().from(notices).where(tenantCondition(notices, c.get('user'))).orderBy(desc(notices.id));
@@ -256,6 +274,7 @@ const batchDeleteRoute = createRoute({
   middleware: [guard({ permission: 'system:notice:delete', audit: { description: '批量删除通知公告', module: '通知公告' } })] as const,
   request: { body: { content: jsonContent(z.object({ ids: z.array(z.number().int()) })), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
@@ -279,6 +298,7 @@ const readStatsRoute = createRoute({
   middleware: [guard({ permission: 'system:notice:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }), query: PaginationQuery.extend({ tab: z.string().optional() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(NoticeReadStatsDTO)), description: 'ok' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
@@ -350,6 +370,7 @@ const detailRoute = createRoute({
   middleware: [guard({ permission: 'system:notice:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(NoticeDTO)), description: 'ok' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
@@ -389,7 +410,10 @@ const createRouteDef = createRoute({
   security: [{ BearerAuth: [] }],
   middleware: [guard({ permission: 'system:notice:create', audit: { description: '创建通知公告', module: '通知公告' } })] as const,
   request: { body: { content: jsonContent(createNoticeSchema), required: true } },
-  responses: { 200: { content: jsonContent(apiResponse(NoticeDTO)), description: '创建成功' } },
+  responses: {
+    ...commonErrorResponses,
+    200: { content: jsonContent(apiResponse(NoticeDTO)), description: '创建成功' },
+  },
 });
 noticesRouter.openapi(createRouteDef, async (c) => {
   const user = c.get('user');
@@ -430,6 +454,7 @@ const updateRouteDef = createRoute({
   middleware: [guard({ permission: 'system:notice:update', audit: { description: '更新通知公告', module: '通知公告' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateNoticeSchema), required: true } },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(NoticeDTO)), description: '更新成功' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
@@ -473,6 +498,7 @@ const deleteRouteDef = createRoute({
   middleware: [guard({ permission: 'system:notice:delete', audit: { description: '删除通知公告', module: '通知公告' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
+    ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
