@@ -43,7 +43,7 @@ AI 会在生成代码之前，主动向你确认以下信息：
 | 3 | 共享 Zod Schema | `packages/shared/src/validation.ts` |
 | 4 | 共享 TypeScript 类型 | `packages/shared/src/types.ts` |
 | 5 | Hono 路由（CRUD + 分页 + 筛选） | `packages/server/src/routes/` |
-| 5b | 实体 DTO 集中注册 | `packages/server/src/lib/openapi-dtos.ts` |
+| 5b | 实体 DTO 按业务域拆分 | `packages/server/src/lib/dtos/`（`iam` / `auth` / `dict` / `files` / `logs` / `notices` / `system` / `workflow` / `dashboard` / `region` / `messages`），barrel：`openapi-dtos.ts` |
 | 6 | 注册路由 | `packages/server/src/index.ts` |
 | 6b | OpenAPI Spec 自动汇总 | 无需手动维护，由 `@hono/zod-openapi` 运行时生成 |
 | 7 | 前端列表页（搜索 + 表格 + 弹窗） | `packages/web/src/pages/` |
