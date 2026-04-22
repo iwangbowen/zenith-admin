@@ -1,7 +1,7 @@
-import { exec } from 'child_process';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { promisify } from 'util';
+import { exec } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { promisify } from 'node:util';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { dbBackups, managedFiles, fileStorageConfigs } from '../db/schema';
@@ -32,7 +32,7 @@ export async function createPgDumpBackup(backupId: number): Promise<void> {
 
   try {
     await ensureBackupDir();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
     const filename = `pgdump-${timestamp}.sql.gz`;
     const filePath = path.join(BACKUP_DIR, filename);
 
@@ -102,7 +102,7 @@ export async function createDrizzleExportBackup(backupId: number, tables?: strin
 
   try {
     await ensureBackupDir();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
     const filename = `drizzle-export-${timestamp}.json`;
     const filePath = path.join(BACKUP_DIR, filename);
 
