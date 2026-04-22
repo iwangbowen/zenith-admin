@@ -32,7 +32,7 @@ function createChain(result: unknown[]) {
     Promise.resolve(result).then(resolve, reject);
   chain.catch = (fn: (e: unknown) => unknown) => Promise.resolve(result).catch(fn);
   chain.finally = (fn: () => void) => Promise.resolve(result).finally(fn);
-  return chain;
+  return chain as unknown as ReturnType<typeof db.select>;
 }
 
 // ─── Mock ────────────────────────────────────────────────────────────────────
