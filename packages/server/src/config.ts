@@ -10,6 +10,9 @@ export const config = {
   requestBodyLimit: Number(process.env.REQUEST_BODY_LIMIT) || 0,
   // 请求超时（毫秒）。0 或未设置表示不启用超时中间件
   requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS) || 0,
+  // CSRF 允许的来源列表，逗号分隔。留空则不限制（开发模式）
+  // 生产环境示例：ALLOWED_ORIGINS=https://admin.example.com,https://app.example.com
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean),
   redis: {
     // 优先使用 REDIS_URL（支持带密码的连接，如 redis://:password@127.0.0.1:6379/0）
     url: process.env.REDIS_URL,

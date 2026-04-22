@@ -9,6 +9,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { timeout } from 'hono/timeout';
 import { HTTPException } from 'hono/http-exception';
 import { contextStorage } from 'hono/context-storage';
+import { csrf } from 'hono/csrf';
 import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { swaggerUI } from '@hono/swagger-ui';
@@ -18,6 +19,7 @@ import { db } from './db/index';
 import redis from './lib/redis';
 import { sql } from 'drizzle-orm';
 import { ipAccessMiddleware } from './middleware/ip-access';
+import { authRateLimit, captchaRateLimit, sensitiveRateLimit } from './middleware/rate-limit';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import departmentsRoutes from './routes/departments';
@@ -64,6 +66,18 @@ app.use('*', secureHeaders({
 }));
 app.use('*', compress());
 app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
+// CSRF 防护：校验 Origin 头，防止跨站请求伪造
+// ALLOWED_ORIGINS 为空时（开发模式）不限制；非浏览器请求（无 Origin）直接放行
+app.use(
+  '*',
+  csrf({
+    origin: (origin) => {
+      if (!origin) return true; // 服务端 / CLI（curl、Postman）直接放行
+      if (config.allowedOrigins.length === 0) return true; // 开发模式，不限制
+      return config.allowedOrigins.includes(origin);
+    },
+  }),
+);
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const stripAnsi = (str: string) => str.replaceAll(ANSI_RE, '');
@@ -110,6 +124,13 @@ if (config.requestTimeoutMs > 0) {
 }
 
 app.use('/api/*', ipAccessMiddleware);
+
+// ─── 接口级限流（防暴力破解 / 滥用）────────────────────────────────────────
+app.use('/api/auth/login', authRateLimit);
+app.use('/api/auth/captcha', captchaRateLimit);
+app.use('/api/auth/register', sensitiveRateLimit);
+app.use('/api/auth/forgot-password', sensitiveRateLimit);
+app.use('/api/auth/reset-password', sensitiveRateLimit);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/users', usersRoutes);
