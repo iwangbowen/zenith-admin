@@ -41,20 +41,21 @@ const statsRouteDef = defineOpenAPIRoute({
     const otc = tenantCondition(operationLogs, user);
 
     const activeUsersWhere = utc ? and(eq(users.status, 'active'), utc) : eq(users.status, 'active');
-    const totalUsers = await db.$count(users, utc);
-    const activeUsers = await db.$count(users, activeUsersWhere);
-
     const todayLoginWhere = ltc
       ? and(gte(loginLogs.createdAt, todayStart), lt(loginLogs.createdAt, todayEnd), ltc)
       : and(gte(loginLogs.createdAt, todayStart), lt(loginLogs.createdAt, todayEnd));
-    const todayLogins = await db.$count(loginLogs, todayLoginWhere);
 
     const todayOpWhere = otc
       ? and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd), otc)
       : and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd));
-    const todayOperations = await db.$count(operationLogs, todayOpWhere);
 
-    const onlineUsers = await getOnlineCount();
+    const [totalUsers, activeUsers, todayLogins, todayOperations, onlineUsers] = await Promise.all([
+      db.$count(users, utc),
+      db.$count(users, activeUsersWhere),
+      db.$count(loginLogs, todayLoginWhere),
+      db.$count(operationLogs, todayOpWhere),
+      getOnlineCount(),
+    ]);
 
     return c.json(
       {
