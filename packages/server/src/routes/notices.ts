@@ -55,12 +55,14 @@ function buildAccessFilter(userId: number) {
 }
 
 async function saveRecipients(noticeId: number, recipientList: Array<{ recipientType: string; recipientId: number }>) {
-  await db.delete(noticeRecipients).where(eq(noticeRecipients.noticeId, noticeId));
-  if (recipientList.length > 0) {
-    await db.insert(noticeRecipients).values(
-      recipientList.map((r) => ({ noticeId, recipientType: r.recipientType, recipientId: r.recipientId })),
-    ).onConflictDoNothing();
-  }
+  await db.transaction(async (tx) => {
+    await tx.delete(noticeRecipients).where(eq(noticeRecipients.noticeId, noticeId));
+    if (recipientList.length > 0) {
+      await tx.insert(noticeRecipients).values(
+        recipientList.map((r) => ({ noticeId, recipientType: r.recipientType, recipientId: r.recipientId })),
+      ).onConflictDoNothing();
+    }
+  });
 }
 
 async function broadcastNotice(notice: ReturnType<typeof toNotice>, noticeId: number) {

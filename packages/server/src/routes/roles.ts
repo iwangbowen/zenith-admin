@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, and, like, or, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, like, or, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { roles, roleMenus, userRoles, users } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -236,10 +236,12 @@ const assignMenusRoute = defineOpenAPIRoute({
       .limit(1);
     if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
 
-    await db.delete(roleMenus).where(eq(roleMenus.roleId, id));
-    if (data.menuIds.length > 0) {
-      await db.insert(roleMenus).values(data.menuIds.map((menuId: number) => ({ roleId: id, menuId })));
-    }
+    await db.transaction(async (tx) => {
+      await tx.delete(roleMenus).where(eq(roleMenus.roleId, id));
+      if (data.menuIds.length > 0) {
+        await tx.insert(roleMenus).values(data.menuIds.map((menuId: number) => ({ roleId: id, menuId })));
+      }
+    });
 
     clearUserPermissionCache();
     return c.json({ code: 0 as const, message: '菜单权限已更新', data: null }, 200);
@@ -324,10 +326,12 @@ const assignUsersRoute = defineOpenAPIRoute({
       .limit(1);
     if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
 
-    await db.delete(userRoles).where(eq(userRoles.roleId, id));
-    if (data.userIds.length > 0) {
-      await db.insert(userRoles).values(data.userIds.map((userId: number) => ({ userId, roleId: id })));
-    }
+    await db.transaction(async (tx) => {
+      await tx.delete(userRoles).where(eq(userRoles.roleId, id));
+      if (data.userIds.length > 0) {
+        await tx.insert(userRoles).values(data.userIds.map((userId: number) => ({ userId, roleId: id })));
+      }
+    });
 
     clearUserPermissionCache();
     return c.json({ code: 0 as const, message: '用户分配已更新', data: null }, 200);

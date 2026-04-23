@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, and, ilike, or, count } from 'drizzle-orm';
+import { eq, and, ilike, or } from 'drizzle-orm';
 import { db } from '../db';
 import { messageTemplates } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -70,8 +70,7 @@ const listRoute = defineOpenAPIRoute({
     if (q.status) conditions.push(eq(messageTemplates.status, q.status));
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const [totalRow] = await db.select({ total: count() }).from(messageTemplates).where(where);
-    const total = totalRow?.total ?? 0;
+    const total = await db.$count(messageTemplates, where);
     const list = await db
       .select()
       .from(messageTemplates)
