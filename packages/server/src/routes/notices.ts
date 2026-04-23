@@ -488,7 +488,7 @@ const updateRouteDef = defineOpenAPIRoute({
       const existing = await db.select().from(notices).where(eq(notices.id, id));
       if (existing[0] && !existing[0].publishTime) publishTime = now;
     }
-    const updateData: Record<string, unknown> = { ...data, updatedAt: now };
+    const updateData: Record<string, unknown> = { ...data };
     delete updateData.recipients;
     if (publishTime !== undefined) updateData.publishTime = publishTime;
 

@@ -80,11 +80,8 @@ const create = defineOpenAPIRoute({
       return c.json({ code: 400, message: 'Token 名称不能为空', data: null }, 400);
     }
 
-    const existing = await db
-      .select({ id: userApiTokens.id })
-      .from(userApiTokens)
-      .where(eq(userApiTokens.userId, payload.userId));
-    if (existing.length >= 20) {
+    const existingCount = await db.$count(userApiTokens, eq(userApiTokens.userId, payload.userId));
+    if (existingCount >= 20) {
       return c.json({ code: 400, message: '最多只能创建 20 个 API Token', data: null }, 400);
     }
 
