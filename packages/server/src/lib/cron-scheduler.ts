@@ -1,5 +1,5 @@
 import cron, { type ScheduledTask } from 'node-cron';
-import { eq, count } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { cronJobs, cronJobLogs, dbBackups } from '../db/schema';
 import logger from './logger';
@@ -111,8 +111,7 @@ async function executeJob(jobId: number, handler: string, params: string | null)
   const startedAt = new Date();
 
   // 计算第几次执行
-  const [countRow] = await db.select({ value: count() }).from(cronJobLogs).where(eq(cronJobLogs.jobId, jobId));
-  const executionCount = (countRow?.value ?? 0) + 1;
+  const executionCount = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, jobId)) + 1;
 
   if (!fn) {
     const msg = `Handler "${handler}" not found`;

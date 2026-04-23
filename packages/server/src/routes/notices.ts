@@ -12,6 +12,7 @@ import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginated
 import { NoticeDTO, NoticeReadStatsDTO } from '../lib/openapi-dtos';
 
 const noticesRouter = new OpenAPIHono({ defaultHook: validationHook });
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const createNoticeSchema = z.object({
   title: z.string().min(1).max(128),
@@ -54,15 +55,13 @@ function buildAccessFilter(userId: number) {
   );
 }
 
-async function saveRecipients(noticeId: number, recipientList: Array<{ recipientType: string; recipientId: number }>) {
-  await db.transaction(async (tx) => {
-    await tx.delete(noticeRecipients).where(eq(noticeRecipients.noticeId, noticeId));
-    if (recipientList.length > 0) {
-      await tx.insert(noticeRecipients).values(
-        recipientList.map((r) => ({ noticeId, recipientType: r.recipientType, recipientId: r.recipientId })),
-      ).onConflictDoNothing();
-    }
-  });
+async function saveRecipients(executor: DbTransaction | typeof db, noticeId: number, recipientList: Array<{ recipientType: string; recipientId: number }>) {
+  await executor.delete(noticeRecipients).where(eq(noticeRecipients.noticeId, noticeId));
+  if (recipientList.length > 0) {
+    await executor.insert(noticeRecipients).values(
+      recipientList.map((r) => ({ noticeId, recipientType: r.recipientType, recipientId: r.recipientId })),
+    ).onConflictDoNothing();
+  }
 }
 
 async function broadcastNotice(notice: ReturnType<typeof toNotice>, noticeId: number) {
@@ -441,21 +440,23 @@ const createRouteDef = defineOpenAPIRoute({
     if (data.publishTime) publishTime = new Date(data.publishTime);
     else if (data.publishStatus === 'published') publishTime = now;
 
-    const [row] = await db.insert(notices).values({
-      title: data.title,
-      content: data.content,
-      type: data.type,
-      publishStatus: data.publishStatus,
-      priority: data.priority,
-      targetType: data.targetType ?? 'all',
-      publishTime,
-      createById: user?.userId ?? null,
-      createByName: user?.username ?? null,
-      tenantId: getCreateTenantId(user),
-    }).returning();
-
-    const recipientList = data.targetType === 'specific' ? (data.recipients ?? []) : [];
-    await saveRecipients(row.id, recipientList);
+    const row = await db.transaction(async (tx) => {
+      const [inserted] = await tx.insert(notices).values({
+        title: data.title,
+        content: data.content,
+        type: data.type,
+        publishStatus: data.publishStatus,
+        priority: data.priority,
+        targetType: data.targetType ?? 'all',
+        publishTime,
+        createById: user?.userId ?? null,
+        createByName: user?.username ?? null,
+        tenantId: getCreateTenantId(user),
+      }).returning();
+      const recipientList = data.targetType === 'specific' ? (data.recipients ?? []) : [];
+      await saveRecipients(tx, inserted.id, recipientList);
+      return inserted;
+    });
 
     const notice = toNotice(row);
     if (row.publishStatus === 'published') await broadcastNotice(notice, row.id);
@@ -494,14 +495,17 @@ const updateRouteDef = defineOpenAPIRoute({
     delete updateData.recipients;
     if (publishTime !== undefined) updateData.publishTime = publishTime;
 
-    const [row] = await db.update(notices).set(updateData).where(and(eq(notices.id, id), tenantCondition(notices, c.get('user')))).returning();
+    const row = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(notices).set(updateData).where(and(eq(notices.id, id), tenantCondition(notices, c.get('user')))).returning();
+      if (!updated) return null;
+      if (data.targetType !== undefined || data.recipients !== undefined) {
+        const newTargetType = data.targetType ?? updated.targetType;
+        const recipientList = newTargetType === 'specific' ? (data.recipients ?? []) : [];
+        await saveRecipients(tx, id, recipientList);
+      }
+      return updated;
+    });
     if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
-
-    if (data.targetType !== undefined || data.recipients !== undefined) {
-      const newTargetType = data.targetType ?? row.targetType;
-      const recipientList = newTargetType === 'specific' ? (data.recipients ?? []) : [];
-      await saveRecipients(id, recipientList);
-    }
 
     const notice = toNotice(row);
     if (data.publishStatus === 'published') await broadcastNotice(notice, row.id);
