@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { eq, desc, and } from 'drizzle-orm';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
-import { dbBackups, users } from '../db/schema';
+import { dbBackups } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup';
@@ -55,29 +55,13 @@ const listRoute = defineOpenAPIRoute({
 
     const [count, rows] = await Promise.all([
       db.$count(dbBackups, where),
-      db
-        .select({
-          id: dbBackups.id,
-          name: dbBackups.name,
-          type: dbBackups.type,
-          fileId: dbBackups.fileId,
-          fileSize: dbBackups.fileSize,
-          status: dbBackups.status,
-          tables: dbBackups.tables,
-          startedAt: dbBackups.startedAt,
-          completedAt: dbBackups.completedAt,
-          durationMs: dbBackups.durationMs,
-          errorMessage: dbBackups.errorMessage,
-          createdBy: dbBackups.createdBy,
-          createdByName: users.nickname,
-          createdAt: dbBackups.createdAt,
-        })
-        .from(dbBackups)
-        .leftJoin(users, eq(dbBackups.createdBy, users.id))
-        .where(where)
-        .orderBy(desc(dbBackups.createdAt))
-        .limit(pageSize)
-        .offset(pageOffset(page, pageSize)),
+      db.query.dbBackups.findMany({
+        where,
+        with: { createdByUser: { columns: { nickname: true } } },
+        orderBy: desc(dbBackups.createdAt),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      }),
     ]);
 
     return c.json(
@@ -85,11 +69,12 @@ const listRoute = defineOpenAPIRoute({
         code: 0 as const,
         message: 'ok',
         data: {
-          list: rows.map((r) => ({
-            ...r,
-            startedAt: r.startedAt?.toISOString() || null,
-            completedAt: r.completedAt?.toISOString() || null,
-            createdAt: r.createdAt.toISOString(),
+          list: rows.map(({ createdByUser, startedAt, completedAt, createdAt, ...rest }) => ({
+            ...rest,
+            createdByName: createdByUser?.nickname ?? null,
+            startedAt: startedAt?.toISOString() || null,
+            completedAt: completedAt?.toISOString() || null,
+            createdAt: createdAt.toISOString(),
           })),
           total: count,
           page,

@@ -83,20 +83,28 @@ const listRoute = defineOpenAPIRoute({
     const where = and(...conditions);
     const [total, rows] = await Promise.all([
       db.$count(workflowInstances, where),
-      db
-        .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar })
-        .from(workflowInstances)
-        .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-        .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-        .where(where)
-        .orderBy(desc(workflowInstances.id))
-        .limit(pageSize)
-        .offset(pageOffset(page, pageSize)),
+      db.query.workflowInstances.findMany({
+        where,
+        with: {
+          definition: { columns: { name: true } },
+          initiator: { columns: { nickname: true, avatar: true } },
+        },
+        orderBy: desc(workflowInstances.id),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      }),
     ]);
     return c.json({
       code: 0 as const,
       message: 'ok',
-      data: { list: rows.map((r) => toInstance(r.inst, r)), total, page, pageSize },
+      data: {
+        list: rows.map((r) => toInstance(r, {
+          definitionName: r.definition?.name ?? null,
+          initiatorName: r.initiator?.nickname ?? null,
+          initiatorAvatar: r.initiator?.avatar ?? null,
+        })),
+        total, page, pageSize,
+      },
     }, 200);
   },
 });
@@ -222,30 +230,31 @@ const detailRoute = defineOpenAPIRoute({
     const tc = tenantCondition(workflowInstances, user);
     const conditions = [eq(workflowInstances.id, id)];
     if (tc) conditions.push(tc);
-    const rows = await db
-      .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar })
-      .from(workflowInstances)
-      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-      .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(and(...conditions))
-      .limit(1);
-    if (!rows.length) return c.json({ code: 404, message: '流程实例不存在', data: null }, 404);
-    const inst = rows[0].inst;
-    const myTasks = await db.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.assigneeId, user.userId))).limit(1);
-    const isInitiator = inst.initiatorId === user.userId;
-    const isAssignee = myTasks.length > 0;
+    const row = await db.query.workflowInstances.findFirst({
+      where: and(...conditions),
+      with: {
+        definition: { columns: { name: true } },
+        initiator: { columns: { nickname: true, avatar: true } },
+        tasks: {
+          with: { assignee: { columns: { nickname: true, avatar: true } } },
+          orderBy: workflowTasks.id,
+        },
+      },
+    });
+    if (!row) return c.json({ code: 404, message: '流程实例不存在', data: null }, 404);
+    const isInitiator = row.initiatorId === user.userId;
+    const isAssignee = row.tasks.some((t) => t.assigneeId === user.userId);
     if (!isInitiator && !isAssignee) return c.json({ code: 403, message: '无权查看', data: null }, 403);
-    const taskRows = await db
-      .select({ task: workflowTasks, assigneeName: users.nickname, assigneeAvatar: users.avatar })
-      .from(workflowTasks)
-      .leftJoin(users, eq(workflowTasks.assigneeId, users.id))
-      .where(eq(workflowTasks.instanceId, id))
-      .orderBy(workflowTasks.id);
-    const tasks = taskRows.map((r) => toTask(r.task, r.assigneeName, r.assigneeAvatar));
+    const tasks = row.tasks.map((t) => toTask(t, t.assignee?.nickname, t.assignee?.avatar));
     return c.json({
       code: 0 as const,
       message: 'ok',
-      data: toInstance(rows[0].inst, { ...rows[0], tasks }),
+      data: toInstance(row, {
+        definitionName: row.definition?.name ?? null,
+        initiatorName: row.initiator?.nickname ?? null,
+        initiatorAvatar: row.initiator?.avatar ?? null,
+        tasks,
+      }),
     }, 200);
   },
 });

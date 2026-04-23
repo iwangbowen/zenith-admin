@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { eq, and, like, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
-import { workflowDefinitions, users } from '../db/schema';
+import { workflowDefinitions } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
@@ -65,16 +65,15 @@ const listRoute = defineOpenAPIRoute({
     const where = conditions.length ? and(...conditions) : undefined;
     const [total, rows] = await Promise.all([
       db.$count(workflowDefinitions, where),
-      db
-        .select({ def: workflowDefinitions, createdByName: users.nickname })
-        .from(workflowDefinitions)
-        .leftJoin(users, eq(workflowDefinitions.createdBy, users.id))
-        .where(where)
-        .orderBy(desc(workflowDefinitions.id))
-        .limit(pageSize)
-        .offset(pageOffset(page, pageSize)),
+      db.query.workflowDefinitions.findMany({
+        where,
+        with: { createdByUser: { columns: { nickname: true } } },
+        orderBy: desc(workflowDefinitions.id),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      }),
     ]);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(r => toDefinition(r.def, r.createdByName)), total, page, pageSize } }, 200);
+    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(r => toDefinition(r, r.createdByUser?.nickname ?? null)), total, page, pageSize } }, 200);
   },
 });
 
@@ -124,14 +123,12 @@ const detailRoute = defineOpenAPIRoute({
     const tc = tenantCondition(workflowDefinitions, user);
     const conditions = [eq(workflowDefinitions.id, id)];
     if (tc) conditions.push(tc);
-    const rows = await db
-      .select({ def: workflowDefinitions, createdByName: users.nickname })
-      .from(workflowDefinitions)
-      .leftJoin(users, eq(workflowDefinitions.createdBy, users.id))
-      .where(and(...conditions))
-      .limit(1);
-    if (!rows.length) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: 'ok', data: toDefinition(rows[0].def, rows[0].createdByName) }, 200);
+    const row = await db.query.workflowDefinitions.findFirst({
+      where: and(...conditions),
+      with: { createdByUser: { columns: { nickname: true } } },
+    });
+    if (!row) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
+    return c.json({ code: 0 as const, message: 'ok', data: toDefinition(row, row.createdByUser?.nickname ?? null) }, 200);
   },
 });
 
