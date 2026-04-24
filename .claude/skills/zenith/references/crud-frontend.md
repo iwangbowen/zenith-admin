@@ -199,21 +199,22 @@ export default function XxxPage() {
       render: (val) => val || '-',
     },
     {
-      // 状态列：使用字典进行枚举显示
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      width: 170,
+      render: (t) => formatDateTime(t),  // 必须用 formatDateTime，禁止原生方法
+    },
+    {
+      // 状态列：放在操作列左侧紧靠操作列，必须 fixed: 'right'
       title: '状态',
       dataIndex: 'status',
       width: 100,
+      fixed: 'right',
       render: (status) => {
         const item = statusItems.find((i) => i.value === status);
         return item?.label ?? status;
         // 若使用 DictTag 组件：<DictTag dictCode="common_status" value={status} />
       },
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 170,
-      render: (t) => formatDateTime(t),  // 必须用 formatDateTime，禁止原生方法
     },
     {
       // 操作列：必须 fixed: 'right'；纯文字按钮，无图标
