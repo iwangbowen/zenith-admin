@@ -1,5 +1,6 @@
 import redis from '../lib/redis';
 import { config } from '../config';
+import { AppError } from '../lib/errors';
 
 const { keyPrefix } = config.redis;
 
@@ -67,4 +68,32 @@ export async function getKeyMeta(key: string) {
     size,
     value,
   };
+}
+
+export async function listCache(keyword?: string) {
+  let keys = await scanKeys(`${keyPrefix}*`);
+  if (keyword) keys = keys.filter((k) => k.includes(keyword));
+  keys.sort((a, b) => a.localeCompare(b));
+  const items = await Promise.all(keys.map(getKeyMeta));
+  return { list: items, total: items.length };
+}
+
+export async function deleteCacheKey(key: string) {
+  if (!key) throw new AppError('参数错误：缺少 key', 400);
+  if (!key.startsWith(keyPrefix)) throw new AppError('只能删除当前命名空间的缓存', 403);
+  const deleted = await redis.del(key);
+  if (deleted === 0) throw new AppError('key 不存在', 404);
+}
+
+export async function deleteCacheByCategory(segment: string) {
+  if (!segment) throw new AppError('参数错误：缺少 segment', 400);
+  const keys = await scanKeys(`${keyPrefix}${segment}:*`);
+  if (keys.length > 0) await redis.del(...keys);
+  return keys.length;
+}
+
+export async function deleteAllCache() {
+  const keys = await scanKeys(`${keyPrefix}*`);
+  if (keys.length > 0) await redis.del(...keys);
+  return keys.length;
 }

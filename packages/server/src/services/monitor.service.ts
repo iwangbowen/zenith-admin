@@ -117,3 +117,45 @@ export async function getDbInfo() {
     return null;
   }
 }
+
+export async function getMonitorStatus() {
+  const [cpuUsage, dbInfo, redisInfo] = await Promise.all([getCpuUsage(), getDbInfo(), getRedisInfo()]);
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+  const cpus = os.cpus();
+  const disk = getDiskInfo();
+  return {
+    os: {
+      platform: os.platform(),
+      release: os.release(),
+      arch: os.arch(),
+      hostname: os.hostname(),
+      uptimeSeconds: Math.floor(os.uptime()),
+    },
+    cpu: {
+      model: cpus[0]?.model ?? 'Unknown',
+      cores: cpus.length,
+      speed: cpus[0]?.speed ?? 0,
+      loadAvg: os.loadavg(),
+      usage: cpuUsage,
+    },
+    memory: {
+      total: totalMem,
+      used: usedMem,
+      free: freeMem,
+      usagePercent: Math.round((usedMem / totalMem) * 100),
+    },
+    disk: disk
+      ? { total: disk.total, used: disk.used, free: disk.free, usagePercent: Math.round((disk.used / disk.total) * 100) }
+      : null,
+    node: {
+      version: process.version,
+      uptime: Math.floor(process.uptime()),
+      pid: process.pid,
+      memoryUsage: process.memoryUsage(),
+    },
+    database: dbInfo,
+    redis: redisInfo,
+  };
+}
