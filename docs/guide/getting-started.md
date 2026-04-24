@@ -33,12 +33,18 @@ REDIS_URL=redis://127.0.0.1:6379
 # REDIS_KEY_PREFIX=zenith:   # 所有 key 的命名空间前缀（默认 zenith:）
 ```
 
-### 前端 `packages/web/.env`
+### 前端 `packages/web/.env.development`
+
+开发环境下，API 请求通过 Vite Dev Server 代理转发到后端，无需直接填写后端地址：
 
 ```ini
-VITE_API_BASE_URL=http://localhost:3300
+VITE_API_BASE_URL=
+VITE_WS_BASE_URL=
+VITE_API_PROXY_TARGET=http://localhost:3300
 VITE_APP_TITLE=Zenith Admin
 ```
+
+> `VITE_API_PROXY_TARGET` 仅在开发模式的 Vite Dev Server 中生效，不会暴露到客户端 bundle。生产部署时通过 `VITE_API_BASE_URL` 指定后端地址，详见 [部署文档](./deployment.md)。
 
 ## 初始化数据库
 

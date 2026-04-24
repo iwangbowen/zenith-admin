@@ -52,6 +52,57 @@ Authorization: Bearer <token>
 
 接口类型、实体定义和校验 schema 尽量复用 `@zenith/shared`，避免前后端各写一套。
 
+## 开发环境代理配置
+
+开发环境下，前端 Vite Dev Server 通过内置代理将 `/api/*` 请求转发到后端，避免跨域问题，同时让前端无需感知后端地址。
+
+**相关文件：**
+
+- `packages/web/.env.development` — 开发环境变量
+- `packages/web/vite.config.ts` — 代理规则定义
+
+**关键环境变量：**
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `VITE_API_PROXY_TARGET` | 代理目标（后端地址），仅在 Vite Dev Server 中生效，**不会**暴露到客户端 | `http://localhost:3300` |
+| `VITE_API_BASE_URL` | 客户端 API 基础 URL。**开发时留空**，请求走相对路径 `/api/...` 由代理转发；**生产部署时**填写后端完整地址，如 `https://api.yourdomain.com` | 空（开发）|
+| `VITE_WS_BASE_URL` | WebSocket 基础 URL。**开发时留空**，由 `useWebSocket.ts` 自动从当前 Origin 推导并经代理转发；**生产时**填写如 `wss://api.yourdomain.com` | 空（开发）|
+
+**代理规则（`vite.config.ts`）：**
+
+```ts
+server: {
+  proxy: {
+    '/api': {
+      target: apiTarget, // 来自 VITE_API_PROXY_TARGET
+      changeOrigin: true,
+      ws: true, // 同时代理 WebSocket（/api/ws）
+    },
+  },
+},
+```
+
+**各环境配置示例：**
+
+::: code-group
+
+```env [.env.development（开发）]
+VITE_API_BASE_URL=
+VITE_WS_BASE_URL=
+VITE_API_PROXY_TARGET=http://localhost:3300
+```
+
+```env [生产部署（自行创建 .env.production）]
+VITE_API_BASE_URL=https://api.yourdomain.com
+VITE_WS_BASE_URL=wss://api.yourdomain.com
+# 生产构建无 Dev Server，无需 VITE_API_PROXY_TARGET
+```
+
+:::
+
+> **注意**：`VITE_API_PROXY_TARGET` 不带 `VITE_` 前缀以外的特殊声明，Vite 不会将它注入到客户端 bundle 中（因为 `loadEnv` 在 `vite.config.ts` 中以非 `import.meta.env` 方式读取），后端地址不会泄露到生产包。
+
 ## 开发建议
 
 - 新增接口前，先确认是否已有共享类型或校验 schema

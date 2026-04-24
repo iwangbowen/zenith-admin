@@ -171,7 +171,17 @@ server {
 
 ### 3. 前端环境配置
 
-若需要自定义前端接入的 API 地址，在构建前修改 `packages/web/.env` 中的 `VITE_API_BASE_URL`，或在使用 Nginx 反向代理时，将 `/api/` 代理到后端，前端保持默认配置即可。
+在 `packages/web/` 下创建 `.env.production`（或直接修改 `.env`），按实际情况填写：
+
+```ini
+# 后端 API 地址（生产环境必填）
+VITE_API_BASE_URL=https://api.yourdomain.com
+# WebSocket 地址（不填则自动从 VITE_API_BASE_URL 推导）
+VITE_WS_BASE_URL=wss://api.yourdomain.com
+VITE_APP_TITLE=Zenith Admin
+```
+
+若前端与后端同域部署（通过 Nginx 反向代理将 `/api/` 转发到后端），可将 `VITE_API_BASE_URL` 留空，前端将自动使用相对路径请求。
 
 ---
 
