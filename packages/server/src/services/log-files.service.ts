@@ -3,7 +3,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { config } from '../config';
 
-const LOG_DIR = path.resolve(config.log.dir);
+export const LOG_DIR = path.resolve(config.log.dir);
 
 /**
  * 安全校验文件名：防止路径穿越。

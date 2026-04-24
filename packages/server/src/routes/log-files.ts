@@ -1,10 +1,12 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
+import fs from 'node:fs';
+import path from 'node:path';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { validationHook, commonErrorResponses, ok, okMsg, ErrorResponse, jsonContent, okBody, errBody } from '../lib/openapi-schemas';
 import { LogFileDTO, LogFileContentDTO } from '../lib/openapi-dtos';
-import { safeFilename, resolveLogPath, readLastLines, readGzipLastLines, watchTail } from '../services/log-files.service';
+import { safeFilename, resolveLogPath, readLastLines, readGzipLastLines, watchTail, LOG_DIR } from '../services/log-files.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 

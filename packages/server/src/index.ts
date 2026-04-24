@@ -214,7 +214,8 @@ app.get('/api/docs', swaggerUI({ url: '/api/openapi.json' }));
 // 全局未捕获异常处理—统一返回标准错误格式
 app.onError((err, c) => {
   if (err instanceof AppError) {
-    return c.json(errBody(err.message, err.statusCode), err.statusCode as 400 | 401 | 403 | 404 | 409 | 422 | 500);
+    const status = err.statusCode as 400 | 401 | 403 | 404 | 409 | 413 | 422 | 423 | 429 | 500;
+    return c.json(errBody(err.message, status), status);
   }
   if (err instanceof HTTPException) {
     return c.json({ code: err.status, message: err.message, data: null }, err.status);

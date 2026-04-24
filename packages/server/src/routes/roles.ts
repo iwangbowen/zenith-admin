@@ -11,9 +11,17 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { RoleDTO, UserDTO } from '../lib/openapi-dtos';
-import { mapRole } from '../services/roles.service';
 
 const rolesRouter = new OpenAPIHono({ defaultHook: validationHook });
+
+function toRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
+  return {
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    ...(menuIds === undefined ? {} : { menuIds }),
+  };
+}
 
 // ─── Routes ────────────────────────────────────────────────────────────────
 const allRoute = defineOpenAPIRoute({
@@ -21,19 +29,19 @@ const allRoute = defineOpenAPIRoute({
     method: 'get',
     path: '/all',
     tags: ['Roles'],
-    summary: '全針角色（供下拉框）',
+    summary: '全量角色（供下拉框）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
     request: {},
     responses: {
       ...commonErrorResponses,
-      ...ok(z.array(RoleDTO), '全針角色'),
+      ...ok(z.array(RoleDTO), '全量角色'),
     },
   }),
   handler: async (c) => {
     const tc = tenantCondition(roles, c.get('user'));
     const list = await db.select().from(roles).where(tc).orderBy(roles.id);
-    return c.json(okBody(list.map((r) => mapRole(r))), 200);
+    return c.json(okBody(list.map((r) => toRole(r))), 200);
   },
 });
 
@@ -78,7 +86,7 @@ const listRoute = defineOpenAPIRoute({
       db.select().from(roles).where(finalWhere).orderBy(roles.id).limit(pageSize).offset(pageOffset(page, pageSize)),
     ]);
 
-    return c.json(okBody({ list: list.map((r) => mapRole(r)), total, page, pageSize }), 200);
+    return c.json(okBody({ list: list.map((r) => toRole(r)), total, page, pageSize }), 200);
   },
 });
 
@@ -87,14 +95,14 @@ const getOneRoute = defineOpenAPIRoute({
     method: 'get',
     path: '/{id}',
     tags: ['Roles'],
-    summary: '获坖坕个角色（坫 menuIds�?,
+    summary: '获取单个角色（含 menuIds）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
     request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
       ...ok(RoleDTO, '角色详情'),
-      404: { content: jsonContent(ErrorResponse), description: '角色丝存�? },
+      404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
   handler: async (c) => {
@@ -103,10 +111,10 @@ const getOneRoute = defineOpenAPIRoute({
       where: and(eq(roles.id, id), tenantCondition(roles, c.get('user'))),
       with: { roleMenus: { columns: { menuId: true } } },
     });
-    if (!role) return c.json(errBody('角色丝存�?, 404), 404);
+    if (!role) return c.json(errBody('角色不存在', 404), 404);
 
     const menuIds = role.roleMenus.map(({ menuId }) => menuId);
-    return c.json(okBody(mapRole(role, menuIds)), 200);
+    return c.json(okBody(toRole(role, menuIds)), 200);
   },
 });
 
@@ -117,12 +125,12 @@ const createRoleRoute = defineOpenAPIRoute({
     tags: ['Roles'],
     summary: '新增角色',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:role:create', audit: { description: '创建角色', module: '角色管睆' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:role:create', audit: { description: '创建角色', module: '角色管理' } })] as const,
     request: { body: { content: jsonContent(createRoleSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      ...ok(RoleDTO, '创建戝功'),
-      400: { content: jsonContent(ErrorResponse), description: '编砝冲窝' },
+      ...ok(RoleDTO, '创建成功'),
+      400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
     },
   }),
   handler: async (c) => {
@@ -132,10 +140,10 @@ const createRoleRoute = defineOpenAPIRoute({
         .insert(roles)
         .values({ ...data, tenantId: getCreateTenantId(c.get('user')) })
         .returning();
-      return c.json(okBody(mapRole(role), '创建戝功'), 200);
+      return c.json(okBody(toRole(role), '创建成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
-        return c.json(errBody('角色编砝已存�?), 400);
+        return c.json(errBody('角色编码已存在'), 400);
       }
       throw err;
     }
@@ -149,15 +157,15 @@ const updateRoleRoute = defineOpenAPIRoute({
     tags: ['Roles'],
     summary: '更新角色',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:role:update', audit: { description: '更新角色', module: '角色管睆' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:role:update', audit: { description: '更新角色', module: '角色管理' } })] as const,
     request: {
       params: IdParam,
       body: { content: jsonContent(updateRoleSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      ...ok(RoleDTO, '更新戝功'),
-      404: { content: jsonContent(ErrorResponse), description: '角色丝存�? },
+      ...ok(RoleDTO, '更新成功'),
+      404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
   handler: async (c) => {
@@ -168,8 +176,8 @@ const updateRoleRoute = defineOpenAPIRoute({
       .set({ ...data })
       .where(and(eq(roles.id, id), tenantCondition(roles, c.get('user'))))
       .returning();
-    if (!role) return c.json(errBody('角色丝存�?, 404), 404);
-    return c.json(okBody(mapRole(role), '更新戝功'), 200);
+    if (!role) return c.json(errBody('角色不存在', 404), 404);
+    return c.json(okBody(toRole(role), '更新成功'), 200);
   },
 });
 
@@ -180,12 +188,12 @@ const deleteRoute = defineOpenAPIRoute({
     tags: ['Roles'],
     summary: '删除角色',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管睆' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管理' } })] as const,
     request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      ...okMsg('删除戝功'),
-      404: { content: jsonContent(ErrorResponse), description: '角色丝存�? },
+      ...okMsg('删除成功'),
+      404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
   handler: async (c) => {
@@ -194,8 +202,8 @@ const deleteRoute = defineOpenAPIRoute({
       .delete(roles)
       .where(and(eq(roles.id, id), tenantCondition(roles, c.get('user'))))
       .returning();
-    if (!deleted) return c.json(errBody('角色丝存�?, 404), 404);
-    return c.json(okBody(null, '删除戝功'), 200);
+    if (!deleted) return c.json(errBody('角色不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
@@ -204,17 +212,17 @@ const assignMenusRoute = defineOpenAPIRoute({
     method: 'put',
     path: '/{id}/menus',
     tags: ['Roles'],
-    summary: '分酝角色蝜坕',
+    summary: '分配角色菜单',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:role:assign', audit: { description: '分酝角色蝜坕', module: '角色管睆' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:role:assign', audit: { description: '分配角色菜单', module: '角色管理' } })] as const,
     request: {
       params: IdParam,
       body: { content: jsonContent(assignRoleMenusSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      ...okMsg('蝜坕权陝已更�?),
-      404: { content: jsonContent(ErrorResponse), description: '角色丝存�? },
+      ...okMsg('菜单权限已更新'),
+      404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
   handler: async (c) => {
@@ -225,7 +233,7 @@ const assignMenusRoute = defineOpenAPIRoute({
       .from(roles)
       .where(and(eq(roles.id, id), tenantCondition(roles, c.get('user'))))
       .limit(1);
-    if (!role) return c.json(errBody('角色丝存�?, 404), 404);
+    if (!role) return c.json(errBody('角色不存在', 404), 404);
 
     await db.transaction(async (tx) => {
       await tx.delete(roleMenus).where(eq(roleMenus.roleId, id));
@@ -235,7 +243,7 @@ const assignMenusRoute = defineOpenAPIRoute({
     });
 
     clearUserPermissionCache();
-    return c.json(okBody(null, '蝜坕权陝已更�?), 200);
+    return c.json(okBody(null, '菜单权限已更新'), 200);
   },
 });
 
@@ -244,14 +252,14 @@ const getUsersRoute = defineOpenAPIRoute({
     method: 'get',
     path: '/{id}/users',
     tags: ['Roles'],
-    summary: '获坖角色关蝔用户',
+    summary: '获取角色关联用户',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
     request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
       ...ok(z.array(UserDTO), '用户列表'),
-      404: { content: jsonContent(ErrorResponse), description: '角色丝存�? },
+      404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
   handler: async (c) => {
@@ -261,7 +269,7 @@ const getUsersRoute = defineOpenAPIRoute({
       columns: {},
       with: { userRoles: { columns: {}, with: { user: true } } },
     });
-    if (!role) return c.json(errBody('角色丝存�?, 404), 404);
+    if (!role) return c.json(errBody('角色不存在', 404), 404);
 
     return c.json(
       okBody(role.userRoles.map(({ user: u }) => ({
@@ -279,17 +287,17 @@ const assignUsersRoute = defineOpenAPIRoute({
     method: 'put',
     path: '/{id}/users',
     tags: ['Roles'],
-    summary: '分酝角色用户',
+    summary: '分配角色用户',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:role:assign', audit: { description: '分酝角色用户', module: '角色管睆' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:role:assign', audit: { description: '分配角色用户', module: '角色管理' } })] as const,
     request: {
       params: IdParam,
       body: { content: jsonContent(assignRoleUsersSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      ...okMsg('用户分酝已更�?),
-      404: { content: jsonContent(ErrorResponse), description: '角色丝存�? },
+      ...okMsg('用户分配已更新'),
+      404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
   handler: async (c) => {
@@ -300,7 +308,7 @@ const assignUsersRoute = defineOpenAPIRoute({
       .from(roles)
       .where(and(eq(roles.id, id), tenantCondition(roles, c.get('user'))))
       .limit(1);
-    if (!role) return c.json(errBody('角色丝存�?, 404), 404);
+    if (!role) return c.json(errBody('角色不存在', 404), 404);
 
     await db.transaction(async (tx) => {
       await tx.delete(userRoles).where(eq(userRoles.roleId, id));
@@ -310,7 +318,7 @@ const assignUsersRoute = defineOpenAPIRoute({
     });
 
     clearUserPermissionCache();
-    return c.json(okBody(null, '用户分酝已更�?), 200);
+    return c.json(okBody(null, '用户分配已更新'), 200);
   },
 });
 
@@ -332,10 +340,10 @@ const exportRoute = defineOpenAPIRoute({
     const buffer = await exportToExcel(
       [
         { header: 'ID', key: 'id', width: 8 },
-        { header: '角色坝称', key: 'name', width: 18 },
-        { header: '角色编砝', key: 'code', width: 18 },
-        { header: '杝述', key: 'description', width: 30 },
-        { header: '状�?, key: 'status', width: 10, transform: (v) => (v === 'active' ? '坯用' : '禝用') },
+        { header: '角色名称', key: 'name', width: 18 },
+        { header: '角色编码', key: 'code', width: 18 },
+        { header: '描述', key: 'description', width: 30 },
+        { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'active' ? '启用' : '禁用') },
         { header: '创建时间', key: 'createdAt', width: 22 },
       ],
       rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),

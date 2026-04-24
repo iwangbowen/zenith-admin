@@ -10,11 +10,14 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import redis from '../lib/redis';
+import { config } from '../config';
 import { validationHook, okBody, errBody } from '../lib/openapi-schemas';
 import { CacheItemDTO as CacheItemSchema } from '../lib/openapi-dtos';
 import { scanKeys, getKeyMeta } from '../services/cache.service';
 
 const cacheRouter = new OpenAPIHono({ defaultHook: validationHook });
+
+const { keyPrefix } = config.redis;
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
 const GenericResponse = z.object({

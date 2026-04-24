@@ -188,5 +188,6 @@ export const errBody = <const T extends 400 | 401 | 403 | 404 | 409 | 413 | 422 
 export function excelBody(c: Context<any>, buffer: ArrayBuffer | Buffer, filename: string): never {
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-  return c.body(buffer as BodyInit) as never;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (c.body as any)(buffer) as never;
 }

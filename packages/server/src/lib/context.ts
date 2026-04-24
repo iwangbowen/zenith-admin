@@ -35,3 +35,14 @@ export function currentUser(): JwtPayload {
   }
   return u;
 }
+
+/**
+ * 在 Service 层写入"操作前实体快照"，用于审计日志 diff 展示。
+ * 与 middleware/guard.ts 的 `setAuditBeforeData(c, data)` 等价，但无需透传 Context。
+ * 仅在请求上下文内可用（未在请求栈中调用会静默忽略）。
+ */
+export function setAuditBefore(data: unknown): void {
+  const ctx = tryGetContext<AppEnv>();
+  if (!ctx) return;
+  ctx.set('auditBeforeData', JSON.stringify(data));
+}

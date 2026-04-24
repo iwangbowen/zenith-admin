@@ -7,9 +7,62 @@ import { guard } from '../middleware/guard';
 import type { Region } from '@zenith/shared';
 import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { RegionDTO } from '../lib/openapi-dtos';
-import { mapRegion, buildRegionTree, filterRegionTree } from '../services/regions.service';
 
 const regionsRouter = new OpenAPIHono({ defaultHook: validationHook });
+
+function toRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    level: row.level,
+    parentCode: row.parentCode ?? null,
+    sort: row.sort,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function buildTree(list: Omit<Region, 'children'>[]): Region[] {
+  const map = new Map<string, Region>();
+  list.forEach((item) => map.set(item.code, { ...item }));
+  const roots: Region[] = [];
+
+  map.forEach((node) => {
+    if (!node.parentCode) {
+      roots.push(node);
+      return;
+    }
+    const parent = map.get(node.parentCode);
+    if (parent) {
+      parent.children = parent.children ?? [];
+      parent.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  const sortNodes = (nodes: Region[]) => {
+    nodes.sort((a, b) => a.sort - b.sort || a.code.localeCompare(b.code));
+    nodes.forEach((item) => item.children && sortNodes(item.children));
+  };
+  sortNodes(roots);
+  return roots;
+}
+
+function filterTree(nodes: Region[], keyword: string, status?: string, level?: string): Region[] {
+  return nodes.reduce<Region[]>((acc, node) => {
+    const children = node.children ? filterTree(node.children, keyword, status, level) : [];
+    const keywordMatched = !keyword || node.name.includes(keyword) || node.code.includes(keyword);
+    const statusMatched = !status || node.status === status;
+    const levelMatched = !level || node.level === level;
+    if ((keywordMatched && statusMatched && levelMatched) || children.length > 0) {
+      acc.push({ ...node, children: children.length > 0 ? children : undefined });
+    }
+    return acc;
+  }, []);
+}
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
 
@@ -41,14 +94,14 @@ const listRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      ...ok(z.array(RegionDTO), '地区�?),
+      ...ok(z.array(RegionDTO), '地区树'),
     },
   }),
   handler: async (c) => {
     const q = c.req.valid('query');
     const rows = await db.select().from(regions).orderBy(asc(regions.sort), asc(regions.code));
-    const tree = buildRegionTree(rows.map(mapRegion));
-    const data = q.keyword || q.status || q.level ? filterRegionTree(tree, q.keyword ?? '', q.status, q.level) : tree;
+    const tree = buildTree(rows.map(toRegion));
+    const data = q.keyword || q.status || q.level ? filterTree(tree, q.keyword ?? '', q.status, q.level) : tree;
     return c.json(okBody(data), 200);
   },
 });
@@ -68,7 +121,7 @@ const flatRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const rows = await db.select().from(regions).orderBy(asc(regions.sort), asc(regions.code));
-    return c.json(okBody(rows.map(mapRegion)), 200);
+    return c.json(okBody(rows.map(toRegion)), 200);
   },
 });
 
@@ -91,7 +144,7 @@ const createRegionRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     if (data.parentCode) {
       const [parent] = await db.select({ code: regions.code }).from(regions).where(eq(regions.code, data.parentCode));
-      if (!parent) return c.json(errBody('父级地区不存�?), 400);
+      if (!parent) return c.json(errBody('父级地区不存在'), 400);
     }
     try {
       const [row] = await db
@@ -105,10 +158,10 @@ const createRegionRoute = defineOpenAPIRoute({
           status: data.status,
         })
         .returning();
-      return c.json(okBody(mapRegion(row), '创建成功'), 200);
+      return c.json(okBody(toRegion(row), '创建成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
-        return c.json(errBody('区划代码已存�?), 400);
+        return c.json(errBody('区划代码已存在'), 400);
       }
       throw err;
     }
@@ -130,8 +183,8 @@ const updateRegionRoute = defineOpenAPIRoute({
     responses: {
       ...commonErrorResponses,
       ...ok(RegionDTO, '更新成功'),
-      400: { content: jsonContent(ErrorResponse), description: '父级错误或重�? },
-      404: { content: jsonContent(ErrorResponse), description: '地区不存�? },
+      400: { content: jsonContent(ErrorResponse), description: '父级错误或重复' },
+      404: { content: jsonContent(ErrorResponse), description: '地区不存在' },
     },
   }),
   handler: async (c) => {
@@ -139,12 +192,12 @@ const updateRegionRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     if (data.parentCode) {
       const [current] = await db.select({ code: regions.code }).from(regions).where(eq(regions.id, id));
-      if (!current) return c.json(errBody('地区不存�?, 404), 404);
+      if (!current) return c.json(errBody('地区不存在', 404), 404);
       if (data.parentCode === current.code) {
         return c.json(errBody('父级地区不能选择自身'), 400);
       }
       const [parent] = await db.select({ code: regions.code }).from(regions).where(eq(regions.code, data.parentCode));
-      if (!parent) return c.json(errBody('父级地区不存�?), 400);
+      if (!parent) return c.json(errBody('父级地区不存在'), 400);
     }
     try {
       const [row] = await db
@@ -152,11 +205,11 @@ const updateRegionRoute = defineOpenAPIRoute({
         .set({ ...data })
         .where(eq(regions.id, id))
         .returning();
-      if (!row) return c.json(errBody('地区不存�?, 404), 404);
-      return c.json(okBody(mapRegion(row), '更新成功'), 200);
+      if (!row) return c.json(errBody('地区不存在', 404), 404);
+      return c.json(okBody(toRegion(row), '更新成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
-        return c.json(errBody('区划代码已存�?), 400);
+        return c.json(errBody('区划代码已存在'), 400);
       }
       throw err;
     }
@@ -175,18 +228,18 @@ const deleteRoute = defineOpenAPIRoute({
     responses: {
       ...commonErrorResponses,
       ...okMsg('删除成功'),
-      400: { content: jsonContent(ErrorResponse), description: '存在子地�? },
-      404: { content: jsonContent(ErrorResponse), description: '地区不存�? },
+      400: { content: jsonContent(ErrorResponse), description: '存在子地区' },
+      404: { content: jsonContent(ErrorResponse), description: '地区不存在' },
     },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [current] = await db.select({ code: regions.code }).from(regions).where(eq(regions.id, id));
-    if (!current) return c.json(errBody('地区不存�?, 404), 404);
+    if (!current) return c.json(errBody('地区不存在', 404), 404);
 
     const children = await db.select({ id: regions.id }).from(regions).where(eq(regions.parentCode, current.code));
     if (children.length > 0) {
-      return c.json(errBody('该地区下存在子地区，请先删除子地�?), 400);
+      return c.json(errBody('该地区下存在子地区，请先删除子地区'), 400);
     }
 
     await db.delete(regions).where(eq(regions.id, id));

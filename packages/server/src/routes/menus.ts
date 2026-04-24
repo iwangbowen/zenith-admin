@@ -8,9 +8,52 @@ import { isSuperAdmin, getUserMenuIds } from '../lib/permissions';
 import type { Menu } from '@zenith/shared';
 import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { MenuDTO } from '../lib/openapi-dtos';
-import { mapMenu, buildMenuTree } from '../services/menus.service';
 
 const menusRouter = new OpenAPIHono({ defaultHook: validationHook });
+
+function toMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> {
+  return {
+    id: row.id,
+    parentId: row.parentId,
+    title: row.title,
+    name: row.name ?? undefined,
+    path: row.path ?? undefined,
+    component: row.component ?? undefined,
+    icon: row.icon ?? undefined,
+    type: row.type,
+    permission: row.permission ?? undefined,
+    sort: row.sort,
+    status: row.status,
+    visible: row.visible,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function buildTree(list: Omit<Menu, 'children'>[]): Menu[] {
+  const map = new Map<number, Menu>();
+  list.forEach((item) => map.set(item.id, { ...item }));
+  const roots: Menu[] = [];
+  map.forEach((node) => {
+    if (node.parentId === 0) {
+      roots.push(node);
+    } else {
+      const parent = map.get(node.parentId);
+      if (parent) {
+        parent.children = parent.children ?? [];
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+  });
+  const sortNodes = (nodes: Menu[]) => {
+    nodes.sort((a, b) => a.sort - b.sort);
+    nodes.forEach((n) => n.children && sortNodes(n.children));
+  };
+  sortNodes(roots);
+  return roots;
+}
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
 
@@ -35,12 +78,12 @@ const userMenuRoute = defineOpenAPIRoute({
     method: 'get',
     path: '/user',
     tags: ['Menus'],
-    summary: '当前用户可见菜单�?,
+    summary: '当前用户可见菜单树',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
     responses: {
       ...commonErrorResponses,
-      ...ok(z.array(MenuDTO), '菜单�?),
+      ...ok(z.array(MenuDTO), '菜单树'),
     },
   }),
   handler: async (c) => {
@@ -48,7 +91,7 @@ const userMenuRoute = defineOpenAPIRoute({
     const allMenus = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
 
     if (isSuperAdmin(user.roles)) {
-      return c.json(okBody(buildMenuTree(allMenus.map(mapMenu))), 200);
+      return c.json(okBody(buildTree(allMenus.map(toMenu))), 200);
     }
 
     const allowedMenuIds = new Set(await getUserMenuIds(user.userId));
@@ -63,7 +106,7 @@ const userMenuRoute = defineOpenAPIRoute({
     }
 
     const filtered = allMenus.filter((m) => allowedMenuIds.has(m.id) || !m.visible);
-    return c.json(okBody(buildMenuTree(filtered.map(mapMenu))), 200);
+    return c.json(okBody(buildTree(filtered.map(toMenu))), 200);
   },
 });
 
@@ -77,12 +120,12 @@ const listRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:menu:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      ...ok(z.array(MenuDTO), '全量菜单�?),
+      ...ok(z.array(MenuDTO), '全量菜单树'),
     },
   }),
   handler: async (c) => {
     const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
-    return c.json(okBody(buildMenuTree(list.map(mapMenu))), 200);
+    return c.json(okBody(buildTree(list.map(toMenu))), 200);
   },
 });
 
@@ -101,7 +144,7 @@ const flatRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
-    return c.json(okBody(list.map(mapMenu)), 200);
+    return c.json(okBody(list.map(toMenu)), 200);
   },
 });
 
@@ -122,7 +165,7 @@ const createMenuRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const data = c.req.valid('json');
     const [menu] = await db.insert(menus).values(data).returning();
-    return c.json(okBody(mapMenu(menu), '创建成功'), 200);
+    return c.json(okBody(toMenu(menu), '创建成功'), 200);
   },
 });
 
@@ -141,7 +184,7 @@ const updateMenuRoute = defineOpenAPIRoute({
     responses: {
       ...commonErrorResponses,
       ...ok(MenuDTO, '更新成功'),
-      404: { content: jsonContent(ErrorResponse), description: '菜单不存�? },
+      404: { content: jsonContent(ErrorResponse), description: '菜单不存在' },
     },
   }),
   handler: async (c) => {
@@ -152,8 +195,8 @@ const updateMenuRoute = defineOpenAPIRoute({
       .set({ ...data })
       .where(eq(menus.id, id))
       .returning();
-    if (!menu) return c.json(errBody('菜单不存�?, 404), 404);
-    return c.json(okBody(mapMenu(menu), '更新成功'), 200);
+    if (!menu) return c.json(errBody('菜单不存在', 404), 404);
+    return c.json(okBody(toMenu(menu), '更新成功'), 200);
   },
 });
 
