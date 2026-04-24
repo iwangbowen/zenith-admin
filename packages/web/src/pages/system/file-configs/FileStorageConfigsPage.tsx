@@ -249,17 +249,6 @@ export default function FileStorageConfigsPage() {
       render: (isDefault: boolean) => isDefault ? <Tag color="green" size="small">默认</Tag> : <span className="table-cell-placeholder">—</span>,
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      render: (status: FileStorageConfig['status']) => (
-        <Tag color={status === 'active' ? 'green' : 'grey'} size="small">
-          {status === 'active' ? '启用' : '禁用'}
-        </Tag>
-      ),
-    },
-    {
       title: '存储信息',
       key: 'storageSummary',
       dataIndex: 'storageSummary',
@@ -290,6 +279,18 @@ export default function FileStorageConfigsPage() {
       width: 180,
       ellipsis: true,
       render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      align: 'center',
+      fixed: 'right',
+      render: (status: FileStorageConfig['status']) => (
+        <Tag color={status === 'active' ? 'green' : 'grey'} size="small">
+          {status === 'active' ? '启用' : '禁用'}
+        </Tag>
+      ),
     },
     {
       title: '操作',
