@@ -164,12 +164,10 @@ export async function ensureXxxExists(id: number) {
 >
 > 然后在路由中导入：`import { XxxDTO } from '../lib/openapi-dtos';`。**严禁在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**，以免 Swagger Components 重复/冲突。
 
+> **薄路由约定**：**禁止在路由 handler 中直接调用 `db.*`**。所有 DB 访问与业务逻辑必须放在 `services/xxx.service.ts`；路由只负责：取参数 → 调 service → 返回 `c.json(okBody(...))` 或透传错误（由全局 `onError` 将 `AppError` 转为标准 JSON）。唯一例外：DB 唯一约束 `23505` 的 `try-catch` 仍保留在路由（便于 service 保持 PG 错误码无关）。
+
 ```ts
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { and, eq, like, gte, lte } from 'drizzle-orm';
-import { db } from '../db';
-import { pageOffset } from '../lib/pagination';
-import { xxxs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
@@ -180,6 +178,8 @@ import {
 } from '../lib/openapi-schemas';
 // 实体 DTO 必须从中心仓库导入（严禁路由内本地声明 .openapi('EntityName')）
 import { XxxDTO } from '../lib/openapi-dtos';
+// 业务逻辑统一从 service 导入
+import { listXxx, createXxx, updateXxx, deleteXxx, ensureXxxExists } from '../services/xxx.service';
 // 可直接从 @zenith/shared 导入（shared 已升级至 Zod v4）
 // import { createXxxSchema, updateXxxSchema } from '@zenith/shared';
 
@@ -214,21 +214,7 @@ const listRoute = defineOpenAPIRoute({
       ...okPaginated(XxxDTO, 'ok'),
     },
   }),
-  handler: async (c) => {
-    const { page = 1, pageSize = 10, keyword, status, startTime, endTime } = c.req.valid('query');
-    const conditions = [];
-    if (keyword) conditions.push(like(xxxs.name, `%${keyword}%`));
-    if (status)    conditions.push(eq(xxxs.status, status));
-    if (startTime) conditions.push(gte(xxxs.createdAt, new Date(startTime)));
-    if (endTime)   conditions.push(lte(xxxs.createdAt, new Date(endTime)));
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const [total, rows] = await Promise.all([
-      db.$count(xxxs, where),
-      db.select().from(xxxs).where(where)
-        .limit(pageSize).offset(pageOffset(page, pageSize)).orderBy(xxxs.id),
-    ]);
-    return c.json(okBody({ list: rows, total, page, pageSize }), 200);
-  },
+  handler: async (c) => c.json(okBody(await listXxx(c.req.valid('query'))), 200),
 });
 
 // ─── POST / — 创建 ────────────────────────────────────────────────────────
@@ -247,7 +233,7 @@ const createRoute_ = defineOpenAPIRoute({
   handler: async (c) => {
     const data = c.req.valid('json');
     try {
-      const [row] = await db.insert(xxxs).values(data).returning();
+      const row = await createXxx(data);
       return c.json(okBody(row, '创建成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
@@ -278,10 +264,9 @@ const updateRoute_ = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
-    const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
-    if (before) setAuditBeforeData(c, before);
-    const [row] = await db.update(xxxs).set({ ...data }).where(eq(xxxs.id, id)).returning();
-    if (!row) return c.json(errBody('XXX不存在', 404), 404);
+    const before = await ensureXxxExists(id);  // 不存在时抛 AppError(404)
+    setAuditBeforeData(c, before);
+    const row = await updateXxx(id, data);
     return c.json(okBody(row, '更新成功'), 200);
   },
 });
@@ -302,10 +287,9 @@ const deleteRoute_ = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
-    if (before) setAuditBeforeData(c, before);
-    const [deleted] = await db.delete(xxxs).where(eq(xxxs.id, id)).returning();
-    if (!deleted) return c.json(errBody('XXX不存在', 404), 404);
+    const before = await ensureXxxExists(id);
+    setAuditBeforeData(c, before);
+    await deleteXxx(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
