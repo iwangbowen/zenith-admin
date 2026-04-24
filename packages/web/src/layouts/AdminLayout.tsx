@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Button, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Bell, Building2, Check, Maximize2, Minimize2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
+import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, Notice, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, type NavLayout, type TabAnimation } from '@/hooks/usePreferences';
@@ -107,6 +108,20 @@ function stripHtml(html: string): string {
 export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
+
+  const flatMenus = useMemo<FlatMenuItem[]>(() => {
+    const result: FlatMenuItem[] = [];
+    const walk = (nodes: Menu[], parents: string[]) => {
+      for (const node of nodes) {
+        if (node.type === 'menu' && node.path && node.status === 'active' && node.visible) {
+          result.push({ id: node.id, title: node.title, path: node.path, icon: node.icon, breadcrumb: parents });
+        }
+        if (node.children?.length) walk(node.children, node.type === 'directory' ? [...parents, node.title] : parents);
+      }
+    };
+    walk(menuTree, []);
+    return result;
+  }, [menuTree]);
   const { mode, setThemeMode } = useTheme();
 
   // ─── 水印配置 ──────────────────────────────────────────────────────────────
@@ -509,6 +524,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   // ─── Header actions (reused in both topbar and vertical header) ────────────
   const headerActions = (
     <div className="admin-header__actions">
+      <MenuSearchInput menus={flatMenus} />
       {isPlatformAdmin && tenantList.length > 0 && (
         <>
           <Select
