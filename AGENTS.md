@@ -42,7 +42,7 @@ npm run db:seed        # 填充初始种子数据
 - **响应辅助函数**：`src/lib/openapi-schemas.ts` 提供三个响应快捷函数（必须使用展开语法）：`...ok(DTO, desc)`（单对象 200 响应）、`...okPaginated(DTO, desc)`（分页 200 响应）、`...okMsg(desc)`（仅消息的 200 响应）；**禁止**直接写 `200: { content: jsonContent(apiResponse(DTO)) }`。同文件提供 `IdParam`（数值 id path 参数）、`PaginationQuery`（分页 query）、`BatchIdsBody`（批量操作 body）等公共 schema
 - **DTO 中心化**：所有响应实体 DTO 按业务域拆分至 `src/lib/dtos/`（`iam.ts` / `auth.ts` / `dict.ts` / `files.ts` / `logs.ts` / `notices.ts` / `system.ts` / `workflow.ts` / `dashboard.ts` / `region.ts` / `messages.ts`），通过 `src/lib/openapi-dtos.ts`（re-export barrel）对外统一暴露。各路由文件通过 `import { XxxDTO } from '../lib/openapi-dtos'` 导入，**新增实体请直接在对应子文件中维护**。**禁止在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**，避免 Swagger Components 重复/冲突
 - **统一响应**：`{ code: 0, message: 'success', data: T }`，失败时 `code` 为非零值
-- **数据库**：Drizzle ORM + PostgreSQL，schema 定义在 `src/db/schema.ts`，迁移文件在 `drizzle/`；计数查询统一用 `db.$count(table, where)`；分页列表的 `total` 与 `list` 必须用 `Promise.all` **并行执行**；分页偏移量统一使用 `pageOffset(page, pageSize)` 工具函数（来自 `src/lib/pagination.ts`），禁止手写 `(page - 1) * pageSize`；关联数据查询优先使用 Drizzle RQB（`db.query.tableName.findMany/findFirst({ with: { relation: true } })`），`schema.ts` 已声明所有 `xxxRelations`，`db` 实例已传入 `schema`，可直接使用
+- **数据库**：Drizzle ORM + PostgreSQL，schema 定义在 `src/db/schema.ts`，迁移文件在 `drizzle/`，统一数据库类型别名位于 `src/db/types.ts`；计数查询统一用 `db.$count(table, where)`；分页列表的 `total` 与 `list` 必须用 `Promise.all` **并行执行**；分页偏移量统一使用 `pageOffset(page, pageSize)` 工具函数（来自 `src/lib/pagination.ts`），禁止手写 `(page - 1) * pageSize`；关联数据查询优先使用 Drizzle RQB（`db.query.tableName.findMany/findFirst({ with: { relation: true } })`），尤其是通过联结表读取角色/岗位/菜单权限等场景，避免先查主表再手工二次聚合；`schema.ts` 已声明所有 `xxxRelations`，`db` 实例已传入 `schema`，可直接使用；若 helper 需要同时接受 `db` 与 `tx`，统一从 `src/db/types.ts` 导入 `DbExecutor` / `DbTransaction`，禁止使用 `Parameters<Parameters<typeof db.transaction>[0]>[0]` 之类的手工推导
 - **枚举同步**：数据库 pg enum、TypeScript union type、Zod enum **三者必须保持一致**
 
 ### 前端（`packages/web`）
@@ -69,10 +69,12 @@ npm run db:seed        # 填充初始种子数据
 
 ## 文件存储
 
-支持两种存储模式，通过 `file_storage_configs` 表中的 `is_default` 字段切换：
+支持四种存储模式，通过 `file_storage_configs` 表中的 `is_default` 字段切换：
 
 - **local**：本地文件系统
 - **oss**：阿里云 OSS（依赖 `ali-oss`）
+- **s3**：S3 兼容对象存储（AWS S3 / MinIO / Cloudflare R2 等）
+- **cos**：腾讯云 COS
 
 相关逻辑在 `packages/server/src/lib/file-storage.ts`。
 

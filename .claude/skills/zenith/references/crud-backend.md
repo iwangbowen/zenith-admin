@@ -124,7 +124,7 @@ export interface Xxx {
 ```ts
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { and, eq, like, gte, lte } from 'drizzle-orm';
-import { db } from '../db/index';
+import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { xxxs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -306,6 +306,22 @@ db.select({ xxx: xxxs, parentName: parents.name })
 
 > **注意**：新增表后须在 `schema.ts` 末尾补充 `xxxRelations`，否则 `db.query.xxx` 无法识别关联字段。
 
+若路由返回的数据需要经过“关联二次展开”（如用户列表要顺带带出部门名、角色列表、岗位列表），也优先让 RQB 一次拉取完整关系，而不是先查主表再写 `getXxxMap()` 一类 helper 手工拼装：
+
+```ts
+const rows = await db.query.users.findMany({
+  where,
+  with: {
+    department: { columns: { name: true } },
+    userRoles: { columns: {}, with: { role: true } },
+    userPositions: { columns: {}, with: { position: true } },
+  },
+  orderBy: users.id,
+  limit: pageSize,
+  offset: pageOffset(page, pageSize),
+});
+```
+
 ---
 
 ## Step 6：注册路由（`packages/server/src/index.ts`）
@@ -346,10 +362,10 @@ guard({
 > 辅助函数接受 executor 参数，可在事务内外统一调用。
 
 ```ts
-type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+import type { DbExecutor } from '../db/types';
 
 /** 先删后插，原子性更新 xxx 的 yyy 关联（调用方需传入 tx 或 db） */
-async function setXxxYyys(executor: DbTransaction | typeof db, xxxId: number, yyyIds: number[]): Promise<void> {
+async function setXxxYyys(executor: DbExecutor, xxxId: number, yyyIds: number[]): Promise<void> {
   await executor.delete(xxxYyys).where(eq(xxxYyys.xxxId, xxxId));
   if (yyyIds.length > 0) {
     await executor.insert(xxxYyys).values(yyyIds.map((yyyId) => ({ xxxId, yyyId })));
@@ -451,8 +467,7 @@ export const xxxs = pgTable('xxxs', {
 ```ts
 import { getDataScopeCondition } from '../lib/data-scope';
 
-// ⚠️ 需要 AuthEnv 泛型以正确推断 c.get('user') 类型
-const xxxRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
+const xxxRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 // 在 GET / 列表 handler 中：
 const currentUserId = c.get('user').userId;
