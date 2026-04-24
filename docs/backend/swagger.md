@@ -66,7 +66,7 @@ OpenAPI Spec **自动生成**，由 `@hono/zod-openapi` 在运行时从每个路
 
 - **Spec 生成**：`src/index.ts` 中的 `app.doc31('/api/openapi.json', { openapi: '3.1.0', ... })`（`doc31()` 才能生成真正的 OpenAPI 3.1 格式 schema）
 - **路由定义**：`src/routes/*.ts` 中每个路由使用 `defineOpenAPIRoute({ route: createRoute({...}), handler })` 定义为命名常量，再通过 `xxxRouter.openapiRoutes([...] as const)` 统一注册（参考 `src/routes/api-tokens.ts`）
-- **公共 Schema 辅助**：`src/lib/openapi-schemas.ts`（`apiResponse`、`paginatedResponse`、`jsonContent`、`validationHook`、`commonErrorResponses`、`PaginationQuery`、`IdParam` 等）
+- **公共 Schema 辅助**：`src/lib/openapi-schemas.ts`（响应辅助函数 `ok(DTO, desc)` / `okPaginated(DTO, desc)` / `okMsg(desc)`；公共 schema `IdParam` / `PaginationQuery` / `BatchIdsBody`；底层工具 `jsonContent` / `validationHook` / `commonErrorResponses` / `ErrorResponse`）
 - **实体 DTO 中心仓库**：按业务域拆分至 `src/lib/dtos/`（`iam` / `auth` / `dict` / `files` / `logs` / `notices` / `system` / `workflow` / `dashboard` / `region` / `messages`），`src/lib/openapi-dtos.ts` 为 re-export barrel —— 所有路由统一从 `'../lib/openapi-dtos'` 导入，保证 Swagger Components 单一来源，**禁止在路由文件内本地重复声明 `.openapi('EntityName')` 的实体 DTO**
 - **认证方案**：`BearerAuth` 在 `src/index.ts` 中一次性注册到 `app.openAPIRegistry`
 - **健康检查**：`src/routes/health.ts` 提供 `GET /api/health`，无需认证，可用于容器编排平台健康探针

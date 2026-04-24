@@ -73,7 +73,7 @@ const user = c.get('user'); // JwtPayload
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { apiResponse, paginatedResponse, jsonContent, MessageResponse, ErrorResponse, PaginationQuery, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 
 // 不使用 <AuthEnv> 泛型，不添加全局 use('*', authMiddleware)
 const xxxRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -87,7 +87,7 @@ const createXxxRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createXxxSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(XxxDTO)), description: 'ok' },
+      ...ok(XxxDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -114,7 +114,7 @@ const listXxxRoute = defineOpenAPIRoute({
     // ...
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(UserDTO)), description: 'ok' },
+      ...ok(UserDTO, 'ok'),
     },
   }),
   handler: async (c) => { /* ... */ },

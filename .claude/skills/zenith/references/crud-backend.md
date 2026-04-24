@@ -130,8 +130,9 @@ import { xxxs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
-  apiResponse, paginatedResponse, jsonContent,
-  PaginationQuery, MessageResponse, ErrorResponse, validationHook, commonErrorResponses,
+  ErrorResponse, jsonContent,
+  PaginationQuery, validationHook, commonErrorResponses,
+  ok, okPaginated, okMsg, IdParam, BatchIdsBody,
 } from '../lib/openapi-schemas';
 // 实体 DTO 必须从中心仓库导入（严禁路由内本地声明 .openapi('EntityName')）
 import { XxxDTO } from '../lib/openapi-dtos';
@@ -166,7 +167,7 @@ const listRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(XxxDTO)), description: 'ok' },
+      ...okPaginated(XxxDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -196,7 +197,7 @@ const createRoute_ = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createXxxSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(XxxDTO)), description: '创建成功' },
+      ...ok(XxxDTO, '创建成功'),
     },
   }),
   handler: async (c) => {
@@ -221,12 +222,12 @@ const updateRoute_ = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:xxx:update', audit: { description: '更新 XXX', module: 'XXX管理' } })] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(updateXxxSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(XxxDTO)), description: '更新成功' },
+      ...ok(XxxDTO, '更新成功'),
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
@@ -248,10 +249,10 @@ const deleteRoute_ = defineOpenAPIRoute({
     tags: ['XXX管理'], summary: '删除 XXX',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:xxx:delete', audit: { description: '删除 XXX', module: 'XXX管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
@@ -498,10 +499,10 @@ const batchDeleteRoute = defineOpenAPIRoute({
     tags: ['XXX管理'], summary: '批量删除 XXX',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:xxx:delete', audit: { description: '批量删除 XXX', module: 'XXX管理' } })] as const,
-    request: { body: { content: jsonContent(z.object({ ids: z.array(z.number().int()) })), required: true } },
+    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '批量删除成功' },
+      ...okMsg('批量删除成功'),
     },
   }),
   handler: async (c) => {
