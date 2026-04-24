@@ -332,3 +332,67 @@ const rows = await db.query.users.findMany({
 | `notices` | `reads`, `recipients` |
 
 > **保留手动 JOIN 的场景**：聚合计数需要跨表过滤（如 `countDistinct` + 反向遍历联结表）；keyword 搜索同时过滤主表和关联表字段（WHERE 依赖 JOIN 列）。
+
+### 条件算子一律用 drizzle-orm 原生函数
+
+比较 / 判空 / 范围筛选必须使用 `eq` / `ne` / `gt` / `gte` / `lt` / `lte` / `isNull` / `isNotNull` / `inArray` / `notInArray` / `and` / `or` / `like` / `ilike` 等原生函数，**禁止在 WHERE 中写裸 `sql\`\`` 模板表达比较关系**：
+
+```ts
+// ✅ 推荐
+where(and(eq(tenants.code, data.code), ne(tenants.id, id)))
+where(and(eq(users.username, 'admin'), isNull(users.tenantId)))
+
+// ❌ 禁止
+where(and(eq(tenants.code, data.code), sql`${tenants.id} != ${id}`))
+where(sql`${users.username} = 'admin' AND ${users.tenantId} IS NULL`)
+```
+
+> 只有 Drizzle 未抽象的表达式（`date(col AT TIME ZONE 'UTC')`、`setval()`、`pg_stat_*` 系统表、`excluded.xxx` upsert 引用）才允许保留裸 `sql` 模板。
+
+### 批量 upsert + `sql\`excluded.<column>\``
+
+**不要在循环里逐条执行 upsert**。Drizzle 支持 `.values([...])` 数组语法，配合 `onConflictDoUpdate` 的 `set` 中使用 `sql\`excluded.<snake_case_column_name>\`` 完成单语句批量 upsert：
+
+```ts
+// ✅ 批量 upsert（单次 round-trip）
+await db.insert(menus).values(menuRows).onConflictDoUpdate({
+  target: menus.id,
+  set: {
+    parentId:   sql`excluded.parent_id`,
+    title:      sql`excluded.title`,
+    // ...其余列
+    updatedAt:  new Date(),
+  },
+});
+
+// ❌ 禁止：N 次 round-trip
+for (const row of menuRows) {
+  await db.insert(menus).values(row).onConflictDoUpdate({ target: menus.id, set: { ... } });
+}
+```
+
+**要点**：
+
+- `sql\`excluded.xxx\`` 中的列名必须是**数据库真实列名**（snake_case），不是 JS 属性名。写错会直接 `column excluded.<x> does not exist`。
+- 如果列数多且懒得手写，可简单复制定义里的 `integer('parent_id')` / `varchar('config_value')` 等 DB 名即可。
+- `updatedAt` 在 upsert 的 set 里仍需显式写 `new Date()`（因为 `$onUpdate` 只对 `.update()` 生效，对 `onConflictDoUpdate` 不自动触发）。
+
+### 带 NULL 列的复合唯一约束幂等陷阱
+
+PostgreSQL 唯一约束中 `NULL != NULL`，因此当复合唯一键里某列可为 NULL 时（常见于多租户场景 `(tenant_id, xxx)`，平台级记录 `tenant_id = NULL`），**`onConflictDoNothing` 无法触发冲突**，重复执行 seed/初始化会产出重复记录。此时须先查再插：
+
+```ts
+// ❌ 错误：tenant_id=NULL 时冲突永不发生，会插出多条 admin
+await db.insert(users).values({ username: 'admin', ... }).onConflictDoNothing();
+
+// ✅ 正确：先查再插
+const existing = await db.select({ id: users.id })
+  .from(users)
+  .where(and(eq(users.username, 'admin'), isNull(users.tenantId)))
+  .limit(1);
+if (existing.length === 0) {
+  await db.insert(users).values({ username: 'admin', ... });
+}
+```
+
+参考实现见 `packages/server/src/db/seed.ts` 中 admin 账号与 `system_configs` 的处理。
