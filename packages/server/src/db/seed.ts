@@ -41,28 +41,38 @@ async function seed() {
   logger.info('  ✔ Admin user seeded (skip if exists)');
 
   // ─── 2. 菜单数据（数据来源：@zenith/shared SEED_MENUS）─────────────────────
-  for (const row of SEED_MENUS) {
-    const dbRow = { id: row.id, parentId: row.parentId, title: row.title, name: row.name ?? null, path: row.path ?? null, component: row.component ?? null, icon: row.icon ?? null, type: row.type, permission: row.permission ?? null, sort: row.sort, status: row.status, visible: row.visible };
-    await db
-      .insert(menus)
-      .values(dbRow)
-      .onConflictDoUpdate({
-        target: menus.id,
-        set: {
-          parentId:   row.parentId,
-          title:      row.title,
-          name:       row.name ?? null,
-          path:       row.path ?? null,
-          component:  row.component ?? null,
-          icon:       row.icon ?? null,
-          type:       row.type,
-          permission: row.permission ?? null,
-          sort:       row.sort,
-          status:     row.status,
-          visible:    row.visible,
-          updatedAt:  new Date(),
-        },
-      });
+  const menuRows = SEED_MENUS.map((row) => ({
+    id: row.id,
+    parentId: row.parentId,
+    title: row.title,
+    name: row.name ?? null,
+    path: row.path ?? null,
+    component: row.component ?? null,
+    icon: row.icon ?? null,
+    type: row.type,
+    permission: row.permission ?? null,
+    sort: row.sort,
+    status: row.status,
+    visible: row.visible,
+  }));
+  if (menuRows.length > 0) {
+    await db.insert(menus).values(menuRows).onConflictDoUpdate({
+      target: menus.id,
+      set: {
+        parentId:   sql`excluded.parent_id`,
+        title:      sql`excluded.title`,
+        name:       sql`excluded.name`,
+        path:       sql`excluded.path`,
+        component:  sql`excluded.component`,
+        icon:       sql`excluded.icon`,
+        type:       sql`excluded.type`,
+        permission: sql`excluded.permission`,
+        sort:       sql`excluded.sort`,
+        status:     sql`excluded.status`,
+        visible:    sql`excluded.visible`,
+        updatedAt:  new Date(),
+      },
+    });
   }
   await db.execute(sql`SELECT setval('menus_id_seq', GREATEST((SELECT MAX(id) FROM menus), 1))`);
   logger.info('  ✔ Menus upserted');
@@ -83,19 +93,29 @@ async function seed() {
   logger.info('  ✔ Role-menu bindings seeded');
 
   // ─── 4. 部门数据（数据来源：@zenith/shared SEED_DEPARTMENTS）──────────────
-  for (const row of SEED_DEPARTMENTS) {
-    const dbRow = { id: row.id, parentId: row.parentId, name: row.name, code: row.code, leader: row.leader ?? null, phone: row.phone ?? null, email: row.email ?? null, sort: row.sort, status: row.status };
-    await db.insert(departments).values(dbRow).onConflictDoUpdate({
+  const departmentRows = SEED_DEPARTMENTS.map((row) => ({
+    id: row.id,
+    parentId: row.parentId,
+    name: row.name,
+    code: row.code,
+    leader: row.leader ?? null,
+    phone: row.phone ?? null,
+    email: row.email ?? null,
+    sort: row.sort,
+    status: row.status,
+  }));
+  if (departmentRows.length > 0) {
+    await db.insert(departments).values(departmentRows).onConflictDoUpdate({
       target: departments.id,
       set: {
-        parentId: row.parentId,
-        name: row.name,
-        code: row.code,
-        leader: row.leader,
-        phone: row.phone,
-        email: row.email,
-        sort: row.sort,
-        status: row.status,
+        parentId: sql`excluded.parent_id`,
+        name:     sql`excluded.name`,
+        code:     sql`excluded.code`,
+        leader:   sql`excluded.leader`,
+        phone:    sql`excluded.phone`,
+        email:    sql`excluded.email`,
+        sort:     sql`excluded.sort`,
+        status:   sql`excluded.status`,
         updatedAt: new Date(),
       },
     });
@@ -104,16 +124,23 @@ async function seed() {
   logger.info('  ✔ Departments upserted');
 
   // ─── 5. 岗位数据（数据来源：@zenith/shared SEED_POSITIONS）────────────────
-  for (const row of SEED_POSITIONS) {
-    const dbRow = { id: row.id, name: row.name, code: row.code, sort: row.sort, status: row.status, remark: row.remark ?? null };
-    await db.insert(positions).values(dbRow).onConflictDoUpdate({
+  const positionRows = SEED_POSITIONS.map((row) => ({
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    sort: row.sort,
+    status: row.status,
+    remark: row.remark ?? null,
+  }));
+  if (positionRows.length > 0) {
+    await db.insert(positions).values(positionRows).onConflictDoUpdate({
       target: positions.id,
       set: {
-        name: row.name,
-        code: row.code,
-        sort: row.sort,
-        status: row.status,
-        remark: row.remark,
+        name:   sql`excluded.name`,
+        code:   sql`excluded.code`,
+        sort:   sql`excluded.sort`,
+        status: sql`excluded.status`,
+        remark: sql`excluded.remark`,
         updatedAt: new Date(),
       },
     });
