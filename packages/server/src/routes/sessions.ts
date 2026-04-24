@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { getOnlineSessions, forceLogout } from '../lib/session-manager';
 import { sendToUser, closeUserConnections } from '../lib/ws-manager';
-import { validationHook, commonErrorResponses, PaginationQuery, okPaginated } from '../lib/openapi-schemas';
+import { validationHook, commonErrorResponses, PaginationQuery, okPaginated, okBody, errBody } from '../lib/openapi-schemas';
 import { OnlineSessionDTO as SessionItemSchema } from '../lib/openapi-dtos';
 import { pageOffset } from '../lib/pagination';
 
@@ -57,25 +57,21 @@ const listRoute = defineOpenAPIRoute({
     const list = sessions.slice(pageOffset(page, pageSize), page * pageSize);
 
     return c.json(
-      {
-        code: 0 as const,
-        message: 'ok',
-        data: {
-          list: list.map((s) => ({
-            tokenId: s.tokenId,
-            userId: s.userId,
-            username: s.username,
-            nickname: s.nickname,
-            ip: s.ip,
-            browser: s.browser,
-            os: s.os,
-            loginAt: s.loginAt.toISOString(),
-          })),
-          total,
-          page,
-          pageSize,
-        },
-      },
+      okBody({
+        list: list.map((s) => ({
+          tokenId: s.tokenId,
+          userId: s.userId,
+          username: s.username,
+          nickname: s.nickname,
+          ip: s.ip,
+          browser: s.browser,
+          os: s.os,
+          loginAt: s.loginAt.toISOString(),
+        })),
+        total,
+        page,
+        pageSize,
+      }),
       200,
     );
   },
@@ -109,13 +105,13 @@ const forceLogoutRoute = defineOpenAPIRoute({
     const session = allSessions.find((s) => s.tokenId === tokenId);
     const success = await forceLogout(tokenId);
     if (!success) {
-      return c.json({ code: 404, message: '会话不存在', data: null }, 404);
+      return c.json(errBody('会话不存在', 404), 404);
     }
     if (session) {
       sendToUser(session.userId, { type: 'session:force-logout', payload: { reason: '您已被管理员强制下线' } });
       setTimeout(() => closeUserConnections(session.userId, '强制下线'), 500);
     }
-    return c.json({ code: 0, message: '已强制下线', data: null }, 200);
+    return c.json(okBody(null, '已强制下线'), 200);
   },
 });
 

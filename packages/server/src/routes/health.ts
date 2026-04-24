@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
 import redis from '../lib/redis';
-import { validationHook, ok } from '../lib/openapi-schemas';
+import { validationHook, ok, okBody } from '../lib/openapi-schemas';
 
 const startTime = Date.now();
 
@@ -47,16 +47,12 @@ const healthRoute = defineOpenAPIRoute({
     }
     const allOk = Object.values(checks).every((v) => v === 'ok');
     const status: 'ok' | 'degraded' = allOk ? 'ok' : 'degraded';
-    return c.json({
-      code: 0 as const,
-      message: 'success',
-      data: {
-        status,
-        version: '0.1.1',
-        uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
-        checks,
-      },
-    });
+    return c.json(okBody({
+      status,
+      version: '0.1.1',
+      uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
+      checks,
+    }));
   },
 });
 

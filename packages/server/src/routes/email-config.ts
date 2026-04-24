@@ -4,7 +4,7 @@ import { db } from '../db';
 import { emailConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okBody, errBody } from '../lib/openapi-schemas';
 import { EmailConfigDTO } from '../lib/openapi-dtos';
 
 import { emailConfigSchema } from '@zenith/shared';
@@ -35,7 +35,7 @@ const getRoute = defineOpenAPIRoute({
       config = created;
     }
     const { smtpPassword: _masked, ...safeConfig } = config;
-    return c.json({ code: 0 as const, message: 'success', data: safeConfig }, 200);
+    return c.json(okBody(safeConfig, 'success'), 200);
   },
 });
 
@@ -69,7 +69,7 @@ const updateRoute = defineOpenAPIRoute({
         .insert(emailConfigs)
         .values({ ...data })
         .returning();
-      return c.json({ code: 0 as const, message: '保存成功', data: created }, 200);
+      return c.json(okBody(created, '保存成功'), 200);
     }
 
     const [updated] = await db
@@ -77,7 +77,7 @@ const updateRoute = defineOpenAPIRoute({
       .set({ ...data })
       .where(eq(emailConfigs.id, config.id))
       .returning();
-    return c.json({ code: 0 as const, message: '保存成功', data: updated }, 200);
+    return c.json(okBody(updated, '保存成功'), 200);
   },
 });
 
@@ -103,21 +103,18 @@ const testRoute = defineOpenAPIRoute({
     const body = await c.req.json().catch(() => ({}));
     const toEmail = body?.email as string | undefined;
     if (!toEmail?.includes('@')) {
-      return c.json({ code: 400, message: '请提供有效的收件邮箱', data: null }, 400);
+      return c.json(errBody('请提供有效的收件邮箱'), 400);
     }
 
     const [config] = await db.select().from(emailConfigs).limit(1);
     if (!config?.smtpHost || !config?.smtpUser) {
-      return c.json({ code: 400, message: '请先完整配置SMTP信息', data: null }, 400);
+      return c.json(errBody('请先完整配置SMTP信息'), 400);
     }
 
     try {
       const nodemailer = await import('nodemailer').catch(() => null);
       if (!nodemailer) {
-        return c.json(
-          { code: 500, message: 'nodemailer 模块加载失败，请检查依赖安装（npm install）', data: null },
-          500,
-        );
+        return c.json(errBody('nodemailer 模块加载失败，请检查依赖安装（npm install）', 500), 500);
       }
 
       const secure = config.encryption === 'ssl';
@@ -140,7 +137,7 @@ const testRoute = defineOpenAPIRoute({
         html: '<p>这是一封来自 <strong>Zenith Admin</strong> 的测试邮件，说明您的邮件配置正确。</p>',
       });
 
-      return c.json({ code: 0 as const, message: '测试邮件发送成功', data: null }, 200);
+      return c.json(okBody(null, '测试邮件发送成功'), 200);
     } catch (err: unknown) {
       return c.json(
         {

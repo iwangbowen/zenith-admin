@@ -10,7 +10,7 @@ import { exportToExcel } from '../lib/excel-export';
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import { noticeRecipientSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { NoticeDTO, NoticeReadStatsDTO } from '../lib/openapi-dtos';
 
 const noticesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -109,7 +109,7 @@ const publishedRoute = defineOpenAPIRoute({
     const readRows = await db.select({ noticeId: noticeReads.noticeId }).from(noticeReads).where(eq(noticeReads.userId, user.userId));
     const readSet = new Set(readRows.map((r) => r.noticeId));
     const data = rows.map((row) => ({ ...toNotice(row), isRead: readSet.has(row.id) }));
-    return c.json({ code: 0 as const, message: 'ok', data }, 200);
+    return c.json(okBody(data), 200);
   },
 });
 
@@ -132,7 +132,7 @@ const readRoute = defineOpenAPIRoute({
     const user = c.get('user');
     const { id } = c.req.valid('param');
     await db.insert(noticeReads).values({ noticeId: id, userId: user.userId }).onConflictDoNothing();
-    return c.json({ code: 0 as const, message: 'ok', data: null }, 200);
+    return c.json(okBody(null), 200);
   },
 });
 
@@ -154,14 +154,14 @@ const readAllRoute = defineOpenAPIRoute({
     const user = c.get('user');
     const accessFilter = buildAccessFilter(user.userId);
     const allPublished = await db.select({ id: notices.id }).from(notices).where(and(eq(notices.publishStatus, 'published'), accessFilter));
-    if (allPublished.length === 0) return c.json({ code: 0 as const, message: 'ok', data: null }, 200);
+    if (allPublished.length === 0) return c.json(okBody(null), 200);
     const readRows = await db.select({ noticeId: noticeReads.noticeId }).from(noticeReads).where(eq(noticeReads.userId, user.userId));
     const readSet = new Set(readRows.map((r) => r.noticeId));
     const unreadIds = allPublished.filter((n) => !readSet.has(n.id)).map((n) => n.id);
     if (unreadIds.length > 0) {
       await db.insert(noticeReads).values(unreadIds.map((noticeId) => ({ noticeId, userId: user.userId }))).onConflictDoNothing();
     }
-    return c.json({ code: 0 as const, message: 'ok', data: null }, 200);
+    return c.json(okBody(null), 200);
   },
 });
 
@@ -194,7 +194,7 @@ const inboxRoute = defineOpenAPIRoute({
     else if (isRead === 'false') list = list.filter((n) => !n.isRead);
     const total = list.length;
     const paged = list.slice(pageOffset(page, pageSize), page * pageSize);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: paged, total, page, pageSize } }, 200);
+    return c.json(okBody({ list: paged, total, page, pageSize }), 200);
   },
 });
 
@@ -234,11 +234,7 @@ const listRoute = defineOpenAPIRoute({
       ? await db.select({ noticeId: noticeReads.noticeId, cnt: count() }).from(noticeReads).where(inArray(noticeReads.noticeId, noticeIds)).groupBy(noticeReads.noticeId)
       : [];
     const readCountMap = new Map(readCountRows.map((r) => [r.noticeId, r.cnt]));
-    return c.json({
-      code: 0 as const,
-      message: 'ok',
-      data: { list: rows.map((r) => ({ ...toNotice(r), readCount: readCountMap.get(r.id) ?? 0 })), total, page, pageSize },
-    }, 200);
+    return c.json(okBody({ list: rows.map((r) => ({ ...toNotice(r), readCount: readCountMap.get(r.id) ?? 0 })), total, page, pageSize }), 200);
   },
 });
 
@@ -295,11 +291,11 @@ const batchDeleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
-    if (!Array.isArray(ids) || ids.length === 0) return c.json({ code: 400, message: '请选择要删除的通知', data: null }, 400);
+    if (!Array.isArray(ids) || ids.length === 0) return c.json(errBody('请选择要删除的通知'), 400);
     const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
-    if (validIds.length === 0) return c.json({ code: 400, message: '通知ID格式无效', data: null }, 400);
+    if (validIds.length === 0) return c.json(errBody('通知ID格式无效'), 400);
     await db.delete(notices).where(and(inArray(notices.id, validIds), tenantCondition(notices, c.get('user'))));
-    return c.json({ code: 0 as const, message: `已删除 ${validIds.length} 条通知`, data: null }, 200);
+    return c.json(okBody(null, `已删除 ${validIds.length} 条通知`), 200);
   },
 });
 
@@ -325,7 +321,7 @@ const readStatsRoute = defineOpenAPIRoute({
     const tab = rawTab === 'unread' ? 'unread' : 'read';
     const authUser = c.get('user');
     const [notice] = await db.select().from(notices).where(eq(notices.id, id));
-    if (!notice) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
+    if (!notice) return c.json(errBody('通知不存在', 404), 404);
 
     const reads = await db.select({ userId: noticeReads.userId, readAt: noticeReads.readAt }).from(noticeReads).where(eq(noticeReads.noticeId, id));
     const readMap = new Map(reads.map((r) => [r.userId, r.readAt]));
@@ -373,7 +369,7 @@ const readStatsRoute = defineOpenAPIRoute({
         }));
     }
 
-    return c.json({ code: 0 as const, message: 'ok', data: { readCount, totalCount, list, total, page, pageSize } }, 200);
+    return c.json(okBody({ readCount, totalCount, list, total, page, pageSize }), 200);
   },
 });
 
@@ -396,7 +392,7 @@ const detailRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [row] = await db.select().from(notices).where(and(eq(notices.id, id), tenantCondition(notices, c.get('user'))));
-    if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
+    if (!row) return c.json(errBody('通知不存在', 404), 404);
     const recipientRows = await db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, id));
     const userIds = recipientRows.filter((r) => r.recipientType === 'user').map((r) => r.recipientId);
     const roleIds = recipientRows.filter((r) => r.recipientType === 'role').map((r) => r.recipientId);
@@ -416,7 +412,7 @@ const detailRoute = defineOpenAPIRoute({
       recipientId: r.recipientId,
       recipientLabel: labelMap.get(`${r.recipientType}:${r.recipientId}`) ?? '',
     }));
-    return c.json({ code: 0 as const, message: 'ok', data: { ...toNotice(row), recipients } }, 200);
+    return c.json(okBody({ ...toNotice(row), recipients }), 200);
   },
 });
 
@@ -463,7 +459,7 @@ const createRouteDef = defineOpenAPIRoute({
 
     const notice = toNotice(row);
     if (row.publishStatus === 'published') await broadcastNotice(notice, row.id);
-    return c.json({ code: 0 as const, message: '创建成功', data: notice }, 200);
+    return c.json(okBody(notice, '创建成功'), 200);
   },
 });
 
@@ -508,11 +504,11 @@ const updateRouteDef = defineOpenAPIRoute({
       }
       return updated;
     });
-    if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
+    if (!row) return c.json(errBody('通知不存在', 404), 404);
 
     const notice = toNotice(row);
     if (data.publishStatus === 'published') await broadcastNotice(notice, row.id);
-    return c.json({ code: 0 as const, message: '更新成功', data: notice }, 200);
+    return c.json(okBody(notice, '更新成功'), 200);
   },
 });
 
@@ -535,8 +531,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [row] = await db.delete(notices).where(and(eq(notices.id, id), tenantCondition(notices, c.get('user')))).returning();
-    if (!row) return c.json({ code: 404, message: '通知不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    if (!row) return c.json(errBody('通知不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 

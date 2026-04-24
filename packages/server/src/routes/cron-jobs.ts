@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { scheduleJob, stopJob, runJobOnce, validateCronExpression, getRegisteredHandlers } from '../lib/cron-scheduler';
 import { exportToExcel } from '../lib/excel-export';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { CronJobDTO, CronJobLogDTO } from '../lib/openapi-dtos';
 
 const cronJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -38,7 +38,7 @@ const handlersRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    return c.json({ code: 0 as const, message: 'ok', data: getRegisteredHandlers() }, 200);
+    return c.json(okBody(getRegisteredHandlers()), 200);
   },
 });
 
@@ -59,7 +59,7 @@ const validateRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { expression } = c.req.valid('json');
-    return c.json({ code: 0 as const, message: 'ok', data: { valid: validateCronExpression(expression) } }, 200);
+    return c.json(okBody({ valid: validateCronExpression(expression) }), 200);
   },
 });
 
@@ -87,7 +87,7 @@ const listRoute = defineOpenAPIRoute({
       db.$count(cronJobs, where),
       db.select().from(cronJobs).where(where).orderBy(desc(cronJobs.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
     ]);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toCronJob), total: count, page, pageSize } }, 200);
+    return c.json(okBody({ list: rows.map(toCronJob), total: count, page, pageSize }), 200);
   },
 });
 
@@ -109,12 +109,12 @@ const createRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const data = c.req.valid('json');
-    if (!validateCronExpression(data.cronExpression)) return c.json({ code: 400, message: 'Cron 表达式无效', data: null }, 400);
+    if (!validateCronExpression(data.cronExpression)) return c.json(errBody('Cron 表达式无效'), 400);
     const [existing] = await db.select().from(cronJobs).where(eq(cronJobs.name, data.name)).limit(1);
-    if (existing) return c.json({ code: 400, message: '任务名称已存在', data: null }, 400);
+    if (existing) return c.json(errBody('任务名称已存在'), 400);
     const [row] = await db.insert(cronJobs).values(data).returning();
     if (row.status === 'active') scheduleJob(row.id, row.cronExpression, row.handler, row.params);
-    return c.json({ code: 0 as const, message: '创建成功', data: toCronJob(row) }, 200);
+    return c.json(okBody(toCronJob(row), '创建成功'), 200);
   },
 });
 
@@ -138,12 +138,12 @@ const updateRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
-    if (data.cronExpression && !validateCronExpression(data.cronExpression)) return c.json({ code: 400, message: 'Cron 表达式无效', data: null }, 400);
+    if (data.cronExpression && !validateCronExpression(data.cronExpression)) return c.json(errBody('Cron 表达式无效'), 400);
     const [row] = await db.update(cronJobs).set({ ...data }).where(eq(cronJobs.id, id)).returning();
-    if (!row) return c.json({ code: 404, message: '任务不存在', data: null }, 404);
+    if (!row) return c.json(errBody('任务不存在', 404), 404);
     if (row.status === 'active') scheduleJob(row.id, row.cronExpression, row.handler, row.params);
     else stopJob(row.id);
-    return c.json({ code: 0 as const, message: '更新成功', data: toCronJob(row) }, 200);
+    return c.json(okBody(toCronJob(row), '更新成功'), 200);
   },
 });
 
@@ -167,8 +167,8 @@ const deleteRouteDef = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     stopJob(id);
     const [row] = await db.delete(cronJobs).where(eq(cronJobs.id, id)).returning();
-    if (!row) return c.json({ code: 404, message: '任务不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    if (!row) return c.json(errBody('任务不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
@@ -191,8 +191,8 @@ const runRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const result = await runJobOnce(id);
-    if (result.success) return c.json({ code: 0 as const, message: result.message, data: null }, 200);
-    return c.json({ code: 500, message: result.message, data: null }, 500);
+    if (result.success) return c.json(okBody(null, result.message), 200);
+    return c.json(errBody(result.message, 500), 500);
   },
 });
 
@@ -217,10 +217,10 @@ const statusRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const { status } = c.req.valid('json');
     const [row] = await db.update(cronJobs).set({ status }).where(eq(cronJobs.id, id)).returning();
-    if (!row) return c.json({ code: 404, message: '任务不存在', data: null }, 404);
+    if (!row) return c.json(errBody('任务不存在', 404), 404);
     if (status === 'active') scheduleJob(row.id, row.cronExpression, row.handler, row.params);
     else stopJob(row.id);
-    return c.json({ code: 0 as const, message: status === 'active' ? '已启用' : '已停用', data: null }, 200);
+    return c.json(okBody(null, status === 'active' ? '已启用' : '已停用'), 200);
   },
 });
 
@@ -286,7 +286,7 @@ const logsRoute = defineOpenAPIRoute({
       startedAt: r.startedAt.toISOString(), endedAt: r.endedAt?.toISOString() ?? null,
       durationMs: r.durationMs, status: r.status, output: r.output,
     }));
-    return c.json({ code: 0 as const, message: 'ok', data: { list, total: count, page, pageSize } }, 200);
+    return c.json(okBody({ list, total: count, page, pageSize }), 200);
   },
 });
 
@@ -317,7 +317,7 @@ const idLogsRoute = defineOpenAPIRoute({
       startedAt: r.startedAt.toISOString(), endedAt: r.endedAt?.toISOString() ?? null,
       durationMs: r.durationMs, status: r.status, output: r.output,
     }));
-    return c.json({ code: 0 as const, message: 'ok', data: { list, total: count, page, pageSize } }, 200);
+    return c.json(okBody({ list, total: count, page, pageSize }), 200);
   },
 });
 

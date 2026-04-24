@@ -16,7 +16,7 @@ import { unlockUser } from '../lib/session-manager';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import type { User } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { UserDTO, ImportResultDTO } from '../lib/openapi-dtos';
 
 const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -185,7 +185,7 @@ const getAllUsersRoute = defineOpenAPIRoute({
       orderBy: users.id,
     });
     const publicUsers = toPublicUsers(rawList);
-    return c.json({ code: 0 as const, message: 'ok', data: publicUsers }, 200);
+    return c.json(okBody(publicUsers), 200);
   },
 });
 
@@ -235,7 +235,7 @@ const listUsersRoute = defineOpenAPIRoute({
       }),
     ]);
     const publicUsers = toPublicUsers(rawList);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: publicUsers, total: Number(count), page, pageSize } }, 200);
+    return c.json(okBody({ list: publicUsers, total: Number(count), page, pageSize }), 200);
   },
 });
 
@@ -257,7 +257,7 @@ const createUserRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     const policy = await getPasswordPolicy();
     const policyError = validatePassword(data.password, policy);
-    if (policyError) return c.json({ code: 400, message: policyError, data: null }, 400);
+    if (policyError) return c.json(errBody(policyError), 400);
 
     const { password, roleIds, positionIds, departmentId, ...rest } = data;
     const nextRoleIds = Array.from(new Set(roleIds));
@@ -269,7 +269,7 @@ const createUserRoute = defineOpenAPIRoute({
       ensurePositionIdsExist(nextPositionIds, c.get('user')),
     ]);
     const referenceError = departmentError ?? roleError ?? positionError;
-    if (referenceError) return c.json({ code: 400, message: referenceError, data: null }, 400);
+    if (referenceError) return c.json(errBody(referenceError), 400);
 
     const hashedPassword = await bcrypt.hash(password, 10);
     try {
@@ -287,10 +287,10 @@ const createUserRoute = defineOpenAPIRoute({
       const createdUser = await findUserWithRelations({ where: eq(users.id, user.id) });
       if (!createdUser) throw new Error('创建用户后回读失败');
       const publicUser = toPublicUser(createdUser);
-      return c.json({ code: 0 as const, message: '创建成功', data: publicUser }, 200);
+      return c.json(okBody(publicUser, '创建成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '用户名或邮箱已存在', data: null }, 400);
+        return c.json(errBody('用户名或邮箱已存在'), 400);
       }
       throw err;
     }
@@ -313,12 +313,12 @@ const batchDeleteUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
-    if (!Array.isArray(ids) || ids.length === 0) return c.json({ code: 400, message: '请选择要删除的用户', data: null }, 400);
+    if (!Array.isArray(ids) || ids.length === 0) return c.json(errBody('请选择要删除的用户'), 400);
     const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
-    if (validIds.length === 0) return c.json({ code: 400, message: '用户ID格式无效', data: null }, 400);
+    if (validIds.length === 0) return c.json(errBody('用户ID格式无效'), 400);
     const tc = tenantCondition(users, c.get('user'));
     await db.delete(users).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
-    return c.json({ code: 0 as const, message: `已删除 ${validIds.length} 个用户`, data: null }, 200);
+    return c.json(okBody(null, `已删除 ${validIds.length} 个用户`), 200);
   },
 });
 
@@ -338,11 +338,11 @@ const batchStatusUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids, status } = c.req.valid('json');
-    if (!Array.isArray(ids) || ids.length === 0) return c.json({ code: 400, message: '请选择要操作的用户', data: null }, 400);
+    if (!Array.isArray(ids) || ids.length === 0) return c.json(errBody('请选择要操作的用户'), 400);
     const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
     const tc = tenantCondition(users, c.get('user'));
     await db.update(users).set({ status }).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
-    return c.json({ code: 0 as const, message: '状态已更新', data: null }, 200);
+    return c.json(okBody(null, '状态已更新'), 200);
   },
 });
 
@@ -406,12 +406,12 @@ const importUsersRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const formData = await c.req.formData();
     const file = formData.get('file') as File | null;
-    if (!file) return c.json({ code: 400, message: '请上传文件', data: null }, 400);
+    if (!file) return c.json(errBody('请上传文件'), 400);
     const arrayBuffer = await file.arrayBuffer();
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(arrayBuffer);
     const sheet = workbook.worksheets[0];
-    if (!sheet) return c.json({ code: 400, message: '文件格式无效或工作表为空', data: null }, 400);
+    if (!sheet) return c.json(errBody('文件格式无效或工作表为空'), 400);
 
     const policy = await getPasswordPolicy();
     const errors: Array<{ row: number; message: string }> = [];
@@ -508,7 +508,7 @@ const importUsersRoute = defineOpenAPIRoute({
         errors.push({ row: rowNum, message: `插入失败: ${e instanceof Error ? e.message : '未知错误'}` });
       }
     }
-    return c.json({ code: 0 as const, message: '导入完成', data: { total: dataRows.length, success, failed: errors.length, errors } }, 200);
+    return c.json(okBody({ total: dataRows.length, success, failed: errors.length, errors }, '导入完成'), 200);
   },
 });
 
@@ -574,13 +574,13 @@ const updateUserPasswordRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     const policy = await getPasswordPolicy();
     const policyError = validatePassword(data.password, policy);
-    if (policyError) return c.json({ code: 400, message: policyError, data: null }, 400);
+    if (policyError) return c.json(errBody(policyError), 400);
     const tc = tenantCondition(users, c.get('user'));
     const [user] = await db.select({ id: users.id }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
-    if (!user) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
+    if (!user) return c.json(errBody('用户不存在', 404), 404);
     const hashedPassword = await bcrypt.hash(data.password, 10);
     await db.update(users).set({ password: hashedPassword }).where(eq(users.id, id));
-    return c.json({ code: 0 as const, message: '密码修改成功', data: null }, 200);
+    return c.json(okBody(null, '密码修改成功'), 200);
   },
 });
 
@@ -602,9 +602,9 @@ const unlockUserRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const tc = tenantCondition(users, c.get('user'));
     const [user] = await db.select({ username: users.username }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
-    if (!user) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
+    if (!user) return c.json(errBody('用户不存在', 404), 404);
     await unlockUser(user.username);
-    return c.json({ code: 0 as const, message: '解锁成功', data: null }, 200);
+    return c.json(okBody(null, '解锁成功'), 200);
   },
 });
 
@@ -641,7 +641,7 @@ const updateUserRoute = defineOpenAPIRoute({
       ensurePositionIdsExist(nextPositionIds ?? [], c.get('user')),
     ]);
     const referenceError = departmentError ?? roleError ?? positionError;
-    if (referenceError) return c.json({ code: 400, message: referenceError, data: null }, 400);
+    if (referenceError) return c.json(errBody(referenceError), 400);
 
     const nextValues = {
       ...rest,
@@ -664,14 +664,14 @@ const updateUserRoute = defineOpenAPIRoute({
 
       return updatedUser;
     });
-    if (!user) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
+    if (!user) return c.json(errBody('用户不存在', 404), 404);
 
     if (nextRoleIds !== undefined) clearUserPermissionCache(id);
 
     const updatedUser = await findUserWithRelations({ where: eq(users.id, user.id) });
-    if (!updatedUser) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
+    if (!updatedUser) return c.json(errBody('用户不存在', 404), 404);
     const publicUser = toPublicUser(updatedUser);
-    return c.json({ code: 0 as const, message: '更新成功', data: publicUser }, 200);
+    return c.json(okBody(publicUser, '更新成功'), 200);
   },
 });
 
@@ -698,8 +698,8 @@ const deleteUserRoute = defineOpenAPIRoute({
     }
     const tc = tenantCondition(users, c.get('user'));
     const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
-    if (!deleted) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    if (!deleted) return c.json(errBody('用户不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 

@@ -4,7 +4,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { userApiTokens } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { ApiTokenListItemDTO as TokenListItem, ApiTokenCreatedDTO as TokenCreated } from '../lib/openapi-dtos';
 
 const apiTokensRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -38,18 +38,14 @@ const list = defineOpenAPIRoute({
       .orderBy(desc(userApiTokens.createdAt));
 
     return c.json(
-      {
-        code: 0 as const,
-        message: 'ok',
-        data: rows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          tokenPrefix: `${r.token.slice(0, 12)}...`,
-          lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
-          expiresAt: r.expiresAt?.toISOString() ?? null,
-          createdAt: r.createdAt.toISOString(),
-        })),
-      },
+      okBody(rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        tokenPrefix: `${r.token.slice(0, 12)}...`,
+        lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
+        expiresAt: r.expiresAt?.toISOString() ?? null,
+        createdAt: r.createdAt.toISOString(),
+      }))),
       200,
     );
   },
@@ -77,12 +73,12 @@ const create = defineOpenAPIRoute({
     const body = c.req.valid('json');
 
     if (!body.name?.trim()) {
-      return c.json({ code: 400, message: 'Token 名称不能为空', data: null }, 400);
+      return c.json(errBody('Token 名称不能为空'), 400);
     }
 
     const existingCount = await db.$count(userApiTokens, eq(userApiTokens.userId, payload.userId));
     if (existingCount >= 20) {
-      return c.json({ code: 400, message: '最多只能创建 20 个 API Token', data: null }, 400);
+      return c.json(errBody('最多只能创建 20 个 API Token'), 400);
     }
 
     const token = `zat_${randomBytes(24).toString('hex')}`;
@@ -97,16 +93,12 @@ const create = defineOpenAPIRoute({
       .returning();
 
     return c.json(
-      {
-        code: 0 as const,
-        message: 'Token 已创建，请务必复制保存，此后将无法再次查看完整 Token',
-        data: {
-          id: row.id,
-          name: row.name,
-          token,
-          createdAt: row.createdAt.toISOString(),
-        },
-      },
+      okBody({
+        id: row.id,
+        name: row.name,
+        token,
+        createdAt: row.createdAt.toISOString(),
+      }, 'Token 已创建，请务必复制保存，此后将无法再次查看完整 Token'),
       200,
     );
   },
@@ -134,7 +126,7 @@ const deleteToken = defineOpenAPIRoute({
     const payload = c.get('user');
     const { id } = c.req.valid('param');
     if (Number.isNaN(id)) {
-      return c.json({ code: 400, message: '无效的 Token ID', data: null }, 400);
+      return c.json(errBody('无效的 Token ID'), 400);
     }
 
     const result = await db
@@ -143,9 +135,9 @@ const deleteToken = defineOpenAPIRoute({
       .returning();
 
     if (result.length === 0) {
-      return c.json({ code: 404, message: 'Token 不存在', data: null }, 404);
+      return c.json(errBody('Token 不存在', 404), 404);
     }
-    return c.json({ code: 0 as const, message: 'Token 已撤销', data: null }, 200);
+    return c.json(okBody(null, 'Token 已撤销'), 200);
   },
 });
 

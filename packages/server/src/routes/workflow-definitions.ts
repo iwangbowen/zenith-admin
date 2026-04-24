@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { validateFlowData } from '../lib/workflow-engine';
 import type { WorkflowFlowData } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { WorkflowDefinitionDTO } from '../lib/openapi-dtos';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -73,7 +73,7 @@ const listRoute = defineOpenAPIRoute({
         offset: pageOffset(page, pageSize),
       }),
     ]);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(r => toDefinition(r, r.createdByUser?.nickname ?? null)), total, page, pageSize } }, 200);
+    return c.json(okBody({ list: rows.map(r => toDefinition(r, r.createdByUser?.nickname ?? null)), total, page, pageSize }), 200);
   },
 });
 
@@ -97,7 +97,7 @@ const publishedRoute = defineOpenAPIRoute({
     const conditions = [eq(workflowDefinitions.status, 'published')];
     if (tc) conditions.push(tc);
     const rows = await db.select().from(workflowDefinitions).where(and(...conditions)).orderBy(desc(workflowDefinitions.updatedAt));
-    return c.json({ code: 0 as const, message: 'ok', data: rows.map(r => toDefinition(r)) }, 200);
+    return c.json(okBody(rows.map(r => toDefinition(r))), 200);
   },
 });
 
@@ -127,8 +127,8 @@ const detailRoute = defineOpenAPIRoute({
       where: and(...conditions),
       with: { createdByUser: { columns: { nickname: true } } },
     });
-    if (!row) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: 'ok', data: toDefinition(row, row.createdByUser?.nickname ?? null) }, 200);
+    if (!row) return c.json(errBody('流程定义不存在', 404), 404);
+    return c.json(okBody(toDefinition(row, row.createdByUser?.nickname ?? null)), 200);
   },
 });
 
@@ -157,7 +157,7 @@ const createRouteDef = defineOpenAPIRoute({
       createdBy: user.userId,
       tenantId: getCreateTenantId(user),
     }).returning();
-    return c.json({ code: 0 as const, message: '创建成功', data: toDefinition(row) }, 200);
+    return c.json(okBody(toDefinition(row), '创建成功'), 200);
   },
 });
 
@@ -192,8 +192,8 @@ const updateRouteDef = defineOpenAPIRoute({
       .set(updateData as Partial<typeof workflowDefinitions.$inferInsert>)
       .where(and(...conditions))
       .returning();
-    if (!updated) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '更新成功', data: toDefinition(updated) }, 200);
+    if (!updated) return c.json(errBody('流程定义不存在', 404), 404);
+    return c.json(okBody(toDefinition(updated), '更新成功'), 200);
   },
 });
 
@@ -221,17 +221,17 @@ const publishRoute = defineOpenAPIRoute({
     const conditions = [eq(workflowDefinitions.id, id)];
     if (tc) conditions.push(tc);
     const [existing] = await db.select().from(workflowDefinitions).where(and(...conditions)).limit(1);
-    if (!existing) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
+    if (!existing) return c.json(errBody('流程定义不存在', 404), 404);
     const flowData = existing.flowData as WorkflowFlowData | null;
-    if (!flowData?.nodes) return c.json({ code: 400, message: '请先在设计器中设计流程', data: null }, 400);
+    if (!flowData?.nodes) return c.json(errBody('请先在设计器中设计流程'), 400);
     const validation = validateFlowData(flowData);
-    if (!validation.valid) return c.json({ code: 400, message: validation.errors[0], data: null }, 400);
+    if (!validation.valid) return c.json(errBody(validation.errors[0]), 400);
     const [updated] = await db
       .update(workflowDefinitions)
       .set({ status: 'published', version: existing.version + 1 })
       .where(and(...conditions))
       .returning();
-    return c.json({ code: 0 as const, message: '发布成功', data: toDefinition(updated) }, 200);
+    return c.json(okBody(toDefinition(updated), '发布成功'), 200);
   },
 });
 
@@ -258,8 +258,8 @@ const disableRoute = defineOpenAPIRoute({
     const conditions = [eq(workflowDefinitions.id, id)];
     if (tc) conditions.push(tc);
     const [updated] = await db.update(workflowDefinitions).set({ status: 'disabled' }).where(and(...conditions)).returning();
-    if (!updated) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '禁用成功', data: toDefinition(updated) }, 200);
+    if (!updated) return c.json(errBody('流程定义不存在', 404), 404);
+    return c.json(okBody(toDefinition(updated), '禁用成功'), 200);
   },
 });
 
@@ -287,10 +287,10 @@ const deleteRouteDef = defineOpenAPIRoute({
     const conditions = [eq(workflowDefinitions.id, id)];
     if (tc) conditions.push(tc);
     const [existing] = await db.select().from(workflowDefinitions).where(and(...conditions)).limit(1);
-    if (!existing) return c.json({ code: 404, message: '流程定义不存在', data: null }, 404);
-    if (existing.status === 'published') return c.json({ code: 400, message: '已发布的流程不能删除，请先禁用', data: null }, 400);
+    if (!existing) return c.json(errBody('流程定义不存在', 404), 404);
+    if (existing.status === 'published') return c.json(errBody('已发布的流程不能删除，请先禁用'), 400);
     await db.delete(workflowDefinitions).where(and(...conditions));
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 

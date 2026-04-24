@@ -9,7 +9,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-engine';
 import { createWorkflowInstanceSchema, approveWorkflowTaskSchema, rejectWorkflowTaskSchema } from '@zenith/shared';
 import type { WorkflowFlowData } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO } from '../lib/openapi-dtos';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -94,18 +94,14 @@ const listRoute = defineOpenAPIRoute({
         offset: pageOffset(page, pageSize),
       }),
     ]);
-    return c.json({
-      code: 0 as const,
-      message: 'ok',
-      data: {
+    return c.json(okBody({
         list: rows.map((r) => toInstance(r, {
           definitionName: r.definition?.name ?? null,
           initiatorName: r.initiator?.nickname ?? null,
           initiatorAvatar: r.initiator?.avatar ?? null,
         })),
         total, page, pageSize,
-      },
-    }, 200);
+      }), 200);
   },
 });
 
@@ -142,16 +138,12 @@ const pendingMineRoute = defineOpenAPIRoute({
       .orderBy(desc(workflowTasks.createdAt))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize));
-    return c.json({
-      code: 0 as const,
-      message: 'ok',
-      data: {
+    return c.json(okBody({
         list: rows.map((r) => ({ ...toInstance(r.inst, r), pendingTaskId: r.task.id })),
         total: Number(total),
         page,
         pageSize,
-      },
-    }, 200);
+      }), 200);
   },
 });
 
@@ -199,11 +191,7 @@ const allRoute = defineOpenAPIRoute({
       .orderBy(desc(workflowInstances.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize));
-    return c.json({
-      code: 0 as const,
-      message: 'ok',
-      data: { stats, list: rows.map((r) => toInstance(r.inst, r)), total, page, pageSize },
-    }, 200);
+    return c.json(okBody({ stats, list: rows.map((r) => toInstance(r.inst, r)), total, page, pageSize }), 200);
   },
 });
 
@@ -241,21 +229,17 @@ const detailRoute = defineOpenAPIRoute({
         },
       },
     });
-    if (!row) return c.json({ code: 404, message: '流程实例不存在', data: null }, 404);
+    if (!row) return c.json(errBody('流程实例不存在', 404), 404);
     const isInitiator = row.initiatorId === user.userId;
     const isAssignee = row.tasks.some((t) => t.assigneeId === user.userId);
-    if (!isInitiator && !isAssignee) return c.json({ code: 403, message: '无权查看', data: null }, 403);
+    if (!isInitiator && !isAssignee) return c.json(errBody('无权查看', 403), 403);
     const tasks = row.tasks.map((t) => toTask(t, t.assignee?.nickname, t.assignee?.avatar));
-    return c.json({
-      code: 0 as const,
-      message: 'ok',
-      data: toInstance(row, {
+    return c.json(okBody(toInstance(row, {
         definitionName: row.definition?.name ?? null,
         initiatorName: row.initiator?.nickname ?? null,
         initiatorAvatar: row.initiator?.avatar ?? null,
         tasks,
-      }),
-    }, 200);
+      })), 200);
   },
 });
 
@@ -280,15 +264,15 @@ const createInstanceRoute = defineOpenAPIRoute({
     const user = c.get('user');
     const data = c.req.valid('json');
     const [def] = await db.select().from(workflowDefinitions).where(and(eq(workflowDefinitions.id, data.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);
-    if (!def) return c.json({ code: 404, message: '流程定义不存在或未发布', data: null }, 404);
+    if (!def) return c.json(errBody('流程定义不存在或未发布', 404), 404);
     const flowData = def.flowData as WorkflowFlowData;
-    if (!flowData?.nodes?.length) return c.json({ code: 400, message: '流程定义无效', data: null }, 400);
+    if (!flowData?.nodes?.length) return c.json(errBody('流程定义无效'), 400);
     const validation = validateFlowData(flowData);
-    if (!validation.valid) return c.json({ code: 400, message: validation.errors[0], data: null }, 400);
+    if (!validation.valid) return c.json(errBody(validation.errors[0]), 400);
     const formData: Record<string, unknown> = data.formData ?? {};
     const initialResult = getInitialTasks(flowData, formData);
     if (initialResult.tasksToCreate.length === 0 && !initialResult.finished) {
-      return c.json({ code: 400, message: '流程定义中无可执行节点', data: null }, 400);
+      return c.json(errBody('流程定义中无可执行节点'), 400);
     }
     const instance = await db.transaction(async (tx) => {
       const [createdInstance] = await tx.insert(workflowInstances).values({
@@ -315,7 +299,7 @@ const createInstanceRoute = defineOpenAPIRoute({
       }
       return createdInstance;
     });
-    return c.json({ code: 0 as const, message: '申请已提交', data: toInstance(instance) }, 200);
+    return c.json(okBody(toInstance(instance), '申请已提交'), 200);
   },
 });
 
@@ -344,16 +328,16 @@ const withdrawRoute = defineOpenAPIRoute({
     const conditions = [eq(workflowInstances.id, id)];
     if (tc) conditions.push(tc);
     const [inst] = await db.select().from(workflowInstances).where(and(...conditions)).limit(1);
-    if (!inst) return c.json({ code: 404, message: '流程实例不存在', data: null }, 404);
-    if (inst.initiatorId !== user.userId) return c.json({ code: 403, message: '只有发起人可以撤回', data: null }, 403);
-    if (inst.status !== 'running') return c.json({ code: 400, message: '只能撤回进行中的申请', data: null }, 400);
+    if (!inst) return c.json(errBody('流程实例不存在', 404), 404);
+    if (inst.initiatorId !== user.userId) return c.json(errBody('只有发起人可以撤回', 403), 403);
+    if (inst.status !== 'running') return c.json(errBody('只能撤回进行中的申请'), 400);
     const updated = await db.transaction(async (tx) => {
       await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
         .where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending')));
       const [row] = await tx.update(workflowInstances).set({ status: 'withdrawn' }).where(and(...conditions)).returning();
       return row;
     });
-    return c.json({ code: 0 as const, message: '已撤回', data: toInstance(updated) }, 200);
+    return c.json(okBody(toInstance(updated), '已撤回'), 200);
   },
 });
 
@@ -383,18 +367,18 @@ const approveRoute = defineOpenAPIRoute({
     const { taskId } = c.req.valid('param');
     const body = await c.req.json().catch(() => ({}));
     const result = approveWorkflowTaskSchema.safeParse(body);
-    if (!result.success) return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+    if (!result.success) return c.json(errBody(result.error.issues[0].message), 400);
 
     const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
-    if (!task) return c.json({ code: 404, message: '任务不存在或无权操作', data: null }, 404);
-    if (task.status !== 'pending') return c.json({ code: 400, message: '任务已处理', data: null }, 400);
+    if (!task) return c.json(errBody('任务不存在或无权操作', 404), 404);
+    if (task.status !== 'pending') return c.json(errBody('任务已处理'), 400);
     const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-    if (!inst) return c.json({ code: 500, message: '流程数据异常', data: null }, 500);
-    if (inst.status !== 'running') return c.json({ code: 400, message: '流程实例不在进行中', data: null }, 400);
+    if (!inst) return c.json(errBody('流程数据异常', 500), 500);
+    if (inst.status !== 'running') return c.json(errBody('流程实例不在进行中'), 400);
 
     const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };
     const flowData = snapshot?.flowData;
-    if (!flowData) return c.json({ code: 500, message: '流程快照数据异常', data: null }, 500);
+    if (!flowData) return c.json(errBody('流程快照数据异常', 500), 500);
     const updated = await db.transaction(async (tx) => {
       await tx.update(workflowTasks).set({
         status: 'approved',
@@ -439,9 +423,9 @@ const approveRoute = defineOpenAPIRoute({
     });
 
     if (updated.finished) {
-      return c.json({ code: 0 as const, message: '审批通过，流程已完成', data: toInstance(updated.row) }, 200);
+      return c.json(okBody(toInstance(updated.row), '审批通过，流程已完成'), 200);
     }
-    return c.json({ code: 0 as const, message: '审批通过，流程已推进', data: toInstance(updated.row) }, 200);
+    return c.json(okBody(toInstance(updated.row), '审批通过，流程已推进'), 200);
   },
 });
 
@@ -471,13 +455,13 @@ const rejectRoute = defineOpenAPIRoute({
     const { taskId } = c.req.valid('param');
     const body = await c.req.json().catch(() => ({}));
     const result = rejectWorkflowTaskSchema.safeParse(body);
-    if (!result.success) return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
+    if (!result.success) return c.json(errBody(result.error.issues[0].message), 400);
     const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
-    if (!task) return c.json({ code: 404, message: '任务不存在或无权操作', data: null }, 404);
-    if (task.status !== 'pending') return c.json({ code: 400, message: '任务已处理', data: null }, 400);
+    if (!task) return c.json(errBody('任务不存在或无权操作', 404), 404);
+    if (task.status !== 'pending') return c.json(errBody('任务已处理'), 400);
     const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-    if (!inst) return c.json({ code: 500, message: '流程数据异常', data: null }, 500);
-    if (inst.status !== 'running') return c.json({ code: 400, message: '流程实例不在进行中', data: null }, 400);
+    if (!inst) return c.json(errBody('流程数据异常', 500), 500);
+    if (inst.status !== 'running') return c.json(errBody('流程实例不在进行中'), 400);
     const updated = await db.transaction(async (tx) => {
       await tx.update(workflowTasks)
         .set({ status: 'rejected', comment: result.data.comment, actionAt: new Date() })
@@ -488,7 +472,7 @@ const rejectRoute = defineOpenAPIRoute({
         .returning();
       return row;
     });
-    return c.json({ code: 0 as const, message: '已驳回', data: toInstance(updated) }, 200);
+    return c.json(okBody(toInstance(updated), '已驳回'), 200);
   },
 });
 

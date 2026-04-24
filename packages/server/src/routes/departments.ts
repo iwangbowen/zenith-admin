@@ -8,7 +8,7 @@ import { exportToExcel } from '../lib/excel-export';
 import type { Department } from '@zenith/shared';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { DepartmentDTO } from '../lib/openapi-dtos';
 
 const departmentsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -101,7 +101,7 @@ const listRoute = defineOpenAPIRoute({
     const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
     const tree = buildTree(rows.map(toDepartment));
     const data = keyword || status ? filterTree(tree, keyword, status) : tree;
-    return c.json({ code: 0 as const, message: 'ok', data }, 200);
+    return c.json(okBody(data), 200);
   },
 });
 
@@ -121,7 +121,7 @@ const flatRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const tc = tenantCondition(departments, c.get('user'));
     const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
-    return c.json({ code: 0 as const, message: 'ok', data: rows.map(toDepartment) }, 200);
+    return c.json(okBody(rows.map(toDepartment)), 200);
   },
 });
 
@@ -143,13 +143,13 @@ const createRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const data = c.req.valid('json');
     const parentError = await ensureParentValid(data.parentId);
-    if (parentError) return c.json({ code: 400, message: parentError, data: null }, 400);
+    if (parentError) return c.json(errBody(parentError), 400);
     try {
       const [department] = await db.insert(departments).values({ ...data, tenantId: getCreateTenantId(c.get('user')) }).returning();
-      return c.json({ code: 0 as const, message: '创建成功', data: toDepartment(department) }, 200);
+      return c.json(okBody(toDepartment(department), '创建成功'), 200);
     } catch (error: unknown) {
       if ((error as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '部门编码已存在', data: null }, 400);
+        return c.json(errBody('部门编码已存在'), 400);
       }
       throw error;
     }
@@ -177,18 +177,18 @@ const updateRouteDef = defineOpenAPIRoute({
     const data = c.req.valid('json');
     if (data.parentId !== undefined) {
       const parentError = await ensureParentValid(data.parentId, id);
-      if (parentError) return c.json({ code: 400, message: parentError, data: null }, 400);
+      if (parentError) return c.json(errBody(parentError), 400);
     }
     try {
       const [department] = await db.update(departments)
         .set({ ...data })
         .where(and(eq(departments.id, id), tenantCondition(departments, c.get('user'))))
         .returning();
-      if (!department) return c.json({ code: 404, message: '部门不存在', data: null }, 404);
-      return c.json({ code: 0 as const, message: '更新成功', data: toDepartment(department) }, 200);
+      if (!department) return c.json(errBody('部门不存在', 404), 404);
+      return c.json(okBody(toDepartment(department), '更新成功'), 200);
     } catch (error: unknown) {
       if ((error as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '部门编码已存在', data: null }, 400);
+        return c.json(errBody('部门编码已存在'), 400);
       }
       throw error;
     }
@@ -215,13 +215,13 @@ const deleteRouteDef = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const tc = tenantCondition(departments, c.get('user'));
     const [department] = await db.select({ id: departments.id }).from(departments).where(and(eq(departments.id, id), tc)).limit(1);
-    if (!department) return c.json({ code: 404, message: '部门不存在', data: null }, 404);
+    if (!department) return c.json(errBody('部门不存在', 404), 404);
     const [childDepartment] = await db.select({ id: departments.id }).from(departments).where(eq(departments.parentId, id)).limit(1);
-    if (childDepartment) return c.json({ code: 400, message: '该部门存在子部门，无法删除', data: null }, 400);
+    if (childDepartment) return c.json(errBody('该部门存在子部门，无法删除'), 400);
     const [boundUser] = await db.select({ id: users.id }).from(users).where(eq(users.departmentId, id)).limit(1);
-    if (boundUser) return c.json({ code: 400, message: '该部门下仍有关联用户，无法删除', data: null }, 400);
+    if (boundUser) return c.json(errBody('该部门下仍有关联用户，无法删除'), 400);
     await db.delete(departments).where(and(eq(departments.id, id), tc));
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 

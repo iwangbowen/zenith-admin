@@ -9,7 +9,7 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { isPlatformAdmin } from '../lib/tenant';
 import type { AppEnv } from '../lib/context';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { TenantDTO } from '../lib/openapi-dtos';
 
 const tenantsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -18,7 +18,7 @@ const tenantsRoute = new OpenAPIHono({ defaultHook: validationHook });
 const platformAdminMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   const user = c.get('user');
   if (!isPlatformAdmin(user)) {
-    return c.json({ code: 403, message: '仅平台管理员可管理租户', data: null }, 403);
+    return c.json(errBody('仅平台管理员可管理租户', 403), 403);
   }
   await next();
 });
@@ -67,7 +67,7 @@ const listRoute = defineOpenAPIRoute({
       db.$count(tenants, where),
       db.select().from(tenants).where(where).orderBy(desc(tenants.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
     ]);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toTenant), total: count, page, pageSize } }, 200);
+    return c.json(okBody({ list: rows.map(toTenant), total: count, page, pageSize }), 200);
   },
 });
 
@@ -84,7 +84,7 @@ const allRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const rows = await db.select({ id: tenants.id, name: tenants.name, code: tenants.code, status: tenants.status }).from(tenants).orderBy(tenants.id);
-    return c.json({ code: 0 as const, message: 'ok', data: rows }, 200);
+    return c.json(okBody(rows), 200);
   },
 });
 
@@ -140,8 +140,8 @@ const detailRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [row] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
-    if (!row) return c.json({ code: 404, message: '租户不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: 'ok', data: toTenant(row) }, 200);
+    if (!row) return c.json(errBody('租户不存在', 404), 404);
+    return c.json(okBody(toTenant(row)), 200);
   },
 });
 
@@ -163,9 +163,9 @@ const createRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const data = c.req.valid('json');
     const [existing] = await db.select().from(tenants).where(eq(tenants.code, data.code)).limit(1);
-    if (existing) return c.json({ code: 400, message: '租户编码已存在', data: null }, 400);
+    if (existing) return c.json(errBody('租户编码已存在'), 400);
     const [row] = await db.insert(tenants).values({ ...data, expireAt: data.expireAt ? new Date(data.expireAt) : null }).returning();
-    return c.json({ code: 0 as const, message: '创建成功', data: toTenant(row) }, 200);
+    return c.json(okBody(toTenant(row), '创建成功'), 200);
   },
 });
 
@@ -190,7 +190,7 @@ const updateRouteDef = defineOpenAPIRoute({
     const data = c.req.valid('json');
     if (data.code) {
       const [dup] = await db.select().from(tenants).where(and(eq(tenants.code, data.code), ne(tenants.id, id))).limit(1);
-      if (dup) return c.json({ code: 400, message: '租户编码已存在', data: null }, 400);
+      if (dup) return c.json(errBody('租户编码已存在'), 400);
     }
     const { expireAt: rawExpireAt, ...rest } = data;
     const values = {
@@ -198,8 +198,8 @@ const updateRouteDef = defineOpenAPIRoute({
       ...(rawExpireAt === undefined ? {} : { expireAt: rawExpireAt ? new Date(rawExpireAt) : null }),
     };
     const [row] = await db.update(tenants).set(values).where(eq(tenants.id, id)).returning();
-    if (!row) return c.json({ code: 404, message: '租户不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '更新成功', data: toTenant(row) }, 200);
+    if (!row) return c.json(errBody('租户不存在', 404), 404);
+    return c.json(okBody(toTenant(row), '更新成功'), 200);
   },
 });
 
@@ -221,8 +221,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [row] = await db.delete(tenants).where(eq(tenants.id, id)).returning();
-    if (!row) return c.json({ code: 404, message: '租户不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    if (!row) return c.json(errBody('租户不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 

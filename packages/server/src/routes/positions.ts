@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { PositionDTO } from '../lib/openapi-dtos';
 
 const positionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -51,7 +51,7 @@ const allRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const tc = tenantCondition(positions, c.get('user'));
     const list = await db.select().from(positions).where(tc).orderBy(asc(positions.sort), asc(positions.id));
-    return c.json({ code: 0 as const, message: 'ok', data: list.map(toPosition) }, 200);
+    return c.json(okBody(list.map(toPosition)), 200);
   },
 });
 
@@ -102,7 +102,7 @@ const listRoute = defineOpenAPIRoute({
     ]);
 
     return c.json(
-      { code: 0 as const, message: 'ok', data: { list: list.map(toPosition), total: count, page, pageSize } },
+      okBody({ list: list.map(toPosition), total: count, page, pageSize }),
       200,
     );
   },
@@ -129,10 +129,10 @@ const createPositionRoute = defineOpenAPIRoute({
         .insert(positions)
         .values({ ...data, tenantId: getCreateTenantId(c.get('user')) })
         .returning();
-      return c.json({ code: 0 as const, message: '创建成功', data: toPosition(position) }, 200);
+      return c.json(okBody(toPosition(position), '创建成功'), 200);
     } catch (error: unknown) {
       if ((error as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '岗位编码已存在', data: null }, 400);
+        return c.json(errBody('岗位编码已存在'), 400);
       }
       throw error;
     }
@@ -167,12 +167,12 @@ const updatePositionRoute = defineOpenAPIRoute({
         .where(and(eq(positions.id, id), tenantCondition(positions, c.get('user'))))
         .returning();
       if (!position) {
-        return c.json({ code: 404, message: '岗位不存在', data: null }, 404);
+        return c.json(errBody('岗位不存在', 404), 404);
       }
-      return c.json({ code: 0 as const, message: '更新成功', data: toPosition(position) }, 200);
+      return c.json(okBody(toPosition(position), '更新成功'), 200);
     } catch (error: unknown) {
       if ((error as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '岗位编码已存在', data: null }, 400);
+        return c.json(errBody('岗位编码已存在'), 400);
       }
       throw error;
     }
@@ -196,21 +196,21 @@ const batchDeleteRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     if (!Array.isArray(ids) || ids.length === 0) {
-      return c.json({ code: 400, message: '请选择要删除的岗位', data: null }, 400);
+      return c.json(errBody('请选择要删除的岗位'), 400);
     }
     const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
     if (validIds.length === 0) {
-      return c.json({ code: 400, message: '岗位ID格式无效', data: null }, 400);
+      return c.json(errBody('岗位ID格式无效'), 400);
     }
     const bindings = await db
       .select({ positionId: userPositions.positionId })
       .from(userPositions)
       .where(inArray(userPositions.positionId, validIds));
     if (bindings.length > 0) {
-      return c.json({ code: 400, message: '所选岗位中存在关联用户，无法删除', data: null }, 400);
+      return c.json(errBody('所选岗位中存在关联用户，无法删除'), 400);
     }
     await db.delete(positions).where(and(inArray(positions.id, validIds), tenantCondition(positions, c.get('user'))));
-    return c.json({ code: 0 as const, message: `已删除 ${validIds.length} 个岗位`, data: null }, 200);
+    return c.json(okBody(null, `已删除 ${validIds.length} 个岗位`), 200);
   },
 });
 
@@ -237,7 +237,7 @@ const deleteRoute = defineOpenAPIRoute({
       .where(and(eq(positions.id, id), tenantCondition(positions, c.get('user'))))
       .limit(1);
     if (!position) {
-      return c.json({ code: 404, message: '岗位不存在', data: null }, 404);
+      return c.json(errBody('岗位不存在', 404), 404);
     }
 
     const [binding] = await db
@@ -246,11 +246,11 @@ const deleteRoute = defineOpenAPIRoute({
       .where(eq(userPositions.positionId, id))
       .limit(1);
     if (binding) {
-      return c.json({ code: 400, message: '该岗位下仍有关联用户，无法删除', data: null }, 400);
+      return c.json(errBody('该岗位下仍有关联用户，无法删除'), 400);
     }
 
     await db.delete(positions).where(and(eq(positions.id, id), tenantCondition(positions, c.get('user'))));
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 

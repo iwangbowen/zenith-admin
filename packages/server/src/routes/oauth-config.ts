@@ -5,7 +5,7 @@ import { oauthConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import type { OAuthProviderType } from '@zenith/shared';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okBody, errBody } from '../lib/openapi-schemas';
 
 import { OAuthConfigItemDTO as OAuthConfigItem } from '../lib/openapi-dtos';
 
@@ -43,7 +43,7 @@ const listRoute = defineOpenAPIRoute({
       ...rest,
       clientSecret: clientSecret ? '******' : '',
     }));
-    return c.json({ code: 0 as const, message: 'success', data: safeConfigs }, 200);
+    return c.json(okBody(safeConfigs, 'success'), 200);
   },
 });
 
@@ -77,7 +77,7 @@ const updateRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const provider = c.req.param('provider') as OAuthProviderType;
     if (!VALID_PROVIDERS.includes(provider)) {
-      return c.json({ code: 400, message: '不支持的提供方', data: null }, 400);
+      return c.json(errBody('不支持的提供方'), 400);
     }
 
     const data = c.req.valid('json');
@@ -98,7 +98,7 @@ const updateRoute = defineOpenAPIRoute({
         .insert(oauthConfigs)
         .values({ provider, ...updateData } as typeof oauthConfigs.$inferInsert)
         .returning();
-      return c.json({ code: 0 as const, message: '保存成功', data: created }, 200);
+      return c.json(okBody(created, '保存成功'), 200);
     }
 
     const [updated] = await db
@@ -106,7 +106,7 @@ const updateRoute = defineOpenAPIRoute({
       .set(updateData)
       .where(eq(oauthConfigs.provider, provider))
       .returning();
-    return c.json({ code: 0 as const, message: '保存成功', data: updated }, 200);
+    return c.json(okBody(updated, '保存成功'), 200);
   },
 });
 

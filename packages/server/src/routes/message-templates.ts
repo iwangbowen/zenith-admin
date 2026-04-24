@@ -6,7 +6,7 @@ import { messageTemplates } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { previewMessageTemplateSchema } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { MessageTemplateDTO, MessageTemplatePreviewDTO as PreviewResultDTO } from '../lib/openapi-dtos';
 
 const messageTemplatesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -81,7 +81,7 @@ const listRoute = defineOpenAPIRoute({
     ]);
 
     return c.json(
-      { code: 0 as const, message: 'ok', data: { list: list.map(toMessageTemplate), total, page, pageSize } },
+      okBody({ list: list.map(toMessageTemplate), total, page, pageSize }),
       200,
     );
   },
@@ -105,8 +105,8 @@ const getRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [row] = await db.select().from(messageTemplates).where(eq(messageTemplates.id, id)).limit(1);
-    if (!row) return c.json({ code: 404, message: '模板不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: 'ok', data: toMessageTemplate(row) }, 200);
+    if (!row) return c.json(errBody('模板不存在', 404), 404);
+    return c.json(okBody(toMessageTemplate(row)), 200);
   },
 });
 
@@ -131,10 +131,10 @@ const createTemplateRoute = defineOpenAPIRoute({
     const data = c.req.valid('json');
     try {
       const [row] = await db.insert(messageTemplates).values(data).returning();
-      return c.json({ code: 0 as const, message: '创建成功', data: toMessageTemplate(row) }, 200);
+      return c.json(okBody(toMessageTemplate(row), '创建成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '模板编码已存在', data: null }, 400);
+        return c.json(errBody('模板编码已存在'), 400);
       }
       throw err;
     }
@@ -171,11 +171,11 @@ const updateTemplateRoute = defineOpenAPIRoute({
         .set({ ...data })
         .where(eq(messageTemplates.id, id))
         .returning();
-      if (!row) return c.json({ code: 404, message: '模板不存在', data: null }, 404);
-      return c.json({ code: 0 as const, message: '更新成功', data: toMessageTemplate(row) }, 200);
+      if (!row) return c.json(errBody('模板不存在', 404), 404);
+      return c.json(okBody(toMessageTemplate(row), '更新成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '模板编码已存在', data: null }, 400);
+        return c.json(errBody('模板编码已存在'), 400);
       }
       throw err;
     }
@@ -202,8 +202,8 @@ const deleteRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [deleted] = await db.delete(messageTemplates).where(eq(messageTemplates.id, id)).returning();
-    if (!deleted) return c.json({ code: 404, message: '模板不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    if (!deleted) return c.json(errBody('模板不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
@@ -228,14 +228,14 @@ const previewRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [row] = await db.select().from(messageTemplates).where(eq(messageTemplates.id, id)).limit(1);
-    if (!row) return c.json({ code: 404, message: '模板不存在', data: null }, 404);
+    if (!row) return c.json(errBody('模板不存在', 404), 404);
 
     const { variables: vars } = c.req.valid('json');
     const renderedSubject = row.subject ? interpolate(row.subject, vars) : null;
     const renderedContent = interpolate(row.content, vars);
 
     return c.json(
-      { code: 0 as const, message: 'ok', data: { subject: renderedSubject, content: renderedContent } },
+      okBody({ subject: renderedSubject, content: renderedContent }),
       200,
     );
   },

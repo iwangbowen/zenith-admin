@@ -7,7 +7,7 @@ import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createFileStorageConfigSchema as _createSchema, updateFileStorageConfigSchema as _updateSchema } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { FileStorageConfigDTO } from '../lib/openapi-dtos';
 
 const fileStorageConfigsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -107,7 +107,7 @@ const listRoute = defineOpenAPIRoute({
       db.$count(fileStorageConfigs, where),
       db.select().from(fileStorageConfigs).where(where).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
     ]);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: list.map(toFileStorageConfig), total, page, pageSize } }, 200);
+    return c.json(okBody({ list: list.map(toFileStorageConfig), total, page, pageSize }), 200);
   },
 });
 
@@ -127,7 +127,7 @@ const defaultRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.isDefault, true)).limit(1);
-    return c.json({ code: 0 as const, message: 'ok', data: config ? toFileStorageConfig(config) : null }, 200);
+    return c.json(okBody(config ? toFileStorageConfig(config) : null), 200);
   },
 });
 
@@ -162,7 +162,7 @@ const createRouteDef = defineOpenAPIRoute({
         .returning();
       return row;
     });
-    return c.json({ code: 0 as const, message: '创建成功', data: toFileStorageConfig(created) }, 200);
+    return c.json(okBody(toFileStorageConfig(created), '创建成功'), 200);
   },
 });
 
@@ -187,8 +187,8 @@ const updateRouteDef = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
     const [current] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
-    if (!current) return c.json({ code: 404, message: '文件配置不存在', data: null }, 404);
-    if (current.isDefault && data.status === 'disabled') return c.json({ code: 400, message: '默认文件服务不能被禁用，请先切换默认服务', data: null }, 400);
+    if (!current) return c.json(errBody('文件配置不存在', 404), 404);
+    if (current.isDefault && data.status === 'disabled') return c.json(errBody('默认文件服务不能被禁用，请先切换默认服务'), 400);
     const updated = await db.transaction(async (tx) => {
       if (data.isDefault) await clearDefaultFlag(tx);
       const [row] = await tx.update(fileStorageConfigs)
@@ -197,7 +197,7 @@ const updateRouteDef = defineOpenAPIRoute({
         .returning();
       return row;
     });
-    return c.json({ code: 0 as const, message: '更新成功', data: toFileStorageConfig(updated) }, 200);
+    return c.json(okBody(toFileStorageConfig(updated), '更新成功'), 200);
   },
 });
 
@@ -221,8 +221,8 @@ const setDefaultRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
-    if (!target) return c.json({ code: 404, message: '文件配置不存在', data: null }, 404);
-    if (target.status !== 'active') return c.json({ code: 400, message: '只有启用状态的文件配置才能设为默认', data: null }, 400);
+    if (!target) return c.json(errBody('文件配置不存在', 404), 404);
+    if (target.status !== 'active') return c.json(errBody('只有启用状态的文件配置才能设为默认'), 400);
     const updated = await db.transaction(async (tx) => {
       await clearDefaultFlag(tx);
       const [row] = await tx.update(fileStorageConfigs)
@@ -231,7 +231,7 @@ const setDefaultRoute = defineOpenAPIRoute({
         .returning();
       return row;
     });
-    return c.json({ code: 0 as const, message: '默认文件服务已更新', data: toFileStorageConfig(updated) }, 200);
+    return c.json(okBody(toFileStorageConfig(updated), '默认文件服务已更新'), 200);
   },
 });
 
@@ -255,12 +255,12 @@ const deleteRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const [target] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
-    if (!target) return c.json({ code: 404, message: '文件配置不存在', data: null }, 404);
-    if (target.isDefault) return c.json({ code: 400, message: '默认文件服务不能删除，请先切换默认服务', data: null }, 400);
+    if (!target) return c.json(errBody('文件配置不存在', 404), 404);
+    if (target.isDefault) return c.json(errBody('默认文件服务不能删除，请先切换默认服务'), 400);
     const valueCount = await db.$count(managedFiles, eq(managedFiles.storageConfigId, id));
-    if (valueCount > 0) return c.json({ code: 400, message: '该文件配置下已有文件记录，不能删除', data: null }, 400);
+    if (valueCount > 0) return c.json(errBody('该文件配置下已有文件记录，不能删除'), 400);
     await db.delete(fileStorageConfigs).where(eq(fileStorageConfigs.id, id));
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 

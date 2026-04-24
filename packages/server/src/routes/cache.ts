@@ -11,7 +11,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import redis from '../lib/redis';
 import { config } from '../config';
-import { validationHook } from '../lib/openapi-schemas';
+import { validationHook, okBody, errBody } from '../lib/openapi-schemas';
 import { CacheItemDTO as CacheItemSchema } from '../lib/openapi-dtos';
 
 const cacheRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -127,7 +127,7 @@ const listRoute = defineOpenAPIRoute({
     if (keyword) keys = keys.filter((k) => k.includes(keyword));
     keys.sort((a, b) => a.localeCompare(b));
     const items = await Promise.all(keys.map(getKeyMeta));
-    return c.json({ code: 0 as const, message: 'success', data: { list: items, total: items.length } }, 200);
+    return c.json(okBody({ list: items, total: items.length }, 'success'), 200);
   },
 });
 
@@ -156,11 +156,11 @@ const deleteOneRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { key } = c.req.valid('json');
-    if (!key) return c.json({ code: 400, message: '参数错误：缺少 key', data: null }, 400);
-    if (!key.startsWith(keyPrefix)) return c.json({ code: 403, message: '只能删除当前命名空间的缓存', data: null }, 403);
+    if (!key) return c.json(errBody('参数错误：缺少 key'), 400);
+    if (!key.startsWith(keyPrefix)) return c.json(errBody('只能删除当前命名空间的缓存', 403), 403);
     const deleted = await redis.del(key);
-    if (deleted === 0) return c.json({ code: 404, message: 'key 不存在', data: null }, 404);
-    return c.json({ code: 0, message: '删除成功', data: null }, 200);
+    if (deleted === 0) return c.json(errBody('key 不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
@@ -187,10 +187,10 @@ const deleteByCategoryRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { segment } = c.req.valid('json');
-    if (!segment) return c.json({ code: 400, message: '参数错误：缺少 segment', data: null }, 400);
+    if (!segment) return c.json(errBody('参数错误：缺少 segment'), 400);
     const keys = await scanKeys(`${keyPrefix}${segment}:*`);
     if (keys.length > 0) await redis.del(...keys);
-    return c.json({ code: 0 as const, message: `已删除 ${keys.length} 条缓存`, data: { count: keys.length } }, 200);
+    return c.json(okBody({ count: keys.length }, `已删除 ${keys.length} 条缓存`), 200);
   },
 });
 
@@ -212,7 +212,7 @@ const deleteAllRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const keys = await scanKeys(`${keyPrefix}*`);
     if (keys.length > 0) await redis.del(...keys);
-    return c.json({ code: 0 as const, message: `已清空 ${keys.length} 条缓存`, data: { count: keys.length } }, 200);
+    return c.json(okBody({ count: keys.length }, `已清空 ${keys.length} 条缓存`), 200);
   },
 });
 

@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 import { DictDTO, DictItemDTO } from '../lib/openapi-dtos';
 
@@ -59,7 +59,7 @@ const listDictsRoute = defineOpenAPIRoute({
       db.$count(dicts, finalWhere),
       db.select().from(dicts).where(finalWhere).orderBy(dicts.id).limit(pageSize).offset(pageOffset(page, pageSize)),
     ]);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: list.map(toDict), total, page, pageSize } }, 200);
+    return c.json(okBody({ list: list.map(toDict), total, page, pageSize }), 200);
   },
 });
 
@@ -88,10 +88,10 @@ const createDictRoute = defineOpenAPIRoute({
         .insert(dicts)
         .values({ ...data, tenantId: getCreateTenantId(c.get('user')) })
         .returning();
-      return c.json({ code: 0 as const, message: '创建成功', data: toDict(dict) }, 200);
+      return c.json(okBody(toDict(dict), '创建成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '字典编码已存在', data: null }, 400);
+        return c.json(errBody('字典编码已存在'), 400);
       }
       throw err;
     }
@@ -127,8 +127,8 @@ const updateDictRoute = defineOpenAPIRoute({
       .set({ ...data })
       .where(and(eq(dicts.id, id), tenantCondition(dicts, c.get('user'))))
       .returning();
-    if (!dict) return c.json({ code: 404, message: '字典不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '更新成功', data: toDict(dict) }, 200);
+    if (!dict) return c.json(errBody('字典不存在', 404), 404);
+    return c.json(okBody(toDict(dict), '更新成功'), 200);
   },
 });
 
@@ -154,8 +154,8 @@ const deleteDictRoute = defineOpenAPIRoute({
       .delete(dicts)
       .where(and(eq(dicts.id, id), tenantCondition(dicts, c.get('user'))))
       .returning();
-    if (!deleted) return c.json({ code: 404, message: '字典不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    if (!deleted) return c.json(errBody('字典不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
@@ -182,7 +182,7 @@ const listItemsRoute = defineOpenAPIRoute({
       .from(dictItems)
       .where(eq(dictItems.dictId, dictId))
       .orderBy(asc(dictItems.sort), asc(dictItems.id));
-    return c.json({ code: 0 as const, message: 'ok', data: items.map(toDictItem) }, 200);
+    return c.json(okBody(items.map(toDictItem)), 200);
   },
 });
 
@@ -204,13 +204,13 @@ const getItemsByCodeRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { code } = c.req.valid('param');
     const [dict] = await db.select({ id: dicts.id }).from(dicts).where(eq(dicts.code, code)).limit(1);
-    if (!dict) return c.json({ code: 404, message: '字典不存在', data: null }, 404);
+    if (!dict) return c.json(errBody('字典不存在', 404), 404);
     const items = await db
       .select()
       .from(dictItems)
       .where(eq(dictItems.dictId, dict.id))
       .orderBy(asc(dictItems.sort));
-    return c.json({ code: 0 as const, message: 'ok', data: items.map(toDictItem) }, 200);
+    return c.json(okBody(items.map(toDictItem)), 200);
   },
 });
 
@@ -238,7 +238,7 @@ const createItemRoute = defineOpenAPIRoute({
     const { id: dictId } = c.req.valid('param');
     const data = c.req.valid('json');
     const [item] = await db.insert(dictItems).values({ ...data, dictId }).returning();
-    return c.json({ code: 0 as const, message: '创建成功', data: toDictItem(item) }, 200);
+    return c.json(okBody(toDictItem(item), '创建成功'), 200);
   },
 });
 
@@ -274,8 +274,8 @@ const updateItemRoute = defineOpenAPIRoute({
       .set({ ...data })
       .where(eq(dictItems.id, itemId))
       .returning();
-    if (!item) return c.json({ code: 404, message: '字典项不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '更新成功', data: toDictItem(item) }, 200);
+    if (!item) return c.json(errBody('字典项不存在', 404), 404);
+    return c.json(okBody(toDictItem(item), '更新成功'), 200);
   },
 });
 
@@ -305,8 +305,8 @@ const deleteItemRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { itemId } = c.req.valid('param');
     const [deleted] = await db.delete(dictItems).where(eq(dictItems.id, itemId)).returning();
-    if (!deleted) return c.json({ code: 404, message: '字典项不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    if (!deleted) return c.json(errBody('字典项不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 

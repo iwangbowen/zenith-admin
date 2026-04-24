@@ -6,7 +6,7 @@ import { streamSSE } from 'hono/streaming';
 import { config } from '../config';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { validationHook, commonErrorResponses, ok, okMsg, ErrorResponse, jsonContent } from '../lib/openapi-schemas';
+import { validationHook, commonErrorResponses, ok, okMsg, ErrorResponse, jsonContent, okBody, errBody } from '../lib/openapi-schemas';
 import { LogFileDTO, LogFileContentDTO } from '../lib/openapi-dtos';
 
 const LOG_DIR = path.resolve(config.log.dir);
@@ -98,7 +98,7 @@ const listRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     if (!fs.existsSync(LOG_DIR)) {
-      return c.json({ code: 0 as const, message: 'success', data: [] }, 200);
+      return c.json(okBody([], 'success'), 200);
     }
 
     const entries = fs.readdirSync(LOG_DIR, { withFileTypes: true });
@@ -115,7 +115,7 @@ const listRoute = defineOpenAPIRoute({
       })
       .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 
-    return c.json({ code: 0 as const, message: 'success', data: files }, 200);
+    return c.json(okBody(files, 'success'), 200);
   },
 });
 
@@ -140,11 +140,11 @@ const contentRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const name = safeFilename(c.req.param('filename'));
-    if (!name) return c.json({ code: 400, message: '无效的文件名', data: null }, 400);
+    if (!name) return c.json(errBody('无效的文件名'), 400);
 
     const filepath = resolveLogPath(name);
     if (!filepath || !fs.existsSync(filepath)) {
-      return c.json({ code: 404, message: '文件不存在', data: null }, 404);
+      return c.json(errBody('文件不存在', 404), 404);
     }
 
     const q = c.req.valid('query');
@@ -153,7 +153,7 @@ const contentRoute = defineOpenAPIRoute({
     const isGzip = name.endsWith('.gz');
     const lines = isGzip ? readGzipLastLines(filepath, n) : readLastLines(filepath, n);
 
-    return c.json({ code: 0 as const, message: 'success', data: { lines } }, 200);
+    return c.json(okBody({ lines }, 'success'), 200);
   },
 });
 
@@ -177,15 +177,15 @@ const deleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const name = safeFilename(c.req.param('filename'));
-    if (!name) return c.json({ code: 400, message: '无效的文件名', data: null }, 400);
+    if (!name) return c.json(errBody('无效的文件名'), 400);
 
     const filepath = resolveLogPath(name);
     if (!filepath || !fs.existsSync(filepath)) {
-      return c.json({ code: 404, message: '文件不存在', data: null }, 404);
+      return c.json(errBody('文件不存在', 404), 404);
     }
 
     fs.unlinkSync(filepath);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
@@ -196,11 +196,11 @@ router.openapiRoutes([listRoute, contentRoute, deleteRoute] as const);
 /** 文件下载（原始文件） */
 router.get('/:filename/download', authMiddleware, guard({ permission: 'system:log:files:download' }), async (c) => {
   const name = safeFilename(c.req.param('filename'));
-  if (!name) return c.json({ code: 400, message: '无效的文件名', data: null }, 400);
+  if (!name) return c.json(errBody('无效的文件名'), 400);
 
   const filepath = resolveLogPath(name);
   if (!filepath || !fs.existsSync(filepath)) {
-    return c.json({ code: 404, message: '文件不存在', data: null }, 404);
+    return c.json(errBody('文件不存在', 404), 404);
   }
 
   const stat = fs.statSync(filepath);
@@ -221,12 +221,12 @@ router.get('/:filename/download', authMiddleware, guard({ permission: 'system:lo
 router.get('/:filename/tail', authMiddleware, guard({ permission: 'system:log:files' }), async (c) => {
   const name = safeFilename(c.req.param('filename'));
   if (!name || name.endsWith('.gz')) {
-    return c.json({ code: 400, message: '压缩文件不支持实时追踪', data: null }, 400);
+    return c.json(errBody('压缩文件不支持实时追踪'), 400);
   }
 
   const filepath = resolveLogPath(name);
   if (!filepath || !fs.existsSync(filepath)) {
-    return c.json({ code: 404, message: '文件不存在', data: null }, 404);
+    return c.json(errBody('文件不存在', 404), 404);
   }
 
   return streamSSE(c, async (stream) => {

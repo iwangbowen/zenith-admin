@@ -6,7 +6,7 @@ import { sql } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import redis from '../lib/redis';
-import { validationHook, commonErrorResponses, ok } from '../lib/openapi-schemas';
+import { validationHook, commonErrorResponses, ok, okBody } from '../lib/openapi-schemas';
 import { MonitorDTO } from '../lib/openapi-dtos';
 
 const monitorRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -184,7 +184,7 @@ const statusRoute = defineOpenAPIRoute({
       redis: redisInfo,
     };
 
-    return c.json({ code: 0 as const, message: 'success', data }, 200);
+    return c.json(okBody(data, 'success'), 200);
   },
 });
 

@@ -138,3 +138,26 @@ export function okMsg(description = '操作成功') {
 export const BatchIdsBody = z.object({
   ids: z.array(z.number().int()),
 }).openapi('BatchIdsBody');
+
+/**
+ * 构造成功响应体，配合 c.json(okBody(data), 200) 使用。
+ * `0 as const` 将类型收窄为字面量 0，满足 z.literal(0) 的类型检查。
+ *
+ * @example
+ * return c.json(okBody(user, '创建成功'), 200);
+ * return c.json(okBody(null, '删除成功'), 200);
+ */
+export const okBody = <T>(data: T, message = 'ok') => ({ code: 0 as const, message, data });
+
+/**
+ * 构造错误响应体，配合 c.json(errBody(msg), 400) 使用。
+ * 当错误码非 400 时，同时传入 code 与 c.json 的第二个 status 参数。
+ *
+ * @example
+ * return c.json(errBody('密码不符合要求'), 400);
+ * return c.json(errBody('用户不存在', 404), 404);
+ */
+export const errBody = <const T extends 400 | 401 | 403 | 404 | 409 | 422 | 423 | 429 | 500 = 400>(
+  message: string,
+  code: T = 400 as T,
+) => ({ code, message, data: null });

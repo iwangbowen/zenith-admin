@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { isSuperAdmin } from '../lib/permissions';
 import { getOnlineCount } from '../lib/session-manager';
 import { tenantCondition } from '../lib/tenant';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okBody, errBody } from '../lib/openapi-schemas';
 import { DashboardStatsDTO as StatsDTO, DashboardChartsDTO as ChartsDTO } from '../lib/openapi-dtos';
 
 const dashboardRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -28,7 +28,7 @@ const statsRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const user = c.get('user');
     if (!isSuperAdmin(user.roles)) {
-      return c.json({ code: 403, message: '无权限', data: null }, 403);
+      return c.json(errBody('无权限', 403), 403);
     }
 
     const todayStart = new Date();
@@ -58,17 +58,7 @@ const statsRouteDef = defineOpenAPIRoute({
     ]);
 
     return c.json(
-      {
-        code: 0 as const,
-        message: 'success',
-        data: {
-          totalUsers,
-          activeUsers,
-          onlineUsers,
-          todayLogins,
-          todayOperations,
-        },
-      },
+      okBody({ totalUsers, activeUsers, onlineUsers, todayLogins, todayOperations }),
       200,
     );
   },
@@ -91,7 +81,7 @@ const chartsRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const user = c.get('user');
     if (!isSuperAdmin(user.roles)) {
-      return c.json({ code: 403, message: '无权限', data: null }, 403);
+      return c.json(errBody('无权限', 403), 403);
     }
 
     const now = new Date();
@@ -179,15 +169,7 @@ const chartsRouteDef = defineOpenAPIRoute({
     const userActivity = dates.map((date) => ({ date, activeUsers: activityMap[date] ?? 0 }));
 
     return c.json(
-      {
-        code: 0 as const,
-        message: 'success',
-        data: {
-          loginTrend,
-          operationTypes: operationTypeRows.map((r) => ({ module: r.module ?? '未知', count: r.count })),
-          userActivity,
-        },
-      },
+      okBody({ loginTrend, operationTypes: operationTypeRows.map((r) => ({ module: r.module ?? '未知', count: r.count })), userActivity }),
       200,
     );
   },

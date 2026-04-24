@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup';
 import logger from '../lib/logger';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { DbBackupItemDTO as BackupItem } from '../lib/openapi-dtos';
 
 import { createBackupSchema } from '@zenith/shared';
@@ -63,22 +63,18 @@ const listRoute = defineOpenAPIRoute({
     ]);
 
     return c.json(
-      {
-        code: 0 as const,
-        message: 'ok',
-        data: {
-          list: rows.map(({ createdByUser, startedAt, completedAt, createdAt, ...rest }) => ({
-            ...rest,
-            createdByName: createdByUser?.nickname ?? null,
-            startedAt: startedAt?.toISOString() || null,
-            completedAt: completedAt?.toISOString() || null,
-            createdAt: createdAt.toISOString(),
-          })),
-          total: count,
-          page,
-          pageSize,
-        },
-      },
+      okBody({
+        list: rows.map(({ createdByUser, startedAt, completedAt, createdAt, ...rest }) => ({
+          ...rest,
+          createdByName: createdByUser?.nickname ?? null,
+          startedAt: startedAt?.toISOString() || null,
+          completedAt: completedAt?.toISOString() || null,
+          createdAt: createdAt.toISOString(),
+        })),
+        total: count,
+        page,
+        pageSize,
+      }),
       200,
     );
   },
@@ -128,11 +124,7 @@ const createRouteDef = defineOpenAPIRoute({
     });
 
     return c.json(
-      {
-        code: 0 as const,
-        message: '备份任务已创建',
-        data: { id: backup.id, name: backupName, status: 'pending' },
-      },
+      okBody({ id: backup.id, name: backupName, status: 'pending' }, '备份任务已创建'),
       200,
     );
   },
@@ -164,14 +156,14 @@ const deleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    if (!id) return c.json({ code: 400, message: '无效 ID', data: null }, 400);
+    if (!id) return c.json(errBody('无效 ID'), 400);
 
     const result = await db.delete(dbBackups).where(eq(dbBackups.id, id)).returning();
     if (result.length === 0) {
-      return c.json({ code: 404, message: '备份记录不存在', data: null }, 404);
+      return c.json(errBody('备份记录不存在', 404), 404);
     }
 
-    return c.json({ code: 0 as const, message: '已删除', data: null }, 200);
+    return c.json(okBody(null, '已删除'), 200);
   },
 });
 

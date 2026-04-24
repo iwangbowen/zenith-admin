@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { isSuperAdmin, getUserMenuIds } from '../lib/permissions';
 import type { Menu } from '@zenith/shared';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 import { MenuDTO } from '../lib/openapi-dtos';
 
 const menusRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -91,7 +91,7 @@ const userMenuRoute = defineOpenAPIRoute({
     const allMenus = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
 
     if (isSuperAdmin(user.roles)) {
-      return c.json({ code: 0 as const, message: 'ok', data: buildTree(allMenus.map(toMenu)) }, 200);
+      return c.json(okBody(buildTree(allMenus.map(toMenu))), 200);
     }
 
     const allowedMenuIds = new Set(await getUserMenuIds(user.userId));
@@ -106,7 +106,7 @@ const userMenuRoute = defineOpenAPIRoute({
     }
 
     const filtered = allMenus.filter((m) => allowedMenuIds.has(m.id) || !m.visible);
-    return c.json({ code: 0 as const, message: 'ok', data: buildTree(filtered.map(toMenu)) }, 200);
+    return c.json(okBody(buildTree(filtered.map(toMenu))), 200);
   },
 });
 
@@ -125,7 +125,7 @@ const listRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
-    return c.json({ code: 0 as const, message: 'ok', data: buildTree(list.map(toMenu)) }, 200);
+    return c.json(okBody(buildTree(list.map(toMenu))), 200);
   },
 });
 
@@ -144,7 +144,7 @@ const flatRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
-    return c.json({ code: 0 as const, message: 'ok', data: list.map(toMenu) }, 200);
+    return c.json(okBody(list.map(toMenu)), 200);
   },
 });
 
@@ -165,7 +165,7 @@ const createMenuRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const data = c.req.valid('json');
     const [menu] = await db.insert(menus).values(data).returning();
-    return c.json({ code: 0 as const, message: '创建成功', data: toMenu(menu) }, 200);
+    return c.json(okBody(toMenu(menu), '创建成功'), 200);
   },
 });
 
@@ -195,8 +195,8 @@ const updateMenuRoute = defineOpenAPIRoute({
       .set({ ...data })
       .where(eq(menus.id, id))
       .returning();
-    if (!menu) return c.json({ code: 404, message: '菜单不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '更新成功', data: toMenu(menu) }, 200);
+    if (!menu) return c.json(errBody('菜单不存在', 404), 404);
+    return c.json(okBody(toMenu(menu), '更新成功'), 200);
   },
 });
 
@@ -227,7 +227,7 @@ const deleteMenuRoute = defineOpenAPIRoute({
     for (const mid of toDelete) {
       await db.delete(menus).where(and(eq(menus.id, mid)));
     }
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
