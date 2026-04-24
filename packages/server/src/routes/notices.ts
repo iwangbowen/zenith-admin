@@ -10,7 +10,7 @@ import { exportToExcel } from '../lib/excel-export';
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import { noticeRecipientSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { NoticeDTO, NoticeReadStatsDTO } from '../lib/openapi-dtos';
 
 const noticesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -249,7 +249,7 @@ const exportRouteDef = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:notice:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' },
+      ...okExcel(),
     },
   }),
   handler: async (c) => {
@@ -267,9 +267,7 @@ const exportRouteDef = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
       '通知公告',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=notices.xlsx');
-    return c.body(buffer) as never;
+    return excelBody(c, buffer, 'notices.xlsx');
   },
 });
 

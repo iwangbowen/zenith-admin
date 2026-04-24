@@ -9,7 +9,7 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { isPlatformAdmin } from '../lib/tenant';
 import type { AppEnv } from '../lib/context';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { TenantDTO } from '../lib/openapi-dtos';
 
 const tenantsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -97,7 +97,7 @@ const exportRouteDef = defineOpenAPIRoute({
     summary: '导出租户',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, platformAdminMiddleware] as const,
-    responses: { 200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' } },
+    responses: { ...okExcel() },
   }),
   handler: async (c) => {
     const rows = await db.select().from(tenants).orderBy(desc(tenants.id));
@@ -116,9 +116,7 @@ const exportRouteDef = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, expireAt: r.expireAt?.toISOString() ?? '', createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })),
       '租户列表',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=tenants.xlsx');
-    return c.body(buffer) as never;
+    return excelBody(c, buffer, 'tenants.xlsx');
   },
 });
 

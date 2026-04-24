@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
-import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okBody } from '../lib/openapi-schemas';
+import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { OperationLogDTO, OperationLogStatsDTO as StatsDTO } from '../lib/openapi-dtos';
 
 const operationLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -151,10 +151,7 @@ const exportRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:operation' })] as const,
     responses: {
-      200: {
-        content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } },
-        description: 'Excel 文件',
-      },
+      ...okExcel('Excel 文件'),
     },
   }),
   handler: async (c) => {
@@ -175,9 +172,7 @@ const exportRoute = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
       '操作日志',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=operation-logs.xlsx');
-    return c.body(buffer) as never;
+    return excelBody(c, buffer, 'operation-logs.xlsx');
   },
 });
 

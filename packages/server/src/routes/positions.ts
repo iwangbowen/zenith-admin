@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { PositionDTO } from '../lib/openapi-dtos';
 
 const positionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -263,10 +263,7 @@ const exportRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:position:list' })] as const,
     responses: {
-      200: {
-        content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } },
-        description: 'Excel 文件',
-      },
+      ...okExcel('Excel 文件'),
     },
   }),
   handler: async (c) => {
@@ -288,9 +285,7 @@ const exportRoute = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, remark: r.remark ?? '', createdAt: r.createdAt.toISOString() })),
       '岗位列表',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=positions.xlsx');
-    return c.body(buffer) as never;
+    return excelBody(c, buffer, 'positions.xlsx');
   },
 });
 

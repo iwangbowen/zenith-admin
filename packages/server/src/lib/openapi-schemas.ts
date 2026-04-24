@@ -8,6 +8,7 @@
  * 分页响应：{ list, total, page, pageSize }
  */
 import { z, type Hook } from '@hono/zod-openapi';
+import type { Context } from 'hono';
 
 /**
  * 统一验证失败 Hook：将 Zod 校验错误转为 { code: 400, message, data: null }
@@ -134,6 +135,20 @@ export function okMsg(description = '操作成功') {
   };
 }
 
+/** Excel 文件下载响应（OpenAPI responses 块） */
+export function okExcel(description = 'Excel 文件') {
+  return {
+    200: {
+      content: {
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+          schema: z.string().openapi({ format: 'binary' }),
+        },
+      },
+      description,
+    },
+  } as const;
+}
+
 /** 批量 ID 操作请求体（批量删除 / 批量更新等） */
 export const BatchIdsBody = z.object({
   ids: z.array(z.number().int()),
@@ -161,3 +176,17 @@ export const errBody = <const T extends 400 | 401 | 403 | 404 | 409 | 413 | 422 
   message: string,
   code: T = 400 as T,
 ) => ({ code, message, data: null });
+
+/**
+ * 设置 Excel 响应头并返回文件流，配合 `return excelBody(c, buffer, 'filename.xlsx')` 使用。
+ * 返回类型为 `never`，可满足任意 handler 的类型约束（等同于 `c.body(buffer) as never`）。
+ *
+ * @example
+ * return excelBody(c, buffer, 'users.xlsx');
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function excelBody(c: Context<any>, buffer: ArrayBuffer | Buffer, filename: string): never {
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+  return c.body(buffer as BodyInit) as never;
+}

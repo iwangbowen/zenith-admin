@@ -16,7 +16,7 @@ import { unlockUser } from '../lib/session-manager';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import type { User } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { UserDTO, ImportResultDTO } from '../lib/openapi-dtos';
 
 const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -355,7 +355,7 @@ const importTemplateRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:user:import' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' },
+      ...okExcel(),
     },
   }),
   handler: async (c) => {
@@ -381,9 +381,7 @@ const importTemplateRoute = defineOpenAPIRoute({
       roleCodes: 'normal_user', status: 'active',
     });
     const buffer = await workbook.xlsx.writeBuffer();
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=user_import_template.xlsx');
-    return c.body(buffer);
+    return excelBody(c, buffer, 'user_import_template.xlsx');
   },
 });
 
@@ -521,7 +519,7 @@ const exportUsersRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:user:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' },
+      ...okExcel(),
     },
   }),
   handler: async (c) => {
@@ -548,9 +546,7 @@ const exportUsersRoute = defineOpenAPIRoute({
       list.map((r) => ({ ...r, departmentName: r.departmentName ?? '', createdAt: r.createdAt.toISOString() })),
       '用户列表',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=users.xlsx');
-    return c.body(buffer);
+    return excelBody(c, buffer, 'users.xlsx');
   },
 });
 

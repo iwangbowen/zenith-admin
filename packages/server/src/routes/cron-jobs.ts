@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { scheduleJob, stopJob, runJobOnce, validateCronExpression, getRegisteredHandlers } from '../lib/cron-scheduler';
 import { exportToExcel } from '../lib/excel-export';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { CronJobDTO, CronJobLogDTO } from '../lib/openapi-dtos';
 
 const cronJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -235,7 +235,7 @@ const exportRouteDef = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:cronjob:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel 文件' },
+      ...okExcel('Excel 文件'),
     },
   }),
   handler: async (c) => {
@@ -254,9 +254,7 @@ const exportRouteDef = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, lastRunAt: r.lastRunAt?.toISOString() ?? '', createdAt: r.createdAt.toISOString() })),
       '定时任务',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=cron-jobs.xlsx');
-    return c.body(buffer) as never;
+    return excelBody(c, buffer, 'cron-jobs.xlsx');
   },
 });
 

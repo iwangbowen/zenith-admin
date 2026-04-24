@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO } from '../lib/openapi-dtos';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -234,10 +234,7 @@ const exportRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:file:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: {
-        content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } },
-        description: 'Excel 文件',
-      },
+      ...okExcel('Excel 文件'),
     },
   }),
   handler: async (c) => {
@@ -258,9 +255,7 @@ const exportRoute = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
       '文件列表',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=files.xlsx');
-    return c.body(buffer) as never;
+    return excelBody(c, buffer, 'files.xlsx');
   },
 });
 

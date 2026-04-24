@@ -8,7 +8,7 @@ import { exportToExcel } from '../lib/excel-export';
 import type { Department } from '@zenith/shared';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { DepartmentDTO } from '../lib/openapi-dtos';
 
 const departmentsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -235,7 +235,7 @@ const exportRouteDef = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:department:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel 文件' },
+      ...okExcel('Excel 文件'),
     },
   }),
   handler: async (c) => {
@@ -254,9 +254,7 @@ const exportRouteDef = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, leader: r.leader ?? '', phone: r.phone ?? '', createdAt: r.createdAt.toISOString() })),
       '部门列表',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=departments.xlsx');
-    return c.body(buffer) as never;
+    return excelBody(c, buffer, 'departments.xlsx');
   },
 });
 

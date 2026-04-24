@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
-import { PaginationQuery, validationHook, commonErrorResponses, okPaginated, okBody } from '../lib/openapi-schemas';
+import { PaginationQuery, validationHook, commonErrorResponses, okPaginated, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { LoginLogDTO as LoginLogItem } from '../lib/openapi-dtos';
 
 const loginLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -82,14 +82,7 @@ const exportRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:login' })] as const,
     responses: {
-      200: {
-        description: 'Excel 文件',
-        content: {
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
-            schema: z.string().openapi({ format: 'binary' }),
-          },
-        },
-      },
+      ...okExcel('Excel 文件'),
     },
   }),
   handler: async (c) => {
@@ -110,9 +103,7 @@ const exportRoute = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, message: r.message ?? '', createdAt: r.createdAt.toISOString() })),
       '登录日志',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=login-logs.xlsx');
-    return c.body(buffer);
+    return excelBody(c, buffer, 'login-logs.xlsx');
   },
 });
 

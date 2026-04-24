@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { getPasswordPolicy } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { SystemConfigDTO, PublicConfigDTO, PasswordPolicyDTO } from '../lib/openapi-dtos';
 
 const systemConfigsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -249,10 +249,7 @@ const exportRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:config:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: {
-        content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } },
-        description: 'Excel 文件',
-      },
+      ...okExcel('Excel 文件'),
     },
   }),
   handler: async (c) => {
@@ -272,9 +269,7 @@ const exportRoute = defineOpenAPIRoute({
       rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })),
       '系统配置',
     );
-    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    c.header('Content-Disposition', 'attachment; filename=system-configs.xlsx');
-    return c.body(buffer) as never;
+    return excelBody(c, buffer, 'system-configs.xlsx');
   },
 });
 
