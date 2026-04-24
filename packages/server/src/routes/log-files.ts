@@ -6,7 +6,7 @@ import { streamSSE } from 'hono/streaming';
 import { config } from '../config';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { validationHook, commonErrorResponses, ok, okMsg } from '../lib/openapi-schemas';
+import { validationHook, commonErrorResponses, ok, okMsg, ErrorResponse, jsonContent } from '../lib/openapi-schemas';
 import { LogFileDTO, LogFileContentDTO } from '../lib/openapi-dtos';
 
 const LOG_DIR = path.resolve(config.log.dir);
@@ -98,7 +98,7 @@ const listRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     if (!fs.existsSync(LOG_DIR)) {
-      return c.json({ code: 0, message: 'success', data: [] });
+      return c.json({ code: 0 as const, message: 'success', data: [] }, 200);
     }
 
     const entries = fs.readdirSync(LOG_DIR, { withFileTypes: true });
@@ -115,7 +115,7 @@ const listRoute = defineOpenAPIRoute({
       })
       .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 
-    return c.json({ code: 0, message: 'success', data: files });
+    return c.json({ code: 0 as const, message: 'success', data: files }, 200);
   },
 });
 
@@ -128,12 +128,14 @@ const contentRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:files' })] as const,
     request: {
-      params: z.object({ filename: z.string() }),
+      params: z.object({ filename: z.string().openapi({ param: { name: 'filename', in: 'path' }, example: 'app.log' }) }),
       query: z.object({ lines: z.coerce.number().min(1).max(5000).default(500).optional() }),
     },
     responses: {
       ...ok(LogFileContentDTO, '文件内容'),
       ...commonErrorResponses,
+      400: { content: jsonContent(ErrorResponse), description: '无效的文件名' },
+      404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
     },
   }),
   handler: async (c) => {
@@ -151,7 +153,7 @@ const contentRoute = defineOpenAPIRoute({
     const isGzip = name.endsWith('.gz');
     const lines = isGzip ? readGzipLastLines(filepath, n) : readLastLines(filepath, n);
 
-    return c.json({ code: 0, message: 'success', data: { lines } });
+    return c.json({ code: 0 as const, message: 'success', data: { lines } }, 200);
   },
 });
 
@@ -164,11 +166,13 @@ const deleteRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:files:delete' })] as const,
     request: {
-      params: z.object({ filename: z.string() }),
+      params: z.object({ filename: z.string().openapi({ param: { name: 'filename', in: 'path' }, example: 'app.log' }) }),
     },
     responses: {
       ...okMsg('删除成功'),
       ...commonErrorResponses,
+      400: { content: jsonContent(ErrorResponse), description: '无效的文件名' },
+      404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
     },
   }),
   handler: async (c) => {
@@ -181,7 +185,7 @@ const deleteRoute = defineOpenAPIRoute({
     }
 
     fs.unlinkSync(filepath);
-    return c.json({ code: 0, message: '删除成功', data: null });
+    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
   },
 });
 

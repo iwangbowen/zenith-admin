@@ -77,7 +77,7 @@ export default function MenuSearchInput({ menus }: MenuSearchInputProps) {
       }}
       onSelect={(v) => {
         justSelectedRef.current = true;
-        const id = Number(v as string);
+        const id = Number((v as unknown) as string);
         const item = menus.find((m) => m.id === id);
         if (item?.path) {
           navigate(item.path);
