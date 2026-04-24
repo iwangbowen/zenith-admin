@@ -6,7 +6,7 @@ import { messageTemplates } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { previewMessageTemplateSchema } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { MessageTemplateDTO, MessageTemplatePreviewDTO as PreviewResultDTO } from '../lib/openapi-dtos';
 
 const messageTemplatesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -45,17 +45,15 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:message-template:list' })] as const,
     request: {
-      query: z.object({
+      query: PaginationQuery.extend({
         keyword: z.string().optional(),
         channel: z.enum(['email', 'sms', 'in_app']).optional(),
         status: z.enum(['active', 'disabled']).optional(),
-        page: z.coerce.number().optional(),
-        pageSize: z.coerce.number().optional(),
       }),
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(MessageTemplateDTO)), description: '模板列表' },
+      ...okPaginated(MessageTemplateDTO, '模板列表'),
     },
   }),
   handler: async (c) => {
@@ -97,10 +95,10 @@ const getRoute = defineOpenAPIRoute({
     summary: '获取单个模板',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:message-template:list' })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(MessageTemplateDTO)), description: '模板详情' },
+      ...ok(MessageTemplateDTO, '模板详情'),
       404: { content: jsonContent(ErrorResponse), description: '模板不存在' },
     },
   }),
@@ -125,7 +123,7 @@ const createTemplateRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createMessageTemplateSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(MessageTemplateDTO)), description: '创建成功' },
+      ...ok(MessageTemplateDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
     },
   }),
@@ -154,12 +152,12 @@ const updateTemplateRoute = defineOpenAPIRoute({
       authMiddleware, guard({ permission: 'system:message-template:update', audit: { description: '更新消息模板', module: '消息模板' } }),
     ] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(updateMessageTemplateSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(MessageTemplateDTO)), description: '更新成功' },
+      ...ok(MessageTemplateDTO, '更新成功'),
       400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
       404: { content: jsonContent(ErrorResponse), description: '模板不存在' },
     },
@@ -194,10 +192,10 @@ const deleteRoute = defineOpenAPIRoute({
     middleware: [
       authMiddleware, guard({ permission: 'system:message-template:delete', audit: { description: '删除消息模板', module: '消息模板' } }),
     ] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '模板不存在' },
     },
   }),
@@ -218,12 +216,12 @@ const previewRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:message-template:list' })] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(previewMessageTemplateSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(PreviewResultDTO)), description: '预览结果' },
+      ...ok(PreviewResultDTO, '预览结果'),
       404: { content: jsonContent(ErrorResponse), description: '模板不存在' },
     },
   }),

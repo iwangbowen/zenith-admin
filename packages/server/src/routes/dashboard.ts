@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { isSuperAdmin } from '../lib/permissions';
 import { getOnlineCount } from '../lib/session-manager';
 import { tenantCondition } from '../lib/tenant';
-import { apiResponse, ErrorResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok } from '../lib/openapi-schemas';
 import { DashboardStatsDTO as StatsDTO, DashboardChartsDTO as ChartsDTO } from '../lib/openapi-dtos';
 
 const dashboardRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -21,7 +21,7 @@ const statsRouteDef = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(StatsDTO)), description: '统计数据' },
+      ...ok(StatsDTO, '统计数据'),
       403: { content: jsonContent(ErrorResponse), description: '无权限' },
     },
   }),
@@ -84,7 +84,7 @@ const chartsRouteDef = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(ChartsDTO)), description: '图表数据' },
+      ...ok(ChartsDTO, '图表数据'),
       403: { content: jsonContent(ErrorResponse), description: '无权限' },
     },
   }),

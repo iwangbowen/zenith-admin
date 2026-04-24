@@ -9,7 +9,7 @@ import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
-import { apiResponse, paginatedResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { RoleDTO, UserDTO } from '../lib/openapi-dtos';
 
 const rolesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -35,7 +35,7 @@ const allRoute = defineOpenAPIRoute({
     request: {},
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(RoleDTO))), description: '全量角色' },
+      ...ok(z.array(RoleDTO), '全量角色'),
     },
   }),
   handler: async (c) => {
@@ -54,18 +54,16 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
     request: {
-      query: z.object({
+      query: PaginationQuery.extend({
         keyword: z.string().optional(),
         status: z.enum(['active', 'disabled']).optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
-        page: z.coerce.number().optional().default(1),
-        pageSize: z.coerce.number().optional().default(10),
       }),
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(RoleDTO)), description: '角色列表' },
+      ...okPaginated(RoleDTO, '角色列表'),
     },
   }),
   handler: async (c) => {
@@ -100,10 +98,10 @@ const getOneRoute = defineOpenAPIRoute({
     summary: '获取单个角色（含 menuIds）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(RoleDTO)), description: '角色详情' },
+      ...ok(RoleDTO, '角色详情'),
       404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
@@ -133,7 +131,7 @@ const createRoleRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createRoleSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(RoleDTO)), description: '创建成功' },
+      ...ok(RoleDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
     },
   }),
@@ -163,12 +161,12 @@ const updateRoleRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:update', audit: { description: '更新角色', module: '角色管理' } })] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(updateRoleSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(RoleDTO)), description: '更新成功' },
+      ...ok(RoleDTO, '更新成功'),
       404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
@@ -193,10 +191,10 @@ const deleteRoute = defineOpenAPIRoute({
     summary: '删除角色',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
@@ -220,12 +218,12 @@ const assignMenusRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:assign', audit: { description: '分配角色菜单', module: '角色管理' } })] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(assignRoleMenusSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '菜单权限已更新' },
+      ...okMsg('菜单权限已更新'),
       404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
@@ -259,10 +257,10 @@ const getUsersRoute = defineOpenAPIRoute({
     summary: '获取角色关联用户',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(UserDTO))), description: '用户列表' },
+      ...ok(z.array(UserDTO), '用户列表'),
       404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),
@@ -299,12 +297,12 @@ const assignUsersRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:role:assign', audit: { description: '分配角色用户', module: '角色管理' } })] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(assignRoleUsersSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '用户分配已更新' },
+      ...okMsg('用户分配已更新'),
       404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
     },
   }),

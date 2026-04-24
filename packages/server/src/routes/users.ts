@@ -15,7 +15,7 @@ import { unlockUser } from '../lib/session-manager';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import type { Role, Position, User } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { UserDTO, ImportResultDTO } from '../lib/openapi-dtos';
 
 const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -175,7 +175,7 @@ const getAllUsersRoute = defineOpenAPIRoute({
     request: {},
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(UserDTO))), description: '全量用户' },
+      ...ok(z.array(UserDTO), '全量用户'),
     },
   }),
   handler: async (c) => {
@@ -206,7 +206,7 @@ const listUsersRoute = defineOpenAPIRoute({
     }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(UserDTO)), description: 'ok' },
+      ...okPaginated(UserDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -254,7 +254,7 @@ const createUserRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createUserSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(UserDTO)), description: '创建成功' },
+      ...ok(UserDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
@@ -316,7 +316,7 @@ const batchDeleteUsersRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(batchIdsSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
@@ -341,7 +341,7 @@ const batchStatusUsersRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(batchStatusSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: 'ok' },
+      ...okMsg('ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
@@ -408,7 +408,7 @@ const importUsersRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(ImportResultDTO)), description: 'ok' },
+      ...ok(ImportResultDTO, 'ok'),
       400: { content: jsonContent(ErrorResponse), description: '文件无效' },
     },
   }),
@@ -566,10 +566,10 @@ const updateUserPasswordRoute = defineOpenAPIRoute({
     tags: ['Users'], summary: '修改用户密码',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:user:update', audit: { description: '修改用户密码', module: '用户管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(resetUserPasswordSchema), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(resetUserPasswordSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: 'ok' },
+      ...okMsg('ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
     },
@@ -596,10 +596,10 @@ const unlockUserRoute = defineOpenAPIRoute({
     tags: ['Users'], summary: '解锁账号',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:user:update', audit: { description: '解除账号锁定', module: '用户管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: 'ok' },
+      ...okMsg('ok'),
       404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
     },
   }),
@@ -620,10 +620,10 @@ const updateUserRoute = defineOpenAPIRoute({
     tags: ['Users'], summary: '更新用户',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:user:update', audit: { description: '更新用户', module: '用户管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateUserSchema), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(updateUserSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(UserDTO)), description: '更新成功' },
+      ...ok(UserDTO, '更新成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
     },
@@ -693,10 +693,10 @@ const deleteUserRoute = defineOpenAPIRoute({
     tags: ['Users'], summary: '删除用户',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:user:delete', audit: { description: '删除用户', module: '用户管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
     },
   }),

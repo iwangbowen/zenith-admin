@@ -4,7 +4,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { userApiTokens } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import { apiResponse, ErrorResponse, jsonContent, MessageResponse, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam } from '../lib/openapi-schemas';
 import { ApiTokenListItemDTO as TokenListItem, ApiTokenCreatedDTO as TokenCreated } from '../lib/openapi-dtos';
 
 const apiTokensRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -26,7 +26,7 @@ const list = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(TokenListItem))), description: 'Token 列表' },
+      ...ok(z.array(TokenListItem), 'Token 列表'),
     },
   }),
   handler: async (c) => {
@@ -68,7 +68,7 @@ const create = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(TokenCreated)), description: '创建成功' },
+      ...ok(TokenCreated, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误或数量超限' },
     },
   }),
@@ -121,11 +121,11 @@ const deleteToken = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: 'Token 已撤销' },
+      ...okMsg('Token 已撤销'),
       400: { content: jsonContent(ErrorResponse), description: '无效 ID' },
       404: { content: jsonContent(ErrorResponse), description: 'Token 不存在' },
     },

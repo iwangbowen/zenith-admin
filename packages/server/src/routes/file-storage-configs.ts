@@ -6,7 +6,7 @@ import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createFileStorageConfigSchema as _createSchema, updateFileStorageConfigSchema as _updateSchema } from '@zenith/shared';
-import { apiResponse, paginatedResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { FileStorageConfigDTO } from '../lib/openapi-dtos';
 
 const fileStorageConfigsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -91,10 +91,10 @@ const listRoute = defineOpenAPIRoute({
     summary: '存储配置列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:config' })] as const,
-    request: { query: z.object({ status: z.string().optional(), startTime: z.string().optional(), endTime: z.string().optional(), page: z.coerce.number().optional().default(1), pageSize: z.coerce.number().optional().default(10) }) },
+    request: { query: PaginationQuery.extend({ status: z.string().optional(), startTime: z.string().optional(), endTime: z.string().optional() }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(FileStorageConfigDTO)), description: 'ok' },
+      ...okPaginated(FileStorageConfigDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -123,7 +123,7 @@ const defaultRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:file:config' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(FileStorageConfigDTO.nullable())), description: 'ok' },
+      ...ok(FileStorageConfigDTO.nullable(), 'ok'),
     },
   }),
   handler: async (c) => {
@@ -144,7 +144,7 @@ const createRouteDef = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createFileStorageConfigSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(FileStorageConfigDTO)), description: '创建成功' },
+      ...ok(FileStorageConfigDTO, '创建成功'),
     },
   }),
   handler: async (c) => {
@@ -176,10 +176,10 @@ const updateRouteDef = defineOpenAPIRoute({
     summary: '更新配置',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:config:update', audit: { description: '更新文件存储配置', module: '文件存储配置' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateFileStorageConfigSchema), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(updateFileStorageConfigSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(FileStorageConfigDTO)), description: '更新成功' },
+      ...ok(FileStorageConfigDTO, '更新成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
@@ -211,10 +211,10 @@ const setDefaultRoute = defineOpenAPIRoute({
     summary: '设为默认',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:config:default', audit: { description: '设置默认文件存储', module: '文件存储配置', recordBody: false } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(FileStorageConfigDTO)), description: 'ok' },
+      ...ok(FileStorageConfigDTO, 'ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
@@ -245,10 +245,10 @@ const deleteRouteDef = defineOpenAPIRoute({
     summary: '删除配置',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:config:delete', audit: { description: '删除文件存储配置', module: '文件存储配置' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },

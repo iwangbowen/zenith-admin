@@ -9,7 +9,7 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { isPlatformAdmin } from '../lib/tenant';
 import type { AppEnv } from '../lib/context';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { TenantDTO } from '../lib/openapi-dtos';
 
 const tenantsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -55,7 +55,7 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, platformAdminMiddleware] as const,
     request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.string().optional() }) },
-    responses: { 200: { content: jsonContent(paginatedResponse(TenantDTO)), description: 'ok' }, ...commonErrorResponses },
+    responses: { ...okPaginated(TenantDTO, 'ok'), ...commonErrorResponses },
   }),
   handler: async (c) => {
     const { page = 1, pageSize = 10, keyword, status } = c.req.valid('query');
@@ -80,7 +80,7 @@ const allRoute = defineOpenAPIRoute({
     summary: '全部租户',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, platformAdminMiddleware] as const,
-    responses: { 200: { content: jsonContent(apiResponse(z.array(TenantDTO))), description: 'ok' }, ...commonErrorResponses },
+    responses: { ...ok(z.array(TenantDTO), 'ok'), ...commonErrorResponses },
   }),
   handler: async (c) => {
     const rows = await db.select({ id: tenants.id, name: tenants.name, code: tenants.code, status: tenants.status }).from(tenants).orderBy(tenants.id);
@@ -131,9 +131,9 @@ const detailRoute = defineOpenAPIRoute({
     summary: '租户详情',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, platformAdminMiddleware] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
-      200: { content: jsonContent(apiResponse(TenantDTO)), description: 'ok' },
+      ...ok(TenantDTO, 'ok'),
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
@@ -156,7 +156,7 @@ const createRouteDef = defineOpenAPIRoute({
     middleware: [authMiddleware, platformAdminMiddleware, guard({ audit: { module: '租户管理', description: '创建租户' } })] as const,
     request: { body: { content: jsonContent(createTenantSchema), required: true } },
     responses: {
-      200: { content: jsonContent(apiResponse(TenantDTO)), description: '创建成功' },
+      ...ok(TenantDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
@@ -178,9 +178,9 @@ const updateRouteDef = defineOpenAPIRoute({
     summary: '更新租户',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, platformAdminMiddleware, guard({ audit: { module: '租户管理', description: '更新租户' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateTenantSchema), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(updateTenantSchema), required: true } },
     responses: {
-      200: { content: jsonContent(apiResponse(TenantDTO)), description: '更新成功' },
+      ...ok(TenantDTO, '更新成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
@@ -212,9 +212,9 @@ const deleteRouteDef = defineOpenAPIRoute({
     summary: '删除租户',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, platformAdminMiddleware, guard({ audit: { module: '租户管理', description: '删除租户' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),

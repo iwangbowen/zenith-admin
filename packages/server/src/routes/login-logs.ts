@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
-import { paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, okPaginated } from '../lib/openapi-schemas';
 import { LoginLogDTO as LoginLogItem } from '../lib/openapi-dtos';
 
 const loginLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -22,9 +22,7 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:login' })] as const,
     request: {
-      query: z.object({
-        page: z.coerce.number().optional(),
-        pageSize: z.coerce.number().optional(),
+      query: PaginationQuery.extend({
         username: z.string().optional(),
         status: z.enum(['success', 'fail']).optional(),
         startTime: z.string().optional(),
@@ -32,7 +30,7 @@ const listRoute = defineOpenAPIRoute({
       }),
     },
     responses: {
-      200: { content: jsonContent(paginatedResponse(LoginLogItem)), description: '登录日志列表' },
+      ...okPaginated(LoginLogItem, '登录日志列表'),
       ...commonErrorResponses,
     },
   }),

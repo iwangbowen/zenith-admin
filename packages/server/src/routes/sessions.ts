@@ -6,15 +6,13 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { getOnlineSessions, forceLogout } from '../lib/session-manager';
 import { sendToUser, closeUserConnections } from '../lib/ws-manager';
-import { validationHook, paginatedResponse, jsonContent, commonErrorResponses } from '../lib/openapi-schemas';
+import { validationHook, jsonContent, commonErrorResponses, PaginationQuery, okPaginated } from '../lib/openapi-schemas';
 import { OnlineSessionDTO as SessionItemSchema } from '../lib/openapi-dtos';
 import { pageOffset } from '../lib/pagination';
 
 const sessionsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
-const SessionListResponse = paginatedResponse(SessionItemSchema);
-
 const ForceLogoutResponse = z.object({
   code: z.number(),
   message: z.string(),
@@ -31,18 +29,13 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:session:list' })] as const,
     request: {
-      query: z.object({
-        page: z.coerce.number().int().min(1).optional().default(1),
-        pageSize: z.coerce.number().int().min(1).max(200).optional().default(10),
+      query: PaginationQuery.extend({
         keyword: z.string().optional(),
       }),
     },
     responses: {
       ...commonErrorResponses,
-      200: {
-        content: jsonContent(SessionListResponse),
-        description: '在线会话列表',
-      },
+      ...okPaginated(SessionItemSchema, '在线会话列表'),
     },
   }),
   handler: async (c) => {

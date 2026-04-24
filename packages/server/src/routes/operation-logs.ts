@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
-import { apiResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated } from '../lib/openapi-schemas';
 import { OperationLogDTO, OperationLogStatsDTO as StatsDTO } from '../lib/openapi-dtos';
 
 const operationLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -21,9 +21,7 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:operation' })] as const,
     request: {
-      query: z.object({
-        page: z.coerce.number().optional(),
-        pageSize: z.coerce.number().optional(),
+      query: PaginationQuery.extend({
         username: z.string().optional(),
         module: z.string().optional(),
         description: z.string().optional(),
@@ -35,7 +33,7 @@ const listRoute = defineOpenAPIRoute({
         endTime: z.string().optional(),
       }),
     },
-    responses: { 200: { content: jsonContent(paginatedResponse(OperationLogDTO)), description: '日志列表' }, ...commonErrorResponses },
+    responses: { ...okPaginated(OperationLogDTO, '日志列表'), ...commonErrorResponses },
   }),
   handler: async (c) => {
     const q = c.req.valid('query');
@@ -95,7 +93,7 @@ const statsRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:operation' })] as const,
     request: { query: z.object({ days: z.coerce.number().optional() }) },
-    responses: { 200: { content: jsonContent(apiResponse(StatsDTO)), description: '统计结果' }, ...commonErrorResponses },
+    responses: { ...ok(StatsDTO, '统计结果'), ...commonErrorResponses },
   }),
   handler: async (c) => {
     const { days: daysRaw } = c.req.valid('query');

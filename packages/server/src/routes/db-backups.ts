@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup';
 import logger from '../lib/logger';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { DbBackupItemDTO as BackupItem } from '../lib/openapi-dtos';
 
 import { createBackupSchema } from '@zenith/shared';
@@ -31,16 +31,14 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:db-backup:list' })] as const,
     request: {
-      query: z.object({
-        page: z.coerce.number().optional(),
-        pageSize: z.coerce.number().optional(),
+      query: PaginationQuery.extend({
         status: z.enum(['pending', 'running', 'success', 'failed']).optional(),
         type: z.enum(['pg_dump', 'drizzle_export']).optional(),
       }),
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(BackupItem)), description: '备份列表' },
+      ...okPaginated(BackupItem, '备份列表'),
     },
   }),
   handler: async (c) => {
@@ -105,7 +103,7 @@ const createRouteDef = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(BackupCreated)), description: '备份任务已创建' },
+      ...ok(BackupCreated, '备份任务已创建'),
     },
   }),
   handler: async (c) => {
@@ -155,11 +153,11 @@ const deleteRoute = defineOpenAPIRoute({
       }),
     ] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '已删除' },
+      ...okMsg('已删除'),
       400: { content: jsonContent(ErrorResponse), description: '无效 ID' },
       404: { content: jsonContent(ErrorResponse), description: '备份记录不存在' },
     },

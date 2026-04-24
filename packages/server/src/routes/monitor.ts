@@ -6,7 +6,7 @@ import { sql } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import redis from '../lib/redis';
-import { apiResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { jsonContent, validationHook, commonErrorResponses, ok } from '../lib/openapi-schemas';
 import { MonitorDTO } from '../lib/openapi-dtos';
 
 const monitorRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -133,7 +133,7 @@ const statusRoute = defineOpenAPIRoute({
     summary: '获取服务器监控信息',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:monitor:view' })] as const,
-    responses: { 200: { content: jsonContent(apiResponse(MonitorDTO)), description: '监控数据' }, ...commonErrorResponses },
+    responses: { ...ok(MonitorDTO, '监控数据'), ...commonErrorResponses },
   }),
   handler: async (c) => {
     const [cpuUsage, dbInfo, redisInfo] = await Promise.all([getCpuUsage(), getDbInfo(), getRedisInfo()]);

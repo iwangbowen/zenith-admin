@@ -9,7 +9,7 @@ import { exportToExcel } from '../lib/excel-export';
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import { noticeRecipientSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { NoticeDTO, NoticeReadStatsDTO } from '../lib/openapi-dtos';
 
 const noticesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -97,7 +97,7 @@ const publishedRoute = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(NoticeDTO))), description: 'ok' },
+      ...ok(z.array(NoticeDTO), 'ok'),
     },
   }),
   handler: async (c) => {
@@ -122,10 +122,10 @@ const readRoute = defineOpenAPIRoute({
     summary: '标记已读',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: 'ok' },
+      ...okMsg('ok'),
     },
   }),
   handler: async (c) => {
@@ -147,7 +147,7 @@ const readAllRoute = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: 'ok' },
+      ...okMsg('ok'),
     },
   }),
   handler: async (c) => {
@@ -175,7 +175,7 @@ const inboxRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],  middleware: [authMiddleware] as const,  request: { query: PaginationQuery.extend({ isRead: z.string().optional() }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(NoticeDTO)), description: 'ok' },
+      ...okPaginated(NoticeDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -210,7 +210,7 @@ const listRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ title: z.string().optional(), type: z.string().optional(), publishStatus: z.string().optional(), startTime: z.string().optional(), endTime: z.string().optional() }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(NoticeDTO)), description: 'ok' },
+      ...okPaginated(NoticeDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -286,10 +286,10 @@ const batchDeleteRoute = defineOpenAPIRoute({
     summary: '批量删除',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:notice:delete', audit: { description: '批量删除通知公告', module: '通知公告' } })] as const,
-    request: { body: { content: jsonContent(z.object({ ids: z.array(z.number().int()) })), required: true } },
+    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
@@ -312,10 +312,10 @@ const readStatsRoute = defineOpenAPIRoute({
     summary: '阅读统计',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:notice:list' })] as const,
-    request: { params: z.object({ id: z.coerce.number() }), query: PaginationQuery.extend({ tab: z.string().optional() }) },
+    request: { params: IdParam, query: PaginationQuery.extend({ tab: z.string().optional() }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(NoticeReadStatsDTO)), description: 'ok' },
+      ...ok(NoticeReadStatsDTO, 'ok'),
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
@@ -386,10 +386,10 @@ const detailRoute = defineOpenAPIRoute({
     summary: '详情',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:notice:list' })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(NoticeDTO)), description: 'ok' },
+      ...ok(NoticeDTO, 'ok'),
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
@@ -432,7 +432,7 @@ const createRouteDef = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createNoticeSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(NoticeDTO)), description: '创建成功' },
+      ...ok(NoticeDTO, '创建成功'),
     },
   }),
   handler: async (c) => {
@@ -476,10 +476,10 @@ const updateRouteDef = defineOpenAPIRoute({
     summary: '更新通知',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:notice:update', audit: { description: '更新通知公告', module: '通知公告' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateNoticeSchema), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(updateNoticeSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(NoticeDTO)), description: '更新成功' },
+      ...ok(NoticeDTO, '更新成功'),
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
@@ -525,10 +525,10 @@ const deleteRouteDef = defineOpenAPIRoute({
     summary: '删除通知',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:notice:delete', audit: { description: '删除通知公告', module: '通知公告' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),

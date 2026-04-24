@@ -11,7 +11,7 @@ import { getOAuthProvider, isProviderConfigured } from '../lib/oauth';
 import { generateTokenId, registerSession } from '../lib/session-manager';
 import type { OAuthProviderType } from '@zenith/shared';
 import { OAUTH_PROVIDERS } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg } from '../lib/openapi-schemas';
 import { OAuthAccountDTO, OAuthAuthUrlDTO, LoginResultDTO } from '../lib/openapi-dtos';
 
 const oauth = new OpenAPIHono({ defaultHook: validationHook });
@@ -60,7 +60,7 @@ const accountsRoute = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(OAuthAccountDTO))), description: 'ok' },
+      ...ok(z.array(OAuthAccountDTO), 'ok'),
     },
   }),
   handler: async (c) => {
@@ -92,10 +92,10 @@ const authUrlRoute = defineOpenAPIRoute({
     tags: ['OAuth'],
     summary: '获取授权链接',
     security: [],
-    request: { params: z.object({ provider: z.string() }) },
+    request: { params: z.object({ provider: z.string().openapi({ param: { name: 'provider', in: 'path' }, example: 'github', description: 'OAuth 提供方' }) }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(OAuthAuthUrlDTO)), description: 'ok' },
+      ...ok(OAuthAuthUrlDTO, 'ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
@@ -119,12 +119,12 @@ const callbackRoute = defineOpenAPIRoute({
     summary: 'OAuth 回调',
     security: [],
     request: {
-      params: z.object({ provider: z.string() }),
-      body: { content: jsonContent(z.object({ code: z.string() })), required: true },
+      params: z.object({ provider: z.string().openapi({ param: { name: 'provider', in: 'path' }, example: 'github', description: 'OAuth 提供方' }) }),
+      body: { content: jsonContent(z.object({ code: z.string() }).openapi('OAuthCallbackBody')), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(OAuthCallbackDTO)), description: 'ok' },
+      ...ok(OAuthCallbackDTO, 'ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       403: { content: jsonContent(ErrorResponse), description: '账号已禁用' },
       404: { content: jsonContent(z.object({ code: z.number(), message: z.string(), data: z.looseObject({}) })), description: '未找到匹配账号' },
@@ -229,10 +229,10 @@ const bindRoute = defineOpenAPIRoute({
     summary: '绑定 OAuth 账号',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
-    request: { body: { content: jsonContent(z.object({ provider: z.string(), code: z.string() })), required: true } },
+    request: { body: { content: jsonContent(z.object({ provider: z.string(), code: z.string() }).openapi('OAuthBindBody')), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: 'ok' },
+      ...okMsg('ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
@@ -291,10 +291,10 @@ const unbindRoute = defineOpenAPIRoute({
     summary: '解绑 OAuth 账号',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
-    request: { params: z.object({ provider: z.string() }) },
+    request: { params: z.object({ provider: z.string().openapi({ param: { name: 'provider', in: 'path' }, example: 'github', description: 'OAuth 提供方' }) }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: 'ok' },
+      ...okMsg('ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '未找到' },
     },

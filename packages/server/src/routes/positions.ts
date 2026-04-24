@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, paginatedResponse, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { PositionDTO } from '../lib/openapi-dtos';
 
 const positionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -46,7 +46,7 @@ const allRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:position:list' })] as const,
     request: {},
-    responses: { 200: { content: jsonContent(apiResponse(z.array(PositionDTO))), description: '全量岗位' }, ...commonErrorResponses },
+    responses: { ...ok(z.array(PositionDTO), '全量岗位'), ...commonErrorResponses },
   }),
   handler: async (c) => {
     const tc = tenantCondition(positions, c.get('user'));
@@ -64,16 +64,14 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:position:list' })] as const,
     request: {
-      query: z.object({
-        page: z.coerce.number().int().min(1).optional().default(1),
-        pageSize: z.coerce.number().int().min(1).max(200).optional().default(10),
+      query: PaginationQuery.extend({
         keyword: z.string().optional(),
         status: z.enum(['active', 'disabled']).optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
       }),
     },
-    responses: { 200: { content: jsonContent(paginatedResponse(PositionDTO)), description: '岗位列表' }, ...commonErrorResponses },
+    responses: { ...okPaginated(PositionDTO, '岗位列表'), ...commonErrorResponses },
   }),
   handler: async (c) => {
     const q = c.req.valid('query');
@@ -120,7 +118,7 @@ const createPositionRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:position:create', audit: { description: '创建岗位', module: '岗位管理' } })] as const,
     request: { body: { content: jsonContent(createPositionSchema), required: true } },
     responses: {
-      200: { content: jsonContent(apiResponse(PositionDTO)), description: '创建成功' },
+      ...ok(PositionDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
     },
   }),
@@ -150,11 +148,11 @@ const updatePositionRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:position:update', audit: { description: '更新岗位', module: '岗位管理' } })] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(updatePositionSchema), required: true },
     },
     responses: {
-      200: { content: jsonContent(apiResponse(PositionDTO)), description: '更新成功' },
+      ...ok(PositionDTO, '更新成功'),
       400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
       404: { content: jsonContent(ErrorResponse), description: '岗位不存在' },
     },
@@ -191,7 +189,7 @@ const batchDeleteRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:position:delete', audit: { description: '批量删除岗位', module: '岗位管理' } })] as const,
     request: { body: { content: jsonContent(BatchDeleteBody), required: true } },
     responses: {
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误或有关联用户' },
     },
   }),
@@ -224,9 +222,9 @@ const deleteRoute = defineOpenAPIRoute({
     summary: '删除岗位',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:position:delete', audit: { description: '删除岗位', module: '岗位管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       400: { content: jsonContent(ErrorResponse), description: '存在关联用户' },
       404: { content: jsonContent(ErrorResponse), description: '岗位不存在' },
     },

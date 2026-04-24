@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { getPasswordPolicy } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { SystemConfigDTO, PublicConfigDTO, PasswordPolicyDTO } from '../lib/openapi-dtos';
 
 const systemConfigsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -28,10 +28,10 @@ const publicGetRoute = defineOpenAPIRoute({
     path: '/public/{key}',
     tags: ['SystemConfigs'],
     summary: '公开获取单项配置',
-    request: { params: z.object({ key: z.string() }) },
+    request: { params: z.object({ key: z.string().openapi({ param: { name: 'key', in: 'path' }, example: 'site_name', description: '配置键' }) }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(PublicConfigDTO)), description: '配置值' },
+      ...ok(PublicConfigDTO, '配置値'),
       404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
     },
   }),
@@ -60,7 +60,7 @@ const passwordPolicyRoute = defineOpenAPIRoute({
     summary: '获取当前密码策略',
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(PasswordPolicyDTO)), description: '密码策略' },
+      ...ok(PasswordPolicyDTO, '密码策略'),
     },
   }),
   handler: async (c) => {
@@ -80,16 +80,14 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:config:list' })] as const,
     request: {
-      query: z.object({
-        page: z.coerce.number().optional(),
-        pageSize: z.coerce.number().optional(),
+      query: PaginationQuery.extend({
         keyword: z.string().optional(),
         configType: z.enum(configTypeValues).optional(),
       }),
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(SystemConfigDTO)), description: '配置列表' },
+      ...okPaginated(SystemConfigDTO, '配置列表'),
     },
   }),
   handler: async (c) => {
@@ -143,7 +141,7 @@ const createConfigRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createSystemConfigSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(SystemConfigDTO)), description: '创建成功' },
+      ...ok(SystemConfigDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '配置键已存在' },
     },
   }),
@@ -181,12 +179,12 @@ const updateConfigRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:config:update', audit: { module: '系统配置', description: '更新配置' } })] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(updateSystemConfigSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(SystemConfigDTO)), description: '更新成功' },
+      ...ok(SystemConfigDTO, '更新成功'),
       400: { content: jsonContent(ErrorResponse), description: '配置键已存在' },
       404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
     },
@@ -236,10 +234,10 @@ const deleteRoute = defineOpenAPIRoute({
     summary: '删除配置',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:config:delete', audit: { module: '系统配置', description: '删除配置' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
     },
   }),

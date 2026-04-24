@@ -4,7 +4,7 @@ import { db } from '../db';
 import { emailConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg } from '../lib/openapi-schemas';
 import { EmailConfigDTO } from '../lib/openapi-dtos';
 
 import { emailConfigSchema } from '@zenith/shared';
@@ -25,7 +25,7 @@ const getRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:email-config:view' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(EmailConfigDTO)), description: '邮件配置' },
+      ...ok(EmailConfigDTO, '邮件配置'),
     },
   }),
   handler: async (c) => {
@@ -58,7 +58,7 @@ const updateRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(EmailConfigDTO)), description: '保存成功' },
+      ...ok(EmailConfigDTO, '保存成功'),
     },
   }),
   handler: async (c) => {
@@ -94,7 +94,7 @@ const testRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '发送成功' },
+      ...okMsg('发送成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误或配置不完整' },
       500: { content: jsonContent(ErrorResponse), description: '发送失败' },
     },

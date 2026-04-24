@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, paginatedResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 import { DictDTO, DictItemDTO } from '../lib/openapi-dtos';
 
@@ -33,18 +33,16 @@ const listDictsRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:dict:list' })] as const,
     request: {
-      query: z.object({
+      query: PaginationQuery.extend({
         keyword: z.string().optional(),
         status: z.enum(['active', 'disabled']).optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
-        page: z.coerce.number().optional().default(1),
-        pageSize: z.coerce.number().optional().default(10),
       }),
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(DictDTO)), description: '字典列表' },
+      ...okPaginated(DictDTO, '字典列表'),
     },
   }),
   handler: async (c) => {
@@ -79,7 +77,7 @@ const createDictRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createDictSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(DictDTO)), description: '创建成功' },
+      ...ok(DictDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '字典编码已存在' },
     },
   }),
@@ -112,12 +110,12 @@ const updateDictRoute = defineOpenAPIRoute({
       guard({ permission: 'system:dict:update', audit: { description: '更新字典', module: '字典管理' } }),
     ] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(updateDictSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(DictDTO)), description: '更新成功' },
+      ...ok(DictDTO, '更新成功'),
       404: { content: jsonContent(ErrorResponse), description: '字典不存在' },
     },
   }),
@@ -141,14 +139,12 @@ const deleteDictRoute = defineOpenAPIRoute({
     tags: ['Dicts'],
     summary: '删除字典',
     security: [{ BearerAuth: [] }],
-    middleware: [
-      authMiddleware,
-      guard({ permission: 'system:dict:delete', audit: { description: '删除字典', module: '字典管理' } }),
+    middleware: [authMiddleware, guard({ permission: 'system:dict:delete', audit: { description: '删除字典', module: '字典管理' } }),
     ] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '字典不存在' },
     },
   }),
@@ -173,10 +169,10 @@ const listItemsRoute = defineOpenAPIRoute({
     summary: '获取字典下所有字典项',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:dict:list' })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(DictItemDTO))), description: '字典项列表' },
+      ...ok(z.array(DictItemDTO), '字典项列表'),
     },
   }),
   handler: async (c) => {
@@ -198,10 +194,10 @@ const getItemsByCodeRoute = defineOpenAPIRoute({
     summary: '通过字典编码获取字典项（供前端使用）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
-    request: { params: z.object({ code: z.string() }) },
+    request: { params: z.object({ code: z.string().openapi({ param: { name: 'code', in: 'path' }, example: 'sys_status', description: '字典编码' }) }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(DictItemDTO))), description: '字典项列表' },
+      ...ok(z.array(DictItemDTO), '字典项列表'),
       404: { content: jsonContent(ErrorResponse), description: '字典不存在' },
     },
   }),
@@ -230,12 +226,12 @@ const createItemRoute = defineOpenAPIRoute({
       guard({ permission: 'system:dict:item', audit: { description: '创建字典项', module: '字典管理' } }),
     ] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(createDictItemSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(DictItemDTO)), description: '创建成功' },
+      ...ok(DictItemDTO, '创建成功'),
     },
   }),
   handler: async (c) => {
@@ -258,12 +254,15 @@ const updateItemRoute = defineOpenAPIRoute({
       guard({ permission: 'system:dict:item', audit: { description: '更新字典项', module: '字典管理' } }),
     ] as const,
     request: {
-      params: z.object({ id: z.coerce.number(), itemId: z.coerce.number() }),
+      params: z.object({
+        id: z.coerce.number().openapi({ param: { name: 'id', in: 'path' }, example: 1, description: '字典 ID' }),
+        itemId: z.coerce.number().openapi({ param: { name: 'itemId', in: 'path' }, example: 1, description: '字典项 ID' }),
+      }),
       body: { content: jsonContent(updateDictItemSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(DictItemDTO)), description: '更新成功' },
+      ...ok(DictItemDTO, '更新成功'),
       404: { content: jsonContent(ErrorResponse), description: '字典项不存在' },
     },
   }),
@@ -291,10 +290,15 @@ const deleteItemRoute = defineOpenAPIRoute({
       authMiddleware,
       guard({ permission: 'system:dict:item', audit: { description: '删除字典项', module: '字典管理' } }),
     ] as const,
-    request: { params: z.object({ id: z.coerce.number(), itemId: z.coerce.number() }) },
+    request: {
+      params: z.object({
+        id: z.coerce.number().openapi({ param: { name: 'id', in: 'path' }, example: 1, description: '字典 ID' }),
+        itemId: z.coerce.number().openapi({ param: { name: 'itemId', in: 'path' }, example: 1, description: '字典项 ID' }),
+      }),
+    },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '字典项不存在' },
     },
   }),

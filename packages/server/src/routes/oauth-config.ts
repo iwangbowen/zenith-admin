@@ -5,7 +5,7 @@ import { oauthConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import type { OAuthProviderType } from '@zenith/shared';
-import { apiResponse, ErrorResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok } from '../lib/openapi-schemas';
 
 import { OAuthConfigItemDTO as OAuthConfigItem } from '../lib/openapi-dtos';
 
@@ -26,10 +26,7 @@ const listRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:oauth-config:view' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: {
-        content: jsonContent(apiResponse(z.array(OAuthConfigItem))),
-        description: 'OAuth 配置列表',
-      },
+      ...ok(z.array(OAuthConfigItem), 'OAuth 配置列表'),
     },
   }),
   handler: async (c) => {
@@ -65,7 +62,7 @@ const updateRoute = defineOpenAPIRoute({
       }),
     ] as const,
     request: {
-      params: z.object({ provider: z.string() }),
+      params: z.object({ provider: z.string().openapi({ param: { name: 'provider', in: 'path' }, example: 'github', description: 'OAuth 提供方' }) }),
       body: {
         content: jsonContent(updateOauthConfigSchema),
         required: true,
@@ -73,10 +70,7 @@ const updateRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: {
-        content: jsonContent(apiResponse(OAuthConfigItem.nullable())),
-        description: '保存成功',
-      },
+      ...ok(OAuthConfigItem.nullable(), '保存成功'),
       400: { content: jsonContent(ErrorResponse), description: '不支持的 provider' },
     },
   }),

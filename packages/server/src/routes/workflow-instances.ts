@@ -9,7 +9,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-engine';
 import { createWorkflowInstanceSchema, approveWorkflowTaskSchema, rejectWorkflowTaskSchema } from '@zenith/shared';
 import type { WorkflowFlowData } from '@zenith/shared';
-import { apiResponse, ErrorResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, IdParam } from '../lib/openapi-schemas';
 import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO } from '../lib/openapi-dtos';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -70,7 +70,7 @@ const listRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ status: z.string().optional() }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(WorkflowInstanceDTO)), description: 'ok' },
+      ...okPaginated(WorkflowInstanceDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -121,7 +121,7 @@ const pendingMineRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(WorkflowInstanceListItemDTO)), description: 'ok' },
+      ...okPaginated(WorkflowInstanceListItemDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -167,7 +167,7 @@ const allRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ status: z.string().optional(), keyword: z.string().optional() }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(WorkflowInstanceAllDTO)), description: 'ok' },
+      ...ok(WorkflowInstanceAllDTO, 'ok'),
     },
   }),
   handler: async (c) => {
@@ -216,10 +216,10 @@ const detailRoute = defineOpenAPIRoute({
     summary: '实例详情',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:instance:list' })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: 'ok' },
+      ...ok(WorkflowInstanceDTO, 'ok'),
       403: { content: jsonContent(ErrorResponse), description: '无权查看' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
@@ -271,7 +271,7 @@ const createInstanceRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createWorkflowInstanceSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: '申请已提交' },
+      ...ok(WorkflowInstanceDTO, '申请已提交'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '流程定义不存在' },
     },
@@ -328,10 +328,10 @@ const withdrawRoute = defineOpenAPIRoute({
     summary: '撤回申请',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:instance:create', audit: { description: '撤回流程申请', module: '工作流管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: '已撤回' },
+      ...ok(WorkflowInstanceDTO, '已撤回'),
       400: { content: jsonContent(ErrorResponse), description: '不能撤回' },
       403: { content: jsonContent(ErrorResponse), description: '无权操作' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
@@ -367,12 +367,12 @@ const approveRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:task:handle', audit: { description: '审批通过', module: '工作流管理' } })] as const,
     request: {
-      params: z.object({ taskId: z.coerce.number() }),
+      params: z.object({ taskId: z.coerce.number().openapi({ param: { name: 'taskId', in: 'path' }, example: 1 }) }),
       body: { content: jsonContent(approveWorkflowTaskSchema), required: false },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: 'ok' },
+      ...ok(WorkflowInstanceDTO, 'ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
       500: { content: jsonContent(ErrorResponse), description: '数据异常' },
@@ -455,12 +455,12 @@ const rejectRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:task:handle', audit: { description: '审批驳回', module: '工作流管理' } })] as const,
     request: {
-      params: z.object({ taskId: z.coerce.number() }),
+      params: z.object({ taskId: z.coerce.number().openapi({ param: { name: 'taskId', in: 'path' }, example: 1 }) }),
       body: { content: jsonContent(rejectWorkflowTaskSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(WorkflowInstanceDTO)), description: '已驳回' },
+      ...ok(WorkflowInstanceDTO, '已驳回'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
       500: { content: jsonContent(ErrorResponse), description: '数据异常' },

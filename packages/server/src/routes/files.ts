@@ -8,7 +8,7 @@ import { guard } from '../middleware/guard';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
 import { ManagedFileDTO } from '../lib/openapi-dtos';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -20,7 +20,7 @@ const contentRoute = defineOpenAPIRoute({
     path: '/{id}/content',
     tags: ['Files'],
     summary: '公开访问文件内容',
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
       200: { content: { 'application/octet-stream': { schema: z.string() } }, description: '文件内容' },
@@ -79,18 +79,16 @@ const listRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:list' })] as const,
     request: {
-      query: z.object({
+      query: PaginationQuery.extend({
         keyword: z.string().optional(),
         provider: z.enum(['local', 'oss']).optional(),
-        page: z.coerce.number().optional(),
-        pageSize: z.coerce.number().optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
       }),
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(paginatedResponse(ManagedFileDTO)), description: '文件列表' },
+      ...okPaginated(ManagedFileDTO, '文件列表'),
     },
   }),
   handler: async (c) => {
@@ -151,7 +149,7 @@ const uploadRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(ManagedFileDTO)), description: '上传成功' },
+      ...ok(ManagedFileDTO, '上传成功'),
       400: { content: jsonContent(ErrorResponse), description: '未选择文件或无可用存储' },
     },
   }),
@@ -203,10 +201,10 @@ const deleteRoute = defineOpenAPIRoute({
     summary: '删除文件',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:delete', audit: { description: '删除文件', module: '文件管理', recordBody: false } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
     },
   }),

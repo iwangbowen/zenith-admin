@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
 import redis from '../lib/redis';
-import { apiResponse, jsonContent, validationHook } from '../lib/openapi-schemas';
+import { validationHook, ok } from '../lib/openapi-schemas';
 
 const startTime = Date.now();
 
@@ -28,10 +28,7 @@ const healthRoute = defineOpenAPIRoute({
     description: '检查数据库与 Redis 连通状态，返回服务运行信息。',
     security: [],
     responses: {
-      200: {
-        content: jsonContent(apiResponse(HealthDTO)),
-        description: '健康检查结果',
-      },
+      ...ok(HealthDTO, '健康检查结果'),
     },
   }),
   handler: async (c) => {

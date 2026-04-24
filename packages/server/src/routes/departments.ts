@@ -8,7 +8,7 @@ import { exportToExcel } from '../lib/excel-export';
 import type { Department } from '@zenith/shared';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam } from '../lib/openapi-schemas';
 import { DepartmentDTO } from '../lib/openapi-dtos';
 
 const departmentsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -91,7 +91,7 @@ const listRoute = defineOpenAPIRoute({
     request: { query: z.object({ keyword: z.string().optional(), status: z.string().optional() }) },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(DepartmentDTO))), description: '部门树' },
+      ...ok(z.array(DepartmentDTO), '部门树'),
     },
   }),
   handler: async (c) => {
@@ -115,7 +115,7 @@ const flatRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:department:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(DepartmentDTO))), description: '列表' },
+      ...ok(z.array(DepartmentDTO), '列表'),
     },
   }),
   handler: async (c) => {
@@ -136,7 +136,7 @@ const createRouteDef = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createDepartmentSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(DepartmentDTO)), description: '创建成功' },
+      ...ok(DepartmentDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
@@ -164,10 +164,10 @@ const updateRouteDef = defineOpenAPIRoute({
     summary: '更新部门',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:department:update', audit: { description: '更新部门', module: '部门管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateDepartmentSchema), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(updateDepartmentSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(DepartmentDTO)), description: '更新成功' },
+      ...ok(DepartmentDTO, '更新成功'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
@@ -203,10 +203,10 @@ const deleteRouteDef = defineOpenAPIRoute({
     summary: '删除部门',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:department:delete', audit: { description: '删除部门', module: '部门管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       400: { content: jsonContent(ErrorResponse), description: '不可删除' },
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },

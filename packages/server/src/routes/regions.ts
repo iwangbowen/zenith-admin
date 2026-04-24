@@ -5,7 +5,7 @@ import { regions } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import type { Region } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam } from '../lib/openapi-schemas';
 import { RegionDTO } from '../lib/openapi-dtos';
 
 const regionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -94,7 +94,7 @@ const listRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(RegionDTO))), description: '地区树' },
+      ...ok(z.array(RegionDTO), '地区树'),
     },
   }),
   handler: async (c) => {
@@ -116,7 +116,7 @@ const flatRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:region:list' })] as const,
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(z.array(RegionDTO))), description: '平铺地区列表' },
+      ...ok(z.array(RegionDTO), '平铺地区列表'),
     },
   }),
   handler: async (c) => {
@@ -136,7 +136,7 @@ const createRegionRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createRegionSchema), required: true } },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(RegionDTO)), description: '创建成功' },
+      ...ok(RegionDTO, '创建成功'),
       400: { content: jsonContent(ErrorResponse), description: '父级不存在或代码重复' },
     },
   }),
@@ -177,12 +177,12 @@ const updateRegionRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:region:update', audit: { description: '更新地区', module: '地区管理' } })] as const,
     request: {
-      params: z.object({ id: z.coerce.number() }),
+      params: IdParam,
       body: { content: jsonContent(updateRegionSchema), required: true },
     },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(apiResponse(RegionDTO)), description: '更新成功' },
+      ...ok(RegionDTO, '更新成功'),
       400: { content: jsonContent(ErrorResponse), description: '父级错误或重复' },
       404: { content: jsonContent(ErrorResponse), description: '地区不存在' },
     },
@@ -224,10 +224,10 @@ const deleteRoute = defineOpenAPIRoute({
     summary: '删除地区',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:region:delete', audit: { description: '删除地区', module: '地区管理' } })] as const,
-    request: { params: z.object({ id: z.coerce.number() }) },
+    request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
-      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      ...okMsg('删除成功'),
       400: { content: jsonContent(ErrorResponse), description: '存在子地区' },
       404: { content: jsonContent(ErrorResponse), description: '地区不存在' },
     },
