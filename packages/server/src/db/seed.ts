@@ -1,7 +1,7 @@
 import { db } from './index';
 import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, messageTemplates } from './schema';
 import bcrypt from 'bcryptjs';
-import { eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
@@ -26,7 +26,7 @@ async function seed() {
   // 注意：tenant_id 为 NULL 时复合唯一约束 (tenant_id, username) 不生效（NULL != NULL），
   // 必须先查询是否已存在，再决定是否插入，避免重复创建。
   const existingAdmin = await db.select({ id: users.id }).from(users)
-    .where(sql`${users.username} = 'admin' AND ${users.tenantId} IS NULL`)
+    .where(and(eq(users.username, 'admin'), isNull(users.tenantId)))
     .limit(1);
   if (existingAdmin.length === 0) {
     const hashedPassword = await bcrypt.hash('123456', 10);
@@ -123,7 +123,7 @@ async function seed() {
 
   // 管理员账号绑定超级管理员角色
   const [adminUser] = await db.select({ id: users.id }).from(users)
-    .where(sql`${users.username} = 'admin' AND ${users.tenantId} IS NULL`)
+    .where(and(eq(users.username, 'admin'), isNull(users.tenantId)))
     .limit(1);
   if (adminUser) {
     await db.update(users).set({ departmentId: 1, updatedAt: new Date() }).where(eq(users.id, adminUser.id));

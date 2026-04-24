@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, like, and, sql, desc } from 'drizzle-orm';
+import { eq, like, and, ne, desc } from 'drizzle-orm';
 import { createMiddleware } from 'hono/factory';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
@@ -189,7 +189,7 @@ const updateRouteDef = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
     if (data.code) {
-      const [dup] = await db.select().from(tenants).where(and(eq(tenants.code, data.code), sql`${tenants.id} != ${id}`)).limit(1);
+      const [dup] = await db.select().from(tenants).where(and(eq(tenants.code, data.code), ne(tenants.id, id))).limit(1);
       if (dup) return c.json({ code: 400, message: '租户编码已存在', data: null }, 400);
     }
     const { expireAt: rawExpireAt, ...rest } = data;

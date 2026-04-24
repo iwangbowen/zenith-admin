@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, like, and, sql, desc } from 'drizzle-orm';
+import { eq, like, and, ne, sql, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { systemConfigs } from '../db/schema';
@@ -196,8 +196,8 @@ const updateConfigRoute = defineOpenAPIRoute({
     if (data.configKey) {
       const tc = tenantCondition(systemConfigs, c.get('user'));
       const dupWhere = tc
-        ? and(eq(systemConfigs.configKey, data.configKey), sql`${systemConfigs.id} != ${id}`, tc)
-        : and(eq(systemConfigs.configKey, data.configKey), sql`${systemConfigs.id} != ${id}`);
+        ? and(eq(systemConfigs.configKey, data.configKey), ne(systemConfigs.id, id), tc)
+        : and(eq(systemConfigs.configKey, data.configKey), ne(systemConfigs.id, id));
       const [dup] = await db.select().from(systemConfigs).where(dupWhere).limit(1);
       if (dup) {
         return c.json({ code: 400, message: '配置键已存在', data: null }, 400);
