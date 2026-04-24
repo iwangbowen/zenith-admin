@@ -1,9 +1,17 @@
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, like, or, gte, lte } from 'drizzle-orm';
+import bcrypt from 'bcryptjs';
+import ExcelJS from 'exceljs';
 import { db } from '../db';
 import type { DbExecutor } from '../db/types';
-import { userRoles, roles, departments, positions, userPositions } from '../db/schema';
+import { users, userRoles, roles, departments, positions, userPositions } from '../db/schema';
 import { AppError } from '../lib/errors';
-import { tenantCondition } from '../lib/tenant';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
+import { pageOffset } from '../lib/pagination';
+import { getDataScopeCondition } from '../lib/data-scope';
+import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
+import { unlockUser as unlockUserSession } from '../lib/session-manager';
+import { exportToExcel } from '../lib/excel-export';
+import { clearUserPermissionCache } from '../lib/permissions';
 import type { JwtPayload } from '../middleware/auth';
 import type { User } from '@zenith/shared';
 
@@ -126,4 +134,312 @@ export async function ensurePositionIdsExist(positionIds: number[], user?: JwtPa
   }
   const rows = await db.select({ id: positions.id }).from(positions).where(and(...conditions));
   if (rows.length !== uniq.length) throw new AppError('存在无效岗位', 400);
+}
+
+// ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
+
+export async function listAllUsers(user: JwtPayload) {
+  const tc = tenantCondition(users, user);
+  const rawList = await findUsersWithRelations({ where: tc, orderBy: users.id });
+  return mapUsers(rawList);
+}
+
+export interface ListUsersQuery {
+  page?: number; pageSize?: number; keyword?: string; phone?: string;
+  departmentId?: number; status?: 'active' | 'disabled';
+  startTime?: string; endTime?: string;
+}
+
+export async function listUsers(user: JwtPayload, q: ListUsersQuery) {
+  const { page = 1, pageSize = 10, keyword, phone, departmentId, status, startTime, endTime } = q;
+  const conditions = [];
+  if (keyword) conditions.push(or(like(users.username, `%${keyword}%`), like(users.nickname, `%${keyword}%`), like(users.email, `%${keyword}%`)));
+  if (phone) conditions.push(like(users.phone, `%${phone}%`));
+  if (departmentId) conditions.push(eq(users.departmentId, departmentId));
+  if (status) conditions.push(eq(users.status, status));
+  if (startTime) conditions.push(gte(users.createdAt, new Date(startTime)));
+  if (endTime) conditions.push(lte(users.createdAt, new Date(endTime)));
+  const scopeCondition = await getDataScopeCondition({
+    currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: users.id,
+  });
+  if (scopeCondition) conditions.push(scopeCondition);
+  const tc = tenantCondition(users, user);
+  if (tc) conditions.push(tc);
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const [total, rawList] = await Promise.all([
+    db.$count(users, where),
+    findUsersWithRelations({ where, limit: pageSize, offset: pageOffset(page, pageSize), orderBy: users.id }),
+  ]);
+  return { list: mapUsers(rawList), total: Number(total), page, pageSize };
+}
+
+export interface CreateUserInput {
+  username: string; nickname: string; email: string; password: string;
+  phone?: string; departmentId?: number | null;
+  positionIds: number[]; roleIds: number[];
+  status: 'active' | 'disabled';
+}
+
+export async function createUser(user: JwtPayload, data: CreateUserInput) {
+  const policy = await getPasswordPolicy();
+  const policyError = validatePassword(data.password, policy);
+  if (policyError) throw new AppError(policyError, 400);
+  const { password, roleIds, positionIds, departmentId, ...rest } = data;
+  const nextRoleIds = Array.from(new Set(roleIds));
+  const nextPositionIds = Array.from(new Set(positionIds));
+  await Promise.all([
+    ensureDepartmentExists(departmentId, user),
+    ensureRoleIdsExist(nextRoleIds, user),
+    ensurePositionIdsExist(nextPositionIds, user),
+  ]);
+  const hashedPassword = await bcrypt.hash(password, 10);
+  try {
+    const created = await db.transaction(async (tx) => {
+      const [u] = await tx.insert(users).values({
+        ...rest,
+        password: hashedPassword,
+        departmentId: departmentId ?? null,
+        tenantId: getCreateTenantId(user),
+      }).returning();
+      await setUserRoles(tx, u.id, nextRoleIds);
+      await setUserPositions(tx, u.id, nextPositionIds);
+      return u;
+    });
+    const full = await findUserWithRelations({ where: eq(users.id, created.id) });
+    if (!full) throw new AppError('创建用户后回读失败', 500);
+    return mapUser(full);
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === '23505') throw new AppError('用户名或邮箱已存在', 400);
+    throw err;
+  }
+}
+
+export async function batchDeleteUsers(user: JwtPayload, ids: number[]) {
+  if (ids.length === 0) throw new AppError('请选择要删除的用户', 400);
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) throw new AppError('用户ID格式无效', 400);
+  const tc = tenantCondition(users, user);
+  await db.delete(users).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
+  return validIds.length;
+}
+
+export async function batchUpdateUserStatus(user: JwtPayload, ids: number[], status: 'active' | 'disabled') {
+  if (ids.length === 0) throw new AppError('请选择要操作的用户', 400);
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  const tc = tenantCondition(users, user);
+  await db.update(users).set({ status }).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
+}
+
+export async function getUserBeforeAudit(id: number) {
+  const [before] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  if (!before) return null;
+  const { password: _pw, ...safe } = before;
+  return safe;
+}
+
+export interface UpdateUserInput {
+  username?: string; nickname?: string; email?: string; phone?: string;
+  departmentId?: number | null;
+  positionIds?: number[]; roleIds?: number[];
+  status?: 'active' | 'disabled';
+}
+
+export async function updateUser(user: JwtPayload, id: number, data: UpdateUserInput) {
+  const { roleIds, positionIds, departmentId, ...rest } = data;
+  const nextRoleIds = roleIds ? Array.from(new Set(roleIds)) : undefined;
+  const nextPositionIds = positionIds ? Array.from(new Set(positionIds)) : undefined;
+  await Promise.all([
+    ensureDepartmentExists(departmentId, user),
+    ensureRoleIdsExist(nextRoleIds ?? [], user),
+    ensurePositionIdsExist(nextPositionIds ?? [], user),
+  ]);
+  const nextValues = {
+    ...rest,
+    ...(departmentId === undefined ? {} : { departmentId: departmentId ?? null }),
+  };
+  const tc = tenantCondition(users, user);
+  const updated = await db.transaction(async (tx) => {
+    const [u] = await tx.update(users).set(nextValues)
+      .where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
+    if (!u) return null;
+    if (nextRoleIds !== undefined) await setUserRoles(tx, id, nextRoleIds);
+    if (nextPositionIds !== undefined) await setUserPositions(tx, id, nextPositionIds);
+    return u;
+  });
+  if (!updated) throw new AppError('用户不存在', 404);
+  if (nextRoleIds !== undefined) clearUserPermissionCache(id);
+  const full = await findUserWithRelations({ where: eq(users.id, updated.id) });
+  if (!full) throw new AppError('用户不存在', 404);
+  return mapUser(full);
+}
+
+export async function deleteUser(user: JwtPayload, id: number) {
+  const tc = tenantCondition(users, user);
+  const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
+  if (!deleted) throw new AppError('用户不存在', 404);
+}
+
+export async function updateUserPassword(user: JwtPayload, id: number, password: string) {
+  const policy = await getPasswordPolicy();
+  const policyError = validatePassword(password, policy);
+  if (policyError) throw new AppError(policyError, 400);
+  const tc = tenantCondition(users, user);
+  const [u] = await db.select({ id: users.id }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
+  if (!u) throw new AppError('用户不存在', 404);
+  const hashed = await bcrypt.hash(password, 10);
+  await db.update(users).set({ password: hashed }).where(eq(users.id, id));
+}
+
+export async function unlockUserById(user: JwtPayload, id: number) {
+  const tc = tenantCondition(users, user);
+  const [u] = await db.select({ username: users.username }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
+  if (!u) throw new AppError('用户不存在', 404);
+  await unlockUserSession(u.username);
+}
+
+export async function exportUsers(user: JwtPayload): Promise<{ buffer: ArrayBuffer; filename: string }> {
+  const tc = tenantCondition(users, user);
+  const rawList = await db.query.users.findMany({
+    where: tc, with: { department: { columns: { name: true } } }, orderBy: users.id,
+  });
+  const list = rawList.map((u) => ({
+    id: u.id, username: u.username, nickname: u.nickname, email: u.email,
+    departmentName: u.department?.name ?? '', status: u.status,
+    createdAt: u.createdAt.toISOString(),
+  }));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '用户名', key: 'username', width: 16 },
+      { header: '昵称', key: 'nickname', width: 16 },
+      { header: '邮箱', key: 'email', width: 24 },
+      { header: '部门', key: 'departmentName', width: 16 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'active' ? '启用' : '禁用') },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    list,
+    '用户列表',
+  );
+  return { buffer, filename: 'users.xlsx' };
+}
+
+export async function getUserImportTemplate(): Promise<ArrayBuffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('用户导入模板');
+  sheet.columns = [
+    { header: '用户名*', key: 'username', width: 16 },
+    { header: '昵称*', key: 'nickname', width: 16 },
+    { header: '邮箱*', key: 'email', width: 24 },
+    { header: '密码*', key: 'password', width: 16 },
+    { header: '部门编码', key: 'departmentCode', width: 18 },
+    { header: '岗位编码(逗号分隔)', key: 'positionCodes', width: 22 },
+    { header: '角色编码(逗号分隔)', key: 'roleCodes', width: 22 },
+    { header: '状态(active/disabled)', key: 'status', width: 22 },
+  ];
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+  sheet.addRow({
+    username: 'zhangsan', nickname: '张三', email: 'zhangsan@example.com',
+    password: '请修改为强密码', departmentCode: 'technology', positionCodes: 'engineer',
+    roleCodes: 'normal_user', status: 'active',
+  });
+  return workbook.xlsx.writeBuffer() as Promise<ArrayBuffer>;
+}
+
+export interface ImportUsersResult {
+  total: number; success: number; failed: number;
+  errors: Array<{ row: number; message: string }>;
+}
+
+export async function importUsers(user: JwtPayload, file: File): Promise<ImportUsersResult> {
+  const arrayBuffer = await file.arrayBuffer();
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(arrayBuffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) throw new AppError('文件格式无效或工作表为空', 400);
+
+  const policy = await getPasswordPolicy();
+  const errors: Array<{ row: number; message: string }> = [];
+  let success = 0;
+  const getCellText = (row: ExcelJS.Row, col: number) => {
+    const cell = row.getCell(col);
+    return cell.text?.toString().trim() ?? '';
+  };
+  const dataRows: ExcelJS.Row[] = [];
+  sheet.eachRow((row, rowNum) => { if (rowNum > 1) dataRows.push(row); });
+
+  const [allDepts, allRoles, allPositions, existingUsersList] = await Promise.all([
+    db.select({ id: departments.id, code: departments.code }).from(departments),
+    db.select({ id: roles.id, code: roles.code }).from(roles),
+    db.select({ id: positions.id, code: positions.code }).from(positions),
+    db.select({ username: users.username, email: users.email }).from(users),
+  ]);
+  const deptCodeMap = new Map(allDepts.map((d) => [d.code, d.id]));
+  const roleCodeMap = new Map(allRoles.map((r) => [r.code, r.id]));
+  const positionCodeMap = new Map(allPositions.map((p) => [p.code, p.id]));
+  const existingUsernames = new Set(existingUsersList.map((u) => u.username));
+  const existingEmails = new Set(existingUsersList.map((u) => u.email));
+
+  for (const row of dataRows) {
+    const rowNum = row.number;
+    const username = getCellText(row, 1);
+    const nickname = getCellText(row, 2);
+    const email = getCellText(row, 3);
+    const password = getCellText(row, 4);
+    const departmentCode = getCellText(row, 5);
+    const positionCodesRaw = getCellText(row, 6);
+    const roleCodesRaw = getCellText(row, 7);
+    const statusRaw = getCellText(row, 8);
+
+    if (!username || !nickname || !email || !password) { errors.push({ row: rowNum, message: '用户名、昵称、邮箱、密码为必填项' }); continue; }
+    const policyError = validatePassword(password, policy);
+    if (policyError) { errors.push({ row: rowNum, message: policyError }); continue; }
+    if (existingUsernames.has(username) || existingEmails.has(email)) {
+      errors.push({ row: rowNum, message: `用户名或邮箱已存在: ${username} / ${email}` }); continue;
+    }
+    let departmentId: number | null = null;
+    if (departmentCode) {
+      const deptId = deptCodeMap.get(departmentCode);
+      if (!deptId) { errors.push({ row: rowNum, message: `部门编码不存在: ${departmentCode}` }); continue; }
+      departmentId = deptId;
+    }
+    const roleCodes = roleCodesRaw ? roleCodesRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    let roleIds: number[] = [];
+    if (roleCodes.length > 0) {
+      const missing = roleCodes.filter((code) => !roleCodeMap.has(code));
+      if (missing.length > 0) { errors.push({ row: rowNum, message: `角色编码不存在: ${missing.join(', ')}` }); continue; }
+      roleIds = roleCodes.map((code) => roleCodeMap.get(code)!).filter((x): x is number => x !== undefined);
+    }
+    const positionCodes = positionCodesRaw ? positionCodesRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    let positionIds: number[] = [];
+    if (positionCodes.length > 0) {
+      const missing = positionCodes.filter((code) => !positionCodeMap.has(code));
+      if (missing.length > 0) { errors.push({ row: rowNum, message: `岗位编码不存在: ${missing.join(', ')}` }); continue; }
+      positionIds = positionCodes.map((code) => positionCodeMap.get(code)!).filter((x): x is number => x !== undefined);
+    }
+    let status: 'active' | 'disabled' = 'active';
+    if (statusRaw) {
+      const normalized = statusRaw.trim().toLowerCase();
+      if (normalized === 'active' || normalized === 'disabled') status = normalized;
+      else { errors.push({ row: rowNum, message: `状态值无效: ${statusRaw}（仅支持 active/disabled 或留空）` }); continue; }
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    try {
+      await db.transaction(async (tx) => {
+        const [newUser] = await tx.insert(users).values({
+          username, nickname, email, password: hashedPassword,
+          departmentId, status, tenantId: getCreateTenantId(user),
+        }).returning();
+        if (roleIds.length > 0) await setUserRoles(tx, newUser.id, roleIds);
+        if (positionIds.length > 0) await setUserPositions(tx, newUser.id, positionIds);
+      });
+      existingUsernames.add(username);
+      existingEmails.add(email);
+      success++;
+    } catch (e: unknown) {
+      errors.push({ row: rowNum, message: `插入失败: ${e instanceof Error ? e.message : '未知错误'}` });
+    }
+  }
+  return { total: dataRows.length, success, failed: errors.length, errors };
 }
