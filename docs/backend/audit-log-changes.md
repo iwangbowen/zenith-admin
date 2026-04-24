@@ -108,7 +108,7 @@ if (before) {
 }
 
 await db.delete(yourTable).where(eq(yourTable.id, id));
-return c.json({ code: 0, message: 'success', data: null });
+return c.json(okBody(null, 'success'), 200);
 ```
 
 ---

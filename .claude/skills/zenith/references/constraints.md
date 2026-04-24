@@ -14,7 +14,7 @@
 | **无图标文字按钮** | 操作列按钮只用纯文字，不加图标 |
 | **搜索栏布局** | 使用 `SearchToolbar` 组件（`components/SearchToolbar.tsx`），参考 `UsersPage.tsx` |
 | **表格样式** | 统一 `<Table bordered>` |
-| **响应码规范** | 成功 `{ code: 0 as const, message: 'ok', data: T }`（必须 `as const`），失败 `{ code: 400, message: '...', data: null }`，每个 `c.json(...)` 第二参数必须显式带状态码 `, 200)` |
+| **响应码规范** | 响应体统一使用 `okBody(data, msg?)` / `errBody(msg, code?)` 构造（来自 `'../lib/openapi-schemas'`），**禁止内联写** `{ code: 0 as const, message, data }` / `{ code: 400, message, data: null }` 字面量对象；每个 `c.json(...)` 第二参数必须显式带状态码 `, 200)` / `, 404)` 等 |
 | **分页格式** | 列表接口返回 `{ list, total, page, pageSize }` |
 | **数据权限** | 业务数据模块在 Step 0 必须询问是否需要 dataScope 过滤；配置数据（角色/菜单/字典）无需过滤 |
 | **多租户隔离** | 业务数据表添加 `tenantId` 字段，查询用 `tenantCondition(table, user)`，创建用 `getCreateTenantId(user)`；关闭多租户时两者均返回 `null`/`undefined`，无需额外判断 |

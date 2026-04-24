@@ -133,6 +133,7 @@ import {
   ErrorResponse, jsonContent,
   PaginationQuery, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, BatchIdsBody,
+  okBody, errBody,
 } from '../lib/openapi-schemas';
 // 实体 DTO 必须从中心仓库导入（严禁路由内本地声明 .openapi('EntityName')）
 import { XxxDTO } from '../lib/openapi-dtos';
@@ -183,7 +184,7 @@ const listRoute = defineOpenAPIRoute({
       db.select().from(xxxs).where(where)
         .limit(pageSize).offset(pageOffset(page, pageSize)).orderBy(xxxs.id),
     ]);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: rows, total, page, pageSize } }, 200);
+    return c.json(okBody({ list: rows, total, page, pageSize }), 200);
   },
 });
 
@@ -204,10 +205,10 @@ const createRoute_ = defineOpenAPIRoute({
     const data = c.req.valid('json');
     try {
       const [row] = await db.insert(xxxs).values(data).returning();
-      return c.json({ code: 0 as const, message: '创建成功', data: row }, 200);
+      return c.json(okBody(row, '创建成功'), 200);
     } catch (err: unknown) {
       if ((err as { code?: string }).code === '23505') {
-        return c.json({ code: 400, message: '该名称已存在', data: null }, 400);
+        return c.json(errBody('该名称已存在'), 400);
       }
       throw err;
     }
@@ -237,8 +238,8 @@ const updateRoute_ = defineOpenAPIRoute({
     const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
     if (before) setAuditBeforeData(c, before);
     const [row] = await db.update(xxxs).set({ ...data }).where(eq(xxxs.id, id)).returning();
-    if (!row) return c.json({ code: 404, message: 'XXX不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '更新成功', data: row }, 200);
+    if (!row) return c.json(errBody('XXX不存在', 404), 404);
+    return c.json(okBody(row, '更新成功'), 200);
   },
 });
 
@@ -261,8 +262,8 @@ const deleteRoute_ = defineOpenAPIRoute({
     const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
     if (before) setAuditBeforeData(c, before);
     const [deleted] = await db.delete(xxxs).where(eq(xxxs.id, id)).returning();
-    if (!deleted) return c.json({ code: 404, message: 'XXX不存在', data: null }, 404);
-    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+    if (!deleted) return c.json(errBody('XXX不存在', 404), 404);
+    return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
@@ -523,10 +524,10 @@ const batchDeleteRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { ids } = c.req.valid('json');
     if (!ids || ids.length === 0) {
-      return c.json({ code: 400, message: '请选择要删除的记录', data: null }, 400);
+      return c.json(errBody('请选择要删除的记录'), 400);
     }
     await db.delete(xxxs).where(inArray(xxxs.id, ids));
-    return c.json({ code: 0 as const, message: `已删除 ${ids.length} 条记录`, data: null }, 200);
+    return c.json(okBody(null, `已删除 ${ids.length} 条记录`), 200);
   },
 });
 
