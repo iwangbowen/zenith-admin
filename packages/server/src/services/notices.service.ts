@@ -1,4 +1,4 @@
-import { count, desc, eq, like, and, gte, lte, inArray, isNull, isNotNull, sql, or, getTableColumns } from 'drizzle-orm';
+import { count, desc, eq, like, and, gte, lte, inArray, isNull, isNotNull, sql, or, getTableColumns, type SQL } from 'drizzle-orm';
 import { mergeWhere } from '../lib/where-helpers';
 import { db } from '../db';
 import type { DbExecutor } from '../db/types';
@@ -202,52 +202,56 @@ export async function getNoticeReadStats(id: number, q: { page?: number; pageSiz
   const [notice] = await db.select().from(notices).where(eq(notices.id, id));
   if (!notice) throw new AppError('通知不存在', 404);
 
-  const reads = await db.select({ userId: noticeReads.userId, readAt: noticeReads.readAt }).from(noticeReads).where(eq(noticeReads.noticeId, id));
-  const readMap = new Map(reads.map((r) => [r.userId, r.readAt]));
+  const joinCond = and(eq(noticeReads.noticeId, id), eq(noticeReads.userId, users.id));
+  const tabFilter = tab === 'read' ? isNotNull(noticeReads.id) : isNull(noticeReads.id);
 
-  let targetUserIds: number[];
+  let baseWhere: SQL | undefined;
   if (notice.targetType === 'all') {
     const tc = tenantCondition(users, user);
-    const allUsers = await db.select({ id: users.id }).from(users).where(and(eq(users.status, 'active'), ...(tc ? [tc] : [])));
-    targetUserIds = allUsers.map((u) => u.id);
+    baseWhere = and(eq(users.status, 'active'), ...(tc ? [tc] : []));
   } else {
     const recipients = await db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, id));
     const userIdSet = new Set<number>();
     recipients.filter((r) => r.recipientType === 'user').forEach((r) => userIdSet.add(r.recipientId));
     const roleIds = recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId);
-    if (roleIds.length > 0) {
-      const roleUsers = await db.select({ userId: userRoles.userId }).from(userRoles).where(inArray(userRoles.roleId, roleIds));
-      roleUsers.forEach((r) => userIdSet.add(r.userId));
-    }
     const deptIds = recipients.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId);
-    if (deptIds.length > 0) {
-      const deptUsers = await db.select({ id: users.id }).from(users).where(inArray(users.departmentId, deptIds));
-      deptUsers.forEach((u) => userIdSet.add(u.id));
-    }
-    targetUserIds = [...userIdSet];
+    const [roleUsers, deptUsers] = await Promise.all([
+      roleIds.length > 0 ? db.select({ userId: userRoles.userId }).from(userRoles).where(inArray(userRoles.roleId, roleIds)) : Promise.resolve([]),
+      deptIds.length > 0 ? db.select({ id: users.id }).from(users).where(inArray(users.departmentId, deptIds)) : Promise.resolve([]),
+    ]);
+    roleUsers.forEach((r) => userIdSet.add(r.userId));
+    deptUsers.forEach((u) => userIdSet.add(u.id));
+    if (userIdSet.size === 0) return { readCount: 0, totalCount: 0, list: [], total: 0, page, pageSize };
+    baseWhere = inArray(users.id, [...userIdSet]);
   }
 
-  const readCount = targetUserIds.filter((uid) => readMap.has(uid)).length;
-  const totalCount = targetUserIds.length;
-  const filteredIds = tab === 'read'
-    ? targetUserIds.filter((uid) => readMap.has(uid))
-    : targetUserIds.filter((uid) => !readMap.has(uid));
-  const total = filteredIds.length;
-  const pagedIds = filteredIds.slice(pageOffset(page, pageSize), page * pageSize);
+  const [readCountRow, totalCountRow, totalRow, list] = await Promise.all([
+    db.select({ cnt: count() }).from(users).leftJoin(noticeReads, joinCond).where(and(baseWhere, isNotNull(noticeReads.id))),
+    db.select({ cnt: count() }).from(users).where(baseWhere),
+    db.select({ cnt: count() }).from(users).leftJoin(noticeReads, joinCond).where(and(baseWhere, tabFilter)),
+    db.select({ id: users.id, username: users.username, nickname: users.nickname, avatar: users.avatar, readAt: noticeReads.readAt })
+      .from(users)
+      .leftJoin(noticeReads, joinCond)
+      .where(and(baseWhere, tabFilter))
+      .orderBy(users.id)
+      .limit(pageSize)
+      .offset(pageOffset(page, pageSize)),
+  ]);
 
-  let list: Array<{ id: number; username: string; nickname: string; avatar: string | null; readAt?: string }> = [];
-  if (pagedIds.length > 0) {
-    const userRows = await db.select({ id: users.id, username: users.username, nickname: users.nickname, avatar: users.avatar }).from(users).where(inArray(users.id, pagedIds));
-    const userMap = new Map(userRows.map((u) => [u.id, u]));
-    list = pagedIds
-      .map((uid) => userMap.get(uid))
-      .filter((u): u is NonNullable<typeof u> => u !== undefined)
-      .map((u) => ({
-        id: u.id, username: u.username, nickname: u.nickname, avatar: u.avatar,
-        ...(tab === 'read' ? { readAt: formatNullableDateTime(readMap.get(u.id)) ?? undefined } : {}),
-      }));
-  }
-  return { readCount, totalCount, list, total, page, pageSize };
+  return {
+    readCount: readCountRow[0].cnt,
+    totalCount: totalCountRow[0].cnt,
+    total: totalRow[0].cnt,
+    list: list.map((u) => ({
+      id: u.id,
+      username: u.username,
+      nickname: u.nickname,
+      avatar: u.avatar,
+      ...(tab === 'read' ? { readAt: formatNullableDateTime(u.readAt) ?? undefined } : {}),
+    })),
+    page,
+    pageSize,
+  };
 }
 
 export async function getNoticeDetail(id: number) {
