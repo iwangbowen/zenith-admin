@@ -4,13 +4,14 @@ import { tenants } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { AppError } from '../lib/errors';
+import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 
 export function mapTenant(row: typeof tenants.$inferSelect) {
   return {
     ...row,
-    expireAt: row.expireAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    expireAt: formatNullableDateTime(row.expireAt),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 
@@ -59,7 +60,7 @@ interface TenantInput {
 export async function createTenant(data: TenantInput) {
   const [existing] = await db.select().from(tenants).where(eq(tenants.code, data.code)).limit(1);
   if (existing) throw new AppError('租户编码已存在', 400);
-  const [row] = await db.insert(tenants).values({ ...data, expireAt: data.expireAt ? new Date(data.expireAt) : null }).returning();
+  const [row] = await db.insert(tenants).values({ ...data, expireAt: parseDateTimeInput(data.expireAt) }).returning();
   return mapTenant(row);
 }
 
@@ -71,7 +72,7 @@ export async function updateTenant(id: number, data: Partial<TenantInput>) {
   const { expireAt: rawExpireAt, ...rest } = data;
   const values = {
     ...rest,
-    ...(rawExpireAt === undefined ? {} : { expireAt: rawExpireAt ? new Date(rawExpireAt) : null }),
+    ...(rawExpireAt === undefined ? {} : { expireAt: parseDateTimeInput(rawExpireAt) }),
   };
   const [row] = await db.update(tenants).set(values).where(eq(tenants.id, id)).returning();
   if (!row) throw new AppError('租户不存在', 404);

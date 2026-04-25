@@ -2,6 +2,7 @@ import { getOnlineSessions, forceLogout } from '../lib/session-manager';
 import { sendToUser, closeUserConnections } from '../lib/ws-manager';
 import { pageOffset } from '../lib/pagination';
 import { AppError } from '../lib/errors';
+import { formatDateTime } from '../lib/datetime';
 
 export async function listSessions(q: { page?: number; pageSize?: number; keyword?: string }) {
   const page = q.page ?? 1;
@@ -22,7 +23,7 @@ export async function listSessions(q: { page?: number; pageSize?: number; keywor
       ip: s.ip,
       browser: s.browser,
       os: s.os,
-      loginAt: s.loginAt.toISOString(),
+      loginAt: formatDateTime(s.loginAt),
     })),
     total,
     page,

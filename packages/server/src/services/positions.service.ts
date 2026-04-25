@@ -7,6 +7,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { pageOffset } from '../lib/pagination';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
+import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
 export function mapPosition(row: typeof positions.$inferSelect) {
   return {
@@ -16,8 +17,8 @@ export function mapPosition(row: typeof positions.$inferSelect) {
     sort: row.sort,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 
@@ -53,8 +54,10 @@ export async function listPositions(q: ListPositionsQuery) {
     conditions.push(or(like(positions.name, `%${q.keyword}%`), like(positions.code, `%${q.keyword}%`)));
   }
   if (q.status) conditions.push(eq(positions.status, q.status));
-  if (q.startTime) conditions.push(gte(positions.createdAt, new Date(q.startTime)));
-  if (q.endTime) conditions.push(lte(positions.createdAt, new Date(q.endTime)));
+  const startTime = parseDateTimeInput(q.startTime);
+  const endTime = parseDateTimeInput(q.endTime);
+  if (startTime) conditions.push(gte(positions.createdAt, startTime));
+  if (endTime) conditions.push(lte(positions.createdAt, endTime));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const tc = tenantCondition(positions, currentUser());

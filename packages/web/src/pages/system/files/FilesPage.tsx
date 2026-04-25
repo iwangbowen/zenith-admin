@@ -18,7 +18,7 @@ import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { config } from '@/config';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import './FilesPage.css';
@@ -84,8 +84,8 @@ export default function FilesPage() {
         ...(params.provider ? { provider: params.provider } : {}),
         ...(params.timeRange
           ? {
-            startTime: params.timeRange[0].toISOString(),
-            endTime: params.timeRange[1].toISOString(),
+            startTime: formatDateTimeForApi(params.timeRange[0]),
+            endTime: formatDateTimeForApi(params.timeRange[1]),
           }
           : {}),
       }).toString();

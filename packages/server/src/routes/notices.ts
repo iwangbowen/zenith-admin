@@ -15,6 +15,11 @@ import {
 
 const noticesRouter = new OpenAPIHono({ defaultHook: validationHook });
 
+const dateTimeStringSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss')
+  .openapi({ example: '2026-03-22 20:09:37' });
+
 const createNoticeSchema = z.object({
   title: z.string().min(1).max(128),
   content: z.string().min(1).max(4096),
@@ -23,7 +28,7 @@ const createNoticeSchema = z.object({
   priority: z.string().min(1).max(32).default('medium'),
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(noticeRecipientSchema).optional().default([]),
-  publishTime: z.iso.datetime({ offset: true }).optional().nullable(),
+  publishTime: dateTimeStringSchema.optional().nullable(),
 });
 const updateNoticeSchema = createNoticeSchema.partial();
 

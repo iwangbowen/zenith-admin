@@ -4,8 +4,11 @@
 import { useCallback, useRef, useState } from 'react';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import { GripVertical, Trash2, Asterisk } from 'lucide-react';
-import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
+import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldType } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
+
+const getColumnKey = (parentKey: string, column: WorkflowFormFieldColumn) =>
+  `${parentKey}-col-${column.span}-${column.fields.map(field => field.key).join('-') || 'empty'}`;
 
 interface FormCanvasProps {
   fields: WorkflowFormField[];
@@ -31,6 +34,14 @@ export default function FormCanvas({
 
   const getFieldInfo = (type: WorkflowFormFieldType) =>
     FORM_FIELD_TYPES.find(t => t.type === type);
+
+  const handleFieldButtonClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    const fieldKey = e.currentTarget.dataset.fieldKey;
+    if (fieldKey) {
+      onSelect(fieldKey);
+    }
+  }, [onSelect]);
 
   // ─── 内部排序拖拽 ─────────────────────────────────────────
 
@@ -161,7 +172,8 @@ export default function FormCanvas({
               ].filter(Boolean).join(' ')}
               draggable
               data-type={field.type}
-              onClick={(e) => { e.stopPropagation(); onSelect(field.key); }}
+              data-field-key={field.key}
+              onClick={handleFieldButtonClick}
               onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={(e) => handleDragOver(e, index)}
               onDrop={(e) => handleDrop(e, index)}
@@ -183,18 +195,18 @@ export default function FormCanvas({
 
                 {(field.type as string) === 'row' && (
                   <div className="fd-form-canvas__row-preview">
-                    {field.columns?.map((col, ci) => {
-                      // eslint-disable-next-line react/no-array-index-key
+                    {field.columns?.map((col) => {
                       return (
-                        <div key={ci} className="fd-form-canvas__row-col" style={{ flex: col.span }}>
+                        <div key={getColumnKey(field.key, col)} className="fd-form-canvas__row-col" style={{ flex: col.span }}>
                           <span className="fd-form-canvas__row-col-label">{col.span}/{24}</span>
                         {col.fields?.length > 0 ? (
-                          col.fields.map((f: any) => (
+                          col.fields.map((f: WorkflowFormField) => (
                             <button
                               type="button"
                               key={f.key}
+                              data-field-key={f.key}
                               className={`fd-form-canvas__row-col-field ${selectedKey === f.key ? 'fd-form-canvas__row-col-field--selected' : ''}`}
-                              onClick={(e) => { e.stopPropagation(); onSelect(f.key); }}
+                              onClick={handleFieldButtonClick}
                             >
                               {f.label}
                             </button>
@@ -223,8 +235,9 @@ export default function FormCanvas({
                           <button
                             type="button"
                             key={f.key}
+                            data-field-key={f.key}
                             className={`fd-form-canvas__group-child ${selectedKey === f.key ? 'fd-form-canvas__group-child--selected' : ''}`}
-                            onClick={(e) => { e.stopPropagation(); onSelect(f.key); }}
+                            onClick={handleFieldButtonClick}
                           >
                             {f.label}
                           </button>

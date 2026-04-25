@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockFileStorageConfigs } from '@/mocks/data/system';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { ManagedFile, FileStorageConfig } from '@zenith/shared';
 
 export const mockManagedFiles: ManagedFile[] = [
@@ -14,8 +15,8 @@ export const mockManagedFiles: ManagedFile[] = [
     mimeType: 'image/png',
     extension: 'png',
     url: 'https://avatars.githubusercontent.com/u/583231',
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
+    createdAt: '2024-01-01 00:00:00',
+    updatedAt: '2024-01-01 00:00:00',
   },
 ];
 
@@ -53,8 +54,8 @@ export const filesHandlers = [
       mimeType: file?.type ?? 'application/octet-stream',
       extension: file?.name?.split('.').pop() ?? '',
       url: `https://via.placeholder.com/200?text=${encodeURIComponent(file?.name ?? 'file')}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockManagedFiles.push(uploadedFile);
     return HttpResponse.json({ code: 0, message: '上传成功', data: uploadedFile });
@@ -102,8 +103,8 @@ export const filesHandlers = [
       status: body.status ?? 'active',
       isDefault: body.isDefault ?? false,
       ...body,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockFileStorageConfigs.push(newConfig);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newConfig });
@@ -114,7 +115,7 @@ export const filesHandlers = [
     const config = mockFileStorageConfigs.find((c) => c.id === Number(params.id));
     if (!config) return HttpResponse.json({ code: 404, message: '存储配置不存在', data: null });
     const body = await request.json() as Partial<FileStorageConfig>;
-    Object.assign(config, body, { updatedAt: new Date().toISOString() });
+    Object.assign(config, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: config });
   }),
 

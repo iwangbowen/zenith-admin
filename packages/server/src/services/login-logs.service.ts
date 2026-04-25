@@ -5,6 +5,7 @@ import { pageOffset } from '../lib/pagination';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { currentUser } from '../lib/context';
+import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
 export interface ListLoginLogsQuery {
   page?: number;
@@ -22,8 +23,10 @@ export async function listLoginLogs(q: ListLoginLogsQuery) {
   const conditions = [];
   if (q.username) conditions.push(like(loginLogs.username, `%${q.username}%`));
   if (q.status) conditions.push(eq(loginLogs.status, q.status));
-  if (q.startTime) conditions.push(gte(loginLogs.createdAt, new Date(q.startTime)));
-  if (q.endTime) conditions.push(lte(loginLogs.createdAt, new Date(q.endTime)));
+  const startTime = parseDateTimeInput(q.startTime);
+  const endTime = parseDateTimeInput(q.endTime);
+  if (startTime) conditions.push(gte(loginLogs.createdAt, startTime));
+  if (endTime) conditions.push(lte(loginLogs.createdAt, endTime));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const tc = tenantCondition(loginLogs, user);
   const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
@@ -32,7 +35,7 @@ export async function listLoginLogs(q: ListLoginLogsQuery) {
     db.select().from(loginLogs).where(finalWhere).orderBy(desc(loginLogs.createdAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
   ]);
   return {
-    list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    list: rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) })),
     total,
     page,
     pageSize,

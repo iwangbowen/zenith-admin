@@ -11,8 +11,8 @@ export const superAdminRole: Role = {
   description: '拥有所有权限',
   dataScope: 'all',
   status: 'active',
-  createdAt: '2024-01-01T00:00:00.000Z',
-  updatedAt: '2024-01-01T00:00:00.000Z',
+  createdAt: '2024-01-01 00:00:00',
+  updatedAt: '2024-01-01 00:00:00',
 };
 
 export const normalUserRole: Role = {
@@ -22,8 +22,8 @@ export const normalUserRole: Role = {
   description: '基础访问权限',
   dataScope: 'all',
   status: 'active',
-  createdAt: '2024-01-01T00:00:00.000Z',
-  updatedAt: '2024-01-01T00:00:00.000Z',
+  createdAt: '2024-01-01 00:00:00',
+  updatedAt: '2024-01-01 00:00:00',
 };
 
 export type MockUser = Omit<User, 'password'> & { password: string };
@@ -47,15 +47,15 @@ export const mockUsers: MockUser[] = [
         sort: 1,
         status: 'active',
         remark: '默认管理员岗位',
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
+        createdAt: '2024-01-01 00:00:00',
+        updatedAt: '2024-01-01 00:00:00',
       },
     ],
     roles: [superAdminRole],
-    passwordUpdatedAt: '2024-01-01T00:00:00.000Z',
+    passwordUpdatedAt: '2024-01-01 00:00:00',
     status: 'active',
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
+    createdAt: '2024-01-01 00:00:00',
+    updatedAt: '2024-01-01 00:00:00',
   },
 ];
 

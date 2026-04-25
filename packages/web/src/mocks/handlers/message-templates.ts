@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockMessageTemplates, getNextMessageTemplateId } from '@/mocks/data/message-templates';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { MessageTemplate } from '@zenith/shared';
 
 function interpolate(content: string, vars: Record<string, string>): string {
@@ -56,8 +57,8 @@ export const messageTemplatesHandlers = [
       variables: body.variables ?? null,
       status: body.status ?? 'active',
       remark: body.remark ?? null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockMessageTemplates.push(newItem);
     return HttpResponse.json({ code: 0, message: '创建成功', data: newItem });
@@ -68,7 +69,7 @@ export const messageTemplatesHandlers = [
     const item = mockMessageTemplates.find((t) => t.id === Number(params.id));
     if (!item) return HttpResponse.json({ code: 404, message: '模板不存在', data: null });
     const body = await request.json() as Partial<MessageTemplate>;
-    Object.assign(item, body, { updatedAt: new Date().toISOString() });
+    Object.assign(item, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: item });
   }),
 

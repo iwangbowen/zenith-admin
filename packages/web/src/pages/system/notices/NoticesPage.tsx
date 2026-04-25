@@ -26,7 +26,7 @@ import type { Notice, NoticeRecipient, NoticeTargetType, PaginatedResponse, User
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
 import { usePermission } from '@/hooks/usePermission';
@@ -115,8 +115,8 @@ export default function NoticesPage() {
         ...(params.publishStatus ? { publishStatus: params.publishStatus } : {}),
         ...(params.timeRange
           ? {
-            startTime: params.timeRange[0].toISOString(),
-            endTime: params.timeRange[1].toISOString(),
+            startTime: formatDateTimeForApi(params.timeRange[0]),
+            endTime: formatDateTimeForApi(params.timeRange[1]),
           }
           : {}),
       }).toString();

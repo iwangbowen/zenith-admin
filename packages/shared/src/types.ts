@@ -218,7 +218,7 @@ export interface LoginLog {
   os: string | null;
   status: 'success' | 'fail';
   message: string | null;
-  createdAt: Date;
+  createdAt: string;
 }
 
 // ─── Operation Logs ──────────────────────────────────────

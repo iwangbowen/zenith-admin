@@ -3,6 +3,7 @@ import { mockUsers } from '@/mocks/data/users';
 import { mockMenus } from '@/mocks/data/menus';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockLoginLogs, mockOperationLogs } from '@/mocks/data/logs';
+import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 
 const MOCK_TOKEN = 'mock-access-token-demo';
 const MOCK_REFRESH_TOKEN = 'mock-refresh-token-demo';
@@ -68,7 +69,7 @@ export const authHandlers = [
   http.put('/api/auth/profile', async ({ request }) => {
     const body = await request.json() as Partial<typeof mockUsers[0]>;
     const user = mockUsers[0];
-    Object.assign(user, body, { updatedAt: new Date().toISOString() });
+    Object.assign(user, body, { updatedAt: mockDateTime() });
     const { password: _, ...userWithoutPassword } = user;
     return HttpResponse.json({ code: 0, message: '保存成功', data: userWithoutPassword });
   }),
@@ -90,9 +91,7 @@ export const authHandlers = [
     const page = Number(url.searchParams.get('page')) || 1;
     const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const userId = mockUsers[0].id;
-    const list = mockLoginLogs
-      .filter((l) => l.userId === userId)
-      .map((l) => ({ ...l, createdAt: l.createdAt instanceof Date ? l.createdAt.toISOString() : l.createdAt }));
+    const list = mockLoginLogs.filter((l) => l.userId === userId);
     const total = list.length;
     const paged = list.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });
@@ -167,8 +166,8 @@ const mockMySessionStore: import('@zenith/shared').UserSession[] = [
     ip: '127.0.0.1',
     browser: 'Chrome 124',
     os: 'Windows 11',
-    loginAt: new Date(Date.now() - 1800 * 1000).toISOString(),
-    lastActiveAt: new Date().toISOString(),
+    loginAt: mockDateTimeOffset(-1800 * 1000),
+    lastActiveAt: mockDateTime(),
     isCurrent: true,
   },
   {
@@ -176,8 +175,8 @@ const mockMySessionStore: import('@zenith/shared').UserSession[] = [
     ip: '192.168.1.42',
     browser: 'Safari 17',
     os: 'macOS Sonoma',
-    loginAt: new Date(Date.now() - 86400 * 1000).toISOString(),
-    lastActiveAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+    loginAt: mockDateTimeOffset(-86400 * 1000),
+    lastActiveAt: mockDateTimeOffset(-3600 * 1000),
     isCurrent: false,
   },
   {
@@ -185,8 +184,8 @@ const mockMySessionStore: import('@zenith/shared').UserSession[] = [
     ip: '10.0.0.5',
     browser: 'Firefox 125',
     os: 'Ubuntu 22.04',
-    loginAt: new Date(Date.now() - 3 * 86400 * 1000).toISOString(),
-    lastActiveAt: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
+    loginAt: mockDateTimeOffset(-3 * 86400 * 1000),
+    lastActiveAt: mockDateTimeOffset(-2 * 86400 * 1000),
     isCurrent: false,
   },
 ];

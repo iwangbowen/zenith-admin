@@ -3,7 +3,7 @@ import { Table, Input, Button, Tag, Select, DatePicker, Modal } from '@douyinfe/
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import type { LoginLog, PaginatedResponse } from '@zenith/shared';
 
 export default function LoginLogsPage() {
@@ -34,8 +34,8 @@ export default function LoginLogsPage() {
         ...(params.status ? { status: params.status } : {}),
       });
       if (params.timeRange) {
-        query.set('startTime', params.timeRange[0].toISOString());
-        query.set('endTime', params.timeRange[1].toISOString());
+        query.set('startTime', formatDateTimeForApi(params.timeRange[0]));
+        query.set('endTime', formatDateTimeForApi(params.timeRange[1]));
       }
       const res = await request.get<PaginatedResponse<LoginLog>>(`/api/login-logs?${query.toString()}`);
       setData(res.data.list);

@@ -23,7 +23,7 @@ import type {
 } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import './FileStorageConfigsPage.css';
@@ -134,8 +134,8 @@ export default function FileStorageConfigsPage() {
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
           ? {
-            startTime: params.timeRange[0].toISOString(),
-            endTime: params.timeRange[1].toISOString(),
+            startTime: formatDateTimeForApi(params.timeRange[0]),
+            endTime: formatDateTimeForApi(params.timeRange[1]),
           }
           : {}),
         page: String(p),

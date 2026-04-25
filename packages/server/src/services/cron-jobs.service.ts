@@ -5,14 +5,15 @@ import { pageOffset } from '../lib/pagination';
 import { scheduleJob, stopJob, runJobOnce, validateCronExpression } from '../lib/cron-scheduler';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { AppError } from '../lib/errors';
+import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 
 export function mapCronJob(row: typeof cronJobs.$inferSelect) {
   return {
     ...row,
-    lastRunAt: row.lastRunAt?.toISOString() ?? null,
-    nextRunAt: row.nextRunAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    lastRunAt: formatNullableDateTime(row.lastRunAt),
+    nextRunAt: formatNullableDateTime(row.nextRunAt),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 
@@ -22,8 +23,8 @@ function mapLog(r: typeof cronJobLogs.$inferSelect) {
     jobId: r.jobId,
     jobName: r.jobName,
     executionCount: r.executionCount,
-    startedAt: r.startedAt.toISOString(),
-    endedAt: r.endedAt?.toISOString() ?? null,
+    startedAt: formatDateTime(r.startedAt),
+    endedAt: formatNullableDateTime(r.endedAt),
     durationMs: r.durationMs,
     status: r.status,
     output: r.output,

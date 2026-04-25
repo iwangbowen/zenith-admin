@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockDicts, mockDictItems, getNextDictId, getNextDictItemId } from '@/mocks/data/dicts';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { Dict, DictItem } from '@zenith/shared';
 
 export const dictsHandlers = [
@@ -17,7 +18,7 @@ export const dictsHandlers = [
       if (keyword && !d.name.includes(keyword) && !d.code.includes(keyword)) return false;
       if (status && d.status !== status) return false;
       if (startDate && d.createdAt < startDate) return false;
-      if (endDate && d.createdAt > `${endDate}T23:59:59.999Z`) return false;
+      if (endDate && d.createdAt > `${endDate} 23:59:59`) return false;
       return true;
     });
     const total = filtered.length;
@@ -41,8 +42,8 @@ export const dictsHandlers = [
       code: body.code ?? '',
       description: body.description,
       status: body.status ?? 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockDicts.push(newDict);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newDict });
@@ -53,7 +54,7 @@ export const dictsHandlers = [
     const dict = mockDicts.find((d) => d.id === Number(params.id));
     if (!dict) return HttpResponse.json({ code: 404, message: '字典不存在', data: null });
     const body = await request.json() as Partial<Dict>;
-    Object.assign(dict, body, { updatedAt: new Date().toISOString() });
+    Object.assign(dict, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: dict });
   }),
 
@@ -89,8 +90,8 @@ export const dictsHandlers = [
       sort: body.sort ?? 0,
       status: body.status ?? 'active',
       remark: body.remark,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockDictItems.push(newItem);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newItem });
@@ -101,7 +102,7 @@ export const dictsHandlers = [
     const item = mockDictItems.find((i) => i.id === Number(params.itemId));
     if (!item) return HttpResponse.json({ code: 404, message: '字典条目不存在', data: null });
     const body = await request.json() as Partial<DictItem>;
-    Object.assign(item, body, { updatedAt: new Date().toISOString() });
+    Object.assign(item, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: item });
   }),
 

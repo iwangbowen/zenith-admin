@@ -18,6 +18,11 @@ import {
 
 const tenantsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
+const dateTimeStringSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss')
+  .openapi({ example: '2026-03-22 20:09:37' });
+
 const platformAdminMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   const user = c.get('user');
   if (!isPlatformAdmin(user)) {
@@ -33,7 +38,7 @@ const createTenantSchema = z.object({
   contactName: z.string().max(50).optional(),
   contactPhone: z.string().max(20).optional(),
   status: z.enum(['active', 'disabled']).default('active'),
-  expireAt: z.iso.datetime({ offset: true }).optional().nullable(),
+  expireAt: dateTimeStringSchema.optional().nullable(),
   maxUsers: z.number().int().positive().optional().nullable(),
   remark: z.string().max(500).optional(),
 });

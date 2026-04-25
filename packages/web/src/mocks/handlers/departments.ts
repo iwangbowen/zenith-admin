@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockDepartments, getNextDeptId } from '@/mocks/data/departments';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { Department } from '@zenith/shared';
 
 function buildDeptTree(list: Department[], parentId: number = 0): Department[] {
@@ -44,8 +45,8 @@ export const departmentsHandlers = [
       parentId: body.parentId ?? 0,
       sort: body.sort ?? 0,
       status: body.status ?? 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockDepartments.push(newDept);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newDept });
@@ -56,7 +57,7 @@ export const departmentsHandlers = [
     const dept = mockDepartments.find((d) => d.id === Number(params.id));
     if (!dept) return HttpResponse.json({ code: 404, message: '部门不存在', data: null });
     const body = await request.json() as Partial<Department>;
-    Object.assign(dept, body, { updatedAt: new Date().toISOString() });
+    Object.assign(dept, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: dept });
   }),
 

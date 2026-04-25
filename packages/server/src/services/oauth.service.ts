@@ -9,6 +9,7 @@ import { currentUser } from '../lib/context';
 import { registerSession } from '../lib/session-manager';
 import { getUserRoles, issueTokens } from './auth.service';
 import { OAUTH_PROVIDERS, type OAuthProviderType } from '@zenith/shared';
+import { formatDateTime } from '../lib/datetime';
 
 const VALID_PROVIDERS = new Set<string>(OAUTH_PROVIDERS);
 
@@ -35,7 +36,7 @@ export async function listOAuthAccounts() {
     })
     .from(userOauthAccounts)
     .where(eq(userOauthAccounts.userId, user.userId));
-  return accounts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() }));
+  return accounts.map((a) => ({ ...a, createdAt: formatDateTime(a.createdAt) }));
 }
 
 export async function generateAuthUrl(provider: string) {
@@ -150,8 +151,8 @@ export async function handleOAuthCallback(provider: string, code: string, client
       user: {
         ...userInfoClean,
         roles: userRoleList,
-        createdAt: user.createdAt.toISOString(),
-        updatedAt: user.updatedAt.toISOString(),
+        createdAt: formatDateTime(user.createdAt),
+        updatedAt: formatDateTime(user.updatedAt),
       },
       token: { accessToken, refreshToken },
     },

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
+import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import type { CronJob } from '@zenith/shared';
 
 export const cronJobsHandlers = [
@@ -21,13 +22,13 @@ export const cronJobsHandlers = [
         jobId: job.id,
         jobName: job.name,
         executionCount: i * 5 + j + 1,
-        startedAt: new Date(Date.now() - (i * 5 + j + 1) * 1800000).toISOString(),
-        endedAt: new Date(Date.now() - (i * 5 + j + 1) * 1800000 + 1200 + j * 200).toISOString(),
+        startedAt: mockDateTimeOffset(-(i * 5 + j + 1) * 1800000),
+        endedAt: mockDateTimeOffset(-(i * 5 + j + 1) * 1800000 + 1200 + j * 200),
         durationMs: 1200 + j * 200,
         status: statuses[j % statuses.length],
         output: statuses[j % statuses.length] === 'fail' ? 'Error: Connection timeout' : 'Completed successfully',
       }))
-    ).sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+    ).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 
     const total = allLogs.length;
     const list = allLogs.slice((page - 1) * pageSize, page * pageSize);
@@ -48,8 +49,8 @@ export const cronJobsHandlers = [
       jobId: job.id,
       jobName: job.name,
       executionCount: j + 1,
-      startedAt: new Date(Date.now() - (j + 1) * 3600000).toISOString(),
-      endedAt: new Date(Date.now() - (j + 1) * 3600000 + 1500 + j * 100).toISOString(),
+      startedAt: mockDateTimeOffset(-(j + 1) * 3600000),
+      endedAt: mockDateTimeOffset(-(j + 1) * 3600000 + 1500 + j * 100),
       durationMs: 1500 + j * 100,
       status: statuses[j % statuses.length],
       output: statuses[j % statuses.length] === 'fail' ? 'Error: timeout' : 'OK',
@@ -101,8 +102,8 @@ export const cronJobsHandlers = [
       nextRunAt: null,
       lastRunStatus: null,
       lastRunMessage: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockCronJobs.push(newJob);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newJob });
@@ -113,7 +114,7 @@ export const cronJobsHandlers = [
     const job = mockCronJobs.find((j) => j.id === Number(params.id));
     if (!job) return HttpResponse.json({ code: 404, message: '任务不存在', data: null });
     const body = await request.json() as Partial<CronJob>;
-    Object.assign(job, body, { updatedAt: new Date().toISOString() });
+    Object.assign(job, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: job });
   }),
 
@@ -129,10 +130,10 @@ export const cronJobsHandlers = [
   http.post('/api/cron-jobs/:id/run', ({ params }) => {
     const job = mockCronJobs.find((j) => j.id === Number(params.id));
     if (!job) return HttpResponse.json({ code: 404, message: '任务不存在', data: null });
-    job.lastRunAt = new Date().toISOString();
+    job.lastRunAt = mockDateTime();
     job.lastRunStatus = 'success';
     job.lastRunMessage = 'Demo 模式：模拟执行成功';
-    job.updatedAt = new Date().toISOString();
+    job.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: '执行成功', data: job });
   }),
 
@@ -141,7 +142,7 @@ export const cronJobsHandlers = [
     const job = mockCronJobs.find((j) => j.id === Number(params.id));
     if (!job) return HttpResponse.json({ code: 404, message: '任务不存在', data: null });
     job.status = job.status === 'active' ? 'disabled' : 'active';
-    job.updatedAt = new Date().toISOString();
+    job.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: '操作成功', data: job });
   }),
 ];

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockNotices, getNextNoticeId } from '@/mocks/data/notices';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { Notice } from '@zenith/shared';
 
 export const noticesHandlers = [
@@ -27,7 +28,7 @@ export const noticesHandlers = [
   http.get('/api/notices/published', () => {
     const data = mockNotices
       .filter((n) => n.publishStatus === 'published')
-      .sort((a, b) => new Date(b.publishTime ?? 0).getTime() - new Date(a.publishTime ?? 0).getTime())
+      .sort((a, b) => (b.publishTime ?? '').localeCompare(a.publishTime ?? ''))
       .slice(0, 20)
       .map((n) => ({ ...n, isRead: false }));
     return HttpResponse.json({ code: 0, message: 'ok', data });
@@ -42,7 +43,7 @@ export const noticesHandlers = [
 
     let list = mockNotices
       .filter((n) => n.publishStatus === 'published')
-      .sort((a, b) => new Date(b.publishTime ?? 0).getTime() - new Date(a.publishTime ?? 0).getTime())
+      .sort((a, b) => (b.publishTime ?? '').localeCompare(a.publishTime ?? ''))
       .map((n) => ({ ...n, isRead: false }));
 
     if (isReadFilter === 'true') list = list.filter((n) => n.isRead);
@@ -79,8 +80,8 @@ export const noticesHandlers = [
       createById: 1,
       createByName: '管理员',
       targetType: body.targetType ?? 'all',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockNotices.push(newNotice);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newNotice });
@@ -91,7 +92,7 @@ export const noticesHandlers = [
     const notice = mockNotices.find((n) => n.id === Number(params.id));
     if (!notice) return HttpResponse.json({ code: 404, message: '通知不存在', data: null });
     const body = await request.json() as Partial<Notice>;
-    Object.assign(notice, body, { updatedAt: new Date().toISOString() });
+    Object.assign(notice, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: notice });
   }),
 
@@ -100,8 +101,8 @@ export const noticesHandlers = [
     const notice = mockNotices.find((n) => n.id === Number(params.id));
     if (!notice) return HttpResponse.json({ code: 404, message: '通知不存在', data: null });
     notice.publishStatus = 'published';
-    notice.publishTime = new Date().toISOString();
-    notice.updatedAt = new Date().toISOString();
+    notice.publishTime = mockDateTime();
+    notice.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: '发布成功', data: notice });
   }),
 
@@ -110,7 +111,7 @@ export const noticesHandlers = [
     const notice = mockNotices.find((n) => n.id === Number(params.id));
     if (!notice) return HttpResponse.json({ code: 404, message: '通知不存在', data: null });
     notice.publishStatus = 'recalled';
-    notice.updatedAt = new Date().toISOString();
+    notice.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: '撤回成功', data: notice });
   }),
 
@@ -144,14 +145,14 @@ export const noticesHandlers = [
 
     // 模拟已读和未读用户列表
     const mockReadUsers = [
-      { id: 1, username: 'admin', nickname: '管理员', avatar: null, readAt: '2024-01-01T09:00:00.000Z' },
-      { id: 2, username: 'zhangsan', nickname: '张三', avatar: null, readAt: '2024-01-01T10:30:00.000Z' },
-      { id: 3, username: 'lisi', nickname: '李四', avatar: null, readAt: '2024-01-02T08:15:00.000Z' },
-      { id: 4, username: 'wangwu', nickname: '王五', avatar: null, readAt: '2024-01-02T14:20:00.000Z' },
-      { id: 5, username: 'zhaoliu', nickname: '赵六', avatar: null, readAt: '2024-01-03T11:00:00.000Z' },
-      { id: 6, username: 'sunqi', nickname: '孙七', avatar: null, readAt: '2024-01-03T16:45:00.000Z' },
-      { id: 7, username: 'zhouba', nickname: '周八', avatar: null, readAt: '2024-01-04T09:30:00.000Z' },
-      { id: 8, username: 'wujiu', nickname: '吴九', avatar: null, readAt: '2024-01-04T13:10:00.000Z' },
+      { id: 1, username: 'admin', nickname: '管理员', avatar: null, readAt: '2024-01-01 09:00:00' },
+      { id: 2, username: 'zhangsan', nickname: '张三', avatar: null, readAt: '2024-01-01 10:30:00' },
+      { id: 3, username: 'lisi', nickname: '李四', avatar: null, readAt: '2024-01-02 08:15:00' },
+      { id: 4, username: 'wangwu', nickname: '王五', avatar: null, readAt: '2024-01-02 14:20:00' },
+      { id: 5, username: 'zhaoliu', nickname: '赵六', avatar: null, readAt: '2024-01-03 11:00:00' },
+      { id: 6, username: 'sunqi', nickname: '孙七', avatar: null, readAt: '2024-01-03 16:45:00' },
+      { id: 7, username: 'zhouba', nickname: '周八', avatar: null, readAt: '2024-01-04 09:30:00' },
+      { id: 8, username: 'wujiu', nickname: '吴九', avatar: null, readAt: '2024-01-04 13:10:00' },
     ];
     const mockUnreadUsers = [
       { id: 9, username: 'zhengshi', nickname: '郑十', avatar: null },

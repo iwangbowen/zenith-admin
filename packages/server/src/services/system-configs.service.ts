@@ -6,11 +6,12 @@ import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
+import { formatDateTime } from '../lib/datetime';
 
 type ConfigType = 'string' | 'number' | 'boolean' | 'json';
 
 function mapConfig(row: typeof systemConfigs.$inferSelect) {
-  return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { ...row, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
 }
 
 export async function getPublicConfig(key: string) {

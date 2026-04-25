@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockMenus, buildMenuTree, getNextMenuId } from '@/mocks/data/menus';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { Menu } from '@zenith/shared';
 
 export const menusHandlers = [
@@ -41,8 +42,8 @@ export const menusHandlers = [
       sort: body.sort ?? 0,
       status: body.status ?? 'active',
       visible: body.visible ?? true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockMenus.push(newMenu);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newMenu });
@@ -53,7 +54,7 @@ export const menusHandlers = [
     const menu = mockMenus.find((m) => m.id === Number(params.id));
     if (!menu) return HttpResponse.json({ code: 404, message: '菜单不存在', data: null });
     const body = await request.json() as Partial<Menu>;
-    Object.assign(menu, body, { updatedAt: new Date().toISOString() });
+    Object.assign(menu, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: menu });
   }),
 

@@ -57,8 +57,8 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     tenantId: 1,
     createdBy: 1,
     createdByName: '张三',
-    createdAt: '2026-01-10T08:00:00.000Z',
-    updatedAt: '2026-02-15T10:30:00.000Z',
+    createdAt: '2026-01-10 08:00:00',
+    updatedAt: '2026-02-15 10:30:00',
   },
   {
     id: 2,
@@ -88,8 +88,8 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     tenantId: 1,
     createdBy: 1,
     createdByName: '张三',
-    createdAt: '2026-01-15T09:00:00.000Z',
-    updatedAt: '2026-03-01T14:00:00.000Z',
+    createdAt: '2026-01-15 09:00:00',
+    updatedAt: '2026-03-01 14:00:00',
   },
   {
     id: 3,
@@ -109,8 +109,8 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     tenantId: 1,
     createdBy: 2,
     createdByName: '李四',
-    createdAt: '2026-03-20T11:00:00.000Z',
-    updatedAt: '2026-03-20T11:00:00.000Z',
+    createdAt: '2026-03-20 11:00:00',
+    updatedAt: '2026-03-20 11:00:00',
   },
   {
     id: 4,
@@ -136,8 +136,8 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     tenantId: 1,
     createdBy: 1,
     createdByName: '张三',
-    createdAt: '2025-12-01T08:00:00.000Z',
-    updatedAt: '2026-01-05T16:00:00.000Z',
+    createdAt: '2025-12-01 08:00:00',
+    updatedAt: '2026-01-05 16:00:00',
   },
 ];
 
@@ -156,8 +156,8 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     assigneeAvatar: null,
     status: 'approved',
     comment: '同意，注意按时归来。',
-    actionAt: '2026-03-15T10:30:00.000Z',
-    createdAt: '2026-03-14T09:00:00.000Z',
+    actionAt: '2026-03-15 10:30:00',
+    createdAt: '2026-03-14 09:00:00',
   },
   {
     id: 2,
@@ -170,8 +170,8 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     assigneeAvatar: null,
     status: 'approved',
     comment: null,
-    actionAt: '2026-03-15T10:31:00.000Z',
-    createdAt: '2026-03-15T10:31:00.000Z',
+    actionAt: '2026-03-15 10:31:00',
+    createdAt: '2026-03-15 10:31:00',
   },
   // 实例 2 的任务（审批中）
   {
@@ -185,8 +185,8 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     assigneeAvatar: null,
     status: 'approved',
     comment: '金额合理，同意。',
-    actionAt: '2026-03-28T14:00:00.000Z',
-    createdAt: '2026-03-27T16:00:00.000Z',
+    actionAt: '2026-03-28 14:00:00',
+    createdAt: '2026-03-27 16:00:00',
   },
   {
     id: 4,
@@ -200,7 +200,7 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     status: 'pending',
     comment: null,
     actionAt: null,
-    createdAt: '2026-03-28T14:01:00.000Z',
+    createdAt: '2026-03-28 14:01:00',
   },
   // 实例 3 的任务（待审批 - 作为待我审批的数据，assigneeId=1 即当前登录用户）
   {
@@ -215,7 +215,7 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     status: 'pending',
     comment: null,
     actionAt: null,
-    createdAt: '2026-04-01T10:00:00.000Z',
+    createdAt: '2026-04-01 10:00:00',
   },
   // 实例 4 的任务（已驳回）
   {
@@ -229,8 +229,8 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     assigneeAvatar: null,
     status: 'rejected',
     comment: '金额偏高，请重新评估。',
-    actionAt: '2026-03-22T11:00:00.000Z',
-    createdAt: '2026-03-21T09:00:00.000Z',
+    actionAt: '2026-03-22 11:00:00',
+    createdAt: '2026-03-21 09:00:00',
   },
 ];
 
@@ -250,8 +250,8 @@ export const mockWorkflowInstances: WorkflowInstance[] = [
     initiatorAvatar: null,
     tenantId: 1,
     tasks: mockWorkflowTasks.filter(t => t.instanceId === 1),
-    createdAt: '2026-03-14T09:00:00.000Z',
-    updatedAt: '2026-03-15T10:31:00.000Z',
+    createdAt: '2026-03-14 09:00:00',
+    updatedAt: '2026-03-15 10:31:00',
   },
   {
     id: 2,
@@ -266,8 +266,8 @@ export const mockWorkflowInstances: WorkflowInstance[] = [
     initiatorAvatar: null,
     tenantId: 1,
     tasks: mockWorkflowTasks.filter(t => t.instanceId === 2),
-    createdAt: '2026-03-27T16:00:00.000Z',
-    updatedAt: '2026-03-28T14:01:00.000Z',
+    createdAt: '2026-03-27 16:00:00',
+    updatedAt: '2026-03-28 14:01:00',
   },
   {
     id: 3,
@@ -282,8 +282,8 @@ export const mockWorkflowInstances: WorkflowInstance[] = [
     initiatorAvatar: null,
     tenantId: 1,
     tasks: mockWorkflowTasks.filter(t => t.instanceId === 3),
-    createdAt: '2026-04-01T10:00:00.000Z',
-    updatedAt: '2026-04-01T10:00:00.000Z',
+    createdAt: '2026-04-01 10:00:00',
+    updatedAt: '2026-04-01 10:00:00',
   },
   {
     id: 4,
@@ -298,8 +298,8 @@ export const mockWorkflowInstances: WorkflowInstance[] = [
     initiatorAvatar: null,
     tenantId: 1,
     tasks: mockWorkflowTasks.filter(t => t.instanceId === 4),
-    createdAt: '2026-03-21T09:00:00.000Z',
-    updatedAt: '2026-03-22T11:00:00.000Z',
+    createdAt: '2026-03-21 09:00:00',
+    updatedAt: '2026-03-22 11:00:00',
   },
 ];
 

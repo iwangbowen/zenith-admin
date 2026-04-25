@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockPositions, getNextPositionId } from '@/mocks/data/positions';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { Position } from '@zenith/shared';
 
 export const positionsHandlers = [
@@ -43,8 +44,8 @@ export const positionsHandlers = [
       sort: body.sort ?? 0,
       status: body.status ?? 'active',
       remark: body.remark,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockPositions.push(newPos);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newPos });
@@ -55,7 +56,7 @@ export const positionsHandlers = [
     const pos = mockPositions.find((p) => p.id === Number(params.id));
     if (!pos) return HttpResponse.json({ code: 404, message: '岗位不存在', data: null });
     const body = await request.json() as Partial<Position>;
-    Object.assign(pos, body, { updatedAt: new Date().toISOString() });
+    Object.assign(pos, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: pos });
   }),
 

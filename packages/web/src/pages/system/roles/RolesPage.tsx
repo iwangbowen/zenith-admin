@@ -18,7 +18,7 @@ import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Role, Menu, User, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -67,8 +67,8 @@ export default function RolesPage() {
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
           ? {
-            startTime: params.timeRange[0].toISOString(),
-            endTime: params.timeRange[1].toISOString(),
+            startTime: formatDateTimeForApi(params.timeRange[0]),
+            endTime: formatDateTimeForApi(params.timeRange[1]),
           }
           : {}),
         page: String(p),

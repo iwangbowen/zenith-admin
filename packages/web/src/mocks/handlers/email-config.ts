@@ -1,19 +1,20 @@
 import { http, HttpResponse } from 'msw';
 import { mockEmailConfig } from '@/mocks/data/email-config';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { EmailConfig } from '@zenith/shared';
 
 let emailConfig: EmailConfig = { ...mockEmailConfig };
 
 export const emailConfigHandlers = [
   http.get('/api/email-config', () => {
-     
+
     const { smtpPassword: _masked, ...safeConfig } = emailConfig;
     return HttpResponse.json({ code: 0, message: 'success', data: safeConfig });
   }),
 
   http.put('/api/email-config', async ({ request }) => {
     const body = (await request.json()) as Partial<EmailConfig>;
-    emailConfig = { ...emailConfig, ...body, updatedAt: new Date().toISOString() };
+    emailConfig = { ...emailConfig, ...body, updatedAt: mockDateTime() };
     return HttpResponse.json({ code: 0, message: '保存成功', data: emailConfig });
   }),
 

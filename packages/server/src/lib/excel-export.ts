@@ -1,10 +1,10 @@
 import ExcelJS from 'exceljs';
-import dayjs from 'dayjs';
+import { formatDateTime } from './datetime';
 
 /** Format a date to 'YYYY-MM-DD HH:mm:ss'. Returns '' for null/undefined. */
 export function formatDateTimeForExcel(date: Date | string | null | undefined): string {
   if (!date) return '';
-  return dayjs(date).format('YYYY-MM-DD HH:mm:ss');
+  return formatDateTime(date);
 }
 
 export interface ExcelColumn {

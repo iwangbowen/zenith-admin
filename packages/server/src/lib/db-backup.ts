@@ -8,6 +8,7 @@ import { dbBackups, managedFiles, fileStorageConfigs } from '../db/schema';
 import { config } from '../config';
 import { uploadFileByConfig } from './file-storage';
 import logger from './logger';
+import { formatFileTimestamp } from './datetime';
 
 const execAsync = promisify(exec);
 
@@ -32,7 +33,7 @@ export async function createPgDumpBackup(backupId: number): Promise<void> {
 
   try {
     await ensureBackupDir();
-    const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
+    const timestamp = formatFileTimestamp();
     const filename = `pgdump-${timestamp}.sql.gz`;
     const filePath = path.join(BACKUP_DIR, filename);
 
@@ -102,7 +103,7 @@ export async function createDrizzleExportBackup(backupId: number, tables?: strin
 
   try {
     await ensureBackupDir();
-    const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
+    const timestamp = formatFileTimestamp();
     const filename = `drizzle-export-${timestamp}.json`;
     const filePath = path.join(BACKUP_DIR, filename);
 

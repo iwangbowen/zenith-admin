@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { UserApiToken, UserApiTokenCreated } from '@zenith/shared';
+import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 
 type TokenEntry = UserApiToken & { _full: string };
 
@@ -9,18 +10,18 @@ const mockTokenStore: TokenEntry[] = [
     name: '本地开发环境',
     tokenPrefix: 'zat_localdev01...',
     _full: 'zat_localdev0137f82c9b4e5a',
-    lastUsedAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+    lastUsedAt: mockDateTimeOffset(-3600 * 1000),
     expiresAt: null,
-    createdAt: '2024-03-01T00:00:00.000Z',
+    createdAt: '2024-03-01 00:00:00',
   },
   {
     id: 2,
     name: 'CI/CD Pipeline',
     tokenPrefix: 'zat_cicd00x002...',
     _full: 'zat_cicd00x002a9b7fe3c81d',
-    lastUsedAt: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
-    expiresAt: new Date(Date.now() + 90 * 86400 * 1000).toISOString(),
-    createdAt: '2024-04-15T08:00:00.000Z',
+    lastUsedAt: mockDateTimeOffset(-2 * 86400 * 1000),
+    expiresAt: mockDateTimeOffset(90 * 86400 * 1000),
+    createdAt: '2024-04-15 08:00:00',
   },
 ];
 
@@ -50,7 +51,7 @@ export const apiTokensHandlers = [
       _full: token,
       lastUsedAt: null,
       expiresAt: null,
-      createdAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
     };
     mockTokenStore.push(entry);
     const response: UserApiTokenCreated = {

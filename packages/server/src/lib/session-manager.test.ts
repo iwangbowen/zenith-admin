@@ -62,7 +62,7 @@ function makeSessionInfo(overrides: Partial<Parameters<typeof registerSession>[0
     ip: '127.0.0.1',
     browser: 'Chrome 120',
     os: 'Windows 10',
-    loginAt: new Date('2026-01-01T00:00:00Z'),
+    loginAt: new Date(2026, 0, 1, 0, 0, 0),
     ...overrides,
   };
 }

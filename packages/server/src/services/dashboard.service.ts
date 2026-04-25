@@ -7,6 +7,7 @@ import { tenantCondition } from '../lib/tenant';
 import { AppError } from '../lib/errors';
 import type { JwtPayload } from '../middleware/auth';
 import { currentUser } from '../lib/context';
+import { formatDate } from '../lib/datetime';
 
 function ensureSuperAdmin(user: JwtPayload) {
   if (!isSuperAdmin(user.roles)) throw new AppError('无权限', 403);
@@ -70,14 +71,14 @@ export async function getDashboardCharts() {
   const [loginTrendRows, operationTypeRows, userActivityRows] = await Promise.all([
     db
       .select({
-        date: sql<string>`to_char(date(${loginLogs.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
+        date: sql<string>`to_char(date(${loginLogs.createdAt}), 'YYYY-MM-DD')`,
         status: loginLogs.status,
         count: loginTrendCount,
       })
       .from(loginLogs)
       .where(loginRangeWhere)
-      .groupBy(sql`date(${loginLogs.createdAt} AT TIME ZONE 'UTC')`, loginLogs.status)
-      .orderBy(sql`date(${loginLogs.createdAt} AT TIME ZONE 'UTC')`),
+      .groupBy(sql`date(${loginLogs.createdAt})`, loginLogs.status)
+      .orderBy(sql`date(${loginLogs.createdAt})`),
     db
       .select({ module: operationLogs.module, count: operationTypeCount })
       .from(operationLogs)
@@ -87,20 +88,20 @@ export async function getDashboardCharts() {
       .limit(8),
     db
       .select({
-        date: sql<string>`to_char(date(${loginLogs.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
+        date: sql<string>`to_char(date(${loginLogs.createdAt}), 'YYYY-MM-DD')`,
         activeUsers: activeUserCount,
       })
       .from(loginLogs)
       .where(activityRangeWhere)
-      .groupBy(sql`date(${loginLogs.createdAt} AT TIME ZONE 'UTC')`)
-      .orderBy(sql`date(${loginLogs.createdAt} AT TIME ZONE 'UTC')`),
+      .groupBy(sql`date(${loginLogs.createdAt})`)
+      .orderBy(sql`date(${loginLogs.createdAt})`),
   ]);
 
   const dates: string[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(sevenDaysAgo);
     d.setDate(d.getDate() + i);
-    dates.push(d.toISOString().slice(0, 10));
+    dates.push(formatDate(d));
   }
 
   const trendMap: Record<string, { successCount: number; failCount: number }> = {};

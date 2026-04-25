@@ -3,6 +3,7 @@ import { mockUsers, getNextUserId, type MockUser } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockPositions } from '@/mocks/data/positions';
 import { mockDepartments } from '@/mocks/data/departments';
+import { mockDateTime } from '@/mocks/utils/date';
 
 // Demo 模式下新增/重置用户时使用的默认初始口令（明文仅用于演示环境）
 const DEMO_INITIAL_CREDENTIAL = ['1', '2', '3', '4', '5', '6'].join('');
@@ -86,9 +87,9 @@ export const usersHandlers = [
       positions,
       roles,
       status: body.status ?? 'active',
-      passwordUpdatedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      passwordUpdatedAt: mockDateTime(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockUsers.push(newUser);
     return HttpResponse.json({ code: 0, message: '新增成功', data: toUserResponse(newUser) });
@@ -106,7 +107,7 @@ export const usersHandlers = [
       user.positionIds = body.positionIds;
       user.positions = body.positionIds.map((id) => mockPositions.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => Boolean(p));
     }
-    Object.assign(user, { ...body, updatedAt: new Date().toISOString() });
+    Object.assign(user, { ...body, updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: toUserResponse(user) });
   }),
 
@@ -145,7 +146,7 @@ export const usersHandlers = [
     if (!user) return HttpResponse.json({ code: 404, message: '用户不存在', data: null });
     const body = await request.json() as { status: 'active' | 'disabled' };
     user.status = body.status;
-    user.updatedAt = new Date().toISOString();
+    user.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: '状态更新成功', data: null });
   }),
 

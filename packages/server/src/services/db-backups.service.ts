@@ -6,6 +6,7 @@ import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup'
 import logger from '../lib/logger';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
+import { formatDateTime, formatFileTimestamp, formatNullableDateTime } from '../lib/datetime';
 
 export interface ListDbBackupsQuery {
   page?: number;
@@ -35,9 +36,9 @@ export async function listDbBackups(q: ListDbBackupsQuery) {
     list: rows.map(({ createdByUser, startedAt, completedAt, createdAt, ...rest }) => ({
       ...rest,
       createdByName: createdByUser?.nickname ?? null,
-      startedAt: startedAt?.toISOString() || null,
-      completedAt: completedAt?.toISOString() || null,
-      createdAt: createdAt.toISOString(),
+      startedAt: formatNullableDateTime(startedAt),
+      completedAt: formatNullableDateTime(completedAt),
+      createdAt: formatDateTime(createdAt),
     })),
     total,
     page,
@@ -48,7 +49,7 @@ export async function listDbBackups(q: ListDbBackupsQuery) {
 export async function createDbBackup(input: { type: 'pg_dump' | 'drizzle_export'; name?: string }) {
   const user = currentUser();
   const { type, name } = input;
-  const timestamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
+  const timestamp = formatFileTimestamp();
   const backupName = name || `${type}-${timestamp}`;
   const [backup] = await db.insert(dbBackups).values({
     name: backupName,

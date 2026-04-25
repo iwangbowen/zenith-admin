@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockOperationLogs } from '@/mocks/data/logs';
+import { mockDate } from '@/mocks/utils/date';
 import dayjs from 'dayjs';
 
 const MOCK_MODULE_STATS = [
@@ -26,7 +27,7 @@ const MOCK_USER_STATS = [
 function buildMockDailyStats(days: number): { date: string; count: number }[] {
   const today = dayjs().startOf('day');
   return Array.from({ length: days }, (_, i) => {
-    const date = today.subtract(days - 1 - i, 'day').format('YYYY-MM-DD');
+    const date = mockDate(today.subtract(days - 1 - i, 'day').valueOf());
     // Simulate realistic traffic with weekday/weekend pattern and some noise
     const baseCount = i === days - 1 ? 12 : Math.floor(Math.random() * 40 + 5);
     return { date, count: baseCount };

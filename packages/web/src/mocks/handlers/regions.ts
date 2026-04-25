@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockRegions, getNextRegionId, buildRegionTree } from '@/mocks/data/regions';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { Region } from '@zenith/shared';
 
 function filterTree(nodes: Region[], keyword: string, status: string, level: string): Region[] {
@@ -36,7 +37,7 @@ export const regionsHandlers = [
   // POST / — 创建
   http.post('/api/regions', async ({ request }) => {
     const body = (await request.json()) as Partial<Region>;
-    const now = new Date().toISOString();
+    const now = mockDateTime();
     const newRegion: Region = {
       id: getNextRegionId(),
       code: body.code ?? '',
@@ -60,7 +61,7 @@ export const regionsHandlers = [
       return HttpResponse.json({ code: 404, message: '地区不存在', data: null }, { status: 404 });
     }
     const body = (await request.json()) as Partial<Region>;
-    Object.assign(region, body, { updatedAt: new Date().toISOString() });
+    Object.assign(region, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: region });
   }),
 

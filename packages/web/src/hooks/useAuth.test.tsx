@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import { useAuth } from './useAuth';
+import { formatDateTime } from '@/utils/date';
 
 // ─── Mock request ─────────────────────────────────────────────────────────────
 vi.mock('@/utils/request', () => ({
@@ -250,8 +251,8 @@ describe('updateUser()', () => {
         status: 'active',
         roles: [],
         passwordUpdatedAt: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: formatDateTime(new Date()),
+        updatedAt: formatDateTime(new Date()),
         departmentId: null,
         tenantId: null,
       });

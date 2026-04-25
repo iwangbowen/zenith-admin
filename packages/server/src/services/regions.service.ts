@@ -4,6 +4,7 @@ import { regions } from '../db/schema';
 import type { Region } from '@zenith/shared';
 import { AppError } from '../lib/errors';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
+import { formatDateTime } from '../lib/datetime';
 
 export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {
   return {
@@ -14,8 +15,8 @@ export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'child
     parentCode: row.parentCode ?? null,
     sort: row.sort,
     status: row.status,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 

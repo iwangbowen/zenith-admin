@@ -16,6 +16,7 @@ import type { JwtPayload } from '../middleware/auth';
 import type { User } from '@zenith/shared';
 import { currentUser } from '../lib/context';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
+import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
 // ─── 关联查询配置 ─────────────────────────────────────────────────────────────
 
@@ -48,8 +49,8 @@ export function mapUser(row: UserWithRelations): User {
     description: r.description ?? undefined,
     dataScope: r.dataScope,
     status: r.status,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
+    createdAt: formatDateTime(r.createdAt),
+    updatedAt: formatDateTime(r.updatedAt),
   }));
   const positionList = row.userPositions.map(({ position: p }) => ({
     id: p.id,
@@ -58,8 +59,8 @@ export function mapUser(row: UserWithRelations): User {
     sort: p.sort,
     status: p.status,
     remark: p.remark ?? undefined,
-    createdAt: p.createdAt.toISOString(),
-    updatedAt: p.updatedAt.toISOString(),
+    createdAt: formatDateTime(p.createdAt),
+    updatedAt: formatDateTime(p.updatedAt),
   }));
 
   return {
@@ -75,9 +76,9 @@ export function mapUser(row: UserWithRelations): User {
     positions: positionList,
     roles: roleList,
     status: row.status,
-    passwordUpdatedAt: row.passwordUpdatedAt.toISOString(),
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    passwordUpdatedAt: formatDateTime(row.passwordUpdatedAt),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   } satisfies User;
 }
 
@@ -161,8 +162,10 @@ export async function listUsers(q: ListUsersQuery) {
   if (phone) conditions.push(like(users.phone, `%${phone}%`));
   if (departmentId) conditions.push(eq(users.departmentId, departmentId));
   if (status) conditions.push(eq(users.status, status));
-  if (startTime) conditions.push(gte(users.createdAt, new Date(startTime)));
-  if (endTime) conditions.push(lte(users.createdAt, new Date(endTime)));
+  const parsedStartTime = parseDateTimeInput(startTime);
+  const parsedEndTime = parseDateTimeInput(endTime);
+  if (parsedStartTime) conditions.push(gte(users.createdAt, parsedStartTime));
+  if (parsedEndTime) conditions.push(lte(users.createdAt, parsedEndTime));
   const scopeCondition = await getDataScopeCondition({
     currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: users.id,
   });

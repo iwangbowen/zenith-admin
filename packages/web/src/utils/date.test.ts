@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDateTime, stripHtml } from './date';
+import { formatDate, formatDateForApi, formatDateTime, formatDateTimeForApi, stripHtml } from './date';
 
 describe('formatDateTime', () => {
   it('should return empty string for null/undefined', () => {
@@ -7,20 +7,34 @@ describe('formatDateTime', () => {
     expect(formatDateTime(undefined)).toBe('');
   });
 
-  it('should format ISO string', () => {
-    expect(formatDateTime('2025-03-15T14:30:00.000Z')).toMatch(/2025-03-15 \d{2}:30:00/);
+  it('should keep unified date-time string', () => {
+    expect(formatDateTime('2025-03-15 14:30:00')).toBe('2025-03-15 14:30:00');
   });
 
   it('should format Date object', () => {
-    const d = new Date('2025-01-01T00:00:00.000Z');
+    const d = new Date(2025, 0, 1, 0, 0, 0);
     const result = formatDateTime(d);
-    expect(result).toMatch(/2025-01-01/);
+    expect(result).toBe('2025-01-01 00:00:00');
   });
 
   it('should format timestamp number', () => {
-    const ts = new Date('2025-06-01T12:00:00Z').getTime();
+    const ts = new Date(2025, 5, 1, 12, 0, 0).getTime();
     const result = formatDateTime(ts);
-    expect(result).toMatch(/2025-06-01/);
+    expect(result).toBe('2025-06-01 12:00:00');
+  });
+
+  it('should format date only string', () => {
+    expect(formatDate('2025-06-01 12:00:00')).toBe('2025-06-01');
+  });
+
+  it('should format API date-time without timezone conversion', () => {
+    const date = new Date(2026, 2, 22, 20, 9, 37);
+    expect(formatDateTimeForApi(date)).toBe('2026-03-22 20:09:37');
+  });
+
+  it('should format API date without timezone conversion', () => {
+    const date = new Date(2026, 2, 22, 20, 9, 37);
+    expect(formatDateForApi(date)).toBe('2026-03-22');
   });
 });
 

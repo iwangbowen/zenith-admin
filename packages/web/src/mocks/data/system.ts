@@ -1,5 +1,6 @@
 import type { SystemConfig, CronJob, FileStorageConfig, OnlineUser } from '@zenith/shared';
 import { SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
+import { mockDateTimeOffset } from '@/mocks/utils/date';
 
 export const mockSystemConfigs: SystemConfig[] = SEED_SYSTEM_CONFIGS.map((s) => ({ ...s }));
 
@@ -20,8 +21,8 @@ export const mockFileStorageConfigs: FileStorageConfig[] = [
     basePath: 'uploads',
     localRootPath: 'storage/local',
     remark: '系统默认本地文件服务',
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
+    createdAt: '2024-01-01 00:00:00',
+    updatedAt: '2024-01-01 00:00:00',
   },
   {
     id: 2,
@@ -36,8 +37,8 @@ export const mockFileStorageConfigs: FileStorageConfig[] = [
     ossAccessKeyId: 'LTAI********************',
     ossAccessKeySecret: '****************************',
     remark: '阿里云对象存储',
-    createdAt: '2024-03-01T00:00:00.000Z',
-    updatedAt: '2024-03-01T00:00:00.000Z',
+    createdAt: '2024-03-01 00:00:00',
+    updatedAt: '2024-03-01 00:00:00',
   },
   {
     id: 3,
@@ -51,8 +52,8 @@ export const mockFileStorageConfigs: FileStorageConfig[] = [
     s3AccessKeyId: 'AKIA********************',
     s3SecretAccessKey: '****************************',
     remark: 'AWS S3 存储',
-    createdAt: '2024-03-01T00:00:00.000Z',
-    updatedAt: '2024-03-01T00:00:00.000Z',
+    createdAt: '2024-03-01 00:00:00',
+    updatedAt: '2024-03-01 00:00:00',
   },
   {
     id: 4,
@@ -66,8 +67,8 @@ export const mockFileStorageConfigs: FileStorageConfig[] = [
     cosSecretId: 'AKID********************',
     cosSecretKey: '****************************',
     remark: '腾讯云对象存储',
-    createdAt: '2024-03-01T00:00:00.000Z',
-    updatedAt: '2024-03-01T00:00:00.000Z',
+    createdAt: '2024-03-01 00:00:00',
+    updatedAt: '2024-03-01 00:00:00',
   },
 ];
 
@@ -80,6 +81,6 @@ export const mockOnlineSessions: OnlineUser[] = [
     ip: '127.0.0.1',
     browser: 'Chrome 120',
     os: 'Windows 11',
-    loginAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+    loginAt: mockDateTimeOffset(-3600 * 1000),
   },
 ];

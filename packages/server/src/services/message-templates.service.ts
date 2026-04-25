@@ -4,9 +4,10 @@ import { messageTemplates } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { AppError } from '../lib/errors';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
+import { formatDateTime } from '../lib/datetime';
 
 export function mapMessageTemplate(row: typeof messageTemplates.$inferSelect) {
-  return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { ...row, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
 }
 
 export function interpolate(content: string, vars: Record<string, string>): string {

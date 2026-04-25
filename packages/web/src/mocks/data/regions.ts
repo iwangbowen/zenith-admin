@@ -2,12 +2,13 @@ import type { Region } from '@zenith/shared';
 import provincesJson from 'china-division/dist/provinces.json';
 import citiesJson from 'china-division/dist/cities.json';
 import areasJson from 'china-division/dist/areas.json';
+import { mockDateTime } from '@/mocks/utils/date';
 
 interface ProvinceItem { code: string; name: string }
 interface CityItem { code: string; name: string; provinceCode: string }
 interface AreaItem { code: string; name: string; cityCode: string; provinceCode: string }
 
-const now = new Date().toISOString();
+const now = mockDateTime();
 
 function makeRegion(
   code: string,

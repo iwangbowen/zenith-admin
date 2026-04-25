@@ -1,4 +1,5 @@
 import type { LoginLog, OperationLog } from '@zenith/shared';
+import { mockDateTimeOffset } from '@/mocks/utils/date';
 
 export const mockLoginLogs: LoginLog[] = [
   {
@@ -10,7 +11,7 @@ export const mockLoginLogs: LoginLog[] = [
     os: 'Windows 11',
     status: 'success',
     message: '登录成功',
-    createdAt: new Date(Date.now() - 3600 * 1000),
+    createdAt: mockDateTimeOffset(-3600 * 1000),
   },
   {
     id: 2,
@@ -21,7 +22,7 @@ export const mockLoginLogs: LoginLog[] = [
     os: 'macOS 14',
     status: 'fail',
     message: '用户名或密码错误',
-    createdAt: new Date(Date.now() - 7200 * 1000),
+    createdAt: mockDateTimeOffset(-7200 * 1000),
   },
 ];
 
@@ -43,7 +44,7 @@ export const mockOperationLogs: OperationLog[] = [
     userAgent: 'Mozilla/5.0 Chrome/120',
     os: 'Windows 11',
     browser: 'Chrome 120',
-    createdAt: new Date(Date.now() - 1800 * 1000).toISOString(),
+    createdAt: mockDateTimeOffset(-1800 * 1000),
   },
   {
     id: 2,
@@ -62,6 +63,6 @@ export const mockOperationLogs: OperationLog[] = [
     userAgent: 'Mozilla/5.0 Chrome/120',
     os: 'Windows 11',
     browser: 'Chrome 120',
-    createdAt: new Date(Date.now() - 5400 * 1000).toISOString(),
+    createdAt: mockDateTimeOffset(-5400 * 1000),
   },
 ];

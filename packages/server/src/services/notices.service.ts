@@ -8,6 +8,7 @@ import { pageOffset } from '../lib/pagination';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
+import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -15,9 +16,9 @@ export function mapNotice(row: typeof notices.$inferSelect) {
   return {
     ...row,
     targetType: row.targetType as 'all' | 'specific',
-    publishTime: row.publishTime ? row.publishTime.toISOString() : null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    publishTime: formatNullableDateTime(row.publishTime),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 
@@ -138,8 +139,10 @@ export async function listNotices(q: { page?: number; pageSize?: number; title?:
   if (title) conditions.push(like(notices.title, `%${title}%`));
   if (type) conditions.push(eq(notices.type, type));
   if (publishStatus) conditions.push(eq(notices.publishStatus, publishStatus));
-  if (startTime) conditions.push(gte(notices.createdAt, new Date(startTime)));
-  if (endTime) conditions.push(lte(notices.createdAt, new Date(endTime)));
+  const parsedStartTime = parseDateTimeInput(startTime);
+  const parsedEndTime = parseDateTimeInput(endTime);
+  if (parsedStartTime) conditions.push(gte(notices.createdAt, parsedStartTime));
+  if (parsedEndTime) conditions.push(lte(notices.createdAt, parsedEndTime));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const tc = tenantCondition(notices, user);
   const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
@@ -232,7 +235,7 @@ export async function getNoticeReadStats(id: number, q: { page?: number; pageSiz
       .filter((u): u is NonNullable<typeof u> => u !== undefined)
       .map((u) => ({
         id: u.id, username: u.username, nickname: u.nickname, avatar: u.avatar,
-        ...(tab === 'read' ? { readAt: readMap.get(u.id)?.toISOString() } : {}),
+        ...(tab === 'read' ? { readAt: formatNullableDateTime(readMap.get(u.id)) ?? undefined } : {}),
       }));
   }
   return { readCount, totalCount, list, total, page, pageSize };
@@ -277,7 +280,7 @@ export async function createNotice(data: CreateNoticeInput) {
   const user = currentUser();
   const now = new Date();
   let publishTime: Date | null = null;
-  if (data.publishTime) publishTime = new Date(data.publishTime);
+  if (data.publishTime) publishTime = parseDateTimeInput(data.publishTime);
   else if (data.publishStatus === 'published') publishTime = now;
 
   const row = await db.transaction(async (tx) => {
@@ -308,7 +311,7 @@ export async function updateNotice(id: number, data: Partial<CreateNoticeInput>)
   const now = new Date();
   let publishTime: Date | null | undefined;
   if (data.publishTime !== undefined) {
-    publishTime = data.publishTime ? new Date(data.publishTime) : null;
+    publishTime = data.publishTime ? parseDateTimeInput(data.publishTime) : null;
   } else if (data.publishStatus === 'published') {
     const existing = await db.select().from(notices).where(eq(notices.id, id));
     if (existing[0] && !existing[0].publishTime) publishTime = now;

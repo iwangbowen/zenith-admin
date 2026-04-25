@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import RegionSelect from './RegionSelect';
 import { request } from '@/utils/request';
@@ -33,7 +33,7 @@ describe('RegionSelect', () => {
 
     // We expect request.get to be called with correct URL
     await waitFor(() => {
-      expect(request.get).toHaveBeenCalledWith('/system/regions/tree');
+      expect(request.get).toHaveBeenCalledWith('/api/regions', { silent: true });
     });
   });
 

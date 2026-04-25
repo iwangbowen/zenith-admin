@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockTenants, getNextTenantId } from '@/mocks/data/tenants';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { Tenant } from '@zenith/shared';
 
 export const tenantsHandlers = [
@@ -45,8 +46,8 @@ export const tenantsHandlers = [
       expireAt: body.expireAt ?? null,
       maxUsers: body.maxUsers ?? null,
       remark: body.remark ?? null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockTenants.push(newTenant);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newTenant });
@@ -57,7 +58,7 @@ export const tenantsHandlers = [
     const tenant = mockTenants.find((t) => t.id === Number(params.id));
     if (!tenant) return HttpResponse.json({ code: 404, message: '租户不存在', data: null });
     const body = await request.json() as Partial<Tenant>;
-    Object.assign(tenant, body, { updatedAt: new Date().toISOString() });
+    Object.assign(tenant, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: tenant });
   }),
 

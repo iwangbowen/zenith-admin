@@ -17,7 +17,7 @@ import { Search, Plus, List, RotateCcw, Download } from 'lucide-react';
 import type { Dict, DictItem, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { formatDateTime } from '@/utils/date';
+import { formatDateForApi, formatDateTime } from '@/utils/date';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -62,8 +62,8 @@ export default function DictsPage() {
       if (submittedKeyword) params.set('keyword', submittedKeyword);
       if (submittedStatus) params.set('status', submittedStatus);
       if (submittedTimeRange) {
-        params.set('startDate', submittedTimeRange[0].toISOString().slice(0, 10));
-        params.set('endDate', submittedTimeRange[1].toISOString().slice(0, 10));
+        params.set('startDate', formatDateForApi(submittedTimeRange[0]));
+        params.set('endDate', formatDateForApi(submittedTimeRange[1]));
       }
       params.set('page', String(page));
       params.set('pageSize', String(pageSize));

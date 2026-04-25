@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { FileStorageConfigRow, ManagedFileRow } from '../db/schema';
+import { formatDate } from './datetime';
 
 export const DEFAULT_LOCAL_STORAGE_ROOT = 'storage/local';
 
@@ -14,7 +15,7 @@ function trimSlash(value?: string | null) {
 
 function buildObjectKey(originalName: string, basePath?: string | null) {
   const ext = path.extname(originalName).toLowerCase();
-  const datePart = new Date().toISOString().slice(0, 10).replaceAll('-', '/');
+  const datePart = formatDate(new Date()).replaceAll('-', '/');
   const uniqueName = `${Date.now()}-${randomUUID().slice(0, 8)}${ext}`;
   return [trimSlash(basePath), datePart, uniqueName].filter(Boolean).join('/');
 }

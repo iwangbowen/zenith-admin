@@ -1,4 +1,5 @@
 import { workflowDefinitions } from '../db/schema';
+import { formatDateTime } from '../lib/datetime';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -17,8 +18,8 @@ export function mapDefinition(
     tenantId: row.tenantId,
     createdBy: row.createdBy,
     createdByName: createdByName ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 

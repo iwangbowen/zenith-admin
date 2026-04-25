@@ -3,7 +3,7 @@ import { Table, Input, Button, Tag, DatePicker, Modal, JsonViewer, Select, Tabs,
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
 import './OperationLogsPage.css';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
@@ -120,7 +120,7 @@ export default function OperationLogsPage() {
         ...(params.method ? { method: params.method } : {}),
         ...(params.path ? { path: params.path } : {}),
         ...(params.status ? { status: params.status } : {}),
-        ...(params.timeRange ? { startTime: params.timeRange[0].toISOString(), endTime: params.timeRange[1].toISOString() } : {}),
+        ...(params.timeRange ? { startTime: formatDateTimeForApi(params.timeRange[0]), endTime: formatDateTimeForApi(params.timeRange[1]) } : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<OperationLog>>(`/api/operation-logs?${query}`);
       setData(res.data.list);

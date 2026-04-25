@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import { mockDateTime, mockFileTimestamp } from '@/mocks/utils/date';
 
 const API = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -7,35 +8,35 @@ let nextId = 3;
 const mockBackups = [
   {
     id: 1,
-    name: 'pg_dump-2025-06-01T12-00-00-000Z',
+    name: 'pg_dump-20250601_120000',
     type: 'pg_dump',
     fileId: 1,
     fileSize: 1048576,
     status: 'success',
     tables: null,
-    startedAt: '2025-06-01T12:00:00.000Z',
-    completedAt: '2025-06-01T12:00:05.000Z',
+    startedAt: '2025-06-01 12:00:00',
+    completedAt: '2025-06-01 12:00:05',
     durationMs: 5000,
     errorMessage: null,
     createdBy: 1,
     createdByName: '管理员',
-    createdAt: '2025-06-01T12:00:00.000Z',
+    createdAt: '2025-06-01 12:00:00',
   },
   {
     id: 2,
-    name: 'drizzle-export-2025-06-02T08-30-00-000Z',
+    name: 'drizzle-export-20250602_083000',
     type: 'drizzle_export',
     fileId: 2,
     fileSize: 524288,
     status: 'success',
     tables: null,
-    startedAt: '2025-06-02T08:30:00.000Z',
-    completedAt: '2025-06-02T08:30:03.000Z',
+    startedAt: '2025-06-02 08:30:00',
+    completedAt: '2025-06-02 08:30:03',
     durationMs: 3000,
     errorMessage: null,
     createdBy: 1,
     createdByName: '管理员',
-    createdAt: '2025-06-02T08:30:00.000Z',
+    createdAt: '2025-06-02 08:30:00',
   },
 ];
 
@@ -66,11 +67,11 @@ export const dbBackupsHandlers = [
   http.post(`${API}/api/db-backups`, async ({ request }) => {
     const body = (await request.json()) as { name?: string; type?: string };
     const id = nextId++;
-    const now = new Date().toISOString();
+    const now = mockDateTime();
     const backupType = body.type ?? 'pg_dump';
     const backup = {
       id,
-      name: body.name || `${backupType}-${now}`,
+      name: body.name || `${backupType}-${mockFileTimestamp()}`,
       type: backupType,
       status: 'success',
       fileId: id,

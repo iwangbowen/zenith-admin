@@ -10,7 +10,7 @@
 
 import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob } from './types';
 
-const SEED_DATE = '2024-01-01T00:00:00.000Z';
+const SEED_DATE = '2024-01-01 00:00:00';
 
 // ─── 菜单 ─────────────────────────────────────────────────────────────────────
 
@@ -249,8 +249,8 @@ export const SEED_CRON_JOBS: CronJob[] = [
     retryCount: 0,
     retryInterval: 0,
     monitorTimeout: null,
-    lastRunAt: '2024-01-01T00:30:00.000Z',
-    nextRunAt: '2024-01-01T01:00:00.000Z',
+    lastRunAt: '2024-01-01 00:30:00',
+    nextRunAt: '2024-01-01 01:00:00',
     lastRunStatus: 'success',
     lastRunMessage: null,
     createdAt: SEED_DATE,
@@ -267,8 +267,8 @@ export const SEED_CRON_JOBS: CronJob[] = [
     retryCount: 0,
     retryInterval: 0,
     monitorTimeout: null,
-    lastRunAt: '2024-01-01T01:00:00.000Z',
-    nextRunAt: '2024-01-01T02:00:00.000Z',
+    lastRunAt: '2024-01-01 01:00:00',
+    nextRunAt: '2024-01-01 02:00:00',
     lastRunStatus: 'success',
     lastRunMessage: null,
     createdAt: SEED_DATE,

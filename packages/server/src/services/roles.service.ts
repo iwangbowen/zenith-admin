@@ -8,12 +8,13 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
+import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
 export function mapRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
   return {
     ...row,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
     ...(menuIds === undefined ? {} : { menuIds }),
   };
 }
@@ -40,8 +41,10 @@ export async function listRoles(q: ListRolesQuery) {
   const conditions = [];
   if (q.keyword) conditions.push(or(like(roles.name, `%${q.keyword}%`), like(roles.code, `%${q.keyword}%`)));
   if (q.status) conditions.push(eq(roles.status, q.status));
-  if (q.startTime) conditions.push(gte(roles.createdAt, new Date(q.startTime)));
-  if (q.endTime) conditions.push(lte(roles.createdAt, new Date(q.endTime)));
+  const startTime = parseDateTimeInput(q.startTime);
+  const endTime = parseDateTimeInput(q.endTime);
+  if (startTime) conditions.push(gte(roles.createdAt, startTime));
+  if (endTime) conditions.push(lte(roles.createdAt, endTime));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const tc = tenantCondition(roles, user);
   const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
@@ -124,7 +127,7 @@ export async function getRoleUsers(id: number) {
   return role.userRoles.map(({ user: u }) => ({
     id: u.id, username: u.username, nickname: u.nickname, email: u.email,
     avatar: u.avatar, status: u.status,
-    createdAt: u.createdAt.toISOString(), updatedAt: u.updatedAt.toISOString(),
+    createdAt: formatDateTime(u.createdAt), updatedAt: formatDateTime(u.updatedAt),
   }));
 }
 

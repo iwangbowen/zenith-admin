@@ -5,6 +5,7 @@ import { pageOffset } from '../lib/pagination';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { currentUser } from '../lib/context';
+import { formatDateTime, formatDate, parseDateTimeInput } from '../lib/datetime';
 
 export interface ListOperationLogsQuery {
   page?: number;
@@ -31,8 +32,10 @@ function buildWhere(q: ListOperationLogsQuery) {
   if (q.ip) conditions.push(like(operationLogs.ip, `%${q.ip}%`));
   if (q.status === 'success') conditions.push(and(gte(operationLogs.responseCode, 200), lte(operationLogs.responseCode, 399)));
   if (q.status === 'fail') conditions.push(gte(operationLogs.responseCode, 400));
-  if (q.startTime) conditions.push(gte(operationLogs.createdAt, new Date(q.startTime)));
-  if (q.endTime) conditions.push(lte(operationLogs.createdAt, new Date(q.endTime)));
+  const startTime = parseDateTimeInput(q.startTime);
+  const endTime = parseDateTimeInput(q.endTime);
+  if (startTime) conditions.push(gte(operationLogs.createdAt, startTime));
+  if (endTime) conditions.push(lte(operationLogs.createdAt, endTime));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const tc = tenantCondition(operationLogs, user);
   return where && tc ? and(where, tc) : (tc ?? where);
@@ -46,7 +49,7 @@ export async function listOperationLogs(q: ListOperationLogsQuery) {
     db.$count(operationLogs, finalWhere),
     db.select().from(operationLogs).where(finalWhere).orderBy(desc(operationLogs.createdAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
   ]);
-  return { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total, page, pageSize };
+  return { list: rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) })), total, page, pageSize };
 }
 
 export async function operationLogStats(daysRaw?: number) {
@@ -55,6 +58,7 @@ export async function operationLogStats(daysRaw?: number) {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days + 1);
   startDate.setHours(0, 0, 0, 0);
+  const startDateLabel = formatDate(startDate);
   const tc = tenantCondition(operationLogs, user);
   const baseWhere = tc ? and(gte(operationLogs.createdAt, startDate), tc) : gte(operationLogs.createdAt, startDate);
   const moduleCount = count();
@@ -63,14 +67,14 @@ export async function operationLogStats(daysRaw?: number) {
   const [moduleStats, dailyStats, userStats] = await Promise.all([
     db.select({ module: operationLogs.module, count: moduleCount }).from(operationLogs).where(baseWhere).groupBy(operationLogs.module).orderBy(desc(moduleCount)).limit(20),
     db.select({
-      date: sql<string>`to_char(date(${operationLogs.createdAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
+      date: sql<string>`to_char(date(${operationLogs.createdAt}), 'YYYY-MM-DD')`,
       count: dailyCount,
-    }).from(operationLogs).where(baseWhere).groupBy(sql`date(${operationLogs.createdAt} AT TIME ZONE 'UTC')`).orderBy(sql`date(${operationLogs.createdAt} AT TIME ZONE 'UTC')`),
+    }).from(operationLogs).where(baseWhere).groupBy(sql`date(${operationLogs.createdAt})`).orderBy(sql`date(${operationLogs.createdAt})`),
     db.select({ username: operationLogs.username, count: userCount }).from(operationLogs).where(baseWhere).groupBy(operationLogs.username).orderBy(desc(userCount)).limit(10),
   ]);
   return {
     moduleStats: moduleStats.map((r) => ({ module: r.module ?? '未知模块', count: r.count })),
-    dailyStats: dailyStats.map((r) => ({ date: r.date, count: r.count })),
+    dailyStats: dailyStats.map((r) => ({ date: r.date || startDateLabel, count: r.count })),
     userStats: userStats.map((r) => ({ username: r.username ?? '未知用户', count: r.count })),
   };
 }

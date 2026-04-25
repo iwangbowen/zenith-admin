@@ -2,6 +2,7 @@ import { fileStorageConfigs, managedFiles } from '../db/schema';
 import type { DbExecutor } from '../db/types';
 import type { createFileStorageConfigSchema } from '@zenith/shared';
 import type { z } from '@hono/zod-openapi';
+import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
 type StorageInput = z.infer<typeof createFileStorageConfigSchema>;
 
@@ -28,8 +29,8 @@ export function mapFileStorageConfig(row: typeof fileStorageConfigs.$inferSelect
     cosSecretId: row.cosSecretId ?? null,
     cosSecretKey: row.cosSecretKey ?? null,
     remark: row.remark ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 
@@ -99,8 +100,10 @@ export async function listFileStorageConfigs(q: ListFileStorageConfigsQuery) {
   const { status, startTime, endTime, page = 1, pageSize = 10 } = q;
   const conditions = [];
   if (status === 'active' || status === 'disabled') conditions.push(eq(fileStorageConfigs.status, status));
-  if (startTime) conditions.push(gte(fileStorageConfigs.updatedAt, new Date(startTime)));
-  if (endTime) conditions.push(lte(fileStorageConfigs.updatedAt, new Date(endTime)));
+  const parsedStartTime = parseDateTimeInput(startTime);
+  const parsedEndTime = parseDateTimeInput(endTime);
+  if (parsedStartTime) conditions.push(gte(fileStorageConfigs.updatedAt, parsedStartTime));
+  if (parsedEndTime) conditions.push(lte(fileStorageConfigs.updatedAt, parsedEndTime));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [total, list] = await Promise.all([
     db.$count(fileStorageConfigs, where),

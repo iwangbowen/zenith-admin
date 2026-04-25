@@ -4,16 +4,17 @@ import { dicts, dictItems } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/datetime';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
 export function mapDict(row: typeof dicts.$inferSelect) {
-  return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { ...row, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
 }
 
 export function mapDictItem(row: typeof dictItems.$inferSelect) {
-  return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  return { ...row, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
 }
 
 export interface ListDictsQuery {
@@ -34,8 +35,10 @@ export async function listDicts(q: ListDictsQuery) {
     if (kw) conditions.push(kw);
   }
   if (status) conditions.push(eq(dicts.status, status));
-  if (startDate) conditions.push(gte(dicts.createdAt, new Date(startDate)));
-  if (endDate) conditions.push(lte(dicts.createdAt, new Date(`${endDate}T23:59:59.999Z`)));
+  const parsedStartDate = parseDateRangeStart(startDate);
+  const parsedEndDate = parseDateRangeEnd(endDate);
+  if (parsedStartDate) conditions.push(gte(dicts.createdAt, parsedStartDate));
+  if (parsedEndDate) conditions.push(lte(dicts.createdAt, parsedEndDate));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const tc = tenantCondition(dicts, user);
   const finalWhere = where && tc ? and(where, tc) : (tc ?? where);

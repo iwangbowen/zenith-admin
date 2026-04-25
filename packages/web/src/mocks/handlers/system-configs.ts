@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockSystemConfigs } from '@/mocks/data/system';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { SystemConfig } from '@zenith/shared';
 
 export const systemConfigsHandlers = [
@@ -53,8 +54,8 @@ export const systemConfigsHandlers = [
       configValue: body.configValue ?? '',
       configType: body.configType ?? 'string',
       description: body.description ?? '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockSystemConfigs.push(newConfig);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newConfig });
@@ -65,7 +66,7 @@ export const systemConfigsHandlers = [
     const config = mockSystemConfigs.find((c) => c.id === Number(params.id));
     if (!config) return HttpResponse.json({ code: 404, message: '配置不存在', data: null });
     const body = await request.json() as Partial<SystemConfig>;
-    Object.assign(config, body, { updatedAt: new Date().toISOString() });
+    Object.assign(config, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: config });
   }),
 

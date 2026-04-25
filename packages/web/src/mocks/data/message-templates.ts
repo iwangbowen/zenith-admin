@@ -1,6 +1,6 @@
 import type { MessageTemplate } from '@zenith/shared';
 
-const NOW = '2026-01-01T08:00:00.000Z';
+const NOW = '2026-01-01 08:00:00';
 
 export const mockMessageTemplates: MessageTemplate[] = [
   {

@@ -12,8 +12,8 @@ export const RoleDTO = z
     dataScope: z.enum(['all', 'dept', 'self']).optional().openapi({ example: 'all' }),
     tenantId: z.number().int().nullable().optional(),
     status: z.enum(['active', 'disabled']).openapi({ example: 'active' }),
-    createdAt: z.string().openapi({ example: '2026-01-01T00:00:00.000Z' }),
-    updatedAt: z.string().openapi({ example: '2026-01-01T00:00:00.000Z' }),
+    createdAt: z.string().openapi({ example: '2026-01-01 00:00:00' }),
+    updatedAt: z.string().openapi({ example: '2026-01-01 00:00:00' }),
     menuIds: z.array(z.number().int()).optional(),
   })
   .openapi('Role');

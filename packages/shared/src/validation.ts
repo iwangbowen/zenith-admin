@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+const dateTimeStringSchema = z.string().regex(DATE_TIME_PATTERN, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss');
+
 export const loginSchema = z.object({
   username: z.string().min(3, '用户名至少3个字符').max(32),
   password: z.string().min(6, '密码至少6个字符').max(64),
@@ -243,7 +246,7 @@ export const createNoticeSchema = z.object({
   priority: z.string().min(1).max(32).default('medium'),
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(noticeRecipientSchema).optional().default([]),
-  publishTime: z.iso.datetime({ offset: true }).optional().nullable(),
+  publishTime: dateTimeStringSchema.optional().nullable(),
 });
 
 export const updateNoticeSchema = createNoticeSchema.partial();
@@ -338,7 +341,7 @@ export const createTenantSchema = z.object({
   contactName: z.string().max(50).optional(),
   contactPhone: z.string().max(20).optional(),
   status: z.enum(['active', 'disabled']).default('active'),
-  expireAt: z.iso.datetime({ offset: true }).optional().nullable(),
+  expireAt: dateTimeStringSchema.optional().nullable(),
   maxUsers: z.number().int().positive().optional().nullable(),
   remark: z.string().max(500).optional(),
 });

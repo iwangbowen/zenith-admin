@@ -1,10 +1,13 @@
 /**
  * 表单预览组件 — 在 Modal 中渲染真实表单控件预览
  */
-import { Modal, Form, Select, DatePicker, InputNumber, Upload, Button, Tag, Typography, Row, Col, Divider } from '@douyinfe/semi-ui';
+import { Modal, Form, Select, Upload, Button, Tag, Typography, Row, Col, Divider } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
-import type { WorkflowFormField } from '@zenith/shared';
+import type { WorkflowFormField, WorkflowFormFieldColumn } from '@zenith/shared';
 import { CURRENCY_OPTIONS } from '../form-types';
+
+const getColumnKey = (parentKey: string, column: WorkflowFormFieldColumn) =>
+  `${parentKey}-col-${column.span}-${column.fields.map(field => field.key).join('-') || 'empty'}`;
 
 interface FormPreviewProps {
   visible: boolean;
@@ -235,9 +238,8 @@ function PreviewField({ field }: Readonly<{ field: WorkflowFormField }>) {
     case 'row':
       return (
         <Row gutter={16}>
-          {(field.columns || []).map((col, ci) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <Col span={col.span} key={ci}>
+          {(field.columns || []).map((col) => (
+            <Col span={col.span} key={getColumnKey(field.key, col)}>
               {(col.fields || []).map(childField => (
                 <PreviewField key={childField.key} field={childField} />
               ))}

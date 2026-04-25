@@ -5,6 +5,7 @@ import { users, loginLogs, tenants, operationLogs, passwordResetTokens } from '.
 import { signToken, verifyToken } from '../lib/jwt';
 import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
 import type { JwtPayload } from '../middleware/auth';
+import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
 // ─── 获取用户角色列表 ─────────────────────────────────────────────────────────
 
@@ -20,8 +21,8 @@ export async function getUserRoles(userId: number) {
     code: r.code,
     description: r.description,
     status: r.status,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
+    createdAt: formatDateTime(r.createdAt),
+    updatedAt: formatDateTime(r.updatedAt),
   }));
 }
 
@@ -135,7 +136,7 @@ export async function login(input: LoginInput) {
     const [tenant] = await db.select().from(tenants).where(eqOp(tenants.code, input.tenantCode)).limit(1);
     if (!tenant) throw new AppError('租户不存在', 400);
     if (tenant.status === 'disabled') throw new AppError('租户已被禁用', 403);
-    if (tenant.expireAt && new Date(tenant.expireAt) < new Date()) throw new AppError('租户已过期', 403);
+    if (tenant.expireAt && tenant.expireAt < new Date()) throw new AppError('租户已过期', 403);
     tenantId = tenant.id;
   }
 
@@ -196,7 +197,7 @@ export async function login(input: LoginInput) {
   await recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '登录成功', userId: user.id, tenantId });
   const { password: _pw, ...userInfo } = user;
   return {
-    user: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString(), requirePasswordChange },
+    user: { ...userInfo, roles: userRoleList, createdAt: formatDateTime(user.createdAt), updatedAt: formatDateTime(user.updatedAt), requirePasswordChange },
     token: { accessToken, refreshToken },
     requirePasswordChange,
   };
@@ -243,7 +244,7 @@ export async function register(input: RegisterInput) {
   await recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '注册并自动登录成功', userId: user.id });
   const { password: _pw, ...userInfo } = user;
   return {
-    user: { ...userInfo, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
+    user: { ...userInfo, roles: userRoleList, createdAt: formatDateTime(user.createdAt), updatedAt: formatDateTime(user.updatedAt) },
     token: { accessToken, refreshToken },
   };
 }
@@ -292,8 +293,8 @@ export async function getMyProfile() {
     roles: userRoleList,
     permissions,
     requirePasswordChange,
-    createdAt: user.createdAt.toISOString(),
-    updatedAt: user.updatedAt.toISOString(),
+    createdAt: formatDateTime(user.createdAt),
+    updatedAt: formatDateTime(user.updatedAt),
   };
 }
 
@@ -306,7 +307,7 @@ export async function updateMyProfile(data: { nickname?: string; email?: string;
   const [updated] = await db.update(users).set({ ...data }).where(eqOp(users.id, userId)).returning();
   const userRoleList = await getUserRoles(userId);
   const { password: _pw, ...userInfo } = updated;
-  return { ...userInfo, roles: userRoleList, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() };
+  return { ...userInfo, roles: userRoleList, createdAt: formatDateTime(updated.createdAt), updatedAt: formatDateTime(updated.updatedAt) };
 }
 
 export async function changeMyPassword(oldPassword: string, newPassword: string) {
@@ -324,14 +325,16 @@ export async function listMyLoginLogs(query: { page?: number; pageSize?: number;
   const { page = 1, pageSize = 10, status, startTime, endTime } = query;
   const conditions = [eqOp(loginLogs.userId, userId)];
   if (status) conditions.push(eqOp(loginLogs.status, status));
-  if (startTime) conditions.push(gte(loginLogs.createdAt, new Date(startTime)));
-  if (endTime) conditions.push(lte(loginLogs.createdAt, new Date(endTime)));
+  const parsedStartTime = parseDateTimeInput(startTime);
+  const parsedEndTime = parseDateTimeInput(endTime);
+  if (parsedStartTime) conditions.push(gte(loginLogs.createdAt, parsedStartTime));
+  if (parsedEndTime) conditions.push(lte(loginLogs.createdAt, parsedEndTime));
   const where = and(...conditions);
   const [count, rows] = await Promise.all([
     db.$count(loginLogs, where),
     db.select().from(loginLogs).where(where).orderBy(desc(loginLogs.createdAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
   ]);
-  return { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: count, page, pageSize };
+  return { list: rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) })), total: count, page, pageSize };
 }
 
 export async function listMyOperationLogs(query: { page?: number; pageSize?: number; module?: string; startTime?: string; endTime?: string }) {
@@ -339,14 +342,16 @@ export async function listMyOperationLogs(query: { page?: number; pageSize?: num
   const { page = 1, pageSize = 10, module, startTime, endTime } = query;
   const conditions = [eqOp(operationLogs.userId, userId)];
   if (module) conditions.push(like(operationLogs.module, `%${module}%`));
-  if (startTime) conditions.push(gte(operationLogs.createdAt, new Date(startTime)));
-  if (endTime) conditions.push(lte(operationLogs.createdAt, new Date(endTime)));
+  const parsedStartTime = parseDateTimeInput(startTime);
+  const parsedEndTime = parseDateTimeInput(endTime);
+  if (parsedStartTime) conditions.push(gte(operationLogs.createdAt, parsedStartTime));
+  if (parsedEndTime) conditions.push(lte(operationLogs.createdAt, parsedEndTime));
   const where = and(...conditions);
   const [count, rows] = await Promise.all([
     db.$count(operationLogs, where),
     db.select().from(operationLogs).where(where).orderBy(desc(operationLogs.createdAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
   ]);
-  return { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: count, page, pageSize };
+  return { list: rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) })), total: count, page, pageSize };
 }
 
 export async function listMySessions() {
@@ -358,8 +363,8 @@ export async function listMySessions() {
     ip: s.ip,
     browser: s.browser,
     os: s.os,
-    loginAt: s.loginAt.toISOString(),
-    lastActiveAt: s.lastActiveAt.toISOString(),
+    loginAt: formatDateTime(s.loginAt),
+    lastActiveAt: formatDateTime(s.lastActiveAt),
     isCurrent: s.tokenId === currentTokenId,
   }));
 }

@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import dayjs from 'dayjs';
 import { request } from '@/utils/request';
+import { formatDate } from '@/utils/date';
 import type { OperationLogStats } from '@zenith/shared';
 
 const DAYS_OPTIONS = [
@@ -82,7 +83,7 @@ export default function OperationLogStatsPanel() {
       const week: { date: string; count: number; inRange: boolean }[] = [];
       for (let di = 0; di < 7; di++) {
         const dt = cur.add(di, 'day');
-        const dateStr = dt.format('YYYY-MM-DD');
+        const dateStr = formatDate(dt.valueOf());
         week.push({
           date: dateStr,
           count: dataMap.get(dateStr) ?? 0,
@@ -232,7 +233,7 @@ export default function OperationLogStatsPanel() {
                   const prevFirst = heatmapGrid[wi - 1]?.[0]?.date;
                   const monthLabel =
                     week[0].date.slice(5, 7) !== (prevFirst?.slice(5, 7) ?? '')
-                      ? dayjs(week[0].date).format('MM月')
+                      ? `${week[0].date.slice(5, 7)}月`
                       : '';
                   return (
                     <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>

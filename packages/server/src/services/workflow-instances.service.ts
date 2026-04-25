@@ -1,4 +1,5 @@
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
+import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 
 export function mapTask(
   row: typeof workflowTasks.$inferSelect,
@@ -16,8 +17,8 @@ export function mapTask(
     assigneeAvatar: assigneeAvatar ?? null,
     status: row.status,
     comment: row.comment,
-    actionAt: row.actionAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
+    actionAt: formatNullableDateTime(row.actionAt),
+    createdAt: formatDateTime(row.createdAt),
   };
 }
 
@@ -43,8 +44,8 @@ export function mapInstance(
     initiatorAvatar: extras.initiatorAvatar ?? null,
     tenantId: row.tenantId,
     tasks: extras.tasks ?? null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 

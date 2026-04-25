@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { mockRoles, getNextRoleId } from '@/mocks/data/roles';
 import { mockMenus } from '@/mocks/data/menus';
+import { mockDateTime } from '@/mocks/utils/date';
 import type { Role } from '@zenith/shared';
 
 export const rolesHandlers = [
@@ -45,8 +46,8 @@ export const rolesHandlers = [
       dataScope: body.dataScope ?? 'all',
       status: body.status ?? 'active',
       menuIds: body.menuIds ?? [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
     };
     mockRoles.push(newRole);
     return HttpResponse.json({ code: 0, message: '新增成功', data: newRole });
@@ -57,7 +58,7 @@ export const rolesHandlers = [
     const role = mockRoles.find((r) => r.id === Number(params.id));
     if (!role) return HttpResponse.json({ code: 404, message: '角色不存在', data: null });
     const body = await request.json() as Partial<Role>;
-    Object.assign(role, body, { updatedAt: new Date().toISOString() });
+    Object.assign(role, body, { updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: role });
   }),
 
@@ -75,7 +76,7 @@ export const rolesHandlers = [
     if (!role) return HttpResponse.json({ code: 404, message: '角色不存在', data: null });
     const body = await request.json() as { menuIds: number[] };
     role.menuIds = body.menuIds;
-    role.updatedAt = new Date().toISOString();
+    role.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: '菜单权限更新成功', data: null });
   }),
 

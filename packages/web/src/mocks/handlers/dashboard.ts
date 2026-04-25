@@ -1,10 +1,11 @@
 import { http, HttpResponse } from 'msw';
+import { mockDate } from '@/mocks/utils/date';
 
 function pastDates(days: number): string[] {
   return Array.from({ length: days }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (days - 1 - i));
-    return d.toISOString().slice(0, 10);
+    return mockDate(d);
   });
 }
 

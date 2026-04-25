@@ -5,6 +5,7 @@ import type { Menu } from '@zenith/shared';
 import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
 import { isSuperAdmin, getUserMenuIds } from '../lib/permissions';
+import { formatDateTime } from '../lib/datetime';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -22,8 +23,8 @@ export function mapMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> 
     sort: row.sort,
     status: row.status,
     visible: row.visible,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 

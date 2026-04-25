@@ -4,7 +4,7 @@ import type { MCPReactOption } from '@douyinfe/semi-ui/lib/es/sideBar/mcpConfigu
 import { PanelRight, PanelRightClose, Search, FileText, Code2, Wrench, Bot, Palette } from 'lucide-react';
 
 const { Title, Text, Paragraph } = Typography;
-const { Container, CodeContent, FileContent, FileItem, CodeItem } = Sidebar;
+const { Container, CodeContent, FileContent } = Sidebar;
 
 // 内嵌在 Tab 中时隐藏 Container 自带的标题栏
 const embeddedContainerStyle = `

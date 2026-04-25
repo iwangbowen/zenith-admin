@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { config } from '../config';
+import { formatDateTime } from '../lib/datetime';
 
 export const LOG_DIR = path.resolve(config.log.dir);
 
@@ -86,7 +87,7 @@ export function listLogFiles() {
       return {
         name: e.name,
         size: stat.size,
-        modifiedAt: stat.mtime.toISOString(),
+        modifiedAt: formatDateTime(stat.mtime),
         isGzip: e.name.endsWith('.gz'),
       };
     })

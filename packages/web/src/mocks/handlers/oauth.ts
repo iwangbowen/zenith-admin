@@ -47,7 +47,7 @@ export const oauthHandlers = [
           openId: '12345678',
           nickname: 'demo-github-user',
           avatar: null,
-          createdAt: '2025-01-01T00:00:00.000Z',
+          createdAt: '2025-01-01 00:00:00',
         },
       ],
     });

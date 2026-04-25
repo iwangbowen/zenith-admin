@@ -21,7 +21,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -178,8 +178,8 @@ export default function UsersPage() {
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
           ? {
-              startTime: params.timeRange[0].toISOString(),
-              endTime: params.timeRange[1].toISOString(),
+              startTime: formatDateTimeForApi(params.timeRange[0]),
+              endTime: formatDateTimeForApi(params.timeRange[1]),
             }
           : {}),
       }).toString();

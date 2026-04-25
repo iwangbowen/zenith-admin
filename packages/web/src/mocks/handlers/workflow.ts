@@ -8,6 +8,7 @@ import {
   getNextTaskId,
   getNextDefinitionId,
 } from '@/mocks/data/workflow';
+import { mockDateTime } from '@/mocks/utils/date';
 
 function ok<T>(data: T) {
   return HttpResponse.json({ code: 0, message: 'ok', data });
@@ -53,7 +54,7 @@ export const workflowHandlers = [
   // 创建流程定义
   http.post('/api/workflows/definitions', async ({ request }) => {
     const body = await request.json() as Partial<WorkflowDefinition>;
-    const now = new Date().toISOString();
+    const now = mockDateTime();
     const newDef: WorkflowDefinition = {
       id: getNextDefinitionId(),
       name: body.name ?? '新流程',
@@ -83,7 +84,7 @@ export const workflowHandlers = [
       id: mockWorkflowDefinitions[idx].id,
       status: mockWorkflowDefinitions[idx].status,
       version: mockWorkflowDefinitions[idx].version + 1,
-      updatedAt: new Date().toISOString(),
+      updatedAt: mockDateTime(),
     };
     mockWorkflowDefinitions[idx] = updated;
     return ok(updated);
@@ -97,7 +98,7 @@ export const workflowHandlers = [
     mockWorkflowDefinitions[idx] = {
       ...mockWorkflowDefinitions[idx],
       status: 'published',
-      updatedAt: new Date().toISOString(),
+      updatedAt: mockDateTime(),
     };
     return ok(mockWorkflowDefinitions[idx]);
   }),
@@ -109,7 +110,7 @@ export const workflowHandlers = [
     mockWorkflowDefinitions[idx] = {
       ...mockWorkflowDefinitions[idx],
       status: 'disabled',
-      updatedAt: new Date().toISOString(),
+      updatedAt: mockDateTime(),
     };
     return ok(mockWorkflowDefinitions[idx]);
   }),
@@ -209,7 +210,7 @@ export const workflowHandlers = [
     if (!def) return err('流程定义不存在');
     if (def.status !== 'published') return err('该流程未发布，无法发起申请');
 
-    const now = new Date().toISOString();
+    const now = mockDateTime();
     const instanceId = getNextInstanceId();
 
     // 创建初始审批任务（取第一个 approve 节点）
@@ -263,14 +264,14 @@ export const workflowHandlers = [
     mockWorkflowInstances[idx] = {
       ...mockWorkflowInstances[idx],
       status: 'withdrawn',
-      updatedAt: new Date().toISOString(),
+      updatedAt: mockDateTime(),
     };
     // 将所有 pending 任务设为 skipped
     mockWorkflowTasks
       .filter(t => t.instanceId === Number(params.id) && t.status === 'pending')
       .forEach(t => {
         t.status = 'skipped';
-        t.actionAt = new Date().toISOString();
+        t.actionAt = mockDateTime();
       });
     return ok(mockWorkflowInstances[idx]);
   }),
@@ -284,7 +285,7 @@ export const workflowHandlers = [
     if (taskIdx === -1) return err('任务不存在', 404);
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
 
-    const now = new Date().toISOString();
+    const now = mockDateTime();
     mockWorkflowTasks[taskIdx] = {
       ...mockWorkflowTasks[taskIdx],
       status: 'approved',
@@ -323,7 +324,7 @@ export const workflowHandlers = [
     if (taskIdx === -1) return err('任务不存在', 404);
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
 
-    const now = new Date().toISOString();
+    const now = mockDateTime();
     mockWorkflowTasks[taskIdx] = {
       ...mockWorkflowTasks[taskIdx],
       status: 'rejected',

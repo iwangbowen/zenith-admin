@@ -15,7 +15,7 @@ import { Search, Plus, RotateCcw, Download } from 'lucide-react';
 import type { Tenant } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 
@@ -80,7 +80,7 @@ export default function TenantsPage() {
     }
     const payload = {
       ...values,
-      expireAt: values.expireAt ? new Date(values.expireAt).toISOString() : null,
+      expireAt: values.expireAt ? formatDateTimeForApi(values.expireAt) : null,
     };
     const res = editingTenant
       ? await request.put(`/api/tenants/${editingTenant.id}`, payload)

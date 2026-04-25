@@ -1,5 +1,6 @@
 import { managedFiles, fileStorageConfigs } from '../db/schema';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
+import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
 export function mapManagedFile(row: typeof managedFiles.$inferSelect) {
   return {
@@ -13,8 +14,8 @@ export function mapManagedFile(row: typeof managedFiles.$inferSelect) {
     mimeType: row.mimeType ?? null,
     extension: row.extension ?? null,
     url: buildManagedFileUrl(row.id),
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 
@@ -56,8 +57,10 @@ export async function listManagedFiles(query: {
     );
   }
   if (query.provider) conditions.push(eq(managedFiles.provider, query.provider));
-  if (query.startTime) conditions.push(gte(managedFiles.createdAt, new Date(query.startTime)));
-  if (query.endTime) conditions.push(lte(managedFiles.createdAt, new Date(query.endTime)));
+  const startTime = parseDateTimeInput(query.startTime);
+  const endTime = parseDateTimeInput(query.endTime);
+  if (startTime) conditions.push(gte(managedFiles.createdAt, startTime));
+  if (endTime) conditions.push(lte(managedFiles.createdAt, endTime));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const tc = tenantCondition(managedFiles, user);
   const finalWhere = where && tc ? and(where, tc) : (tc ?? where);

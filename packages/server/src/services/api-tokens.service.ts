@@ -4,6 +4,7 @@ import { db } from '../db';
 import { userApiTokens } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
+import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 
 export async function listApiTokens() {
   const user = currentUser();
@@ -12,9 +13,9 @@ export async function listApiTokens() {
     id: r.id,
     name: r.name,
     tokenPrefix: `${r.token.slice(0, 12)}...`,
-    lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
-    expiresAt: r.expiresAt?.toISOString() ?? null,
-    createdAt: r.createdAt.toISOString(),
+    lastUsedAt: formatNullableDateTime(r.lastUsedAt),
+    expiresAt: formatNullableDateTime(r.expiresAt),
+    createdAt: formatDateTime(r.createdAt),
   }));
 }
 
@@ -28,9 +29,9 @@ export async function createApiToken(input: { name: string; expiresAt?: string }
     userId: user.userId,
     name: input.name.trim(),
     token,
-    expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+    expiresAt: parseDateTimeInput(input.expiresAt),
   }).returning();
-  return { id: row.id, name: row.name, token, createdAt: row.createdAt.toISOString() };
+  return { id: row.id, name: row.name, token, createdAt: formatDateTime(row.createdAt) };
 }
 
 export async function deleteApiToken(id: number) {
