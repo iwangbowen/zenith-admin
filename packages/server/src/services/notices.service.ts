@@ -89,11 +89,13 @@ export async function listPublishedForUser() {
   const user = currentUser();
   const tc = tenantCondition(notices, user);
   const accessFilter = buildAccessFilter(user.userId);
-  const where = and(eq(notices.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : []));
-  const rows = await db.select().from(notices).where(where).orderBy(desc(notices.publishTime)).limit(20);
-  const readRows = await db.select({ noticeId: noticeReads.noticeId }).from(noticeReads).where(eq(noticeReads.userId, user.userId));
-  const readSet = new Set(readRows.map((r) => r.noticeId));
-  return rows.map((row) => ({ ...mapNotice(row), isRead: readSet.has(row.id) }));
+  const rows = await db.query.notices.findMany({
+    where: and(eq(notices.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : [])),
+    with: { reads: { where: eq(noticeReads.userId, user.userId), columns: { id: true } } },
+    orderBy: [desc(notices.publishTime)],
+    limit: 20,
+  });
+  return rows.map(({ reads, ...row }) => ({ ...mapNotice(row), isRead: reads.length > 0 }));
 }
 
 export async function markNoticeRead(noticeId: number) {
@@ -104,13 +106,14 @@ export async function markNoticeRead(noticeId: number) {
 export async function markAllNoticesRead() {
   const userId = currentUser().userId;
   const accessFilter = buildAccessFilter(userId);
-  const unreadRows = await db
-    .select({ id: notices.id })
-    .from(notices)
-    .leftJoin(noticeReads, and(eq(noticeReads.noticeId, notices.id), eq(noticeReads.userId, userId)))
-    .where(and(eq(notices.publishStatus, 'published'), accessFilter, isNull(noticeReads.id)));
-  if (unreadRows.length === 0) return;
-  await db.insert(noticeReads).values(unreadRows.map((r) => ({ noticeId: r.id, userId }))).onConflictDoNothing();
+  const rows = await db.query.notices.findMany({
+    where: and(eq(notices.publishStatus, 'published'), accessFilter),
+    with: { reads: { where: eq(noticeReads.userId, userId), columns: { id: true } } },
+    columns: { id: true },
+  });
+  const unreadIds = rows.filter((r) => r.reads.length === 0).map((r) => r.id);
+  if (unreadIds.length === 0) return;
+  await db.insert(noticeReads).values(unreadIds.map((noticeId) => ({ noticeId, userId }))).onConflictDoNothing();
 }
 
 export async function getInbox(q: { page?: number; pageSize?: number; isRead?: string }) {
