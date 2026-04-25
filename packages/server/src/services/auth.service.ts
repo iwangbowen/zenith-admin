@@ -6,6 +6,7 @@ import { generateTokenId, registerSession, removeSession, checkLoginLock, record
 import type { JwtPayload } from '../middleware/auth';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 import { parseUserAgent } from '../lib/request-helpers';
+import { escapeLike } from '../lib/where-helpers';
 
 // ─── 获取用户角色列表 ─────────────────────────────────────────────────────────
 
@@ -331,7 +332,7 @@ export async function listMyOperationLogs(query: { page?: number; pageSize?: num
   const userId = currentUser().userId;
   const { page = 1, pageSize = 10, module, startTime, endTime } = query;
   const conditions = [eq(operationLogs.userId, userId)];
-  if (module) conditions.push(like(operationLogs.module, `%${module}%`));
+  if (module) conditions.push(like(operationLogs.module, `%${escapeLike(module)}%`));
   const parsedStartTime = parseDateTimeInput(startTime);
   const parsedEndTime = parseDateTimeInput(endTime);
   if (parsedStartTime) conditions.push(gte(operationLogs.createdAt, parsedStartTime));

@@ -8,6 +8,7 @@ import { AppError } from '../lib/errors';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { pageOffset } from '../lib/pagination';
 import { getDataScopeCondition } from '../lib/data-scope';
+import { escapeLike } from '../lib/where-helpers';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { unlockUser as unlockUserSession } from '../lib/session-manager';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
@@ -158,8 +159,8 @@ export async function listUsers(q: ListUsersQuery) {
   const user = currentUser();
   const { page = 1, pageSize = 10, keyword, phone, departmentId, status, startTime, endTime } = q;
   const conditions = [];
-  if (keyword) conditions.push(or(like(users.username, `%${keyword}%`), like(users.nickname, `%${keyword}%`), like(users.email, `%${keyword}%`)));
-  if (phone) conditions.push(like(users.phone, `%${phone}%`));
+  if (keyword) conditions.push(or(like(users.username, `%${escapeLike(keyword)}%`), like(users.nickname, `%${escapeLike(keyword)}%`), like(users.email, `%${escapeLike(keyword)}%`)));
+  if (phone) conditions.push(like(users.phone, `%${escapeLike(phone)}%`));
   if (departmentId) conditions.push(eq(users.departmentId, departmentId));
   if (status) conditions.push(eq(users.status, status));
   const parsedStartTime = parseDateTimeInput(startTime);

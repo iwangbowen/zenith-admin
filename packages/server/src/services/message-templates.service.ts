@@ -1,4 +1,5 @@
 import { eq, and, ilike, or } from 'drizzle-orm';
+import { escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { messageTemplates } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -29,7 +30,7 @@ export async function listMessageTemplates(q: ListMessageTemplatesQuery) {
   const page = Math.max(1, Number(q.page ?? 1));
   const pageSize = Math.min(100, Math.max(1, Number(q.pageSize ?? 10)));
   const conditions = [];
-  if (q.keyword) conditions.push(or(ilike(messageTemplates.name, `%${q.keyword}%`), ilike(messageTemplates.code, `%${q.keyword}%`)));
+  if (q.keyword) conditions.push(or(ilike(messageTemplates.name, `%${escapeLike(q.keyword)}%`), ilike(messageTemplates.code, `%${escapeLike(q.keyword)}%`)));
   if (q.channel) conditions.push(eq(messageTemplates.channel, q.channel));
   if (q.status) conditions.push(eq(messageTemplates.status, q.status));
   const where = conditions.length > 0 ? and(...conditions) : undefined;

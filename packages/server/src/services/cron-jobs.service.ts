@@ -1,4 +1,5 @@
 import { eq, like, and, desc } from 'drizzle-orm';
+import { escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { cronJobs, cronJobLogs } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -34,7 +35,7 @@ function mapLog(r: typeof cronJobLogs.$inferSelect) {
 export async function listCronJobs(q: { page: number; pageSize: number; keyword?: string }) {
   const { page, pageSize, keyword } = q;
   const conditions = [];
-  if (keyword) conditions.push(like(cronJobs.name, `%${keyword}%`));
+  if (keyword) conditions.push(like(cronJobs.name, `%${escapeLike(keyword)}%`));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [total, rows] = await Promise.all([
     db.$count(cronJobs, where),

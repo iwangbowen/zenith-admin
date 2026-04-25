@@ -21,7 +21,7 @@ export function mapManagedFile(row: typeof managedFiles.$inferSelect) {
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 import { and, desc, eq, like, or, gte, lte } from 'drizzle-orm';
-import { mergeWhere } from '../lib/where-helpers';
+import { mergeWhere, escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
@@ -53,9 +53,9 @@ export async function listManagedFiles(query: {
   if (query.keyword) {
     conditions.push(
       or(
-        like(managedFiles.originalName, `%${query.keyword}%`),
-        like(managedFiles.objectKey, `%${query.keyword}%`),
-        like(managedFiles.storageName, `%${query.keyword}%`),
+        like(managedFiles.originalName, `%${escapeLike(query.keyword)}%`),
+        like(managedFiles.objectKey, `%${escapeLike(query.keyword)}%`),
+        like(managedFiles.storageName, `%${escapeLike(query.keyword)}%`),
       ),
     );
   }

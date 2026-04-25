@@ -1,5 +1,5 @@
 import { eq, and, like, or, gte, lte } from 'drizzle-orm';
-import { mergeWhere } from '../lib/where-helpers';
+import { mergeWhere, escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { roles, roleMenus, userRoles } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -40,7 +40,7 @@ export async function listRoles(q: ListRolesQuery) {
   const user = currentUser();
   const { page = 1, pageSize = 10 } = q;
   const conditions = [];
-  if (q.keyword) conditions.push(or(like(roles.name, `%${q.keyword}%`), like(roles.code, `%${q.keyword}%`)));
+  if (q.keyword) conditions.push(or(like(roles.name, `%${escapeLike(q.keyword)}%`), like(roles.code, `%${escapeLike(q.keyword)}%`)));
   if (q.status) conditions.push(eq(roles.status, q.status));
   const startTime = parseDateTimeInput(q.startTime);
   const endTime = parseDateTimeInput(q.endTime);

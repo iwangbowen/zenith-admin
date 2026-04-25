@@ -1,4 +1,5 @@
 import { eq, like, and, ne, desc } from 'drizzle-orm';
+import { escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { tenants } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -25,7 +26,7 @@ export interface ListTenantsQuery {
 export async function listTenants(q: ListTenantsQuery) {
   const { page = 1, pageSize = 10, keyword, status } = q;
   const conditions = [];
-  if (keyword) conditions.push(like(tenants.name, `%${keyword}%`));
+  if (keyword) conditions.push(like(tenants.name, `%${escapeLike(keyword)}%`));
   if (status === 'active' || status === 'disabled') conditions.push(eq(tenants.status, status));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [total, rows] = await Promise.all([

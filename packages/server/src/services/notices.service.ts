@@ -1,5 +1,5 @@
 import { count, desc, eq, like, and, gte, lte, inArray, isNull, isNotNull, sql, or, getTableColumns, type SQL } from 'drizzle-orm';
-import { mergeWhere } from '../lib/where-helpers';
+import { mergeWhere, escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import type { DbExecutor } from '../db/types';
 import { notices, noticeRecipients, noticeReads, users, userRoles, roles, departments } from '../db/schema';
@@ -145,7 +145,7 @@ export async function listNotices(q: { page?: number; pageSize?: number; title?:
   const user = currentUser();
   const { page = 1, pageSize = 10, title, type, publishStatus, startTime, endTime } = q;
   const conditions = [];
-  if (title) conditions.push(like(notices.title, `%${title}%`));
+  if (title) conditions.push(like(notices.title, `%${escapeLike(title)}%`));
   if (type) conditions.push(eq(notices.type, type));
   if (publishStatus) conditions.push(eq(notices.publishStatus, publishStatus));
   const parsedStartTime = parseDateTimeInput(startTime);

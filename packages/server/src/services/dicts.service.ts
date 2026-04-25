@@ -1,5 +1,5 @@
 import { eq, asc, and, or, like, gte, lte, type SQL } from 'drizzle-orm';
-import { mergeWhere } from '../lib/where-helpers';
+import { mergeWhere, escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { dicts, dictItems } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -32,7 +32,7 @@ export async function listDicts(q: ListDictsQuery) {
   const { keyword = '', status = '', startDate = '', endDate = '', page, pageSize } = q;
   const conditions: SQL[] = [];
   if (keyword) {
-    const kw = or(like(dicts.name, `%${keyword}%`), like(dicts.code, `%${keyword}%`));
+    const kw = or(like(dicts.name, `%${escapeLike(keyword)}%`), like(dicts.code, `%${escapeLike(keyword)}%`));
     if (kw) conditions.push(kw);
   }
   if (status) conditions.push(eq(dicts.status, status));

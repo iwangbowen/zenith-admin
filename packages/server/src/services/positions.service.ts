@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, inArray, like, lte, or } from 'drizzle-orm';
-import { mergeWhere } from '../lib/where-helpers';
+import { mergeWhere, escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { positions, userPositions } from '../db/schema';
 import { AppError } from '../lib/errors';
@@ -52,7 +52,7 @@ export async function listPositions(q: ListPositionsQuery) {
   const pageSize = q.pageSize ?? 10;
   const conditions = [];
   if (q.keyword) {
-    conditions.push(or(like(positions.name, `%${q.keyword}%`), like(positions.code, `%${q.keyword}%`)));
+    conditions.push(or(like(positions.name, `%${escapeLike(q.keyword)}%`), like(positions.code, `%${escapeLike(q.keyword)}%`)));
   }
   if (q.status) conditions.push(eq(positions.status, q.status));
   const startTime = parseDateTimeInput(q.startTime);

@@ -1,5 +1,5 @@
 import { count, desc, like, and, gte, lte, sql, eq } from 'drizzle-orm';
-import { mergeWhere } from '../lib/where-helpers';
+import { mergeWhere, escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -25,12 +25,12 @@ export interface ListOperationLogsQuery {
 function buildWhere(q: ListOperationLogsQuery) {
   const user = currentUser();
   const conditions = [];
-  if (q.username) conditions.push(like(operationLogs.username, `%${q.username}%`));
-  if (q.module) conditions.push(like(operationLogs.module, `%${q.module}%`));
-  if (q.description) conditions.push(like(operationLogs.description, `%${q.description}%`));
+  if (q.username) conditions.push(like(operationLogs.username, `%${escapeLike(q.username)}%`));
+  if (q.module) conditions.push(like(operationLogs.module, `%${escapeLike(q.module)}%`));
+  if (q.description) conditions.push(like(operationLogs.description, `%${escapeLike(q.description)}%`));
   if (q.method) conditions.push(eq(operationLogs.method, q.method));
-  if (q.path) conditions.push(like(operationLogs.path, `%${q.path}%`));
-  if (q.ip) conditions.push(like(operationLogs.ip, `%${q.ip}%`));
+  if (q.path) conditions.push(like(operationLogs.path, `%${escapeLike(q.path)}%`));
+  if (q.ip) conditions.push(like(operationLogs.ip, `%${escapeLike(q.ip)}%`));
   if (q.status === 'success') conditions.push(and(gte(operationLogs.responseCode, 200), lte(operationLogs.responseCode, 399)));
   if (q.status === 'fail') conditions.push(gte(operationLogs.responseCode, 400));
   const startTime = parseDateTimeInput(q.startTime);

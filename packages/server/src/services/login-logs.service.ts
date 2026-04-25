@@ -1,5 +1,5 @@
 import { desc, eq, like, and, gte, lte } from 'drizzle-orm';
-import { mergeWhere } from '../lib/where-helpers';
+import { mergeWhere, escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { loginLogs } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -22,7 +22,7 @@ export async function listLoginLogs(q: ListLoginLogsQuery) {
   const page = Number(q.page) || 1;
   const pageSize = Number(q.pageSize) || 10;
   const conditions = [];
-  if (q.username) conditions.push(like(loginLogs.username, `%${q.username}%`));
+  if (q.username) conditions.push(like(loginLogs.username, `%${escapeLike(q.username)}%`));
   if (q.status) conditions.push(eq(loginLogs.status, q.status));
   const startTime = parseDateTimeInput(q.startTime);
   const endTime = parseDateTimeInput(q.endTime);
