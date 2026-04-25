@@ -2,6 +2,7 @@ import { createMiddleware } from 'hono/factory';
 import ipRangeCheck from 'ip-range-check';
 import { getConfigBoolean, getConfigValue } from '../lib/system-config';
 import { errBody } from '../lib/openapi-schemas';
+import { getClientIp } from '../lib/request-helpers';
 
 /** 免检路径：这些接口无需经过 IP 访问控制 */
 const EXEMPT_PATHS = new Set([
@@ -52,7 +53,7 @@ export function invalidateIpAccessCache() {
 }
 
 export const ipAccessMiddleware = createMiddleware(async (c, next) => {
-  const path = new URL(c.req.url).pathname;
+  const path = c.req.path;
 
   // 免检路径
   if (EXEMPT_PATHS.has(path) || path.startsWith('/api/oauth/') || path.startsWith('/api/auth/oauth/')) {
@@ -66,9 +67,7 @@ export const ipAccessMiddleware = createMiddleware(async (c, next) => {
     return next();
   }
 
-  const ip = c.req.header('x-forwarded-for')?.split(',')[0].trim()
-    ?? c.req.header('x-real-ip')
-    ?? '127.0.0.1';
+  const ip = getClientIp(c);
 
   // 黑名单优先检查
   if (cfg.blacklistEnabled && cfg.blacklist.length > 0) {

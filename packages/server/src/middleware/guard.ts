@@ -1,6 +1,5 @@
 import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
-import { UAParser } from 'ua-parser-js';
 import type { JwtPayload } from './auth';
 import type { AppEnv } from '../lib/context';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
@@ -8,6 +7,7 @@ import { sanitizeBody } from '../lib/sanitize';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { errBody } from '../lib/openapi-schemas';
+import { getClientIp, parseUserAgent } from '../lib/request-helpers';
 
 export interface AuditLogOptions {
   description: string;
@@ -38,14 +38,9 @@ async function writeOperationLog(
 ) {
   try {
     const user = c.get('user') as JwtPayload | undefined;
-    const ip =
-      c.req.header('x-forwarded-for')?.split(',')[0].trim() ||
-      c.req.header('x-real-ip') ||
-      '127.0.0.1';
+    const ip = getClientIp(c);
     const ua = c.req.header('user-agent') ?? '';
-    const parser = new UAParser(ua);
-    const browser = parser.getBrowser();
-    const os = parser.getOS();
+    const { browser: browserName, os: osName } = parseUserAgent(ua);
 
     const responseCode = c.res?.status ?? 200;
     const bodyStr =
@@ -68,8 +63,8 @@ async function writeOperationLog(
       durationMs,
       ip,
       userAgent: ua.slice(0, 512) || null,
-      os: os.name ? `${os.name} ${os.version ?? ''}`.trim() : null,
-      browser: browser.name ? `${browser.name} ${browser.version ?? ''}`.trim() : null,
+      os: osName === 'Unknown' ? null : osName,
+      browser: browserName === 'Unknown' ? null : browserName,
     });
   } catch {
     // 日志写入失败不影响主流程

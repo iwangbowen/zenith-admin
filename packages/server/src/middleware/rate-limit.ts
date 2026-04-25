@@ -3,6 +3,7 @@ import type { MiddlewareHandler } from 'hono';
 import redis from '../lib/redis';
 import { config } from '../config';
 import { errBody } from '../lib/openapi-schemas';
+import { getClientIp } from '../lib/request-helpers';
 
 // ioredis → hono-rate-limiter RedisClient 适配器
 // ioredis 的 evalsha 签名为 (sha1, numkeys, ...keys, ...args)，需要拍平传递
@@ -36,10 +37,7 @@ const rateLimitStore = new RedisStore({
 });
 
 /** 从请求头或 IP 取 key，优先信任反代头 */
-const ipKey = (c: Parameters<MiddlewareHandler>[0]) =>
-  c.req.header('x-forwarded-for')?.split(',')[0].trim() ??
-  c.req.header('x-real-ip') ??
-  '0.0.0.0';
+const ipKey = (c: Parameters<MiddlewareHandler>[0]) => getClientIp(c);
 
 /**
  * 认证接口（登录）：15 分钟内最多 10 次

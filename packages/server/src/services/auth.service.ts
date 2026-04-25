@@ -1,11 +1,11 @@
-import { and, desc, eq, eq as eqOp, gt, gte, isNull, like, lte } from 'drizzle-orm';
-import { UAParser } from 'ua-parser-js';
+import { and, desc, eq, gt, gte, isNull, like, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { users, loginLogs, tenants, operationLogs, passwordResetTokens } from '../db/schema';
 import { signToken, verifyToken } from '../lib/jwt';
 import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
 import type { JwtPayload } from '../middleware/auth';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
+import { parseUserAgent } from '../lib/request-helpers';
 
 // ─── 获取用户角色列表 ─────────────────────────────────────────────────────────
 
@@ -59,15 +59,13 @@ export interface LoginLogParams {
 
 export async function recordLoginLog(params: LoginLogParams) {
   const { username, status, message, userId, tenantId, ip, ua } = params;
-  const parser = new UAParser(ua);
-  const browser = parser.getBrowser();
-  const os = parser.getOS();
+  const { browser, os } = parseUserAgent(ua);
   await db.insert(loginLogs).values({
     username,
     userId,
     ip,
-    browser: browser.name ? `${browser.name} ${browser.version || ''}`.trim() : 'Unknown',
-    os: os.name ? `${os.name} ${os.version || ''}`.trim() : 'Unknown',
+    browser,
+    os,
     status,
     message,
     tenantId: tenantId ?? null,
@@ -96,13 +94,7 @@ import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
 
 function uaInfo(ua: string) {
-  const parser = new UAParser(ua);
-  const b = parser.getBrowser();
-  const o = parser.getOS();
-  return {
-    browser: b.name ? `${b.name} ${b.version || ''}`.trim() : 'Unknown',
-    os: o.name ? `${o.name} ${o.version || ''}`.trim() : 'Unknown',
-  };
+  return parseUserAgent(ua);
 }
 
 async function checkPasswordExpiry(user: { passwordUpdatedAt: Date | null; createdAt: Date }): Promise<boolean> {
@@ -133,7 +125,7 @@ export async function login(input: LoginInput) {
 
   let tenantId: number | null = null;
   if (config.multiTenantMode && input.tenantCode) {
-    const [tenant] = await db.select().from(tenants).where(eqOp(tenants.code, input.tenantCode)).limit(1);
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.code, input.tenantCode)).limit(1);
     if (!tenant) throw new AppError('租户不存在', 400);
     if (tenant.status === 'disabled') throw new AppError('租户已被禁用', 403);
     if (tenant.expireAt && tenant.expireAt < new Date()) throw new AppError('租户已过期', 403);
@@ -152,9 +144,9 @@ export async function login(input: LoginInput) {
   const lockDurationSeconds = loginLockDurationMinutes * 60;
 
   let userWhere;
-  if (config.multiTenantMode && tenantId !== null) userWhere = and(eqOp(users.username, input.username), eqOp(users.tenantId, tenantId));
-  else if (config.multiTenantMode) userWhere = and(eqOp(users.username, input.username), isNull(users.tenantId));
-  else userWhere = eqOp(users.username, input.username);
+  if (config.multiTenantMode && tenantId !== null) userWhere = and(eq(users.username, input.username), eq(users.tenantId, tenantId));
+  else if (config.multiTenantMode) userWhere = and(eq(users.username, input.username), isNull(users.tenantId));
+  else userWhere = eq(users.username, input.username);
 
   const [user] = await db.select().from(users).where(userWhere).limit(1);
   if (!user) {
@@ -216,9 +208,9 @@ export async function register(input: RegisterInput) {
   const allow = await getConfigBoolean('allow_registration', false);
   if (!allow) throw new AppError('系统已关闭注册功能', 403);
 
-  const [exist] = await db.select().from(users).where(eqOp(users.username, input.username)).limit(1);
+  const [exist] = await db.select().from(users).where(eq(users.username, input.username)).limit(1);
   if (exist) throw new AppError('用户名已存在', 400);
-  const [emailExist] = await db.select().from(users).where(eqOp(users.email, input.email)).limit(1);
+  const [emailExist] = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
   if (emailExist) throw new AppError('邮箱已被注册', 400);
 
   const hashed = await bcrypt.hash(input.password, 10);
@@ -257,7 +249,7 @@ export async function refreshAccessToken(token: string) {
     throw new AppError('refresh token 已过期', 401);
   }
   if (payload.type !== 'refresh') throw new AppError('无效的 refresh token', 401);
-  const [u] = await db.select({ status: users.status }).from(users).where(eqOp(users.id, payload.userId)).limit(1);
+  const [u] = await db.select({ status: users.status }).from(users).where(eq(users.id, payload.userId)).limit(1);
   if (!u) throw new AppError('用户不存在', 401);
   if (u.status === 'disabled') throw new AppError('账号已被禁用', 403);
   const tokenId = payload.jti ?? generateTokenId();
@@ -276,7 +268,7 @@ export async function logoutSession() {
 
 export async function getMyProfile() {
   const userId = currentUser().userId;
-  const [user] = await db.select().from(users).where(eqOp(users.id, userId)).limit(1);
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) throw new AppError('用户不存在', 404);
   const userRoleList = await getUserRoles(user.id);
   const permissions = isSuperAdmin(userRoleList.map((r) => r.code)) ? ['*'] : await getUserPermissions(user.id);
@@ -284,7 +276,7 @@ export async function getMyProfile() {
   const { password: _pw, ...userInfo } = user;
   let tenantName: string | null = null;
   if (user.tenantId) {
-    const [t] = await db.select({ name: tenants.name }).from(tenants).where(eqOp(tenants.id, user.tenantId)).limit(1);
+    const [t] = await db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, user.tenantId)).limit(1);
     tenantName = t?.name ?? null;
   }
   return {
@@ -301,10 +293,10 @@ export async function getMyProfile() {
 export async function updateMyProfile(data: { nickname?: string; email?: string; avatar?: string }) {
   const userId = currentUser().userId;
   if (data.email) {
-    const [existing] = await db.select({ id: users.id }).from(users).where(eqOp(users.email, data.email)).limit(1);
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, data.email)).limit(1);
     if (existing && existing.id !== userId) throw new AppError('邮箱已被使用', 400);
   }
-  const [updated] = await db.update(users).set({ ...data }).where(eqOp(users.id, userId)).returning();
+  const [updated] = await db.update(users).set({ ...data }).where(eq(users.id, userId)).returning();
   const userRoleList = await getUserRoles(userId);
   const { password: _pw, ...userInfo } = updated;
   return { ...userInfo, roles: userRoleList, createdAt: formatDateTime(updated.createdAt), updatedAt: formatDateTime(updated.updatedAt) };
@@ -312,19 +304,19 @@ export async function updateMyProfile(data: { nickname?: string; email?: string;
 
 export async function changeMyPassword(oldPassword: string, newPassword: string) {
   const userId = currentUser().userId;
-  const [user] = await db.select().from(users).where(eqOp(users.id, userId)).limit(1);
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) throw new AppError('用户不存在', 404);
   const valid = await bcrypt.compare(oldPassword, user.password);
   if (!valid) throw new AppError('原密码错误', 400);
   const hashed = await bcrypt.hash(newPassword, 10);
-  await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date() }).where(eqOp(users.id, userId));
+  await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date() }).where(eq(users.id, userId));
 }
 
 export async function listMyLoginLogs(query: { page?: number; pageSize?: number; status?: 'success' | 'fail'; startTime?: string; endTime?: string }) {
   const userId = currentUser().userId;
   const { page = 1, pageSize = 10, status, startTime, endTime } = query;
-  const conditions = [eqOp(loginLogs.userId, userId)];
-  if (status) conditions.push(eqOp(loginLogs.status, status));
+  const conditions = [eq(loginLogs.userId, userId)];
+  if (status) conditions.push(eq(loginLogs.status, status));
   const parsedStartTime = parseDateTimeInput(startTime);
   const parsedEndTime = parseDateTimeInput(endTime);
   if (parsedStartTime) conditions.push(gte(loginLogs.createdAt, parsedStartTime));
@@ -340,7 +332,7 @@ export async function listMyLoginLogs(query: { page?: number; pageSize?: number;
 export async function listMyOperationLogs(query: { page?: number; pageSize?: number; module?: string; startTime?: string; endTime?: string }) {
   const userId = currentUser().userId;
   const { page = 1, pageSize = 10, module, startTime, endTime } = query;
-  const conditions = [eqOp(operationLogs.userId, userId)];
+  const conditions = [eq(operationLogs.userId, userId)];
   if (module) conditions.push(like(operationLogs.module, `%${module}%`));
   const parsedStartTime = parseDateTimeInput(startTime);
   const parsedEndTime = parseDateTimeInput(endTime);
@@ -390,7 +382,7 @@ export async function switchTenantView(targetTenantId: number | null, ip: string
   const payload = currentUser();
   if (!isPlatformAdmin(payload)) throw new AppError('仅平台超管可切换租户', 403);
   if (targetTenantId !== null) {
-    const [tenant] = await db.select().from(tenants).where(eqOp(tenants.id, targetTenantId)).limit(1);
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, targetTenantId)).limit(1);
     if (!tenant) throw new AppError('租户不存在', 404);
   }
   const tokenId = generateTokenId();
@@ -426,14 +418,14 @@ export async function switchTenantView(targetTenantId: number | null, ip: string
 export async function listSwitchableTenants() {
   const payload = currentUser();
   if (!isPlatformAdmin(payload)) throw new AppError('无权限', 403);
-  return db.select({ id: tenants.id, name: tenants.name, code: tenants.code, status: tenants.status }).from(tenants).where(eqOp(tenants.status, 'active'));
+  return db.select({ id: tenants.id, name: tenants.name, code: tenants.code, status: tenants.status }).from(tenants).where(eq(tenants.status, 'active'));
 }
 
 export async function forgotPassword(email: string) {
   const enabled = await getConfigBoolean('forgot_password_enabled');
   if (!enabled) throw new AppError('忘记密码功能未开启', 403);
   const [user] = await db.select({ id: users.id, username: users.username })
-    .from(users).where(and(eqOp(users.email, email), eqOp(users.status, 'active'))).limit(1);
+    .from(users).where(and(eq(users.email, email), eq(users.status, 'active'))).limit(1);
   if (user) {
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -458,12 +450,12 @@ export async function forgotPassword(email: string) {
 export async function resetPassword(token: string, newPassword: string) {
   const now = new Date();
   const [record] = await db.select().from(passwordResetTokens)
-    .where(and(eqOp(passwordResetTokens.token, token), gt(passwordResetTokens.expiresAt, now), isNull(passwordResetTokens.usedAt)))
+    .where(and(eq(passwordResetTokens.token, token), gt(passwordResetTokens.expiresAt, now), isNull(passwordResetTokens.usedAt)))
     .limit(1);
   if (!record) throw new AppError('重置链接无效或已过期', 400);
   const hashed = await bcrypt.hash(newPassword, 10);
   await db.transaction(async (tx) => {
-    await tx.update(users).set({ password: hashed }).where(eqOp(users.id, record.userId));
-    await tx.update(passwordResetTokens).set({ usedAt: now }).where(eqOp(passwordResetTokens.id, record.id));
+    await tx.update(users).set({ password: hashed }).where(eq(users.id, record.userId));
+    await tx.update(passwordResetTokens).set({ usedAt: now }).where(eq(passwordResetTokens.id, record.id));
   });
 }
