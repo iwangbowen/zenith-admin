@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import { sign } from 'hono/jwt';
+import { contextStorage } from 'hono/context-storage';
 
 const TEST_JWT_SECRET = 'unit-test-only-fake-secret-do-not-use-in-production';
 
@@ -134,6 +135,7 @@ async function makeToken(payload: object = {}) {
 // ─── 测试应用 ─────────────────────────────────────────────────────────────────
 function buildApp() {
   const app = new Hono();
+  app.use('*', contextStorage());
   app.route('/api/auth', authRoutes);
   // 与 src/index.ts 保持一致的 AppError 全局处理
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

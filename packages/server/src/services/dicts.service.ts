@@ -6,6 +6,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { exportToExcel } from '../lib/excel-export';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
 export function mapDict(row: typeof dicts.$inferSelect) {
   return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -13,10 +14,6 @@ export function mapDict(row: typeof dicts.$inferSelect) {
 
 export function mapDictItem(row: typeof dictItems.$inferSelect) {
   return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
-}
-
-function isPgUnique(err: unknown) {
-  return (err as { code?: string }).code === '23505';
 }
 
 export interface ListDictsQuery {
@@ -55,8 +52,7 @@ export async function createDict(data: typeof dicts.$inferInsert) {
     const [row] = await db.insert(dicts).values({ ...data, tenantId: getCreateTenantId(user) }).returning();
     return mapDict(row);
   } catch (err) {
-    if (isPgUnique(err)) throw new AppError('字典编码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '字典编码已存在');
   }
 }
 

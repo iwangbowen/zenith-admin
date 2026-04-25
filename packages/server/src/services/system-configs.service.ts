@@ -1,4 +1,4 @@
-import { eq, like, and, ne, sql, desc } from 'drizzle-orm';
+import { eq, like, and, ne, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { systemConfigs } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -7,8 +7,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
 
-const configTypeValues = ['string', 'number', 'boolean', 'json'] as const;
-type ConfigType = typeof configTypeValues[number];
+type ConfigType = 'string' | 'number' | 'boolean' | 'json';
 
 function mapConfig(row: typeof systemConfigs.$inferSelect) {
   return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -53,10 +52,13 @@ export interface SystemConfigInput {
 
 export async function createSystemConfig(data: SystemConfigInput) {
   const user = currentUser();
+  const tc = tenantCondition(systemConfigs, user);
+  const conditions = [eq(systemConfigs.configKey, data.configKey)];
+  if (tc) conditions.push(tc);
   const [existing] = await db
     .select()
     .from(systemConfigs)
-    .where(and(eq(systemConfigs.configKey, data.configKey), tenantCondition(systemConfigs, user) ?? sql`1=1`))
+    .where(and(...conditions))
     .limit(1);
   if (existing) throw new AppError('配置键已存在', 400);
   const [row] = await db.insert(systemConfigs).values({ ...data, tenantId: getCreateTenantId(user) }).returning();

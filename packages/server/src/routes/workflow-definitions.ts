@@ -27,7 +27,7 @@ const listRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.string().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(WorkflowDefinitionDTO, 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listDefinitions(c.get('user'), c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await listDefinitions(c.req.valid('query'))), 200),
 });
 
 const publishedRoute = defineOpenAPIRoute({
@@ -37,7 +37,7 @@ const publishedRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'workflow:instance:create' })] as const,
     responses: { ...commonErrorResponses, ...ok(z.array(WorkflowDefinitionDTO), 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listPublishedDefinitions(c.get('user'))), 200),
+  handler: async (c) => c.json(okBody(await listPublishedDefinitions()), 200),
 });
 
 const detailRoute = defineOpenAPIRoute({
@@ -52,7 +52,7 @@ const detailRoute = defineOpenAPIRoute({
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
-  handler: async (c) => c.json(okBody(await getDefinition(c.get('user'), c.req.valid('param').id)), 200),
+  handler: async (c) => c.json(okBody(await getDefinition(c.req.valid('param').id)), 200),
 });
 
 const createRouteDef = defineOpenAPIRoute({
@@ -64,7 +64,7 @@ const createRouteDef = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(WorkflowDefinitionDTO, '创建成功') },
   }),
   handler: async (c) => {
-    const r = await createDefinition(c.get('user'), c.req.valid('json'));
+    const r = await createDefinition(c.req.valid('json'));
     return c.json(okBody(r, '创建成功'), 200);
   },
 });
@@ -82,7 +82,7 @@ const updateRouteDef = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await updateDefinition(c.get('user'), c.req.valid('param').id, c.req.valid('json'));
+    const r = await updateDefinition(c.req.valid('param').id, c.req.valid('json'));
     return c.json(okBody(r, '更新成功'), 200);
   },
 });
@@ -101,7 +101,7 @@ const publishRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await publishDefinition(c.get('user'), c.req.valid('param').id);
+    const r = await publishDefinition(c.req.valid('param').id);
     return c.json(okBody(r, '发布成功'), 200);
   },
 });
@@ -119,7 +119,7 @@ const disableRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await disableDefinition(c.get('user'), c.req.valid('param').id);
+    const r = await disableDefinition(c.req.valid('param').id);
     return c.json(okBody(r, '禁用成功'), 200);
   },
 });
@@ -138,7 +138,7 @@ const deleteRouteDef = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    await deleteDefinition(c.get('user'), c.req.valid('param').id);
+    await deleteDefinition(c.req.valid('param').id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });

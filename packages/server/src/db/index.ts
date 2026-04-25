@@ -11,8 +11,17 @@ class DrizzleLogger implements Logger {
   }
 }
 
-const client = postgres(config.databaseUrl);
+const client = postgres(config.databaseUrl, {
+  max: config.database.maxConnections,
+  idle_timeout: config.database.idleTimeoutSeconds,
+  connect_timeout: config.database.connectTimeoutSeconds,
+  ssl: config.database.ssl,
+});
 export const db = drizzle(client, {
   schema,
   logger: config.log.level === 'debug' ? new DrizzleLogger() : false,
 });
+
+export async function closeDb(): Promise<void> {
+  await client.end({ timeout: 5 });
+}

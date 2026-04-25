@@ -1,17 +1,13 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO } from '../lib/openapi-dtos';
 import {
-  readFileContent, listManagedFiles, uploadManagedFile, deleteManagedFile, exportManagedFiles,
+  readFileContent, listManagedFiles, uploadManagedFileFromBody, deleteManagedFile, exportManagedFiles,
 } from '../services/files.service';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
-
-function isUploadFile(value: unknown): value is File {
-  return !!value && typeof (value as File).arrayBuffer === 'function' && typeof (value as File).name === 'string';
-}
 
 const contentRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -43,14 +39,14 @@ const listRoute = defineOpenAPIRoute({
     request: {
       query: PaginationQuery.extend({
         keyword: z.string().optional(),
-        provider: z.enum(['local', 'oss']).optional(),
+        provider: z.enum(['local', 'oss', 's3', 'cos']).optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
       }),
     },
     responses: { ...commonErrorResponses, ...okPaginated(ManagedFileDTO, '文件列表') },
   }),
-  handler: async (c) => c.json(okBody(await listManagedFiles(c.get('user'), c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await listManagedFiles(c.req.valid('query'))), 200),
 });
 
 const uploadRoute = defineOpenAPIRoute({
@@ -69,9 +65,7 @@ const uploadRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const body = await c.req.parseBody();
-    const rawFile = Array.isArray(body.file) ? body.file[0] : body.file;
-    if (!isUploadFile(rawFile)) return c.json(errBody('请选择要上传的文件'), 400);
-    const r = await uploadManagedFile(c.get('user'), rawFile);
+    const r = await uploadManagedFileFromBody(body.file);
     return c.json(okBody(r, '上传成功'), 200);
   },
 });
@@ -89,7 +83,7 @@ const deleteRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    await deleteManagedFile(c.get('user'), c.req.valid('param').id);
+    await deleteManagedFile(c.req.valid('param').id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
@@ -102,7 +96,7 @@ const exportRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okExcel('Excel 文件') },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportManagedFiles(c.get('user'));
+    const { buffer, filename } = await exportManagedFiles();
     return excelBody(c, buffer, filename);
   },
 });

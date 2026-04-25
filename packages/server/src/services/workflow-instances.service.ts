@@ -49,19 +49,20 @@ export function mapInstance(
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { count, countDistinct, eq, and, desc, sql } from 'drizzle-orm';
+import { count, countDistinct, eq, and, desc, ilike, or } from 'drizzle-orm';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowDefinitions, users } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-engine';
 import type { WorkflowFlowData } from '@zenith/shared';
-import type { JwtPayload } from '../middleware/auth';
 import { AppError } from '../lib/errors';
+import { currentUser } from '../lib/context';
 
 type InstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
 
-export async function listMyInstances(user: JwtPayload, query: { page?: number; pageSize?: number; status?: string }) {
+export async function listMyInstances(query: { page?: number; pageSize?: number; status?: string }) {
+  const user = currentUser();
   const { page = 1, pageSize = 20, status } = query;
   const tc = tenantCondition(workflowInstances, user);
   const conditions = [eq(workflowInstances.initiatorId, user.userId)];
@@ -91,20 +92,28 @@ export async function listMyInstances(user: JwtPayload, query: { page?: number; 
   };
 }
 
-export async function listPendingMine(user: JwtPayload, query: { page?: number; pageSize?: number }) {
+export async function listPendingMine(query: { page?: number; pageSize?: number }) {
+  const user = currentUser();
   const { page = 1, pageSize = 20 } = query;
+  const tc = tenantCondition(workflowInstances, user);
+  const where = and(
+    eq(workflowTasks.assigneeId, user.userId),
+    eq(workflowTasks.status, 'pending'),
+    eq(workflowInstances.status, 'running'),
+    tc,
+  );
   const [{ total }] = await db
     .select({ total: countDistinct(workflowInstances.id) })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-    .where(and(eq(workflowTasks.assigneeId, user.userId), eq(workflowTasks.status, 'pending'), eq(workflowInstances.status, 'running')));
+    .where(where);
   const rows = await db
     .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar, task: workflowTasks })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
     .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
     .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-    .where(and(eq(workflowTasks.assigneeId, user.userId), eq(workflowTasks.status, 'pending'), eq(workflowInstances.status, 'running')))
+    .where(where)
     .orderBy(desc(workflowTasks.createdAt))
     .limit(pageSize)
     .offset(pageOffset(page, pageSize));
@@ -117,12 +126,15 @@ export async function listPendingMine(user: JwtPayload, query: { page?: number; 
 }
 
 export async function listAllInstances(query: { page?: number; pageSize?: number; status?: string; keyword?: string }) {
+  const user = currentUser();
   const { page = 1, pageSize = 20, status, keyword } = query;
   const conditions = [];
+  const tc = tenantCondition(workflowInstances, user);
+  if (tc) conditions.push(tc);
   if (status) conditions.push(eq(workflowInstances.status, status as InstanceStatus));
   if (keyword) {
-    const like = `%${keyword}%`;
-    conditions.push(sql`(${workflowInstances.title} ilike ${like} or ${workflowDefinitions.name} ilike ${like})`);
+    const likeValue = `%${keyword}%`;
+    conditions.push(or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue)));
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const statRows = await db.select({ status: workflowInstances.status, cnt: count() }).from(workflowInstances).groupBy(workflowInstances.status);
@@ -148,7 +160,8 @@ export async function listAllInstances(query: { page?: number; pageSize?: number
   return { stats, list: rows.map((r) => mapInstance(r.inst, r)), total, page, pageSize };
 }
 
-export async function getInstanceDetail(user: JwtPayload, id: number) {
+export async function getInstanceDetail(id: number) {
+  const user = currentUser();
   const tc = tenantCondition(workflowInstances, user);
   const conditions = [eq(workflowInstances.id, id)];
   if (tc) conditions.push(tc);
@@ -176,7 +189,8 @@ export async function getInstanceDetail(user: JwtPayload, id: number) {
   });
 }
 
-export async function createInstance(user: JwtPayload, data: { definitionId: number; title: string; formData?: Record<string, unknown> | null }) {
+export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null }) {
+  const user = currentUser();
   const [def] = await db.select().from(workflowDefinitions).where(and(eq(workflowDefinitions.id, data.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);
   if (!def) throw new AppError('流程定义不存在或未发布', 404);
   const flowData = def.flowData as WorkflowFlowData;
@@ -216,7 +230,8 @@ export async function createInstance(user: JwtPayload, data: { definitionId: num
   return mapInstance(instance);
 }
 
-export async function withdrawInstance(user: JwtPayload, id: number) {
+export async function withdrawInstance(id: number) {
+  const user = currentUser();
   const tc = tenantCondition(workflowInstances, user);
   const conditions = [eq(workflowInstances.id, id)];
   if (tc) conditions.push(tc);
@@ -238,7 +253,8 @@ export interface ApproveResult {
   message: string;
 }
 
-export async function approveTask(user: JwtPayload, taskId: number, comment?: string): Promise<ApproveResult> {
+export async function approveTask(taskId: number, comment?: string): Promise<ApproveResult> {
+  const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
   if (!task) throw new AppError('任务不存在或无权操作', 404);
   if (task.status !== 'pending') throw new AppError('任务已处理', 400);
@@ -299,7 +315,8 @@ export async function approveTask(user: JwtPayload, taskId: number, comment?: st
   };
 }
 
-export async function rejectTask(user: JwtPayload, taskId: number, comment: string) {
+export async function rejectTask(taskId: number, comment: string) {
+  const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
   if (!task) throw new AppError('任务不存在或无权操作', 404);
   if (task.status !== 'pending') throw new AppError('任务已处理', 400);

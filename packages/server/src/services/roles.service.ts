@@ -7,6 +7,7 @@ import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
 export function mapRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
   return {
@@ -78,8 +79,7 @@ export async function createRole(data: CreateRoleInput) {
     const [role] = await db.insert(roles).values({ ...data, tenantId: getCreateTenantId(user) }).returning();
     return mapRole(role);
   } catch (err: unknown) {
-    if ((err as { code?: string }).code === '23505') throw new AppError('角色编码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '角色编码已存在');
   }
 }
 

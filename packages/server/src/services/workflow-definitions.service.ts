@@ -29,10 +29,11 @@ import { pageOffset } from '../lib/pagination';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { validateFlowData } from '../lib/workflow-engine';
 import type { WorkflowFlowData } from '@zenith/shared';
-import type { JwtPayload } from '../middleware/auth';
 import { AppError } from '../lib/errors';
+import { currentUser } from '../lib/context';
 
-export async function listDefinitions(user: JwtPayload, query: { page?: number; pageSize?: number; keyword?: string; status?: string }) {
+export async function listDefinitions(query: { page?: number; pageSize?: number; keyword?: string; status?: string }) {
+  const user = currentUser();
   const { page = 1, pageSize = 20, keyword, status } = query;
   const tc = tenantCondition(workflowDefinitions, user);
   const conditions = [];
@@ -53,7 +54,8 @@ export async function listDefinitions(user: JwtPayload, query: { page?: number; 
   return { list: rows.map(r => mapDefinition(r, r.createdByUser?.nickname ?? null)), total, page, pageSize };
 }
 
-export async function listPublishedDefinitions(user: JwtPayload) {
+export async function listPublishedDefinitions() {
+  const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
   const conditions = [eq(workflowDefinitions.status, 'published')];
   if (tc) conditions.push(tc);
@@ -61,15 +63,16 @@ export async function listPublishedDefinitions(user: JwtPayload) {
   return rows.map(r => mapDefinition(r));
 }
 
-async function findDefinition(user: JwtPayload, id: number) {
+async function findDefinition(id: number) {
+  const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
   const conds = [eq(workflowDefinitions.id, id)];
   if (tc) conds.push(tc);
   return and(...conds);
 }
 
-export async function getDefinition(user: JwtPayload, id: number) {
-  const where = await findDefinition(user, id);
+export async function getDefinition(id: number) {
+  const where = await findDefinition(id);
   const row = await db.query.workflowDefinitions.findFirst({
     where,
     with: { createdByUser: { columns: { nickname: true } } },
@@ -78,9 +81,10 @@ export async function getDefinition(user: JwtPayload, id: number) {
   return mapDefinition(row, row.createdByUser?.nickname ?? null);
 }
 
-export async function createDefinition(user: JwtPayload, data: {
+export async function createDefinition(data: {
   name: string; description?: string | null; flowData?: unknown; formFields?: unknown; status?: 'draft' | 'published' | 'disabled';
 }) {
+  const user = currentUser();
   const [row] = await db.insert(workflowDefinitions).values({
     name: data.name,
     description: data.description ?? null,
@@ -93,10 +97,10 @@ export async function createDefinition(user: JwtPayload, data: {
   return mapDefinition(row);
 }
 
-export async function updateDefinition(user: JwtPayload, id: number, data: Partial<{
+export async function updateDefinition(id: number, data: Partial<{
   name: string; description: string | null; flowData: unknown; formFields: unknown; status: 'draft' | 'published' | 'disabled';
 }>) {
-  const where = await findDefinition(user, id);
+  const where = await findDefinition(id);
   const updateData: Record<string, unknown> = { ...data };
   if (data.flowData !== undefined) updateData.flowData = data.flowData as Record<string, unknown>;
   if (data.formFields !== undefined) updateData.formFields = data.formFields as unknown[];
@@ -109,8 +113,8 @@ export async function updateDefinition(user: JwtPayload, id: number, data: Parti
   return mapDefinition(updated);
 }
 
-export async function publishDefinition(user: JwtPayload, id: number) {
-  const where = await findDefinition(user, id);
+export async function publishDefinition(id: number) {
+  const where = await findDefinition(id);
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
   if (!existing) throw new AppError('流程定义不存在', 404);
   const flowData = existing.flowData as WorkflowFlowData | null;
@@ -125,15 +129,15 @@ export async function publishDefinition(user: JwtPayload, id: number) {
   return mapDefinition(updated);
 }
 
-export async function disableDefinition(user: JwtPayload, id: number) {
-  const where = await findDefinition(user, id);
+export async function disableDefinition(id: number) {
+  const where = await findDefinition(id);
   const [updated] = await db.update(workflowDefinitions).set({ status: 'disabled' }).where(where).returning();
   if (!updated) throw new AppError('流程定义不存在', 404);
   return mapDefinition(updated);
 }
 
-export async function deleteDefinition(user: JwtPayload, id: number) {
-  const where = await findDefinition(user, id);
+export async function deleteDefinition(id: number) {
+  const where = await findDefinition(id);
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
   if (!existing) throw new AppError('流程定义不存在', 404);
   if (existing.status === 'published') throw new AppError('已发布的流程不能删除，请先禁用', 400);

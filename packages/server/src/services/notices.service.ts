@@ -7,7 +7,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { pageOffset } from '../lib/pagination';
 import { exportToExcel } from '../lib/excel-export';
 import { AppError } from '../lib/errors';
-import type { JwtPayload } from '../middleware/auth';
+import { currentUser } from '../lib/context';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -83,7 +83,8 @@ export async function broadcastNotice(notice: ReturnType<typeof mapNotice>, noti
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 
-export async function listPublishedForUser(user: JwtPayload) {
+export async function listPublishedForUser() {
+  const user = currentUser();
   const tc = tenantCondition(notices, user);
   const accessFilter = buildAccessFilter(user.userId);
   const where = and(eq(notices.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : []));
@@ -93,11 +94,13 @@ export async function listPublishedForUser(user: JwtPayload) {
   return rows.map((row) => ({ ...mapNotice(row), isRead: readSet.has(row.id) }));
 }
 
-export async function markNoticeRead(userId: number, noticeId: number) {
+export async function markNoticeRead(noticeId: number) {
+  const userId = currentUser().userId;
   await db.insert(noticeReads).values({ noticeId, userId }).onConflictDoNothing();
 }
 
-export async function markAllNoticesRead(userId: number) {
+export async function markAllNoticesRead() {
+  const userId = currentUser().userId;
   const accessFilter = buildAccessFilter(userId);
   const allPublished = await db.select({ id: notices.id }).from(notices).where(and(eq(notices.publishStatus, 'published'), accessFilter));
   if (allPublished.length === 0) return;
@@ -109,7 +112,8 @@ export async function markAllNoticesRead(userId: number) {
   }
 }
 
-export async function getInbox(user: JwtPayload, q: { page?: number; pageSize?: number; isRead?: string }) {
+export async function getInbox(q: { page?: number; pageSize?: number; isRead?: string }) {
+  const user = currentUser();
   const { page = 1, pageSize = 10, isRead } = q;
   const tc = tenantCondition(notices, user);
   const accessFilter = buildAccessFilter(user.userId);
@@ -127,7 +131,8 @@ export async function getInbox(user: JwtPayload, q: { page?: number; pageSize?: 
   return { list: paged, total, page, pageSize };
 }
 
-export async function listNotices(user: JwtPayload, q: { page?: number; pageSize?: number; title?: string; type?: string; publishStatus?: string; startTime?: string; endTime?: string }) {
+export async function listNotices(q: { page?: number; pageSize?: number; title?: string; type?: string; publishStatus?: string; startTime?: string; endTime?: string }) {
+  const user = currentUser();
   const { page = 1, pageSize = 10, title, type, publishStatus, startTime, endTime } = q;
   const conditions = [];
   if (title) conditions.push(like(notices.title, `%${title}%`));
@@ -150,7 +155,8 @@ export async function listNotices(user: JwtPayload, q: { page?: number; pageSize
   return { list: rows.map((r) => ({ ...mapNotice(r), readCount: readCountMap.get(r.id) ?? 0 })), total: Number(total), page, pageSize };
 }
 
-export async function exportNotices(user: JwtPayload): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportNotices(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+  const user = currentUser();
   const rows = await db.select().from(notices).where(tenantCondition(notices, user)).orderBy(desc(notices.id));
   const buffer = await exportToExcel(
     [
@@ -168,7 +174,8 @@ export async function exportNotices(user: JwtPayload): Promise<{ buffer: ArrayBu
   return { buffer, filename: 'notices.xlsx' };
 }
 
-export async function batchDeleteNotices(user: JwtPayload, ids: number[]) {
+export async function batchDeleteNotices(ids: number[]) {
+  const user = currentUser();
   if (!Array.isArray(ids) || ids.length === 0) throw new AppError('请选择要删除的通知', 400);
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   if (validIds.length === 0) throw new AppError('通知ID格式无效', 400);
@@ -176,7 +183,8 @@ export async function batchDeleteNotices(user: JwtPayload, ids: number[]) {
   return validIds.length;
 }
 
-export async function getNoticeReadStats(user: JwtPayload, id: number, q: { page?: number; pageSize?: number; tab?: string }) {
+export async function getNoticeReadStats(id: number, q: { page?: number; pageSize?: number; tab?: string }) {
+  const user = currentUser();
   const { page = 1, pageSize = 10, tab: rawTab } = q;
   const tab = rawTab === 'unread' ? 'unread' : 'read';
   const [notice] = await db.select().from(notices).where(eq(notices.id, id));
@@ -230,7 +238,8 @@ export async function getNoticeReadStats(user: JwtPayload, id: number, q: { page
   return { readCount, totalCount, list, total, page, pageSize };
 }
 
-export async function getNoticeDetail(user: JwtPayload, id: number) {
+export async function getNoticeDetail(id: number) {
+  const user = currentUser();
   const [row] = await db.select().from(notices).where(and(eq(notices.id, id), tenantCondition(notices, user)));
   if (!row) throw new AppError('通知不存在', 404);
   const recipientRows = await db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, id));
@@ -264,7 +273,8 @@ export interface CreateNoticeInput {
   publishTime?: string | null;
 }
 
-export async function createNotice(user: JwtPayload, data: CreateNoticeInput) {
+export async function createNotice(data: CreateNoticeInput) {
+  const user = currentUser();
   const now = new Date();
   let publishTime: Date | null = null;
   if (data.publishTime) publishTime = new Date(data.publishTime);
@@ -293,7 +303,8 @@ export async function createNotice(user: JwtPayload, data: CreateNoticeInput) {
   return notice;
 }
 
-export async function updateNotice(user: JwtPayload, id: number, data: Partial<CreateNoticeInput>) {
+export async function updateNotice(id: number, data: Partial<CreateNoticeInput>) {
+  const user = currentUser();
   const now = new Date();
   let publishTime: Date | null | undefined;
   if (data.publishTime !== undefined) {
@@ -322,7 +333,8 @@ export async function updateNotice(user: JwtPayload, id: number, data: Partial<C
   return notice;
 }
 
-export async function deleteNotice(user: JwtPayload, id: number) {
+export async function deleteNotice(id: number) {
+  const user = currentUser();
   const [row] = await db.delete(notices).where(and(eq(notices.id, id), tenantCondition(notices, user))).returning();
   if (!row) throw new AppError('通知不存在', 404);
 }

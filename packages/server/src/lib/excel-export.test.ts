@@ -40,7 +40,7 @@ describe('exportToExcel', () => {
 
   it('should handle empty data', async () => {
     const columns: ExcelColumn[] = [{ header: 'Name', key: 'name' }];
-    const data: any[] = [];
+    const data: Array<Record<string, unknown>> = [];
     const buffer = await exportToExcel(columns, data);
     expect(buffer).toBeDefined();
   });

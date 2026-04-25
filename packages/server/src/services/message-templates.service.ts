@@ -3,6 +3,7 @@ import { db } from '../db';
 import { messageTemplates } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { AppError } from '../lib/errors';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
 export function mapMessageTemplate(row: typeof messageTemplates.$inferSelect) {
   return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
@@ -13,10 +14,6 @@ export function interpolate(content: string, vars: Record<string, string>): stri
     const k = key.trim();
     return Object.hasOwn(vars, k) ? vars[k] : `{{${k}}}`;
   });
-}
-
-function isPgUnique(err: unknown) {
-  return (err as { code?: string }).code === '23505';
 }
 
 export interface ListMessageTemplatesQuery {
@@ -53,8 +50,7 @@ export async function createMessageTemplate(data: typeof messageTemplates.$infer
     const [row] = await db.insert(messageTemplates).values(data).returning();
     return mapMessageTemplate(row);
   } catch (err) {
-    if (isPgUnique(err)) throw new AppError('模板编码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '模板编码已存在');
   }
 }
 
@@ -64,8 +60,7 @@ export async function updateMessageTemplate(id: number, data: Partial<typeof mes
     if (!row) throw new AppError('模板不存在', 404);
     return mapMessageTemplate(row);
   } catch (err) {
-    if (isPgUnique(err)) throw new AppError('模板编码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '模板编码已存在');
   }
 }
 

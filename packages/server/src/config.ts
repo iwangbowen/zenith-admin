@@ -3,10 +3,21 @@ import 'dotenv/config';
 const otelEnabledEnv = process.env.OTEL_ENABLED;
 const otelEndpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
+function positiveNumberEnv(name: string, fallback: number): number {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const config = {
   port: Number(process.env.PORT) || 3300,
   jwtSecret: process.env.JWT_SECRET || 'zenith-admin-secret',
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin',
+  database: {
+    maxConnections: positiveNumberEnv('DATABASE_MAX_CONNECTIONS', 10),
+    idleTimeoutSeconds: positiveNumberEnv('DATABASE_IDLE_TIMEOUT_SECONDS', 20),
+    connectTimeoutSeconds: positiveNumberEnv('DATABASE_CONNECT_TIMEOUT_SECONDS', 10),
+    ssl: process.env.DATABASE_SSL === 'true',
+  },
   multiTenantMode: process.env.MULTI_TENANT_MODE === 'true',
   serverTimingEnabled: process.env.SERVER_TIMING_ENABLED === 'true',
   // Body size limits（单位：字节）。0 表示不限制（使用运行时默认）

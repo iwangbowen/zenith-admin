@@ -5,6 +5,7 @@ import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { exportToExcel } from '../lib/excel-export';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import type { Department, createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import type { z } from 'zod';
 
@@ -85,10 +86,6 @@ export async function ensureParentValid(parentId: number, currentId?: number) {
 
 // ─── 业务方法 ─────────────────────────────────────────────────────────────────
 
-function isPgUnique(error: unknown) {
-  return (error as { code?: string } | null)?.code === '23505';
-}
-
 export async function listDepartmentTree(params: { keyword?: string; status?: string }): Promise<Department[]> {
   const tc = tenantCondition(departments, currentUser());
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
@@ -112,8 +109,7 @@ export async function createDepartment(input: CreateDepartmentInput): Promise<Om
       .returning();
     return mapDepartment(row);
   } catch (err) {
-    if (isPgUnique(err)) throw new AppError('部门编码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '部门编码已存在');
   }
 }
 
@@ -132,8 +128,7 @@ export async function updateDepartment(id: number, input: UpdateDepartmentInput)
     return mapDepartment(row);
   } catch (err) {
     if (err instanceof AppError) throw err;
-    if (isPgUnique(err)) throw new AppError('部门编码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '部门编码已存在');
   }
 }
 

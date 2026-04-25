@@ -6,12 +6,14 @@ import { getOnlineCount } from '../lib/session-manager';
 import { tenantCondition } from '../lib/tenant';
 import { AppError } from '../lib/errors';
 import type { JwtPayload } from '../middleware/auth';
+import { currentUser } from '../lib/context';
 
 function ensureSuperAdmin(user: JwtPayload) {
   if (!isSuperAdmin(user.roles)) throw new AppError('无权限', 403);
 }
 
-export async function getDashboardStats(user: JwtPayload) {
+export async function getDashboardStats() {
+  const user = currentUser();
   ensureSuperAdmin(user);
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -40,7 +42,8 @@ export async function getDashboardStats(user: JwtPayload) {
   return { totalUsers, activeUsers, onlineUsers, todayLogins, todayOperations };
 }
 
-export async function getDashboardCharts(user: JwtPayload) {
+export async function getDashboardCharts() {
+  const user = currentUser();
   ensureSuperAdmin(user);
   const now = new Date();
   const todayStart = new Date(now);

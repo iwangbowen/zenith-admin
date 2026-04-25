@@ -1,9 +1,13 @@
 import crypto from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
+import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
 import { users, userOauthAccounts } from '../db/schema';
 import { getOAuthProvider, isProviderConfigured } from '../lib/oauth';
 import { AppError } from '../lib/errors';
+import { currentUser } from '../lib/context';
+import { registerSession } from '../lib/session-manager';
+import { getUserRoles, issueTokens } from './auth.service';
 import { OAUTH_PROVIDERS, type OAuthProviderType } from '@zenith/shared';
 
 const VALID_PROVIDERS = new Set<string>(OAUTH_PROVIDERS);
@@ -18,7 +22,8 @@ export async function ensureProviderUsable(provider: string): Promise<OAuthProvi
   return provider;
 }
 
-export async function listOAuthAccounts(userId: number) {
+export async function listOAuthAccounts() {
+  const user = currentUser();
   const accounts = await db
     .select({
       id: userOauthAccounts.id,
@@ -29,7 +34,7 @@ export async function listOAuthAccounts(userId: number) {
       createdAt: userOauthAccounts.createdAt,
     })
     .from(userOauthAccounts)
-    .where(eq(userOauthAccounts.userId, userId));
+    .where(eq(userOauthAccounts.userId, user.userId));
   return accounts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() }));
 }
 
@@ -108,7 +113,54 @@ export async function resolveOAuthCallback(provider: string, code: string): Prom
   return { kind: 'resolved', user };
 }
 
-export async function bindOAuthAccount(userId: number, provider: string, code: string) {
+export async function handleOAuthCallback(provider: string, code: string, client: { ip: string; ua: string }) {
+  const result = await resolveOAuthCallback(provider, code);
+
+  if (result.kind === 'needBind') {
+    return {
+      data: { needBind: true as const, oauthInfo: result.oauthInfo },
+      message: '未找到匹配账号，请先绑定',
+    };
+  }
+
+  const user = result.user;
+  const userRoleList = await getUserRoles(user.id);
+  const roleCodes = userRoleList.map((r) => r.code);
+  const { accessToken, refreshToken, tokenId } = await issueTokens(user, roleCodes);
+
+  const parser = new UAParser(client.ua);
+  const browserInfo = parser.getBrowser();
+  const osInfo = parser.getOS();
+
+  await registerSession({
+    tokenId,
+    userId: user.id,
+    username: user.username,
+    nickname: user.nickname,
+    tenantId: user.tenantId ?? null,
+    ip: client.ip,
+    browser: browserInfo.name ? `${browserInfo.name} ${browserInfo.version || ''}`.trim() : 'Unknown',
+    os: osInfo.name ? `${osInfo.name} ${osInfo.version || ''}`.trim() : 'Unknown',
+    loginAt: new Date(),
+  });
+
+  const { password: _pw, ...userInfoClean } = user;
+  return {
+    data: {
+      user: {
+        ...userInfoClean,
+        roles: userRoleList,
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
+      },
+      token: { accessToken, refreshToken },
+    },
+    message: '登录成功',
+  };
+}
+
+export async function bindOAuthAccount(provider: string, code: string) {
+  const user = currentUser();
   if (!provider || !code) throw new AppError('缺少参数', 400);
   const p = await ensureProviderUsable(provider);
   const oauthProvider = await getOAuthProvider(p);
@@ -122,19 +174,19 @@ export async function bindOAuthAccount(userId: number, provider: string, code: s
     .limit(1);
 
   if (existing) {
-    if (existing.userId === userId) throw new AppError('该账号已绑定', 400);
+    if (existing.userId === user.userId) throw new AppError('该账号已绑定', 400);
     throw new AppError('该第三方账号已被其他用户绑定', 400);
   }
 
   const [myBind] = await db
     .select()
     .from(userOauthAccounts)
-    .where(and(eq(userOauthAccounts.userId, userId), eq(userOauthAccounts.provider, p)))
+    .where(and(eq(userOauthAccounts.userId, user.userId), eq(userOauthAccounts.provider, p)))
     .limit(1);
   if (myBind) throw new AppError('您已绑定该类型账号，请先解绑', 400);
 
   await db.insert(userOauthAccounts).values({
-    userId,
+    userId: user.userId,
     provider: p,
     openId: userInfo.openId,
     unionId: userInfo.unionId || null,
@@ -147,11 +199,12 @@ export async function bindOAuthAccount(userId: number, provider: string, code: s
   });
 }
 
-export async function unbindOAuthAccount(userId: number, provider: string) {
+export async function unbindOAuthAccount(provider: string) {
+  const user = currentUser();
   if (!isValidOAuthProvider(provider)) throw new AppError('不支持的 OAuth 提供方', 400);
   const result = await db
     .delete(userOauthAccounts)
-    .where(and(eq(userOauthAccounts.userId, userId), eq(userOauthAccounts.provider, provider)))
+    .where(and(eq(userOauthAccounts.userId, user.userId), eq(userOauthAccounts.provider, provider)))
     .returning();
   if (result.length === 0) throw new AppError('未找到该绑定', 404);
 }

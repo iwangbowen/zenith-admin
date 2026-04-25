@@ -19,7 +19,7 @@ const listRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ status: z.string().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(WorkflowInstanceDTO, 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listMyInstances(c.get('user'), c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await listMyInstances(c.req.valid('query'))), 200),
 });
 
 const pendingMineRoute = defineOpenAPIRoute({
@@ -30,7 +30,7 @@ const pendingMineRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery },
     responses: { ...commonErrorResponses, ...okPaginated(WorkflowInstanceListItemDTO, 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listPendingMine(c.get('user'), c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await listPendingMine(c.req.valid('query'))), 200),
 });
 
 const allRoute = defineOpenAPIRoute({
@@ -57,7 +57,7 @@ const detailRoute = defineOpenAPIRoute({
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
-  handler: async (c) => c.json(okBody(await getInstanceDetail(c.get('user'), c.req.valid('param').id)), 200),
+  handler: async (c) => c.json(okBody(await getInstanceDetail(c.req.valid('param').id)), 200),
 });
 
 const createInstanceRoute = defineOpenAPIRoute({
@@ -74,7 +74,7 @@ const createInstanceRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await createInstance(c.get('user'), c.req.valid('json'));
+    const r = await createInstance(c.req.valid('json'));
     return c.json(okBody(r, '申请已提交'), 200);
   },
 });
@@ -94,7 +94,7 @@ const withdrawRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await withdrawInstance(c.get('user'), c.req.valid('param').id);
+    const r = await withdrawInstance(c.req.valid('param').id);
     return c.json(okBody(r, '已撤回'), 200);
   },
 });
@@ -121,7 +121,7 @@ const approveRoute = defineOpenAPIRoute({
     const body = await c.req.json().catch(() => ({}));
     const parsed = approveWorkflowTaskSchema.safeParse(body);
     if (!parsed.success) return c.json(errBody(parsed.error.issues[0].message), 400);
-    const result = await approveTask(c.get('user'), taskId, parsed.data.comment);
+    const result = await approveTask(taskId, parsed.data.comment);
     return c.json(okBody(result.instance, result.message), 200);
   },
 });
@@ -148,7 +148,7 @@ const rejectRoute = defineOpenAPIRoute({
     const body = await c.req.json().catch(() => ({}));
     const parsed = rejectWorkflowTaskSchema.safeParse(body);
     if (!parsed.success) return c.json(errBody(parsed.error.issues[0].message), 400);
-    const r = await rejectTask(c.get('user'), taskId, parsed.data.comment);
+    const r = await rejectTask(taskId, parsed.data.comment);
     return c.json(okBody(r, '已驳回'), 200);
   },
 });

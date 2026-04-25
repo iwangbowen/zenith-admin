@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import { sign } from 'hono/jwt';
+import { contextStorage } from 'hono/context-storage';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 vi.mock('../config', () => ({
@@ -129,6 +130,7 @@ async function makeToken(payload: object = {}) {
 
 function buildApp() {
   const app = new Hono();
+  app.use('*', contextStorage());
   app.route('/api/users', usersRoutes);
   return app;
 }

@@ -1,12 +1,10 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { UAParser } from 'ua-parser-js';
 import { authMiddleware } from '../middleware/auth';
-import { registerSession } from '../lib/session-manager';
 import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okBody } from '../lib/openapi-schemas';
 import { OAuthAccountDTO, OAuthAuthUrlDTO, LoginResultDTO } from '../lib/openapi-dtos';
-import { getUserRoles, issueTokens } from '../services/auth.service';
+import { getClientInfo } from '../services/auth.service';
 import {
-  listOAuthAccounts, generateAuthUrl, resolveOAuthCallback,
+  listOAuthAccounts, generateAuthUrl, handleOAuthCallback,
   bindOAuthAccount, unbindOAuthAccount,
 } from '../services/oauth.service';
 
@@ -19,7 +17,17 @@ const accountsRoute = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: { ...commonErrorResponses, ...ok(z.array(OAuthAccountDTO), 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listOAuthAccounts(c.get('user').userId)), 200),
+  handler: async (c) => c.json(okBody(await listOAuthAccounts()), 200),
+});
+
+const OAuthNeedBindDTO = z.object({
+  needBind: z.literal(true),
+  oauthInfo: z.object({
+    provider: z.string(),
+    openId: z.string(),
+    nickname: z.string(),
+    avatar: z.string().nullable().optional(),
+  }),
 });
 
 const authUrlRoute = defineOpenAPIRoute({
@@ -49,45 +57,17 @@ const callbackRoute = defineOpenAPIRoute({
     },
     responses: {
       ...commonErrorResponses,
-      ...ok(LoginResultDTO, 'ok'),
+      ...ok(z.union([LoginResultDTO, OAuthNeedBindDTO]), 'ok'),
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
       403: { content: jsonContent(ErrorResponse), description: '账号已禁用' },
-      404: { content: jsonContent(z.object({ code: z.number(), message: z.string(), data: z.looseObject({}) })), description: '未找到匹配账号' },
     },
   }),
   handler: async (c) => {
     const { provider } = c.req.valid('param');
     const { code } = c.req.valid('json');
-    const result = await resolveOAuthCallback(provider, code);
-
-    if (result.kind === 'needBind') {
-      return c.json({ code: 404, message: '未找到匹配账号，请先绑定', data: { needBind: true, oauthInfo: result.oauthInfo } }, 404);
-    }
-
-    const user = result.user;
-    const userRoleList = await getUserRoles(user.id);
-    const roleCodes = userRoleList.map((r) => r.code);
-    const { accessToken, refreshToken, tokenId } = await issueTokens(user, roleCodes);
-
-    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || '127.0.0.1';
-    const ua = c.req.header('user-agent') || '';
-    const parser = new UAParser(ua);
-    const browserInfo = parser.getBrowser();
-    const osInfo = parser.getOS();
-
-    await registerSession({
-      tokenId, userId: user.id, username: user.username, nickname: user.nickname,
-      ip,
-      browser: browserInfo.name ? `${browserInfo.name} ${browserInfo.version || ''}`.trim() : 'Unknown',
-      os: osInfo.name ? `${osInfo.name} ${osInfo.version || ''}`.trim() : 'Unknown',
-      loginAt: new Date(),
-    });
-
-    const { password: _pw, ...userInfoClean } = user;
-    return c.json(okBody({
-      user: { ...userInfoClean, roles: userRoleList, createdAt: user.createdAt.toISOString(), updatedAt: user.updatedAt.toISOString() },
-      token: { accessToken, refreshToken },
-    }, '登录成功'), 200);
+    const { ip, ua } = getClientInfo(c.req.raw.headers);
+    const result = await handleOAuthCallback(provider, code, { ip, ua });
+    return c.json(okBody(result.data, result.message), 200);
   },
 });
 
@@ -105,7 +85,7 @@ const bindRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { provider, code } = c.req.valid('json');
-    await bindOAuthAccount(c.get('user').userId, provider, code);
+    await bindOAuthAccount(provider, code);
     return c.json(okBody(null, '绑定成功'), 200);
   },
 });
@@ -125,7 +105,7 @@ const unbindRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { provider } = c.req.valid('param');
-    await unbindOAuthAccount(c.get('user').userId, provider);
+    await unbindOAuthAccount(provider);
     return c.json(okBody(null, '已解绑'), 200);
   },
 });

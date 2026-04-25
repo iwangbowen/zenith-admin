@@ -17,7 +17,7 @@ const statsRouteDef = defineOpenAPIRoute({
       403: { content: jsonContent(ErrorResponse), description: '无权限' },
     },
   }),
-  handler: async (c) => c.json(okBody(await getDashboardStats(c.get('user'))), 200),
+  handler: async (c) => c.json(okBody(await getDashboardStats()), 200),
 });
 
 const chartsRouteDef = defineOpenAPIRoute({
@@ -31,7 +31,7 @@ const chartsRouteDef = defineOpenAPIRoute({
       403: { content: jsonContent(ErrorResponse), description: '无权限' },
     },
   }),
-  handler: async (c) => c.json(okBody(await getDashboardCharts(c.get('user'))), 200),
+  handler: async (c) => c.json(okBody(await getDashboardCharts()), 200),
 });
 
 dashboardRoute.openapiRoutes([statsRouteDef, chartsRouteDef] as const);

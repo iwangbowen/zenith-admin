@@ -9,7 +9,7 @@ import { UserDTO, ImportResultDTO } from '../lib/openapi-dtos';
 import {
   listAllUsers, listUsers, createUser, batchDeleteUsers, batchUpdateUserStatus,
   updateUser, deleteUser, updateUserPassword, unlockUserById,
-  exportUsers, getUserImportTemplate, importUsers, getUserBeforeAudit,
+  exportUsers, getUserImportTemplate, importUsersFromFormData, getUserBeforeAudit,
 } from '../services/users.service';
 
 const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -47,7 +47,7 @@ const getAllUsersRoute = defineOpenAPIRoute({
     request: {},
     responses: { ...commonErrorResponses, ...ok(z.array(UserDTO), '全量用户') },
   }),
-  handler: async (c) => c.json(okBody(await listAllUsers(c.get('user'))), 200),
+  handler: async (c) => c.json(okBody(await listAllUsers()), 200),
 });
 
 const listUsersRoute = defineOpenAPIRoute({
@@ -64,7 +64,7 @@ const listUsersRoute = defineOpenAPIRoute({
     },
     responses: { ...commonErrorResponses, ...okPaginated(UserDTO, 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listUsers(c.get('user'), c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await listUsers(c.req.valid('query'))), 200),
 });
 
 const createUserRoute = defineOpenAPIRoute({
@@ -79,7 +79,7 @@ const createUserRoute = defineOpenAPIRoute({
       400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     },
   }),
-  handler: async (c) => c.json(okBody(await createUser(c.get('user'), c.req.valid('json')), '创建成功'), 200),
+  handler: async (c) => c.json(okBody(await createUser(c.req.valid('json')), '创建成功'), 200),
 });
 
 const batchDeleteUsersRoute = defineOpenAPIRoute({
@@ -96,7 +96,7 @@ const batchDeleteUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
-    const count = await batchDeleteUsers(c.get('user'), ids);
+    const count = await batchDeleteUsers(ids);
     return c.json(okBody(null, `已删除 ${count} 个用户`), 200);
   },
 });
@@ -115,7 +115,7 @@ const batchStatusUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids, status } = c.req.valid('json');
-    await batchUpdateUserStatus(c.get('user'), ids, status);
+    await batchUpdateUserStatus(ids, status);
     return c.json(okBody(null, '状态已更新'), 200);
   },
 });
@@ -146,9 +146,7 @@ const importUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const formData = await c.req.formData();
-    const file = formData.get('file') as File | null;
-    if (!file) throw new Error('请上传文件');
-    const result = await importUsers(c.get('user'), file);
+    const result = await importUsersFromFormData(formData);
     return c.json(okBody(result, '导入完成'), 200);
   },
 });
@@ -161,7 +159,7 @@ const exportUsersRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okExcel() },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportUsers(c.get('user'));
+    const { buffer, filename } = await exportUsers();
     return excelBody(c, buffer, filename);
   },
 });
@@ -182,7 +180,7 @@ const updateUserPasswordRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { password } = c.req.valid('json');
-    await updateUserPassword(c.get('user'), id, password);
+    await updateUserPassword(id, password);
     return c.json(okBody(null, '密码修改成功'), 200);
   },
 });
@@ -201,7 +199,7 @@ const unlockUserRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    await unlockUserById(c.get('user'), id);
+    await unlockUserById(id);
     return c.json(okBody(null, '解锁成功'), 200);
   },
 });
@@ -223,7 +221,7 @@ const updateUserRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const before = await getUserBeforeAudit(id);
     if (before) setAuditBeforeData(c, before);
-    const updated = await updateUser(c.get('user'), id, c.req.valid('json'));
+    const updated = await updateUser(id, c.req.valid('json'));
     return c.json(okBody(updated, '更新成功'), 200);
   },
 });
@@ -244,7 +242,7 @@ const deleteUserRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const before = await getUserBeforeAudit(id);
     if (before) setAuditBeforeData(c, before);
-    await deleteUser(c.get('user'), id);
+    await deleteUser(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });

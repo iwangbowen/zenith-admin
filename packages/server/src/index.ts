@@ -17,6 +17,7 @@ import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { swaggerUI } from '@hono/swagger-ui';
 import { config } from './config';
+import { closeDb } from './db';
 import logger from './lib/logger';
 import { errBody } from './lib/openapi-schemas';
 import { AppError } from './lib/errors';
@@ -198,7 +199,7 @@ app.doc31('/api/openapi.json', (c) => ({
   openapi: '3.1.0',
   info: {
     title: 'Zenith Admin API',
-    version: '0.1.1',
+    version: process.env.npm_package_version || '0.7.0',
     description:
       'Zenith Admin 后台管理系统 REST API 文档。\n\n' +
       '认证方式：Bearer Token（在 Authorize 中填入登录返回的 `accessToken`）。\n\n' +
@@ -211,6 +212,8 @@ app.doc31('/api/openapi.json', (c) => ({
 }));
 app.get('/api/docs', swaggerUI({ url: '/api/openapi.json' }));
 
+app.notFound((c) => c.json(errBody('接口不存在', 404), 404));
+
 // 全局未捕获异常处理—统一返回标准错误格式
 app.onError((err, c) => {
   if (err instanceof AppError) {
@@ -218,7 +221,7 @@ app.onError((err, c) => {
     return c.json(errBody(err.message, status), status);
   }
   if (err instanceof HTTPException) {
-    return c.json({ code: err.status, message: err.message, data: null }, err.status);
+    return c.json(errBody(err.message, err.status), err.status);
   }
   logger.error('[Unhandled Error]', err);
   return c.json(errBody('服务器内部错误', 500), 500);
@@ -228,6 +231,19 @@ logger.info(`Server starting on port ${config.port}...`);
 const server = serve({ fetch: app.fetch, port: config.port });
 injectWebSocket(server);
 logger.info(`Server running at http://localhost:${config.port}`);
+
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await closeDb();
+  logger.info('Server shutdown complete');
+}
+
+process.once('SIGINT', () => { void shutdown('SIGINT'); });
+process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
 
 // Initialize cron scheduler after server is up
 try {

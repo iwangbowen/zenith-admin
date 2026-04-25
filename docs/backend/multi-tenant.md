@@ -71,7 +71,7 @@ CREATE TABLE tenants (
 
 ### 过滤工具函数
 
-`packages/server/src/lib/tenant.ts` 提供三个公共函数：
+`packages/server/src/lib/tenant.ts` 提供以下公共函数：
 
 ```ts
 // 判断当前用户是否为平台超管
@@ -82,21 +82,26 @@ getEffectiveTenantId(user: JwtPayload): number | null
 
 // 构建查询时的 WHERE 过滤条件
 tenantCondition(table, user): SQL | undefined
+
+// service 层推荐：自动从 contextStorage/currentUser() 获取当前用户
+tenantScope(table): SQL | undefined
+
+// service 层推荐：创建数据时自动从当前用户（或超管视角）获取 tenantId
+currentCreateTenantId(): number | null
 ```
 
-在路由中使用示例：
+在 service 中使用示例：
 
 ```ts
-import { tenantCondition } from '../lib/tenant';
+import { tenantScope } from '../lib/tenant';
 
-tenantsRoute.get('/', async (c) => {
-  const user = c.get('user');
-  const cond = tenantCondition(someBusinessTable, user);
+export async function listBusinessRows() {
+  const cond = tenantScope(someBusinessTable);
   const rows = await db.select()
     .from(someBusinessTable)
     .where(cond ? and(cond, ...otherConditions) : and(...otherConditions));
-  // ...
-});
+  return rows;
+}
 ```
 
 ---
@@ -187,14 +192,13 @@ export const orders = pgTable('orders', {
 ### 2. 列表查询中追加过滤条件
 
 ```ts
-import { tenantCondition } from '../lib/tenant';
+import { tenantScope } from '../lib/tenant';
 
-ordersRoute.get('/', async (c) => {
-  const user = c.get('user');
+export async function listOrders() {
   const conditions: SQL[] = [];
 
   // 多租户过滤
-  const tCond = tenantCondition(orders, user);
+  const tCond = tenantScope(orders);
   if (tCond) conditions.push(tCond);
 
   // 其他业务过滤条件
@@ -202,23 +206,21 @@ ordersRoute.get('/', async (c) => {
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const rows = await db.select().from(orders).where(where);
-  // ...
-});
+  return rows;
+}
 ```
 
 ### 3. 创建时写入 `tenantId`
 
 ```ts
-import { getCreateTenantId } from '../lib/tenant';
+import { currentCreateTenantId } from '../lib/tenant';
 
-ordersRoute.post('/', async (c) => {
-  const user = c.get('user');
-  // ...
+export async function createOrder(validatedData: CreateOrderInput) {
   await db.insert(orders).values({
     ...validatedData,
-    tenantId: getCreateTenantId(user),  // 自动从当前用户（或超管视角）获取
+    tenantId: currentCreateTenantId(),  // 自动从当前用户（或超管视角）获取
   });
-});
+}
 ```
 
 ### 注意事项

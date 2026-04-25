@@ -46,11 +46,12 @@ Authorization: Bearer <access_token>
 
 当 Access Token 过期时，前端 `request.ts` 会自动携带 Refresh Token 向后端换取新的 Access Token，对业务代码透明。
 
-认证中间件会在上下文中注入用户信息，供后续权限判断使用：
+认证中间件会在上下文中注入用户信息。路由守卫可通过 `c.get('user')` 读取；业务 Service 中统一使用 `currentUser()` 零参获取当前用户，避免在 route handler 与 service 之间层层透传：
 
 ```typescript
-// 通过 authMiddleware 注入
-const user = c.get('user'); // JwtPayload
+import { currentUser } from '../lib/context';
+
+const user = currentUser(); // JwtPayload
 ```
 
 ## 参数校验
@@ -111,7 +112,7 @@ xxxRouter.openapiRoutes([createXxxRoute, /* 其他路由 */] as const);
 > return c.json(okBody(null, '删除成功'), 200);
 > return c.json(errBody('用户不存在', 404), 404);
 > // ❌ 禁止
-> return c.json({ code: 0 as const, message: 'ok', data: user }, 200);
+> return c.json({ code: 0 as const, message: 'success', data: user }, 200);
 > return c.json({ code: 404, message: '用户不存在', data: null }, 404);
 > ```
 
@@ -124,7 +125,7 @@ xxxRouter.openapiRoutes([createXxxRoute, /* 其他路由 */] as const);
 | 层 | 职责 | 禁止事项 |
 | --- | --- | --- |
 | **route handler** | 取参数（`c.req.valid()`）、调 service 函数、返回 HTTP 响应 | 不得包含业务逻辑、数据映射、DB 查询 |
-| **service** | 数据映射、前置校验、复杂 DB 查询、事务、关联写操作 | 不得调用 `c.json()`、访问 Hono 上下文、使用 `console.*` |
+| **service** | 数据映射、前置校验、复杂 DB 查询、事务、关联写操作；需要当前用户时通过 `currentUser()` 获取 | 不得调用 `c.json()`、直接访问 Hono `Context`、使用 `console.*` |
 
 ### 命名约定
 
@@ -149,14 +150,11 @@ export async function ensureXxxExists(id: number) {
 throw new AppError('用户名已存在', 400);
 throw new AppError('资源不存在', 404);
 
-// 路由中（仅用于 DB 约束错误，service 层无法提前知道是否冲突）
+// service 中（DB 唯一约束错误统一映射为 AppError）
 try {
   await db.insert(xxxs).values(data);
 } catch (err: unknown) {
-  if ((err as { code?: string }).code === '23505') {
-    return c.json(errBody('该名称已存在'), 400);
-  }
-  throw err; // 其他错误交给全局 onError
+  rethrowPgUniqueViolation(err, '该名称已存在');
 }
 ```
 

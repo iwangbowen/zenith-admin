@@ -3,6 +3,7 @@ import { db } from '../db';
 import { regions } from '../db/schema';
 import type { Region } from '@zenith/shared';
 import { AppError } from '../lib/errors';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
 export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {
   return {
@@ -59,10 +60,6 @@ export interface CreateRegionInput {
 }
 export type UpdateRegionInput = Partial<CreateRegionInput>;
 
-function isPgUnique(err: unknown) {
-  return (err as { code?: string }).code === '23505';
-}
-
 export async function listRegionTree(q: { keyword?: string; status?: string; level?: string }): Promise<Region[]> {
   const rows = await db.select().from(regions).orderBy(asc(regions.sort), asc(regions.code));
   const tree = buildRegionTree(rows.map(mapRegion));
@@ -90,8 +87,7 @@ export async function createRegion(data: CreateRegionInput) {
     }).returning();
     return mapRegion(row);
   } catch (err) {
-    if (isPgUnique(err)) throw new AppError('区划代码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '区划代码已存在');
   }
 }
 
@@ -108,8 +104,7 @@ export async function updateRegion(id: number, data: UpdateRegionInput) {
     if (!row) throw new AppError('地区不存在', 404);
     return mapRegion(row);
   } catch (err) {
-    if (isPgUnique(err)) throw new AppError('区划代码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '区划代码已存在');
   }
 }
 

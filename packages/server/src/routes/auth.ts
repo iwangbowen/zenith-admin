@@ -1,6 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import type { JwtPayload } from '../middleware/auth';
 import { generateCaptcha } from '../lib/captcha';
 import { getConfigBoolean } from '../lib/system-config';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody } from '../lib/openapi-schemas';
@@ -42,10 +41,6 @@ const switchTenantSchema = z.object({ tenantId: z.number().int().positive().null
 const forgotPasswordSchema = z.object({ email: z.email() });
 const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(6).max(64) });
 const refreshSchema = z.object({ refreshToken: z.string().min(1) });
-
-function getAuthUser(c: { get: (key: 'user') => unknown }): JwtPayload {
-  return c.get('user') as JwtPayload;
-}
 
 const captchaRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -123,7 +118,7 @@ const logoutRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('ok') },
   }),
   handler: async (c) => {
-    await logoutSession(getAuthUser(c).jti);
+    await logoutSession();
     return c.json(okBody(null, '已退出登录'), 200);
   },
 });
@@ -139,7 +134,7 @@ const meRoute = defineOpenAPIRoute({
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
-  handler: async (c) => c.json(okBody(await getMyProfile(getAuthUser(c).userId)), 200),
+  handler: async (c) => c.json(okBody(await getMyProfile()), 200),
 });
 
 const profileRoute = defineOpenAPIRoute({
@@ -155,7 +150,7 @@ const profileRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await updateMyProfile(getAuthUser(c).userId, c.req.valid('json'));
+    const r = await updateMyProfile(c.req.valid('json'));
     return c.json(okBody(r, '资料已更新'), 200);
   },
 });
@@ -175,7 +170,7 @@ const passwordRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { oldPassword, newPassword } = c.req.valid('json');
-    await changeMyPassword(getAuthUser(c).userId, oldPassword, newPassword);
+    await changeMyPassword(oldPassword, newPassword);
     return c.json(okBody(null, '密码修改成功'), 200);
   },
 });
@@ -188,7 +183,7 @@ const myLoginLogsRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ status: z.enum(['success', 'fail']).optional(), startTime: z.string().optional(), endTime: z.string().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(LogRowDTO, 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listMyLoginLogs(getAuthUser(c).userId, c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await listMyLoginLogs(c.req.valid('query'))), 200),
 });
 
 const myOperationLogsRoute = defineOpenAPIRoute({
@@ -199,7 +194,7 @@ const myOperationLogsRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ module: z.string().optional(), startTime: z.string().optional(), endTime: z.string().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(LogRowDTO, 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listMyOperationLogs(getAuthUser(c).userId, c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await listMyOperationLogs(c.req.valid('query'))), 200),
 });
 
 const mySessionsRoute = defineOpenAPIRoute({
@@ -209,10 +204,7 @@ const mySessionsRoute = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: { ...commonErrorResponses, ...ok(z.array(SessionDTO), 'ok') },
   }),
-  handler: async (c) => {
-    const payload = getAuthUser(c);
-    return c.json(okBody(await listMySessions(payload.userId, payload.jti)), 200);
-  },
+  handler: async (c) => c.json(okBody(await listMySessions()), 200),
 });
 
 const deleteOtherSessionsRoute = defineOpenAPIRoute({
@@ -223,8 +215,7 @@ const deleteOtherSessionsRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.object({ count: z.number() }), 'ok') },
   }),
   handler: async (c) => {
-    const payload = getAuthUser(c);
-    const count = await deleteMyOtherSessions(payload.userId, payload.jti);
+    const count = await deleteMyOtherSessions();
     return c.json(okBody({ count }, `已退出 ${count} 个其他设备`), 200);
   },
 });
@@ -243,9 +234,8 @@ const deleteSessionRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const payload = getAuthUser(c);
     const { tokenId } = c.req.valid('param');
-    await deleteMySession(payload.userId, tokenId, payload.jti);
+    await deleteMySession(tokenId);
     return c.json(okBody(null, '已退出该设备'), 200);
   },
 });
@@ -264,10 +254,9 @@ const switchTenantRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const payload = getAuthUser(c);
     const { tenantId } = c.req.valid('json');
     const { ip, ua } = getClientInfo(c.req.raw.headers);
-    const { message, ...data } = await switchTenantView(payload, tenantId, ip, ua);
+    const { message, ...data } = await switchTenantView(tenantId, ip, ua);
     return c.json(okBody(data, message), 200);
   },
 });
@@ -283,7 +272,7 @@ const authTenantsRoute = defineOpenAPIRoute({
       403: { content: jsonContent(ErrorResponse), description: '无权限' },
     },
   }),
-  handler: async (c) => c.json(okBody(await listSwitchableTenants(getAuthUser(c))), 200),
+  handler: async (c) => c.json(okBody(await listSwitchableTenants()), 200),
 });
 
 const forgotPasswordRoute = defineOpenAPIRoute({

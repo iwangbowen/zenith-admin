@@ -14,6 +14,8 @@ import { exportToExcel } from '../lib/excel-export';
 import { clearUserPermissionCache } from '../lib/permissions';
 import type { JwtPayload } from '../middleware/auth';
 import type { User } from '@zenith/shared';
+import { currentUser } from '../lib/context';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
 // ─── 关联查询配置 ─────────────────────────────────────────────────────────────
 
@@ -138,7 +140,8 @@ export async function ensurePositionIdsExist(positionIds: number[], user?: JwtPa
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 
-export async function listAllUsers(user: JwtPayload) {
+export async function listAllUsers() {
+  const user = currentUser();
   const tc = tenantCondition(users, user);
   const rawList = await findUsersWithRelations({ where: tc, orderBy: users.id });
   return mapUsers(rawList);
@@ -150,7 +153,8 @@ export interface ListUsersQuery {
   startTime?: string; endTime?: string;
 }
 
-export async function listUsers(user: JwtPayload, q: ListUsersQuery) {
+export async function listUsers(q: ListUsersQuery) {
+  const user = currentUser();
   const { page = 1, pageSize = 10, keyword, phone, departmentId, status, startTime, endTime } = q;
   const conditions = [];
   if (keyword) conditions.push(or(like(users.username, `%${keyword}%`), like(users.nickname, `%${keyword}%`), like(users.email, `%${keyword}%`)));
@@ -180,7 +184,8 @@ export interface CreateUserInput {
   status: 'active' | 'disabled';
 }
 
-export async function createUser(user: JwtPayload, data: CreateUserInput) {
+export async function createUser(data: CreateUserInput) {
+  const user = currentUser();
   const policy = await getPasswordPolicy();
   const policyError = validatePassword(data.password, policy);
   if (policyError) throw new AppError(policyError, 400);
@@ -209,12 +214,12 @@ export async function createUser(user: JwtPayload, data: CreateUserInput) {
     if (!full) throw new AppError('创建用户后回读失败', 500);
     return mapUser(full);
   } catch (err: unknown) {
-    if ((err as { code?: string }).code === '23505') throw new AppError('用户名或邮箱已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '用户名或邮箱已存在');
   }
 }
 
-export async function batchDeleteUsers(user: JwtPayload, ids: number[]) {
+export async function batchDeleteUsers(ids: number[]) {
+  const user = currentUser();
   if (ids.length === 0) throw new AppError('请选择要删除的用户', 400);
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   if (validIds.length === 0) throw new AppError('用户ID格式无效', 400);
@@ -223,7 +228,8 @@ export async function batchDeleteUsers(user: JwtPayload, ids: number[]) {
   return validIds.length;
 }
 
-export async function batchUpdateUserStatus(user: JwtPayload, ids: number[], status: 'active' | 'disabled') {
+export async function batchUpdateUserStatus(ids: number[], status: 'active' | 'disabled') {
+  const user = currentUser();
   if (ids.length === 0) throw new AppError('请选择要操作的用户', 400);
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   const tc = tenantCondition(users, user);
@@ -231,7 +237,9 @@ export async function batchUpdateUserStatus(user: JwtPayload, ids: number[], sta
 }
 
 export async function getUserBeforeAudit(id: number) {
-  const [before] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  const user = currentUser();
+  const tc = tenantCondition(users, user);
+  const [before] = await db.select().from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
   if (!before) return null;
   const { password: _pw, ...safe } = before;
   return safe;
@@ -244,7 +252,8 @@ export interface UpdateUserInput {
   status?: 'active' | 'disabled';
 }
 
-export async function updateUser(user: JwtPayload, id: number, data: UpdateUserInput) {
+export async function updateUser(id: number, data: UpdateUserInput) {
+  const user = currentUser();
   const { roleIds, positionIds, departmentId, ...rest } = data;
   const nextRoleIds = roleIds ? Array.from(new Set(roleIds)) : undefined;
   const nextPositionIds = positionIds ? Array.from(new Set(positionIds)) : undefined;
@@ -273,13 +282,15 @@ export async function updateUser(user: JwtPayload, id: number, data: UpdateUserI
   return mapUser(full);
 }
 
-export async function deleteUser(user: JwtPayload, id: number) {
+export async function deleteUser(id: number) {
+  const user = currentUser();
   const tc = tenantCondition(users, user);
   const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
   if (!deleted) throw new AppError('用户不存在', 404);
 }
 
-export async function updateUserPassword(user: JwtPayload, id: number, password: string) {
+export async function updateUserPassword(id: number, password: string) {
+  const user = currentUser();
   const policy = await getPasswordPolicy();
   const policyError = validatePassword(password, policy);
   if (policyError) throw new AppError(policyError, 400);
@@ -290,14 +301,16 @@ export async function updateUserPassword(user: JwtPayload, id: number, password:
   await db.update(users).set({ password: hashed }).where(eq(users.id, id));
 }
 
-export async function unlockUserById(user: JwtPayload, id: number) {
+export async function unlockUserById(id: number) {
+  const user = currentUser();
   const tc = tenantCondition(users, user);
   const [u] = await db.select({ username: users.username }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
   if (!u) throw new AppError('用户不存在', 404);
   await unlockUserSession(u.username);
 }
 
-export async function exportUsers(user: JwtPayload): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportUsers(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+  const user = currentUser();
   const tc = tenantCondition(users, user);
   const rawList = await db.query.users.findMany({
     where: tc, with: { department: { columns: { name: true } } }, orderBy: users.id,
@@ -352,7 +365,18 @@ export interface ImportUsersResult {
   errors: Array<{ row: number; message: string }>;
 }
 
-export async function importUsers(user: JwtPayload, file: File): Promise<ImportUsersResult> {
+function getImportFile(formData: FormData): File {
+  const file = formData.get('file');
+  if (!file || typeof (file as File).arrayBuffer !== 'function') throw new AppError('请上传文件', 400);
+  return file as File;
+}
+
+export async function importUsersFromFormData(formData: FormData): Promise<ImportUsersResult> {
+  return importUsers(getImportFile(formData));
+}
+
+export async function importUsers(file: File): Promise<ImportUsersResult> {
+  const user = currentUser();
   const arrayBuffer = await file.arrayBuffer();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(arrayBuffer);

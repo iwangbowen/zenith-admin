@@ -24,8 +24,8 @@ import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import type { JwtPayload } from '../middleware/auth';
 import { AppError } from '../lib/errors';
+import { currentUser } from '../lib/context';
 
 export async function readFileContent(id: number) {
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
@@ -39,9 +39,10 @@ export async function readFileContent(id: number) {
   return readStoredFile(file, storageConfig);
 }
 
-export async function listManagedFiles(user: JwtPayload, query: {
-  page?: number; pageSize?: number; keyword?: string; provider?: 'local' | 'oss'; startTime?: string; endTime?: string;
+export async function listManagedFiles(query: {
+  page?: number; pageSize?: number; keyword?: string; provider?: 'local' | 'oss' | 's3' | 'cos'; startTime?: string; endTime?: string;
 }) {
+  const user = currentUser();
   const page = Number(query.page ?? 1);
   const pageSize = Number(query.pageSize ?? 10);
   const conditions = [];
@@ -67,7 +68,20 @@ export async function listManagedFiles(user: JwtPayload, query: {
   return { list: paginated.map(mapManagedFile), total: count, page, pageSize };
 }
 
-export async function uploadManagedFile(user: JwtPayload, file: File) {
+function normalizeUploadFile(value: unknown): File {
+  const rawFile = Array.isArray(value) ? value[0] : value;
+  if (!rawFile || typeof (rawFile as File).arrayBuffer !== 'function' || typeof (rawFile as File).name !== 'string') {
+    throw new AppError('请选择要上传的文件', 400);
+  }
+  return rawFile as File;
+}
+
+export async function uploadManagedFileFromBody(fileValue: unknown) {
+  return uploadManagedFile(normalizeUploadFile(fileValue));
+}
+
+export async function uploadManagedFile(file: File) {
+  const user = currentUser();
   const [defaultConfig] = await db
     .select()
     .from(fileStorageConfigs)
@@ -92,8 +106,11 @@ export async function uploadManagedFile(user: JwtPayload, file: File) {
   return mapManagedFile(created);
 }
 
-export async function deleteManagedFile(user: JwtPayload, id: number) {
-  const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
+export async function deleteManagedFile(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(managedFiles, user);
+  const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
+  const [file] = await db.select().from(managedFiles).where(where).limit(1);
   if (!file) throw new AppError('文件不存在', 404);
   const [storageConfig] = await db
     .select()
@@ -103,10 +120,11 @@ export async function deleteManagedFile(user: JwtPayload, id: number) {
   if (storageConfig) {
     await deleteStoredFile(file, storageConfig);
   }
-  await db.delete(managedFiles).where(and(eq(managedFiles.id, id), tenantCondition(managedFiles, user)));
+  await db.delete(managedFiles).where(where);
 }
 
-export async function exportManagedFiles(user: JwtPayload): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportManagedFiles(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+  const user = currentUser();
   const rows = await db
     .select()
     .from(managedFiles)

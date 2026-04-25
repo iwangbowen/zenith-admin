@@ -34,7 +34,7 @@ const publishedRoute = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     responses: { ...commonErrorResponses, ...ok(z.array(NoticeDTO), 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listPublishedForUser(c.get('user'))), 200),
+  handler: async (c) => c.json(okBody(await listPublishedForUser()), 200),
 });
 
 const readRoute = defineOpenAPIRoute({
@@ -47,7 +47,7 @@ const readRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    await markNoticeRead(c.get('user').userId, id);
+    await markNoticeRead(id);
     return c.json(okBody(null), 200);
   },
 });
@@ -60,7 +60,7 @@ const readAllRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('ok') },
   }),
   handler: async (c) => {
-    await markAllNoticesRead(c.get('user').userId);
+    await markAllNoticesRead();
     return c.json(okBody(null), 200);
   },
 });
@@ -73,7 +73,7 @@ const inboxRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ isRead: z.string().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(NoticeDTO, 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await getInbox(c.get('user'), c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await getInbox(c.req.valid('query'))), 200),
 });
 
 const listRoute = defineOpenAPIRoute({
@@ -84,7 +84,7 @@ const listRoute = defineOpenAPIRoute({
     request: { query: PaginationQuery.extend({ title: z.string().optional(), type: z.string().optional(), publishStatus: z.string().optional(), startTime: z.string().optional(), endTime: z.string().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(NoticeDTO, 'ok') },
   }),
-  handler: async (c) => c.json(okBody(await listNotices(c.get('user'), c.req.valid('query'))), 200),
+  handler: async (c) => c.json(okBody(await listNotices(c.req.valid('query'))), 200),
 });
 
 const exportRouteDef = defineOpenAPIRoute({
@@ -95,7 +95,7 @@ const exportRouteDef = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okExcel() },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportNotices(c.get('user'));
+    const { buffer, filename } = await exportNotices();
     return excelBody(c, buffer, filename);
   },
 });
@@ -114,7 +114,7 @@ const batchDeleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
-    const count = await batchDeleteNotices(c.get('user'), ids);
+    const count = await batchDeleteNotices(ids);
     return c.json(okBody(null, `已删除 ${count} 条通知`), 200);
   },
 });
@@ -133,7 +133,7 @@ const readStatsRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    return c.json(okBody(await getNoticeReadStats(c.get('user'), id, c.req.valid('query'))), 200);
+    return c.json(okBody(await getNoticeReadStats(id, c.req.valid('query'))), 200);
   },
 });
 
@@ -151,7 +151,7 @@ const detailRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    return c.json(okBody(await getNoticeDetail(c.get('user'), id)), 200);
+    return c.json(okBody(await getNoticeDetail(id)), 200);
   },
 });
 
@@ -163,7 +163,7 @@ const createRouteDef = defineOpenAPIRoute({
     request: { body: { content: jsonContent(createNoticeSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(NoticeDTO, '创建成功') },
   }),
-  handler: async (c) => c.json(okBody(await createNotice(c.get('user'), c.req.valid('json')), '创建成功'), 200),
+  handler: async (c) => c.json(okBody(await createNotice(c.req.valid('json')), '创建成功'), 200),
 });
 
 const updateRouteDef = defineOpenAPIRoute({
@@ -180,7 +180,7 @@ const updateRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    return c.json(okBody(await updateNotice(c.get('user'), id, c.req.valid('json')), '更新成功'), 200);
+    return c.json(okBody(await updateNotice(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
 
@@ -198,7 +198,7 @@ const deleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    await deleteNotice(c.get('user'), id);
+    await deleteNotice(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });

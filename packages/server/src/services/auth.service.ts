@@ -92,6 +92,7 @@ import { verifyCaptcha } from '../lib/captcha';
 import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
 import { isPlatformAdmin } from '../lib/tenant';
 import { AppError } from '../lib/errors';
+import { currentUser } from '../lib/context';
 
 function uaInfo(ua: string) {
   const parser = new UAParser(ua);
@@ -267,11 +268,13 @@ export async function refreshAccessToken(token: string) {
   return { accessToken };
 }
 
-export async function logoutSession(tokenId?: string) {
+export async function logoutSession() {
+  const tokenId = currentUser().jti;
   if (tokenId) await removeSession(tokenId);
 }
 
-export async function getMyProfile(userId: number) {
+export async function getMyProfile() {
+  const userId = currentUser().userId;
   const [user] = await db.select().from(users).where(eqOp(users.id, userId)).limit(1);
   if (!user) throw new AppError('用户不存在', 404);
   const userRoleList = await getUserRoles(user.id);
@@ -294,7 +297,8 @@ export async function getMyProfile(userId: number) {
   };
 }
 
-export async function updateMyProfile(userId: number, data: { nickname?: string; email?: string; avatar?: string }) {
+export async function updateMyProfile(data: { nickname?: string; email?: string; avatar?: string }) {
+  const userId = currentUser().userId;
   if (data.email) {
     const [existing] = await db.select({ id: users.id }).from(users).where(eqOp(users.email, data.email)).limit(1);
     if (existing && existing.id !== userId) throw new AppError('邮箱已被使用', 400);
@@ -305,7 +309,8 @@ export async function updateMyProfile(userId: number, data: { nickname?: string;
   return { ...userInfo, roles: userRoleList, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() };
 }
 
-export async function changeMyPassword(userId: number, oldPassword: string, newPassword: string) {
+export async function changeMyPassword(oldPassword: string, newPassword: string) {
+  const userId = currentUser().userId;
   const [user] = await db.select().from(users).where(eqOp(users.id, userId)).limit(1);
   if (!user) throw new AppError('用户不存在', 404);
   const valid = await bcrypt.compare(oldPassword, user.password);
@@ -314,7 +319,8 @@ export async function changeMyPassword(userId: number, oldPassword: string, newP
   await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date() }).where(eqOp(users.id, userId));
 }
 
-export async function listMyLoginLogs(userId: number, query: { page?: number; pageSize?: number; status?: 'success' | 'fail'; startTime?: string; endTime?: string }) {
+export async function listMyLoginLogs(query: { page?: number; pageSize?: number; status?: 'success' | 'fail'; startTime?: string; endTime?: string }) {
+  const userId = currentUser().userId;
   const { page = 1, pageSize = 10, status, startTime, endTime } = query;
   const conditions = [eqOp(loginLogs.userId, userId)];
   if (status) conditions.push(eqOp(loginLogs.status, status));
@@ -328,7 +334,8 @@ export async function listMyLoginLogs(userId: number, query: { page?: number; pa
   return { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: count, page, pageSize };
 }
 
-export async function listMyOperationLogs(userId: number, query: { page?: number; pageSize?: number; module?: string; startTime?: string; endTime?: string }) {
+export async function listMyOperationLogs(query: { page?: number; pageSize?: number; module?: string; startTime?: string; endTime?: string }) {
+  const userId = currentUser().userId;
   const { page = 1, pageSize = 10, module, startTime, endTime } = query;
   const conditions = [eqOp(operationLogs.userId, userId)];
   if (module) conditions.push(like(operationLogs.module, `%${module}%`));
@@ -342,7 +349,8 @@ export async function listMyOperationLogs(userId: number, query: { page?: number
   return { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: count, page, pageSize };
 }
 
-export async function listMySessions(userId: number, currentTokenId?: string) {
+export async function listMySessions() {
+  const { userId, jti: currentTokenId } = currentUser();
   const allSessions = await getOnlineSessions();
   const mySessions = allSessions.filter((s) => s.userId === userId);
   return mySessions.map((s) => ({
@@ -356,14 +364,16 @@ export async function listMySessions(userId: number, currentTokenId?: string) {
   }));
 }
 
-export async function deleteMyOtherSessions(userId: number, currentTokenId?: string) {
+export async function deleteMyOtherSessions() {
+  const { userId, jti: currentTokenId } = currentUser();
   const allSessions = await getOnlineSessions();
   const others = allSessions.filter((s) => s.userId === userId && s.tokenId !== currentTokenId);
   await Promise.all(others.map((s) => forceLogout(s.tokenId)));
   return others.length;
 }
 
-export async function deleteMySession(userId: number, tokenId: string, currentTokenId?: string) {
+export async function deleteMySession(tokenId: string) {
+  const { userId, jti: currentTokenId } = currentUser();
   if (tokenId === currentTokenId) throw new AppError('不能退出当前设备，请使用退出登录功能', 400);
   const allSessions = await getOnlineSessions();
   const session = allSessions.find((s) => s.tokenId === tokenId && s.userId === userId);
@@ -371,7 +381,8 @@ export async function deleteMySession(userId: number, tokenId: string, currentTo
   await forceLogout(tokenId);
 }
 
-export async function switchTenantView(payload: JwtPayload, targetTenantId: number | null, ip: string, ua: string) {
+export async function switchTenantView(targetTenantId: number | null, ip: string, ua: string) {
+  const payload = currentUser();
   if (!isPlatformAdmin(payload)) throw new AppError('仅平台超管可切换租户', 403);
   if (targetTenantId !== null) {
     const [tenant] = await db.select().from(tenants).where(eqOp(tenants.id, targetTenantId)).limit(1);
@@ -407,7 +418,8 @@ export async function switchTenantView(payload: JwtPayload, targetTenantId: numb
   };
 }
 
-export async function listSwitchableTenants(payload: JwtPayload) {
+export async function listSwitchableTenants() {
+  const payload = currentUser();
   if (!isPlatformAdmin(payload)) throw new AppError('无权限', 403);
   return db.select({ id: tenants.id, name: tenants.name, code: tenants.code, status: tenants.status }).from(tenants).where(eqOp(tenants.status, 'active'));
 }

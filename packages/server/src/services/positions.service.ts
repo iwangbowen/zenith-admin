@@ -6,6 +6,7 @@ import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { exportToExcel } from '../lib/excel-export';
 import { pageOffset } from '../lib/pagination';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
 export function mapPosition(row: typeof positions.$inferSelect) {
   return {
@@ -36,10 +37,6 @@ export interface ListPositionsQuery {
   status?: 'active' | 'disabled';
   startTime?: string;
   endTime?: string;
-}
-
-function isPgUnique(err: unknown) {
-  return (err as { code?: string } | null)?.code === '23505';
 }
 
 export async function listAllPositions() {
@@ -85,8 +82,7 @@ export async function createPosition(input: CreatePositionInput) {
       .returning();
     return mapPosition(row);
   } catch (err) {
-    if (isPgUnique(err)) throw new AppError('岗位编码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '岗位编码已存在');
   }
 }
 
@@ -102,8 +98,7 @@ export async function updatePosition(id: number, input: UpdatePositionInput) {
     return mapPosition(row);
   } catch (err) {
     if (err instanceof AppError) throw err;
-    if (isPgUnique(err)) throw new AppError('岗位编码已存在', 400);
-    throw err;
+    rethrowPgUniqueViolation(err, '岗位编码已存在');
   }
 }
 
