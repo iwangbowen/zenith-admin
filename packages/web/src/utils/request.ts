@@ -141,8 +141,50 @@ class Request {
     const headers: HeadersInit = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`${this.baseUrl}${url}`, { headers });
-    if (!res.ok) throw new Error('Download failed');
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${url}`, { headers });
+    } catch {
+      Toast.error('网络请求失败，请检查网络连接');
+      return;
+    }
+
+    if (res.status === 401) {
+      const refreshed = await this.tryRefreshToken();
+      if (refreshed) {
+        const retryHeaders: HeadersInit = {};
+        const newToken = localStorage.getItem(TOKEN_KEY);
+        if (newToken) retryHeaders['Authorization'] = `Bearer ${newToken}`;
+        try {
+          res = await fetch(`${this.baseUrl}${url}`, { headers: retryHeaders });
+        } catch {
+          Toast.error('网络请求失败，请检查网络连接');
+          return;
+        }
+        if (res.status === 401) {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+          globalThis.location.href = '/login';
+          return;
+        }
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(REFRESH_TOKEN_KEY);
+        globalThis.location.href = '/login';
+        return;
+      }
+    }
+
+    if (!res.ok) {
+      try {
+        const data = await res.json();
+        Toast.error(data?.message || '下载失败');
+      } catch {
+        Toast.error('下载失败');
+      }
+      return;
+    }
+
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

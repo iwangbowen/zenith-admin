@@ -161,6 +161,6 @@ const exportRouteDef = defineOpenAPIRoute({
   },
 });
 
-rolesRouter.openapiRoutes([allRoute, listRouteDef, getOneRoute, createRoleRoute, updateRoleRoute, deleteRouteDef, assignMenusRoute, getUsersRoute, assignUsersRoute, exportRouteDef] as const);
+rolesRouter.openapiRoutes([allRoute, listRouteDef, exportRouteDef, getOneRoute, createRoleRoute, updateRoleRoute, deleteRouteDef, assignMenusRoute, getUsersRoute, assignUsersRoute] as const);
 
 export default rolesRouter;
