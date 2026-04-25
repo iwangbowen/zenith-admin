@@ -3,6 +3,7 @@ import { Cascader } from '@douyinfe/semi-ui';
 import type { CSSProperties } from 'react';
 import type { Region } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { getCachedRegions, setCachedRegions } from './RegionSelect.cache';
 
 interface CascaderItem {
   label: string;
@@ -33,8 +34,6 @@ export interface RegionSelectProps {
   changeOnSelect?: boolean;
 }
 
-let cachedRegions: CascaderItem[] | null = null;
-
 /**
  * 省市区三级联动选择组件，基于 Semi Design Cascader 封装。
  *
@@ -55,17 +54,19 @@ export default function RegionSelect({
   className,
   changeOnSelect = true,
 }: Readonly<RegionSelectProps>) {
-  const [treeData, setTreeData] = useState<CascaderItem[]>(cachedRegions ?? []);
-  const [loading, setLoading] = useState(!cachedRegions);
+  const initialRegions = getCachedRegions();
+  const [treeData, setTreeData] = useState<CascaderItem[]>(initialRegions ?? []);
+  const [loading, setLoading] = useState(!initialRegions);
 
   useEffect(() => {
-    if (cachedRegions) return;
+    if (getCachedRegions()) return;
     setLoading(true);
     request.get<Region[]>('/api/regions', { silent: true })
       .then((res) => {
         if (res.code === 0) {
-          cachedRegions = regionsToCascader(res.data);
-          setTreeData(cachedRegions);
+          const nextRegions = regionsToCascader(res.data);
+          setCachedRegions(nextRegions);
+          setTreeData(nextRegions);
         }
       })
       .finally(() => setLoading(false));
