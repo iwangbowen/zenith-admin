@@ -97,7 +97,7 @@ npm run db:seed        # 填充初始种子数据
 
 通过 `.env` 文件配置（两种方式二选一）：
 
-```env
+```dotenv
 # 方式一：URL 格式（支持带密码）
 REDIS_URL=redis://127.0.0.1:6379
 # REDIS_URL=redis://:your_password@127.0.0.1:6379/0
@@ -122,7 +122,7 @@ Redis key 规范：
 
 服务端提供多层可选请求防护，通过环境变量控制：
 
-```env
+```dotenv
 # 请求体大小上限（字节），0 = 不限制（使用运行时默认）
 REQUEST_BODY_LIMIT=0
 # 请求超时（毫秒），0 = 不启用
@@ -141,11 +141,13 @@ ALLOWED_ORIGINS=
 
 ## 时间格式规范
 
-前端所有时间显示**统一使用 `YYYY-MM-DD HH:mm:ss` 格式**（如 `2026-03-23 14:30:00`）。
+系统内所有对外日期时间字符串（API 响应、API 入参、前端显示、MSW Mock）**统一使用 `YYYY-MM-DD HH:mm:ss` 格式**（如 `2026-03-23 14:30:00`）。
 
 - 所有时间处理**必须**使用第三方库 `dayjs` 统一接管。
-- 使用 `packages/web/src/utils/date.ts` 中的 `formatDateTime(date)` 工具函数，该函数已内嵌了 `dayjs` 逻辑。
-- 禁止在组件中直接调用 `toLocaleString()`、`toLocaleDateString()`、`toLocaleTimeString()` 等原生方法。
+- 前端显示使用 `packages/web/src/utils/date.ts` 中的 `formatDateTime(date)`；提交日期时间参数使用 `formatDateTimeForApi(date)`，提交日期参数使用 `formatDateForApi(date)`。
+- 后端 DTO 映射/导出/文件时间戳使用 `packages/server/src/lib/datetime.ts` 中的 `formatDateTime(date)` / `formatNullableDateTime(date)` / `formatDate(date)` / `formatFileTimestamp(date)`；解析查询或表单入参使用 `parseDateTimeInput()` / `parseDateRangeStart()` / `parseDateRangeEnd()`。
+- MSW Mock 动态时间使用 `packages/web/src/mocks/utils/date.ts` 中的 `mockDateTime()` / `mockDate()`，静态种子数据也写成 `YYYY-MM-DD HH:mm:ss`。
+- 禁止在业务代码和文档模板中直接调用 `toISOString()`、`toLocaleString()`、`toLocaleDateString()`、`toLocaleTimeString()` 等原生时间格式化方法。
 - `formatDateTime` 接受 `Date | string | number | null | undefined` 类型参数，对所有页面统一生效。
 
 ---

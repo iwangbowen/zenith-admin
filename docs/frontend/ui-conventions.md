@@ -34,13 +34,14 @@
 
 ## 时间格式规范
 
-所有时间显示统一使用：`YYYY-MM-DD HH:mm:ss`
+所有前端展示与提交到 API 的日期时间统一使用：`YYYY-MM-DD HH:mm:ss`
 
 要求：
 
 - 使用 `dayjs`
-- 统一通过 `packages/web/src/utils/date.ts` 中的 `formatDateTime(date)` 处理
-- 禁止在页面组件中直接使用原生 `toLocaleString()` 等方法
+- 展示统一通过 `packages/web/src/utils/date.ts` 中的 `formatDateTime(date)` 处理
+- 查询/表单提交的日期时间参数统一使用 `formatDateTimeForApi(date)`；仅日期参数使用 `formatDateForApi(date)`
+- 禁止在页面组件中直接使用原生 `toISOString()`、`toLocaleString()` 等方法
 
 ## 弹窗表单
 

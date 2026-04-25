@@ -12,17 +12,12 @@ const formattedDate = computed<string>(() => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 })
 
-const isoDate = computed<string>(() => {
-  const ts = page.value.lastUpdated
-  if (!ts) return ''
-  return new Date(ts).toISOString()
-})
 </script>
 
 <template>
   <div v-if="formattedDate" class="zn-last-updated">
     <span class="label">最后更新于</span>
-    <time :datetime="isoDate">{{ formattedDate }}</time>
+    <time :datetime="formattedDate">{{ formattedDate }}</time>
   </div>
 </template>
 

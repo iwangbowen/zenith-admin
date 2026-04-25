@@ -94,7 +94,7 @@ export interface Xxx {
   // 关联实体嵌套（多对多时）：
   yyys?: Yyy[];
   yyyIds?: number[];
-  // 时间字段序列化为字符串（ISO 格式）：
+  // 时间字段序列化为字符串（YYYY-MM-DD HH:mm:ss）：
   createdAt: string;
   updatedAt: string;
 }
@@ -113,6 +113,7 @@ import { AppError } from '../lib/errors';
 import { db } from '../db';
 import { xxxs } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { formatDateTime } from '../lib/datetime';
 import type { XxxRow } from '../db/schema';
 
 // ─── 数据映射函数（DB 行 → 公开 DTO 字段） ──────────────────────────────
@@ -122,8 +123,8 @@ export function mapXxx(row: XxxRow) {
     name:        row.name,
     description: row.description ?? null,
     status:      row.status,
-    createdAt:   row.createdAt.toISOString(),
-    updatedAt:   row.updatedAt.toISOString(),
+    createdAt:   formatDateTime(row.createdAt),
+    updatedAt:   formatDateTime(row.updatedAt),
   };
 }
 
@@ -141,7 +142,7 @@ export async function ensureXxxExists(id: number) {
 > - `ensureXxx` 等校验函数直接 `throw new AppError(msg, statusCode)` 无需返回错误码
 > - 禁止在 service 中调用 `c.json()`、直接引用 `c`、调用 `console.*`
 > - 复杂业务逻辑（RQB 查询、事务、多表操作）放在 service，路由只调用 service 函数
-> - DB 唯一约束异常（PG 错误码 `23505`）仍在路由的 `try-catch` 中捕获并返回 400（service 层无法提前知道是否冲突）
+> - DB 唯一约束异常（PG 错误码 `23505`）在 service 的写入 `try-catch` 中通过 `rethrowPgUniqueViolation(err, msg)` 映射为 `AppError`
 
 ---
 
@@ -164,7 +165,7 @@ export async function ensureXxxExists(id: number) {
 >
 > 然后在路由中导入：`import { XxxDTO } from '../lib/openapi-dtos';`。**严禁在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**，以免 Swagger Components 重复/冲突。
 
-> **薄路由约定**：**禁止在路由 handler 中直接调用 `db.*`**。所有 DB 访问与业务逻辑必须放在 `services/xxx.service.ts`；路由只负责：取参数 → 调 service → 返回 `c.json(okBody(...))` 或透传错误（由全局 `onError` 将 `AppError` 转为标准 JSON）。唯一例外：DB 唯一约束 `23505` 的 `try-catch` 仍保留在路由（便于 service 保持 PG 错误码无关）。
+**薄路由约定**：**禁止在路由 handler 中直接调用 `db.*`**。所有 DB 访问与业务逻辑必须放在 `services/xxx.service.ts`；路由只负责：取参数 → 调 service → 返回 `c.json(okBody(...))` 或透传错误（由全局 `onError` 将 `AppError` 转为标准 JSON）。DB 唯一约束 `23505` 也统一在 service 中通过 `rethrowPgUniqueViolation(err, msg)` 映射。
 
 ```ts
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
@@ -232,15 +233,8 @@ const createRoute_ = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const data = c.req.valid('json');
-    try {
-      const row = await createXxx(data);
-      return c.json(okBody(row, '创建成功'), 200);
-    } catch (err: unknown) {
-      if ((err as { code?: string }).code === '23505') {
-        return c.json(errBody('该名称已存在'), 400);
-      }
-      throw err;
-    }
+    const row = await createXxx(data);
+    return c.json(okBody(row, '创建成功'), 200);
   },
 });
 

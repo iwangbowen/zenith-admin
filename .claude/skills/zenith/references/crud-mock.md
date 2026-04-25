@@ -24,6 +24,8 @@ packages/web/src/mocks/
 ```ts
 import type { Xxx } from '@zenith/shared';
 
+const SEED_DATE = '2024-01-01 00:00:00';
+
 // 与 packages/server/src/db/seed.ts 中的种子数据对齐
 export interface MockXxx extends Xxx {
   // 如有 mock 专属字段，在此扩展（通常与 Xxx 一致）
@@ -36,16 +38,16 @@ export const mockXxxs: MockXxx[] = [
     name: '示例XXX-1',
     description: '初始演示数据',
     status: 'active',
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
   },
   {
     id: 2,
     name: '示例XXX-2',
     description: '初始演示数据',
     status: 'active',
-    createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
   },
 ];
 
@@ -63,6 +65,7 @@ export function getNextXxxId(): number {
 ```ts
 import { http, HttpResponse } from 'msw';
 import { mockXxxs, getNextXxxId } from '../data/xxxs';
+import { mockDateTime } from '../utils/date';
 
 export const xxxsHandlers = [
   // ─── GET / — 分页列表 + 关键词搜索 + 状态筛选 ───────────────────────
@@ -109,7 +112,7 @@ export const xxxsHandlers = [
   // ─── POST / — 创建 ────────────────────────────────────────────────────
   http.post('/api/xxxs', async ({ request }) => {
     const body = (await request.json()) as any;
-    const now = new Date().toISOString();
+    const now = mockDateTime();
     const newXxx = {
       id: getNextXxxId(),
       name: body.name,
@@ -130,7 +133,7 @@ export const xxxsHandlers = [
     if (idx === -1) {
       return HttpResponse.json({ code: 404, message: 'XXX不存在', data: null }, { status: 404 });
     }
-    Object.assign(mockXxxs[idx], { ...body, updatedAt: new Date().toISOString() });
+    Object.assign(mockXxxs[idx], { ...body, updatedAt: mockDateTime() });
     return HttpResponse.json({ code: 0, message: '更新成功', data: mockXxxs[idx] });
   }),
 
@@ -173,4 +176,4 @@ export const handlers = [
 - **数据放内存**：mock 数据在页面刷新后会重置，这是预期行为
 - **与 seed 数据对齐**：`mockXxxs` 的初始数据应与 `seed.ts` 的初始数据一致
 - **mockXxxs 共享引用**：push/splice 操作直接修改数组，所有 handler 共享同一份数据，无需额外状态管理
-- **时间字段**：创建时用 `new Date().toISOString()`，初始数据用 `SEED_DATE`（`'2024-01-01T00:00:00.000Z'`）
+- **时间字段**：创建/更新时用 `mockDateTime()`，初始数据用 `SEED_DATE`（如 `'2024-01-01 00:00:00'`），保持与 API 的 `YYYY-MM-DD HH:mm:ss` 契约一致

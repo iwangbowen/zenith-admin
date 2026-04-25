@@ -42,7 +42,7 @@ npm install --production
 
 在 `zenith-server/server/` 目录下创建 `.env` 文件：
 
-```env
+```dotenv
 PORT=3300
 JWT_SECRET=your-strong-secret-key
 
@@ -213,7 +213,7 @@ curl http://localhost:3300/metrics
 
 如需将 Trace 导出到 OTLP Collector、Tempo、Jaeger、Honeycomb 等系统，可在后端 `.env` 中加入：
 
-```env
+```dotenv
 OTEL_ENABLED=true
 OTEL_SERVICE_NAME=zenith-admin-server
 OTEL_SERVICE_VERSION=0.5.0

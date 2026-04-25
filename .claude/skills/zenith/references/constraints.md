@@ -5,12 +5,12 @@
 | 约束 | 规则 |
 | --- | --- |
 | **Service 层职责** | 业务逻辑、数据映射（`mapXxx`）、前置校验（`ensureXxx`）放在 `src/services/xxx.service.ts`；route handler 只负责取参数、调 service、返回响应；**禁止**在 service 中调用 `c.json()`、访问 Hono 上下文 `c`、使用 `console.*` |
-| **AppError 抛出** | Service 层业务校验失败统一 `throw new AppError(msg, statusCode)`（来自 `src/lib/errors.ts`），由全局 `onError` 统一处理；DB 唯一约束（PG 23505）仍在路由 `try-catch` 中捕获 |
+| **AppError 抛出** | Service 层业务校验失败统一 `throw new AppError(msg, statusCode)`（来自 `src/lib/errors.ts`），由全局 `onError` 统一处理；DB 唯一约束（PG 23505）统一在 service 中通过 `rethrowPgUniqueViolation(err, msg)` 映射 |
 | **commonErrorResponses** | 所有路由的 `responses:` 块必须包含 `...commonErrorResponses`（涵盖 400/401/403/404/500），从 `'../lib/openapi-schemas'` 导入 |
 | **枚举三端同步** | `pgEnum` / TS union type / Zod enum 保持完全一致 |
 | **操作列固定** | 所有表格操作列必须 `fixed: 'right'` |
 | **树形表格展开控制** | 使用 `children` 字段渲染树形表格时，必须在搜索栏添加「全部展开/全部折叠」按钮，使用受控 `expandedRowKeys` + `onExpandedRowsChange`；图标：已展开用 `ChevronsDownUp`，未展开用 `ChevronsUpDown` |
-| **时间格式** | 时间显示统一使用 `formatDateTime()`，禁止原生 `toLocaleString()` 等 |
+| **时间格式** | API 响应、入参、前端显示、MSW Mock 统一使用 `YYYY-MM-DD HH:mm:ss`；前端用 `formatDateTime()` / `formatDateTimeForApi()`，后端用 `lib/datetime.ts`，Mock 用 `mockDateTime()`；禁止 `toISOString()` / 原生 `toLocaleString()` 等 |
 | **图标库** | 统一使用 `lucide-react`，禁止 `@douyinfe/semi-icons` |
 | **操作按钮样式** | `theme="borderless" size="small"`，删除加 `type="danger"` |
 | **无图标文字按钮** | 操作列按钮只用纯文字，不加图标 |

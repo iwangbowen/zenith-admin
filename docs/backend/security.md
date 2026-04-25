@@ -138,7 +138,7 @@ Zenith Admin 内置了多层安全防护能力，涵盖 IP 访问控制、账号
 
 通过环境变量 `ALLOWED_ORIGINS` 配置允许的来源白名单（在 `.env` 中设置）：
 
-```env
+```dotenv
 # 留空 = 开发模式，不限制来源
 ALLOWED_ORIGINS=
 

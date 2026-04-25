@@ -252,7 +252,7 @@ const [totalUsers, activeUsers, todayLogins] = await Promise.all([
 
 `packages/server/src/db/index.ts` 已集成自定义 `DrizzleLogger`，通过 winston 输出 SQL。启用方式：
 
-```env
+```dotenv
 LOG_LEVEL=debug
 ```
 

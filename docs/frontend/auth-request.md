@@ -87,13 +87,13 @@ server: {
 
 ::: code-group
 
-```env [.env.development（开发）]
+```dotenv [.env.development（开发）]
 VITE_API_BASE_URL=
 VITE_WS_BASE_URL=
 VITE_API_PROXY_TARGET=http://localhost:3300
 ```
 
-```env [生产部署（自行创建 .env.production）]
+```dotenv [生产部署（自行创建 .env.production）]
 VITE_API_BASE_URL=https://api.yourdomain.com
 VITE_WS_BASE_URL=wss://api.yourdomain.com
 # 生产构建无 Dev Server，无需 VITE_API_PROXY_TARGET

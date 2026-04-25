@@ -24,7 +24,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, Plus } from 'lucide-react';
 import { SearchToolbar } from '../../components/SearchToolbar';
 import { request } from '../../utils/request';
-import { formatDateTime } from '../../utils/date';
+import { formatDateTime, formatDateTimeForApi } from '../../utils/date';
 import { useDictItems } from '../../hooks/useDictItems';
 import { useAuth } from '../../hooks/useAuth';
 import type { Xxx, PaginatedResponse } from '@zenith/shared';
@@ -90,8 +90,8 @@ export default function XxxPage() {
         if (params.status) queryObj.status = params.status;
         // 如有时间范围：
         // if (params.timeRange) {
-        //   queryObj.startTime = params.timeRange[0].toISOString();
-        //   queryObj.endTime = params.timeRange[1].toISOString();
+        //   queryObj.startTime = formatDateTimeForApi(params.timeRange[0]);
+        //   queryObj.endTime = formatDateTimeForApi(params.timeRange[1]);
         // }
 
         const query = new URLSearchParams(queryObj).toString();
@@ -371,8 +371,7 @@ export default function XxxPage() {
 import { formatDateTime } from '../../utils/date';
 render: (t) => formatDateTime(t)
 
-// ❌ 禁止
-render: (t) => new Date(t).toLocaleString()
+// ❌ 禁止：不要在组件中使用原生 locale 或 ISO 时间格式化 API
 ```
 
 ### 操作列按钮样式

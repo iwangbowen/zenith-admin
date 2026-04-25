@@ -51,7 +51,7 @@ npm run docs:preview
 
 ### 时间显示统一格式
 
-前端时间统一使用 `YYYY-MM-DD HH:mm:ss`，并通过 `packages/web/src/utils/date.ts` 中的 `formatDateTime` 处理。
+系统内对外日期时间字符串统一使用 `YYYY-MM-DD HH:mm:ss`。前端展示使用 `packages/web/src/utils/date.ts` 中的 `formatDateTime`，提交 API 参数使用 `formatDateTimeForApi` / `formatDateForApi`；后端 DTO 映射、导出与入参解析统一使用 `packages/server/src/lib/datetime.ts`。
 
 ### 图标统一使用 `lucide-react`
 

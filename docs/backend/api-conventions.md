@@ -29,6 +29,15 @@
 }
 ```
 
+## 日期时间格式
+
+所有对外 API 响应和日期时间入参统一使用 `YYYY-MM-DD HH:mm:ss`，例如：`2026-03-22 20:09:37`。
+
+- Service 层 DTO 映射、导出和文件时间戳统一使用 `packages/server/src/lib/datetime.ts` 中的 `formatDateTime()` / `formatNullableDateTime()` / `formatDate()` / `formatFileTimestamp()`。
+- 查询参数或 JSON 入参中的日期时间统一使用 `parseDateTimeInput()`、日期范围使用 `parseDateRangeStart()` / `parseDateRangeEnd()` 解析。
+- 共享 Zod schema 中的日期时间字段使用 `YYYY-MM-DD HH:mm:ss` 正则校验，禁止继续使用 ISO datetime 作为业务接口契约。
+- 禁止在 route/service/DTO 映射中直接使用 `toISOString()` 作为对外响应格式。
+
 ## 认证方式
 
 项目采用 **Access Token + Refresh Token 双 token** 机制：
