@@ -378,12 +378,12 @@ export default function RegionsPage() {
             <Form.Cascader
               field="parentCode"
               label="父级地区"
-              placeholder="请选择父级地区"
+              placeholder={flatLoading ? '加载父级地区中...' : '请选择父级地区'}
               treeData={parentTreeData}
               changeOnSelect
               filterTreeNode
               showClear
-              loading={flatLoading}
+              disabled={flatLoading}
               rules={[{ required: true, message: '请选择父级地区' }]}
               style={{ width: '100%' }}
             />

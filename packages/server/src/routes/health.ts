@@ -5,11 +5,13 @@ import redis from '../lib/redis';
 import { validationHook, ok, okBody } from '../lib/openapi-schemas';
 
 const startTime = Date.now();
+const appVersion = process.env.npm_package_version || 'unknown';
+const healthVersionExample = process.env.npm_package_version || '0.8.0';
 
 const HealthDTO = z
   .object({
     status: z.enum(['ok', 'degraded']).openapi({ example: 'ok' }),
-    version: z.string().openapi({ example: '0.1.1' }),
+    version: z.string().openapi({ example: healthVersionExample }),
     uptimeSeconds: z.number().int().openapi({ example: 12345 }),
     checks: z.record(z.string(), z.enum(['ok', 'error'])).openapi({
       example: { database: 'ok', redis: 'ok' },
@@ -49,7 +51,7 @@ const healthRoute = defineOpenAPIRoute({
     const status: 'ok' | 'degraded' = allOk ? 'ok' : 'degraded';
     return c.json(okBody({
       status,
-      version: '0.1.1',
+      version: appVersion,
       uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
       checks,
     }));

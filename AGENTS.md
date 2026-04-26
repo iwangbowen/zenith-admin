@@ -208,7 +208,7 @@ import { SearchToolbar } from '../../components/SearchToolbar';
 - 修改数据库 schema 后，必须运行 `npm run db:generate` 再 `npm run db:migrate`，不能直接修改 SQL
 - `@zenith/shared` 中新增类型/schema 后，无需重新构建，server 和 web 会直接引用源文件
 - Semi Design 组件查询请使用 `.claude/skills/semi-ui-skills/SKILL.md` 中的 MCP 工具流程
-- CORS 当前允许所有来源（开发配置），生产部署前需收紧
+- CORS 默认允许所有来源（开发配置），生产环境可通过 `CORS_ORIGIN` 收紧跨域来源
 
 ### 列表规范
 
@@ -223,17 +223,25 @@ import { SearchToolbar } from '../../components/SearchToolbar';
 ```text
 packages/web/src/mocks/
 ├── data/          # 与 packages/server/src/db/seed.ts 对齐的静态数据
-│   ├── users.ts   departments.ts   positions.ts
-│   ├── roles.ts   menus.ts         dicts.ts
-│   ├── system.ts  notices.ts       logs.ts
+│   ├── users.ts   departments.ts      positions.ts
+│   ├── roles.ts   menus.ts            dicts.ts
+│   ├── system.ts  notices.ts          logs.ts
+│   ├── email-config.ts                message-templates.ts
+│   ├── regions.ts tenants.ts workflow.ts
 │   └── index.ts
 ├── handlers/      # 每个业务模块对应一个 handler 文件
-│   ├── auth.ts    users.ts     roles.ts       menus.ts
-│   ├── departments.ts          positions.ts   dicts.ts
-│   ├── system-configs.ts       notices.ts     files.ts
-│   ├── cron-jobs.ts            monitor.ts
-│   ├── login-logs.ts           operation-logs.ts  sessions.ts
+│   ├── auth.ts    users.ts        roles.ts          menus.ts
+│   ├── departments.ts            positions.ts      dicts.ts
+│   ├── system-configs.ts         notices.ts        files.ts
+│   ├── cron-jobs.ts              monitor.ts        dashboard.ts
+│   ├── login-logs.ts             operation-logs.ts sessions.ts
+│   ├── api-tokens.ts             cache.ts          db-backups.ts
+│   ├── email-config.ts           message-templates.ts
+│   ├── oauth.ts                  oauth-config.ts
+│   ├── regions.ts                tenants.ts        workflow.ts
 │   └── index.ts   # 汇总所有 handlers
+├── utils/
+│   └── date.ts    # mockDateTime() / mockDate()
 ├── browser.ts     # setupWorker
 └── index.ts       # enableMocking()，条件判断入口
 ```

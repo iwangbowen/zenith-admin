@@ -10,12 +10,10 @@
 
 ### Props
 
-| Prop        | 类型        | 说明                                                                        |
-| ----------- | ----------- | --------------------------------------------------------------------------- |
-| `children`  | `ReactNode` | 工具栏内容（搜索输入框、下拉筛选、查询/重置按钮、新增等操作按钮），自动用 `<Space wrap>` 包裹 |
-| `className` | `string`    | 附加 CSS 类名，应用到外层容器                                               |
+- `children: ReactNode`：工具栏内容（搜索输入框、下拉筛选、查询/重置按钮、新增等操作按钮），自动用 `<Space wrap>` 包裹
+- `className: string`：附加 CSS 类名，应用到外层容器
 
-### 使用示例
+### RegionSelect 使用示例
 
 ```tsx
 import { SearchToolbar } from '../../components/SearchToolbar';
@@ -39,7 +37,7 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
     style={{ width: 120 }}
   >
     <Select.Option value="active">启用</Select.Option>
-    <Select.Option value="inactive">禁用</Select.Option>
+    <Select.Option value="disabled">禁用</Select.Option>
   </Select>
   <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
   <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -56,25 +54,25 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
 
 ## RegionSelect
 
-省市区三级联动选择组件，基于 Semi Design Cascader 封装，数据来源为后端行政区划接口，按需动态加载。
+省市区三级联动选择组件，基于 Semi Design Cascader 封装，数据来源为后端行政区划接口，组件挂载后一次性拉取完整的三级地区树。
 
 **文件位置**：`packages/web/src/components/RegionSelect.tsx`
 
 ### 功能特点
 
-- 支持国家级 → 省 → 市 → 区 → 街道/乡镇 五级行政区划
-- 动态懒加载：展开到哪一级才请求该级数据
+- 支持省 → 市 → 区/县三级行政区划
+- 组件挂载时请求 `GET /api/regions`，并在当前组件实例中复用已加载的地区树数据
 - 返回所选区划的完整 code 路径
 
 ### 使用示例
 
 ```tsx
-import { RegionSelect } from '../../components/RegionSelect';
+import RegionSelect from '../../components/RegionSelect';
 
 <RegionSelect
   value={regionCodes}
   onChange={(codes) => setRegionCodes(codes as string[])}
-  placeholder="请选择省市区"
+  placeholder="请选择省/市/区"
   style={{ width: 280 }}
 />
 ```

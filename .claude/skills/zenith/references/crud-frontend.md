@@ -6,7 +6,7 @@
 
 ## 文件位置
 
-```
+```text
 packages/web/src/pages/xxx/XxxPage.tsx
 ```
 
@@ -17,12 +17,12 @@ packages/web/src/pages/xxx/XxxPage.tsx
 ```tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Button, Table, Form, Input, Select,
+  Button, Table, Form, Input, Select, Space,
   Modal, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus } from 'lucide-react';
+import { Search, RotateCcw, Plus, Trash2 } from 'lucide-react';
 import { SearchToolbar } from '../../components/SearchToolbar';
 import { request } from '../../utils/request';
 import { formatDateTime, formatDateTimeForApi } from '../../utils/date';

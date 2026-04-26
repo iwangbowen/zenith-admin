@@ -6,12 +6,12 @@
 
 在目标服务器上准备以下环境：
 
-| 依赖 | 版本要求 | 说明 |
-|------|---------|------|
-| Node.js | >= 18 | 运行后端服务 |
-| PostgreSQL | >= 14 | 持久化业务数据 |
-| Redis | >= 6 | 持久化在线会话与黑名单状态 |
-| Nginx（可选） | 任意 | 托管前端静态文件 + 反向代理 |
+| 依赖          | 版本要求 | 说明                         |
+| ------------- | -------- | ---------------------------- |
+| Node.js       | >= 18    | 运行后端服务                 |
+| PostgreSQL    | >= 14    | 持久化业务数据               |
+| Redis         | >= 6     | 持久化在线会话与黑名单状态   |
+| Nginx（可选） | 任意     | 托管前端静态文件 + 反向代理  |
 
 ---
 
@@ -19,10 +19,8 @@
 
 在 [GitHub Releases](https://github.com/iwangbowen/zenith-admin/releases) 页面下载最新版本的两个压缩包：
 
-| 文件 | 内容 |
-|------|------|
-| `zenith-admin-server-vX.Y.Z.zip` | 后端构建产物（`dist/` + `drizzle/` + `package.json`） |
-| `zenith-admin-web-vX.Y.Z.zip` | 前端静态文件（直接托管即可） |
+- `zenith-admin-server-vX.Y.Z.zip`：后端构建产物（`dist/` + `drizzle/` + `package.json`）
+- `zenith-admin-web-vX.Y.Z.zip`：前端静态文件（直接托管即可）
 
 ---
 
@@ -67,7 +65,7 @@ LOG_DIR=./logs
 # OpenTelemetry tracing（可选）
 # OTEL_ENABLED=true
 # OTEL_SERVICE_NAME=zenith-admin-server
-# OTEL_SERVICE_VERSION=0.5.0
+# OTEL_SERVICE_VERSION=<current-package-version>
 # OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
 # OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer xxx
 
@@ -75,12 +73,12 @@ LOG_DIR=./logs
 # 逗号分隔的允许来源，留空则不限制（开发模式）
 ALLOWED_ORIGINS=https://your-domain.com
 
-# CORS（生产环境务必收紧，指定前端域名）
-# CORS_ORIGIN=https://your-domain.com
+# CORS（仅在前后端跨域部署时需要；同域反向代理无需设置）
+# CORS_ORIGIN=https://admin.example.com
 ```
 
 ::: warning 安全提示
-生产环境务必使用强随机字符串作为 `JWT_SECRET`，并通过 `ALLOWED_ORIGINS` 限制允许的前端来源（CSRF 防护），不要保留默认的"允许所有来源"配置。
+生产环境务必使用强随机字符串作为 `JWT_SECRET`。若前端通过浏览器跨域访问后端，请同时配置 `ALLOWED_ORIGINS`（CSRF 白名单）和 `CORS_ORIGIN`（CORS 允许来源）；若通过 Nginx 同域反向代理 `/api/`，则通常无需单独配置 CORS。
 :::
 
 ### 3. 初始化数据库
@@ -112,7 +110,7 @@ pm2 startup
 
 ## 部署前端
 
-前端为纯静态文件，解压后直接用 Nginx 托管即可。
+前端为纯静态文件。**推荐同域部署**：直接托管静态文件，并通过 Nginx 将 `/api/` 反向代理到后端。
 
 ### 1. 解压静态文件
 
@@ -169,19 +167,35 @@ server {
 生产环境建议同时配置 HTTPS（可使用 Let's Encrypt）。
 :::
 
-### 3. 前端环境配置
+### 3. 前端 API 地址策略
 
-在 `packages/web/` 下创建 `.env.production`（或直接修改 `.env`），按实际情况填写：
+如果你直接使用 GitHub Release 中的 `zenith-admin-web-vX.Y.Z.zip`，**通常无需再修改前端环境变量**。该产物默认使用相对路径 `/api/*`，最适合同域部署：
+
+- 浏览器访问 `https://admin.example.com`
+- Nginx 将 `https://admin.example.com/api/*` 反向代理到 `http://localhost:3300`
+
+这种模式下，前端静态文件与 API 共用同一域名，部署简单，也不需要额外处理浏览器跨域。
+
+如果你必须将前端部署在独立域名，并直接请求另一个域名下的 API（例如前端 `https://admin.example.com`，后端 `https://api.example.com`），则**不要直接使用 Release 中现成的 web 产物**，而应从源码重新构建前端：
 
 ```ini
-# 后端 API 地址（生产环境必填）
-VITE_API_BASE_URL=https://api.yourdomain.com
-# WebSocket 地址（不填则自动从 VITE_API_BASE_URL 推导）
-VITE_WS_BASE_URL=wss://api.yourdomain.com
+# packages/web/.env.production
+VITE_API_BASE_URL=https://api.example.com
+VITE_WS_BASE_URL=wss://api.example.com
 VITE_APP_TITLE=Zenith Admin
 ```
 
-若前端与后端同域部署（通过 Nginx 反向代理将 `/api/` 转发到后端），可将 `VITE_API_BASE_URL` 留空，前端将自动使用相对路径请求。
+然后在源码仓库中重新构建前端：
+
+```bash
+npm run build -w @zenith/web
+```
+
+最后使用重新生成的 `packages/web/dist/` 替换静态文件目录。此场景下，后端还应配置：
+
+```dotenv
+CORS_ORIGIN=https://admin.example.com
+```
 
 ---
 
@@ -216,7 +230,7 @@ curl http://localhost:3300/metrics
 ```dotenv
 OTEL_ENABLED=true
 OTEL_SERVICE_NAME=zenith-admin-server
-OTEL_SERVICE_VERSION=0.5.0
+OTEL_SERVICE_VERSION=<current-package-version>
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
 ```
 

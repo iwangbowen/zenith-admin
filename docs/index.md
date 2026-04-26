@@ -24,7 +24,7 @@ features:
   - title: 共享类型层
     details: Zod Schema 在前后端共享，统一校验逻辑，减少字段不一致风险。
   - title: 文件存储
-    details: 支持本地存储与阿里云 OSS 两种模式，可在后台配置页面切换。
+    details: 支持本地存储、阿里云 OSS、S3 兼容对象存储与腾讯云 COS 四种模式，可在后台配置页面切换。
   - title: JWT 双 Token 鉴权
     details: 采用 Access Token + Refresh Token 双 token 机制，前端自动续期，对业务代码透明，中间件统一处理鉴权逻辑。
   - title: 多租户支持

@@ -85,7 +85,7 @@ app.use('*', secureHeaders({
   xFrameOptions: false,                       // API 无 UI，不需要
 }));
 app.use('*', compress());
-app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
+app.use('*', cors({ origin: config.corsOrigin, allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
 // CSRF 防护：校验 Origin 头，防止跨站请求伪造
 // ALLOWED_ORIGINS 为空时（开发模式）不限制；非浏览器请求（无 Origin）直接放行
 app.use(

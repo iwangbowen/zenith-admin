@@ -6,7 +6,7 @@ Zenith Admin 支持无后端服务的纯前端演示模式，通过 [MSW（Mock 
 
 ## 工作原理
 
-```
+```text
 浏览器发出 fetch/XHR 请求
     ↓
 Service Worker（mockServiceWorker.js）拦截请求
@@ -40,7 +40,9 @@ VITE_DEMO_MODE=true
 npm run build:demo
 ```
 
-此命令使用 `packages/web/.env.demo` 中的变量构建前端，并将产物输出到文档站目录（用于 GitHub Pages 部署）。
+此命令使用 `packages/web/.env.demo` 中的变量构建前端，并将产物输出到 `packages/web/dist/`。
+
+实际构建产物会先输出到 `packages/web/dist/`，随后由 `.github/workflows/pages.yml` 在 CI 中复制到 `docs/.vitepress/dist/demo/`，再与文档站一起发布。
 
 ```ini
 # packages/web/.env.demo 的关键变量
@@ -153,6 +155,6 @@ export const positionHandlers = [
 
 默认登录账号：
 
-| 账号 | 密码 | 说明 |
-|------|------|------|
+| 账号    | 密码     | 说明                     |
+| ------- | -------- | ------------------------ |
 | `admin` | `123456` | 超级管理员，拥有所有权限 |

@@ -12,6 +12,7 @@ export const config = {
   port: Number(process.env.PORT) || 3300,
   jwtSecret: process.env.JWT_SECRET || 'zenith-admin-secret',
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin',
+  corsOrigin: process.env.CORS_ORIGIN || '*',
   database: {
     maxConnections: positiveNumberEnv('DATABASE_MAX_CONNECTIONS', 10),
     idleTimeoutSeconds: positiveNumberEnv('DATABASE_IDLE_TIMEOUT_SECONDS', 20),

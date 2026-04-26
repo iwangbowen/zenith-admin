@@ -6,7 +6,7 @@
 
 ### 构建方式
 
-文档站基于 **VitePress** 构建，Demo 站将前端以 MSW Mock 模式打入文档站目录。
+文档站基于 **VitePress** 构建；Demo 站则先构建到 `packages/web/dist/`，再由 GitHub Pages 工作流合并到文档站产物的 `/demo/` 路径。
 
 ```bash
 # 本地开发预览文档
@@ -64,11 +64,16 @@ VitePress 配置已按环境自动切换 `base` 路径：
 Zenith Admin 采用 **tag 触发 Release** 的自动化发布流程：
 
 1. 更新四个 `package.json` 中的版本号（根 / server / web / shared）
-2. 在 `docs/changelog/index.md` 顶部追加当前版本的变更记录
-3. 提交并推送到 `master`
-4. 本地打 tag 并推送，触发 Release 工作流
+2. 在项目根目录执行 `npm install --package-lock-only`，同步 `package-lock.json`
+3. 在 `docs/changelog/index.md` 顶部追加当前版本的变更记录
+4. 本地执行 `npm run build` 做发布前构建校验
+5. 提交并推送到 `master`
+6. 本地打 tag 并推送，触发 Release 工作流
 
 ```bash
+npm install --package-lock-only
+npm run build
+
 git add .
 git commit -m "chore: release vX.Y.Z"
 git push origin master
@@ -76,6 +81,8 @@ git push origin master
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
+
+> 如本地构建未通过，请先修复问题再继续发布，避免 CI 在 Release 流程中失败。
 
 ### Release 工作流（`release.yml`）
 
@@ -94,11 +101,11 @@ git push origin vX.Y.Z
 
 如果 Release 工作流执行失败，可以通过以下方式重新触发：
 
-**方式一：在 GitHub Actions 页面重跑**
+#### 方式一：在 GitHub Actions 页面重跑
 
 打开 [Actions](https://github.com/iwangbowen/zenith-admin/actions/workflows/release.yml) → 点击失败的 Run → **Re-run all jobs**
 
-**方式二：workflow_dispatch 手动指定 tag**
+#### 方式二：workflow_dispatch 手动指定 tag
 
 在 [release.yml 工作流页面](https://github.com/iwangbowen/zenith-admin/actions/workflows/release.yml) 点击 **Run workflow**，在 `tag` 输入框填入目标 tag（如 `v0.1.0`）后触发。
 

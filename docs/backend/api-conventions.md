@@ -83,7 +83,7 @@ const user = currentUser(); // JwtPayload
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam } from '../lib/openapi-schemas';
+import { ErrorResponse, jsonContent, PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
 
 // 不使用 <AuthEnv> 泛型，不添加全局 use('*', authMiddleware)
 const xxxRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -268,7 +268,7 @@ const listXxxRoute = defineOpenAPIRoute({
 
 ## Server-Timing 性能分析头
 
-当 `SERVER_TIMING_ENABLED=true`（默认值）时，服务端会自动在每个响应中附加 [`Server-Timing`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing) 响应头：
+当 `SERVER_TIMING_ENABLED=true` 时，服务端会自动在每个响应中附加 [`Server-Timing`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing) 响应头（默认关闭）：
 
 ```http
 Server-Timing: total;dur=45.2;desc="Total Response Time"
