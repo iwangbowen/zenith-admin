@@ -49,6 +49,7 @@ export default function RegionsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Region[]>([]);
   const [flatData, setFlatData] = useState<Region[]>([]);
+  const [flatLoading, setFlatLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRegion, setEditingRegion] = useState<Region | null>(null);
@@ -66,16 +67,22 @@ export default function RegionsPage() {
       if (params.level) queryObj.level = params.level;
 
       const query = new URLSearchParams(queryObj).toString();
-      const [treeRes, flatRes] = await Promise.all([
-        request.get<Region[]>(query ? `/api/regions?${query}` : '/api/regions'),
-        request.get<Region[]>('/api/regions/flat'),
-      ]);
-      if (treeRes.code === 0) setData(treeRes.data);
-      if (flatRes.code === 0) setFlatData(flatRes.data);
+      const res = await request.get<Region[]>(query ? `/api/regions?${query}` : '/api/regions');
+      if (res.code === 0) setData(res.data);
     } finally {
       setLoading(false);
     }
   }, [searchParams]);
+
+  const fetchFlatData = useCallback(async () => {
+    setFlatLoading(true);
+    try {
+      const res = await request.get<Region[]>('/api/regions/flat');
+      if (res.code === 0) setFlatData(res.data);
+    } finally {
+      setFlatLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void fetchRegions();
@@ -110,16 +117,18 @@ export default function RegionsPage() {
     setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
   }
 
-  function openCreate() {
+  async function openCreate() {
     setEditingRegion(null);
     setEditingLevel('province');
     setModalVisible(true);
+    void fetchFlatData();
   }
 
-  function openEdit(record: Region) {
+  async function openEdit(record: Region) {
     setEditingRegion(record);
     setEditingLevel(record.level);
     setModalVisible(true);
+    void fetchFlatData();
   }
 
   function closeModal() {
@@ -373,6 +382,7 @@ export default function RegionsPage() {
               changeOnSelect
               filterTreeNode
               showClear
+              loading={flatLoading}
               rules={[{ required: true, message: '请选择父级地区' }]}
               style={{ width: '100%' }}
             />
