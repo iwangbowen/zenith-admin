@@ -34,7 +34,7 @@ AI 会在生成代码之前，主动向你确认以下信息：
 | 是否需要 MSW Mock | 是否支持 Demo 演示无后端运行 |
 | 关联实体 / 特殊枚举 | 外键、多对多、状态字段等 |
 
-### Step 1–10：自动生成
+### Step 1–11：自动生成
 
 | 步骤 | 生成内容 | 文件位置 |
 | --- | --- | --- |
@@ -42,14 +42,13 @@ AI 会在生成代码之前，主动向你确认以下信息：
 | 2 | 数据库迁移 | `npm run db:generate` + `npm run db:migrate` |
 | 3 | 共享 Zod Schema | `packages/shared/src/validation.ts` |
 | 4 | 共享 TypeScript 类型 | `packages/shared/src/types.ts` |
-| 5 | Hono 路由（CRUD + 分页 + 筛选） | `packages/server/src/routes/` |
-| 5b | 实体 DTO 按业务域拆分 | `packages/server/src/lib/dtos/`（`iam` / `auth` / `dict` / `files` / `logs` / `notices` / `system` / `workflow` / `dashboard` / `region` / `messages`），barrel：`openapi-dtos.ts` |
-| 6 | 注册路由 | `packages/server/src/index.ts` |
-| 6b | OpenAPI Spec 自动汇总 | 无需手动维护，由 `@hono/zod-openapi` 运行时生成 |
-| 7 | 前端列表页（搜索 + 表格 + 弹窗） | `packages/web/src/pages/` |
-| 8 | 菜单种子数据 | `packages/shared/src/seed-data.ts` |
-| 9 | 数据库种子 | `packages/server/src/db/seed.ts` |
-| 10 | MSW Mock（按需） | `packages/web/src/mocks/` |
+| 5 | Service 层（业务逻辑、数据映射、前置校验） | `packages/server/src/services/xxx.service.ts` |
+| 6 | Hono 路由（CRUD + 分页 + 筛选）+ 实体 DTO | `packages/server/src/routes/`；DTO 放 `packages/server/src/lib/dtos/`（按业务域拆分），barrel：`openapi-dtos.ts` |
+| 7 | 注册路由（OpenAPI Spec 同步自动生成） | `packages/server/src/index.ts` |
+| 8 | 前端列表页（搜索 + 表格 + 弹窗） | `packages/web/src/pages/` |
+| 9 | 菜单种子数据（菜单 + 按钮权限） | `packages/shared/src/seed-data.ts` |
+| 10 | 数据库种子数据 | `packages/server/src/db/seed.ts` |
+| 11 | MSW Mock（按需，仅 Demo 演示模式） | `packages/web/src/mocks/` |
 
 ---
 
@@ -110,7 +109,10 @@ AI 会在生成代码之前，主动向你确认以下信息：
     ├── crud-backend.md    # 后端路由完整代码模板（含 diff 记录）
     ├── crud-frontend.md   # 前端列表页完整代码模板
     ├── crud-mock.md       # MSW Mock handler 代码模板
-    └── crud-seed.md       # 种子数据代码模板
+    ├── menu-seed.md       # 菜单与种子数据配置参考
+    ├── constraints.md     # 核心规范约束清单
+    ├── release.md         # 版本发布流程
+    └── step0-checklist.md # 信息收集问卷
 ```
 
 维护者在修改代码规范后，应同步更新对应的 `references/` 模板文件，确保后续 AI 生成的代码始终与项目保持一致。

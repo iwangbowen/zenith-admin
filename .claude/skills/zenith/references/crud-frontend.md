@@ -26,7 +26,7 @@ import { SearchToolbar } from '../../components/SearchToolbar';
 import { request } from '../../utils/request';
 import { formatDateTime, formatDateTimeForApi } from '../../utils/date';
 import { useDictItems } from '../../hooks/useDictItems';
-import { useAuth } from '../../hooks/useAuth';
+import { usePermission } from '@/hooks/usePermission';
 import type { Xxx, PaginatedResponse } from '@zenith/shared';
 
 // ─── 搜索参数类型 ────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ const defaultSearchParams: SearchParams = {
 // 主组件
 // ════════════════════════════════════════════════════════════════════════════
 export default function XxxPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission } = usePermission();
   const formApi = useRef<any>(null);
 
   // ─── 状态 ──────────────────────────────────────────────────────────────
@@ -418,7 +418,7 @@ onPageSizeChange: (s) => {
 
 ```tsx
 // 使用 hasPermission() 控制按钮显示
-const { hasPermission } = useAuth();
+const { hasPermission } = usePermission();
 
 {hasPermission('system:xxx:create') && <Button>新增</Button>}
 {hasPermission('system:xxx:update') && <Button>编辑</Button>}
