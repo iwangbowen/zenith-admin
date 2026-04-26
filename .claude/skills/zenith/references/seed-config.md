@@ -4,42 +4,37 @@
 
 ---
 
-## 现有菜单 ID 速查
+## 菜单 ID 速查
 
-了解现有 ID 有助于确定新菜单的父节点：
+**不要使用硬编码的 ID 列表**，因为它会随功能迭代而过时。
+在为新模块分配 ID 前，**必须先读取实际文件**了解当前分布：
 
-| ID | 类型 | 标题 | 路径 |
-|----|------|------|------|
-| 0 | — | 根节点（虚拟） | — |
-| 1 | menu | 首页 | `/` |
-| 2 | directory | 系统管理 | — |
-| 3 | menu | 用户管理 | `/system/users` |
-| 4 | menu | 菜单管理 | `/system/menus` |
-| 5 | menu | 角色管理 | `/system/roles` |
-| 6 | menu | 字典管理 | `/system/dicts` |
-| 8 | directory | 文件管理 | — |
-| 36 | menu | 部门管理 | `/system/departments` |
-| 40 | menu | 岗位管理 | `/system/positions` |
-| 50 | menu | 系统配置 | `/system/configs` |
+```
+packages/shared/src/seed-data.ts   ← 查阅 SEED_MENUS 数组，找出当前已用的最大 ID 及所有父目录 ID
+```
 
-> **当前最大 ID 约为 53**，新菜单从 **100** 起步（跳跃编号，便于维护）。
+典型查询方式：
+- 搜索 `parentId: 0` 找到所有一级目录（确定可选的父节点）
+- 找出最大已用 ID，新菜单 ID 从 **(最大已用 ID + 步进)** 开始，步进建议 10–50，保持松散，便于以后插入
+
+> **严禁**基于任何文档中记录的"当前最大 ID"来分配新 ID，这类记录必然滞后于代码。始终以源文件为准。
 
 ---
 
-## Step 8：`packages/shared/src/seed-data.ts`
+## Step 9：`packages/shared/src/seed-data.ts`
 
 ### 新增目录（一级菜单 / 二级目录，若需要）
 
 ```ts
 // 在 SEED_MENUS 数组末尾追加：
-{ id: 100, parentId: 0,   title: 'XXX模块',  name: 'XxxModule',  path: undefined,  component: undefined,  icon: 'Layers',  type: 'directory', sort: 99, status: 'active', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+{ id: <新ID>, parentId: 0,   title: 'XXX模块',  name: 'XxxModule',  path: undefined,  component: undefined,  icon: 'Layers',  type: 'directory', sort: 99, status: 'active', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ```
 
 ### 新增菜单页面条目
 
 ```ts
 // type: 'menu' — 可导航的页面
-{ id: 101, parentId: 2,   title: 'XXX管理',  name: 'SystemXxx',
+{ id: <新ID>, parentId: <父目录ID>,   title: 'XXX管理',  name: 'SystemXxx',
   path: '/system/xxxs',
   component: 'xxxs/XxxPage',         // ← 必须精确匹配 src/pages/ 下的文件路径，无扩展名
   icon: 'CircleDot',                  // ← lucide-react 图标名
@@ -58,13 +53,13 @@
 
 ```ts
 // type: 'button' — 不可导航，只挂权限码；path/component/icon 均为 undefined
-{ id: 102, parentId: 101, title: '新增XXX',  name: undefined, path: undefined, component: undefined, icon: undefined,
+{ id: <新ID+1>, parentId: <菜单ID>, title: '新增XXX',  name: undefined, path: undefined, component: undefined, icon: undefined,
   type: 'button', sort: 1, status: 'active', visible: true,
   permission: 'system:xxx:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-{ id: 103, parentId: 101, title: '编辑XXX',  name: undefined, path: undefined, component: undefined, icon: undefined,
+{ id: <新ID+2>, parentId: <菜单ID>, title: '编辑XXX',  name: undefined, path: undefined, component: undefined, icon: undefined,
   type: 'button', sort: 2, status: 'active', visible: true,
   permission: 'system:xxx:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-{ id: 104, parentId: 101, title: '删除XXX',  name: undefined, path: undefined, component: undefined, icon: undefined,
+{ id: <新ID+3>, parentId: <菜单ID>, title: '删除XXX',  name: undefined, path: undefined, component: undefined, icon: undefined,
   type: 'button', sort: 3, status: 'active', visible: true,
   permission: 'system:xxx:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ```
@@ -80,12 +75,12 @@
 
 ### `icon` 字段
 
-统一使用 **lucide-react** 图标名（大驼峰），如 `CircleDot`、`LayoutList`、`BookOpen`。  
+统一使用 **lucide-react** 图标名（大驼峰），如 `CircleDot`、`LayoutList`、`BookOpen`。
 可在 [https://lucide.dev/icons/](https://lucide.dev/icons/) 搜索。
 
 ---
 
-## Step 9：`packages/server/src/db/seed.ts`
+## Step 10：`packages/server/src/db/seed.ts`
 
 在现有 seed 函数末尾追加初始数据（使用 `onConflictDoNothing` 确保幂等执行）：
 
@@ -121,7 +116,7 @@ for (const menu of SEED_MENUS) {
 ## 完整示例（以「部门管理」为参考）
 
 ```ts
-// seed-data.ts 中的实际写法
+// seed-data.ts 中的实际写法（部门管理的实际 ID 请以源文件为准）
 { id: 36, parentId: 2,  title: '部门管理', name: 'SystemDepartments',
   path: '/system/departments',
   component: 'system/departments/DepartmentsPage',

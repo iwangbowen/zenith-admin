@@ -21,6 +21,7 @@ import {
   Modal, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus } from 'lucide-react';
 import { SearchToolbar } from '../../components/SearchToolbar';
 import { request } from '../../utils/request';
@@ -47,7 +48,7 @@ const defaultSearchParams: SearchParams = {
 // ════════════════════════════════════════════════════════════════════════════
 export default function XxxPage() {
   const { hasPermission } = usePermission();
-  const formApi = useRef<any>(null);
+  const formApi = useRef<FormApi | null>(null);
 
   // ─── 状态 ──────────────────────────────────────────────────────────────
   const [data, setData] = useState<PaginatedResponse<Xxx> | null>(null);

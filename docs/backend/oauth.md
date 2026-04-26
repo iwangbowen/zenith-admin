@@ -108,5 +108,5 @@ JWT token 存入 localStorage，跳转至仪表盘
 
 | 表名 | 说明 |
 |------|------|
-| `oauth_provider_configs` | 各提供方的 Client ID / Secret 及启用状态 |
+| `oauth_configs` | 各提供方的 Client ID / Secret 及启用状态 |
 | `user_oauth_accounts` | 用户与第三方账号的绑定关系（openId、nickname、avatar）|

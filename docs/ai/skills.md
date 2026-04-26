@@ -109,7 +109,7 @@ AI 会在生成代码之前，主动向你确认以下信息：
     ├── crud-backend.md    # 后端路由完整代码模板（含 diff 记录）
     ├── crud-frontend.md   # 前端列表页完整代码模板
     ├── crud-mock.md       # MSW Mock handler 代码模板
-    ├── menu-seed.md       # 菜单与种子数据配置参考
+    ├── seed-config.md     # 菜单与种子数据配置参考
     ├── constraints.md     # 核心规范约束清单
     ├── release.md         # 版本发布流程
     └── step0-checklist.md # 信息收集问卷

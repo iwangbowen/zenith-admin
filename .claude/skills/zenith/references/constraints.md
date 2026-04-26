@@ -9,6 +9,7 @@
 | **commonErrorResponses** | 所有路由的 `responses:` 块必须包含 `...commonErrorResponses`（涵盖 400/401/403/404/500），从 `'../lib/openapi-schemas'` 导入 |
 | **枚举三端同步** | `pgEnum` / TS union type / Zod enum 保持完全一致 |
 | **操作列固定** | 所有表格操作列必须 `fixed: 'right'` |
+| **状态列固定** | "状态"列必须紧靠"操作"列左侧，并同样设置 `fixed: 'right'` |
 | **树形表格展开控制** | 使用 `children` 字段渲染树形表格时，必须在搜索栏添加「全部展开/全部折叠」按钮，使用受控 `expandedRowKeys` + `onExpandedRowsChange`；图标：已展开用 `ChevronsDownUp`，未展开用 `ChevronsUpDown` |
 | **时间格式** | API 响应、入参、前端显示、MSW Mock 统一使用 `YYYY-MM-DD HH:mm:ss`；前端用 `formatDateTime()` / `formatDateTimeForApi()`，后端用 `lib/datetime.ts`，Mock 用 `mockDateTime()`；禁止 `toISOString()` / 原生 `toLocaleString()` 等 |
 | **图标库** | 统一使用 `lucide-react`，禁止 `@douyinfe/semi-icons` |

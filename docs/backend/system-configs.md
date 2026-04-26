@@ -156,31 +156,28 @@
 
 ## 如何在代码中读取配置
 
-后端路由中通过以下方式读取配置项：
+后端路由/服务层中通过项目封装的专用 helper 读取配置项，无需手写 Drizzle 查询：
 
 ```typescript
-import { db } from '../db/index';
-import { systemConfigs } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { getConfigValue, getConfigBoolean, getConfigNumber } from '../lib/system-config';
 
-async function getConfigValue(key: string): Promise<string | null> {
-  const [config] = await db
-    .select()
-    .from(systemConfigs)
-    .where(eq(systemConfigs.configKey, key))
-    .limit(1);
-  return config?.configValue ?? null;
-}
-
-// boolean 配置
-const watermarkEnabled = (await getConfigValue('watermark_enabled')) === 'true';
-// number 配置
-const maxAttempts = Number(await getConfigValue('login_max_attempts')) || 10;
 // string 配置
-const siteName = (await getConfigValue('site_name')) ?? 'Zenith Admin';
+const siteName = await getConfigValue('site_name', 'Zenith Admin');
+// boolean 配置
+const watermarkEnabled = await getConfigBoolean('watermark_enabled', false);
+// number 配置
+const maxAttempts = await getConfigNumber('login_max_attempts', 10);
 ```
 
-> **注意**：配置项从数据库读取，统一为字符串类型，使用时需根据 `configType` 做类型转换（`Number()`、`=== 'true'` 等）。
+三个 helper 均位于 `packages/server/src/lib/system-config.ts`，签名：
+
+| Helper | 返回类型 | 说明 |
+|--------|----------|------|
+| `getConfigValue(key, defaultValue, tenantId?)` | `Promise<string>` | 原始字符串值，不存在时返回 `defaultValue` |
+| `getConfigBoolean(key, defaultValue, tenantId?)` | `Promise<boolean>` | 自动将 `'true'` 转为 `true` |
+| `getConfigNumber(key, defaultValue, tenantId?)` | `Promise<number>` | 自动 `Number()` 转换，转换失败时返回 `defaultValue` |
+
+> **注意**：所有 helper 均支持可选的 `tenantId` 参数，用于多租户场景。单租户场景省略即可。
 
 ---
 

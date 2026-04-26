@@ -72,7 +72,7 @@ Zenith Admin 内置了多层安全防护能力，涵盖 IP 访问控制、账号
 |----------|------|--------|------|
 | `password_min_length` | `number` | `6` | 密码最小长度 |
 | `password_require_uppercase` | `boolean` | `false` | 是否必须包含大写字母 |
-| `password_require_special` | `boolean` | `false` | 是否必须包含特殊字符（`!@#$%^&*` 等）|
+| `password_require_special_char` | `boolean` | `false` | 是否必须包含特殊字符（`!@#$%^&*` 等）|
 
 密码复杂度在以下场景触发校验：
 - 用户创建（管理员操作）
@@ -83,11 +83,12 @@ Zenith Admin 内置了多层安全防护能力，涵盖 IP 访问控制、账号
 
 | 配置 Key | 类型 | 默认值 | 说明 |
 |----------|------|--------|------|
-| `password_expiry_days` | `number` | `0` | 密码有效期天数，`0` 表示永不过期 |
+| `password_expiry_enabled` | `boolean` | `false` | 是否开启密码过期强制重置。开启后，当密码超期未更新，登录时将强制跳转修改密码页 |
+| `password_expiry_days` | `number` | `90` | 密码有效期天数，仅在 `password_expiry_enabled` 为 `true` 时生效 |
 
 **过期流程**：
 
-1. 用户登录时，后端计算 `passwordUpdatedAt + expiry_days` 是否小于当前时间
+1. 用户登录时，若 `password_expiry_enabled = true`，后端计算 `passwordUpdatedAt + password_expiry_days` 是否早于当前时间
 2. 若已过期，登录接口不返回 token，而是返回特殊 code（`password_expired`）和临时 token
 3. 前端检测到特殊 code 后，弹出「强制修改密码」弹窗
 4. 用户通过临时 token 完成密码修改后，方可正常使用系统
