@@ -4,6 +4,39 @@
 
 ---
 
+## v0.9.0 - 2026-04-26
+
+### Added
+
+#### 操作日志前态快照（beforeData）
+- 为所有主要业务模块的修改/删除操作补全 `beforeData` 快照注入，覆盖 20+ 路由文件中的 53 个审计操作点
+- 新增 `getXxxBeforeAudit()` 辅助函数到所有 service 文件（users、roles、menus、departments、positions、dicts、notices、cron-jobs、system-configs、regions、message-templates、file-storage-configs、workflow-definitions、email-config、tenants、oauth-config、cache、sessions、files、db-backups、workflow-instances），使操作日志详情页的数据变更 diff 功能完整生效
+- 敏感字段自动脱敏：`emailConfig.smtpPassword` 和 `oauthConfig.clientSecret` 在快照中替换为 `******`
+
+#### 操作日志详情页增强
+- 操作日志详情弹窗新增标签页布局，分为「基础信息」「请求详情」「数据变更」三个标签页，提升可读性
+
+#### 日志文件关键词搜索
+- 日志文件内容支持关键词过滤，前端和后端 API 同步支持 `keyword` 参数
+
+### Fixed
+
+#### 审计日志日期格式不一致
+- 修复 `beforeData` 显示 ISO 8601 格式（`2026-04-25T10:00:00.000Z`）而 `afterData` 显示 `YYYY-MM-DD HH:mm:ss` 的不一致问题，所有快照现在统一通过 `mapXxx()` 格式化
+
+#### LIKE 通配符注入防护
+- 所有 `keyword` 模糊搜索参数通过 `escapeLike()` helper 转义 `%`/`_`，防止恶意 LIKE 注入
+
+#### 跨租户数据泄露
+- 修复 dicts、files、departments、importUsers、operation-logs 模块的跨租户过滤缺失问题
+
+### Changed
+
+#### 工作流实例状态值统一
+- 工作流实例相关状态值从 `active` 统一改为 `enabled`，与系统其他模块状态枚举保持一致
+
+---
+
 ## v0.8.0 - 2026-04-25
 
 ### Added
