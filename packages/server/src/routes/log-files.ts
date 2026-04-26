@@ -29,7 +29,10 @@ const contentRoute = defineOpenAPIRoute({
     middleware: [authMiddleware, guard({ permission: 'system:log:files' })] as const,
     request: {
       params: z.object({ filename: z.string().openapi({ param: { name: 'filename', in: 'path' }, example: 'app.log' }) }),
-      query: z.object({ lines: z.coerce.number().min(1).max(5000).default(500).optional() }),
+      query: z.object({
+        lines: z.coerce.number().min(1).max(5000).default(500).optional(),
+        keyword: z.string().max(200).optional(),
+      }),
     },
     responses: {
       ...ok(LogFileContentDTO, '文件内容'),
@@ -40,7 +43,7 @@ const contentRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const q = c.req.valid('query');
-    const lines = readLogFileLines(c.req.param('filename'), q.lines ?? 500);
+    const lines = readLogFileLines(c.req.param('filename'), q.lines ?? 500, q.keyword);
     return c.json(okBody({ lines }, 'success'), 200);
   },
 });

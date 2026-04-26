@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Button, Tag, Space, Modal, Toast, Spin, Typography } from '@douyinfe/semi-ui';
-import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Button, Tag, Space, Modal, Toast, Spin, Typography, Input } from '@douyinfe/semi-ui';
+import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2, Search } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -23,6 +23,9 @@ function formatSize(bytes: number): string {
 export default function LogFilesPage() {
   const { hasPermission } = usePermission();
   const [files, setFiles] = useState<LogFile[]>([]);
+  const [keyword, setKeyword] = useState('');
+  const [contentKeyword, setContentKeyword] = useState('');
+  const [appliedContentKeyword, setAppliedContentKeyword] = useState('');
   const [listLoading, setListLoading] = useState(false);
   const [selected, setSelected] = useState<LogFile | null>(null);
   const [lines, setLines] = useState<string[]>([]);
@@ -43,6 +46,12 @@ export default function LogFilesPage() {
 
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
+  const filteredFiles = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    if (!normalizedKeyword) return files;
+    return files.filter((file) => file.name.toLowerCase().includes(normalizedKeyword));
+  }, [files, keyword]);
+
   // 自动滚动到底部
   useEffect(() => {
     if (preRef.current) {
@@ -50,16 +59,19 @@ export default function LogFilesPage() {
     }
   }, [lines]);
 
-  const loadContent = useCallback(async (file: LogFile) => {
+  const loadContent = useCallback(async (file: LogFile, searchKeyword = appliedContentKeyword) => {
     setLines([]);
     setContentLoading(true);
     try {
-      const res = await request.get<{ lines: string[] }>(`/api/log-files/${encodeURIComponent(file.name)}/content?lines=500`);
+      const normalizedKeyword = searchKeyword.trim();
+      const query = new URLSearchParams({ lines: '500' });
+      if (normalizedKeyword) query.set('keyword', normalizedKeyword);
+      const res = await request.get<{ lines: string[] }>(`/api/log-files/${encodeURIComponent(file.name)}/content?${query.toString()}`);
       if (res.code === 0) setLines(res.data.lines ?? []);
     } finally {
       setContentLoading(false);
     }
-  }, []);
+  }, [appliedContentKeyword]);
 
   const stopTail = useCallback(() => {
     tailAbortRef.current?.abort();
@@ -73,6 +85,25 @@ export default function LogFilesPage() {
     setSelected(file);
     void loadContent(file);
   };
+
+  const hasContentSearch = appliedContentKeyword.trim().length > 0;
+
+  const handleContentSearch = useCallback(() => {
+    if (!selected) return;
+    const nextKeyword = contentKeyword.trim();
+    stopTail();
+    setAppliedContentKeyword(nextKeyword);
+    void loadContent(selected, nextKeyword);
+  }, [contentKeyword, loadContent, selected, stopTail]);
+
+  const handleContentSearchReset = useCallback(() => {
+    setContentKeyword('');
+    setAppliedContentKeyword('');
+    stopTail();
+    if (selected) {
+      void loadContent(selected, '');
+    }
+  }, [loadContent, selected, stopTail]);
 
   const toggleTail = async () => {
     if (tailing) { stopTail(); return; }
@@ -174,13 +205,28 @@ export default function LogFilesPage() {
             onClick={() => void fetchFiles()}
           />
         </div>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--semi-color-border)' }}>
+          <Input
+            prefix={<Search size={14} />}
+            placeholder="搜索文件名"
+            value={keyword}
+            onChange={(value) => setKeyword(value)}
+            showClear
+            size="small"
+          />
+        </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {files.length === 0 && !listLoading && (
             <div style={{ padding: '24px 16px', textAlign: 'center' }}>
               <Typography.Text type="tertiary" size="small">暂无日志文件</Typography.Text>
             </div>
           )}
-          {files.map(file => (
+          {files.length > 0 && filteredFiles.length === 0 && !listLoading && (
+            <div style={{ padding: '24px 16px', textAlign: 'center' }}>
+              <Typography.Text type="tertiary" size="small">未找到匹配的日志文件</Typography.Text>
+            </div>
+          )}
+          {filteredFiles.map(file => (
             <button
               key={file.name}
               type="button"
@@ -253,7 +299,20 @@ export default function LogFilesPage() {
                   <Activity size={10} style={{ marginRight: 4 }} />实时追踪中
                 </Tag>
               )}
-              <div style={{ marginLeft: 'auto' }}>
+              {hasContentSearch && (
+                <Tag color="purple" size="small">内容搜索：{appliedContentKeyword}</Tag>
+              )}
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <Input
+                  prefix={<Search size={14} />}
+                  placeholder="搜索日志内容"
+                  value={contentKeyword}
+                  onChange={(value) => setContentKeyword(value)}
+                  onEnterPress={handleContentSearch}
+                  showClear
+                  size="small"
+                  style={{ width: 220 }}
+                />
                 <Space>
                   {!selected.isGzip && hasPermission('system:log:files') && (
                     <Button
@@ -261,11 +320,18 @@ export default function LogFilesPage() {
                       icon={tailing ? <StopCircle size={13} /> : <Activity size={13} />}
                       type={tailing ? 'danger' : 'primary'}
                       theme="light"
+                      disabled={hasContentSearch}
                       onClick={() => void toggleTail()}
                     >
                       {tailing ? '停止追踪' : '实时追踪'}
                     </Button>
                   )}
+                  <Button size="small" type="primary" theme="solid" icon={<Search size={13} />} onClick={handleContentSearch}>
+                    搜索
+                  </Button>
+                  <Button size="small" theme="borderless" onClick={handleContentSearchReset}>
+                    重置
+                  </Button>
                   {hasPermission('system:log:files') && (
                     <Button size="small" theme="borderless" icon={<RefreshCw size={13} />}
                       onClick={() => void loadContent(selected)}>刷新</Button>
@@ -305,7 +371,7 @@ export default function LogFilesPage() {
                 }}
               >
                 {lines.length === 0
-                  ? <Typography.Text type="tertiary" style={{ fontFamily: 'inherit' }}>（文件为空）</Typography.Text>
+                  ? <Typography.Text type="tertiary" style={{ fontFamily: 'inherit' }}>{hasContentSearch ? '（未找到匹配日志内容）' : '（文件为空）'}</Typography.Text>
                   : lines.join('\n')
                 }
               </pre>

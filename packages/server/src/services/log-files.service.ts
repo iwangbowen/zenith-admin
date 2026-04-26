@@ -27,18 +27,28 @@ export function resolveLogPath(filename: string): string | null {
 }
 
 /** 读取普通文本文件最后 N 行 */
-export function readLastLines(filepath: string, n: number): string[] {
+function normalizeLogLines(content: string): string[] {
+  return content.split('\n').filter(l => l.trim() !== '');
+}
+
+function filterLogLines(lines: string[], keyword?: string): string[] {
+  const normalizedKeyword = keyword?.trim().toLowerCase();
+  if (!normalizedKeyword) return lines;
+  return lines.filter((line) => line.toLowerCase().includes(normalizedKeyword));
+}
+
+export function readLastLines(filepath: string, n: number, keyword?: string): string[] {
   const content = fs.readFileSync(filepath, 'utf-8');
-  const lines = content.split('\n').filter(l => l.trim() !== '');
-  return lines.slice(-n);
+  const lines = normalizeLogLines(content);
+  return filterLogLines(lines, keyword).slice(-n);
 }
 
 /** 读取 gzip 文件最后 N 行 */
-export function readGzipLastLines(filepath: string, n: number): string[] {
+export function readGzipLastLines(filepath: string, n: number, keyword?: string): string[] {
   const compressed = fs.readFileSync(filepath);
   const content = zlib.gunzipSync(compressed).toString('utf-8');
-  const lines = content.split('\n').filter(l => l.trim() !== '');
-  return lines.slice(-n);
+  const lines = normalizeLogLines(content);
+  return filterLogLines(lines, keyword).slice(-n);
 }
 
 /** 轮询文件新增内容并回调，直到 signal 中止 */
@@ -94,13 +104,13 @@ export function listLogFiles() {
     .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 }
 
-export function readLogFileLines(filename: string, lines: number) {
+export function readLogFileLines(filename: string, lines: number, keyword?: string) {
   const name = safeFilename(filename);
   if (!name) throw new AppError('无效的文件名', 400);
   const filepath = resolveLogPath(name);
   if (!filepath || !fs.existsSync(filepath)) throw new AppError('文件不存在', 404);
   const isGzip = name.endsWith('.gz');
-  return isGzip ? readGzipLastLines(filepath, lines) : readLastLines(filepath, lines);
+  return isGzip ? readGzipLastLines(filepath, lines, keyword) : readLastLines(filepath, lines, keyword);
 }
 
 export function deleteLogFile(filename: string) {
