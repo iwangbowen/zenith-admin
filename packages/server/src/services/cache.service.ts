@@ -78,6 +78,40 @@ export async function listCache(keyword?: string) {
   return { list: items, total: items.length };
 }
 
+function toAuditItem(meta: Awaited<ReturnType<typeof getKeyMeta>>) {
+  return {
+    key: meta.key,
+    displayKey: meta.displayKey,
+    segment: meta.segment,
+    category: meta.category,
+    type: meta.type,
+    ttl: meta.ttl,
+    size: meta.size,
+  };
+}
+
+export async function getCacheBeforeAudit(key: string) {
+  if (!key?.startsWith(keyPrefix)) return null;
+  const exists = await redis.exists(key);
+  if (!exists) return null;
+  return toAuditItem(await getKeyMeta(key));
+}
+
+export async function getCachesByCategoryBeforeAudit(segment: string) {
+  if (!segment) return { total: 0, list: [] };
+  const keys = await scanKeys(`${keyPrefix}${segment}:*`);
+  keys.sort((a, b) => a.localeCompare(b));
+  const items = await Promise.all(keys.map(getKeyMeta));
+  return { total: items.length, list: items.map(toAuditItem) };
+}
+
+export async function getAllCachesBeforeAudit() {
+  const keys = await scanKeys(`${keyPrefix}*`);
+  keys.sort((a, b) => a.localeCompare(b));
+  const items = await Promise.all(keys.map(getKeyMeta));
+  return { total: items.length, list: items.map(toAuditItem) };
+}
+
 export async function deleteCacheKey(key: string) {
   if (!key) throw new AppError('参数错误：缺少 key', 400);
   if (!key.startsWith(keyPrefix)) throw new AppError('只能删除当前命名空间的缓存', 403);

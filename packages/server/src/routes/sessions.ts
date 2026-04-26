@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { validationHook, commonErrorResponses, PaginationQuery, okPaginated, okBody, okMsg } from '../lib/openapi-schemas';
 import { OnlineSessionDTO } from '../lib/openapi-dtos';
-import { listSessions, forceLogoutSession } from '../services/sessions.service';
+import { listSessions, forceLogoutSession, getSessionBeforeAudit } from '../services/sessions.service';
 
 const sessionsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -28,6 +28,8 @@ const forceLogoutRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { tokenId } = c.req.valid('param');
+    const before = await getSessionBeforeAudit(tokenId);
+    if (before) setAuditBeforeData(c, before);
     await forceLogoutSession(tokenId);
     return c.json(okBody(null, '已强制下线'), 200);
   },

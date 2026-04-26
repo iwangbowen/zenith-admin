@@ -9,7 +9,7 @@ import { UserDTO, ImportResultDTO } from '../lib/openapi-dtos';
 import {
   listAllUsers, listUsers, createUser, batchDeleteUsers, batchUpdateUserStatus,
   updateUser, deleteUser, updateUserPassword, unlockUserById,
-  exportUsers, getUserImportTemplate, importUsersFromFormData, getUserBeforeAudit,
+  exportUsers, getUserImportTemplate, importUsersFromFormData, getUserBeforeAudit, getUsersBeforeAudit,
 } from '../services/users.service';
 
 const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -95,6 +95,8 @@ const batchDeleteUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getUsersBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     const count = await batchDeleteUsers(ids);
     return c.json(okBody(null, `已删除 ${count} 个用户`), 200);
   },
@@ -114,6 +116,8 @@ const batchStatusUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids, status } = c.req.valid('json');
+    const before = await getUsersBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     await batchUpdateUserStatus(ids, status);
     return c.json(okBody(null, '状态已更新'), 200);
   },
@@ -179,6 +183,8 @@ const updateUserPasswordRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { password } = c.req.valid('json');
+    const before = await getUserBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await updateUserPassword(id, password);
     return c.json(okBody(null, '密码修改成功'), 200);
   },
@@ -198,6 +204,8 @@ const unlockUserRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getUserBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await unlockUserById(id);
     return c.json(okBody(null, '解锁成功'), 200);
   },

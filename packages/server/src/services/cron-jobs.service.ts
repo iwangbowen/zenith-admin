@@ -68,6 +68,12 @@ export async function deleteCronJob(id: number) {
   if (!row) throw new AppError('任务不存在', 404);
 }
 
+export async function getCronJobBeforeAudit(id: number) {
+  const [row] = await db.select().from(cronJobs).where(eq(cronJobs.id, id)).limit(1);
+  if (!row) return null;
+  return mapCronJob(row);
+}
+
 export async function runCronJob(id: number) {
   const result = await runJobOnce(id);
   if (!result.success) throw new AppError(result.message, 500);

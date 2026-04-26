@@ -1,10 +1,10 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO } from '../lib/openapi-dtos';
 import {
-  readFileContent, listManagedFiles, uploadManagedFileFromBody, deleteManagedFile, exportManagedFiles,
+  readFileContent, listManagedFiles, uploadManagedFileFromBody, deleteManagedFile, exportManagedFiles, getManagedFileBeforeAudit,
 } from '../services/files.service';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -83,7 +83,10 @@ const deleteRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    await deleteManagedFile(c.req.valid('param').id);
+    const { id } = c.req.valid('param');
+    const before = await getManagedFileBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    await deleteManagedFile(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });

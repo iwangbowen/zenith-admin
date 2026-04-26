@@ -116,3 +116,9 @@ export async function deleteRegion(id: number) {
   if (children.length > 0) throw new AppError('该地区下存在子地区，请先删除子地区', 400);
   await db.delete(regions).where(eq(regions.id, id));
 }
+
+export async function getRegionBeforeAudit(id: number) {
+  const [row] = await db.select().from(regions).where(eq(regions.id, id)).limit(1);
+  if (!row) return null;
+  return mapRegion(row);
+}

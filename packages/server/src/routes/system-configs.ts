@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { getPasswordPolicy } from '../lib/password-policy';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { SystemConfigDTO, PublicConfigDTO, PasswordPolicyDTO } from '../lib/openapi-dtos';
@@ -11,6 +11,7 @@ import {
   updateSystemConfig,
   deleteSystemConfig,
   exportSystemConfigs,
+  getSystemConfigBeforeAudit,
 } from '../services/system-configs.service';
 
 const systemConfigsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -73,6 +74,8 @@ const updateConfigRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getSystemConfigBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateSystemConfig(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -87,6 +90,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getSystemConfigBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteSystemConfig(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

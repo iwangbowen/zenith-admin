@@ -1,12 +1,12 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceSchema } from '@zenith/shared';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, IdParam, okBody } from '../lib/openapi-schemas';
 import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO } from '../lib/openapi-dtos';
 import {
   listMyInstances, listPendingMine, listAllInstances, getInstanceDetail,
-  createInstance, withdrawInstance, approveTask, rejectTask,
+  createInstance, withdrawInstance, approveTask, rejectTask, getWorkflowInstanceBeforeAudit, getWorkflowTaskBeforeAudit,
 } from '../services/workflow-instances.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -94,7 +94,10 @@ const withdrawRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await withdrawInstance(c.req.valid('param').id);
+    const { id } = c.req.valid('param');
+    const before = await getWorkflowInstanceBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    const r = await withdrawInstance(id);
     return c.json(okBody(r, '已撤回'), 200);
   },
 });
@@ -119,6 +122,8 @@ const approveRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { comment } = c.req.valid('json');
+    const before = await getWorkflowTaskBeforeAudit(taskId);
+    if (before) setAuditBeforeData(c, before);
     const result = await approveTask(taskId, comment);
     return c.json(okBody(result.instance, result.message), 200);
   },
@@ -144,6 +149,8 @@ const rejectRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { comment } = c.req.valid('json');
+    const before = await getWorkflowTaskBeforeAudit(taskId);
+    if (before) setAuditBeforeData(c, before);
     const r = await rejectTask(taskId, comment);
     return c.json(okBody(r, '已驳回'), 200);
   },

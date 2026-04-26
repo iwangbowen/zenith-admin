@@ -195,6 +195,25 @@ export async function getInstanceDetail(id: number) {
   });
 }
 
+export async function getWorkflowInstanceBeforeAudit(id: number) {
+  try {
+    return await getInstanceDetail(id);
+  } catch {
+    return null;
+  }
+}
+
+export async function getWorkflowTaskBeforeAudit(taskId: number) {
+  const user = currentUser();
+  const [task] = await db
+    .select({ instanceId: workflowTasks.instanceId })
+    .from(workflowTasks)
+    .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId)))
+    .limit(1);
+  if (!task) return null;
+  return getWorkflowInstanceBeforeAudit(task.instanceId);
+}
+
 export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null }) {
   const user = currentUser();
   const [def] = await db.select().from(workflowDefinitions).where(and(eq(workflowDefinitions.id, data.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);

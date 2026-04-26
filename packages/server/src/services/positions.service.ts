@@ -136,6 +136,21 @@ export async function batchDeletePositions(ids: number[]): Promise<{ count: numb
   return { count: validIds.length };
 }
 
+export async function getPositionsBeforeAudit(ids: number[]) {
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) return [];
+  const tc = tenantCondition(positions, currentUser());
+  const rows = await db.select().from(positions).where(and(inArray(positions.id, validIds), tc)).orderBy(asc(positions.sort), asc(positions.id));
+  return rows.map(mapPosition);
+}
+
+export async function getPositionBeforeAudit(id: number) {
+  const tc = tenantCondition(positions, currentUser());
+  const [row] = await db.select().from(positions).where(and(eq(positions.id, id), tc)).limit(1);
+  if (!row) return null;
+  return mapPosition(row);
+}
+
 export async function exportPositions(): Promise<{ buffer: ArrayBuffer; filename: string }> {
   const rows = await db
     .select()

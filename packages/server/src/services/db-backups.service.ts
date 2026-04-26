@@ -69,3 +69,19 @@ export async function deleteDbBackup(id: number) {
   const result = await db.delete(dbBackups).where(eq(dbBackups.id, id)).returning();
   if (result.length === 0) throw new AppError('备份记录不存在', 404);
 }
+
+export async function getDbBackupBeforeAudit(id: number) {
+  const row = await db.query.dbBackups.findFirst({
+    where: eq(dbBackups.id, id),
+    with: { createdByUser: { columns: { nickname: true } } },
+  });
+  if (!row) return null;
+  const { createdByUser, startedAt, completedAt, createdAt, ...rest } = row;
+  return {
+    ...rest,
+    createdByName: createdByUser?.nickname ?? null,
+    startedAt: formatNullableDateTime(startedAt),
+    completedAt: formatNullableDateTime(completedAt),
+    createdAt: formatDateTime(createdAt),
+  };
+}

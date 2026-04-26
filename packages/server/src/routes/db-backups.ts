@@ -1,10 +1,10 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { DbBackupItemDTO } from '../lib/openapi-dtos';
 import { createBackupSchema } from '@zenith/shared';
-import { listDbBackups, createDbBackup, deleteDbBackup } from '../services/db-backups.service';
+import { listDbBackups, createDbBackup, deleteDbBackup, getDbBackupBeforeAudit } from '../services/db-backups.service';
 
 const backups = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -47,6 +47,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getDbBackupBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteDbBackup(id);
     return c.json(okBody(null, '已删除'), 200);
   },

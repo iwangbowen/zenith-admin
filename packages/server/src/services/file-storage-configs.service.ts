@@ -164,3 +164,9 @@ export async function deleteFileStorageConfig(id: number) {
   if (valueCount > 0) throw new AppError('该文件配置下已有文件记录，不能删除', 400);
   await db.delete(fileStorageConfigs).where(eq(fileStorageConfigs.id, id));
 }
+
+export async function getFileStorageConfigBeforeAudit(id: number) {
+  const [row] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
+  if (!row) return null;
+  return mapFileStorageConfig(row);
+}

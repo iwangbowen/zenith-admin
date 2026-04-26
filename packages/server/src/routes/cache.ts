@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { validationHook, okBody } from '../lib/openapi-schemas';
 import { CacheItemDTO } from '../lib/openapi-dtos';
-import { listCache, deleteCacheKey, deleteCacheByCategory, deleteAllCache } from '../services/cache.service';
+import { listCache, deleteCacheKey, deleteCacheByCategory, deleteAllCache, getCacheBeforeAudit, getCachesByCategoryBeforeAudit, getAllCachesBeforeAudit } from '../services/cache.service';
 
 const cacheRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -36,7 +36,10 @@ const deleteOneRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    await deleteCacheKey(c.req.valid('json').key);
+    const { key } = c.req.valid('json');
+    const before = await getCacheBeforeAudit(key);
+    if (before) setAuditBeforeData(c, before);
+    await deleteCacheKey(key);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
@@ -53,7 +56,10 @@ const deleteByCategoryRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const count = await deleteCacheByCategory(c.req.valid('json').segment);
+    const { segment } = c.req.valid('json');
+    const before = await getCachesByCategoryBeforeAudit(segment);
+    if (before.total > 0) setAuditBeforeData(c, before);
+    const count = await deleteCacheByCategory(segment);
     return c.json(okBody({ count }, `已删除 ${count} 条缓存`), 200);
   },
 });
@@ -66,6 +72,8 @@ const deleteAllRoute = defineOpenAPIRoute({
     responses: { 200: { content: { 'application/json': { schema: CountResponse } }, description: '清空成功' } },
   }),
   handler: async (c) => {
+    const before = await getAllCachesBeforeAudit();
+    if (before.total > 0) setAuditBeforeData(c, before);
     const count = await deleteAllCache();
     return c.json(okBody({ count }, `已清空 ${count} 条缓存`), 200);
   },

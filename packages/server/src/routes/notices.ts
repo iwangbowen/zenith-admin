@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { noticeRecipientSchema } from '@zenith/shared';
 import {
   ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses,
@@ -10,7 +10,7 @@ import { NoticeDTO, NoticeReadStatsDTO } from '../lib/openapi-dtos';
 import {
   listPublishedForUser, markNoticeRead, markAllNoticesRead, getInbox, listNotices,
   exportNotices, batchDeleteNotices, getNoticeReadStats, getNoticeDetail,
-  createNotice, updateNotice, deleteNotice,
+  createNotice, updateNotice, deleteNotice, getNoticeBeforeAudit, getNoticesBeforeAudit,
 } from '../services/notices.service';
 
 const noticesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -119,6 +119,8 @@ const batchDeleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getNoticesBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     const count = await batchDeleteNotices(ids);
     return c.json(okBody(null, `已删除 ${count} 条通知`), 200);
   },
@@ -185,6 +187,8 @@ const updateRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getNoticeBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateNotice(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -203,6 +207,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getNoticeBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteNotice(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

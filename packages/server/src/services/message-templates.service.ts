@@ -71,6 +71,12 @@ export async function deleteMessageTemplate(id: number) {
   if (!row) throw new AppError('模板不存在', 404);
 }
 
+export async function getMessageTemplateBeforeAudit(id: number) {
+  const [row] = await db.select().from(messageTemplates).where(eq(messageTemplates.id, id)).limit(1);
+  if (!row) return null;
+  return mapMessageTemplate(row);
+}
+
 export async function previewMessageTemplate(id: number, vars: Record<string, string>) {
   const [row] = await db.select().from(messageTemplates).where(eq(messageTemplates.id, id)).limit(1);
   if (!row) throw new AppError('模板不存在', 404);

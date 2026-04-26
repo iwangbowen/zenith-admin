@@ -11,7 +11,7 @@ import { formatDateTime } from '../lib/datetime';
 
 type ConfigType = 'string' | 'number' | 'boolean' | 'json';
 
-function mapConfig(row: typeof systemConfigs.$inferSelect) {
+export function mapConfig(row: typeof systemConfigs.$inferSelect) {
   return { ...row, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
 }
 
@@ -95,6 +95,14 @@ export async function deleteSystemConfig(id: number) {
     .where(tc ? and(eq(systemConfigs.id, id), tc) : eq(systemConfigs.id, id))
     .returning();
   if (!row) throw new AppError('配置不存在', 404);
+}
+
+export async function getSystemConfigBeforeAudit(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(systemConfigs, user);
+  const [row] = await db.select().from(systemConfigs).where(tc ? and(eq(systemConfigs.id, id), tc) : eq(systemConfigs.id, id)).limit(1);
+  if (!row) return null;
+  return mapConfig(row);
 }
 
 export async function exportSystemConfigs(): Promise<{ buffer: ArrayBuffer; filename: string }> {

@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { validateCronExpression, getRegisteredHandlers } from '../lib/cron-scheduler';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
@@ -15,6 +15,7 @@ import {
   exportCronJobs,
   listAllCronJobLogs,
   listCronJobLogs,
+  getCronJobBeforeAudit,
 } from '../services/cron-jobs.service';
 
 const cronJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -75,6 +76,8 @@ const updateRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getCronJobBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateCronJob(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -89,6 +92,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getCronJobBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteCronJob(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
@@ -120,6 +125,8 @@ const statusRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { status } = c.req.valid('json');
+    const before = await getCronJobBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     const msg = await setCronJobStatus(id, status);
     return c.json(okBody(null, msg), 200);
   },

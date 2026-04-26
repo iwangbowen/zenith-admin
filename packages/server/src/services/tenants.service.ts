@@ -85,6 +85,12 @@ export async function deleteTenant(id: number) {
   if (!row) throw new AppError('租户不存在', 404);
 }
 
+export async function getTenantBeforeAudit(id: number) {
+  const [row] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
+  if (!row) return null;
+  return mapTenant(row);
+}
+
 export async function exportTenants(): Promise<{ buffer: ArrayBuffer; filename: string }> {
   const rows = await db.select().from(tenants).orderBy(desc(tenants.id));
   const buffer = await exportToExcel(

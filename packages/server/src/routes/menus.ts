@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { MenuDTO } from '../lib/openapi-dtos';
 import {
@@ -10,6 +10,7 @@ import {
   createMenu,
   updateMenu,
   deleteMenu,
+  getMenuBeforeAudit,
 } from '../services/menus.service';
 
 const menusRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -128,6 +129,8 @@ const updateMenuRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
+    const before = await getMenuBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     const menu = await updateMenu(id, data);
     return c.json(okBody(menu, '更新成功'), 200);
   },
@@ -149,6 +152,8 @@ const deleteMenuRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getMenuBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteMenu(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

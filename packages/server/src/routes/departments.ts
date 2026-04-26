@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { DepartmentDTO } from '../lib/openapi-dtos';
@@ -11,6 +11,7 @@ import {
   updateDepartment,
   deleteDepartment,
   exportDepartments,
+  getDepartmentBeforeAudit,
 } from '../services/departments.service';
 
 const departmentsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -91,6 +92,8 @@ const updateRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
+    const before = await getDepartmentBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     const dept = await updateDepartment(id, data);
     return c.json(okBody(dept, '更新成功'), 200);
   },
@@ -112,6 +115,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getDepartmentBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteDepartment(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

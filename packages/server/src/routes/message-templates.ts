@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { previewMessageTemplateSchema } from '@zenith/shared';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { MessageTemplateDTO, MessageTemplatePreviewDTO as PreviewResultDTO } from '../lib/openapi-dtos';
@@ -10,6 +10,7 @@ import {
   createMessageTemplate,
   updateMessageTemplate,
   deleteMessageTemplate,
+  getMessageTemplateBeforeAudit,
   previewMessageTemplate,
 } from '../services/message-templates.service';
 
@@ -79,6 +80,8 @@ const updateTemplateRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getMessageTemplateBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateMessageTemplate(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -93,6 +96,8 @@ const deleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getMessageTemplateBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteMessageTemplate(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

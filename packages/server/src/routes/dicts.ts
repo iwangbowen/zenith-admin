@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 import { DictDTO, DictItemDTO } from '../lib/openapi-dtos';
@@ -15,6 +15,8 @@ import {
   updateDictItem,
   deleteDictItem,
   exportDicts,
+  getDictBeforeAudit,
+  getDictItemBeforeAudit,
 } from '../services/dicts.service';
 
 const dictsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -58,6 +60,8 @@ const updateDictRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getDictBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateDict(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -72,6 +76,8 @@ const deleteDictRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getDictBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteDict(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
@@ -135,6 +141,8 @@ const updateItemRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { itemId } = c.req.valid('param');
+    const before = await getDictItemBeforeAudit(itemId);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateDictItem(itemId, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -154,6 +162,8 @@ const deleteItemRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { itemId } = c.req.valid('param');
+    const before = await getDictItemBeforeAudit(itemId);
+    if (before) setAuditBeforeData(c, before);
     await deleteDictItem(itemId);
     return c.json(okBody(null, '删除成功'), 200);
   },

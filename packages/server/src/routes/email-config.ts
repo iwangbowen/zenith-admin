@@ -1,10 +1,10 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, okBody } from '../lib/openapi-schemas';
 import { EmailConfigDTO } from '../lib/openapi-dtos';
 import { emailConfigSchema } from '@zenith/shared';
-import { getEmailConfig, updateEmailConfig, sendTestEmail } from '../services/email-config.service';
+import { getEmailConfig, updateEmailConfig, sendTestEmail, getEmailConfigBeforeAudit } from '../services/email-config.service';
 
 const emailConfigRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -28,7 +28,11 @@ const updateRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(emailConfigSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(EmailConfigDTO, '保存成功') },
   }),
-  handler: async (c) => c.json(okBody(await updateEmailConfig(c.req.valid('json')), '保存成功'), 200),
+  handler: async (c) => {
+    const before = await getEmailConfigBeforeAudit();
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await updateEmailConfig(c.req.valid('json')), '保存成功'), 200);
+  },
 });
 
 const testRoute = defineOpenAPIRoute({

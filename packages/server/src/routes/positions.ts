@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { PositionDTO } from '../lib/openapi-dtos';
 import {
@@ -11,6 +11,8 @@ import {
   deletePosition,
   batchDeletePositions,
   exportPositions,
+  getPositionsBeforeAudit,
+  getPositionBeforeAudit,
 } from '../services/positions.service';
 
 const positionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -75,6 +77,8 @@ const updatePositionRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getPositionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updatePosition(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -89,6 +93,8 @@ const batchDeleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getPositionsBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     const { count } = await batchDeletePositions(ids);
     return c.json(okBody(null, `已删除 ${count} 个岗位`), 200);
   },
@@ -104,6 +110,8 @@ const deleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getPositionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deletePosition(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

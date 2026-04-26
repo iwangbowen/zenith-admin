@@ -1,11 +1,11 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import type { OAuthProviderType } from '@zenith/shared';
 import { jsonContent, validationHook, commonErrorResponses, ok, okBody } from '../lib/openapi-schemas';
 import { OAuthConfigItemDTO } from '../lib/openapi-dtos';
 import { updateOauthConfigSchema } from '@zenith/shared';
-import { listOauthConfigs, updateOauthConfig } from '../services/oauth-config.service';
+import { listOauthConfigs, updateOauthConfig, getOauthConfigBeforeAudit } from '../services/oauth-config.service';
 
 const oauthConfigRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -32,6 +32,8 @@ const updateRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const provider = c.req.param('provider') as OAuthProviderType;
+    const before = await getOauthConfigBeforeAudit(provider);
+    if (before) setAuditBeforeData(c, before);
     const result = await updateOauthConfig(provider, c.req.valid('json'));
     return c.json(okBody(result, '保存成功'), 200);
   },

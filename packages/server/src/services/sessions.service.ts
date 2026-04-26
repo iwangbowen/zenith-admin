@@ -41,3 +41,19 @@ export async function forceLogoutSession(tokenId: string) {
     setTimeout(() => closeUserConnections(session.userId, '强制下线'), 500);
   }
 }
+
+export async function getSessionBeforeAudit(tokenId: string) {
+  const allSessions = await getOnlineSessions();
+  const session = allSessions.find((s) => s.tokenId === tokenId);
+  if (!session) return null;
+  return {
+    tokenId: session.tokenId,
+    userId: session.userId,
+    username: session.username,
+    nickname: session.nickname,
+    ip: session.ip,
+    browser: session.browser,
+    os: session.os,
+    loginAt: formatDateTime(session.loginAt),
+  };
+}

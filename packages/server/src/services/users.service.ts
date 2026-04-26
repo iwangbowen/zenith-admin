@@ -240,6 +240,18 @@ export async function batchUpdateUserStatus(ids: number[], status: 'enabled' | '
   await db.update(users).set({ status }).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
 }
 
+export async function getUsersBeforeAudit(ids: number[]) {
+  const user = currentUser();
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) return [];
+  const tc = tenantCondition(users, user);
+  const rawList = await findUsersWithRelations({
+    where: tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds),
+    orderBy: users.id,
+  });
+  return mapUsers(rawList);
+}
+
 export async function getUserBeforeAudit(id: number) {
   const user = currentUser();
   const tc = tenantCondition(users, user);

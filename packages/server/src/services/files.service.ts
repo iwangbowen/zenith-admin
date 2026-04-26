@@ -127,6 +127,15 @@ export async function deleteManagedFile(id: number) {
   await db.delete(managedFiles).where(where);
 }
 
+export async function getManagedFileBeforeAudit(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(managedFiles, user);
+  const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
+  const [file] = await db.select().from(managedFiles).where(where).limit(1);
+  if (!file) return null;
+  return mapManagedFile(file);
+}
+
 export async function exportManagedFiles(): Promise<{ buffer: ArrayBuffer; filename: string }> {
   const user = currentUser();
   const rows = await db

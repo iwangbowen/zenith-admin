@@ -145,3 +145,12 @@ export async function deleteDefinition(id: number) {
   if (existing.status === 'published') throw new AppError('已发布的流程不能删除，请先禁用', 400);
   await db.delete(workflowDefinitions).where(where);
 }
+
+export async function getWorkflowDefinitionBeforeAudit(id: number) {
+  const row = await db.query.workflowDefinitions.findFirst({
+    where: findDefinition(id),
+    with: { createdByUser: { columns: { nickname: true } } },
+  });
+  if (!row) return null;
+  return mapDefinition(row, row.createdByUser?.nickname ?? null);
+}

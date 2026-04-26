@@ -129,6 +129,20 @@ export async function deleteDictItem(itemId: number) {
   await db.delete(dictItems).where(eq(dictItems.id, itemId));
 }
 
+export async function getDictBeforeAudit(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(dicts, user);
+  const [row] = await db.select().from(dicts).where(and(eq(dicts.id, id), tc)).limit(1);
+  if (!row) return null;
+  return mapDict(row);
+}
+
+export async function getDictItemBeforeAudit(itemId: number) {
+  const [row] = await db.select().from(dictItems).where(eq(dictItems.id, itemId)).limit(1);
+  if (!row) return null;
+  return mapDictItem(row);
+}
+
 export async function exportDicts(): Promise<{ buffer: ArrayBuffer; filename: string }> {
   const user = currentUser();
   const rows = await db.select().from(dicts).where(tenantCondition(dicts, user)).orderBy(asc(dicts.id));

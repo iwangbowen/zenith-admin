@@ -1,11 +1,11 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { WorkflowDefinitionDTO } from '../lib/openapi-dtos';
 import {
   listDefinitions, listPublishedDefinitions, getDefinition, createDefinition,
-  updateDefinition, publishDefinition, disableDefinition, deleteDefinition,
+  updateDefinition, publishDefinition, disableDefinition, deleteDefinition, getWorkflowDefinitionBeforeAudit,
 } from '../services/workflow-definitions.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -82,7 +82,10 @@ const updateRouteDef = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await updateDefinition(c.req.valid('param').id, c.req.valid('json'));
+    const { id } = c.req.valid('param');
+    const before = await getWorkflowDefinitionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    const r = await updateDefinition(id, c.req.valid('json'));
     return c.json(okBody(r, '更新成功'), 200);
   },
 });
@@ -101,7 +104,10 @@ const publishRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await publishDefinition(c.req.valid('param').id);
+    const { id } = c.req.valid('param');
+    const before = await getWorkflowDefinitionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    const r = await publishDefinition(id);
     return c.json(okBody(r, '发布成功'), 200);
   },
 });
@@ -119,7 +125,10 @@ const disableRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const r = await disableDefinition(c.req.valid('param').id);
+    const { id } = c.req.valid('param');
+    const before = await getWorkflowDefinitionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    const r = await disableDefinition(id);
     return c.json(okBody(r, '禁用成功'), 200);
   },
 });
@@ -138,7 +147,10 @@ const deleteRouteDef = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    await deleteDefinition(c.req.valid('param').id);
+    const { id } = c.req.valid('param');
+    const before = await getWorkflowDefinitionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    await deleteDefinition(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });

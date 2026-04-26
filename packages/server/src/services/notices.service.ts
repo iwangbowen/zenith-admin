@@ -195,6 +195,14 @@ export async function batchDeleteNotices(ids: number[]) {
   return validIds.length;
 }
 
+export async function getNoticesBeforeAudit(ids: number[]) {
+  const user = currentUser();
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) return [];
+  const rows = await db.select().from(notices).where(and(inArray(notices.id, validIds), tenantCondition(notices, user))).orderBy(desc(notices.id));
+  return rows.map(mapNotice);
+}
+
 export async function getNoticeReadStats(id: number, q: { page?: number; pageSize?: number; tab?: string }) {
   const user = currentUser();
   const { page = 1, pageSize = 10, tab: rawTab } = q;
@@ -353,4 +361,11 @@ export async function deleteNotice(id: number) {
   const user = currentUser();
   const [row] = await db.delete(notices).where(and(eq(notices.id, id), tenantCondition(notices, user))).returning();
   if (!row) throw new AppError('通知不存在', 404);
+}
+
+export async function getNoticeBeforeAudit(id: number) {
+  const user = currentUser();
+  const [row] = await db.select().from(notices).where(and(eq(notices.id, id), tenantCondition(notices, user))).limit(1);
+  if (!row) return null;
+  return mapNotice(row);
 }

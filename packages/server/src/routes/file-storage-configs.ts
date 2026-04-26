@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '@zenith/shared';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { FileStorageConfigDTO } from '../lib/openapi-dtos';
@@ -11,6 +11,7 @@ import {
   updateFileStorageConfig,
   setDefaultFileStorageConfig,
   deleteFileStorageConfig,
+  getFileStorageConfigBeforeAudit,
 } from '../services/file-storage-configs.service';
 
 const fileStorageConfigsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -57,6 +58,8 @@ const updateRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getFileStorageConfigBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateFileStorageConfig(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -71,6 +74,8 @@ const setDefaultRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getFileStorageConfigBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await setDefaultFileStorageConfig(id), '默认文件服务已更新'), 200);
   },
 });
@@ -85,6 +90,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getFileStorageConfigBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteFileStorageConfig(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

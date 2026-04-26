@@ -147,3 +147,9 @@ export async function deleteMenu(id: number): Promise<void> {
     await tx.delete(menus).where(inArray(menus.id, [...toDelete]));
   });
 }
+
+export async function getMenuBeforeAudit(id: number) {
+  const [row] = await db.select().from(menus).where(eq(menus.id, id)).limit(1);
+  if (!row) return null;
+  return mapMenu(row);
+}

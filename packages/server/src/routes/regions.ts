@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { RegionDTO } from '../lib/openapi-dtos';
 import {
@@ -9,6 +9,7 @@ import {
   createRegion,
   updateRegion,
   deleteRegion,
+  getRegionBeforeAudit,
 } from '../services/regions.service';
 
 const regionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -71,6 +72,8 @@ const updateRegionRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getRegionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateRegion(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -85,6 +88,8 @@ const deleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getRegionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteRegion(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

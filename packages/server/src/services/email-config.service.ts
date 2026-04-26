@@ -2,6 +2,16 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { emailConfigs } from '../db/schema';
 import { AppError } from '../lib/errors';
+import { formatNullableDateTime } from '../lib/datetime';
+
+export function mapEmailConfig(row: typeof emailConfigs.$inferSelect) {
+  const { smtpPassword: _masked, ...safeConfig } = row;
+  return {
+    ...safeConfig,
+    createdAt: formatNullableDateTime(row.createdAt),
+    updatedAt: formatNullableDateTime(row.updatedAt),
+  };
+}
 
 export async function getEmailConfig() {
   let [config] = await db.select().from(emailConfigs).limit(1);
@@ -9,18 +19,23 @@ export async function getEmailConfig() {
     const [created] = await db.insert(emailConfigs).values({}).returning();
     config = created;
   }
-  const { smtpPassword: _masked, ...safeConfig } = config;
-  return safeConfig;
+  return mapEmailConfig(config);
 }
 
 export async function updateEmailConfig(data: Partial<typeof emailConfigs.$inferInsert>) {
   const [config] = await db.select().from(emailConfigs).limit(1);
   if (!config) {
     const [created] = await db.insert(emailConfigs).values({ ...data }).returning();
-    return created;
+    return mapEmailConfig(created);
   }
   const [updated] = await db.update(emailConfigs).set({ ...data }).where(eq(emailConfigs.id, config.id)).returning();
-  return updated;
+  return mapEmailConfig(updated);
+}
+
+export async function getEmailConfigBeforeAudit() {
+  const [config] = await db.select().from(emailConfigs).limit(1);
+  if (!config) return null;
+  return mapEmailConfig(config);
 }
 
 export async function sendTestEmail(toEmail: string) {

@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { RoleDTO, UserDTO } from '../lib/openapi-dtos';
@@ -15,6 +15,7 @@ import {
   getRoleUsers,
   assignRoleUsers,
   exportRoles,
+  getRoleBeforeAudit,
 } from '../services/roles.service';
 
 const rolesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -83,6 +84,8 @@ const updateRoleRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getRoleBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateRole(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -97,6 +100,8 @@ const deleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getRoleBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteRole(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
@@ -113,6 +118,8 @@ const assignMenusRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
+    const before = await getRoleBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await assignRoleMenus(id, data.menuIds);
     return c.json(okBody(null, '菜单权限已更新'), 200);
   },
@@ -143,6 +150,8 @@ const assignUsersRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
+    const before = await getRoleBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await assignRoleUsers(id, data.userIds);
     return c.json(okBody(null, '用户分配已更新'), 200);
   },

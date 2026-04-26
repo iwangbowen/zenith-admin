@@ -148,6 +148,13 @@ export async function deleteDepartment(id: number): Promise<void> {
   await db.delete(departments).where(and(eq(departments.id, id), tc));
 }
 
+export async function getDepartmentBeforeAudit(id: number) {
+  const tc = tenantCondition(departments, currentUser());
+  const [row] = await db.select().from(departments).where(and(eq(departments.id, id), tc)).limit(1);
+  if (!row) return null;
+  return mapDepartment(row);
+}
+
 export async function exportDepartments(): Promise<{ buffer: ArrayBuffer; filename: string }> {
   const tc = tenantCondition(departments, currentUser());
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort));

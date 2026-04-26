@@ -160,3 +160,19 @@ export async function exportRoles(): Promise<{ buffer: ArrayBuffer; filename: st
   );
   return { buffer, filename: 'roles.xlsx' };
 }
+
+export async function getRoleBeforeAudit(id: number) {
+  const user = currentUser();
+  const role = await db.query.roles.findFirst({
+    where: and(eq(roles.id, id), tenantCondition(roles, user)),
+    with: {
+      roleMenus: { columns: { menuId: true } },
+      userRoles: { columns: { userId: true } },
+    },
+  });
+  if (!role) return null;
+  return {
+    ...mapRole(role, role.roleMenus.map(({ menuId }) => menuId)),
+    userIds: role.userRoles.map(({ userId }) => userId),
+  };
+}
