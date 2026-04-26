@@ -78,7 +78,7 @@
 #### 可观测性支持（OpenTelemetry + Prometheus）
 
 - 集成 OpenTelemetry SDK，支持分布式追踪（通过环境变量 `OTEL_*` 配置）
-- 集成 Prometheus 指标暴露，新增 `/api/metrics` 端点
+- 集成 Prometheus 指标暴露，新增 `/metrics` 端点
 - 更新 API 文档，补充健康检查与指标端点说明
 
 ### Changed

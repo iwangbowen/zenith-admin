@@ -153,8 +153,8 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
-    # WebSocket 支持
-    location /ws {
+    # WebSocket 支持（路径必须为 /api/ws，与服务端路由一致）
+    location /api/ws {
         proxy_pass http://localhost:3300;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;

@@ -39,7 +39,7 @@
 | 模块 | 说明 |
 | --- | --- |
 | 文件管理 | 文件上传与列表查看 |
-| 存储配置 | 本地存储与阿里云 OSS 配置切换，`is_default` 字段控制默认存储 |
+| 存储配置 | 本地存储、阿里云 OSS、S3 兼容对象存储（AWS S3/MinIO/R2）、腾讯云 COS 四种模式，`is_default` 字段控制默认存储 |
 
 ### 任务调度
 
@@ -128,6 +128,8 @@
 
 - `local`：本地文件系统（默认）
 - `oss`：阿里云 OSS
+- `s3`：S3 兼容对象存储（AWS S3 / MinIO / Cloudflare R2 等）
+- `cos`：腾讯云 COS
 
 通过 `file_storage_configs` 表中的 `is_default` 字段切换默认存储。
 
