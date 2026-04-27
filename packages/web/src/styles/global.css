@@ -10,9 +10,12 @@
   /* 侧边栏 — 浅色模式使用白色 */
   --color-sidebar-bg: #ffffff;
   --color-sidebar-hover: rgba(0, 0, 0, 0.04);
-  --color-sidebar-active: rgba(51, 112, 255, 0.1);
   --color-sidebar-text: #646a73;
   --color-sidebar-title: #1f2329;
+  /* 以下三个变量为首屏渲染 fallback（默认蓝色主题）。
+     React 挂载后由 applyThemeColor() 以内联样式覆盖，
+     修改主题色预设时请同步修改 theme-color.ts，这里无需改动。 */
+  --color-sidebar-active: rgba(51, 112, 255, 0.1);
   --color-sidebar-text-active: #3370ff;
   --color-primary: #3370ff;
   --color-text: #1f2329;
@@ -23,7 +26,10 @@
   --tabsbar-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
-/* 深色模式变量 */
+/* 深色模式变量
+   注意：--color-primary / --color-sidebar-active / --color-sidebar-text-active
+   不在此块中覆盖 —— 这三个变量的暗色值由 applyThemeColor() 根据当前主题色动态注入，
+   每种颜色预设的暗色值各不相同，不能在 CSS 中静态硬编码。*/
 [data-theme='dark'] {
   --color-bg: #0d0f14;
   --color-surface: #1a1d24;
@@ -31,10 +37,8 @@
   --color-layout-bg: var(--color-sidebar-bg);
   --color-layout-hover: rgba(255, 255, 255, 0.08);
   --color-sidebar-hover: rgba(255, 255, 255, 0.08);
-  --color-sidebar-active: rgba(51, 112, 255, 0.25);
   --color-sidebar-text: rgba(255, 255, 255, 0.65);
   --color-sidebar-title: #ffffff;
-  --color-sidebar-text-active: #ffffff;
   --color-text: #e8eaed;
   --color-text-secondary: #8f96a3;
   --color-border: #2e3340;
