@@ -11,6 +11,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { timeout } from 'hono/timeout';
 import { except } from 'hono/combine';
 import { HTTPException } from 'hono/http-exception';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { contextStorage } from 'hono/context-storage';
 import { csrf } from 'hono/csrf';
 import { serve } from '@hono/node-server';
@@ -217,7 +218,9 @@ app.notFound((c) => c.json(errBody('接口不存在', 404), 404));
 // 全局未捕获异常处理—统一返回标准错误格式
 app.onError((err, c) => {
   if (err instanceof AppError) {
-    const status = err.statusCode as 400 | 401 | 403 | 404 | 409 | 413 | 422 | 423 | 429 | 500;
+    const status = (err.statusCode >= 400 && err.statusCode < 600
+      ? err.statusCode
+      : 500) as ContentfulStatusCode;
     return c.json(errBody(err.message, status), status);
   }
   if (err instanceof HTTPException) {
