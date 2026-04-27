@@ -37,12 +37,8 @@ function loadPreferences(): UserPreferences {
     const raw = localStorage.getItem(PREFERENCES_KEY);
     if (raw) {
       const loaded: UserPreferences = { ...defaultPreferences, ...JSON.parse(raw) };
-      // 初始化时立即应用主题色（正确处理 system 跟随系统模式）
-      const isDark =
-        loaded.colorMode === 'dark' ||
-        (loaded.colorMode === 'system' &&
-          globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches === true);
-      applyThemeColor(loaded.themeColor, isDark);
+      // 初始化时立即应用主题色
+      applyThemeColor(loaded.themeColor, loaded.colorMode === 'dark');
       return loaded;
     }
   } catch { /* ignore */ }
