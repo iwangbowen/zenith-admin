@@ -9,6 +9,11 @@ type ThemePrefs = {
   themeColor: ThemeColor;
 };
 
+const THEME_DEFAULTS: ThemePrefs = {
+  colorMode: 'light',
+  themeColor: 'blue',
+};
+
 interface ThemeControllerValue {
   mode: ThemeMode;
   themeColor: ThemeColor;
@@ -27,16 +32,16 @@ function loadThemePrefs(): ThemePrefs {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<ThemePrefs>;
       return {
-        colorMode: parsed.colorMode ?? defaultPreferences.colorMode,
-        themeColor: parsed.themeColor ?? defaultPreferences.themeColor,
+        colorMode: parsed.colorMode ?? THEME_DEFAULTS.colorMode,
+        themeColor: parsed.themeColor ?? THEME_DEFAULTS.themeColor,
       };
     }
   } catch {
     // ignore
   }
   return {
-    colorMode: defaultPreferences.colorMode,
-    themeColor: defaultPreferences.themeColor,
+    colorMode: THEME_DEFAULTS.colorMode,
+    themeColor: THEME_DEFAULTS.themeColor,
   };
 }
 
@@ -52,7 +57,7 @@ function persistThemePrefs(partial: Partial<ThemePrefs>) {
 
 export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   const initial = useMemo(() => loadThemePrefs(), []);
-  const [themeColor, setThemeColorState] = useState<ThemeColor>(initial.themeColor);
+  const [themeColor, setThemeColor] = useState<ThemeColor>(initial.themeColor);
   const { mode, setThemeMode: setThemeModeInternal } = useTheme(initial.colorMode);
 
   const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
@@ -66,8 +71,8 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
     persistThemePrefs({ colorMode: nextMode });
   }, [setThemeModeInternal]);
 
-  const setThemeColor = useCallback((nextColor: ThemeColor) => {
-    setThemeColorState(nextColor);
+  const updateThemeColor = useCallback((nextColor: ThemeColor) => {
+    setThemeColor(nextColor);
     persistThemePrefs({ themeColor: nextColor });
   }, []);
 
@@ -78,10 +83,10 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [mode, setThemeMode]);
 
   const resetTheme = useCallback(() => {
-    const defaultMode = defaultPreferences.colorMode;
-    const defaultColor = defaultPreferences.themeColor;
+    const defaultMode = THEME_DEFAULTS.colorMode;
+    const defaultColor = THEME_DEFAULTS.themeColor;
     setThemeModeInternal(defaultMode);
-    setThemeColorState(defaultColor);
+    setThemeColor(defaultColor);
     persistThemePrefs({ colorMode: defaultMode, themeColor: defaultColor });
   }, [setThemeModeInternal]);
 
@@ -90,10 +95,10 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
     themeColor,
     isDark,
     setThemeMode,
-    setThemeColor,
+    setThemeColor: updateThemeColor,
     cycleTheme,
     resetTheme,
-  }), [mode, themeColor, isDark, setThemeMode, setThemeColor, cycleTheme, resetTheme]);
+  }), [mode, themeColor, isDark, setThemeMode, updateThemeColor, cycleTheme, resetTheme]);
 
   return (
     <ThemeControllerContext.Provider value={value}>
