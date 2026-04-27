@@ -1,111 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Avatar,
   Button,
   Descriptions,
   Form,
   Modal,
   Space,
   Table,
-  Tag,
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { CheckCircle2, Clock, Mail, RotateCcw, XCircle } from 'lucide-react';
-import type { WorkflowInstance, WorkflowTask, PaginatedResponse } from '@zenith/shared';
+import { RotateCcw } from 'lucide-react';
+import type { WorkflowInstance, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
-
-type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
-
-const TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
-  pending: { text: '待审批', color: 'blue' },
-  approved: { text: '已通过', color: 'green' },
-  rejected: { text: '已驳回', color: 'red' },
-  skipped: { text: '已跳过', color: 'grey' },
-};
-
-/** 飞书风格审批时间线（复用） */
-function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTask[] }>) {
-  return (
-    <div style={{ paddingLeft: 4 }}>
-      {tasks.map((task, idx) => {
-        const isLast = idx === tasks.length - 1;
-        const isApproved = task.status === 'approved';
-        const isRejected = task.status === 'rejected';
-        const isSkipped = task.status === 'skipped';
-        const isCc = task.nodeType === 'ccNode';
-
-        let iconColor = 'var(--semi-color-primary)';
-        if (isApproved) iconColor = '#0dc87c';
-        else if (isRejected) iconColor = '#ff4d4f';
-        else if (isSkipped) iconColor = '#c0c0c0';
-
-        let StatusIcon = Clock;
-        if (isApproved) StatusIcon = CheckCircle2;
-        else if (isRejected) StatusIcon = XCircle;
-        else if (isCc) StatusIcon = Mail;
-
-        let actionText = '';
-        if (isApproved && !isCc) actionText = '已同意';
-        else if (isRejected) actionText = '已驳回';
-        else if (isSkipped) actionText = '已跳过';
-        else if (isCc && isApproved) actionText = '已抄送';
-        else actionText = '待处理';
-
-        return (
-          <div key={task.id} style={{ display: 'flex', gap: 12, position: 'relative' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-              <div style={{
-                width: 28, height: 28, borderRadius: '50%',
-                backgroundColor: isSkipped ? '#f0f0f0' : `${iconColor}18`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <StatusIcon size={15} color={iconColor} />
-              </div>
-              {!isLast && (
-                <div style={{ width: 2, flex: 1, minHeight: 20, backgroundColor: 'var(--semi-color-border)', margin: '4px 0' }} />
-              )}
-            </div>
-            <div style={{ flex: 1, paddingBottom: isLast ? 0 : 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <Typography.Text strong style={{ fontSize: 13 }}>{task.nodeName}</Typography.Text>
-                <Tag color={TASK_STATUS_MAP[task.status]?.color ?? 'grey'} size="small" style={{ flexShrink: 0 }}>
-                  {actionText}
-                </Tag>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: task.comment ? 6 : 0 }}>
-                <Avatar size="extra-extra-small"
-                  style={{ backgroundColor: isSkipped ? '#c0c0c0' : 'var(--semi-color-primary-light-active)', flexShrink: 0 }}
-                  src={task.assigneeAvatar ?? undefined}>
-                  {(task.assigneeName ?? '?').charAt(0)}
-                </Avatar>
-                <Typography.Text size="small" type="tertiary">{task.assigneeName ?? '未指定'}</Typography.Text>
-                {task.actionAt && (
-                  <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto' }}>
-                    {formatDateTime(task.actionAt)}
-                  </Typography.Text>
-                )}
-              </div>
-              {task.comment && (
-                <div style={{
-                  marginTop: 6, padding: '8px 10px',
-                  backgroundColor: 'var(--semi-color-fill-0)',
-                  borderRadius: 6, borderLeft: `3px solid ${iconColor}`,
-                }}>
-                  <Typography.Text size="small" type="secondary">{task.comment}</Typography.Text>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+import ApprovalTimeline from '@/components/ApprovalTimeline';
 
 type PendingItem = WorkflowInstance & { pendingTaskId: number };
 
