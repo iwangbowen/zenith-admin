@@ -734,7 +734,7 @@
   right: 2px !important;
 }
 
-[data-theme='dark'] .admin-notify-badge .semi-badge-dot {
+body[theme-mode='dark'] .admin-notify-badge .semi-badge-dot {
   box-shadow: 0 0 0 1.5px var(--color-sidebar-bg) !important;
 }
 

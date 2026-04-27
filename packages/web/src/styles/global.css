@@ -7,7 +7,6 @@
   --color-surface: #ffffff;
   --color-layout-bg: var(--color-surface);
   --color-layout-hover: var(--color-bg);
-  /* 侧边栏 — 浅色模式使用白色 */
   --color-sidebar-bg: #ffffff;
   --color-sidebar-hover: rgba(0, 0, 0, 0.04);
   --color-sidebar-active: rgba(51, 112, 255, 0.1);
@@ -23,8 +22,8 @@
   --tabsbar-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
-/* 深色模式变量 */
-[data-theme='dark'] {
+/* 深色模式变量（Semi 官方入口：body[theme-mode='dark']） */
+body[theme-mode='dark'] {
   --color-bg: #0d0f14;
   --color-surface: #1a1d24;
   --color-sidebar-bg: #232429;

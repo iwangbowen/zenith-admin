@@ -154,7 +154,7 @@
   min-width: 0;
 }
 
-[data-theme='dark'] .login-right {
+body[theme-mode='dark'] .login-right {
   background: #181c2a;
 }
 
@@ -172,13 +172,12 @@
   margin-bottom: 8px;
 }
 
-[data-theme='dark'] .login-form-wrapper .login-brand-name,
-[data-theme='dark'] .login-form-wrapper .semi-typography,
-[data-theme='dark'] .login-form-wrapper .semi-tabs-tab {
+body[theme-mode='dark'] .login-form-wrapper .login-brand-name,
+body[theme-mode='dark'] .login-form-wrapper .semi-typography {
   color: #f4f6fb;
 }
 
-[data-theme='dark'] .login-form-wrapper .semi-typography-tertiary {
+body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
   color: rgba(244, 246, 251, 0.65);
 }
 
@@ -201,8 +200,8 @@
     background: #ffffff;
   }
 
-  [data-theme='dark'] .login-page,
-  [data-theme='dark'] .login-right {
+  body[theme-mode='dark'] .login-page,
+  body[theme-mode='dark'] .login-right {
     background: #181c2a;
   }
 
@@ -254,6 +253,10 @@
 
 .login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
   font-size: 15px;
+}
+
+body[theme-mode='dark'] .login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
+  color: #f4f6fb;
 }
 
 .login-form-wrapper .semi-button.semi-button-primary {

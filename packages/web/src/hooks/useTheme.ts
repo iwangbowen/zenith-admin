@@ -10,12 +10,13 @@ function getSystemDark(): boolean {
 
 function applyTheme(mode: ThemeMode) {
   const isDark = mode === 'dark' || (mode === 'system' && getSystemDark());
-  document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
   // Semi Design dark mode: body[theme-mode="dark"]
   if (isDark) {
     document.body.setAttribute('theme-mode', 'dark');
+    document.body.style.colorScheme = 'dark';
   } else {
     document.body.removeAttribute('theme-mode');
+    document.body.style.colorScheme = 'light';
   }
 }
 
