@@ -310,7 +310,7 @@ const row = await db.query.xxxs.findFirst({
 });
 // 使用：row?.createdByUser?.nickname
 
-// ✅ 推荐：分页列表 + 关联
+// ✅ 推荐：分页列表 + 关联（RQB 使用 pageOffset）
 const rows = await db.query.xxxs.findMany({
   where,
   with: { parent: { columns: { name: true } } },
@@ -318,6 +318,12 @@ const rows = await db.query.xxxs.findMany({
   limit: pageSize,
   offset: pageOffset(page, pageSize),
 });
+
+// ✅ 推荐：SQL-builder 分页使用 withPagination + .$dynamic()
+const rows = await withPagination(
+  db.select().from(xxxs).where(where).orderBy(desc(xxxs.id)).$dynamic(),
+  page, pageSize,
+);
 
 // ❌ 避免：手写 LEFT JOIN（仅在跨表 WHERE 过滤或聚合计数时才需要）
 db.select({ xxx: xxxs, parentName: parents.name })

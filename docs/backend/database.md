@@ -237,16 +237,13 @@ await db.transaction(async (tx) => {
 所有分页列表接口中，`total` 统计和 `list` 数据查询是两个**完全独立**的数据库操作，必须用 `Promise.all` 并行执行，**不允许串行**：
 
 ```ts
-// ✅ 正确：并行执行
+// ✅ 正确：并行执行，SQL-builder 分页使用 withPagination
 const [total, rows] = await Promise.all([
   db.$count(xxxs, where),
-  db
-    .select()
-    .from(xxxs)
-    .where(where)
-    .limit(pageSize)
-    .offset(pageOffset(page, pageSize))
-    .orderBy(xxxs.id),
+  withPagination(
+    db.select().from(xxxs).where(where).orderBy(xxxs.id).$dynamic(),
+    page, pageSize,
+  ),
 ]);
 
 // ❌ 禁止：串行（会白白等待 count 完成后才开始 list 查询）
@@ -274,17 +271,29 @@ LOG_LEVEL=debug
 
 开启后，每条 SQL 及其参数会以 `debug` 级别写入控制台和日志文件，方便开发调试。生产环境将 `LOG_LEVEL` 保持默认 `info` 即可，不会有任何额外开销。
 
-### 分页偏移量 pageOffset
+### 分页：`withPagination`（SQL-builder）与 `pageOffset`（RQB）
 
-分页偏移量统一使用 `pageOffset(page, pageSize)` 工具函数（来自 `src/lib/pagination.ts`），**禁止手写 `(page - 1) * pageSize`**：
+根据查询风格选择对应的分页工具：
+
+| 查询风格 | 分页方式 | 来源 |
+| -------- | -------- | ---- |
+| SQL-builder（`db.select().from()`） | `withPagination(query.$dynamic(), page, pageSize)` | `lib/where-helpers` |
+| RQB（`db.query.xxx.findMany`） | `offset: pageOffset(page, pageSize)` | `lib/pagination` |
 
 ```ts
+import { withPagination } from '../lib/where-helpers';
 import { pageOffset } from '../lib/pagination';
 
-// ✅ 推荐
-db.select().from(xxxs).offset(pageOffset(page, pageSize));
+// ✅ SQL-builder：使用 withPagination + .$dynamic()
+withPagination(
+  db.select().from(xxxs).where(where).orderBy(xxxs.id).$dynamic(),
+  page, pageSize,
+);
 
-// ❌ 禁止
+// ✅ RQB：使用 pageOffset
+db.query.xxxs.findMany({ where, orderBy: xxxs.id, limit: pageSize, offset: pageOffset(page, pageSize) });
+
+// ❌ 禁止：手写 (page - 1) * pageSize
 db.select().from(xxxs).offset((page - 1) * pageSize);
 ```
 
