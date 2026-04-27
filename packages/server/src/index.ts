@@ -86,7 +86,12 @@ app.use('*', secureHeaders({
   crossOriginOpenerPolicy: false,             // 纯 API 服务，不适用
   xFrameOptions: false,                       // API 无 UI，不需要
 }));
-app.use('*', compress());
+// 流式/二进制路由排除压缩：SSE 实时推送 + 文件下载不能被缓冲压缩
+const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/log-files'];
+app.use('*', except(
+  (c) => COMPRESS_EXCLUDE_PREFIXES.some((p) => c.req.path.startsWith(p)),
+  compress(),
+));
 app.use('*', cors({ origin: config.corsOrigin, allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
 // CSRF 防护：校验 Origin 头，防止跨站请求伪造
 // ALLOWED_ORIGINS 为空时（开发模式）不限制；非浏览器请求（无 Origin）直接放行
