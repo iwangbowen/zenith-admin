@@ -173,7 +173,7 @@ export async function listUsers(q: ListUsersQuery) {
   if (scopeCondition) conditions.push(scopeCondition);
   const tc = tenantCondition(users, user);
   if (tc) conditions.push(tc);
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const where = and(...conditions);
   const [total, rawList] = await Promise.all([
     db.$count(users, where),
     findUsersWithRelations({ where, limit: pageSize, offset: pageOffset(page, pageSize), orderBy: users.id }),
