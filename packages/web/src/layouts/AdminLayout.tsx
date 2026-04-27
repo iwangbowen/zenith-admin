@@ -4,9 +4,10 @@ import { Avatar, Badge, Breadcrumb, Button, Dropdown, Empty, List, Notification,
 import { Bell, Building2, Check, Maximize2, Minimize2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, Notice, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
-import { useTheme, type ThemeMode } from '@/hooks/useTheme';
+import type { ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, type NavLayout, type TabAnimation } from '@/hooks/usePreferences';
-import { applyThemeColor, THEME_COLOR_PRESETS } from '@/lib/theme-color';
+import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
+import { useThemeController } from '@/providers/ThemeProvider';
 import { useTabsStore } from '@/hooks/useTabsStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
@@ -123,12 +124,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     return result;
   }, [menuTree]);
   const { preferences, setPreferences, resetPreferences } = usePreferences();
-  const { mode, setThemeMode } = useTheme(preferences.colorMode);
+  const { mode, themeColor, setThemeMode, setThemeColor, resetTheme } = useThemeController();
 
   const handleThemeModeChange = useCallback((newMode: ThemeMode) => {
     setThemeMode(newMode);
-    setPreferences({ colorMode: newMode });
-  }, [setPreferences, setThemeMode]);
+  }, [setThemeMode]);
 
   // ─── 水印配置 ──────────────────────────────────────────────────────────────
   const [watermarkConfig, setWatermarkConfig] = useState({ enabled: false, content: '', fontSize: 14, opacity: 0.15 });
@@ -162,20 +162,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     }
   }, []);
 
-  // Apply theme color when dark/light mode changes
-  useEffect(() => {
-    const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
-    applyThemeColor(preferences.themeColor, isDark);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
-
-  // Sync colorMode preference with theme
-  useEffect(() => {
-    if (preferences.colorMode !== mode) {
-      setThemeMode(preferences.colorMode);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs } = useTabsStore(preferences.tabsMaxCount);
   const [prefsVisible, setPrefsVisible] = useState(false);
   const dragSrcKey = useRef<string | null>(null);
@@ -905,17 +891,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   {THEME_COLOR_PRESETS.map((preset) => {
                     const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
                     const currentColor = isDark ? preset.dark.primary : preset.light.primary;
-                    const isActive = preferences.themeColor === preset.key;
+                    const isActive = themeColor === preset.key;
                     return (
                       <Tooltip key={preset.key} content={preset.name} position="top">
                         <button
                           type="button"
                           className={`theme-color-swatch${isActive ? ' theme-color-swatch--active' : ''}`}
                           style={{ backgroundColor: currentColor, color: currentColor }}
-                          onClick={() => {
-                            setPreferences({ themeColor: preset.key });
-                            applyThemeColor(preset.key, isDark);
-                          }}
+                          onClick={() => setThemeColor(preset.key)}
                           title={preset.name}
                         >
                           {isActive && (
@@ -1007,7 +990,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       okButtonProps: { type: 'danger', theme: 'solid' },
                       onOk: () => {
                         resetPreferences();
-                        setThemeMode('light');
+                        resetTheme();
                       },
                     });
                   }}
