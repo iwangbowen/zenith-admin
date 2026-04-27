@@ -219,7 +219,6 @@ export default function RegionsPage() {
     {
       title: '地区名称',
       dataIndex: 'name',
-      width: 200,
     },
     {
       title: '区划代码',
@@ -254,7 +253,6 @@ export default function RegionsPage() {
       title: '状态',
       dataIndex: 'status',
       width: 90,
-      fixed: 'right',
       render: (value: string) => <DictTag dictCode="common_status" value={value} />,
     },
     {
@@ -347,7 +345,8 @@ export default function RegionsPage() {
         onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Region => 'id' in r).map((r) => r.id) ?? [])}
         childrenRecordName="children"
         pagination={false}
-        scroll={{ x: 'max-content' }}
+        virtualized
+        scroll={{ y: 'calc(100vh - 260px)' }}
       />
 
       <Modal
