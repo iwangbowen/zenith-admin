@@ -122,7 +122,13 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     walk(menuTree, []);
     return result;
   }, [menuTree]);
-  const { mode, setThemeMode } = useTheme();
+  const { preferences, setPreferences, resetPreferences } = usePreferences();
+  const { mode, setThemeMode } = useTheme(preferences.colorMode);
+
+  const handleThemeModeChange = useCallback((newMode: ThemeMode) => {
+    setThemeMode(newMode);
+    setPreferences({ colorMode: newMode });
+  }, [setPreferences, setThemeMode]);
 
   // ─── 水印配置 ──────────────────────────────────────────────────────────────
   const [watermarkConfig, setWatermarkConfig] = useState({ enabled: false, content: '', fontSize: 14, opacity: 0.15 });
@@ -140,7 +146,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         }
       });
   }, []);
-  const { preferences, setPreferences, resetPreferences } = usePreferences();
 
   // Fullscreen
   const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
@@ -621,7 +626,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           render={
             <Dropdown.Menu>
               {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
-                <Dropdown.Item key={m} icon={themeLabelMap[m].icon} active={mode === m} onClick={() => setThemeMode(m)}>
+                <Dropdown.Item key={m} icon={themeLabelMap[m].icon} active={mode === m} onClick={() => handleThemeModeChange(m)}>
                   {themeLabelMap[m].label}
                 </Dropdown.Item>
               ))}
@@ -884,8 +889,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   value={mode}
                   onChange={(e) => {
                     const v = e.target.value as ThemeMode;
-                    setThemeMode(v);
-                    setPreferences({ colorMode: v });
+                    handleThemeModeChange(v);
                   }}
                 >
                   <Radio value="light">浅色</Radio>

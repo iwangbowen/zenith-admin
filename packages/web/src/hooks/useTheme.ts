@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-const STORAGE_KEY = 'zenith_theme';
-
 function getSystemDark(): boolean {
   return globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
 }
@@ -20,10 +18,13 @@ function applyTheme(mode: ThemeMode) {
   }
 }
 
-export function useTheme() {
-  const [mode, setMode] = useState<ThemeMode>(() => {
-    return (localStorage.getItem(STORAGE_KEY) as ThemeMode) ?? 'light';
-  });
+export function useTheme(initialMode: ThemeMode = 'light') {
+  const [mode, setMode] = useState<ThemeMode>(initialMode);
+
+  // Keep mode synced with external source of truth
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   // Apply on mount + mode change
   useEffect(() => {
@@ -40,7 +41,6 @@ export function useTheme() {
   }, [mode]);
 
   const setThemeMode = useCallback((newMode: ThemeMode) => {
-    localStorage.setItem(STORAGE_KEY, newMode);
     setMode(newMode);
   }, []);
 
