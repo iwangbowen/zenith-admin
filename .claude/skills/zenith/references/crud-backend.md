@@ -109,7 +109,7 @@ export interface Xxx {
 ### service 文件模板
 
 ```ts
-import { AppError } from '../lib/errors';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { xxxs } from '../db/schema';
 import { eq } from 'drizzle-orm';
@@ -128,10 +128,10 @@ export function mapXxx(row: XxxRow) {
   };
 }
 
-// ─── 前置校验（抛 AppError，由全局 onError 转为标准 JSON 错误响应） ─────
+// ─── 前置校验（抛 HTTPException，由全局 onError 转为标准 JSON 错误响应） ────
 export async function ensureXxxExists(id: number) {
   const [row] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
-  if (!row) throw new AppError('XXX 不存在', 404);
+  if (!row) throw new HTTPException(404, { message: 'XXX 不存在' });
   return row;
 }
 ```
@@ -139,10 +139,10 @@ export async function ensureXxxExists(id: number) {
 > **约束：**
 >
 > - `mapXxx` 等数据映射函数以 `map` 前缀命名，纯函数，无副作用
-> - `ensureXxx` 等校验函数直接 `throw new AppError(msg, statusCode)` 无需返回错误码
+> - `ensureXxx` 等校验函数直接 `throw new HTTPException(statusCode, { message })` 无需返回错误码
 > - 禁止在 service 中调用 `c.json()`、直接引用 `c`、调用 `console.*`
 > - 复杂业务逻辑（RQB 查询、事务、多表操作）放在 service，路由只调用 service 函数
-> - DB 唯一约束异常（PG 错误码 `23505`）在 service 的写入 `try-catch` 中通过 `rethrowPgUniqueViolation(err, msg)` 映射为 `AppError`
+> - DB 唯一约束异常（PG 错误码 `23505`）在 service 的写入 `try-catch` 中通过 `rethrowPgUniqueViolation(err, msg)` 映射为 `HTTPException(400)`
 
 ---
 
@@ -165,7 +165,7 @@ export async function ensureXxxExists(id: number) {
 >
 > 然后在路由中导入：`import { XxxDTO } from '../lib/openapi-dtos';`。**严禁在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**，以免 Swagger Components 重复/冲突。
 
-**薄路由约定**：**禁止在路由 handler 中直接调用 `db.*`**。所有 DB 访问与业务逻辑必须放在 `services/xxx.service.ts`；路由只负责：取参数 → 调 service → 返回 `c.json(okBody(...))` 或透传错误（由全局 `onError` 将 `AppError` 转为标准 JSON）。DB 唯一约束 `23505` 也统一在 service 中通过 `rethrowPgUniqueViolation(err, msg)` 映射。
+**薄路由约定**：**禁止在路由 handler 中直接调用 `db.*`**。所有 DB 访问与业务逻辑必须放在 `services/xxx.service.ts`；路由只负责：取参数 → 调 service → 返回 `c.json(okBody(...))`或透传错误（由全局 `onError` 将 `HTTPException` 转为标准 JSON）。DB 唯一约束 `23505` 也统一在 service 中通过 `rethrowPgUniqueViolation(err, msg)` 映射。
 
 ```ts
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
@@ -258,7 +258,7 @@ const updateRoute_ = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
-    const before = await ensureXxxExists(id);  // 不存在时抛 AppError(404)
+    const before = await ensureXxxExists(id);  // 不存在时抛 HTTPException(404)
     setAuditBeforeData(c, before);
     const row = await updateXxx(id, data);
     return c.json(okBody(row, '更新成功'), 200);

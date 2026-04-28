@@ -5,7 +5,7 @@
 | 约束 | 规则 |
 | --- | --- |
 | **Service 层职责** | 业务逻辑、数据映射（`mapXxx`）、前置校验（`ensureXxx`）放在 `packages/server/src/services/xxx.service.ts`；route handler 只负责取参数、调 service、返回响应；**禁止**在 service 中调用 `c.json()`、访问 Hono 上下文 `c`、使用 `console.*` |
-| **AppError 抛出** | Service 层业务校验失败统一 `throw new AppError(msg, statusCode)`（来自 `packages/server/src/lib/errors.ts`），由全局 `onError` 统一处理；DB 唯一约束（PG 23505）统一在 service 中通过 `rethrowPgUniqueViolation(err, msg)` 映射 |
+| **HTTPException 抛出** | Service 层业务校验失败统一 `throw new HTTPException(statusCode, { message })`（来自 `hono/http-exception`），由全局 `onError` 统一处理；DB 唯一约束（PG 23505）统一在 service 中通过 `rethrowPgUniqueViolation(err, msg)` 映射 |
 | **commonErrorResponses** | 所有路由的 `responses:` 块必须包含 `...commonErrorResponses`（涵盖 400/401/403/404/500），从 `'../lib/openapi-schemas'` 导入 |
 | **枚举三端同步** | `pgEnum` / TS union type / Zod enum 保持完全一致 |
 | **操作列固定** | 所有表格操作列必须 `fixed: 'right'` |
