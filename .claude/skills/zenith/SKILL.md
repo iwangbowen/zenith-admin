@@ -2,6 +2,7 @@
 name: zenith
 description: "Zenith Admin 项目专属开发辅助。Use when: 开发新模块、实现 CRUD 功能、新增页面、配置菜单权限、实现增删改查、新建后台功能模块、新增管理功能、发布新版本。包含 CRUD 完整代码生成流程与版本发布流程。"
 argument-hint: "要开发的功能描述，例如：部门管理 CRUD、公告管理页面；或发布操作：发布 v0.2.0"
+context: fork
 ---
 
 # Zenith Admin 开发辅助 Skill
