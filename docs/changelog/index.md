@@ -9,40 +9,50 @@
 ### Added
 
 #### 主题管理
+
 - 新增 `ThemeProvider` 组件，支持「亮色 / 暗色 / 跟随系统」三种主题模式的切换与持久化
 - 主题模式与主题色偏好存储于用户偏好，刷新后自动恢复
 - 富文本编辑器新增暗色模式适配样式（`RichTextEditor.css`）
 
 #### 审批时间线组件
+
 - 将审批时间线逻辑提取为独立组件 `ApprovalTimeline`，在「我的申请」「工作流监控」「待我审批」三个页面中复用
 
 ### Changed
 
 #### 错误处理统一
+
 - 将 `AppError` 自定义错误类替换为 Hono 原生 `HTTPException`，统一全局错误处理链路，减少依赖层次
 
 #### 分页规范完善
+
 - SQL-builder 分页统一使用 `withPagination(query.$dynamic(), page, pageSize)`
 - RQB 分页统一使用 `pageOffset(page, pageSize)`，全库完成迁移
 
 #### 审计日志请求体解析
+
 - 重构 `setAuditBeforeData` 函数，新增 `resolveAuditRequestBody` 以正确处理 multipart/JSON 等不同请求体格式
 
 ### Fixed
 
 #### 客户端真实 IP 获取
+
 - 修正 `getClientIP` 逻辑：优先读取 `x-forwarded-for` / `x-real-ip` 头，无反代时回退到 `getConnInfo` 获取直连 IP，解决反代场景下 IP 记录错误问题
 
 #### 压缩中间件误压缩流式响应
+
 - SSE 实时推送和文件下载等路由不再经过 `compress` 中间件，修复 SSE 事件流被截断的问题
 
 #### SideSheet 内表格样式
+
 - 修正侧边抽屉 `SideSheet` 内表格行/表头背景色，使用半透明背景色适配抽屉层级
 
 #### 地区管理表格
+
 - 启用虚拟滚动（`virtualized`）并设置垂直滚动高度，解决大量地区数据渲染卡顿问题
 
 #### 工作流实例关键词搜索
+
 - 工作流实例关键词过滤使用 `escapeLike` 转义，防止 SQL 通配符注入
 
 ---
@@ -52,30 +62,37 @@
 ### Added
 
 #### 操作日志前态快照（beforeData）
+
 - 为所有主要业务模块的修改/删除操作补全 `beforeData` 快照注入，覆盖 20+ 路由文件中的 53 个审计操作点
 - 新增 `getXxxBeforeAudit()` 辅助函数到所有 service 文件（users、roles、menus、departments、positions、dicts、notices、cron-jobs、system-configs、regions、message-templates、file-storage-configs、workflow-definitions、email-config、tenants、oauth-config、cache、sessions、files、db-backups、workflow-instances），使操作日志详情页的数据变更 diff 功能完整生效
 - 敏感字段自动脱敏：`emailConfig.smtpPassword` 和 `oauthConfig.clientSecret` 在快照中替换为 `******`
 
 #### 操作日志详情页增强
+
 - 操作日志详情弹窗新增标签页布局，分为「基础信息」「请求详情」「数据变更」三个标签页，提升可读性
 
 #### 日志文件关键词搜索
+
 - 日志文件内容支持关键词过滤，前端和后端 API 同步支持 `keyword` 参数
 
 ### Fixed
 
 #### 审计日志日期格式不一致
+
 - 修复 `beforeData` 显示 ISO 8601 格式（`2026-04-25T10:00:00.000Z`）而 `afterData` 显示 `YYYY-MM-DD HH:mm:ss` 的不一致问题，所有快照现在统一通过 `mapXxx()` 格式化
 
 #### LIKE 通配符注入防护
+
 - 所有 `keyword` 模糊搜索参数通过 `escapeLike()` helper 转义 `%`/`_`，防止恶意 LIKE 注入
 
 #### 跨租户数据泄露
+
 - 修复 dicts、files、departments、importUsers、operation-logs 模块的跨租户过滤缺失问题
 
 ### Changed
 
 #### 工作流实例状态值统一
+
 - 工作流实例相关状态值从 `active` 统一改为 `enabled`，与系统其他模块状态枚举保持一致
 
 ---
@@ -85,27 +102,33 @@
 ### Added
 
 #### 区域选择缓存
+
 - `RegionSelect` 组件新增缓存层（`RegionSelect.cache.ts`），区域数据首次加载后缓存，避免重复请求
 
 #### Excel 导出
+
 - 新增 `okExcel` / `excelBody` 响应辅助函数，多个模块支持导出 Excel 文件，日期时间统一使用 `dayjs` 格式化
 
 ### Changed
 
 #### 时间格式规范统一
+
 - 系统内所有日期时间字符串统一为 `YYYY-MM-DD HH:mm:ss` 格式
 - 前端新增 `formatDateTime` / `formatDateTimeForApi` / `formatDateForApi` 工具函数（`packages/web/src/utils/date.ts`）
 - 后端新增 `formatDateTime` / `formatNullableDateTime` / `formatDate` / `formatFileTimestamp` / `parseDateTimeInput` 等工具函数（`packages/server/src/lib/datetime.ts`）
 - 禁止在业务代码中直接调用 `toISOString()` 等原生时间格式化方法
 
 #### 响应体构造规范
+
 - 统一使用 `okBody(data, msg?)` / `errBody(msg, code?)` 构造响应体，废弃内联字面量对象写法
 - 所有路由文件完成规范迁移
 
 #### 请求工具优化
+
 - 下载文件错误处理增强，新增网络请求失败提示，401 状态自动尝试刷新 token
 
 #### 监控页面
+
 - Redis 命令总执行数使用 `Intl.NumberFormat` 格式化，符合中文数字展示习惯
 - 修正进度条颜色样式选择器
 
