@@ -56,6 +56,8 @@ import { createWsRoute } from './routes/ws';
 import stripAnsi from 'strip-ansi';
 import { initCronScheduler } from './lib/cron-scheduler';
 import { initTelemetry } from './lib/telemetry';
+import { metricsSampler } from './lib/metrics-sampler';
+import { httpMetricsMiddleware } from './middleware/http-metrics';
 
 await initTelemetry();
 
@@ -65,6 +67,9 @@ const { printMetrics, registerMetrics } = prometheus({ collectDefaultMetrics: tr
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
 app.use('*', registerMetrics);
+// 监控页指标采集（自带的轻量收集器，独立于 Prometheus）
+app.use('*', httpMetricsMiddleware);
+metricsSampler.start();
 if (config.otel.enabled) {
   app.use(
     '*',
@@ -236,6 +241,7 @@ async function shutdown(signal: NodeJS.Signals) {
   shuttingDown = true;
   logger.info(`Received ${signal}, shutting down gracefully...`);
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  metricsSampler.stop();
   await closeDb();
   logger.info('Server shutdown complete');
 }

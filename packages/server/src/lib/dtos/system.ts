@@ -140,6 +140,7 @@ export const MonitorDTO = z
         used: z.number(),
         free: z.number(),
         usagePercent: z.number(),
+        mount: z.string().optional(),
       })
       .nullable(),
     node: z.object({
@@ -147,11 +148,78 @@ export const MonitorDTO = z
       uptime: z.number().int(),
       pid: z.number().int(),
       memoryUsage: z.record(z.string(), z.number()),
+      cpuUsagePercent: z.number().optional(),
+      eventLoop: z
+        .object({
+          meanMs: z.number(),
+          p50Ms: z.number(),
+          p95Ms: z.number(),
+          p99Ms: z.number(),
+          maxMs: z.number(),
+          stddevMs: z.number(),
+        })
+        .optional(),
+      gc: z
+        .object({
+          totalCount: z.number(),
+          totalDurationMs: z.number(),
+          byKind: z.record(z.string(), z.object({ count: z.number(), durationMs: z.number() })),
+        })
+        .optional(),
+      heapSpaces: z
+        .array(z.object({ name: z.string(), size: z.number(), used: z.number(), available: z.number() }))
+        .optional(),
+      resourceUsage: z
+        .object({
+          userCPUMicros: z.number(),
+          systemCPUMicros: z.number(),
+          maxRssBytes: z.number(),
+          fsRead: z.number(),
+          fsWrite: z.number(),
+          voluntaryContextSwitches: z.number(),
+          involuntaryContextSwitches: z.number(),
+        })
+        .optional(),
     }),
+    http: z
+      .object({
+        qps: z.number(),
+        currentQps: z.number(),
+        total: z.number(),
+        errors: z.number(),
+        errorRate: z.number(),
+        total4xx: z.number(),
+        total5xx: z.number(),
+        p50: z.number(),
+        p95: z.number(),
+        p99: z.number(),
+        max: z.number(),
+      })
+      .optional(),
     database: z.unknown().nullable(),
     redis: z.unknown().nullable(),
   })
   .openapi('MonitorInfo');
+
+export const MonitorTimeseriesDTO = z
+  .object({
+    intervalSec: z.number().int(),
+    capacity: z.number().int(),
+    points: z.array(
+      z.object({
+        t: z.number(),
+        cpu: z.number(),
+        mem: z.number(),
+        procCpu: z.number(),
+        heap: z.number(),
+        loopLagMean: z.number(),
+        loopLagP99: z.number(),
+        qps: z.number(),
+        errorRate: z.number(),
+      }),
+    ),
+  })
+  .openapi('MonitorTimeseries');
 
 export const OnlineSessionDTO = z
   .object({

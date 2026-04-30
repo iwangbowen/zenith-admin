@@ -168,3 +168,62 @@
 .monitor-progress-danger.monitor-overview-metric__value {
   color: var(--semi-color-danger);
 }
+
+/* ===== 趋势折线图 ===== */
+.monitor-chart-card {
+  background: var(--semi-color-fill-0);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 14px 16px 8px;
+  margin-top: 4px;
+}
+
+.monitor-chart-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.monitor-chart-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+}
+
+/* ===== 慢查询/慢日志表 ===== */
+.monitor-slow-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.monitor-slow-table th,
+.monitor-slow-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.monitor-slow-table th {
+  color: var(--semi-color-text-2);
+  font-weight: 500;
+  background: var(--semi-color-fill-0);
+}
+
+.monitor-slow-table td.monitor-slow-query {
+  font-family: var(--semi-font-family-code, ui-monospace, monospace);
+  word-break: break-all;
+  max-width: 480px;
+}
+
+.monitor-section-title {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
