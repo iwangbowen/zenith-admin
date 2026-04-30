@@ -96,7 +96,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 72px;
+  margin-bottom: 56px;
 }
 
 /* 基础 logo（移动端右侧品牌区使用） */
@@ -139,10 +139,10 @@
 }
 
 .login-headline {
-  font-size: 42px;
-  font-weight: 700;
-  line-height: 1.22;
-  letter-spacing: -0.025em;
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: -0.03em;
   color: #ffffff;
   margin: 0 0 18px;
 }
@@ -161,6 +161,33 @@
   line-height: 1.85;
   margin: 0 0 36px;
   max-width: 360px;
+}
+
+/* Eyebrow 徽标 */
+.login-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 10px;
+  border-radius: 100px;
+  background: #1040b8;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  font-size: 12px;
+  color: #ffffff;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+.login-eyebrow::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #80caff;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(128, 202, 255, 0.6);
 }
 
 /* 分隔线 */
@@ -246,12 +273,12 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
   }
 
   .login-page {
-    background: #edf0f9;
+    background: #ffffff;
   }
 
   body[theme-mode='dark'] .login-page,
   body[theme-mode='dark'] .login-right {
-    background: #0e1220;
+    background: #181c2a;
   }
 
   .login-right {
@@ -289,7 +316,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
   }
 
   .login-headline {
-    font-size: 36px;
+    font-size: 42px;
   }
 }
 
