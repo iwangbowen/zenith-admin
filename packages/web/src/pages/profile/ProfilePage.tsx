@@ -220,9 +220,10 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       if (!blob) { setAvatarLoading(false); return; }
       const formData = new FormData();
       formData.append('file', blob, 'avatar.jpg');
-      const uploadRes = await request.post<{ url: string }>('/api/files/upload', formData);
-      if (uploadRes.code === 0 && uploadRes.data?.url) {
-        const profileRes = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: uploadRes.data.url });
+      const uploadRes = await request.post<{ url: string }[]>('/api/files/upload', formData);
+      const uploadedUrl = uploadRes.data?.[0]?.url;
+      if (uploadRes.code === 0 && uploadedUrl) {
+        const profileRes = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: uploadedUrl });
         if (profileRes.code === 0) { onUserUpdate(profileRes.data); Toast.success('头像已更新'); closeCropper(); }
         else Toast.error(profileRes.message ?? '头像更新失败');
       } else {
