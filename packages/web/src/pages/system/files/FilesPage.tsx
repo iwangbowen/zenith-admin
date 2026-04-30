@@ -13,7 +13,7 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, Search, RotateCcw, Download, Copy, Trash2 } from 'lucide-react';
+import { Plus, Search, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -290,7 +290,7 @@ export default function FilesPage() {
         <Space>
           <Button theme="borderless" size="small" loading={previewLoadingId === record.id} onClick={() => handlePreview(record)}>预览</Button>
           <Button theme="borderless" size="small" onClick={() => handleDownload(record)}>下载</Button>
-          <Button theme="borderless" size="small" icon={<Copy size={12} />} onClick={() => handleCopyUrl(record)}>复制链接</Button>
+          <Button theme="borderless" size="small" onClick={() => handleCopyUrl(record)}>复制链接</Button>
           {hasPermission('system:file:delete') && <Button theme="borderless" size="small" type="danger" onClick={() => {
             Modal.confirm({
               title: '确认删除此文件？',

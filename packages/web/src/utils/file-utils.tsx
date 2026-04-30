@@ -13,7 +13,8 @@ export function formatFileSize(size: number): string {
 /** 将相对路径拼接为完整可访问 URL */
 export function getFileFullUrl(url: string): string {
   if (/^https?:\/\//.test(url)) return url;
-  return `${config.apiBaseUrl}${url}`;
+  const base = config.apiBaseUrl || globalThis.location.origin;
+  return `${base}${url}`;
 }
 
 /** 根据 MIME 类型返回对应的 lucide-react 文件图标 */
