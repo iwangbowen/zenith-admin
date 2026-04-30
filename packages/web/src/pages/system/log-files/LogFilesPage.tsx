@@ -3,6 +3,7 @@ import { Button, Tag, Space, Modal, Toast, Spin, Typography, Input } from '@douy
 import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2, Search } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
+import { formatFileSize } from '@/utils/file-utils';
 import { usePermission } from '@/hooks/usePermission';
 import { config } from '@/config';
 import { TOKEN_KEY } from '@zenith/shared';
@@ -12,12 +13,6 @@ interface LogFile {
   size: number;
   modifiedAt: string;
   isGzip: boolean;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
 export default function LogFilesPage() {
@@ -258,7 +253,7 @@ export default function LogFilesPage() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 19 }}>
                 <Tag color={file.isGzip ? 'grey' : 'blue'} size="small">{file.isGzip ? 'gz' : 'log'}</Tag>
-                <Typography.Text type="tertiary" size="small">{formatSize(file.size)}</Typography.Text>
+                <Typography.Text type="tertiary" size="small">{formatFileSize(file.size)}</Typography.Text>
               </div>
               <div style={{ paddingLeft: 19, marginTop: 2 }}>
                 <Typography.Text type="tertiary" size="small">{formatDateTime(file.modifiedAt)}</Typography.Text>
