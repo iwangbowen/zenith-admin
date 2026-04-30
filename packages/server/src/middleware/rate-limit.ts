@@ -40,16 +40,16 @@ const rateLimitStore = new RedisStore({
 const ipKey = (c: Parameters<MiddlewareHandler>[0]) => getClientIp(c);
 
 /**
- * 认证接口（登录）：15 分钟内最多 10 次
+ * 认证接口（登录）：3 分钟内最多 20 次
  * 防止暴力破解密码
  */
 export const authRateLimit: MiddlewareHandler = rateLimiter({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
+  windowMs: 3 * 60 * 1000,
+  limit: 20,
   keyGenerator: ipKey,
   store: rateLimitStore,
   handler: (c) =>
-    c.json(errBody('登录尝试过于频繁，请 15 分钟后再试', 429), 429),
+    c.json(errBody('登录尝试过于频繁，请 3 分钟后再试', 429), 429),
 });
 
 /**
