@@ -251,13 +251,13 @@ export default function FilesPage() {
       dataIndex: 'provider',
       width: 120,
       render: (provider: ManagedFile['provider']) => {
-        const providerMap: Record<string, { color: string; label: string }> = {
+        const providerMap: Record<string, { color: 'blue' | 'orange' | 'green' | 'cyan' | 'grey'; label: string }> = {
           local: { color: 'blue', label: '本地磁盘' },
           oss: { color: 'orange', label: '阿里云 OSS' },
           s3: { color: 'green', label: 'S3 存储' },
           cos: { color: 'cyan', label: '腾讯云 COS' },
         };
-        const info = providerMap[provider] ?? { color: 'grey', label: provider };
+        const info = providerMap[provider] ?? { color: 'grey' as const, label: provider };
         return <Tag color={info.color} size="small">{info.label}</Tag>;
       },
     },
@@ -365,9 +365,16 @@ export default function FilesPage() {
         <Text strong>默认文件服务：</Text>
         {defaultConfig ? (
           <>
-            <Tag color={defaultConfig.provider === 'local' ? 'blue' : 'orange'} size="small">
-              {defaultConfig.provider === 'local' ? '本地磁盘' : '阿里云 OSS'}
-            </Tag>
+            {(() => {
+              const providerMap: Record<string, { color: 'blue' | 'orange' | 'green' | 'cyan' | 'grey'; label: string }> = {
+                local: { color: 'blue', label: '本地磁盘' },
+                oss: { color: 'orange', label: '阿里云 OSS' },
+                s3: { color: 'green', label: 'S3 存储' },
+                cos: { color: 'cyan', label: '腾讯云 COS' },
+              };
+              const info = providerMap[defaultConfig.provider] ?? { color: 'grey' as const, label: defaultConfig.provider };
+              return <Tag color={info.color} size="small">{info.label}</Tag>;
+            })()}
             <Text>{defaultConfig.name}</Text>
           </>
         ) : (
