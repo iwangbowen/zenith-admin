@@ -41,7 +41,8 @@ export async function readFileContent(id: number) {
 }
 
 export async function listManagedFiles(query: {
-  page?: number; pageSize?: number; keyword?: string; provider?: 'local' | 'oss' | 's3' | 'cos'; startTime?: string; endTime?: string;
+  page?: number; pageSize?: number; keyword?: string; provider?: 'local' | 'oss' | 's3' | 'cos';
+  fileType?: 'image' | 'video' | 'audio' | 'document'; startTime?: string; endTime?: string;
 }) {
   const user = currentUser();
   const page = Number(query.page ?? 1);
@@ -57,6 +58,25 @@ export async function listManagedFiles(query: {
     );
   }
   if (query.provider) conditions.push(eq(managedFiles.provider, query.provider));
+  if (query.fileType) {
+    if (query.fileType === 'image') conditions.push(like(managedFiles.mimeType, 'image/%'));
+    else if (query.fileType === 'video') conditions.push(like(managedFiles.mimeType, 'video/%'));
+    else if (query.fileType === 'audio') conditions.push(like(managedFiles.mimeType, 'audio/%'));
+    else if (query.fileType === 'document') {
+      conditions.push(
+        or(
+          like(managedFiles.mimeType, 'text/%'),
+          like(managedFiles.mimeType, 'application/pdf%'),
+          like(managedFiles.mimeType, '%msword%'),
+          like(managedFiles.mimeType, '%wordprocessingml%'),
+          like(managedFiles.mimeType, '%spreadsheetml%'),
+          like(managedFiles.mimeType, '%presentationml%'),
+          like(managedFiles.mimeType, '%powerpoint%'),
+          like(managedFiles.mimeType, '%excel%'),
+        )!,
+      );
+    }
+  }
   const startTime = parseDateTimeInput(query.startTime);
   const endTime = parseDateTimeInput(query.endTime);
   if (startTime) conditions.push(gte(managedFiles.createdAt, startTime));

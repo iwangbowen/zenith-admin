@@ -31,10 +31,11 @@ export default function FilesPage() {
   interface SearchParams {
     keyword: string;
     provider: string;
+    fileType: string;
     timeRange: [Date, Date] | null;
   }
 
-  const defaultSearchParams: SearchParams = { keyword: '', provider: '', timeRange: null };
+  const defaultSearchParams: SearchParams = { keyword: '', provider: '', fileType: '', timeRange: null };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<PaginatedResponse<ManagedFile> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,7 +48,10 @@ export default function FilesPage() {
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
+  // previewBlobUrlsRef: index-aligned with image list, tracks created blob URLs for cleanup
   const previewBlobUrlsRef = useRef<string[]>([]);
+  // previewSessionRef: increments each time a new preview session starts, used to cancel stale bg loads
+  const previewSessionRef = useRef(0);
   const [defaultConfig, setDefaultConfig] = useState<FileStorageConfig | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
@@ -68,6 +72,7 @@ export default function FilesPage() {
         pageSize: String(ps),
         ...(params.keyword ? { keyword: params.keyword } : {}),
         ...(params.provider ? { provider: params.provider } : {}),
+        ...(params.fileType ? { fileType: params.fileType } : {}),
         ...(params.timeRange
           ? {
             startTime: formatDateTimeForApi(params.timeRange[0]),
@@ -156,18 +161,41 @@ export default function FilesPage() {
     const clickedIndex = imageFiles.findIndex((f) => f.id === file.id);
 
     setPreviewLoadingId(file.id);
+    // Start new preview session
+    previewSessionRef.current += 1;
+    const mySession = previewSessionRef.current;
     try {
       cleanupPreviewBlobs();
-      const blobUrls = await Promise.all(
-        imageFiles.map(async (f) => {
-          const blob = await fetchProtectedFile(f.url);
-          return globalThis.URL.createObjectURL(blob);
-        }),
-      );
-      previewBlobUrlsRef.current = blobUrls;
-      setPreviewSrcList(blobUrls);
+      // Initialize with blank placeholders so the array index stays stable
+      const initialUrls = imageFiles.map(() => '');
+      previewBlobUrlsRef.current = [...initialUrls];
+
+      // Load only the clicked image first → show preview immediately
+      const clickedBlob = await fetchProtectedFile(imageFiles[clickedIndex].url);
+      if (previewSessionRef.current !== mySession) return; // user closed preview before load finished
+      const clickedUrl = globalThis.URL.createObjectURL(clickedBlob);
+      initialUrls[clickedIndex] = clickedUrl;
+      previewBlobUrlsRef.current[clickedIndex] = clickedUrl;
+
+      setPreviewSrcList([...initialUrls]);
       setPreviewCurrentIndex(Math.max(0, clickedIndex));
       setPreviewVisible(true);
+
+      // Load remaining images in background (non-blocking)
+      imageFiles.forEach(async (imgFile, i) => {
+        if (i === clickedIndex) return;
+        try {
+          const blob = await fetchProtectedFile(imgFile.url);
+          if (previewSessionRef.current !== mySession) return;
+          const url = globalThis.URL.createObjectURL(blob);
+          previewBlobUrlsRef.current[i] = url;
+          setPreviewSrcList((prev) => {
+            const updated = [...prev];
+            updated[i] = url;
+            return updated;
+          });
+        } catch { /* ignore individual failures */ }
+      });
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '预览图片失败');
     } finally {
@@ -392,6 +420,19 @@ export default function FilesPage() {
               { value: 'cos', label: '腾讯云 COS' },
             ]}
           />
+          <Select
+            placeholder="文件类型"
+            value={searchParams.fileType || undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
+            style={{ width: 120 }}
+            optionList={[
+              { value: '', label: '全部' },
+              { value: 'image', label: '图片' },
+              { value: 'video', label: '视频' },
+              { value: 'audio', label: '音频' },
+              { value: 'document', label: '文档' },
+            ]}
+          />
           <DatePicker
             type="dateTimeRange"
             placeholder={["开始时间", "结束时间"]}
@@ -452,6 +493,7 @@ export default function FilesPage() {
         onChange={setPreviewCurrentIndex}
         onVisibleChange={(v) => {
           if (!v) {
+            previewSessionRef.current += 1; // invalidate any in-flight background loads
             setPreviewVisible(false);
             cleanupPreviewBlobs();
             setPreviewSrcList([]);
