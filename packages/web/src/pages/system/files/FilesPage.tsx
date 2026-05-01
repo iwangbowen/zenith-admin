@@ -20,6 +20,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl } from '@/utils/file-utils';
+import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import './FilesPage.css';
@@ -317,14 +318,32 @@ export default function FilesPage() {
       dataIndex: 'originalName',
       width: 220,
       ellipsis: true,
-      render: (name: string, record: ManagedFile) => (
-        <Space spacing={6} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
+      render: (name: string, record: ManagedFile) => {
+        const isImage = record.mimeType?.startsWith('image/');
+        const icon = isImage ? (
+          <button
+            type="button"
+            style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', flexShrink: 0 }}
+            onClick={() => handlePreview(record)}
+          >
+            <img
+              src={`${config.apiBaseUrl}${record.url}`}
+              alt={name}
+              style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 3, display: 'block' }}
+            />
+          </button>
+        ) : (
           <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType)}</span>
-          <Tooltip content={name}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-          </Tooltip>
-        </Space>
-      ),
+        );
+        return (
+          <Space spacing={6} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
+            {icon}
+            <Tooltip content={name}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+            </Tooltip>
+          </Space>
+        );
+      },
     },
     {
       title: '来源服务',
