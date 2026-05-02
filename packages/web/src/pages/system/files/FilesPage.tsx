@@ -397,17 +397,18 @@ export default function FilesPage() {
           <Dropdown
             trigger="click"
             position="bottomRight"
+            clickToHide
             render={
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => { setOpenMoreId(null); handleDownload(record); }}>下载</Dropdown.Item>
-                <Dropdown.Item onClick={() => { setOpenMoreId(null); setDetailFile(record); }}>详情</Dropdown.Item>
-                <Dropdown.Item onClick={() => { setOpenMoreId(null); handleCopyUrl(record); }}>复制链接</Dropdown.Item>
+                <Dropdown.Item onClick={() => handleDownload(record)}>下载</Dropdown.Item>
+                <Dropdown.Item onClick={() => setDetailFile(record)}>详情</Dropdown.Item>
+                <Dropdown.Item onClick={() => handleCopyUrl(record)}>复制链接</Dropdown.Item>
                 {hasPermission('system:file:delete') && (
                   <>
                     <Dropdown.Divider />
                     <Dropdown.Item
                       type="danger"
-                      onClick={() => { setOpenMoreId(null); Modal.confirm({
+                      onClick={() => { Modal.confirm({
                         title: '确认删除此文件？',
                         content: '删除文件记录后，将同步尝试删除实际存储对象。',
                         okButtonProps: { type: 'danger', theme: 'solid' },
