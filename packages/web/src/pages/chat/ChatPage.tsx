@@ -317,13 +317,15 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({
-  msg, isSelf, onReply, onRecall, shouldShowTime,
+  msg, isSelf, onReply, onRecall, shouldShowTime, getReplyMessage, onScrollToMessage,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
   onReply: (msg: ChatMessage) => void;
   onRecall: (msg: ChatMessage) => void;
   shouldShowTime: boolean;
+  getReplyMessage: (id: number) => ChatMessage | undefined;
+  onScrollToMessage: (id: number) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -385,6 +387,7 @@ function MessageBubble({
 
   return (
     <div
+      id={`msg-${msg.id}`}
       style={{ display: 'flex', flexDirection: isSelf ? 'row-reverse' : 'row', gap: 8, marginBottom: 16, alignItems: 'flex-end' }}
     >
       {!isSelf && <UserAvatar name={msg.senderName ?? '?'} avatar={msg.senderAvatar} size={32} />}
@@ -402,14 +405,34 @@ function MessageBubble({
             {msg.senderName}
           </Text>
         )}
-        {msg.replyToId && (
-          <div style={{
-            background: 'var(--semi-color-fill-1)', borderLeft: '3px solid var(--semi-color-primary)',
-            padding: '3px 8px', borderRadius: 4, marginBottom: 4, fontSize: 12, color: 'var(--semi-color-text-2)',
-          }}>
-            回复消息 #{msg.replyToId}
-          </div>
-        )}
+        {msg.replyToId && (() => {
+          const replied = getReplyMessage(msg.replyToId);
+          let replyText = '\u539f\u6d88\u606f\u5df2\u4e0d\u5728'; // 原消息已不在
+          let replySender = '';
+          if (replied) {
+            replySender = replied.senderName ?? '';
+            if (replied.isRecalled) replyText = '\u6d88\u606f\u5df2\u64a4\u56de'; // 消息已撤回
+            else if (replied.type === 'image') replyText = '[\u56fe\u7247]';
+            else if (replied.type === 'file') replyText = `[\u6587\u4ef6] ${(replied.extra as { name?: string } | null)?.name ?? ''}`;
+            else replyText = replied.content.length > 40 ? `${replied.content.slice(0, 40)}\u2026` : replied.content;
+          }
+          return (
+            <button
+              type="button"
+              onClick={() => { if (msg.replyToId) onScrollToMessage(msg.replyToId); }}
+              style={{
+                background: 'var(--semi-color-fill-1)', borderLeft: '3px solid var(--semi-color-primary)',
+                padding: '4px 8px', borderRadius: 4, marginBottom: 4, fontSize: 12,
+                color: 'var(--semi-color-text-2)', border: 'none',
+                cursor: replied ? 'pointer' : 'default',
+                textAlign: 'left', display: 'block', width: '100%', maxWidth: '100%',
+              }}
+            >
+              {replySender && <span style={{ fontWeight: 600, marginRight: 4, color: 'var(--semi-color-primary)' }}>{replySender}</span>}
+              <span>{replyText}</span>
+            </button>
+          );
+        })()}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isSelf ? 'row-reverse' : 'row' }}>
             <div style={{ display: 'flex', cursor: 'default' }}>
@@ -733,6 +756,18 @@ export default function ChatPage() {
     }
   }, [handleSelectImages]);
 
+  const scrollToMessage = useCallback((id: number) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'background 0.3s ease';
+      el.style.background = 'var(--semi-color-primary-light-hover)';
+      setTimeout(() => { el.style.background = ''; }, 1200);
+    }
+  }, []);
+
+  const getReplyMessage = useCallback((id: number) => messages.find((m) => m.id === id), [messages]);
+
   const handleRecall = useCallback(async (msg: ChatMessage) => {
     const res = await request.request<null>(`/api/chat/messages/${msg.id}/recall`, { method: 'PATCH' });
     if (res.code !== 0) Toast.error(res.message ?? '撤回失败');
@@ -959,6 +994,8 @@ export default function ChatPage() {
                     onReply={setReplyTo}
                     onRecall={handleRecall}
                     shouldShowTime={shouldDisplayMessageTime(msg, messages[index + 1])}
+                    getReplyMessage={getReplyMessage}
+                    onScrollToMessage={scrollToMessage}
                   />
                 ))}
                 <div ref={messagesEndRef} />
