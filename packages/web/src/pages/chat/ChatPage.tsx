@@ -20,6 +20,12 @@ interface ChatUser {
   avatar?: string | null;
 }
 
+interface PendingImage {
+  id: string;
+  file: File;
+  previewUrl: string;
+}
+
 function getAvatarColor(name: string): string {
   const colors = ['#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#a18cd1', '#fbc2eb', '#a1c4fd'];
   let hash = 0;
@@ -520,10 +526,12 @@ export default function ChatPage() {
   const [showMembers, setShowMembers] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiContainerRef = useRef<HTMLDivElement>(null);
+  const pendingImagesRef = useRef<PendingImage[]>([]);
 
   // 点击 emoji 选择器外部时关闭
   useEffect(() => {
@@ -536,6 +544,14 @@ export default function ChatPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [emojiVisible]);
+
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages;
+  }, [pendingImages]);
+
+  useEffect(() => () => {
+    pendingImagesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+  }, []);
 
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   useEffect(() => {
@@ -604,34 +620,15 @@ export default function ChatPage() {
     await handleSelectConv(conv);
   }, [fetchConversations, handleSelectConv]);
 
-  const handleSend = useCallback(async () => {
-    if (!activeConvId || !input.trim() || sending) return;
-    const content = input.trim();
-    setInput('');
-    setSending(true);
-    const body: Record<string, unknown> = { content, type: 'text' };
-    if (replyTo) body.replyToId = replyTo.id;
-    setReplyTo(null);
-    const res = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, body);
-    setSending(false);
-    if (res.code !== 0) {
-      setInput(content);
-      Toast.error('发送失败');
-    }
-  }, [activeConvId, input, sending, replyTo]);
-
-  const handleImageUpload = useCallback(async (file: File) => {
-    if (!activeConvId) return;
-    setUploading(true);
+  const sendImageFile = useCallback(async (file: File) => {
+    if (!activeConvId) return false;
     const fd = new FormData();
     fd.append('file', file);
     const uploadRes = await request.postForm<{ url: string; originalName: string; size: number }>(
       '/api/files/upload-one', fd,
     );
     if (uploadRes.code !== 0 || !uploadRes.data) {
-      Toast.error('图片上传失败');
-      setUploading(false);
-      return;
+      return false;
     }
     const { url, originalName, size } = uploadRes.data;
     const msgRes = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
@@ -639,9 +636,71 @@ export default function ChatPage() {
       type: 'image',
       extra: { name: originalName, size },
     });
-    setUploading(false);
-    if (msgRes.code !== 0) Toast.error('发送图片失败');
+    return msgRes.code === 0;
   }, [activeConvId]);
+
+  const handleSend = useCallback(async () => {
+    if (!activeConvId || sending || (!input.trim() && pendingImages.length === 0)) return;
+
+    const content = input.trim();
+    const imagesToSend = [...pendingImages];
+
+    setInput('');
+    setPendingImages([]);
+    imagesToSend.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+
+    setSending(true);
+    if (imagesToSend.length > 0) setUploading(true);
+
+    let failedImageCount = 0;
+
+    if (content) {
+      const body: Record<string, unknown> = { content, type: 'text' };
+      if (replyTo) body.replyToId = replyTo.id;
+      const res = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, body);
+      if (res.code !== 0) {
+        setInput(content);
+        Toast.error('文本发送失败');
+      }
+    }
+
+    if (imagesToSend.length > 0) {
+      for (const item of imagesToSend) {
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await sendImageFile(item.file);
+        if (!ok) failedImageCount += 1;
+      }
+    }
+
+    setReplyTo(null);
+    setUploading(false);
+    setSending(false);
+
+    if (failedImageCount > 0) {
+      Toast.error(`有 ${failedImageCount} 张图片发送失败`);
+    }
+  }, [activeConvId, input, pendingImages, replyTo, sendImageFile, sending]);
+
+  const handleSelectImages = useCallback((files: File[]) => {
+    const validFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (validFiles.length === 0) return;
+
+    const added = validFiles.map((file) => ({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+
+    setPendingImages((prev) => [...prev, ...added]);
+  }, []);
+
+  const handleRemovePendingImage = useCallback((id: string) => {
+    setPendingImages((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((item) => item.id !== id);
+    });
+  }, []);
 
   const handleRecall = useCallback(async (msg: ChatMessage) => {
     const res = await request.request<null>(`/api/chat/messages/${msg.id}/recall`, { method: 'PATCH' });
@@ -885,6 +944,46 @@ export default function ChatPage() {
               </div>
             )}
 
+            {pendingImages.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  marginBottom: 8,
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                }}
+              >
+                {pendingImages.map((item) => (
+                  <div key={item.id} style={{ position: 'relative', width: 64, height: 64 }}>
+                    <img
+                      src={item.previewUrl}
+                      alt={item.file.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6, display: 'block' }}
+                    />
+                    <Button
+                      size="small"
+                      theme="solid"
+                      type="danger"
+                      onClick={() => handleRemovePendingImage(item.id)}
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        right: -6,
+                        minWidth: 20,
+                        height: 20,
+                        padding: 0,
+                        borderRadius: '50%',
+                        lineHeight: '20px',
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Toolbar */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 6, alignItems: 'center' }}>
               <div ref={emojiContainerRef} style={{ position: 'relative' }}>
@@ -910,7 +1009,7 @@ export default function ChatPage() {
                 )}
               </div>
 
-              <Tooltip content="发送图片">
+              <Tooltip content="选择图片">
                 <Button
                   size="small" theme="borderless" type="tertiary"
                   icon={<ImagePlus size={16} />}
@@ -922,10 +1021,11 @@ export default function ChatPage() {
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 style={{ display: 'none' }}
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleImageUpload(file);
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length > 0) handleSelectImages(files);
                   e.target.value = '';
                 }}
               />
@@ -952,7 +1052,7 @@ export default function ChatPage() {
                 theme="solid" type="primary"
                 icon={<Send size={14} />}
                 loading={sending}
-                disabled={!input.trim()}
+                disabled={!input.trim() && pendingImages.length === 0}
                 onClick={() => { void handleSend(); }}
                 style={{ height: 74, paddingLeft: 12, paddingRight: 12 }}
               />
