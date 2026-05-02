@@ -239,6 +239,11 @@ export default function MenusPage() {
       align: 'center',
     },
     {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      width: 160,
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       width: 80,
