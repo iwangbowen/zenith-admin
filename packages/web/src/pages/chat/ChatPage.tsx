@@ -243,7 +243,7 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
           <img
             src={msg.content}
             alt={(msg.extra as { name?: string } | null)?.name ?? '图片'}
-            style={{ maxWidth: 240, maxHeight: 200, borderRadius: 8, display: 'block', cursor: 'pointer' }}
+            style={{ maxWidth: 240, maxHeight: 200, borderRadius: 0, display: 'block', cursor: 'pointer', border: 'none', boxShadow: 'none' }}
           />
         </a>
       </div>
