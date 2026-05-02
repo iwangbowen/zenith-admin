@@ -1,5 +1,5 @@
-import { getOnlineSessions, forceLogout } from '../lib/session-manager';
-import { sendToToken, closeTokenConnection } from '../lib/ws-manager';
+import { getOnlineSessions, forceLogout, forceLogoutAllByUser } from '../lib/session-manager';
+import { sendToToken, closeTokenConnection, sendToUser, closeUserConnections } from '../lib/ws-manager';
 import { pageOffset } from '../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../lib/datetime';
@@ -40,6 +40,14 @@ export async function forceLogoutSession(tokenId: string) {
     sendToToken(tokenId, { type: 'session:force-logout', payload: { reason: '您已被管理员强制下线' } });
     setTimeout(() => closeTokenConnection(tokenId, '强制下线'), 500);
   }
+}
+
+export async function forceLogoutAllUserSessions(userId: number) {
+  const tokenIds = await forceLogoutAllByUser(userId);
+  if (tokenIds.length === 0) throw new HTTPException(404, { message: '该用户暂无在线会话' });
+  const msg = { type: 'session:force-logout' as const, payload: { reason: '您已被管理员强制下线' } };
+  sendToUser(userId, msg);
+  setTimeout(() => closeUserConnections(userId, '强制下线'), 500);
 }
 
 export async function getSessionBeforeAudit(tokenId: string) {

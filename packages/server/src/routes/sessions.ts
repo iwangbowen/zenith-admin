@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { validationHook, commonErrorResponses, PaginationQuery, okPaginated, okBody, okMsg } from '../lib/openapi-schemas';
+import { validationHook, commonErrorResponses, PaginationQuery, okPaginated, okBody, okMsg, IdParam } from '../lib/openapi-schemas';
 import { OnlineSessionDTO } from '../lib/openapi-dtos';
-import { listSessions, forceLogoutSession, getSessionBeforeAudit } from '../services/sessions.service';
+import { listSessions, forceLogoutSession, forceLogoutAllUserSessions, getSessionBeforeAudit } from '../services/sessions.service';
 
 const sessionsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -35,6 +35,21 @@ const forceLogoutRouteDef = defineOpenAPIRoute({
   },
 });
 
-sessionsRoute.openapiRoutes([listRoute, forceLogoutRouteDef] as const);
+const forceLogoutAllRouteDef = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/user/{id}', tags: ['Sessions'], summary: '强制指定用户所有会话下线',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:session:forceLogout', audit: { module: '会话管理', description: '强制下线全部会话' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已强制下线全部会话') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await forceLogoutAllUserSessions(id);
+    return c.json(okBody(null, '已强制下线全部会话'), 200);
+  },
+});
+
+sessionsRoute.openapiRoutes([listRoute, forceLogoutAllRouteDef, forceLogoutRouteDef] as const);
 
 export default sessionsRoute;

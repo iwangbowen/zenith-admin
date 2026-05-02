@@ -69,6 +69,22 @@ export async function forceLogout(tokenId: string): Promise<boolean> {
   return true;
 }
 
+/** Force logout all sessions belonging to a specific user */
+export async function forceLogoutAllByUser(userId: number): Promise<string[]> {
+  const sessions = await getOnlineSessions();
+  const targets = sessions.filter((s) => s.userId === userId);
+  if (targets.length === 0) return [];
+  await Promise.all(
+    targets.map((s) =>
+      Promise.all([
+        redis.set(`${BLACKLIST_PREFIX}${s.tokenId}`, '1', 'EX', BLACKLIST_TTL),
+        redis.del(`${SESSION_PREFIX}${s.tokenId}`),
+      ]),
+    ),
+  );
+  return targets.map((s) => s.tokenId);
+}
+
 /** Remove session (normal logout or token expired) */
 export async function removeSession(tokenId: string): Promise<void> {
   await redis.del(`${SESSION_PREFIX}${tokenId}`);

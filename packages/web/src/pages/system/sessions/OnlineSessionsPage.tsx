@@ -3,10 +3,13 @@ import {
   Button,
   Input,
   Modal,
+  RadioGroup,
+  Radio,
   Space,
   Table,
   Tag,
   Toast,
+  Typography,
 } from '@douyinfe/semi-ui';
 import { Search, RotateCcw } from 'lucide-react';
 import type { OnlineUser, PaginatedResponse } from '@zenith/shared';
@@ -57,15 +60,31 @@ export default function OnlineSessionsPage() {
     void fetchData();
   }, [fetchData]);
 
-  const handleForceLogout = (tokenId: string, username: string) => {
+  const handleForceLogout = (record: OnlineUser) => {
+    // 模式引用，Modal.confirm 内部无法直接读 state，改用 ref
+    let logoutMode: 'single' | 'all' = 'single';
+
     Modal.confirm({
-      title: '确定要强制下线吗？',
-      content: `用户：${username}`,
+      title: '强制下线',
+      content: (
+        <Space vertical align="start" style={{ width: '100%' }}>
+          <Typography.Text>用户：{record.username}（{record.nickname}）</Typography.Text>
+          <RadioGroup
+            defaultValue="single"
+            onChange={(e) => { logoutMode = e.target.value as 'single' | 'all'; }}
+          >
+            <Radio value="single">仅下线此会话</Radio>
+            <Radio value="all">下线该用户全部会话</Radio>
+          </RadioGroup>
+        </Space>
+      ),
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/sessions/${tokenId}`);
+        const res = logoutMode === 'all'
+          ? await request.delete(`/api/sessions/user/${record.userId}`)
+          : await request.delete(`/api/sessions/${record.tokenId}`);
         if (res.code === 0) {
-          Toast.success('已强制下线');
+          Toast.success(logoutMode === 'all' ? '已强制下线全部会话' : '已强制下线');
           void fetchData(page, pageSize, keyword);
         }
       },
@@ -108,7 +127,7 @@ export default function OnlineSessionsPage() {
               type="danger"
               size="small"
               disabled={record.tokenId === currentTokenId}
-              onClick={() => handleForceLogout(record.tokenId, record.username)}
+              onClick={() => handleForceLogout(record)}
             >
               强制下线
             </Button>
