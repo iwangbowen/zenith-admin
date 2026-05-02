@@ -346,6 +346,19 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emojiContainerRef = useRef<HTMLDivElement>(null);
+
+  // 点击 emoji 选择器外部时关闭
+  useEffect(() => {
+    if (!emojiVisible) return;
+    const handler = (e: MouseEvent) => {
+      if (emojiContainerRef.current && !emojiContainerRef.current.contains(e.target as Node)) {
+        setEmojiVisible(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [emojiVisible]);
 
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   useEffect(() => {
@@ -696,7 +709,7 @@ export default function ChatPage() {
 
             {/* Toolbar */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 6, alignItems: 'center' }}>
-              <div style={{ position: 'relative' }}>
+              <div ref={emojiContainerRef} style={{ position: 'relative' }}>
                 <Button
                   size="small" theme="borderless" type="tertiary"
                   icon={<Smile size={16} />}
