@@ -812,9 +812,13 @@ export default function ChatPage() {
       {/* Left: conversation list */}
       <div style={{ width: 280, borderRight: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Badge count={totalUnread} overflowCount={99} style={{ flex: 1 }}>
-            <Title heading={6} style={{ margin: 0 }}>消息</Title>
-          </Badge>
+          {totalUnread > 0 ? (
+            <Badge count={totalUnread} overflowCount={99} style={{ flex: 1 }}>
+              <Title heading={6} style={{ margin: 0 }}>消息</Title>
+            </Badge>
+          ) : (
+            <Title heading={6} style={{ margin: 0, flex: 1 }}>消息</Title>
+          )}
           <Tooltip content="新建对话">
             <Button
               size="small" theme="borderless" type="primary"
@@ -874,9 +878,13 @@ export default function ChatPage() {
                   onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
                   onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
                 >
-                  <Badge count={conv.unreadCount} overflowCount={99} dot={false}>
+                  {conv.unreadCount > 0 ? (
+                    <Badge count={conv.unreadCount} overflowCount={99} dot={false}>
+                      <UserAvatar name={avatarName} avatar={avatar} size={38} />
+                    </Badge>
+                  ) : (
                     <UserAvatar name={avatarName} avatar={avatar} size={38} />
-                  </Badge>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
