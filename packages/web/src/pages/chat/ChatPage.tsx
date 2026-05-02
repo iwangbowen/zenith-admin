@@ -702,6 +702,20 @@ export default function ChatPage() {
     });
   }, []);
 
+  const handleInputPaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items ?? []);
+    const imageFiles = items
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      handleSelectImages(imageFiles);
+      Toast.success(`已添加 ${imageFiles.length} 张图片`);
+    }
+  }, [handleSelectImages]);
+
   const handleRecall = useCallback(async (msg: ChatMessage) => {
     const res = await request.request<null>(`/api/chat/messages/${msg.id}/recall`, { method: 'PATCH' });
     if (res.code !== 0) Toast.error(res.message ?? '撤回失败');
@@ -1037,7 +1051,8 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+                onPaste={handleInputPaste}
+                placeholder="输入消息，Enter 发送，Shift+Enter 换行（支持粘贴图片）"
                 rows={3}
                 style={{
                   flex: 1, resize: 'none', borderRadius: 8, padding: '8px 12px',
