@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Input,
   Modal,
   Space,
   Table,
+  Tag,
   Toast,
 } from '@douyinfe/semi-ui';
 import { Search, RotateCcw } from 'lucide-react';
 import type { OnlineUser, PaginatedResponse } from '@zenith/shared';
+import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -23,6 +25,18 @@ export default function OnlineSessionsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
+
+  // 从本地 JWT 解码当前会话 tokenId（jti），无需额外请求
+  const currentTokenId = useMemo<string | null>(() => {
+    try {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return null;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return typeof payload.jti === 'string' ? payload.jti : null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, kw = keyword) => {
     setLoading(true);
@@ -59,7 +73,19 @@ export default function OnlineSessionsPage() {
   };
 
   const columns: ColumnProps<OnlineUser>[] = [
-    { title: '用户名', dataIndex: 'username', width: 140 },
+    {
+      title: '用户名',
+      dataIndex: 'username',
+      width: 180,
+      render: (v: string, record: OnlineUser) => (
+        <Space>
+          <span>{v}</span>
+          {record.tokenId === currentTokenId && (
+            <Tag color="blue" size="small">当前会话</Tag>
+          )}
+        </Space>
+      ),
+    },
     { title: '昵称', dataIndex: 'nickname', width: 140 },
     { title: 'IP', dataIndex: 'ip', width: 150 },
     { title: '浏览器', dataIndex: 'browser', width: 160, ellipsis: true },
@@ -81,6 +107,7 @@ export default function OnlineSessionsPage() {
               theme="borderless"
               type="danger"
               size="small"
+              disabled={record.tokenId === currentTokenId}
               onClick={() => handleForceLogout(record.tokenId, record.username)}
             >
               强制下线
