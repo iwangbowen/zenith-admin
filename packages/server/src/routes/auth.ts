@@ -16,14 +16,14 @@ const auth = new OpenAPIHono({ defaultHook: validationHook });
 
 // ─── 本地 Zod schemas ────────────────────────────────────────────────────────
 const loginSchema = z.object({
-  username: z.string().min(3).max(32),
+  username: z.string().min(2).max(32),
   password: z.string().min(6).max(64),
   captchaId: z.string().optional(),
   captchaCode: z.string().optional(),
   tenantCode: z.string().max(50).optional(),
 });
 const registerSchema = z.object({
-  username: z.string().min(3).max(32),
+  username: z.string().min(2).max(32),
   nickname: z.string().min(1).max(32),
   email: z.email(),
   password: z.string().min(6).max(64),
