@@ -1,4 +1,4 @@
-import { eq, and, desc, count, gt, sql, inArray, or, ne } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, or, ne, max } from 'drizzle-orm';
 import { db } from '../db';
 import {
   chatConversations, chatConversationMembers, chatMessages, users,
@@ -61,60 +61,86 @@ export async function listConversations(): Promise<ChatConversation[]> {
     .from(chatConversations)
     .where(inArray(chatConversations.id, convIds));
 
-  // 拉最后一条消息 + 未读数（per conversation）
-  const results: ChatConversation[] = [];
-  for (const conv of convRows) {
-    const lastReadAt = lastReadMap.get(conv.id) ?? null;
+  // 批量拉取每个会话的最后一条消息（子查询先找最大 id 再 join）
+  const latestMsgIdSub = db
+    .select({
+      conversationId: chatMessages.conversationId,
+      latestId: max(chatMessages.id).as('latest_id'),
+    })
+    .from(chatMessages)
+    .where(inArray(chatMessages.conversationId, convIds))
+    .groupBy(chatMessages.conversationId)
+    .as('latest_msg_id');
 
-    // 最新消息
-    const [lastMsgRow] = await db
-      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
-      .from(chatMessages)
-      .leftJoin(users, eq(chatMessages.senderId, users.id))
-      .where(eq(chatMessages.conversationId, conv.id))
-      .orderBy(desc(chatMessages.createdAt))
-      .limit(1);
+  const latestMsgRows = await db
+    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+    .from(latestMsgIdSub)
+    .innerJoin(
+      chatMessages,
+      eq(chatMessages.id, latestMsgIdSub.latestId),
+    )
+    .leftJoin(users, eq(chatMessages.senderId, users.id));
 
-    // 未读数
-    const [{ unread }] = await db
-      .select({ unread: count() })
-      .from(chatMessages)
+  const latestMsgMap = new Map(
+    latestMsgRows.map((r) => [
+      r.msg.conversationId,
+      mapChatMessage(r.msg, r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null),
+    ]),
+  );
+
+  // 批量拉取 direct 会话的对方用户
+  const directConvIds = convRows.filter((c) => c.type === 'direct').map((c) => c.id);
+  const directTargetRows = directConvIds.length > 0
+    ? await db
+      .select({
+        conversationId: chatConversationMembers.conversationId,
+        id: users.id,
+        nickname: users.nickname,
+        avatar: users.avatar,
+      })
+      .from(chatConversationMembers)
+      .innerJoin(users, eq(chatConversationMembers.userId, users.id))
       .where(and(
-        eq(chatMessages.conversationId, conv.id),
-        ne(chatMessages.senderId, me.userId),
-        lastReadAt ? gt(chatMessages.createdAt, lastReadAt) : sql`true`,
-      ));
+        inArray(chatConversationMembers.conversationId, directConvIds),
+        ne(chatConversationMembers.userId, me.userId),
+      ))
+    : [];
 
-    // 对方用户信息（仅 direct 类型）
-    let targetUser: ChatConversation['targetUser'] = null;
-    if (conv.type === 'direct') {
-      const [otherMember] = await db
-        .select({ id: users.id, nickname: users.nickname, avatar: users.avatar })
-        .from(chatConversationMembers)
-        .innerJoin(users, eq(chatConversationMembers.userId, users.id))
-        .where(and(
-          eq(chatConversationMembers.conversationId, conv.id),
-          ne(chatConversationMembers.userId, me.userId),
-        ))
-        .limit(1);
-      if (otherMember) targetUser = otherMember;
+  const directTargetMap = new Map(
+    directTargetRows.map((r) => [r.conversationId, { id: r.id, nickname: r.nickname, avatar: r.avatar }]),
+  );
+
+  // 批量拉取消息时间（用于本地计算未读，避免逐会话 count 查询）
+  const msgTimeRows = await db
+    .select({
+      conversationId: chatMessages.conversationId,
+      senderId: chatMessages.senderId,
+      createdAt: chatMessages.createdAt,
+    })
+    .from(chatMessages)
+    .where(inArray(chatMessages.conversationId, convIds));
+
+  const unreadMap = new Map<number, number>();
+  for (const row of msgTimeRows) {
+    if (row.senderId === me.userId) continue;
+    const lastReadAt = lastReadMap.get(row.conversationId) ?? null;
+    if (!lastReadAt || row.createdAt > lastReadAt) {
+      unreadMap.set(row.conversationId, (unreadMap.get(row.conversationId) ?? 0) + 1);
     }
-
-    results.push({
-      id: conv.id,
-      type: conv.type as ChatConversation['type'],
-      name: conv.name,
-      targetUser,
-      lastMessage: lastMsgRow
-        ? mapChatMessage(lastMsgRow.msg, { id: lastMsgRow.msg.senderId ?? 0, nickname: lastMsgRow.nickname ?? '', avatar: lastMsgRow.avatar ?? null })
-        : null,
-      unreadCount: Number(unread),
-      isPinned: pinnedMap.get(conv.id) ?? false,
-      isStarred: starredMap.get(conv.id) ?? false,
-      createdAt: formatDateTime(conv.createdAt),
-      updatedAt: formatDateTime(conv.updatedAt),
-    });
   }
+
+  const results: ChatConversation[] = convRows.map((conv) => ({
+    id: conv.id,
+    type: conv.type as ChatConversation['type'],
+    name: conv.name,
+    targetUser: conv.type === 'direct' ? (directTargetMap.get(conv.id) ?? null) : null,
+    lastMessage: latestMsgMap.get(conv.id) ?? null,
+    unreadCount: unreadMap.get(conv.id) ?? 0,
+    isPinned: pinnedMap.get(conv.id) ?? false,
+    isStarred: starredMap.get(conv.id) ?? false,
+    createdAt: formatDateTime(conv.createdAt),
+    updatedAt: formatDateTime(conv.updatedAt),
+  }));
 
   // 置顶优先，然后按最新消息时间排序
   results.sort((a, b) => {
@@ -188,8 +214,10 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
     name: null,
     targetUser,
     lastMessage: null,
-    unreadCount: 0,    isPinned: false,
-    isStarred: false,    createdAt: formatDateTime(conv.createdAt),
+    unreadCount: 0,
+    isPinned: false,
+    isStarred: false,
+    createdAt: formatDateTime(conv.createdAt),
     updatedAt: formatDateTime(conv.updatedAt),
   };
 }
@@ -451,6 +479,30 @@ export async function addGroupMember(conversationId: number, targetUserId: numbe
 
   for (const { userId } of members) {
     sendToUser(userId, { type: 'chat:member-join', payload: { conversationId, user: target } });
+  }
+}
+
+// ─── 删除/退出会话（仅对当前用户）─────────────────────────────────────────────
+
+export async function removeConversation(conversationId: number): Promise<void> {
+  const me = currentUser();
+
+  const member = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (!member) throw new HTTPException(404, { message: '会话不存在或无权操作' });
+
+  await db.delete(chatConversationMembers).where(and(
+    eq(chatConversationMembers.conversationId, conversationId),
+    eq(chatConversationMembers.userId, me.userId),
+  ));
+
+  const remainCount = await db.$count(chatConversationMembers, eq(chatConversationMembers.conversationId, conversationId));
+  if (remainCount === 0) {
+    await db.delete(chatConversations).where(eq(chatConversations.id, conversationId));
   }
 }
 

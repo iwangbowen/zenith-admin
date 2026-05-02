@@ -25,7 +25,11 @@ export const chatHandlers = [
 
   // 会话列表
   http.get('/api/chat/conversations', () => {
-    return HttpResponse.json({ code: 0, message: 'ok', data: mockChatConversations });
+    const data = [...mockChatConversations].sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+      return (b.lastMessage?.createdAt ?? b.updatedAt).localeCompare(a.lastMessage?.createdAt ?? a.updatedAt);
+    });
+    return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
   // 创建/获取单聊
@@ -162,6 +166,15 @@ export const chatHandlers = [
     const body = await request.json() as { star: boolean };
     const conv = mockChatConversations.find((c) => c.id === convId);
     if (conv) conv.isStarred = body.star;
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // 删除/退出会话
+  http.delete('/api/chat/conversations/:id', ({ params }) => {
+    const convId = Number(params.id);
+    const idx = mockChatConversations.findIndex((c) => c.id === convId);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '会话不存在', data: null }, { status: 404 });
+    mockChatConversations.splice(idx, 1);
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
 

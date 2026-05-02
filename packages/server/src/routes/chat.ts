@@ -9,7 +9,7 @@ import {
   listConversations, getOrCreateDirectConversation, listMessages,
   sendMessage, recallMessage, markConversationRead, listChatUsers,
   createGroupConversation, addGroupMember, listGroupMembers,
-  pinConversation, starConversation,
+  pinConversation, starConversation, removeConversation,
 } from '../services/chat.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -233,6 +233,23 @@ chatRouter.openapi(
     const { id } = c.req.valid('param');
     const { star } = c.req.valid('json');
     await starConversation(id, star);
+    return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 删除/退出会话 ───────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'delete', path: '/conversations/{id}', tags: ['Chat'], summary: '删除（退出）会话',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('操作成功') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await removeConversation(id);
     return c.json(okBody(null), 200);
   },
 );

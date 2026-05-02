@@ -567,7 +567,10 @@ export default function ChatPage() {
   const [showMembers, setShowMembers] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [pendingNewMsgCount, setPendingNewMsgCount] = useState(0);
+  const [msgSearch, setMsgSearch] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -607,6 +610,12 @@ export default function ChatPage() {
 
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null;
 
+  const isNearBottom = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }, []);
+
   const fetchConversations = useCallback(async () => {
     setLoadingConvs(true);
     const res = await request.get<ChatConversation[]>('/api/chat/conversations', { silent: true });
@@ -617,6 +626,9 @@ export default function ChatPage() {
   useEffect(() => { void fetchConversations(); }, [fetchConversations]);
 
   const fetchMessages = useCallback(async (convId: number, p = 1) => {
+    const el = messagesContainerRef.current;
+    const prevScrollHeight = el?.scrollHeight ?? 0;
+    const prevScrollTop = el?.scrollTop ?? 0;
     setLoadingMsgs(true);
     const res = await request.get<{ list: ChatMessage[]; total: number; page: number; pageSize: number }>(
       `/api/chat/conversations/${convId}/messages?page=${p}&pageSize=30`,
@@ -628,9 +640,16 @@ export default function ChatPage() {
       if (p === 1) {
         setMessages(newMsgs);
         setPage(1);
+        setPendingNewMsgCount(0);
       } else {
         setMessages((prev) => [...newMsgs, ...prev]);
         setPage(p);
+        requestAnimationFrame(() => {
+          const box = messagesContainerRef.current;
+          if (!box) return;
+          const delta = box.scrollHeight - prevScrollHeight;
+          box.scrollTop = prevScrollTop + delta;
+        });
       }
       setHasMore(res.data.list.length >= 30);
     }
@@ -640,6 +659,7 @@ export default function ChatPage() {
     setActiveConvId(conv.id);
     setReplyTo(null);
     setShowMembers(false);
+    setMsgSearch('');
     await fetchMessages(conv.id, 1);
     await request.post(`/api/chat/conversations/${conv.id}/read`, {}, { silent: true });
     setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
@@ -777,16 +797,28 @@ export default function ChatPage() {
   const handleWsMessage = useCallback((wsMsg: WsMessage) => {
     if (wsMsg.type === 'chat:message') {
       const msg = wsMsg.payload;
+      const isOwnMsg = msg.senderId === currentUserId;
+      const shouldAutoRead = msg.conversationId === activeConvId && (isOwnMsg || isNearBottom());
       if (msg.conversationId === activeConvId) {
         setMessages((prev) => [...prev, msg]);
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-        request.post(`/api/chat/conversations/${msg.conversationId}/read`, {}, { silent: true }).catch(() => {});
+        if (shouldAutoRead) {
+          setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+          request.post(`/api/chat/conversations/${msg.conversationId}/read`, {}, { silent: true }).catch(() => {});
+          setPendingNewMsgCount(0);
+        } else if (!isOwnMsg) {
+          setPendingNewMsgCount((v) => v + 1);
+        }
       }
       setConversations((prev) => {
         const isActive = msg.conversationId === activeConvId;
         const updated = prev.map((c) =>
           c.id === msg.conversationId
-            ? { ...c, lastMessage: msg, unreadCount: isActive ? 0 : c.unreadCount + 1, updatedAt: msg.createdAt }
+            ? {
+              ...c,
+              lastMessage: msg,
+              unreadCount: isOwnMsg ? c.unreadCount : (isActive && shouldAutoRead ? 0 : c.unreadCount + 1),
+              updatedAt: msg.createdAt,
+            }
             : c,
         );
         const idx = updated.findIndex((c) => c.id === msg.conversationId);
@@ -806,7 +838,15 @@ export default function ChatPage() {
         void fetchConversations();
       }
     }
-  }, [activeConvId, fetchConversations]);
+  }, [activeConvId, currentUserId, fetchConversations, isNearBottom]);
+
+  const handleMessagesScroll = useCallback(() => {
+    if (!activeConvId) return;
+    if (!isNearBottom()) return;
+    if (pendingNewMsgCount > 0) setPendingNewMsgCount(0);
+    request.post(`/api/chat/conversations/${activeConvId}/read`, {}, { silent: true }).catch(() => {});
+    setConversations((prev) => prev.map((c) => (c.id === activeConvId ? { ...c, unreadCount: 0 } : c)));
+  }, [activeConvId, isNearBottom, pendingNewMsgCount]);
 
   useWebSocket(handleWsMessage);
 
@@ -841,6 +881,12 @@ export default function ChatPage() {
   });
 
   const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
+  const displayMessages = msgSearch.trim()
+    ? messages.filter((m) => {
+      const keyword = msgSearch.toLowerCase();
+      return (m.content ?? '').toLowerCase().includes(keyword) || (m.senderName ?? '').toLowerCase().includes(keyword);
+    })
+    : messages;
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 120px)', minHeight: 500, border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--semi-color-bg-0)' }}>
@@ -896,7 +942,11 @@ export default function ChatPage() {
                 if (lastMsg.isRecalled) {
                   lastMsgText = '消息已撤回';
                 } else if (lastMsg.type === 'image') {
-                  lastMsgText = '[图片]';
+                  const nameFromExtra = (lastMsg.extra as { name?: string } | null)?.name;
+                  lastMsgText = nameFromExtra ? `[图片] ${nameFromExtra}` : '[图片]';
+                } else if (lastMsg.type === 'file') {
+                  const fileName = (lastMsg.extra as { name?: string } | null)?.name;
+                  lastMsgText = fileName ? `[文件] ${fileName}` : '[文件]';
                 } else {
                   lastMsgText = lastMsg.content;
                 }
@@ -945,6 +995,27 @@ export default function ChatPage() {
                         }}
                       >
                         {isStarred ? '取消星标' : '标记星标'}
+                      </Dropdown.Item>
+                      <Dropdown.Divider />
+                      <Dropdown.Item
+                        type="danger"
+                        onClick={() => {
+                          void request.delete(`/api/chat/conversations/${conv.id}`).then((r) => {
+                            if ((r as { code: number; message?: string }).code === 0) {
+                              Toast.success('会话已删除');
+                              setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+                              if (activeConvId === conv.id) {
+                                setActiveConvId(null);
+                                setMessages([]);
+                                setPendingNewMsgCount(0);
+                              }
+                            } else {
+                              Toast.error((r as { message?: string }).message ?? '删除失败');
+                            }
+                          });
+                        }}
+                      >
+                        删除会话
                       </Dropdown.Item>
                     </Dropdown.Menu>
                   )}
@@ -1011,6 +1082,15 @@ export default function ChatPage() {
             <Title heading={6} style={{ margin: 0, flex: 1 }}>
               {activeConv.type === 'direct' ? (activeConv.targetUser?.nickname ?? '未知用户') : (activeConv.name ?? '群聊')}
             </Title>
+            <Input
+              size="small"
+              prefix={<Search size={12} />}
+              placeholder="搜索消息"
+              value={msgSearch}
+              onChange={setMsgSearch}
+              showClear
+              style={{ width: 220 }}
+            />
             {activeConv.type === 'group' && (
               <Tooltip content={showMembers ? '关闭成员面板' : '查看群成员'}>
                 <Button
@@ -1024,8 +1104,12 @@ export default function ChatPage() {
 
           <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
             {/* Messages */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              {hasMore && (
+            <div
+              ref={messagesContainerRef}
+              onScroll={handleMessagesScroll}
+              style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}
+            >
+              {hasMore && !msgSearch && (
                 <div style={{ textAlign: 'center', marginBottom: 8 }}>
                   <Button
                     size="small" type="tertiary" theme="borderless" loading={loadingMsgs}
@@ -1036,23 +1120,43 @@ export default function ChatPage() {
                 </div>
               )}
               <Spin spinning={loadingMsgs && messages.length === 0}>
-                {messages.length === 0 && !loadingMsgs && (
+                {displayMessages.length === 0 && !loadingMsgs && (
                   <Empty description="发送第一条消息吧" style={{ margin: 'auto' }} imageStyle={{ width: 80 }} />
                 )}
-                {messages.map((msg, index) => (
+                {displayMessages.map((msg, index) => (
                   <MessageBubble
                     key={msg.id}
                     msg={msg}
                     isSelf={msg.senderId === currentUserId}
                     onReply={setReplyTo}
                     onRecall={handleRecall}
-                    shouldShowTime={shouldDisplayMessageTime(msg, messages[index + 1])}
+                    shouldShowTime={shouldDisplayMessageTime(msg, displayMessages[index + 1])}
                     getReplyMessage={getReplyMessage}
                     onScrollToMessage={scrollToMessage}
                   />
                 ))}
                 <div ref={messagesEndRef} />
               </Spin>
+              {pendingNewMsgCount > 0 && (
+                <div style={{ position: 'sticky', bottom: 10, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+                  <Button
+                    size="small"
+                    theme="solid"
+                    type="primary"
+                    style={{ pointerEvents: 'auto' }}
+                    onClick={() => {
+                      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                      setPendingNewMsgCount(0);
+                      if (activeConvId) {
+                        void request.post(`/api/chat/conversations/${activeConvId}/read`, {}, { silent: true });
+                        setConversations((prev) => prev.map((c) => (c.id === activeConvId ? { ...c, unreadCount: 0 } : c)));
+                      }
+                    }}
+                  >
+                    有 {pendingNewMsgCount} 条新消息，点击查看
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Group members sidebar */}
