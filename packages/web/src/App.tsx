@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Spin } from '@douyinfe/semi-ui';
 import { useAuth } from '@/hooks/useAuth';
 import { PermissionContext } from '@/hooks/usePermission';
@@ -25,6 +25,14 @@ const routeFallback = <div style={{ padding: 24 }}><Spin /></div>;
 
 /** 固定路由路径，不通过菜单动态加载 */
 const FIXED_ROUTES = new Set(['/profile', '/notifications']);
+
+/** 未登录时保存来源路径并跳转登录 */
+function RedirectToLogin() {
+  const location = useLocation();
+  const from = location.pathname + location.search;
+  const loginUrl = from && from !== '/' ? `/login?redirect=${encodeURIComponent(from)}` : '/login';
+  return <Navigate to={loginUrl} replace />;
+}
 
 /** 扁平化菜单以便注册路由 */
 function flattenMenus(menus: Menu[]): Menu[] {
@@ -138,7 +146,7 @@ export default function App() {
             <Route path="/login" element={<Suspense fallback={routeFallback}><LoginPage onLogin={login} onRegister={register} /></Suspense>} />
             <Route path="/reset-password" element={<Suspense fallback={routeFallback}><ResetPasswordPage /></Suspense>} />
             <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<RedirectToLogin />} />
           </Routes>
         )}
       </BrowserRouter>

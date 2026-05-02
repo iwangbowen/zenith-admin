@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { User, Lock, Mail, AtSign, Building2 } from 'lucide-react';
 import { Icon } from '@iconify/react';
@@ -18,6 +18,9 @@ interface LoginPageProps {
 
 export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPageProps>) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const redirectTo = params.get('redirect') || '/';
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState('login');
   const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -70,7 +73,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
     try {
       const res = await onLogin(values.username, values.password, captchaId, values.captchaCode, values.tenantCode);
       if (res.code === 0) {
-        navigate('/', { replace: true });
+        navigate(redirectTo, { replace: true });
         return;
       }
 
@@ -86,7 +89,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
     try {
       const res = await onRegister(values);
       if (res.code === 0) {
-        navigate('/', { replace: true });
+        navigate(redirectTo, { replace: true });
         return;
       }
 
