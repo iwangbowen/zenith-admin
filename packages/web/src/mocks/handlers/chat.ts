@@ -46,6 +46,8 @@ export const chatHandlers = [
       targetUser,
       lastMessage: null,
       unreadCount: 0,
+      isPinned: false,
+      isStarred: false,
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
@@ -126,6 +128,8 @@ export const chatHandlers = [
       targetUser: null,
       lastMessage: null,
       unreadCount: 0,
+      isPinned: false,
+      isStarred: false,
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
@@ -141,6 +145,24 @@ export const chatHandlers = [
     const convId = Number(params.id);
     const members = mockGroupMembers[convId] ?? [];
     return HttpResponse.json({ code: 0, message: 'ok', data: members });
+  }),
+
+  // 置顶 / 取消置顶
+  http.patch('/api/chat/conversations/:id/pin', async ({ params, request }) => {
+    const convId = Number(params.id);
+    const body = await request.json() as { pin: boolean };
+    const conv = mockChatConversations.find((c) => c.id === convId);
+    if (conv) conv.isPinned = body.pin;
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // 星标 / 取消星标
+  http.patch('/api/chat/conversations/:id/star', async ({ params, request }) => {
+    const convId = Number(params.id);
+    const body = await request.json() as { star: boolean };
+    const conv = mockChatConversations.find((c) => c.id === convId);
+    if (conv) conv.isStarred = body.star;
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
 
   // 添加群成员
