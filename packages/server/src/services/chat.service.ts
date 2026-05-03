@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, or, ne, max } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, or, ne, max, asc, gte, lte, lt, gt } from 'drizzle-orm';
 import { db } from '../db';
 import {
   chatConversations, chatConversationMembers, chatMessages, users,
@@ -6,10 +6,11 @@ import {
 import { sendToUser } from '../lib/ws-manager';
 import { currentUser } from '../lib/context';
 import { formatDateTime } from '../lib/datetime';
+import { parseDateRangeEnd, parseDateRangeStart } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import type {
-  SendChatMessageInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra,
+  SendChatMessageInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext,
 } from '@zenith/shared';
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
@@ -209,6 +210,26 @@ export function mapChatMessage(
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
+}
+
+async function ensureConversationMember(conversationId: number) {
+  const me = currentUser();
+  const member = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (!member) throw new HTTPException(403, { message: '无权访问该会话' });
+  return member;
+}
+
+function buildMessageSearchSnippet(message: ChatMessage): string {
+  if (message.isRecalled) return '消息已撤回';
+  if (message.type === 'image') return `[图片] ${message.extra?.asset?.name ?? ''}`.trim();
+  if (message.type === 'file') return `[文件] ${message.extra?.asset?.name ?? ''}`.trim();
+  if (message.type === 'system') return `[系统] ${message.content}`;
+  return message.content;
 }
 
 // ─── 会话列表 ─────────────────────────────────────────────────────────────────
@@ -443,16 +464,7 @@ export async function starConversation(conversationId: number, star: boolean): P
 // ─── 消息列表（分页） ─────────────────────────────────────────────────────────
 
 export async function listMessages(conversationId: number, page: number, pageSize: number) {
-  const me = currentUser();
-
-  // 鉴权：确认当前用户是会话成员
-  const member = await db.query.chatConversationMembers.findFirst({
-    where: and(
-      eq(chatConversationMembers.conversationId, conversationId),
-      eq(chatConversationMembers.userId, me.userId),
-    ),
-  });
-  if (!member) throw new HTTPException(403, { message: '无权访问该会话' });
+  await ensureConversationMember(conversationId);
 
   const [total, rows] = await Promise.all([
     db.$count(chatMessages, eq(chatMessages.conversationId, conversationId)),
@@ -471,6 +483,144 @@ export async function listMessages(conversationId: number, page: number, pageSiz
   );
 
   return { list, total, page, pageSize };
+}
+
+// ─── 会话消息搜索 ───────────────────────────────────────────────────────────
+
+export async function searchConversationMessages(
+  conversationId: number,
+  params: {
+    keyword?: string;
+    types?: ChatMessage['type'][];
+    senderId?: number;
+    startAt?: string;
+    endAt?: string;
+    page: number;
+    pageSize: number;
+  },
+): Promise<ChatMessageSearchResult> {
+  await ensureConversationMember(conversationId);
+
+  const keyword = params.keyword?.trim();
+  const types = params.types?.filter(Boolean) ?? [];
+  const startAt = parseDateRangeStart(params.startAt);
+  const endAt = parseDateRangeEnd(params.endAt);
+
+  const where = and(
+    eq(chatMessages.conversationId, conversationId),
+    params.senderId ? eq(chatMessages.senderId, params.senderId) : undefined,
+    types.length > 0 ? inArray(chatMessages.type, types) : undefined,
+    startAt ? gte(chatMessages.createdAt, startAt) : undefined,
+    endAt ? lte(chatMessages.createdAt, endAt) : undefined,
+    keyword
+      ? or(
+          sql`${chatMessages.content} ILIKE ${`%${keyword}%`}`,
+          sql`COALESCE(${users.nickname}, '') ILIKE ${`%${keyword}%`}`,
+          sql`COALESCE(${users.username}, '') ILIKE ${`%${keyword}%`}`,
+          sql`COALESCE(${chatMessages.extra} -> 'asset' ->> 'name', '') ILIKE ${`%${keyword}%`}`,
+        )
+      : undefined,
+  );
+
+  const [countRows, rows] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(chatMessages)
+      .leftJoin(users, eq(chatMessages.senderId, users.id))
+      .where(where),
+    db
+      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+      .from(chatMessages)
+      .leftJoin(users, eq(chatMessages.senderId, users.id))
+      .where(where)
+      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+      .limit(params.pageSize)
+      .offset(pageOffset(params.page, params.pageSize)),
+  ]);
+
+  const list = rows.map((r) => {
+    const message = mapChatMessage(
+      r.msg,
+      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+    );
+    return {
+      message,
+      snippet: buildMessageSearchSnippet(message),
+    };
+  });
+
+  return {
+    list,
+    total: Number(countRows[0]?.count ?? 0),
+    page: params.page,
+    pageSize: params.pageSize,
+  };
+}
+
+// ─── 消息上下文定位 ─────────────────────────────────────────────────────────
+
+export async function getMessageContext(
+  conversationId: number,
+  messageId: number,
+  before = 15,
+  after = 15,
+): Promise<ChatMessageContext> {
+  await ensureConversationMember(conversationId);
+
+  const target = await db
+    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+    .from(chatMessages)
+    .leftJoin(users, eq(chatMessages.senderId, users.id))
+    .where(and(
+      eq(chatMessages.conversationId, conversationId),
+      eq(chatMessages.id, messageId),
+    ))
+    .limit(1);
+
+  if (target.length === 0) throw new HTTPException(404, { message: '消息不存在' });
+
+  const beforeRows = await db
+    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+    .from(chatMessages)
+    .leftJoin(users, eq(chatMessages.senderId, users.id))
+    .where(and(
+      eq(chatMessages.conversationId, conversationId),
+      lt(chatMessages.id, messageId),
+    ))
+    .orderBy(desc(chatMessages.id))
+    .limit(before);
+
+  const afterRows = await db
+    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+    .from(chatMessages)
+    .leftJoin(users, eq(chatMessages.senderId, users.id))
+    .where(and(
+      eq(chatMessages.conversationId, conversationId),
+      gt(chatMessages.id, messageId),
+    ))
+    .orderBy(asc(chatMessages.id))
+    .limit(after);
+
+  const list = [
+    ...beforeRows.reverse(),
+    ...target,
+    ...afterRows,
+  ].map((r) => mapChatMessage(
+    r.msg,
+    r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+  ));
+
+  const [beforeCount, afterCount] = await Promise.all([
+    db.$count(chatMessages, and(eq(chatMessages.conversationId, conversationId), lt(chatMessages.id, messageId))),
+    db.$count(chatMessages, and(eq(chatMessages.conversationId, conversationId), gt(chatMessages.id, messageId))),
+  ]);
+
+  return {
+    list,
+    anchorMessageId: messageId,
+    hasBefore: beforeCount > before,
+    hasAfter: afterCount > after,
+  };
 }
 
 // ─── 发送消息 ─────────────────────────────────────────────────────────────────

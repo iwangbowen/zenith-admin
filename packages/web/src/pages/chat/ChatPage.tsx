@@ -1,16 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  Input, Button, Avatar, Badge, Typography, Empty, Spin, Toast, Tooltip, Tabs, TabPane, Dropdown, Modal, TextArea, Tag,
+  Input, Button, Avatar, Badge, Typography, Empty, Spin, Toast, Tooltip, Tabs, TabPane, Dropdown, Modal, TextArea, Tag, Select, DatePicker,
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, RefreshCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, RefreshCcw, ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
-import { formatDateTime, formatConvTime } from '@/utils/date';
+import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon } from '@/utils/file-utils';
 import type {
-  ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra, ChatGroupMember,
+  ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra, ChatGroupMember, ChatMessageSearchItem, ChatMessageSearchResult, ChatMessageContext,
 } from '@zenith/shared';
 
 const { Text, Title } = Typography;
@@ -28,6 +28,15 @@ interface PendingImage {
   file: File;
   previewUrl: string;
 }
+
+type SearchDatePreset = '' | 'today' | '7d' | '30d';
+
+const CHAT_MESSAGE_TYPE_OPTIONS: Array<{ value: ChatMessage['type']; label: string }> = [
+  { value: 'text', label: '文本' },
+  { value: 'image', label: '图片' },
+  { value: 'file', label: '文件' },
+  { value: 'system', label: '系统' },
+];
 
 function getAvatarColor(name: string): string {
   const colors = ['#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#a18cd1', '#fbc2eb', '#a1c4fd'];
@@ -1094,10 +1103,22 @@ export default function ChatPage() {
   const [convSearch, setConvSearch] = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [pendingNewMsgCount, setPendingNewMsgCount] = useState(0);
   const [msgSearch, setMsgSearch] = useState('');
+  const [searchTypeFilters, setSearchTypeFilters] = useState<ChatMessage['type'][]>([]);
+  const [searchSenderId, setSearchSenderId] = useState<number | undefined>();
+  const [searchTimeRange, setSearchTimeRange] = useState<[Date, Date] | null>(null);
+  const [searchDatePreset, setSearchDatePreset] = useState<SearchDatePreset>('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<ChatMessageSearchItem[]>([]);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchHasSearched, setSearchHasSearched] = useState(false);
+  const [searchMembers, setSearchMembers] = useState<ChatGroupMember[]>([]);
+  const [contextMode, setContextMode] = useState<{ anchorMessageId: number; keyword: string } | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -1131,12 +1152,14 @@ export default function ChatPage() {
   }, []);
 
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [currentUserNickname, setCurrentUserNickname] = useState('我');
   useEffect(() => {
     try {
       const token = localStorage.getItem('zenith_token');
       if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1])) as { userId?: number };
+        const payload = JSON.parse(atob(token.split('.')[1])) as { userId?: number; nickname?: string };
         setCurrentUserId(payload.userId ?? null);
+        setCurrentUserNickname(payload.nickname ?? '我');
       }
     } catch { /* ignore */ }
   }, []);
@@ -1174,6 +1197,7 @@ export default function ChatPage() {
         setMessages(newMsgs);
         setPage(1);
         setPendingNewMsgCount(0);
+        setContextMode(null);
       } else {
         setMessages((prev) => [...newMsgs, ...prev]);
         setPage(p);
@@ -1192,7 +1216,17 @@ export default function ChatPage() {
     setActiveConvId(conv.id);
     setReplyTo(null);
     setShowMembers(false);
+    setShowSearchPanel(false);
     setMsgSearch('');
+    setSearchTypeFilters([]);
+    setSearchSenderId(undefined);
+    setSearchTimeRange(null);
+    setSearchDatePreset('');
+    setSearchResults([]);
+    setSearchTotal(0);
+    setSearchPage(1);
+    setSearchHasSearched(false);
+    setContextMode(null);
     await fetchMessages(conv.id, 1);
     await request.post(`/api/chat/conversations/${conv.id}/read`, {}, { silent: true });
     setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
@@ -1410,6 +1444,139 @@ export default function ChatPage() {
     if (res.code !== 0) Toast.error(res.message ?? '撤回失败');
   }, []);
 
+  const resetSearchFilters = useCallback(() => {
+    setMsgSearch('');
+    setSearchTypeFilters([]);
+    setSearchSenderId(undefined);
+    setSearchTimeRange(null);
+    setSearchDatePreset('');
+    setSearchResults([]);
+    setSearchTotal(0);
+    setSearchPage(1);
+    setSearchHasSearched(false);
+    setShowSearchPanel(false);
+  }, []);
+
+  const applyDatePreset = useCallback((preset: SearchDatePreset) => {
+    if (!preset) {
+      setSearchDatePreset('');
+      setSearchTimeRange(null);
+      return;
+    }
+    const now = new Date();
+    const start = new Date(now);
+    if (preset === 'today') {
+      start.setHours(0, 0, 0, 0);
+    } else if (preset === '7d') {
+      start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+    } else if (preset === '30d') {
+      start.setDate(start.getDate() - 29);
+      start.setHours(0, 0, 0, 0);
+    }
+    setSearchDatePreset(preset);
+    setSearchTimeRange([start, now]);
+  }, []);
+
+  const senderOptions = useMemo(() => {
+    const optionMap = new Map<number, { value: number; label: string }>();
+    if (currentUserId) {
+      optionMap.set(currentUserId, { value: currentUserId, label: currentUserNickname || '我' });
+    }
+    if (activeConv?.type === 'direct' && activeConv.targetUser) {
+      optionMap.set(activeConv.targetUser.id, { value: activeConv.targetUser.id, label: activeConv.targetUser.nickname });
+    }
+    searchMembers.forEach((member) => {
+      optionMap.set(member.id, { value: member.id, label: member.nickname });
+    });
+    messages.forEach((message) => {
+      if (message.senderId && message.senderName) {
+        optionMap.set(message.senderId, { value: message.senderId, label: message.senderName });
+      }
+    });
+    return Array.from(optionMap.values());
+  }, [activeConv, currentUserId, currentUserNickname, messages, searchMembers]);
+
+  useEffect(() => {
+    if (!showSearchPanel || !activeConvId || activeConv?.type !== 'group') {
+      if (!showSearchPanel) setSearchMembers([]);
+      return;
+    }
+    void (async () => {
+      const res = await request.get<ChatGroupMember[]>(`/api/chat/conversations/${activeConvId}/members`, { silent: true });
+      if (res.code === 0 && res.data) setSearchMembers(res.data);
+    })();
+  }, [activeConv?.type, activeConvId, showSearchPanel]);
+
+  const executeSearch = useCallback(async (targetPage = 1) => {
+    if (!activeConvId) return;
+
+    const hasCondition = Boolean(
+      msgSearch.trim()
+      || searchTypeFilters.length > 0
+      || searchSenderId
+      || searchTimeRange,
+    );
+    if (!hasCondition) {
+      Toast.info('请先输入关键词或设置筛选条件');
+      return;
+    }
+
+    const qs = new URLSearchParams();
+    if (msgSearch.trim()) qs.set('keyword', msgSearch.trim());
+    if (searchTypeFilters.length > 0) qs.set('types', searchTypeFilters.join(','));
+    if (searchSenderId) qs.set('senderId', String(searchSenderId));
+    if (searchTimeRange) {
+      qs.set('startAt', formatDateTimeForApi(searchTimeRange[0]));
+      qs.set('endAt', formatDateTimeForApi(searchTimeRange[1]));
+    }
+    qs.set('page', String(targetPage));
+    qs.set('pageSize', '20');
+
+    setSearchLoading(true);
+    const res = await request.get<ChatMessageSearchResult>(
+      `/api/chat/conversations/${activeConvId}/messages/search?${qs.toString()}`,
+      { silent: true },
+    );
+    setSearchLoading(false);
+
+    if (res.code === 0 && res.data) {
+      setShowSearchPanel(true);
+      setShowMembers(false);
+      setSearchHasSearched(true);
+      setSearchPage(targetPage);
+      setSearchResults(targetPage === 1 ? res.data.list : [...searchResults, ...res.data.list]);
+      setSearchTotal(res.data.total);
+      return;
+    }
+
+    setSearchHasSearched(false);
+    setShowSearchPanel(false);
+    Toast.info('服务端搜索暂不可用，已保留本地模糊过滤');
+  }, [activeConvId, msgSearch, searchResults, searchSenderId, searchTimeRange, searchTypeFilters]);
+
+  const jumpToSearchResult = useCallback(async (item: ChatMessageSearchItem) => {
+    if (!activeConvId) return;
+    const res = await request.get<ChatMessageContext>(
+      `/api/chat/conversations/${activeConvId}/messages/${item.message.id}/context?before=15&after=15`,
+      { silent: true },
+    );
+    if (res.code !== 0 || !res.data) {
+      Toast.error(res.message ?? '定位消息失败');
+      return;
+    }
+    setMessages(res.data.list);
+    setHasMore(res.data.hasBefore);
+    setPage(1);
+    setContextMode({ anchorMessageId: res.data.anchorMessageId, keyword: msgSearch.trim() || item.snippet });
+    setTimeout(() => scrollToMessage(res.data.anchorMessageId), 80);
+  }, [activeConvId, msgSearch, scrollToMessage]);
+
+  const restoreLatestMessages = useCallback(async () => {
+    if (!activeConvId) return;
+    await fetchMessages(activeConvId, 1);
+  }, [activeConvId, fetchMessages]);
+
   const handleWsMessage = useCallback((wsMsg: WsMessage) => {
     if (wsMsg.type === 'chat:message') {
       const msg = wsMsg.payload;
@@ -1535,7 +1702,8 @@ export default function ChatPage() {
   const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
   const galleryImages = messages.filter((m) => m.type === 'image' && !m.isRecalled);
   const activeGalleryIndex = galleryImages.findIndex((m) => m.id === previewImageId);
-  const displayMessages = msgSearch.trim()
+  const useLocalSearchFallback = Boolean(msgSearch.trim()) && !(showSearchPanel && searchHasSearched);
+  const displayMessages = useLocalSearchFallback
     ? messages.filter((m) => {
       const keyword = msgSearch.toLowerCase();
       return (m.content ?? '').toLowerCase().includes(keyword) || (m.senderName ?? '').toLowerCase().includes(keyword);
@@ -1746,15 +1914,47 @@ export default function ChatPage() {
               placeholder="搜索消息"
               value={msgSearch}
               onChange={setMsgSearch}
+              onEnterPress={() => { void executeSearch(1); }}
               showClear
-              style={{ width: 220 }}
+              style={{ width: 240 }}
             />
+            <Tooltip content="执行搜索">
+              <Button
+                size="small"
+                theme="solid"
+                type="primary"
+                icon={<Search size={14} />}
+                loading={searchLoading}
+                onClick={() => { void executeSearch(1); }}
+              />
+            </Tooltip>
+            <Tooltip content={showSearchPanel ? '关闭搜索面板' : '高级筛选'}>
+              <Button
+                size="small"
+                theme="borderless"
+                type={showSearchPanel ? 'primary' : 'tertiary'}
+                icon={<ListFilter size={15} />}
+                onClick={() => {
+                  setShowSearchPanel((v) => {
+                    const next = !v;
+                    if (next) setShowMembers(false);
+                    return next;
+                  });
+                }}
+              />
+            </Tooltip>
             {activeConv.type === 'group' && (
               <Tooltip content={showMembers ? '关闭成员面板' : '查看群成员'}>
                 <Button
                   size="small" theme="borderless" type={showMembers ? 'primary' : 'tertiary'}
                   icon={<Users size={15} />}
-                  onClick={() => setShowMembers((v) => !v)}
+                  onClick={() => {
+                    setShowMembers((v) => {
+                      const next = !v;
+                      if (next) setShowSearchPanel(false);
+                      return next;
+                    });
+                  }}
                 />
               </Tooltip>
             )}
@@ -1767,7 +1967,17 @@ export default function ChatPage() {
               onScroll={handleMessagesScroll}
               style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}
             >
-              {hasMore && !msgSearch && (
+              {contextMode && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
+                  <Text style={{ flex: 1, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+                    当前正在查看搜索定位结果：{contextMode.keyword}
+                  </Text>
+                  <Button size="small" theme="borderless" type="primary" onClick={() => { void restoreLatestMessages(); }}>
+                    返回最新消息
+                  </Button>
+                </div>
+              )}
+              {hasMore && !useLocalSearchFallback && !contextMode && (
                 <div style={{ textAlign: 'center', marginBottom: 8 }}>
                   <Button
                     size="small" type="tertiary" theme="borderless" loading={loadingMsgs}
@@ -1819,7 +2029,7 @@ export default function ChatPage() {
             </div>
 
             {/* Group members sidebar */}
-            {activeConv.type === 'group' && showMembers && (
+            {activeConv.type === 'group' && showMembers && !showSearchPanel && (
               <GroupMembersPanel
                 conversationId={activeConv.id}
                 currentUserId={currentUserId}
@@ -1830,6 +2040,136 @@ export default function ChatPage() {
                   );
                 }}
               />
+            )}
+
+            {showSearchPanel && (
+              <div style={{ width: 380, borderLeft: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0, background: 'var(--semi-color-bg-0)' }}>
+                <div style={{ padding: '12px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Text strong style={{ flex: 1, fontSize: 13 }}>消息搜索</Text>
+                  <Text type="tertiary" style={{ fontSize: 12 }}>{searchHasSearched ? `共 ${searchTotal} 条` : '未搜索'}</Text>
+                  <Button size="small" theme="borderless" type="tertiary" icon={<X size={14} />} onClick={() => setShowSearchPanel(false)} />
+                </div>
+
+                <div style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <Input
+                    size="small"
+                    prefix={<Search size={13} />}
+                    placeholder="搜索消息内容 / 文件名 / 发送人"
+                    value={msgSearch}
+                    onChange={setMsgSearch}
+                    onEnterPress={() => { void executeSearch(1); }}
+                    showClear
+                  />
+
+                  <Select
+                    multiple
+                    showClear
+                    placeholder="消息类别（可多选）"
+                    value={searchTypeFilters}
+                    onChange={(val) => setSearchTypeFilters(((val as ChatMessage['type'][]) ?? []))}
+                    optionList={CHAT_MESSAGE_TYPE_OPTIONS}
+                    maxTagCount={2}
+                  />
+
+                  <Select
+                    showClear
+                    filter
+                    placeholder="发送人"
+                    value={searchSenderId}
+                    onChange={(val) => setSearchSenderId(val ? Number(val) : undefined)}
+                    optionList={senderOptions}
+                  />
+
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {[
+                      { value: 'today', label: '今天' },
+                      { value: '7d', label: '近7天' },
+                      { value: '30d', label: '近30天' },
+                    ].map((item) => (
+                      <Button
+                        key={item.value}
+                        size="small"
+                        theme={searchDatePreset === item.value ? 'solid' : 'borderless'}
+                        type={searchDatePreset === item.value ? 'primary' : 'tertiary'}
+                        onClick={() => applyDatePreset(item.value as SearchDatePreset)}
+                      >
+                        {item.label}
+                      </Button>
+                    ))}
+                    {searchTimeRange && (
+                      <Button size="small" theme="borderless" type="tertiary" onClick={() => applyDatePreset('')}>清空时间</Button>
+                    )}
+                  </div>
+
+                  <DatePicker
+                    type="dateTimeRange"
+                    placeholder={['开始时间', '结束时间']}
+                    value={searchTimeRange ?? undefined}
+                    onChange={(val) => {
+                      setSearchDatePreset('');
+                      setSearchTimeRange(val ? (val as [Date, Date]) : null);
+                    }}
+                    style={{ width: '100%' }}
+                  />
+
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button type="primary" loading={searchLoading} icon={<Search size={14} />} onClick={() => { void executeSearch(1); }}>查询</Button>
+                    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={resetSearchFilters}>重置</Button>
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+                  {!searchHasSearched && (
+                    <Empty description="输入关键词或设置筛选条件后开始搜索" style={{ paddingTop: 48 }} imageStyle={{ width: 72 }} />
+                  )}
+                  {searchHasSearched && searchResults.length === 0 && !searchLoading && (
+                    <Empty description="没有找到符合条件的消息" style={{ paddingTop: 48 }} imageStyle={{ width: 72 }} />
+                  )}
+                  {searchResults.map((item) => {
+                    const typeLabel = CHAT_MESSAGE_TYPE_OPTIONS.find((option) => option.value === item.message.type)?.label ?? item.message.type;
+                    return (
+                      <button
+                        key={item.message.id}
+                        type="button"
+                        onClick={() => { void jumpToSearchResult(item); }}
+                        style={{
+                          width: '100%', textAlign: 'left', border: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-0)', borderRadius: 8,
+                          padding: '10px 12px', marginBottom: 10, cursor: 'pointer',
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-bg-0)'; }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                            <Tag size="small" color="light-blue">{typeLabel}</Tag>
+                            <Text strong style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.message.senderName ?? '未知发送人'}
+                            </Text>
+                          </div>
+                          <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(item.message.createdAt)}</Text>
+                        </div>
+                        <Text style={{ display: 'block', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {item.snippet}
+                        </Text>
+                      </button>
+                    );
+                  })}
+
+                  {searchHasSearched && searchResults.length < searchTotal && (
+                    <div style={{ textAlign: 'center', marginTop: 4 }}>
+                      <Button
+                        size="small"
+                        type="tertiary"
+                        theme="borderless"
+                        loading={searchLoading}
+                        onClick={() => { void executeSearch(searchPage + 1); }}
+                      >
+                        加载更多结果
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 

@@ -6,9 +6,11 @@ import {
 } from '../lib/openapi-schemas';
 import {
   ChatMessageDTO, ChatConversationDTO, ChatUserDTO, ChatGroupMemberDTO, ChatLinkPreviewDTO, ChatMessageExtraDTO,
+  ChatMessageSearchItemDTO, ChatMessageContextDTO,
 } from '../lib/openapi-dtos';
 import {
   listConversations, getOrCreateDirectConversation, listMessages,
+  searchConversationMessages, getMessageContext,
   sendMessage, recallMessage, markConversationRead, listChatUsers,
   createGroupConversation, addGroupMember, listGroupMembers,
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
@@ -81,6 +83,74 @@ chatRouter.openapi(
     const { id } = c.req.valid('param');
     const { page, pageSize } = c.req.valid('query');
     const result = await listMessages(id, page, pageSize);
+    return c.json(okBody(result), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/conversations/{id}/messages/search', tags: ['Chat'], summary: '搜索当前会话消息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      query: z.object({
+        keyword: z.string().optional(),
+        types: z.string().optional(),
+        senderId: z.coerce.number().int().positive().optional(),
+        startAt: z.string().optional(),
+        endAt: z.string().optional(),
+        page: z.coerce.number().int().positive().default(1),
+        pageSize: z.coerce.number().int().positive().max(100).default(20),
+      }),
+    },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.object({
+        list: z.array(ChatMessageSearchItemDTO),
+        total: z.number().int(),
+        page: z.number().int(),
+        pageSize: z.number().int(),
+      }), '搜索结果'),
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const query = c.req.valid('query');
+    const result = await searchConversationMessages(id, {
+      keyword: query.keyword,
+      types: query.types ? (query.types.split(',').filter(Boolean) as Array<'text' | 'image' | 'file' | 'system'>) : undefined,
+      senderId: query.senderId,
+      startAt: query.startAt,
+      endAt: query.endAt,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+    return c.json(okBody(result), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/conversations/{id}/messages/{messageId}/context', tags: ['Chat'], summary: '获取目标消息上下文',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: z.object({
+        id: z.coerce.number().int().positive(),
+        messageId: z.coerce.number().int().positive(),
+      }),
+      query: z.object({
+        before: z.coerce.number().int().min(0).max(100).default(15),
+        after: z.coerce.number().int().min(0).max(100).default(15),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...ok(ChatMessageContextDTO, '消息上下文') },
+  }),
+  async (c) => {
+    const { id, messageId } = c.req.valid('param');
+    const { before, after } = c.req.valid('query');
+    const result = await getMessageContext(id, messageId, before, after);
     return c.json(okBody(result), 200);
   },
 );

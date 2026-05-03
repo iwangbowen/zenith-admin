@@ -73,6 +73,22 @@ export const ChatMessageDTO = z
   })
   .openapi('ChatMessage');
 
+export const ChatMessageSearchItemDTO = z
+  .object({
+    message: ChatMessageDTO,
+    snippet: z.string(),
+  })
+  .openapi('ChatMessageSearchItem');
+
+export const ChatMessageContextDTO = z
+  .object({
+    list: z.array(ChatMessageDTO),
+    anchorMessageId: z.number().int(),
+    hasBefore: z.boolean(),
+    hasAfter: z.boolean(),
+  })
+  .openapi('ChatMessageContext');
+
 export const ChatConversationDTO = z
   .object({
     id: z.number().int(),

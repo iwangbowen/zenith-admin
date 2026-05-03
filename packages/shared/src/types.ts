@@ -675,6 +675,25 @@ export interface ChatMessage {
   updatedAt: string;
 }
 
+export interface ChatMessageSearchItem {
+  message: ChatMessage;
+  snippet: string;
+}
+
+export interface ChatMessageSearchResult {
+  list: ChatMessageSearchItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface ChatMessageContext {
+  list: ChatMessage[];
+  anchorMessageId: number;
+  hasBefore: boolean;
+  hasAfter: boolean;
+}
+
 export interface ChatGroupMember {
   id: number;
   nickname: string;
