@@ -1351,6 +1351,11 @@ export default function ChatPage() {
   const [selectedMentions, setSelectedMentions] = useState<Array<{ userId: number; nickname: string }>>([]);
   const [leftPaneMode, setLeftPaneMode] = useState<'conversations' | 'favorites'>('conversations');
   const [favoriteMessages, setFavoriteMessages] = useState<ChatMessage[]>([]);
+  const [leftPaneContextMenu, setLeftPaneContextMenu] = useState<
+    | { x: number; y: number; type: 'conversation'; conv: ChatConversation }
+    | { x: number; y: number; type: 'favorite'; msg: ChatMessage }
+    | null
+  >(null);
   const [pinnedMessages, setPinnedMessages] = useState<ChatMessage[]>([]);
   const [announcementHistoryVisible, setAnnouncementHistoryVisible] = useState(false);
   const [announcementHistory, setAnnouncementHistory] = useState<ChatMessage[]>([]);
@@ -2238,92 +2243,23 @@ export default function ChatPage() {
               }
 
               return (
-                <Dropdown
+                <button
                   key={conv.id}
-                  trigger="contextMenu"
-                  clickToHide
-                  render={(
-                    <Dropdown.Menu>
-                      <Dropdown.Item
-                        icon={<Pin size={13} />}
-                        onClick={() => {
-                          void request.patch(`/api/chat/conversations/${conv.id}/pin`, { pin: !isPinned }).then((r) => {
-                            if ((r as { code: number }).code === 0) {
-                              setConversations((prev) => {
-                                const updated = prev.map((c) => c.id === conv.id ? { ...c, isPinned: !isPinned } : c);
-                                updated.sort((a, b) => {
-                                  if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
-                                  const ta = a.lastMessage?.createdAt ?? a.createdAt;
-                                  const tb = b.lastMessage?.createdAt ?? b.createdAt;
-                                  return tb.localeCompare(ta);
-                                });
-                                return updated;
-                              });
-                              Toast.success(isPinned ? '已取消置顶' : '已置顶');
-                            }
-                          });
-                        }}
-                      >
-                        {isPinned ? '取消置顶' : '置顶'}
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        icon={<Star size={13} />}
-                        onClick={() => {
-                          void request.patch(`/api/chat/conversations/${conv.id}/star`, { star: !isStarred }).then((r) => {
-                            if ((r as { code: number }).code === 0) {
-                              setConversations((prev) =>
-                                prev.map((c) => c.id === conv.id ? { ...c, isStarred: !isStarred } : c),
-                              );
-                              Toast.success(isStarred ? '已取消星标' : '已标记星标');
-                            }
-                          });
-                        }}
-                      >
-                        {isStarred ? '取消星标' : '标记星标'}
-                      </Dropdown.Item>
-                      <Dropdown.Divider />
-                      <Dropdown.Item
-                        type="danger"
-                        onClick={() => {
-                          Modal.confirm({
-                            title: '确定要删除该会话吗？',
-                            content: '删除后仅移除你当前账号下的会话记录，无法恢复。',
-                            okButtonProps: { type: 'danger', theme: 'solid' },
-                            onOk: () => {
-                              void request.delete(`/api/chat/conversations/${conv.id}`).then((r) => {
-                                if ((r as { code: number; message?: string }).code === 0) {
-                                  Toast.success('会话已删除');
-                                  setConversations((prev) => prev.filter((c) => c.id !== conv.id));
-                                  if (activeConvId === conv.id) {
-                                    setActiveConvId(null);
-                                    setMessages([]);
-                                    setPendingNewMsgCount(0);
-                                  }
-                                } else {
-                                  Toast.error((r as { message?: string }).message ?? '删除失败');
-                                }
-                              });
-                            },
-                          });
-                        }}
-                      >
-                        删除会话
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  )}
+                  type="button"
+                  onClick={() => { void handleSelectConv(conv); }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setLeftPaneContextMenu({ x: e.clientX, y: e.clientY, type: 'conversation', conv });
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                    cursor: 'pointer', width: '100%', textAlign: 'left', border: 'none',
+                    background: isActive ? 'var(--semi-color-primary-light-default)' : 'transparent',
+                    borderLeft: isActive ? '3px solid var(--semi-color-primary)' : '3px solid transparent',
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
+                  onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => { void handleSelectConv(conv); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                      cursor: 'pointer', width: '100%', textAlign: 'left', border: 'none',
-                      background: isActive ? 'var(--semi-color-primary-light-default)' : 'transparent',
-                      borderLeft: isActive ? '3px solid var(--semi-color-primary)' : '3px solid transparent',
-                    }}
-                    onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
-                    onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                  >
                     {conv.unreadCount > 0 ? (
                       <Badge count={conv.unreadCount} overflowCount={99} dot={false}>
                         {avatarNode}
@@ -2350,46 +2286,23 @@ export default function ChatPage() {
                         {lastMsgText}
                       </Text>
                     </div>
-                  </button>
-                </Dropdown>
+                </button>
               );
             })}
             {leftPaneMode === 'favorites' && favoriteMessages.map((msg) => {
               const conv = conversations.find((item) => item.id === msg.conversationId);
               const convName = conv?.type === 'direct' ? (conv.targetUser?.nickname ?? '私聊') : (conv?.name ?? '群聊');
               return (
-                <Dropdown
+                <button
                   key={msg.id}
-                  trigger="contextMenu"
-                  clickToHide
-                  render={(
-                    <Dropdown.Menu>
-                      <Dropdown.Item
-                        icon={<Search size={12} />}
-                        onClick={() => { void openFavoriteMessage(msg); }}
-                      >
-                        定位到原消息
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        icon={<Bookmark size={12} />}
-                        onClick={() => { void handleToggleFavorite(msg); }}
-                      >
-                        取消收藏
-                      </Dropdown.Item>
-                      <Dropdown.Item
-                        icon={<Pin size={12} />}
-                        onClick={() => { void handleTogglePinMessage(msg); }}
-                      >
-                        {msg.extra?.isPinned ? '取消置顶消息' : '置顶消息'}
-                      </Dropdown.Item>
-                    </Dropdown.Menu>
-                  )}
+                  type="button"
+                  onClick={() => { void openFavoriteMessage(msg); }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setLeftPaneContextMenu({ x: e.clientX, y: e.clientY, type: 'favorite', msg });
+                  }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '10px 12px', cursor: 'pointer' }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => { void openFavoriteMessage(msg); }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '10px 12px', cursor: 'pointer' }}
-                  >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                       <Text strong style={{ fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{convName}</Text>
                       <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(msg.createdAt)}</Text>
@@ -2397,10 +2310,138 @@ export default function ChatPage() {
                     <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {getMessageSummary(msg)}
                     </Text>
-                  </button>
-                </Dropdown>
+                </button>
               );
             })}
+            {leftPaneContextMenu && (
+              <Dropdown
+                trigger="click"
+                visible
+                clickToHide
+                position="bottomLeft"
+                getPopupContainer={() => document.body}
+                onVisibleChange={(visible) => {
+                  if (!visible) setLeftPaneContextMenu(null);
+                }}
+                render={leftPaneContextMenu.type === 'conversation' ? (
+                  <Dropdown.Menu>
+                    <Dropdown.Item
+                      icon={<Pin size={13} />}
+                      onClick={() => {
+                        const { conv } = leftPaneContextMenu;
+                        const isPinned = conv.isPinned ?? false;
+                        void request.patch(`/api/chat/conversations/${conv.id}/pin`, { pin: !isPinned }).then((r) => {
+                          if ((r as { code: number }).code === 0) {
+                            setConversations((prev) => {
+                              const updated = prev.map((c) => c.id === conv.id ? { ...c, isPinned: !isPinned } : c);
+                              updated.sort((a, b) => {
+                                if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+                                const ta = a.lastMessage?.createdAt ?? a.createdAt;
+                                const tb = b.lastMessage?.createdAt ?? b.createdAt;
+                                return tb.localeCompare(ta);
+                              });
+                              return updated;
+                            });
+                            Toast.success(isPinned ? '已取消置顶' : '已置顶');
+                          }
+                        });
+                        setLeftPaneContextMenu(null);
+                      }}
+                    >
+                      {(leftPaneContextMenu.conv.isPinned ?? false) ? '取消置顶' : '置顶'}
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      icon={<Star size={13} />}
+                      onClick={() => {
+                        const { conv } = leftPaneContextMenu;
+                        const isStarred = conv.isStarred ?? false;
+                        void request.patch(`/api/chat/conversations/${conv.id}/star`, { star: !isStarred }).then((r) => {
+                          if ((r as { code: number }).code === 0) {
+                            setConversations((prev) =>
+                              prev.map((c) => c.id === conv.id ? { ...c, isStarred: !isStarred } : c),
+                            );
+                            Toast.success(isStarred ? '已取消星标' : '已标记星标');
+                          }
+                        });
+                        setLeftPaneContextMenu(null);
+                      }}
+                    >
+                      {(leftPaneContextMenu.conv.isStarred ?? false) ? '取消星标' : '标记星标'}
+                    </Dropdown.Item>
+                    <Dropdown.Divider />
+                    <Dropdown.Item
+                      type="danger"
+                      onClick={() => {
+                        const { conv } = leftPaneContextMenu;
+                        Modal.confirm({
+                          title: '确定要删除该会话吗？',
+                          content: '删除后仅移除你当前账号下的会话记录，无法恢复。',
+                          okButtonProps: { type: 'danger', theme: 'solid' },
+                          onOk: () => {
+                            void request.delete(`/api/chat/conversations/${conv.id}`).then((r) => {
+                              if ((r as { code: number; message?: string }).code === 0) {
+                                Toast.success('会话已删除');
+                                setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+                                if (activeConvId === conv.id) {
+                                  setActiveConvId(null);
+                                  setMessages([]);
+                                  setPendingNewMsgCount(0);
+                                }
+                              } else {
+                                Toast.error((r as { message?: string }).message ?? '删除失败');
+                              }
+                            });
+                          },
+                        });
+                        setLeftPaneContextMenu(null);
+                      }}
+                    >
+                      删除会话
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                ) : (
+                  <Dropdown.Menu>
+                    <Dropdown.Item
+                      icon={<Search size={12} />}
+                      onClick={() => {
+                        void openFavoriteMessage(leftPaneContextMenu.msg);
+                        setLeftPaneContextMenu(null);
+                      }}
+                    >
+                      定位到原消息
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      icon={<Bookmark size={12} />}
+                      onClick={() => {
+                        void handleToggleFavorite(leftPaneContextMenu.msg);
+                        setLeftPaneContextMenu(null);
+                      }}
+                    >
+                      取消收藏
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      icon={<Pin size={12} />}
+                      onClick={() => {
+                        void handleTogglePinMessage(leftPaneContextMenu.msg);
+                        setLeftPaneContextMenu(null);
+                      }}
+                    >
+                      {leftPaneContextMenu.msg.extra?.isPinned ? '取消置顶消息' : '置顶消息'}
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                )}
+              >
+                <span
+                  style={{
+                    position: 'fixed',
+                    left: leftPaneContextMenu.x,
+                    top: leftPaneContextMenu.y,
+                    width: 1,
+                    height: 1,
+                  }}
+                />
+              </Dropdown>
+            )}
           </Spin>
         </div>
       </div>
