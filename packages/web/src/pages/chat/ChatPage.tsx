@@ -8,7 +8,9 @@ import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, Imag
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime } from '@/utils/date';
-import type { ChatConversation, ChatMessage, WsMessage } from '@zenith/shared';
+import type {
+  ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
+} from '@zenith/shared';
 
 const { Text, Title } = Typography;
 const MESSAGE_TIME_GROUP_GAP_MS = 5 * 60 * 1000;
@@ -24,15 +26,6 @@ interface PendingImage {
   id: string;
   file: File;
   previewUrl: string;
-}
-
-interface ChatLinkPreview {
-  url: string;
-  title: string;
-  description: string | null;
-  siteName: string | null;
-  image: string | null;
-  favicon: string | null;
 }
 
 function getAvatarColor(name: string): string {
@@ -85,6 +78,51 @@ function buildFallbackPreview(url: string): ChatLinkPreview | null {
     };
   } catch {
     return null;
+  }
+}
+
+function getFileExtension(fileName: string): string | null {
+  const cleanName = fileName.split('?')[0] ?? fileName;
+  const index = cleanName.lastIndexOf('.');
+  if (index <= 0 || index === cleanName.length - 1) return null;
+  return cleanName.slice(index + 1).toLowerCase();
+}
+
+function getMessageExtra(msg: ChatMessage): ChatMessageExtra | null {
+  return msg.extra ?? null;
+}
+
+function getAssetMeta(msg: ChatMessage): ChatAssetMeta | null {
+  return getMessageExtra(msg)?.asset ?? null;
+}
+
+function getMessageSummary(msg: ChatMessage): string {
+  if (msg.isRecalled) return '消息已撤回';
+  if (msg.type === 'image') {
+    const asset = getAssetMeta(msg);
+    return asset?.name ? `[图片] ${asset.name}` : '[图片]';
+  }
+  if (msg.type === 'file') {
+    const asset = getAssetMeta(msg);
+    return asset?.name ? `[文件] ${asset.name}` : '[文件]';
+  }
+  return msg.content;
+}
+
+async function getImageDimensions(file: File): Promise<{ width: number; height: number } | null> {
+  const previewUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('load image failed'));
+      image.src = previewUrl;
+    });
+    return { width: img.naturalWidth, height: img.naturalHeight };
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(previewUrl);
   }
 }
 
@@ -289,8 +327,9 @@ function GroupMembersPanel({ conversationId }: Readonly<{ conversationId: number
 
 function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: boolean }>) {
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
-  const typedExtra = msg.extra as { name?: string; size?: number; linkPreview?: ChatLinkPreview } | null;
-  const linkPreview = typedExtra?.linkPreview ?? buildFallbackPreview(extractFirstUrl(msg.content) ?? '');
+  const extra = getMessageExtra(msg);
+  const asset = extra?.asset ?? null;
+  const linkPreview = extra?.linkPreview ?? buildFallbackPreview(extractFirstUrl(msg.content) ?? '');
   const bubbleStyle: React.CSSProperties = {
     background: isSelf ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
     color: isSelf ? '#fff' : 'inherit',
@@ -308,8 +347,8 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
           style={{ background: 'transparent', padding: 0, border: 'none', borderRadius: 0, cursor: 'zoom-in' }}
         >
           <img
-            src={msg.content}
-            alt={(msg.extra as { name?: string } | null)?.name ?? '图片'}
+            src={asset?.thumbnailUrl ?? msg.content}
+            alt={asset?.name ?? '图片'}
             style={{ maxWidth: 240, maxHeight: 200, borderRadius: 0, display: 'block', cursor: 'zoom-in', border: 'none', boxShadow: 'none' }}
           />
         </button>
@@ -337,7 +376,7 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
           >
             <img
               src={msg.content}
-              alt={(msg.extra as { name?: string } | null)?.name ?? '预览图片'}
+              alt={asset?.name ?? '预览图片'}
               onClick={(e) => e.stopPropagation()}
               style={{ maxWidth: '92vw', maxHeight: '88vh', display: 'block', border: 'none', boxShadow: 'none' }}
             />
@@ -348,19 +387,18 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
   }
 
   if (msg.type === 'file') {
-    const extra = typedExtra;
     return (
       <div style={{ ...bubbleStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
         <a
           href={msg.content}
-          download={extra?.name ?? '文件'}
+          download={asset?.name ?? '文件'}
           style={{ color: isSelf ? '#fff' : 'var(--semi-color-primary)', textDecoration: 'underline', fontSize: 13 }}
         >
-          {extra?.name ?? '文件'}
+          {asset?.name ?? '文件'}
         </a>
-        {extra?.size !== undefined && (
+        {asset?.size !== undefined && (
           <Text style={{ fontSize: 11, color: isSelf ? 'rgba(255,255,255,0.7)' : 'var(--semi-color-text-2)' }}>
-            {Math.round(extra.size / 1024)}KB
+            {Math.round(asset.size / 1024)}KB
           </Text>
         )}
       </div>
@@ -548,7 +586,7 @@ function MessageBubble({
             replySender = replied.senderName ?? '';
             if (replied.isRecalled) replyText = '\u6d88\u606f\u5df2\u64a4\u56de'; // 消息已撤回
             else if (replied.type === 'image') replyText = '[\u56fe\u7247]';
-            else if (replied.type === 'file') replyText = `[\u6587\u4ef6] ${(replied.extra as { name?: string } | null)?.name ?? ''}`;
+            else if (replied.type === 'file') replyText = `[\u6587\u4ef6] ${getAssetMeta(replied)?.name ?? ''}`;
             else replyText = replied.content.length > 40 ? `${replied.content.slice(0, 40)}\u2026` : replied.content;
           }
           return (
@@ -825,10 +863,17 @@ export default function ChatPage() {
     const uploadRes = await request.postForm<{ url: string; originalName: string; size: number }>('/api/files/upload-one', fd);
     if (uploadRes.code !== 0 || !uploadRes.data) return false;
     const { url, originalName, size } = uploadRes.data;
+    const asset: ChatAssetMeta = {
+      kind: 'file',
+      name: originalName,
+      size,
+      mimeType: file.type || null,
+      extension: getFileExtension(originalName),
+    };
     const msgRes = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
       content: url,
       type: 'file',
-      extra: { name: originalName, size },
+      extra: { asset },
     });
     return msgRes.code === 0;
   }, [activeConvId]);
@@ -850,6 +895,7 @@ export default function ChatPage() {
 
   const sendImageFile = useCallback(async (file: File) => {
     if (!activeConvId) return false;
+    const dimensions = await getImageDimensions(file);
     const fd = new FormData();
     fd.append('file', file);
     const uploadRes = await request.postForm<{ url: string; originalName: string; size: number }>(
@@ -859,10 +905,20 @@ export default function ChatPage() {
       return false;
     }
     const { url, originalName, size } = uploadRes.data;
+    const asset: ChatAssetMeta = {
+      kind: 'image',
+      name: originalName,
+      size,
+      mimeType: file.type || null,
+      extension: getFileExtension(originalName),
+      width: dimensions?.width ?? null,
+      height: dimensions?.height ?? null,
+      thumbnailUrl: url,
+    };
     const msgRes = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
       content: url,
       type: 'image',
-      extra: { name: originalName, size },
+      extra: { asset },
     });
     return msgRes.code === 0;
   }, [activeConvId]);
@@ -1156,17 +1212,7 @@ export default function ChatPage() {
               const isStarred = conv.isStarred ?? false;
               let lastMsgText = '暂无消息';
               if (lastMsg) {
-                if (lastMsg.isRecalled) {
-                  lastMsgText = '消息已撤回';
-                } else if (lastMsg.type === 'image') {
-                  const nameFromExtra = (lastMsg.extra as { name?: string } | null)?.name;
-                  lastMsgText = nameFromExtra ? `[图片] ${nameFromExtra}` : '[图片]';
-                } else if (lastMsg.type === 'file') {
-                  const fileName = (lastMsg.extra as { name?: string } | null)?.name;
-                  lastMsgText = fileName ? `[文件] ${fileName}` : '[文件]';
-                } else {
-                  lastMsgText = lastMsg.content;
-                }
+                lastMsgText = getMessageSummary(lastMsg);
               }
 
               return (

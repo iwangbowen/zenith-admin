@@ -4,7 +4,9 @@ import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
-import { ChatMessageDTO, ChatConversationDTO, ChatUserDTO } from '../lib/openapi-dtos';
+import {
+  ChatMessageDTO, ChatConversationDTO, ChatUserDTO, ChatLinkPreviewDTO, ChatMessageExtraDTO,
+} from '../lib/openapi-dtos';
 import {
   listConversations, getOrCreateDirectConversation, listMessages,
   sendMessage, recallMessage, markConversationRead, listChatUsers,
@@ -88,16 +90,7 @@ const sendMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
   type: z.enum(['text', 'image', 'file']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
-  extra: z.record(z.string(), z.unknown()).nullable().optional(),
-});
-
-const chatLinkPreviewDTO = z.object({
-  url: z.string().url(),
-  title: z.string(),
-  description: z.string().nullable(),
-  siteName: z.string().nullable(),
-  image: z.string().url().nullable(),
-  favicon: z.string().url().nullable(),
+  extra: ChatMessageExtraDTO.nullable().optional(),
 });
 
 chatRouter.openapi(
@@ -106,9 +99,9 @@ chatRouter.openapi(
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
     request: {
-      query: z.object({ url: z.string().url().max(2048) }),
+      query: z.object({ url: z.url().max(2048) }),
     },
-    responses: { ...commonErrorResponses, ...ok(chatLinkPreviewDTO, '链接预览') },
+    responses: { ...commonErrorResponses, ...ok(ChatLinkPreviewDTO, '链接预览') },
   }),
   async (c) => {
     const { url } = c.req.valid('query');

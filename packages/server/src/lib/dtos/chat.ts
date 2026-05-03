@@ -12,6 +12,37 @@ export const ChatUserDTO = z
   })
   .openapi('ChatUser');
 
+export const ChatLinkPreviewDTO = z
+  .object({
+    url: z.url(),
+    title: z.string(),
+    description: z.string().nullable(),
+    siteName: z.string().nullable(),
+    image: z.url().nullable(),
+    favicon: z.url().nullable(),
+  })
+  .openapi('ChatLinkPreview');
+
+export const ChatAssetMetaDTO = z
+  .object({
+    kind: z.enum(['image', 'file']),
+    name: z.string(),
+    size: z.number().int(),
+    mimeType: z.string().nullable(),
+    extension: z.string().nullable(),
+    width: z.number().int().nullable().optional(),
+    height: z.number().int().nullable().optional(),
+    thumbnailUrl: z.url().nullable().optional(),
+  })
+  .openapi('ChatAssetMeta');
+
+export const ChatMessageExtraDTO = z
+  .object({
+    asset: ChatAssetMetaDTO.nullable().optional(),
+    linkPreview: ChatLinkPreviewDTO.nullable().optional(),
+  })
+  .openapi('ChatMessageExtra');
+
 export const ChatMessageDTO = z
   .object({
     id: z.number().int().openapi({ example: 1 }),
@@ -23,7 +54,7 @@ export const ChatMessageDTO = z
     content: z.string(),
     replyToId: z.number().int().nullable().optional(),
     isRecalled: z.boolean(),
-    extra: z.record(z.string(), z.unknown()).nullable().optional(),
+    extra: ChatMessageExtraDTO.nullable().optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })

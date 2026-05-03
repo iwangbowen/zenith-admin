@@ -469,11 +469,36 @@ export type ApproveWorkflowTaskInput = z.infer<typeof approveWorkflowTaskSchema>
 export type RejectWorkflowTaskInput = z.infer<typeof rejectWorkflowTaskSchema>;
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
+export const chatLinkPreviewSchema = z.object({
+  url: z.url(),
+  title: z.string().min(1).max(512),
+  description: z.string().max(4000).nullable(),
+  siteName: z.string().max(255).nullable(),
+  image: z.url().nullable(),
+  favicon: z.url().nullable(),
+});
+
+export const chatAssetMetaSchema = z.object({
+  kind: z.enum(['image', 'file']),
+  name: z.string().min(1).max(512),
+  size: z.number().int().nonnegative(),
+  mimeType: z.string().max(255).nullable(),
+  extension: z.string().max(50).nullable(),
+  width: z.number().int().positive().nullable().optional(),
+  height: z.number().int().positive().nullable().optional(),
+  thumbnailUrl: z.url().nullable().optional(),
+});
+
+export const chatMessageExtraSchema = z.object({
+  asset: chatAssetMetaSchema.nullable().optional(),
+  linkPreview: chatLinkPreviewSchema.nullable().optional(),
+});
+
 export const sendChatMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
   type: z.enum(['text', 'image', 'file']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
-  extra: z.record(z.string(), z.unknown()).nullable().optional(),
+  extra: chatMessageExtraSchema.nullable().optional(),
 });
 
 export type SendChatMessageInput = z.infer<typeof sendChatMessageSchema>;

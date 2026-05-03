@@ -632,6 +632,31 @@ export interface WorkflowInstance {
 export type ChatConversationType = 'direct' | 'group';
 export type ChatMessageType = 'text' | 'image' | 'file' | 'system';
 
+export interface ChatLinkPreview {
+  url: string;
+  title: string;
+  description: string | null;
+  siteName: string | null;
+  image: string | null;
+  favicon: string | null;
+}
+
+export interface ChatAssetMeta {
+  kind: 'image' | 'file';
+  name: string;
+  size: number;
+  mimeType: string | null;
+  extension: string | null;
+  width?: number | null;
+  height?: number | null;
+  thumbnailUrl?: string | null;
+}
+
+export interface ChatMessageExtra {
+  asset?: ChatAssetMeta | null;
+  linkPreview?: ChatLinkPreview | null;
+}
+
 export interface ChatMessage {
   id: number;
   conversationId: number;
@@ -642,7 +667,7 @@ export interface ChatMessage {
   content: string;
   replyToId: number | null;
   isRecalled: boolean;
-  extra: Record<string, unknown> | null;
+  extra: ChatMessageExtra | null;
   createdAt: string;
   updatedAt: string;
 }

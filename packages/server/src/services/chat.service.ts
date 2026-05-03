@@ -8,21 +8,14 @@ import { currentUser } from '../lib/context';
 import { formatDateTime } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
-import type { SendChatMessageInput, ChatMessage, ChatConversation } from '@zenith/shared';
-
-export interface ChatLinkPreview {
-  url: string;
-  title: string;
-  description: string | null;
-  siteName: string | null;
-  image: string | null;
-  favicon: string | null;
-}
+import type {
+  SendChatMessageInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra,
+} from '@zenith/shared';
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
 
 function isPrivateIpv4(hostname: string): boolean {
-  const parts = hostname.split('.').map((n) => Number(n));
+  const parts = hostname.split('.').map(Number);
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
   const [a, b] = parts;
   if (a === 10) return true;
@@ -65,44 +58,44 @@ function inferImageUrl(parsed: URL): string | null {
 
 function decodeHtmlEntities(input: string): string {
   return input
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+    .replaceAll('&amp;', '&')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&nbsp;', ' ');
 }
 
 function stripTags(input: string): string {
-  return input.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  return input.replaceAll(/<[^>]*>/g, '').replaceAll(/\s+/g, ' ').trim();
 }
 
 function pickMeta(html: string, attrs: Array<{ key: string; value: string }>): string | null {
   for (const { key, value } of attrs) {
     const pattern = new RegExp(`<meta[^>]*${key}=["']${value}["'][^>]*content=["']([^"']+)["'][^>]*>`, 'i');
     const patternSwap = new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*${key}=["']${value}["'][^>]*>`, 'i');
-    const hit = html.match(pattern) ?? html.match(patternSwap);
+    const hit = pattern.exec(html) ?? patternSwap.exec(html);
     if (hit?.[1]) return decodeHtmlEntities(hit[1].trim());
   }
   return null;
 }
 
 function pickTitle(html: string): string | null {
-  const hit = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const hit = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
   if (!hit?.[1]) return null;
   const text = stripTags(decodeHtmlEntities(hit[1]));
   return text.length > 0 ? text : null;
 }
 
 function pickFavicon(html: string): string | null {
-  const hit = html.match(/<link[^>]*rel=["'][^"']*icon[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>/i)
-    ?? html.match(/<link[^>]*href=["']([^"']+)["'][^>]*rel=["'][^"']*icon[^"']*["'][^>]*>/i);
+  const hit = /<link[^>]*rel=["'][^"']*icon[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>/i.exec(html)
+    ?? /<link[^>]*href=["']([^"']+)["'][^>]*rel=["'][^"']*icon[^"']*["'][^>]*>/i.exec(html);
   return hit?.[1] ? decodeHtmlEntities(hit[1].trim()) : null;
 }
 
 function pickFirstImage(html: string): string | null {
-  const hit = html.match(/<img[^>]*src=["']([^"']+)["'][^>]*>/i)
-    ?? html.match(/<img[^>]*src=([^\s>]+)[^>]*>/i);
+  const hit = /<img[^>]*src=["']([^"']+)["'][^>]*>/i.exec(html)
+    ?? /<img[^>]*src=([^\s>]+)[^>]*>/i.exec(html);
   return hit?.[1] ? decodeHtmlEntities(hit[1].trim()) : null;
 }
 
@@ -212,7 +205,7 @@ export function mapChatMessage(
     content: row.content,
     replyToId: row.replyToId,
     isRecalled: row.isRecalled,
-    extra: (row.extra as Record<string, unknown> | null) ?? null,
+    extra: (row.extra as ChatMessageExtra | null) ?? null,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };

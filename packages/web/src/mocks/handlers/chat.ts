@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { ChatMessage } from '@zenith/shared';
+import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
 import {
   mockChatConversations, mockChatUsers, getMockConvMessages,
   addMockMessage, getNextMsgId, mockChatMessages, mockGroupMembers,
@@ -114,7 +114,7 @@ export const chatHandlers = [
       content: string;
       type?: string;
       replyToId?: number;
-      extra?: Record<string, unknown> | null;
+      extra?: ChatMessageExtra | null;
     };
 
     const newMsg: ChatMessage = {
