@@ -8,6 +8,7 @@ import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, Imag
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime } from '@/utils/date';
+import { formatFileSize, getFileTypeIcon } from '@/utils/file-utils';
 import type {
   ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
 } from '@zenith/shared';
@@ -370,19 +371,58 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
 
   if (msg.type === 'file') {
     return (
-      <div style={{ ...bubbleStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div
+        style={{
+          ...bubbleStyle,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          minWidth: 220,
+          maxWidth: 340,
+        }}
+      >
+        <span
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            background: isSelf ? 'rgba(255,255,255,0.2)' : 'var(--semi-color-fill-0)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          {getFileTypeIcon(asset?.mimeType, 16)}
+        </span>
+        <div style={{ minWidth: 0, flex: 1 }}>
         <a
           href={msg.content}
           download={asset?.name ?? '文件'}
-          style={{ color: isSelf ? '#fff' : 'var(--semi-color-primary)', textDecoration: 'underline', fontSize: 13 }}
+          style={{
+            display: 'block',
+            color: isSelf ? '#fff' : 'var(--semi-color-primary)',
+            textDecoration: 'none',
+            fontSize: 13,
+            fontWeight: 600,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
         >
           {asset?.name ?? '文件'}
         </a>
         {asset?.size !== undefined && (
-          <Text style={{ fontSize: 11, color: isSelf ? 'rgba(255,255,255,0.7)' : 'var(--semi-color-text-2)' }}>
-            {Math.round(asset.size / 1024)}KB
+          <Text
+            style={{
+              fontSize: 11,
+              color: isSelf ? 'rgba(255,255,255,0.78)' : 'var(--semi-color-text-2)',
+            }}
+          >
+            {formatFileSize(asset.size)}
           </Text>
         )}
+        </div>
       </div>
     );
   }
