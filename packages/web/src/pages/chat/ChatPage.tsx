@@ -1018,23 +1018,43 @@ function MessageBubble({
 
   if (msg.type === 'system') {
     return (
-      <div id={`msg-${msg.id}`} style={{ textAlign: 'center', padding: '2px 0 10px' }}>
-        <Tooltip content={fullTimeStr} position="top">
-          <Text
-            type="tertiary"
-            style={{
-              display: 'inline-block',
-              fontSize: 12,
-              lineHeight: 1.5,
-              padding: '2px 10px',
-              borderRadius: 999,
-              background: 'var(--semi-color-fill-0)',
-              cursor: 'default',
-            }}
-          >
-            {msg.content}
-          </Text>
-        </Tooltip>
+      <div
+        id={`msg-${msg.id}`}
+        style={{ textAlign: 'center', padding: '2px 0 10px' }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 12,
+            lineHeight: 1.5,
+            padding: '2px 10px',
+            borderRadius: 999,
+            background: 'var(--semi-color-fill-0)',
+            cursor: 'default',
+          }}
+        >
+          <Text type="tertiary" style={{ fontSize: 12 }}>{msg.content}</Text>
+        </span>
+        <Text
+          type="quaternary"
+          style={{
+            display: 'block',
+            textAlign: 'center',
+            marginTop: 2,
+            fontSize: 10,
+            lineHeight: 1,
+            opacity: showBottomTime ? 1 : 0,
+            transform: `translateY(${showBottomTime ? '0' : '-2px'})`,
+            transition: 'opacity 120ms ease, transform 120ms ease',
+            pointerEvents: 'none',
+          }}
+        >
+          {fullTimeStr}
+        </Text>
       </div>
     );
   }
