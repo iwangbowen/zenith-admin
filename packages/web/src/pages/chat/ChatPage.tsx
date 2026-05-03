@@ -1680,6 +1680,15 @@ export default function ChatPage() {
     await fetchMessages(activeConvId, 1);
   }, [activeConvId, fetchMessages]);
 
+  const refreshGroupAvatarMembers = useCallback(async (conversationId: number) => {
+    const res = await request.get<ChatGroupMember[]>(`/api/chat/conversations/${conversationId}/members`, { silent: true });
+    if (res.code !== 0 || !res.data) return;
+    setGroupAvatarMap((prev) => ({
+      ...prev,
+      [conversationId]: res.data.slice(0, 9).map((m) => ({ id: m.id, nickname: m.nickname, avatar: m.avatar })),
+    }));
+  }, []);
+
   const handleWsMessage = useCallback((wsMsg: WsMessage) => {
     if (wsMsg.type === 'chat:message') {
       const msg = wsMsg.payload;
@@ -1735,6 +1744,7 @@ export default function ChatPage() {
         return { ...prev, [userId]: { nickname, timer } };
       });
     } else if (wsMsg.type === 'chat:member-join') {
+      void refreshGroupAvatarMembers(wsMsg.payload.conversationId);
       if (wsMsg.payload.conversationId === activeConvId) {
         void fetchConversations();
       }
@@ -1747,6 +1757,8 @@ export default function ChatPage() {
           setMessages([]);
         }
         Toast.warning('你已被移出该群聊');
+      } else {
+        void refreshGroupAvatarMembers(conversationId);
       }
     } else if (wsMsg.type === 'chat:group-update') {
       const { conversationId, name, announcement } = wsMsg.payload;
@@ -1760,7 +1772,7 @@ export default function ChatPage() {
           : c),
       );
     }
-  }, [activeConvId, currentUserId, fetchConversations, isNearBottom]);
+  }, [activeConvId, currentUserId, fetchConversations, isNearBottom, refreshGroupAvatarMembers]);
 
   const handleMessagesScroll = useCallback(() => {
     if (!activeConvId) return;
@@ -1845,7 +1857,7 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [conversations, groupAvatarMap]);
+  }, [conversations, groupAvatarMap, refreshGroupAvatarMembers]);
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 120px)', minHeight: 500, border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--semi-color-bg-0)' }}>
