@@ -150,7 +150,7 @@ export const SEED_ROLES: Role[] = [
     status: 'enabled',
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
-    menuIds: [1],
+    menuIds: [1, 202, 203, 310],
   },
 ];
 

@@ -90,6 +90,16 @@ async function seed() {
       .values(allMenuIds.map((m) => ({ roleId: 1, menuId: m.id })))
       .onConflictDoNothing();
   }
+
+  // 其他角色按 SEED_ROLES.menuIds 绑定菜单
+  for (const role of SEED_ROLES) {
+    if (role.id === 1) continue; // 超管已全量绑定
+    if (role.menuIds && role.menuIds.length > 0) {
+      await db.insert(roleMenus)
+        .values(role.menuIds.map((menuId) => ({ roleId: role.id, menuId })))
+        .onConflictDoNothing();
+    }
+  }
   logger.info('  ✔ Role-menu bindings seeded');
 
   // ─── 4. 部门数据（数据来源：@zenith/shared SEED_DEPARTMENTS）──────────────
