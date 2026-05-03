@@ -54,7 +54,6 @@ const gridStyle = computed(() => ({
 const viewportRef = ref<HTMLElement | null>(null)
 const laneRefs = ref<HTMLElement[]>([])
 const lineRefs = ref<HTMLElement[][]>([])
-const activeItem = ref<string | null>(null)
 
 let ctx: gsap.Context | null = null
 let tweens: gsap.core.Tween[] = []
@@ -132,11 +131,10 @@ const resumeLane = (laneIndex: number) => {
   tweens[laneIndex]?.resume()
 }
 
-const toggleActiveItem = (item: string) => {
-  activeItem.value = activeItem.value === item ? null : item
+const goToFeaturesPage = () => {
+  if (typeof window === 'undefined') return
+  window.location.href = '/product/features'
 }
-
-const isActiveItem = (item: string) => activeItem.value === item
 
 const initAnimation = () => {
   const viewport = viewportRef.value
@@ -222,7 +220,16 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="zn-feature-flow" ref="viewportRef" aria-label="核心能力滚动列表">
+  <div
+    class="zn-feature-flow"
+    ref="viewportRef"
+    aria-label="核心能力滚动列表，点击跳转到功能模块"
+    role="link"
+    tabindex="0"
+    @click="goToFeaturesPage"
+    @keydown.enter.prevent="goToFeaturesPage"
+    @keydown.space.prevent="goToFeaturesPage"
+  >
     <div class="zn-feature-flow__grid" :style="gridStyle">
       <div
         v-for="(lane, laneIndex) in loopLaneItems"
@@ -237,18 +244,14 @@ onBeforeUnmount(() => {
           v-for="(item, lineIndex) in lane"
           :key="`${item}-${laneIndex}-${lineIndex}`"
           class="zn-feature-flow__item"
-          :class="{ 'zn-feature-flow__item--active': isActiveItem(item) }"
           :ref="(el) => setLineRef(el, laneIndex, lineIndex)"
           :aria-hidden="lineIndex >= laneItems[laneIndex].length"
-          :tabindex="lineIndex >= laneItems[laneIndex].length ? -1 : 0"
-          @click="toggleActiveItem(item)"
-          @keydown.enter.prevent="toggleActiveItem(item)"
-          @keydown.space.prevent="toggleActiveItem(item)"
         >
           {{ item }}
         </div>
       </div>
     </div>
+    <div class="zn-feature-flow__hint" aria-hidden="true">点击查看功能模块 →</div>
   </div>
 </template>
 
@@ -258,6 +261,12 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   background: var(--vp-c-bg-soft);
   padding: 14px;
+  cursor: pointer;
+}
+
+.zn-feature-flow:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--vp-c-brand-1) 65%, transparent);
+  outline-offset: 3px;
 }
 
 .dark .zn-feature-flow {
@@ -295,19 +304,13 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   padding-inline: 8px;
-  cursor: pointer;
-  transition: color 0.2s ease;
 }
 
-.zn-feature-flow__item:focus-visible {
-  outline: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 75%, transparent);
-  outline-offset: 2px;
-}
-
-.zn-feature-flow__item--active {
-  color: var(--vp-c-brand-1);
-  text-shadow: 0 0 18px color-mix(in srgb, var(--vp-c-brand-1) 36%, transparent);
-  font-weight: 600;
+.zn-feature-flow__hint {
+  margin-top: 8px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--zn-text-2);
 }
 
 .zn-feature-flow__mask {
