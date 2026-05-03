@@ -361,6 +361,8 @@ export type WsMessage =
   | { type: 'chat:recall'; payload: { conversationId: number; messageId: number } }
   | { type: 'chat:read'; payload: { conversationId: number; userId: number } }
   | { type: 'chat:member-join'; payload: { conversationId: number; user: { id: number; nickname: string; avatar: string | null } } }
+  | { type: 'chat:member-leave'; payload: { conversationId: number; userId: number } }
+  | { type: 'chat:group-update'; payload: { conversationId: number; name?: string | null; announcement?: string | null } }
   | { type: 'chat:typing'; payload: { conversationId: number; userId: number; nickname: string } };
 
 // ─── 地区管理 ──────────────────────────────────────────────
@@ -631,6 +633,7 @@ export interface WorkflowInstance {
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export type ChatConversationType = 'direct' | 'group';
 export type ChatMessageType = 'text' | 'image' | 'file' | 'system';
+export type ChatMemberRole = 'owner' | 'member';
 
 export interface ChatLinkPreview {
   url: string;
@@ -672,10 +675,19 @@ export interface ChatMessage {
   updatedAt: string;
 }
 
+export interface ChatGroupMember {
+  id: number;
+  nickname: string;
+  username: string;
+  avatar?: string | null;
+  role: ChatMemberRole;
+}
+
 export interface ChatConversation {
   id: number;
   type: ChatConversationType;
   name: string | null;
+  announcement?: string | null;
   targetUser?: {
     id: number;
     nickname: string;

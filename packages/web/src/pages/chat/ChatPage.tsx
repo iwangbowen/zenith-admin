@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Input, Button, Avatar, Badge, Typography, Empty, Spin, Toast, Tooltip, Tabs, TabPane, Dropdown, Modal,
+  Input, Button, Avatar, Badge, Typography, Empty, Spin, Toast, Tooltip, Tabs, TabPane, Dropdown, Modal, TextArea, Tag,
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star } from 'lucide-react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, RefreshCcw } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon } from '@/utils/file-utils';
 import type {
-  ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
+  ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra, ChatGroupMember,
 } from '@zenith/shared';
 
 const { Text, Title } = Typography;
@@ -243,20 +243,36 @@ function NewChatPanel({
 
 // ─── GroupMembersPanel ────────────────────────────────────────────────────────
 
-function GroupMembersPanel({ conversationId }: Readonly<{ conversationId: number }>) {
-  const [members, setMembers] = useState<ChatUser[]>([]);
+function GroupMembersPanel({
+  conversationId, currentUserId, conv, onConvUpdate,
+}: Readonly<{
+  conversationId: number;
+  currentUserId: number | null;
+  conv: ChatConversation;
+  onConvUpdate: (patch: Partial<ChatConversation>) => void;
+}>) {
+  const [members, setMembers] = useState<ChatGroupMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
+  // 群信息编辑
+  const [editName, setEditName] = useState('');
+  const [editAnnouncement, setEditAnnouncement] = useState('');
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [showInfoEdit, setShowInfoEdit] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     setLoading(true);
-    const res = await request.get<ChatUser[]>(`/api/chat/conversations/${conversationId}/members`, { silent: true });
+    const res = await request.get<ChatGroupMember[]>(`/api/chat/conversations/${conversationId}/members`, { silent: true });
     setLoading(false);
     if (res.code === 0 && res.data) setMembers(res.data);
   }, [conversationId]);
 
   useEffect(() => { void fetchMembers(); }, [fetchMembers]);
+
+  const myRole = members.find((m) => m.id === currentUserId)?.role ?? 'member';
+  const isOwner = myRole === 'owner';
+  const memberIds = members.map((m) => m.id);
 
   const handleAdd = async (user: ChatUser) => {
     setAdding(true);
@@ -271,37 +287,180 @@ function GroupMembersPanel({ conversationId }: Readonly<{ conversationId: number
     }
   };
 
-  const memberIds = members.map((m) => m.id);
+  const handleRemoveMember = (member: ChatGroupMember) => {
+    Modal.confirm({
+      title: `确定移除 ${member.nickname}？`,
+      content: '移除后该成员将无法看到群聊消息。',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        const res = await request.delete(`/api/chat/conversations/${conversationId}/members/${member.id}`);
+        if ((res as { code: number }).code === 0) {
+          Toast.success('已移除');
+          void fetchMembers();
+        } else {
+          Toast.error((res as { message?: string }).message ?? '移除失败');
+        }
+      },
+    });
+  };
+
+  const handleTransfer = (member: ChatGroupMember) => {
+    Modal.confirm({
+      title: `确定将群主转让给 ${member.nickname}？`,
+      content: '转让后你将成为普通成员，无法撤销。',
+      okButtonProps: { type: 'warning', theme: 'solid' },
+      onOk: async () => {
+        const res = await request.post(`/api/chat/conversations/${conversationId}/transfer`, { newOwnerId: member.id });
+        if ((res as { code: number }).code === 0) {
+          Toast.success('群主已转让');
+          void fetchMembers();
+        } else {
+          Toast.error((res as { message?: string }).message ?? '转让失败');
+        }
+      },
+    });
+  };
+
+  const handleSaveInfo = async () => {
+    setSavingInfo(true);
+    const body: { name?: string; announcement?: string | null } = {};
+    if (editName.trim() !== (conv.name ?? '')) body.name = editName.trim();
+    if (editAnnouncement !== (conv.announcement ?? '')) body.announcement = editAnnouncement || null;
+    if (Object.keys(body).length === 0) { setSavingInfo(false); setShowInfoEdit(false); return; }
+    const res = await request.patch(`/api/chat/conversations/${conversationId}/group-info`, body);
+    setSavingInfo(false);
+    if ((res as { code: number }).code === 0) {
+      Toast.success('已更新');
+      setShowInfoEdit(false);
+      onConvUpdate({ name: body.name ?? conv.name, announcement: body.announcement !== undefined ? body.announcement : conv.announcement });
+    } else {
+      Toast.error((res as { message?: string }).message ?? '更新失败');
+    }
+  };
 
   return (
-    <div style={{ width: 220, borderLeft: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0, padding: '12px', overflowY: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 6 }}>
-        <Text strong style={{ flex: 1, fontSize: 13 }}>群成员（{members.length}）</Text>
-        <Tooltip content="添加成员">
-          <Button
-            size="small" theme="borderless" type="primary"
-            icon={<UserPlus size={14} />}
-            loading={adding}
-            onClick={() => setShowAdd((v) => !v)}
-          />
-        </Tooltip>
-      </div>
-      {showAdd && (
-        <div style={{ marginBottom: 10, padding: 8, background: 'var(--semi-color-fill-0)', borderRadius: 6 }}>
-          <Text style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>搜索添加成员</Text>
-          <UserSearchList onSelect={handleAdd} excludeIds={memberIds} />
+    <div style={{ width: 240, borderLeft: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
+      {/* 群信息区 */}
+      <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid var(--semi-color-border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <Text strong style={{ flex: 1, fontSize: 13 }}>群聊设置</Text>
+          {isOwner && (
+            <Tooltip content={showInfoEdit ? '取消编辑' : '编辑群名/公告'}>
+              <Button
+                size="small" theme="borderless" type={showInfoEdit ? 'primary' : 'tertiary'}
+                icon={<RefreshCcw size={13} />}
+                onClick={() => {
+                  setShowInfoEdit((v) => {
+                    if (!v) {
+                      setEditName(conv.name ?? '');
+                      setEditAnnouncement(conv.announcement ?? '');
+                    }
+                    return !v;
+                  });
+                }}
+              />
+            </Tooltip>
+          )}
         </div>
-      )}
-      <Spin spinning={loading}>
-        {members.map((m) => (
-          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
-            <UserAvatar name={m.nickname} avatar={m.avatar} size={28} />
-            <Text style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {m.nickname}
-            </Text>
+        {showInfoEdit ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <Input
+              size="small"
+              placeholder="群聊名称"
+              value={editName}
+              onChange={setEditName}
+            />
+            <TextArea
+              placeholder="群公告（可为空）"
+              rows={3}
+              maxCount={500}
+              value={editAnnouncement}
+              onChange={(v) => setEditAnnouncement(v)}
+              autosize
+            />
+            <Button size="small" theme="solid" loading={savingInfo} onClick={() => { void handleSaveInfo(); }}>保存</Button>
           </div>
-        ))}
-      </Spin>
+        ) : (
+          <>
+            {conv.announcement && (
+              <div style={{ padding: '6px 8px', background: 'var(--semi-color-warning-light-default)', borderRadius: 6, fontSize: 12, color: 'var(--semi-color-text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                📢 {conv.announcement}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* 成员列表 */}
+      <div style={{ flex: 1, padding: '8px 12px', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 6 }}>
+          <Text strong style={{ flex: 1, fontSize: 13 }}>成员（{members.length}）</Text>
+          <Tooltip content="添加成员">
+            <Button
+              size="small" theme="borderless" type="primary"
+              icon={<UserPlus size={14} />}
+              loading={adding}
+              onClick={() => setShowAdd((v) => !v)}
+            />
+          </Tooltip>
+        </div>
+        {showAdd && (
+          <div style={{ marginBottom: 10, padding: 8, background: 'var(--semi-color-fill-0)', borderRadius: 6 }}>
+            <Text style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>搜索添加成员</Text>
+            <UserSearchList onSelect={handleAdd} excludeIds={memberIds} />
+          </div>
+        )}
+        <Spin spinning={loading}>
+          {members.map((m) => {
+            const isSelf = m.id === currentUserId;
+            return (
+              <div
+                key={m.id}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--semi-color-border)' }}
+              >
+                <UserAvatar name={m.nickname} avatar={m.avatar} size={28} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>
+                      {m.nickname}
+                    </Text>
+                    {m.role === 'owner' && (
+                      <Tag size="small" color="amber" style={{ padding: '0 4px', lineHeight: '16px', fontSize: 10 }}>
+                        <Crown size={9} style={{ marginRight: 2 }} />群主
+                      </Tag>
+                    )}
+                  </div>
+                </div>
+                {isOwner && !isSelf && (
+                  <Dropdown
+                    trigger="click"
+                    clickToHide
+                    render={(
+                      <Dropdown.Menu>
+                        <Dropdown.Item
+                          icon={<Crown size={12} />}
+                          onClick={() => handleTransfer(m)}
+                        >
+                          转让群主
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          type="danger"
+                          icon={<UserMinus size={12} />}
+                          onClick={() => handleRemoveMember(m)}
+                        >
+                          移除
+                        </Dropdown.Item>
+                      </Dropdown.Menu>
+                    )}
+                  >
+                    <Button size="small" theme="borderless" type="tertiary" icon={<Users size={12} />} style={{ padding: '2px 4px', height: 'auto' }} />
+                  </Dropdown>
+                )}
+              </div>
+            );
+          })}
+        </Spin>
+      </div>
     </div>
   );
 }
@@ -341,7 +500,7 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
             tabIndex={0}
             onClick={() => setImagePreviewVisible(false)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+              if (e.key === 'Escape') {
                 e.preventDefault();
                 setImagePreviewVisible(false);
               }
@@ -350,18 +509,64 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
               position: 'fixed',
               inset: 0,
               zIndex: 2000,
-              background: 'rgba(0, 0, 0, 0.85)',
+              background: 'rgba(0, 0, 0, 0.88)',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: 16,
             }}
           >
+            {/* 顶部工具栏 */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 16px',
+                background: 'rgba(0,0,0,0.45)',
+              }}
+            >
+              <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 'calc(100% - 88px)' }}>
+                {asset?.name ?? '图片预览'}
+                {asset?.width && asset.height ? ` (${asset.width}×${asset.height})` : ''}
+              </span>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <a
+                  href={msg.content}
+                  download={asset?.name ?? '图片'}
+                  onClick={(e) => e.stopPropagation()}
+                  title="下载"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 32, height: 32, borderRadius: 6,
+                    background: 'rgba(255,255,255,0.15)', color: '#fff', textDecoration: 'none',
+                  }}
+                >
+                  <Download size={15} />
+                </a>
+                <button
+                  type="button"
+                  title="关闭 (Esc)"
+                  onClick={() => setImagePreviewVisible(false)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 32, height: 32, borderRadius: 6,
+                    background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', cursor: 'pointer',
+                  }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+            {/* 图片主体 */}
             <img
               src={msg.content}
               alt={asset?.name ?? '预览图片'}
               onClick={(e) => e.stopPropagation()}
-              style={{ maxWidth: '92vw', maxHeight: '88vh', display: 'block', border: 'none', boxShadow: 'none' }}
+              style={{ maxWidth: '92vw', maxHeight: 'calc(88vh - 52px)', display: 'block', border: 'none', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', borderRadius: 4 }}
             />
           </div>
         )}
@@ -527,6 +732,22 @@ function MessageBubble({
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const showBottomTime = shouldShowTime || isHovered;
 
+  // 是否在 2 分钟内可撤回
+  const TWO_MINUTES_MS = 2 * 60 * 1000;
+  const [canRecall, setCanRecall] = useState(() => {
+    const elapsed = Date.now() - new Date(msg.createdAt.replace(' ', 'T')).getTime();
+    return elapsed < TWO_MINUTES_MS;
+  });
+  useEffect(() => {
+    if (!isSelf || msg.isRecalled) return;
+    const elapsed = Date.now() - new Date(msg.createdAt.replace(' ', 'T')).getTime();
+    const remaining = TWO_MINUTES_MS - elapsed;
+    if (remaining <= 0) { setCanRecall(false); return; }
+    const timer = setTimeout(() => setCanRecall(false), remaining);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msg.id, msg.createdAt, isSelf, msg.isRecalled]);
+
   const handleCopyText = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(msg.content);
@@ -634,9 +855,9 @@ function MessageBubble({
               <MessageContent msg={msg} isSelf={isSelf} />
             </div>
             <div style={{ display: 'flex', gap: 2, flexShrink: 0, paddingBottom: 2 }}>
-              {isSelf && (
+              {isSelf && canRecall && !msg.isRecalled && (
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <Tooltip content="撤回" position="top">
+                  <Tooltip content="撤回（2分钟内有效）" position="top">
                     <div style={{ display: 'flex' }}>
                       <Button
                         size="small" theme="borderless" type="tertiary"
@@ -691,7 +912,7 @@ function MessageBubble({
                 >
                   回复
                 </Dropdown.Item>
-                {isSelf && (
+                {isSelf && canRecall && !msg.isRecalled && (
                   <Dropdown.Item
                     icon={<RotateCcw size={12} />}
                     onClick={() => {
@@ -1132,6 +1353,27 @@ export default function ChatPage() {
       if (wsMsg.payload.conversationId === activeConvId) {
         void fetchConversations();
       }
+    } else if (wsMsg.type === 'chat:member-leave') {
+      const { conversationId, userId } = wsMsg.payload;
+      if (userId === currentUserId) {
+        setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+        if (activeConvId === conversationId) {
+          setActiveConvId(null);
+          setMessages([]);
+        }
+        Toast.warning('你已被移出该群聊');
+      }
+    } else if (wsMsg.type === 'chat:group-update') {
+      const { conversationId, name, announcement } = wsMsg.payload;
+      setConversations((prev) =>
+        prev.map((c) => c.id === conversationId
+          ? {
+            ...c,
+            ...(name !== undefined ? { name } : {}),
+            ...(announcement !== undefined ? { announcement } : {}),
+          }
+          : c),
+      );
     }
   }, [activeConvId, currentUserId, fetchConversations, isNearBottom]);
 
@@ -1453,7 +1695,16 @@ export default function ChatPage() {
 
             {/* Group members sidebar */}
             {activeConv.type === 'group' && showMembers && (
-              <GroupMembersPanel conversationId={activeConv.id} />
+              <GroupMembersPanel
+                conversationId={activeConv.id}
+                currentUserId={currentUserId}
+                conv={activeConv}
+                onConvUpdate={(patch) => {
+                  setConversations((prev) =>
+                    prev.map((c) => c.id === activeConv.id ? { ...c, ...patch } : c),
+                  );
+                }}
+              />
             )}
           </div>
 

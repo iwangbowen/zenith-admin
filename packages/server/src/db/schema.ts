@@ -572,11 +572,13 @@ export type NewWorkflowTask = typeof workflowTasks.$inferInsert;
 
 // ─── 聊天会话表 ───────────────────────────────────────────────────────────────
 export const chatConversationTypeEnum = pgEnum('chat_conversation_type', ['direct', 'group']);
+export const chatMemberRoleEnum = pgEnum('chat_member_role', ['owner', 'member']);
 
 export const chatConversations = pgTable('chat_conversations', {
   id: serial('id').primaryKey(),
   type: chatConversationTypeEnum('type').notNull().default('direct'),
   name: varchar('name', { length: 64 }),
+  announcement: varchar('announcement', { length: 500 }),
   createdById: integer('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -590,6 +592,7 @@ export type NewChatConversation = typeof chatConversations.$inferInsert;
 export const chatConversationMembers = pgTable('chat_conversation_members', {
   conversationId: integer('conversation_id').notNull().references(() => chatConversations.id, { onDelete: 'cascade' }),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: chatMemberRoleEnum('role').notNull().default('member'),
   isPinned: boolean('is_pinned').notNull().default(false),
   isStarred: boolean('is_starred').notNull().default(false),
   lastReadAt: timestamp('last_read_at', { withTimezone: true }),

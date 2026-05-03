@@ -267,6 +267,13 @@
       "when": 1777731579945,
       "tag": "0037_giant_spitfire",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1777792907590,
+      "tag": "0038_glamorous_leader",
+      "breakpoints": true
     }
   ]
 }

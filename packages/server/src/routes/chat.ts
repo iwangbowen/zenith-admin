@@ -5,12 +5,13 @@ import {
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
 import {
-  ChatMessageDTO, ChatConversationDTO, ChatUserDTO, ChatLinkPreviewDTO, ChatMessageExtraDTO,
+  ChatMessageDTO, ChatConversationDTO, ChatUserDTO, ChatGroupMemberDTO, ChatLinkPreviewDTO, ChatMessageExtraDTO,
 } from '../lib/openapi-dtos';
 import {
   listConversations, getOrCreateDirectConversation, listMessages,
   sendMessage, recallMessage, markConversationRead, listChatUsers,
   createGroupConversation, addGroupMember, listGroupMembers,
+  removeGroupMember, updateGroupInfo, transferGroupOwnership,
   pinConversation, starConversation, removeConversation,
   getLinkPreview,
 } from '../services/chat.service';
@@ -185,7 +186,7 @@ chatRouter.openapi(
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
     request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(z.array(ChatUserDTO), '成员列表') },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatGroupMemberDTO), '成员列表') },
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -270,6 +271,72 @@ chatRouter.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     await removeConversation(id);
+    return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 移除群成员 ───────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'delete', path: '/conversations/{id}/members/{userId}', tags: ['Chat'], summary: '移除群成员（群主专属）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: z.object({ id: z.coerce.number().int().positive(), userId: z.coerce.number().int().positive() }),
+    },
+    responses: { ...commonErrorResponses, ...okMsg('移除成功') },
+  }),
+  async (c) => {
+    const { id, userId } = c.req.valid('param');
+    await removeGroupMember(id, userId);
+    return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 更新群聊信息（群名/公告）────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'patch', path: '/conversations/{id}/group-info', tags: ['Chat'], summary: '更新群聊名称或公告（群主专属）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: {
+        content: jsonContent(z.object({
+          name: z.string().min(1).max(64).optional(),
+          announcement: z.string().max(500).nullable().optional(),
+        })),
+      },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('更新成功') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    await updateGroupInfo(id, body);
+    return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 转让群主 ─────────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/conversations/{id}/transfer', tags: ['Chat'], summary: '转让群主',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ newOwnerId: z.number().int().positive() })) },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('转让成功') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { newOwnerId } = c.req.valid('json');
+    await transferGroupOwnership(id, newOwnerId);
     return c.json(okBody(null), 200);
   },
 );

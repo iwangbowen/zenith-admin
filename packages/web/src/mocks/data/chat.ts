@@ -67,6 +67,7 @@ export const mockChatConversations: ChatConversation[] = [
     id: 2,
     type: 'group',
     name: '项目组',
+    announcement: '欢迎加入项目组！有问题请 @ 管理员。',
     targetUser: null,
     lastMessage: null,
     unreadCount: 0,
@@ -78,11 +79,11 @@ export const mockChatConversations: ChatConversation[] = [
 ];
 
 // 群聊成员 Map: conversationId -> 成员列表
-export const mockGroupMembers: Record<number, { id: number; nickname: string; username: string; avatar: null }[]> = {
+export const mockGroupMembers: Record<number, { id: number; nickname: string; username: string; avatar: null; role: 'owner' | 'member' }[]> = {
   2: [
-    { id: 1, nickname: '管理员', username: 'admin', avatar: null },
-    { id: 2, nickname: '张三', username: 'zhangsan', avatar: null },
-    { id: 3, nickname: '李四', username: 'lisi', avatar: null },
+    { id: 1, nickname: '管理员', username: 'admin', avatar: null, role: 'owner' },
+    { id: 2, nickname: '张三', username: 'zhangsan', avatar: null, role: 'member' },
+    { id: 3, nickname: '李四', username: 'lisi', avatar: null, role: 'member' },
   ],
 };
 

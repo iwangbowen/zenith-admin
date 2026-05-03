@@ -167,6 +167,7 @@ export const chatHandlers = [
       id: mockChatConversations.length + 200,
       type: 'group' as const,
       name: body.name.trim(),
+      announcement: null,
       targetUser: null,
       lastMessage: null,
       unreadCount: 0,
@@ -177,7 +178,7 @@ export const chatHandlers = [
     };
     mockChatConversations.unshift(newConv);
     mockGroupMembers[newConv.id] = [
-      { id: 1, nickname: '管理员', username: 'admin', avatar: null },
+      { id: 1, nickname: '管理员', username: 'admin', avatar: null, role: 'owner' },
     ];
     return HttpResponse.json({ code: 0, message: 'ok', data: newConv });
   }),
@@ -225,7 +226,41 @@ export const chatHandlers = [
     if (!mockGroupMembers[convId]) mockGroupMembers[convId] = [];
     const already = mockGroupMembers[convId].some((m) => m.id === body.userId);
     if (already) return HttpResponse.json({ code: 400, message: '已是群成员', data: null }, { status: 400 });
-    mockGroupMembers[convId].push({ ...user });
+    mockGroupMembers[convId].push({ ...user, avatar: null, role: 'member' });
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // 移除群成员
+  http.delete('/api/chat/conversations/:id/members/:userId', ({ params }) => {
+    const convId = Number(params.id);
+    const targetId = Number(params.userId);
+    if (!mockGroupMembers[convId]) return HttpResponse.json({ code: 404, message: '群聊不存在', data: null }, { status: 404 });
+    const idx = mockGroupMembers[convId].findIndex((m) => m.id === targetId);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '该用户不在群聊中', data: null }, { status: 404 });
+    mockGroupMembers[convId].splice(idx, 1);
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // 更新群聊信息（群名/公告）
+  http.patch('/api/chat/conversations/:id/group-info', async ({ params, request }) => {
+    const convId = Number(params.id);
+    const body = await request.json() as { name?: string; announcement?: string | null };
+    const conv = mockChatConversations.find((c) => c.id === convId);
+    if (!conv) return HttpResponse.json({ code: 404, message: '会话不存在', data: null }, { status: 404 });
+    if (body.name !== undefined) conv.name = body.name || null;
+    if ('announcement' in body) (conv as unknown as Record<string, unknown>).announcement = body.announcement ?? null;
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // 转让群主
+  http.post('/api/chat/conversations/:id/transfer', async ({ params, request }) => {
+    const convId = Number(params.id);
+    const body = await request.json() as { newOwnerId: number };
+    const members = mockGroupMembers[convId];
+    if (!members) return HttpResponse.json({ code: 404, message: '群聊不存在', data: null }, { status: 404 });
+    const target = members.find((m) => m.id === body.newOwnerId);
+    if (!target) return HttpResponse.json({ code: 404, message: '目标用户不在群聊中', data: null }, { status: 404 });
+    members.forEach((m) => { m.role = m.id === body.newOwnerId ? 'owner' : 'member'; });
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
 ];

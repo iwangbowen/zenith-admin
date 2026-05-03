@@ -312,6 +312,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
     id: conv.id,
     type: conv.type as ChatConversation['type'],
     name: conv.name,
+    announcement: conv.announcement ?? null,
     targetUser: conv.type === 'direct' ? (directTargetMap.get(conv.id) ?? null) : null,
     lastMessage: latestMsgMap.get(conv.id) ?? null,
     unreadCount: unreadMap.get(conv.id) ?? 0,
@@ -591,13 +592,14 @@ export async function createGroupConversation(name: string): Promise<ChatConvers
   }).returning();
 
   await db.insert(chatConversationMembers).values([
-    { conversationId: conv.id, userId: me.userId },
+    { conversationId: conv.id, userId: me.userId, role: 'owner' },
   ]);
 
   return {
     id: conv.id,
     type: 'group',
     name: conv.name,
+    announcement: conv.announcement ?? null,
     targetUser: null,
     lastMessage: null,
     unreadCount: 0,
@@ -699,7 +701,10 @@ export async function listGroupMembers(conversationId: number) {
   if (!isMember) throw new HTTPException(403, { message: '无权访问该会话' });
 
   const rows = await db
-    .select({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
+    .select({
+      id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar,
+      role: chatConversationMembers.role,
+    })
     .from(chatConversationMembers)
     .innerJoin(users, eq(chatConversationMembers.userId, users.id))
     .where(eq(chatConversationMembers.conversationId, conversationId));
@@ -729,4 +734,168 @@ export async function listChatUsers(keyword?: string) {
     .limit(50);
 
   return rows;
+}
+
+// ─── 移除群成员 ──────────────────────────────────────────────────────────────
+
+export async function removeGroupMember(conversationId: number, targetUserId: number): Promise<void> {
+  const me = currentUser();
+
+  const conv = await db.query.chatConversations.findFirst({
+    where: eq(chatConversations.id, conversationId),
+  });
+  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
+  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能移除成员' });
+
+  // 操作者必须是 owner
+  const operatorMember = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (!operatorMember || operatorMember.role !== 'owner') {
+    throw new HTTPException(403, { message: '只有群主才能移除成员' });
+  }
+  if (targetUserId === me.userId) {
+    throw new HTTPException(400, { message: '群主不能移除自己，请先转让群主' });
+  }
+
+  // 先确认目标用户在群中
+  const targetMemberExists = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, targetUserId),
+    ),
+  });
+  if (!targetMemberExists) {
+    throw new HTTPException(404, { message: '该用户不在群聊中' });
+  }
+
+  await db.delete(chatConversationMembers).where(and(
+    eq(chatConversationMembers.conversationId, conversationId),
+    eq(chatConversationMembers.userId, targetUserId),
+  ));
+
+  // 推送成员离开通知
+  const remaining = await db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, conversationId));
+
+  for (const { userId } of remaining) {
+    sendToUser(userId, { type: 'chat:member-leave', payload: { conversationId, userId: targetUserId } });
+  }
+  sendToUser(targetUserId, { type: 'chat:member-leave', payload: { conversationId, userId: targetUserId } });
+}
+
+// ─── 更新群聊信息 ─────────────────────────────────────────────────────────────
+
+export async function updateGroupInfo(
+  conversationId: number,
+  updates: { name?: string; announcement?: string | null },
+): Promise<void> {
+  const me = currentUser();
+
+  const conv = await db.query.chatConversations.findFirst({
+    where: eq(chatConversations.id, conversationId),
+  });
+  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
+  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能修改信息' });
+
+  // owner 才能改
+  const member = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (!member || member.role !== 'owner') {
+    throw new HTTPException(403, { message: '只有群主才能修改群聊信息' });
+  }
+
+  const set: Record<string, unknown> = {};
+  if (updates.name !== undefined) set.name = updates.name.trim() || null;
+  if ('announcement' in updates) set.announcement = updates.announcement ?? null;
+  if (Object.keys(set).length === 0) return;
+
+  await db.update(chatConversations).set(set).where(eq(chatConversations.id, conversationId));
+
+  // 通知所有成员
+  const members = await db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, conversationId));
+
+  for (const { userId } of members) {
+    sendToUser(userId, {
+      type: 'chat:group-update',
+      payload: { conversationId, ...('name' in set ? { name: set.name as string | null } : {}), ...('announcement' in set ? { announcement: set.announcement as string | null } : {}) },
+    });
+  }
+}
+
+// ─── 转让群主 ─────────────────────────────────────────────────────────────────
+
+export async function transferGroupOwnership(conversationId: number, newOwnerId: number): Promise<void> {
+  const me = currentUser();
+
+  if (newOwnerId === me.userId) {
+    throw new HTTPException(400, { message: '不能转让给自己' });
+  }
+
+  const conv = await db.query.chatConversations.findFirst({
+    where: eq(chatConversations.id, conversationId),
+  });
+  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
+  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能转让群主' });
+
+  const currentMember = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (!currentMember || currentMember.role !== 'owner') {
+    throw new HTTPException(403, { message: '只有群主才能转让群主' });
+  }
+
+  const targetMember = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, newOwnerId),
+    ),
+  });
+  if (!targetMember) {
+    throw new HTTPException(404, { message: '目标用户不在群聊中' });
+  }
+
+  // 事务：当前群主降为 member，新群主升为 owner
+  await db.transaction(async (tx) => {
+    await tx.update(chatConversationMembers)
+      .set({ role: 'member' })
+      .where(and(
+        eq(chatConversationMembers.conversationId, conversationId),
+        eq(chatConversationMembers.userId, me.userId),
+      ));
+    await tx.update(chatConversationMembers)
+      .set({ role: 'owner' })
+      .where(and(
+        eq(chatConversationMembers.conversationId, conversationId),
+        eq(chatConversationMembers.userId, newOwnerId),
+      ));
+  });
+
+  // 通知所有成员
+  const members = await db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, conversationId));
+
+  for (const { userId } of members) {
+    sendToUser(userId, {
+      type: 'chat:group-update',
+      payload: { conversationId },
+    });
+  }
 }

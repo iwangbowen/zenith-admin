@@ -12,6 +12,16 @@ export const ChatUserDTO = z
   })
   .openapi('ChatUser');
 
+export const ChatGroupMemberDTO = z
+  .object({
+    id: z.number().int(),
+    nickname: z.string(),
+    username: z.string(),
+    avatar: z.string().nullable().optional(),
+    role: z.enum(['owner', 'member']),
+  })
+  .openapi('ChatGroupMember');
+
 export const ChatLinkPreviewDTO = z
   .object({
     url: z.url(),
@@ -68,6 +78,7 @@ export const ChatConversationDTO = z
     id: z.number().int(),
     type: z.enum(['direct', 'group']),
     name: z.string().nullable().optional(),
+    announcement: z.string().nullable().optional(),
     targetUser: z
       .object({ id: z.number().int(), nickname: z.string(), avatar: z.string().nullable().optional() })
       .nullable()
