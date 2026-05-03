@@ -59,76 +59,7 @@ features:
 
 <section class="zn-section">
 <h2 class="zn-title">核心能力矩阵</h2>
-<div class="zn-feature-wall" aria-label="核心能力滚动列表">
-<div class="zn-feature-col">
-<div class="zn-feature-vtrack zn-feature-vtrack-up">
-<span>用户 / 角色 / 菜单权限</span>
-<span>按钮级鉴权</span>
-<span>部门与岗位管理</span>
-<span>字典与字典项</span>
-<span>公告通知</span>
-<span>消息中心（单聊 / 群聊）</span>
-<span>会话置顶与收藏</span>
-<span>消息搜索</span>
-<span aria-hidden="true">用户 / 角色 / 菜单权限</span>
-<span aria-hidden="true">按钮级鉴权</span>
-<span aria-hidden="true">部门与岗位管理</span>
-<span aria-hidden="true">字典与字典项</span>
-<span aria-hidden="true">公告通知</span>
-<span aria-hidden="true">消息中心（单聊 / 群聊）</span>
-<span aria-hidden="true">会话置顶与收藏</span>
-<span aria-hidden="true">消息搜索</span>
-</div>
-</div>
-<div class="zn-feature-col">
-<div class="zn-feature-vtrack zn-feature-vtrack-down">
-<span>WebSocket 实时收发</span>
-<span>登录日志</span>
-<span>操作日志</span>
-<span>在线会话管理</span>
-<span>Redis 会话持久化</span>
-<span>强制下线黑名单</span>
-<span>JWT 双 Token 鉴权</span>
-<span>Refresh 自动续期</span>
-<span aria-hidden="true">WebSocket 实时收发</span>
-<span aria-hidden="true">登录日志</span>
-<span aria-hidden="true">操作日志</span>
-<span aria-hidden="true">在线会话管理</span>
-<span aria-hidden="true">Redis 会话持久化</span>
-<span aria-hidden="true">强制下线黑名单</span>
-<span aria-hidden="true">JWT 双 Token 鉴权</span>
-<span aria-hidden="true">Refresh 自动续期</span>
-</div>
-</div>
-<div class="zn-feature-col">
-<div class="zn-feature-vtrack zn-feature-vtrack-up">
-<span>系统配置中心</span>
-<span>定时任务管理</span>
-<span>数据库备份</span>
-<span>文件管理</span>
-<span>存储后端切换（local / OSS / S3 / COS）</span>
-<span>OAuth 配置</span>
-<span>API Token</span>
-<span>OpenAPI 文档</span>
-<span>Drizzle 迁移管理</span>
-<span>可选多租户隔离</span>
-<span>租户视角切换</span>
-<span>统一响应结构</span>
-<span aria-hidden="true">系统配置中心</span>
-<span aria-hidden="true">定时任务管理</span>
-<span aria-hidden="true">数据库备份</span>
-<span aria-hidden="true">文件管理</span>
-<span aria-hidden="true">存储后端切换（local / OSS / S3 / COS）</span>
-<span aria-hidden="true">OAuth 配置</span>
-<span aria-hidden="true">API Token</span>
-<span aria-hidden="true">OpenAPI 文档</span>
-<span aria-hidden="true">Drizzle 迁移管理</span>
-<span aria-hidden="true">可选多租户隔离</span>
-<span aria-hidden="true">租户视角切换</span>
-<span aria-hidden="true">统一响应结构</span>
-</div>
-</div>
-</div>
+<FeatureMatrixFlow />
 </section>
 
 <section class="zn-section">
