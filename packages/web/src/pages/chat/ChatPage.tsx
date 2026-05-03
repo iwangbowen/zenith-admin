@@ -282,6 +282,19 @@ function GroupMembersPanel({
   const myRole = members.find((m) => m.id === currentUserId)?.role ?? 'member';
   const isOwner = myRole === 'owner';
   const memberIds = members.map((m) => m.id);
+  const sortedMembers = useMemo(
+    () => [...members].sort((a, b) => {
+      const rank = (m: ChatGroupMember) => {
+        if (m.role === 'owner') return 0;
+        if (m.username === 'admin' || m.nickname.includes('管理员')) return 1;
+        return 2;
+      };
+      const r = rank(a) - rank(b);
+      if (r !== 0) return r;
+      return a.id - b.id;
+    }),
+    [members],
+  );
 
   const handleAdd = async (user: ChatUser) => {
     setAdding(true);
@@ -420,7 +433,7 @@ function GroupMembersPanel({
           </div>
         )}
         <Spin spinning={loading}>
-          {members.map((m) => {
+          {sortedMembers.map((m) => {
             const isSelf = m.id === currentUserId;
             return (
               <div

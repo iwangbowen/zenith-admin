@@ -903,7 +903,12 @@ export async function listGroupMembers(conversationId: number) {
     })
     .from(chatConversationMembers)
     .innerJoin(users, eq(chatConversationMembers.userId, users.id))
-    .where(eq(chatConversationMembers.conversationId, conversationId));
+    .where(eq(chatConversationMembers.conversationId, conversationId))
+    .orderBy(
+      sql`case when ${chatConversationMembers.role} = 'owner' then 0 else 1 end`,
+      asc(chatConversationMembers.joinedAt),
+      asc(users.id),
+    );
 
   return rows;
 }

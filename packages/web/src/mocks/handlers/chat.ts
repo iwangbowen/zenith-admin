@@ -205,7 +205,16 @@ export const chatHandlers = [
   // 群成员列表
   http.get('/api/chat/conversations/:id/members', ({ params }) => {
     const convId = Number(params.id);
-    const members = mockGroupMembers[convId] ?? [];
+    const members = [...(mockGroupMembers[convId] ?? [])].sort((a, b) => {
+      const rank = (m: { role: 'owner' | 'member'; username: string; nickname: string }) => {
+        if (m.role === 'owner') return 0;
+        if (m.username === 'admin' || m.nickname.includes('管理员')) return 1;
+        return 2;
+      };
+      const r = rank(a) - rank(b);
+      if (r !== 0) return r;
+      return a.id - b.id;
+    });
     return HttpResponse.json({ code: 0, message: 'ok', data: members });
   }),
 
