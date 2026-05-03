@@ -4,7 +4,7 @@ import {
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, RefreshCcw, ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, Pencil, ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
@@ -357,7 +357,7 @@ function GroupMembersPanel({
             <Tooltip content={showInfoEdit ? '取消编辑' : '编辑群名/公告'}>
               <Button
                 size="small" theme="borderless" type={showInfoEdit ? 'primary' : 'tertiary'}
-                icon={<RefreshCcw size={13} />}
+                icon={<Pencil size={13} />}
                 onClick={() => {
                   setShowInfoEdit((v) => {
                     if (!v) {
@@ -441,29 +441,26 @@ function GroupMembersPanel({
                   </div>
                 </div>
                 {isOwner && !isSelf && (
-                  <Dropdown
-                    trigger="click"
-                    clickToHide
-                    render={(
-                      <Dropdown.Menu>
-                        <Dropdown.Item
-                          icon={<Crown size={12} />}
-                          onClick={() => handleTransfer(m)}
-                        >
-                          转让群主
-                        </Dropdown.Item>
-                        <Dropdown.Item
-                          type="danger"
-                          icon={<UserMinus size={12} />}
-                          onClick={() => handleRemoveMember(m)}
-                        >
-                          移除
-                        </Dropdown.Item>
-                      </Dropdown.Menu>
-                    )}
-                  >
-                    <Button size="small" theme="borderless" type="tertiary" icon={<Users size={12} />} style={{ padding: '2px 4px', height: 'auto' }} />
-                  </Dropdown>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      type="tertiary"
+                      onClick={() => handleTransfer(m)}
+                      style={{ padding: '2px 4px', height: 'auto', minWidth: 'auto' }}
+                    >
+                      转让
+                    </Button>
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      type="danger"
+                      onClick={() => handleRemoveMember(m)}
+                      style={{ padding: '2px 4px', height: 'auto', minWidth: 'auto' }}
+                    >
+                      移除
+                    </Button>
+                  </div>
                 )}
               </div>
             );
