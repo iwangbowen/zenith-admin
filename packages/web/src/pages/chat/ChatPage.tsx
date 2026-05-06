@@ -1284,6 +1284,59 @@ function MessageBubble({
     }
   }, [msg.content]);
 
+  const handleCopyFile = useCallback(async () => {
+    const mimeType = getAssetMeta(msg)?.mimeType ?? 'application/octet-stream';
+    try {
+      const resp = await fetch(msg.content);
+      if (!resp.ok) throw new Error('fetch failed');
+      const blob = await resp.blob();
+
+      // 图片类型：转 PNG 后写入剪贴板
+      if (mimeType.startsWith('image/')) {
+        const pngBlob = await new Promise<Blob>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('canvas unavailable')); return; }
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob((b) => {
+              if (b) resolve(b); else reject(new Error('toBlob failed'));
+            }, 'image/png');
+          };
+          img.onerror = () => reject(new Error('load failed'));
+          img.src = URL.createObjectURL(blob);
+        });
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+        Toast.success('文件（图片）已复制到剪贴板');
+        return;
+      }
+
+      // 其他类型：尝试 ClipboardItem（Chrome 89+），不支持则触发下载
+      if ('ClipboardItem' in window && navigator.clipboard.write) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ [mimeType]: blob })]);
+          Toast.success('文件已复制到剪贴板');
+          return;
+        } catch { /* fall through to download */ }
+      }
+
+      // 降级：触发浏览器下载
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = getAssetMeta(msg)?.name ?? '文件';
+      a.click();
+      URL.revokeObjectURL(url);
+      Toast.info('浏览器不支持复制此类文件，已改为下载');
+    } catch {
+      Toast.error('复制失败');
+    }
+  }, [msg]);
+
   if (msg.type === 'system') {
     return (
       <div
@@ -1566,11 +1619,25 @@ function MessageBubble({
                   <Dropdown.Item
                     icon={<Copy size={12} />}
                     onClick={() => {
-                      void navigator.clipboard.writeText(msg.content);
+                      void handleCopyFile();
                       setContextMenuPos(null);
                     }}
                   >
-                    复制链接
+                    复制
+                  </Dropdown.Item>
+                )}
+                {msg.type === 'file' && (
+                  <Dropdown.Item
+                    icon={<Download size={12} />}
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = msg.content;
+                      a.download = getAssetMeta(msg)?.name ?? '文件';
+                      a.click();
+                      setContextMenuPos(null);
+                    }}
+                  >
+                    下载
                   </Dropdown.Item>
                 )}
                 <Dropdown.Item
