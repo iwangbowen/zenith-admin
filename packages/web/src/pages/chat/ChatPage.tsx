@@ -3320,7 +3320,7 @@ export default function ChatPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, padding: '4px 10px', background: 'var(--semi-color-fill-0)', borderRadius: 6, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
                 <CornerDownLeft size={12} />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  回复 {replyTo.senderName}：{replyTo.type === 'image' ? '[图片]' : replyTo.content}
+                  回复 {replyTo.senderName}：{replyTo.type === 'image' ? '[图片]' : replyTo.type === 'file' ? `[文件] ${getAssetMeta(replyTo)?.name ?? ''}` : replyTo.content}
                 </span>
                 <Button size="small" theme="borderless" type="tertiary" onClick={() => setReplyTo(null)} style={{ padding: '0 4px', height: 'auto', minWidth: 'auto' }}>✕</Button>
               </div>
