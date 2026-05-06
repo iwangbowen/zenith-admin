@@ -311,7 +311,7 @@ export default function MenusPage() {
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           <Button
-            type="tertiary"
+            type="primary"
             icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
             onClick={toggleExpandAll}
           >

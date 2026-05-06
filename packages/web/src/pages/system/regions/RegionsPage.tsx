@@ -321,7 +321,7 @@ export default function RegionsPage() {
             重置
           </Button>
           <Button
-            type="tertiary"
+            type="primary"
             icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
             onClick={toggleExpandAll}
           >
