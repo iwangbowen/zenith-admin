@@ -3643,7 +3643,7 @@ export default function ChatPage() {
                 theme="solid" type="primary"
                 icon={<Send size={14} />}
                 loading={sending}
-                disabled={!input.trim() && pendingImages.length === 0}
+                disabled={!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0}
                 onClick={() => { void handleSend(); }}
                 style={{
                   position: 'absolute', bottom: 8, right: 8,
