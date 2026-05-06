@@ -139,7 +139,7 @@ export default function LoginLogsPage() {
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
             重置
           </Button>
-          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
       </SearchToolbar>
 
       <Table

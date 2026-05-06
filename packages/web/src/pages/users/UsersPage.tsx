@@ -575,7 +575,7 @@ export default function UsersPage() {
               批量删除 ({selectedDeletableCount})
             </Button>
           )}
-          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:user:import') && (
             <Button
               type="primary"

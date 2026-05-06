@@ -294,7 +294,7 @@ export default function OperationLogsPage() {
               <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
                 重置
               </Button>
-              <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/operation-logs/export', '操作日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+              <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/operation-logs/export', '操作日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           </SearchToolbar>
 
           <Table
