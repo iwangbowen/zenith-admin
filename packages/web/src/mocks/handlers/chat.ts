@@ -22,6 +22,7 @@ function addSystemMessage(conversationId: number, content: string) {
     replyToId: null,
     isRecalled: false,
     extra: null,
+    reactions: [],
     createdAt: mockDateTime(),
     updatedAt: mockDateTime(),
   };
@@ -156,6 +157,7 @@ export const chatHandlers = [
       replyToId: body.replyToId ?? null,
       isRecalled: false,
       extra: body.extra ?? null,
+      reactions: [],
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
@@ -356,6 +358,7 @@ export const chatHandlers = [
               operatorName: CURRENT_USER_NICKNAME,
             },
           },
+          reactions: [],
           createdAt: mockDateTime(),
           updatedAt: mockDateTime(),
         };
