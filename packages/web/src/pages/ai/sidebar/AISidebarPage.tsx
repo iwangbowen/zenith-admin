@@ -224,7 +224,7 @@ export default function AISidebarPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'var(--semi-color-bg-0)',
+            background: 'var(--semi-color-bg-1)',
             flexShrink: 0,
           }}
         >

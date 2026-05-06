@@ -411,7 +411,7 @@ export default function AIChatPage() {
           borderRight: '1px solid var(--semi-color-border)',
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--semi-color-bg-0)',
+          background: 'var(--semi-color-bg-1)',
           flexShrink: 0,
         }}
       >
@@ -493,7 +493,7 @@ export default function AIChatPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'var(--semi-color-bg-0)',
+            background: 'var(--semi-color-bg-1)',
           }}
         >
           <Title heading={6} style={{ margin: 0 }}>
@@ -547,7 +547,7 @@ export default function AIChatPage() {
         </div>
 
         {/* 输入框 */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-0)' }}>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)' }}>
           <AIChatInput
             placeholder="向 AI 提问，或点击上方提示快速发送..."
             generating={generating}
