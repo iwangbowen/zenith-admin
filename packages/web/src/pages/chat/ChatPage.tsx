@@ -1562,6 +1562,17 @@ function MessageBubble({
                     复制
                   </Dropdown.Item>
                 )}
+                {msg.type === 'file' && (
+                  <Dropdown.Item
+                    icon={<Copy size={12} />}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(msg.content);
+                      setContextMenuPos(null);
+                    }}
+                  >
+                    复制链接
+                  </Dropdown.Item>
+                )}
                 <Dropdown.Item
                   icon={<Bookmark size={12} />}
                   onClick={() => {
