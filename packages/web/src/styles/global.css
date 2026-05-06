@@ -131,13 +131,17 @@ body {
  * AIChatDialogue 代码块背景修正
  * Semi 默认 code content-bg = --semi-color-bg-0（暗色纯黑），与整体背景 #232429 差异过大。
  * topSlot-bg = --semi-color-fill-0（暗色极深），也明显偏黑。
- * 统一使用 bg-2（#35363c）让代码块比内容区稍深，保留层次感同时不刺眼。
+ * hint-bg = --semi-color-bg-0（纯黑），关联问题卡片同样偏黑。
+ * 统一使用 bg-2（#35363c）让代码块/提示项比内容区稍深，保留层次感同时不刺眼。
  */
 .semi-ai-chat-dialogue-code .semi-codeHighlight-defaultTheme pre[class*=language-] {
   background: var(--semi-color-bg-2) !important;
 }
 .semi-ai-chat-dialogue-code-topSlot {
   background-color: var(--semi-color-bg-2) !important;
+}
+.semi-ai-chat-dialogue-hint-item {
+  background: var(--semi-color-bg-2) !important;
 }
 
 .admin-table-nowrap .semi-table-thead > .semi-table-row > .semi-table-row-head {
