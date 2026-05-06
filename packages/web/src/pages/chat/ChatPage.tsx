@@ -841,7 +841,7 @@ function MessageContent({
                 {item.senderName ?? '未知'}：
               </Text>
               <Text style={{ fontSize: 12, color: isSelf ? 'rgba(255,255,255,0.9)' : 'var(--semi-color-text-1)', lineHeight: 1.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                {item.type === 'image' ? '🖼 [图片，点击查看]' : item.type === 'file' ? `📎 [文件] ${item.asset?.name ?? ''}` : item.content}
+                {item.type === 'image' ? '[图片，点击查看]' : item.type === 'file' ? `[文件] ${item.asset?.name ?? ''}` : item.content}
               </Text>
             </div>
           ))}
@@ -3134,13 +3134,6 @@ export default function ChatPage() {
                   已选 <Text strong>{selectedMessageIds.length}</Text> 条消息
                 </Text>
                 <Button
-                  size="small" type="warning" theme="light" icon={<Bookmark size={14} />}
-                  disabled={selectedMessageIds.length === 0}
-                  onClick={() => { void handleFavoriteSelected(); }}
-                >
-                  收藏
-                </Button>
-                <Button
                   size="small" type="primary" theme="light" icon={<Forward size={14} />}
                   disabled={selectedMessageIds.length === 0}
                   onClick={() => handleForwardSelected('individual')}
@@ -3153,6 +3146,13 @@ export default function ChatPage() {
                   onClick={() => handleForwardSelected('merge')}
                 >
                   合并转发
+                </Button>
+                <Button
+                  size="small" type="warning" theme="light" icon={<Bookmark size={14} />}
+                  disabled={selectedMessageIds.length === 0}
+                  onClick={() => { void handleFavoriteSelected(); }}
+                >
+                  收藏
                 </Button>
                 <Button size="small" type="tertiary" onClick={handleExitMultiSelect}>取消多选</Button>
               </div>
