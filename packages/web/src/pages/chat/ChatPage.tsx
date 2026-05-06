@@ -29,6 +29,11 @@ interface PendingImage {
   previewUrl: string;
 }
 
+interface PendingFile {
+  id: string;
+  file: File;
+}
+
 type SearchDatePreset = '' | 'today' | '7d' | '30d';
 
 const CHAT_MESSAGE_TYPE_OPTIONS: Array<{ value: ChatMessage['type']; label: string }> = [
@@ -1770,6 +1775,7 @@ export default function ChatPage() {
   const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [previewImageId, setPreviewImageId] = useState<number | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1947,6 +1953,8 @@ export default function ChatPage() {
     setActiveConvId(conv.id);
     setReplyTo(null);
     setSelectedMentions([]);
+    setPendingImages([]);
+    setPendingFiles([]);
     setLeftPaneMode('conversations');
     setAnnouncementHistoryVisible(false);
     setShowMembers(false);
@@ -2056,19 +2064,22 @@ export default function ChatPage() {
   }, []);
 
   const handleSend = useCallback(async () => {
-    if (!activeConvId || sending || (!input.trim() && pendingImages.length === 0)) return;
+    if (!activeConvId || sending || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)) return;
 
     const content = input.trim();
     const imagesToSend = [...pendingImages];
+    const filesToSend = [...pendingFiles];
 
     setInput('');
     setPendingImages([]);
+    setPendingFiles([]);
     imagesToSend.forEach((item) => URL.revokeObjectURL(item.previewUrl));
 
     setSending(true);
-    if (imagesToSend.length > 0) setUploading(true);
+    if (imagesToSend.length > 0 || filesToSend.length > 0) setUploading(true);
 
     let failedImageCount = 0;
+    let failedFileCount = 0;
 
     if (content) {
       const body: Record<string, unknown> = { content, type: 'text' };
@@ -2096,15 +2107,26 @@ export default function ChatPage() {
       }
     }
 
+    if (filesToSend.length > 0) {
+      for (const item of filesToSend) {
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await sendFileMessage(item.file);
+        if (!ok) failedFileCount += 1;
+      }
+    }
+
     setReplyTo(null);
-  setSelectedMentions([]);
+    setSelectedMentions([]);
     setUploading(false);
     setSending(false);
 
     if (failedImageCount > 0) {
       Toast.error(`有 ${failedImageCount} 张图片发送失败`);
     }
-  }, [activeConvId, fetchLinkPreview, input, pendingImages, replyTo, selectedMentions, sendImageFile, sending]);
+    if (failedFileCount > 0) {
+      Toast.error(`有 ${failedFileCount} 个文件发送失败`);
+    }
+  }, [activeConvId, fetchLinkPreview, input, pendingFiles, pendingImages, replyTo, selectedMentions, sendFileMessage, sendImageFile, sending]);
 
   const handleSelectImages = useCallback((files: File[]) => {
     const validFiles = files.filter((file) => file.type.startsWith('image/'));
@@ -2129,19 +2151,13 @@ export default function ChatPage() {
     }
 
     if (nonImageFiles.length > 0) {
-      setSending(true);
-      void (async () => {
-        let failed = 0;
-        for (const file of nonImageFiles) {
-          // eslint-disable-next-line no-await-in-loop
-          const ok = await sendFileMessage(file);
-          if (!ok) failed += 1;
-        }
-        setSending(false);
-        if (failed > 0) Toast.error(`有 ${failed} 个文件发送失败`);
-      })();
+      const added = nonImageFiles.map((file) => ({
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        file,
+      }));
+      setPendingFiles((prev) => [...prev, ...added]);
     }
-  }, [sendFileMessage]);
+  }, []);
 
   const handleRemovePendingImage = useCallback((id: string) => {
     setPendingImages((prev) => {
@@ -2149,6 +2165,10 @@ export default function ChatPage() {
       if (target) URL.revokeObjectURL(target.previewUrl);
       return prev.filter((item) => item.id !== id);
     });
+  }, []);
+
+  const handleRemovePendingFile = useCallback((id: string) => {
+    setPendingFiles((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
   const handleInputPaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -3444,6 +3464,42 @@ export default function ChatPage() {
               </div>
             )}
 
+            {pendingFiles.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                {pendingFiles.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 8px',
+                      background: 'var(--semi-color-fill-0)',
+                      borderRadius: 6,
+                      border: '1px solid var(--semi-color-border)',
+                      maxWidth: 220,
+                      position: 'relative',
+                    }}
+                  >
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>{getFileTypeIcon(item.file.name)}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.file.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--semi-color-text-3)' }}>{formatFileSize(item.file.size)}</div>
+                    </div>
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      type="danger"
+                      onClick={() => handleRemovePendingFile(item.id)}
+                      style={{ padding: '0 2px', height: 'auto', minWidth: 'auto', flexShrink: 0 }}
+                    >
+                      <X size={12} />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Toolbar */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 6, alignItems: 'center' }}>
               <div ref={emojiContainerRef} style={{ position: 'relative' }}>
@@ -3493,7 +3549,7 @@ export default function ChatPage() {
                 <Button
                   size="small" theme="borderless" type="tertiary"
                   icon={<Paperclip size={16} />}
-                  loading={sending && pendingImages.length === 0}
+                  loading={false}
                   onClick={() => fileAttachRef.current?.click()}
                 />
               </Tooltip>
