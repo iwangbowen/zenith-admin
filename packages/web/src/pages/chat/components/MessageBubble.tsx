@@ -354,7 +354,6 @@ export function MessageBubble({
             transform: `translateY(${showBottomTime ? '0' : '-2px'})`,
             transition: 'opacity 120ms ease, transform 120ms ease',
             pointerEvents: 'none',
-            background: 'var(--semi-color-bg-0)',
             padding: '0 2px',
           }}
         >
