@@ -363,7 +363,8 @@ export type WsMessage =
   | { type: 'chat:member-join'; payload: { conversationId: number; user: { id: number; nickname: string; avatar: string | null } } }
   | { type: 'chat:member-leave'; payload: { conversationId: number; userId: number } }
   | { type: 'chat:group-update'; payload: { conversationId: number; name?: string | null; announcement?: string | null } }
-  | { type: 'chat:typing'; payload: { conversationId: number; userId: number; nickname: string } };
+  | { type: 'chat:typing'; payload: { conversationId: number; userId: number; nickname: string } }
+  | { type: 'chat:reaction'; payload: { conversationId: number; messageId: number; reactions: ChatReactionGroup[] } };
 
 // ─── 地区管理 ──────────────────────────────────────────────
 export type RegionLevel = 'province' | 'city' | 'county';
@@ -673,6 +674,12 @@ export interface ChatForwardedItem {
   asset?: ChatAssetMeta | null;
 }
 
+export interface ChatReactionGroup {
+  emoji: string;
+  count: number;
+  userIds: number[];
+}
+
 export interface ChatMessageExtra {
   asset?: ChatAssetMeta | null;
   linkPreview?: ChatLinkPreview | null;
@@ -696,6 +703,7 @@ export interface ChatMessage {
   replyToId: number | null;
   isRecalled: boolean;
   extra: ChatMessageExtra | null;
+  reactions: ChatReactionGroup[];
   createdAt: string;
   updatedAt: string;
 }

@@ -84,9 +84,18 @@ export const ChatMessageExtraDTO = z
     announcementHistory: ChatAnnouncementHistoryDTO.nullable().optional(),
     forwardedMessages: z.array(ChatForwardedItemDTO).nullable().optional(),
     forwardSourceConvName: z.string().nullable().optional(),
+    hiddenFor: z.array(z.number().int()).nullable().optional(),
   })
   .strict()
   .openapi('ChatMessageExtra');
+
+export const ChatReactionGroupDTO = z
+  .object({
+    emoji: z.string(),
+    count: z.number().int(),
+    userIds: z.array(z.number().int()),
+  })
+  .openapi('ChatReactionGroup');
 
 export const ChatMessageDTO = z
   .object({
@@ -100,6 +109,7 @@ export const ChatMessageDTO = z
     replyToId: z.number().int().nullable().optional(),
     isRecalled: z.boolean(),
     extra: ChatMessageExtraDTO.nullable().optional(),
+    reactions: z.array(ChatReactionGroupDTO).optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })

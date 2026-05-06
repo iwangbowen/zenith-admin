@@ -6,7 +6,7 @@ import {
 } from '../lib/openapi-schemas';
 import {
   ChatMessageDTO, ChatConversationDTO, ChatUserDTO, ChatGroupMemberDTO, ChatLinkPreviewDTO, ChatMessageExtraDTO,
-  ChatMessageSearchItemDTO, ChatMessageContextDTO,
+  ChatMessageSearchItemDTO, ChatMessageContextDTO, ChatReactionGroupDTO,
 } from '../lib/openapi-dtos';
 import {
   listConversations, getOrCreateDirectConversation, listMessages,
@@ -16,7 +16,7 @@ import {
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
   pinConversation, starConversation, removeConversation,
   getLinkPreview, listPinnedMessages, listFavoriteMessages, listGlobalFavoriteMessages,
-  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, forwardMessages, deleteMessagesForUser,
+  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, forwardMessages, deleteMessagesForUser, toggleReaction,
 } from '../services/chat.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -556,6 +556,27 @@ chatRouter.openapi(
     const { messageIds } = c.req.valid('json');
     await deleteMessagesForUser(messageIds);
     return c.json(okBody(null, '删除成功'), 200);
+  },
+);
+
+// ─── 消息表情回应 ─────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/messages/{id}/reactions', tags: ['Chat'], summary: '切换消息表情回应（加/取消）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ emoji: z.string().min(1).max(10) })) },
+    },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatReactionGroupDTO), '更新后的表情回应列表') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { emoji } = c.req.valid('json');
+    const reactions = await toggleReaction(id, emoji);
+    return c.json(okBody(reactions), 200);
   },
 );
 

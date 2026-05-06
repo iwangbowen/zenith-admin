@@ -620,6 +620,18 @@ export const chatMessages = pgTable('chat_messages', {
 export type ChatMessageRow = typeof chatMessages.$inferSelect;
 export type NewChatMessage = typeof chatMessages.$inferInsert;
 
+export const chatMessageReactions = pgTable('chat_message_reactions', {
+  id: serial('id').primaryKey(),
+  messageId: integer('message_id').notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  emoji: varchar('emoji', { length: 10 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique().on(table.messageId, table.userId, table.emoji),
+]);
+
+export type ChatMessageReactionRow = typeof chatMessageReactions.$inferSelect;
+
 // ─── 关系声明（Drizzle Relational Query API）──────────────────────────────────
 // 声明后可使用 db.query.xxx.findMany({ with: { ... } }) 进行关联查询
 
@@ -768,7 +780,13 @@ export const chatConversationMembersRelations = relations(chatConversationMember
   user: one(users, { fields: [chatConversationMembers.userId], references: [users.id] }),
 }));
 
-export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => ({
   conversation: one(chatConversations, { fields: [chatMessages.conversationId], references: [chatConversations.id] }),
   sender: one(users, { fields: [chatMessages.senderId], references: [users.id] }),
+  reactions: many(chatMessageReactions),
+}));
+
+export const chatMessageReactionsRelations = relations(chatMessageReactions, ({ one }) => ({
+  message: one(chatMessages, { fields: [chatMessageReactions.messageId], references: [chatMessages.id] }),
+  user: one(users, { fields: [chatMessageReactions.userId], references: [users.id] }),
 }));

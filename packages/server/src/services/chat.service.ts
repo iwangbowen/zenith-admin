@@ -1,7 +1,7 @@
 import { eq, and, desc, sql, inArray, or, ne, max, asc, gte, lte, lt, gt } from 'drizzle-orm';
 import { db } from '../db';
 import {
-  chatConversations, chatConversationMembers, chatMessages, users,
+  chatConversations, chatConversationMembers, chatMessages, users, chatMessageReactions,
 } from '../db/schema';
 import { sendToUser } from '../lib/ws-manager';
 import { currentUser } from '../lib/context';
@@ -9,7 +9,7 @@ import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/d
 import { pageOffset } from '../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import type {
-  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem,
+  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup,
 } from '@zenith/shared';
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
@@ -194,6 +194,7 @@ export async function getLinkPreview(rawUrl: string): Promise<ChatLinkPreview> {
 export function mapChatMessage(
   row: typeof chatMessages.$inferSelect,
   sender?: { id: number; nickname: string; avatar: string | null } | null,
+  reactions: ChatReactionGroup[] = [],
 ): ChatMessage {
   return {
     id: row.id,
@@ -206,6 +207,7 @@ export function mapChatMessage(
     replyToId: row.replyToId,
     isRecalled: row.isRecalled,
     extra: (row.extra as ChatMessageExtra | null) ?? null,
+    reactions,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
@@ -527,8 +529,11 @@ export async function listMessages(conversationId: number, page: number, pageSiz
       .offset(pageOffset(page, pageSize)),
   ]);
 
+  const msgIds = rows.map((r) => r.msg.id);
+  const reactionMap = await aggregateReactions(msgIds);
+
   const list = rows.map((r) =>
-    mapChatMessage(r.msg, r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null),
+    mapChatMessage(r.msg, r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null, reactionMap.get(r.msg.id) ?? []),
   );
 
   return { list, total, page, pageSize };
@@ -784,13 +789,18 @@ export async function getMessageContext(
     .orderBy(asc(chatMessages.id))
     .limit(after);
 
-  const list = [
+  const allRows = [
     ...beforeRows.reverse(),
     ...target,
     ...afterRows,
-  ].map((r) => mapChatMessage(
+  ];
+  const msgIds = allRows.map((r) => r.msg.id);
+  const reactionMap = await aggregateReactions(msgIds);
+
+  const list = allRows.map((r) => mapChatMessage(
     r.msg,
     r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+    reactionMap.get(r.msg.id) ?? [],
   ));
 
   const [beforeCount, afterCount] = await Promise.all([
@@ -1435,4 +1445,66 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
     conversationId,
     `${myNickname ?? '原群主'} 将群主转让给 ${newOwner?.nickname ?? '新群主'}`,
   );
+}
+
+// ─── 消息表情回应 ─────────────────────────────────────────────────────────────
+
+export async function aggregateReactions(messageIds: number[]): Promise<Map<number, ChatReactionGroup[]>> {
+  if (messageIds.length === 0) return new Map();
+  const rows = await db
+    .select({ messageId: chatMessageReactions.messageId, emoji: chatMessageReactions.emoji, userId: chatMessageReactions.userId })
+    .from(chatMessageReactions)
+    .where(inArray(chatMessageReactions.messageId, messageIds));
+
+  const map = new Map<number, Map<string, number[]>>();
+  for (const row of rows) {
+    if (!map.has(row.messageId)) map.set(row.messageId, new Map());
+    const emojiMap = map.get(row.messageId)!;
+    if (!emojiMap.has(row.emoji)) emojiMap.set(row.emoji, []);
+    emojiMap.get(row.emoji)!.push(row.userId);
+  }
+
+  const result = new Map<number, ChatReactionGroup[]>();
+  for (const [msgId, emojiMap] of map) {
+    result.set(msgId, [...emojiMap.entries()].map(([emoji, userIds]) => ({ emoji, count: userIds.length, userIds })));
+  }
+  return result;
+}
+
+export async function toggleReaction(messageId: number, emoji: string): Promise<ChatReactionGroup[]> {
+  const me = currentUser();
+  const msg = await ensureMessageAccessible(messageId);
+
+  const existing = await db.query.chatMessageReactions.findFirst({
+    where: and(
+      eq(chatMessageReactions.messageId, messageId),
+      eq(chatMessageReactions.userId, me.userId),
+      eq(chatMessageReactions.emoji, emoji),
+    ),
+  });
+
+  if (existing) {
+    await db.delete(chatMessageReactions).where(eq(chatMessageReactions.id, existing.id));
+  } else {
+    await db.insert(chatMessageReactions).values({ messageId, userId: me.userId, emoji });
+  }
+
+  // Get updated reactions for this message
+  const reactionMap = await aggregateReactions([messageId]);
+  const reactions = reactionMap.get(messageId) ?? [];
+
+  // Broadcast to all members of the conversation
+  const members = await db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, msg.conversationId));
+
+  for (const { userId } of members) {
+    sendToUser(userId, {
+      type: 'chat:reaction',
+      payload: { conversationId: msg.conversationId, messageId, reactions },
+    });
+  }
+
+  return reactions;
 }

@@ -1198,7 +1198,7 @@ function ImageGalleryLightbox({
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({
-  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage, onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected, onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage,
+  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage, onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected, onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji, currentUserId,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -1218,6 +1218,9 @@ function MessageBubble({
   onForwardSingle?: (msg: ChatMessage) => void;
   onOpenForwardView?: (items: NonNullable<ChatMessageExtra['forwardedMessages']>, title: string) => void;
   onDeleteMessage?: (msg: ChatMessage) => void;
+  onReaction?: (messageId: number, emoji: string) => void;
+  onPickReactionEmoji?: (messageId: number, e: React.MouseEvent) => void;
+  currentUserId?: number | null;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -1431,6 +1434,46 @@ function MessageBubble({
             </div>
           </div>
         </div>
+        {/* Reaction bar */}
+        {(msg.reactions?.length ?? 0) > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4, justifyContent: isSelf ? 'flex-end' : 'flex-start' }}>
+            {(msg.reactions ?? []).map((r) => {
+              const reacted = currentUserId !== null && r.userIds.includes(currentUserId);
+              return (
+                <button
+                  key={r.emoji}
+                  type="button"
+                  title={`${r.count} 人`}
+                  onClick={() => onReaction?.(msg.id, r.emoji)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                    background: reacted ? 'var(--semi-color-primary-light-default)' : 'var(--semi-color-fill-1)',
+                    border: reacted ? '1px solid var(--semi-color-primary)' : '1px solid var(--semi-color-border)',
+                    borderRadius: 12, padding: '1px 7px', fontSize: 13, cursor: 'pointer',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <span>{r.emoji}</span>
+                  <span style={{ fontSize: 11, color: reacted ? 'var(--semi-color-primary)' : 'var(--semi-color-text-2)' }}>{r.count}</span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              title="添加表情回应"
+              onClick={(e) => onPickReactionEmoji?.(msg.id, e)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 26, height: 26,
+                background: 'var(--semi-color-fill-0)',
+                border: '1px dashed var(--semi-color-border)',
+                borderRadius: 13, cursor: 'pointer', fontSize: 14, color: 'var(--semi-color-text-3)',
+              }}
+            >
+              +
+            </button>
+          </div>
+        )}
         <Text
           type="tertiary"
           style={{
@@ -1462,6 +1505,21 @@ function MessageBubble({
             }}
             render={(
               <Dropdown.Menu>
+                {/* Quick reaction emoji bar */}
+                {!msg.isRecalled && (
+                  <div style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid var(--semi-color-border)' }}>
+                    {['👍', '❤️', '😂', '😮', '😢', '👎'].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => { onReaction?.(msg.id, emoji); setContextMenuPos(null); }}
+                        style={{ fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <Dropdown.Item
                   icon={<CornerDownLeft size={12} />}
                   onClick={() => {
@@ -2202,6 +2260,22 @@ export default function ChatPage() {
     });
   }, [selectedMessageIds, handleExitMultiSelect]);
 
+  const handleReaction = useCallback((messageId: number, emoji: string) => {
+    void request.post<{ code: number; data: import('@zenith/shared').ChatReactionGroup[] }>(
+      `/api/chat/messages/${messageId}/reactions`,
+      { emoji },
+    ).then((res) => {
+      if (res.code === 0) {
+        setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, reactions: res.data ?? [] } : m));
+      }
+    });
+  }, []);
+
+  const handlePickReactionEmoji = useCallback((_messageId: number, _e: React.MouseEvent) => {
+    // Quick emoji bar in the right-click menu covers the main use case.
+    // Full emoji picker can be added as a future enhancement.
+  }, []);
+
   const handleRecall = useCallback(async (msg: ChatMessage) => {
     if (msg.type === 'text') {
       setRecalledDrafts((prev) => ({
@@ -2410,6 +2484,9 @@ export default function ChatPage() {
       setMessages((prev) =>
         prev.map((m) => m.id === messageId ? { ...m, isRecalled: true, content: '消息已撤回' } : m),
       );
+    } else if (wsMsg.type === 'chat:reaction') {
+      const { messageId, reactions } = wsMsg.payload;
+      setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, reactions } : m));
     } else if (wsMsg.type === 'chat:typing') {
       const { conversationId, userId, nickname } = wsMsg.payload;
       if (conversationId !== activeConvId || userId === currentUserId) return;
@@ -2986,6 +3063,9 @@ export default function ChatPage() {
                     onForwardSingle={handleForwardSingle}
                     onOpenForwardView={handleOpenForwardView}
                     onDeleteMessage={handleDeleteSingle}
+                    onReaction={handleReaction}
+                    onPickReactionEmoji={handlePickReactionEmoji}
+                    currentUserId={currentUserId}
                   />
                 ))}
                 <div ref={messagesEndRef} />
