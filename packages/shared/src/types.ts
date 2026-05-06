@@ -632,7 +632,7 @@ export interface WorkflowInstance {
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export type ChatConversationType = 'direct' | 'group';
-export type ChatMessageType = 'text' | 'image' | 'file' | 'system';
+export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward';
 export type ChatMemberRole = 'owner' | 'member';
 
 export interface ChatLinkPreview {
@@ -665,6 +665,14 @@ export interface ChatAnnouncementHistoryMeta {
   operatorName: string | null;
 }
 
+export interface ChatForwardedItem {
+  senderName: string | null;
+  type: ChatMessageType;
+  content: string;
+  createdAt: string;
+  asset?: ChatAssetMeta | null;
+}
+
 export interface ChatMessageExtra {
   asset?: ChatAssetMeta | null;
   linkPreview?: ChatLinkPreview | null;
@@ -672,6 +680,8 @@ export interface ChatMessageExtra {
   isFavorited?: boolean;
   isPinned?: boolean;
   announcementHistory?: ChatAnnouncementHistoryMeta | null;
+  forwardedMessages?: ChatForwardedItem[] | null;
+  forwardSourceConvName?: string | null;
 }
 
 export interface ChatMessage {

@@ -4,7 +4,7 @@ import {
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, User, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, Pencil, ChevronLeft, ChevronRight, ListFilter, AtSign, Bookmark, History } from 'lucide-react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, User, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, Pencil, ChevronLeft, ChevronRight, ListFilter, AtSign, Bookmark, History, CheckSquare, Square, Forward } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
@@ -626,6 +626,111 @@ function GroupMembersPanel({
   );
 }
 
+// ─── ForwardModal ─────────────────────────────────────────────────────────────
+
+function ForwardModal({
+  visible, conversations, currentConvId, onConfirm, onCancel,
+}: Readonly<{
+  visible: boolean;
+  conversations: ChatConversation[];
+  currentConvId: number | null;
+  onConfirm: (targetIds: number[], mode: 'merge' | 'individual') => void;
+  onCancel: () => void;
+}>) {
+  const [selected, setSelected] = useState<number[]>([]);
+  const [mode, setMode] = useState<'merge' | 'individual'>('individual');
+  const [keyword, setKeyword] = useState('');
+
+  const filtered = conversations.filter((c) => {
+    if (c.id === currentConvId) return false;
+    const name = c.type === 'direct' ? (c.targetUser?.nickname ?? '') : (c.name ?? '');
+    return !keyword || name.toLowerCase().includes(keyword.toLowerCase());
+  });
+
+  const toggle = (id: number) => {
+    setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const handleConfirm = () => {
+    if (selected.length === 0) { Toast.warning('请选择转发目标'); return; }
+    onConfirm(selected, mode);
+    setSelected([]);
+    setKeyword('');
+  };
+
+  return (
+    <Modal
+      title="选择转发目标"
+      visible={visible}
+      onCancel={() => { setSelected([]); setKeyword(''); onCancel(); }}
+      onOk={handleConfirm}
+      okText="确认转发"
+      okButtonProps={{ disabled: selected.length === 0 }}
+      width={480}
+    >
+      <div style={{ marginBottom: 12 }}>
+        <Input prefix={<Search size={13} />} placeholder="搜索会话" value={keyword} onChange={setKeyword} size="small" />
+      </div>
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
+        <Button
+          size="small"
+          theme={mode === 'individual' ? 'solid' : 'borderless'}
+          type={mode === 'individual' ? 'primary' : 'tertiary'}
+          onClick={() => setMode('individual')}
+        >
+          逐条转发
+        </Button>
+        <Button
+          size="small"
+          theme={mode === 'merge' ? 'solid' : 'borderless'}
+          type={mode === 'merge' ? 'primary' : 'tertiary'}
+          onClick={() => setMode('merge')}
+        >
+          合并转发
+        </Button>
+        <Text type="tertiary" style={{ fontSize: 12, alignSelf: 'center' }}>
+          {mode === 'merge' ? '合并为一条聊天记录发送' : '每条消息独立发送'}
+        </Text>
+      </div>
+      <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--semi-color-border)', borderRadius: 8 }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: '20px 0', textAlign: 'center' }}>
+            <Text type="tertiary" style={{ fontSize: 12 }}>暂无其他会话</Text>
+          </div>
+        )}
+        {filtered.map((conv) => {
+          const name = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '未知用户') : (conv.name ?? '群聊');
+          const isChecked = selected.includes(conv.id);
+          return (
+            <button
+              key={conv.id}
+              type="button"
+              onClick={() => toggle(conv.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px', width: '100%', border: 'none',
+                background: isChecked ? 'var(--semi-color-primary-light-default)' : 'transparent',
+                cursor: 'pointer', textAlign: 'left',
+                borderBottom: '1px solid var(--semi-color-border)',
+              }}
+            >
+              <span style={{ color: isChecked ? 'var(--semi-color-primary)' : 'var(--semi-color-text-3)', flexShrink: 0 }}>
+                {isChecked ? <CheckSquare size={16} /> : <Square size={16} />}
+              </span>
+              <Text style={{ fontSize: 13, flex: 1 }}>{name}</Text>
+            </button>
+          );
+        })}
+      </div>
+      {selected.length > 0 && (
+        <Text type="tertiary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
+          已选 {selected.length} 个会话
+        </Text>
+      )}
+    </Modal>
+  );
+}
+
 // ─── MessageContent ───────────────────────────────────────────────────────────
 
 function MessageContent({
@@ -645,6 +750,44 @@ function MessageContent({
     borderRadius: isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
     fontSize: 14, lineHeight: 1.5, wordBreak: 'break-word',
   };
+
+  if (msg.type === 'forward') {
+    const items = extra?.forwardedMessages ?? [];
+    const sourceConvName = extra?.forwardSourceConvName;
+    return (
+      <div
+        style={{
+          ...bubbleStyle,
+          padding: 0,
+          overflow: 'hidden',
+          minWidth: 220,
+          maxWidth: 340,
+          border: isSelf ? '1px solid rgba(255,255,255,0.25)' : '1px solid var(--semi-color-border)',
+        }}
+      >
+        <div style={{ padding: '8px 12px', borderBottom: isSelf ? '1px solid rgba(255,255,255,0.18)' : '1px solid var(--semi-color-border)' }}>
+          <Text strong style={{ fontSize: 12, color: isSelf ? '#fff' : 'var(--semi-color-text-0)' }}>
+            聊天记录{sourceConvName ? ` · ${sourceConvName}` : ''}
+          </Text>
+        </div>
+        <div style={{ padding: '6px 12px 8px' }}>
+          {items.slice(0, 4).map((item, idx) => (
+            <div key={idx} style={{ display: 'flex', gap: 6, marginBottom: 4, alignItems: 'flex-start' }}>
+              <Text style={{ fontSize: 11, color: isSelf ? 'rgba(255,255,255,0.75)' : 'var(--semi-color-text-3)', flexShrink: 0, lineHeight: 1.6 }}>
+                {item.senderName ?? '未知'}：
+              </Text>
+              <Text style={{ fontSize: 12, color: isSelf ? 'rgba(255,255,255,0.9)' : 'var(--semi-color-text-1)', lineHeight: 1.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                {item.type === 'image' ? '[图片]' : item.type === 'file' ? `[文件] ${item.asset?.name ?? ''}` : item.content}
+              </Text>
+            </div>
+          ))}
+          {items.length > 4 && (
+            <Text type="tertiary" style={{ fontSize: 11 }}>…共 {items.length} 条消息</Text>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (msg.type === 'image') {
     return (
@@ -991,7 +1134,7 @@ function ImageGalleryLightbox({
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({
-  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage, onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft,
+  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage, onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected, onToggleSelect, onForwardSingle,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -1005,6 +1148,10 @@ function MessageBubble({
   onTogglePin: (msg: ChatMessage) => void;
   onEditRecalled: (messageId: number) => void;
   recalledDraft?: { content: string; mentions?: Array<{ userId: number; nickname: string }> };
+  multiSelectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (msg: ChatMessage) => void;
+  onForwardSingle?: (msg: ChatMessage) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -1137,8 +1284,21 @@ function MessageBubble({
   return (
     <div
       id={`msg-${msg.id}`}
-      style={{ display: 'flex', flexDirection: isSelf ? 'row-reverse' : 'row', gap: 8, marginBottom: 16, alignItems: 'flex-end' }}
+      style={{
+        display: 'flex', flexDirection: isSelf ? 'row-reverse' : 'row', gap: 8, marginBottom: 16, alignItems: 'flex-end',
+        background: isSelected ? 'var(--semi-color-primary-light-default)' : 'transparent',
+        borderRadius: 8,
+        padding: multiSelectMode ? '2px 4px' : '0',
+        transition: 'background 0.15s ease',
+        cursor: multiSelectMode ? 'pointer' : 'default',
+      }}
+      onClick={multiSelectMode ? () => onToggleSelect?.(msg) : undefined}
     >
+      {multiSelectMode && (
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingBottom: 4, color: isSelected ? 'var(--semi-color-primary)' : 'var(--semi-color-text-3)' }}>
+          {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+        </div>
+      )}
       {!isSelf && <UserAvatar name={msg.senderName ?? '?'} avatar={msg.senderAvatar} size={32} />}
       <div
         style={{ maxWidth: '65%', position: 'relative' }}
@@ -1296,6 +1456,28 @@ function MessageBubble({
                 >
                   {msg.extra?.isPinned ? '取消置顶消息' : '置顶消息'}
                 </Dropdown.Item>
+                {!msg.isRecalled && (
+                  <Dropdown.Item
+                    icon={<Forward size={12} />}
+                    onClick={() => {
+                      onForwardSingle?.(msg);
+                      setContextMenuPos(null);
+                    }}
+                  >
+                    转发
+                  </Dropdown.Item>
+                )}
+                {!msg.isRecalled && (
+                  <Dropdown.Item
+                    icon={<CheckSquare size={12} />}
+                    onClick={() => {
+                      onToggleSelect?.(msg);
+                      setContextMenuPos(null);
+                    }}
+                  >
+                    多选
+                  </Dropdown.Item>
+                )}
               </Dropdown.Menu>
             )}
           >
@@ -1360,6 +1542,10 @@ export default function ChatPage() {
   const [announcementHistoryVisible, setAnnouncementHistoryVisible] = useState(false);
   const [announcementHistory, setAnnouncementHistory] = useState<ChatMessage[]>([]);
   const [recalledDrafts, setRecalledDrafts] = useState<Record<number, { content: string; mentions?: Array<{ userId: number; nickname: string }> }>>({});
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
+  const [forwardModalVisible, setForwardModalVisible] = useState(false);
+  const [forwardingMessageIds, setForwardingMessageIds] = useState<number[]>([]);
   const [contextMode, setContextMode] = useState<{ anchorMessageId: number; keyword: string } | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1827,6 +2013,46 @@ export default function ChatPage() {
     setSelectedMentions(draft.mentions ?? []);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [recalledDrafts]);
+
+  const handleToggleSelectMessage = useCallback((msg: ChatMessage) => {
+    if (msg.isRecalled || msg.type === 'system') return;
+    setMultiSelectMode(true);
+    setSelectedMessageIds((prev) =>
+      prev.includes(msg.id) ? prev.filter((id) => id !== msg.id) : [...prev, msg.id],
+    );
+  }, []);
+
+  const handleExitMultiSelect = useCallback(() => {
+    setMultiSelectMode(false);
+    setSelectedMessageIds([]);
+  }, []);
+
+  const handleForwardSingle = useCallback((msg: ChatMessage) => {
+    setForwardingMessageIds([msg.id]);
+    setForwardModalVisible(true);
+  }, []);
+
+  const handleForwardSelected = useCallback(() => {
+    if (selectedMessageIds.length === 0) return;
+    setForwardingMessageIds([...selectedMessageIds]);
+    setForwardModalVisible(true);
+  }, [selectedMessageIds]);
+
+  const handleForwardConfirm = useCallback(async (targetIds: number[], mode: 'merge' | 'individual') => {
+    setForwardModalVisible(false);
+    const res = await request.post('/api/chat/messages/forward', {
+      messageIds: forwardingMessageIds,
+      targetConversationIds: targetIds,
+      mode,
+    });
+    if ((res as { code: number }).code === 0) {
+      Toast.success('转发成功');
+      handleExitMultiSelect();
+    } else {
+      Toast.error((res as { message?: string }).message ?? '转发失败');
+    }
+    setForwardingMessageIds([]);
+  }, [forwardingMessageIds, handleExitMultiSelect]);
 
   const handleRecall = useCallback(async (msg: ChatMessage) => {
     if (msg.type === 'text') {
@@ -2590,6 +2816,10 @@ export default function ChatPage() {
                     onTogglePin={handleTogglePinMessage}
                     onEditRecalled={handleEditRecalled}
                     recalledDraft={recalledDrafts[msg.id]}
+                    multiSelectMode={multiSelectMode}
+                    isSelected={selectedMessageIds.includes(msg.id)}
+                    onToggleSelect={handleToggleSelectMessage}
+                    onForwardSingle={handleForwardSingle}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -2803,6 +3033,22 @@ export default function ChatPage() {
 
           {/* Input area */}
           <div style={{ padding: '8px 16px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
+            {multiSelectMode ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
+                <Text style={{ flex: 1, fontSize: 13 }}>
+                  已选 <Text strong>{selectedMessageIds.length}</Text> 条消息
+                </Text>
+                <Button
+                  size="small" type="primary" icon={<Forward size={14} />}
+                  disabled={selectedMessageIds.length === 0}
+                  onClick={handleForwardSelected}
+                >
+                  转发
+                </Button>
+                <Button size="small" type="tertiary" onClick={handleExitMultiSelect}>取消多选</Button>
+              </div>
+            ) : (
+              <>
             {replyTo && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, padding: '4px 10px', background: 'var(--semi-color-fill-0)', borderRadius: 6, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
                 <CornerDownLeft size={12} />
@@ -3005,6 +3251,8 @@ export default function ChatPage() {
               />
             </div>
             <Text type="tertiary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>Enter 发送 · Shift+Enter 换行 · 支持粘贴图片</Text>
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -3015,6 +3263,13 @@ export default function ChatPage() {
           />
         </div>
       )}
+      <ForwardModal
+        visible={forwardModalVisible}
+        conversations={conversations}
+        currentConvId={activeConvId}
+        onConfirm={(targetIds, mode) => { void handleForwardConfirm(targetIds, mode); }}
+        onCancel={() => { setForwardModalVisible(false); setForwardingMessageIds([]); }}
+      />
     </div>
   );
 }

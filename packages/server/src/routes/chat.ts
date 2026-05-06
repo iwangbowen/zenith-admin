@@ -16,7 +16,7 @@ import {
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
   pinConversation, starConversation, removeConversation,
   getLinkPreview, listPinnedMessages, listFavoriteMessages, listGlobalFavoriteMessages,
-  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory,
+  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, forwardMessages,
 } from '../services/chat.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -508,6 +508,31 @@ chatRouter.openapi(
     const { id } = c.req.valid('param');
     const list = await listAnnouncementHistory(id);
     return c.json(okBody(list), 200);
+  },
+);
+
+// ─── 转发消息 ─────────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/messages/forward', tags: ['Chat'], summary: '转发消息（逐条或合并）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      body: {
+        content: jsonContent(z.object({
+          messageIds: z.array(z.number().int().positive()).min(1).max(100),
+          targetConversationIds: z.array(z.number().int().positive()).min(1).max(20),
+          mode: z.enum(['merge', 'individual']),
+        })),
+      },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('转发成功') },
+  }),
+  async (c) => {
+    const body = c.req.valid('json');
+    await forwardMessages(body);
+    return c.json(okBody(null), 200);
   },
 );
 

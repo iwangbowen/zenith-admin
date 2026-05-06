@@ -9,7 +9,7 @@ import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/d
 import { pageOffset } from '../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import type {
-  SendChatMessageInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext,
+  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem,
 } from '@zenith/shared';
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
@@ -852,6 +852,116 @@ export async function sendMessage(conversationId: number, input: SendChatMessage
   }
 
   return msg;
+}
+
+// ─── 转发消息 ─────────────────────────────────────────────────────────────────
+
+export async function forwardMessages(input: ForwardMessagesInput): Promise<void> {
+  const me = currentUser();
+
+  // 鉴权：确认当前用户是所有目标会话的成员
+  for (const targetConvId of input.targetConversationIds) {
+    // eslint-disable-next-line no-await-in-loop
+    const member = await db.query.chatConversationMembers.findFirst({
+      where: and(
+        eq(chatConversationMembers.conversationId, targetConvId),
+        eq(chatConversationMembers.userId, me.userId),
+      ),
+    });
+    if (!member) throw new HTTPException(403, { message: `无权向会话 ${targetConvId} 发送消息` });
+  }
+
+  // 获取原始消息列表（按时间升序）
+  const sourceMsgs = await db.query.chatMessages.findMany({
+    where: inArray(chatMessages.id, input.messageIds),
+  });
+  if (sourceMsgs.length === 0) throw new HTTPException(400, { message: '未找到要转发的消息' });
+
+  // 按时间升序排列
+  const ordered = [...sourceMsgs].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+
+  // 查询发送者信息（批量）
+  const senderIds = Array.from(new Set(ordered.map((m) => m.senderId).filter((id): id is number => id !== null)));
+  const senderRows = senderIds.length > 0
+    ? await db.query.users.findMany({ where: inArray(users.id, senderIds), columns: { id: true, nickname: true, avatar: true } })
+    : [];
+  const senderMap = new Map(senderRows.map((u) => [u.id, u]));
+
+  // 查询来源会话名称（用第一条消息的会话）
+  const sourceConvId = ordered[0]?.conversationId;
+  let sourceConvName: string | null = null;
+  if (sourceConvId) {
+    const sourceConv = await db.query.chatConversations.findFirst({
+      where: eq(chatConversations.id, sourceConvId),
+      columns: { id: true, type: true, name: true },
+      with: { members: { with: { user: { columns: { id: true, nickname: true } } } } },
+    });
+    if (sourceConv) {
+      if (sourceConv.type === 'group') {
+        sourceConvName = sourceConv.name;
+      } else {
+        // 私聊：找对方昵称
+        const other = (sourceConv.members as Array<{ userId: number; user: { id: number; nickname: string } }>)
+          .find((m) => m.userId !== me.userId);
+        sourceConvName = other?.user.nickname ?? null;
+      }
+    }
+  }
+
+  const sender = senderMap.get(me.userId) ?? null;
+
+  if (input.mode === 'merge') {
+    // 合并转发：生成 forwardedMessages 列表，发送单条 forward 类型消息
+    const forwardedItems: ChatForwardedItem[] = ordered
+      .filter((m) => !m.isRecalled)
+      .map((m) => ({
+        senderName: senderMap.get(m.senderId ?? -1)?.nickname ?? null,
+        type: m.type as ChatForwardedItem['type'],
+        content: m.content,
+        createdAt: formatDateTime(m.createdAt),
+        asset: (m.extra as ChatMessageExtra | null)?.asset ?? null,
+      }));
+
+    const previewText = forwardedItems.slice(0, 3)
+      .map((item) => {
+        const name = item.senderName ?? '未知';
+        if (item.type === 'image') return `${name}：[图片]`;
+        if (item.type === 'file') return `${name}：[文件]`;
+        const text = item.content.length > 20 ? `${item.content.slice(0, 20)}…` : item.content;
+        return `${name}：${text}`;
+      })
+      .join('\n');
+
+    for (const targetConvId of input.targetConversationIds) {
+      // eslint-disable-next-line no-await-in-loop
+      await sendMessage(targetConvId, {
+        content: previewText,
+        type: 'forward',
+        extra: {
+          forwardedMessages: forwardedItems,
+          forwardSourceConvName: sourceConvName,
+        },
+      });
+    }
+  } else {
+    // 逐条转发：每条消息单独发送
+    for (const targetConvId of input.targetConversationIds) {
+      for (const m of ordered) {
+        if (m.isRecalled) continue;
+        const originalExtra = (m.extra as ChatMessageExtra | null) ?? null;
+        const extra: ChatMessageExtra = {};
+        if (originalExtra?.asset) extra.asset = originalExtra.asset;
+        // eslint-disable-next-line no-await-in-loop
+        await sendMessage(targetConvId, {
+          content: m.content,
+          type: m.type as 'text' | 'image' | 'file',
+          extra: Object.keys(extra).length > 0 ? extra : null,
+        });
+      }
+    }
+  }
 }
 
 // ─── 撤回消息 ─────────────────────────────────────────────────────────────────

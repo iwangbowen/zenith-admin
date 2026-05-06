@@ -499,6 +499,14 @@ export const chatAnnouncementHistorySchema = z.object({
   operatorName: z.string().max(100).nullable(),
 }).strict();
 
+export const chatForwardedItemSchema = z.object({
+  senderName: z.string().max(100).nullable(),
+  type: z.enum(['text', 'image', 'file', 'system', 'forward']),
+  content: z.string().max(4096),
+  createdAt: z.string(),
+  asset: chatAssetMetaSchema.nullable().optional(),
+});
+
 export const chatMessageExtraSchema = z.object({
   asset: chatAssetMetaSchema.nullable().optional(),
   linkPreview: chatLinkPreviewSchema.nullable().optional(),
@@ -506,13 +514,22 @@ export const chatMessageExtraSchema = z.object({
   isFavorited: z.boolean().optional(),
   isPinned: z.boolean().optional(),
   announcementHistory: chatAnnouncementHistorySchema.nullable().optional(),
+  forwardedMessages: z.array(chatForwardedItemSchema).max(100).nullable().optional(),
+  forwardSourceConvName: z.string().max(100).nullable().optional(),
 }).strict();
 
 export const sendChatMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
-  type: z.enum(['text', 'image', 'file']).default('text'),
+  type: z.enum(['text', 'image', 'file', 'forward']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
   extra: chatMessageExtraSchema.nullable().optional(),
 });
 
+export const forwardMessagesSchema = z.object({
+  messageIds: z.array(z.number().int().positive()).min(1).max(100),
+  targetConversationIds: z.array(z.number().int().positive()).min(1).max(20),
+  mode: z.enum(['merge', 'individual']),
+});
+
 export type SendChatMessageInput = z.infer<typeof sendChatMessageSchema>;
+export type ForwardMessagesInput = z.infer<typeof forwardMessagesSchema>;
