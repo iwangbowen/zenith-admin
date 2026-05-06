@@ -1628,6 +1628,8 @@ export default function ChatPage() {
   const [forwardViewVisible, setForwardViewVisible] = useState(false);
   const [forwardViewItems, setForwardViewItems] = useState<NonNullable<ChatMessageExtra['forwardedMessages']>>([]);
   const [forwardViewTitle, setForwardViewTitle] = useState('');
+  const [favPreviewVisible, setFavPreviewVisible] = useState(false);
+  const [favPreviewMsg, setFavPreviewMsg] = useState<ChatMessage | null>(null);
   const [contextMode, setContextMode] = useState<{ anchorMessageId: number; keyword: string } | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2680,7 +2682,10 @@ export default function ChatPage() {
                 <button
                   key={msg.id}
                   type="button"
-                  onClick={() => { void openFavoriteMessage(msg); }}
+                  onClick={() => {
+                    setFavPreviewMsg(msg);
+                    setFavPreviewVisible(true);
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setLeftPaneContextMenu({ x: e.clientX, y: e.clientY, type: 'favorite', msg });
@@ -2789,6 +2794,7 @@ export default function ChatPage() {
                       icon={<Search size={12} />}
                       onClick={() => {
                         void openFavoriteMessage(leftPaneContextMenu.msg);
+                        setFavPreviewVisible(false);
                         setLeftPaneContextMenu(null);
                       }}
                     >
@@ -3458,6 +3464,63 @@ export default function ChatPage() {
         title={forwardViewTitle}
         onCancel={() => setForwardViewVisible(false)}
       />
+      {favPreviewMsg && (() => {
+        const conv = conversations.find((c) => c.id === favPreviewMsg.conversationId);
+        const convName = conv?.type === 'direct' ? (conv.targetUser?.nickname ?? '私聊') : (conv?.name ?? '群聊');
+        return (
+          <Modal
+            title={
+              <div>
+                <div>收藏的消息</div>
+                <Text type="tertiary" style={{ fontSize: 12, fontWeight: 'normal' }}>{convName}</Text>
+              </div>
+            }
+            visible={favPreviewVisible}
+            onCancel={() => setFavPreviewVisible(false)}
+            footer={
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <Button
+                  type="tertiary"
+                  theme="borderless"
+                  icon={<Bookmark size={14} />}
+                  onClick={() => {
+                    void handleToggleFavorite(favPreviewMsg);
+                    setFavPreviewVisible(false);
+                  }}
+                >
+                  取消收藏
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<Search size={14} />}
+                  onClick={() => {
+                    setFavPreviewVisible(false);
+                    void openFavoriteMessage(favPreviewMsg);
+                  }}
+                >
+                  定位消息
+                </Button>
+              </div>
+            }
+            width={520}
+          >
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <UserAvatar name={favPreviewMsg.senderName ?? '未知'} avatar={favPreviewMsg.senderAvatar} size={32} />
+              <div>
+                <Text strong style={{ fontSize: 13, display: 'block' }}>{favPreviewMsg.senderName ?? '未知'}</Text>
+                <Text type="tertiary" style={{ fontSize: 11 }}>{formatDateTime(favPreviewMsg.createdAt)}</Text>
+              </div>
+            </div>
+            <div style={{ background: 'var(--semi-color-fill-0)', borderRadius: 8, padding: 12 }}>
+              <MessageContent
+                msg={favPreviewMsg}
+                isSelf={false}
+                onOpenForwardView={handleOpenForwardView}
+              />
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
