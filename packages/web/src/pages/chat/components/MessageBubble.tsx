@@ -308,21 +308,76 @@ export function MessageBubble({
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isSelf ? 'row-reverse' : 'row' }}>
             <div style={{ display: 'flex', cursor: 'default' }}>
               {inlineEditing ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 200, maxWidth: 360 }}>
-                  <textarea
-                    ref={inlineEditRef}
-                    value={inlineEditContent}
-                    onChange={(e) => setInlineEditContent(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleConfirmInlineEdit(); }
-                      else if (e.key === 'Escape') handleCancelInlineEdit();
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220, maxWidth: 360 }}>
+                  {/* 编辑框——与气泡同款圆角，仅用发光底边表示激活态 */}
+                  <div
+                    style={{
+                      position: 'relative',
+                      background: isSelf ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
+                      borderRadius: isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                      padding: '1px',
+                      boxShadow: '0 0 0 2px var(--semi-color-primary)',
                     }}
-                    rows={2}
-                    style={{ width: '100%', resize: 'none', borderRadius: 6, padding: '6px 10px', border: '1px solid var(--semi-color-primary)', background: 'var(--semi-color-bg-2)', color: 'var(--semi-color-text-0)', fontSize: 14, fontFamily: 'inherit', outline: 'none', lineHeight: 1.5 }}
-                  />
-                  <div style={{ display: 'flex', gap: 4, justifyContent: isSelf ? 'flex-end' : 'flex-start' }}>
-                    <Button size="small" theme="solid" type="primary" icon={<Check size={12} />} onClick={handleConfirmInlineEdit}>保存</Button>
-                    <Button size="small" theme="borderless" type="tertiary" icon={<XIcon size={12} />} onClick={handleCancelInlineEdit}>取消</Button>
+                  >
+                    <textarea
+                      ref={inlineEditRef}
+                      value={inlineEditContent}
+                      onChange={(e) => setInlineEditContent(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleConfirmInlineEdit(); }
+                        else if (e.key === 'Escape') handleCancelInlineEdit();
+                      }}
+                      rows={Math.min(6, Math.max(2, inlineEditContent.split('\n').length))}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        resize: 'none',
+                        borderRadius: isSelf ? '11px 11px 3px 11px' : '11px 11px 11px 3px',
+                        padding: '8px 12px',
+                        border: 'none',
+                        background: isSelf ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
+                        color: isSelf ? '#fff' : 'var(--semi-color-text-0)',
+                        caretColor: isSelf ? '#fff' : 'var(--semi-color-primary)',
+                        fontSize: 14,
+                        fontFamily: 'inherit',
+                        outline: 'none',
+                        lineHeight: 1.5,
+                        wordBreak: 'break-word',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  {/* 操作行：快捷键提示 + 图标按钮 */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: isSelf ? 'flex-end' : 'flex-start',
+                      gap: 6,
+                    }}
+                  >
+                    <Text
+                      type="quaternary"
+                      style={{ fontSize: 11, lineHeight: 1, userSelect: 'none' }}
+                    >
+                      Enter 保存 · Esc 取消
+                    </Text>
+                    <Button
+                      size="small"
+                      theme="solid"
+                      type="primary"
+                      icon={<Check size={11} />}
+                      onClick={handleConfirmInlineEdit}
+                      style={{ padding: '2px 8px', height: 22, borderRadius: 11 }}
+                    />
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      type="tertiary"
+                      icon={<XIcon size={11} />}
+                      onClick={handleCancelInlineEdit}
+                      style={{ padding: '2px 6px', height: 22, borderRadius: 11 }}
+                    />
                   </div>
                 </div>
               ) : (
