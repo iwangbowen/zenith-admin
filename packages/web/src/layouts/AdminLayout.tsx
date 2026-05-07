@@ -47,6 +47,7 @@ type NavItem = {
   text: string;
   icon?: React.ReactNode;
   items?: NavItem[];
+  badge?: { count: number; overflowCount?: number };
 };
 
 function menuToNavItem(menu: Menu): NavItem | null {
@@ -263,6 +264,17 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   const unreadCount = notices.filter((n) => !n.isRead).length;
 
+  // ─── 聊天未读数 ────────────────────────────────────────────────────────────
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  // 初次加载时拉取会话列表计算未读
+  useEffect(() => {
+    request.get<Array<{ unreadCount: number }>>('/api/chat/conversations', { silent: true }).then((res) => {
+      if (res.code === 0 && res.data) {
+        setChatUnreadCount(res.data.reduce((s, c) => s + (c.unreadCount ?? 0), 0));
+      }
+    });
+  }, []);
+
   // ─── WebSocket ──────────────────────────────────────────────────────────────
   const handleWsMessage = useCallback((msg: WsMessage) => {
     if (msg.type === 'notice:new') {
@@ -292,6 +304,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         duration: 5,
         position: 'topRight',
       });
+    } else if (msg.type === 'chat:message') {
+      // 只在当前不在 /chat 页面时增加未读
+      if (!globalThis.location.pathname.startsWith('/chat')) {
+        setChatUnreadCount((v) => v + 1);
+      }
     } else if (msg.type === 'session:force-logout') {
       Notification.warning({
         title: '强制下线',
@@ -343,8 +360,13 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   }, [collapsed, currentSectionKeys]);
 
   const navItems = useMemo(
-    () => menuTree.map(menuToNavItem).filter((item): item is NavItem => item !== null),
-    [menuTree]
+    () => menuTree.map(menuToNavItem).filter((item): item is NavItem => item !== null).map((item) => {
+      if (item.itemKey === '/chat' && chatUnreadCount > 0) {
+        return { ...item, badge: { count: chatUnreadCount, overflowCount: 99 } };
+      }
+      return item;
+    }),
+    [menuTree, chatUnreadCount]
   );
 
   const pathTitleMap = useMemo(() => {
@@ -397,6 +419,13 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   useEffect(() => {
     if (navLayout === 'mixed' && autoTopKey) setManualTopKey(autoTopKey);
   }, [navLayout, autoTopKey]);
+
+  // 进入消息中心页面时重置聊天未读数
+  useEffect(() => {
+    if (location.pathname.startsWith('/chat')) {
+      setChatUnreadCount(0);
+    }
+  }, [location.pathname]);
 
   const effectiveTopKey = manualTopKey ?? autoTopKey;
 

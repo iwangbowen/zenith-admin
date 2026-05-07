@@ -11,7 +11,7 @@ import {
 import {
   listConversations, getOrCreateDirectConversation, listMessages,
   searchConversationMessages, getMessageContext,
-  sendMessage, recallMessage, markConversationRead, listChatUsers,
+  sendMessage, recallMessage, editMessage, markConversationRead, listChatUsers,
   createGroupConversation, addGroupMember, listGroupMembers,
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
   pinConversation, starConversation, removeConversation,
@@ -241,6 +241,25 @@ chatRouter.openapi(
     const { page, pageSize } = c.req.valid('query');
     const result = await listFavoriteMessages(id, page, pageSize);
     return c.json(okBody(result), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'patch', path: '/messages/{id}/edit', tags: ['Chat'], summary: '编辑消息（24小时内，仅文本）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ content: z.string().min(1).max(4096) })) },
+    },
+    responses: { ...commonErrorResponses, ...ok(ChatMessageDTO, '编辑后的消息') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { content } = c.req.valid('json');
+    const msg = await editMessage(id, content);
+    return c.json(okBody(msg), 200);
   },
 );
 

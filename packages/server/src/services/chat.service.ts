@@ -206,6 +206,7 @@ export function mapChatMessage(
     content: row.content,
     replyToId: row.replyToId,
     isRecalled: row.isRecalled,
+    isEdited: row.isEdited,
     extra: (row.extra as ChatMessageExtra | null) ?? null,
     reactions,
     createdAt: formatDateTime(row.createdAt),
@@ -1041,6 +1042,50 @@ export async function recallMessage(messageId: number): Promise<void> {
   for (const { userId } of members) {
     sendToUser(userId, { type: 'chat:recall', payload: { conversationId: msg.conversationId, messageId } });
   }
+}
+
+// ─── 编辑消息 ─────────────────────────────────────────────────────────────────
+
+export async function editMessage(messageId: number, content: string): Promise<ChatMessage> {
+  const me = currentUser();
+
+  const msg = await db.query.chatMessages.findFirst({
+    where: eq(chatMessages.id, messageId),
+  });
+  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  if (msg.senderId !== me.userId) throw new HTTPException(403, { message: '只能编辑自己的消息' });
+  if (msg.isRecalled) throw new HTTPException(400, { message: '消息已撤回，无法编辑' });
+  if (msg.type !== 'text') throw new HTTPException(400, { message: '只能编辑文本消息' });
+
+  // 24 小时内可编辑
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  if (Date.now() - new Date(msg.createdAt).getTime() > ONE_DAY) {
+    throw new HTTPException(400, { message: '消息发送超过24小时，无法编辑' });
+  }
+
+  const [updated] = await db.update(chatMessages)
+    .set({ content, isEdited: true, updatedAt: new Date() })
+    .where(eq(chatMessages.id, messageId))
+    .returning();
+
+  const sender = await db.query.users.findFirst({
+    where: eq(users.id, me.userId),
+    columns: { id: true, nickname: true, avatar: true },
+  });
+
+  const updatedMsg = mapChatMessage(updated, sender ?? null);
+
+  // 推送编辑通知给会话所有成员
+  const members = await db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, msg.conversationId));
+
+  for (const { userId } of members) {
+    sendToUser(userId, { type: 'chat:edit', payload: updatedMsg });
+  }
+
+  return updatedMsg;
 }
 
 // ─── 标记已读 ─────────────────────────────────────────────────────────────────

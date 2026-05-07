@@ -108,6 +108,7 @@ export const ChatMessageDTO = z
     content: z.string(),
     replyToId: z.number().int().nullable().optional(),
     isRecalled: z.boolean(),
+    isEdited: z.boolean(),
     extra: ChatMessageExtraDTO.nullable().optional(),
     reactions: z.array(ChatReactionGroupDTO).optional(),
     createdAt: z.string(),

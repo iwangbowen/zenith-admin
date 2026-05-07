@@ -526,6 +526,12 @@ export const sendChatMessageSchema = z.object({
   extra: chatMessageExtraSchema.nullable().optional(),
 });
 
+export const editChatMessageSchema = z.object({
+  content: z.string().min(1, '消息不能为空').max(4096),
+});
+
+export type EditChatMessageInput = z.infer<typeof editChatMessageSchema>;
+
 export const forwardMessagesSchema = z.object({
   messageIds: z.array(z.number().int().positive()).min(1).max(100),
   targetConversationIds: z.array(z.number().int().positive()).min(1).max(20),

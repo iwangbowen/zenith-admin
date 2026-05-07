@@ -21,6 +21,7 @@ function addSystemMessage(conversationId: number, content: string) {
     content,
     replyToId: null,
     isRecalled: false,
+    isEdited: false,
     extra: null,
     reactions: [],
     createdAt: mockDateTime(),
@@ -156,6 +157,7 @@ export const chatHandlers = [
       content: body.content,
       replyToId: body.replyToId ?? null,
       isRecalled: false,
+    isEdited: false,
       extra: body.extra ?? null,
       reactions: [],
       createdAt: mockDateTime(),
@@ -352,6 +354,7 @@ export const chatHandlers = [
           content: `${CURRENT_USER_NICKNAME} 更新了群公告`,
           replyToId: null,
           isRecalled: false,
+    isEdited: false,
           extra: {
             announcementHistory: {
               announcement: nextAnnouncement,

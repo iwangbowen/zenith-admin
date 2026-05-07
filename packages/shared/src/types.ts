@@ -364,7 +364,8 @@ export type WsMessage =
   | { type: 'chat:member-leave'; payload: { conversationId: number; userId: number } }
   | { type: 'chat:group-update'; payload: { conversationId: number; name?: string | null; announcement?: string | null } }
   | { type: 'chat:typing'; payload: { conversationId: number; userId: number; nickname: string } }
-  | { type: 'chat:reaction'; payload: { conversationId: number; messageId: number; reactions: ChatReactionGroup[] } };
+  | { type: 'chat:reaction'; payload: { conversationId: number; messageId: number; reactions: ChatReactionGroup[] } }
+  | { type: 'chat:edit'; payload: ChatMessage };
 
 // ─── 地区管理 ──────────────────────────────────────────────
 export type RegionLevel = 'province' | 'city' | 'county';
@@ -702,6 +703,7 @@ export interface ChatMessage {
   content: string;
   replyToId: number | null;
   isRecalled: boolean;
+  isEdited: boolean;
   extra: ChatMessageExtra | null;
   reactions: ChatReactionGroup[];
   createdAt: string;

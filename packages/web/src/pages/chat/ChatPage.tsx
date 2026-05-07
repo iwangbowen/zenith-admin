@@ -146,15 +146,24 @@ export default function ChatPage() {
     return { start: atIndex, end: cursor, query };
   }, [activeConv, input]);
 
+  const ALL_MEMBERS_VIRTUAL: ChatGroupMember = { id: -1, nickname: '全体成员', username: 'all', role: 'member' };
+
   const mentionCandidates = useMemo(() => {
     if (!mentionState) return [];
     const kw = mentionState.query.trim().toLowerCase();
-    return activeGroupMembers.filter((member) => {
+    const members = activeGroupMembers.filter((member) => {
       if (member.id === currentUserId) return false;
       if (!kw) return true;
       return member.nickname.toLowerCase().includes(kw) || member.username.toLowerCase().includes(kw);
-    }).slice(0, 8);
-  }, [activeGroupMembers, currentUserId, mentionState]);
+    }).slice(0, 7);
+    // 在群聊中支持 @全体成员
+    if (activeConv?.type === 'group') {
+      const allMatches = !kw || '全体成员'.includes(kw) || 'all'.includes(kw);
+      if (allMatches) return [ALL_MEMBERS_VIRTUAL, ...members];
+    }
+    return members;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConv?.type, activeGroupMembers, currentUserId, mentionState]);
 
   const isNearBottom = useCallback(() => {
     const el = messagesContainerRef.current;
@@ -264,7 +273,35 @@ export default function ChatPage() {
     }
   }, []);
 
+  const DRAFT_STORAGE_KEY = 'zenith_chat_drafts';
+
+  const saveDraft = useCallback((convId: number, text: string) => {
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      const drafts: Record<string, string> = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      if (text.trim()) {
+        drafts[String(convId)] = text;
+      } else {
+        delete drafts[String(convId)];
+      }
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(drafts));
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadDraft = useCallback((convId: number): string => {
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (!raw) return '';
+      const drafts = JSON.parse(raw) as Record<string, string>;
+      return drafts[String(convId)] ?? '';
+    } catch {
+      return '';
+    }
+  }, []);
+
   const handleSelectConv = useCallback(async (conv: ChatConversation) => {
+    // 保存当前会话草稿
+    if (activeConvId) saveDraft(activeConvId, input);
     setActiveConvId(conv.id);
     setReplyTo(null);
     setSelectedMentions([]);
@@ -284,11 +321,13 @@ export default function ChatPage() {
     setSearchPage(1);
     setSearchHasSearched(false);
     setContextMode(null);
+    // 恢复目标会话草稿
+    setInput(loadDraft(conv.id));
     await fetchMessages(conv.id, 1);
     await request.post(`/api/chat/conversations/${conv.id}/read`, {}, { silent: true });
     setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-  }, [fetchMessages]);
+  }, [activeConvId, fetchMessages, input, loadDraft, saveDraft]);
 
   const handleNewDirectChat = useCallback(async (user: ChatUser) => {
     setShowNewChat(false);
@@ -386,6 +425,8 @@ export default function ChatPage() {
     const filesToSend = [...pendingFiles];
 
     setInput('');
+    // 清除该会话草稿
+    saveDraft(activeConvId, '');
     setPendingImages([]);
     setPendingFiles([]);
     imagesToSend.forEach((item) => URL.revokeObjectURL(item.previewUrl));
@@ -441,7 +482,7 @@ export default function ChatPage() {
     if (failedFileCount > 0) {
       Toast.error(`有 ${failedFileCount} 个文件发送失败`);
     }
-  }, [activeConvId, fetchLinkPreview, input, pendingFiles, pendingImages, replyTo, selectedMentions, sendFileMessage, sendImageFile, sending]);
+  }, [activeConvId, fetchLinkPreview, input, pendingFiles, pendingImages, replyTo, saveDraft, selectedMentions, sendFileMessage, sendImageFile, sending]);
 
   const handleSelectImages = useCallback((files: File[]) => {
     const validFiles = files.filter((file) => file.type.startsWith('image/'));
@@ -516,15 +557,22 @@ export default function ChatPage() {
     if (!mentionState) return;
     const mentionText = `@${member.nickname} `;
     setInput((prev) => prev.slice(0, mentionState.start) + mentionText + prev.slice(mentionState.end));
-    setSelectedMentions((prev) => prev.some((item) => item.userId === member.id)
-      ? prev
-      : [...prev, { userId: member.id, nickname: member.nickname }]);
+    // 全体成员虚拟条目：记录所有真实成员为 mention
+    if (member.id === -1) {
+      setSelectedMentions(activeGroupMembers
+        .filter((m) => m.id !== currentUserId)
+        .map((m) => ({ userId: m.id, nickname: m.nickname })));
+    } else {
+      setSelectedMentions((prev) => prev.some((item) => item.userId === member.id)
+        ? prev
+        : [...prev, { userId: member.id, nickname: member.nickname }]);
+    }
     requestAnimationFrame(() => {
       const nextPos = mentionState.start + mentionText.length;
       inputRef.current?.setSelectionRange(nextPos, nextPos);
       inputRef.current?.focus();
     });
-  }, [mentionState]);
+  }, [activeGroupMembers, currentUserId, mentionState]);
 
   const applyMessageUpdate = useCallback((updated: ChatMessage) => {
     setMessages((prev) => prev.map((item) => item.id === updated.id ? updated : item));
@@ -688,6 +736,23 @@ export default function ChatPage() {
     // Quick emoji bar in the right-click menu covers the main use case.
     // Full emoji picker can be added as a future enhancement.
   }, []);
+
+  // 编辑消息（由 MessageBubble 内联编辑回调）
+  // ─── 消息编辑 ─────────────────────────────────────────────────────────────
+
+  const handleEditMessage = useCallback(async (updatedMsg: ChatMessage) => {
+    const res = await request.request<ChatMessage>(`/api/chat/messages/${updatedMsg.id}/edit`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content: updatedMsg.content }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (res.code === 0 && res.data) {
+      applyMessageUpdate(res.data);
+      Toast.success('已修改');
+    } else {
+      Toast.error(res.message ?? '编辑失败');
+    }
+  }, [applyMessageUpdate]);
 
   const handleRecall = useCallback(async (msg: ChatMessage) => {
     if (msg.type === 'text') {
@@ -897,6 +962,8 @@ export default function ChatPage() {
       setMessages((prev) =>
         prev.map((m) => m.id === messageId ? { ...m, isRecalled: true, content: '消息已撤回' } : m),
       );
+    } else if (wsMsg.type === 'chat:edit') {
+      applyMessageUpdate(wsMsg.payload);
     } else if (wsMsg.type === 'chat:reaction') {
       const { messageId, reactions } = wsMsg.payload;
       setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, reactions } : m));
@@ -955,6 +1022,12 @@ export default function ChatPage() {
   }, [activeConvId, isNearBottom, pendingNewMsgCount]);
 
   useWebSocket(handleWsMessage);
+
+  // 草稿自动保存（input 变化时持久化）
+  useEffect(() => {
+    if (activeConvId) saveDraft(activeConvId, input);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1479,6 +1552,7 @@ export default function ChatPage() {
                     onReaction={handleReaction}
                     onPickReactionEmoji={handlePickReactionEmoji}
                     currentUserId={currentUserId}
+                    onEdit={handleEditMessage}
                   />
                 ))}
                 <div ref={messagesEndRef} />

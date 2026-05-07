@@ -612,6 +612,7 @@ export const chatMessages = pgTable('chat_messages', {
   content: text('content').notNull(),
   replyToId: integer('reply_to_id'),
   isRecalled: boolean('is_recalled').notNull().default(false),
+  isEdited: boolean('is_edited').notNull().default(false),
   extra: jsonb('extra'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),

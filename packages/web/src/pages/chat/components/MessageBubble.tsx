@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Toast, Tooltip, Dropdown, Typography } from '@douyinfe/semi-ui';
 import {
-  CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download,
+  CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download, Pencil, Check, X as XIcon,
 } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
@@ -15,7 +15,7 @@ export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
   onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji,
-  currentUserId,
+  currentUserId, onEdit,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -38,10 +38,14 @@ export function MessageBubble({
   onReaction?: (messageId: number, emoji: string) => void;
   onPickReactionEmoji?: (messageId: number, e: React.MouseEvent) => void;
   currentUserId?: number | null;
+  onEdit?: (msg: ChatMessage) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [inlineEditing, setInlineEditing] = useState(false);
+  const [inlineEditContent, setInlineEditContent] = useState('');
+  const inlineEditRef = useRef<HTMLTextAreaElement>(null);
   const showBottomTime = shouldShowTime || isHovered;
 
   const TWO_MINUTES_MS = 2 * 60 * 1000;
@@ -59,6 +63,29 @@ export function MessageBubble({
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msg.id, msg.createdAt, isSelf, msg.isRecalled]);
+
+  // 24 小时内可编辑（文本消息且为自己发送）
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const canEdit = isSelf && !msg.isRecalled && msg.type === 'text'
+    && (Date.now() - new Date(msg.createdAt.replace(' ', 'T')).getTime() < ONE_DAY_MS);
+
+  const handleStartInlineEdit = useCallback(() => {
+    setInlineEditContent(msg.content);
+    setInlineEditing(true);
+    setTimeout(() => inlineEditRef.current?.focus(), 50);
+  }, [msg.content]);
+
+  const handleCancelInlineEdit = useCallback(() => {
+    setInlineEditing(false);
+    setInlineEditContent('');
+  }, []);
+
+  const handleConfirmInlineEdit = useCallback(() => {
+    if (!inlineEditContent.trim()) return;
+    onEdit?.({ ...msg, content: inlineEditContent.trim() });
+    setInlineEditing(false);
+    setInlineEditContent('');
+  }, [inlineEditContent, msg, onEdit]);
 
   const handleCopyText = useCallback(async () => {
     try {
@@ -280,7 +307,27 @@ export function MessageBubble({
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isSelf ? 'row-reverse' : 'row' }}>
             <div style={{ display: 'flex', cursor: 'default' }}>
-              <MessageContent msg={msg} isSelf={isSelf} onOpenImage={onOpenImage} onOpenForwardView={onOpenForwardView} />
+              {inlineEditing ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 200, maxWidth: 360 }}>
+                  <textarea
+                    ref={inlineEditRef}
+                    value={inlineEditContent}
+                    onChange={(e) => setInlineEditContent(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleConfirmInlineEdit(); }
+                      else if (e.key === 'Escape') handleCancelInlineEdit();
+                    }}
+                    rows={2}
+                    style={{ width: '100%', resize: 'none', borderRadius: 6, padding: '6px 10px', border: '1px solid var(--semi-color-primary)', background: 'var(--semi-color-bg-2)', color: 'var(--semi-color-text-0)', fontSize: 14, fontFamily: 'inherit', outline: 'none', lineHeight: 1.5 }}
+                  />
+                  <div style={{ display: 'flex', gap: 4, justifyContent: isSelf ? 'flex-end' : 'flex-start' }}>
+                    <Button size="small" theme="solid" type="primary" icon={<Check size={12} />} onClick={handleConfirmInlineEdit}>保存</Button>
+                    <Button size="small" theme="borderless" type="tertiary" icon={<XIcon size={12} />} onClick={handleCancelInlineEdit}>取消</Button>
+                  </div>
+                </div>
+              ) : (
+                <MessageContent msg={msg} isSelf={isSelf} onOpenImage={onOpenImage} onOpenForwardView={onOpenForwardView} />
+              )}
             </div>
             <div style={{ display: 'flex', gap: 2, flexShrink: 0, paddingBottom: 2 }}>
               {isSelf && canRecall && !msg.isRecalled && (
@@ -357,7 +404,7 @@ export function MessageBubble({
             padding: '0 2px',
           }}
         >
-          {fullTimeStr}
+          {fullTimeStr}{msg.isEdited && <span style={{ marginLeft: 4, color: 'var(--semi-color-text-3)', fontStyle: 'italic' }}>已编辑</span>}
         </Text>
         {contextMenuPos && (
           <Dropdown
@@ -396,6 +443,14 @@ export function MessageBubble({
                     onClick={() => { onRecall(msg); setContextMenuPos(null); }}
                   >
                     撤回
+                  </Dropdown.Item>
+                )}
+                {canEdit && (
+                  <Dropdown.Item
+                    icon={<Pencil size={12} />}
+                    onClick={() => { handleStartInlineEdit(); setContextMenuPos(null); }}
+                  >
+                    编辑
                   </Dropdown.Item>
                 )}
                 {msg.type === 'text' && (
