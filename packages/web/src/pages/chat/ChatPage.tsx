@@ -50,6 +50,9 @@ export default function ChatPage() {
   const [emojiVisible, setEmojiVisible] = useState(false);
   const [emojiAnchor, setEmojiAnchor] = useState<{ top: number; left: number } | null>(null);
 
+  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
+  const [reactionPickerAnchor, setReactionPickerAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [reactionTargetMsgId, setReactionTargetMsgId] = useState<number | null>(null);
   const [convSearch, setConvSearch] = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
@@ -117,6 +120,7 @@ export default function ChatPage() {
   const fileAttachRef = useRef<HTMLInputElement>(null);
   const emojiContainerRef = useRef<HTMLDivElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const reactionPickerRef = useRef<HTMLDivElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
 
   // 点击 emoji 选择器外部时关闭
@@ -131,6 +135,18 @@ export default function ChatPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [emojiVisible]);
+
+  // 点击 reaction picker 外部时关闭
+  useEffect(() => {
+    if (!reactionPickerVisible) return;
+    const handler = (e: MouseEvent) => {
+      if (reactionPickerRef.current && !reactionPickerRef.current.contains(e.target as Node)) {
+        setReactionPickerVisible(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [reactionPickerVisible]);
 
   useEffect(() => {
     pendingImagesRef.current = pendingImages;
@@ -773,9 +789,11 @@ export default function ChatPage() {
     });
   }, []);
 
-  const handlePickReactionEmoji = useCallback((_messageId: number, _e: React.MouseEvent) => {
-    // Quick emoji bar in the right-click menu covers the main use case.
-    // Full emoji picker can be added as a future enhancement.
+  const handlePickReactionEmoji = useCallback((messageId: number, e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setReactionTargetMsgId(messageId);
+    setReactionPickerAnchor({ top: rect.top, right: window.innerWidth - rect.right });
+    setReactionPickerVisible(true);
   }, []);
 
   // 编辑消息（由 MessageBubble 内联编辑回调）
@@ -2377,6 +2395,30 @@ export default function ChatPage() {
         onCancel={() => { setForwardModalVisible(false); setForwardingMessageIds([]); }}
         mode={forwardingMode}
       />
+      {/* Reaction emoji picker — fixed overlay */}
+      {reactionPickerVisible && reactionPickerAnchor && (
+        <div
+          ref={reactionPickerRef}
+          style={{
+            position: 'fixed',
+            bottom: window.innerHeight - reactionPickerAnchor.top + 4,
+            right: reactionPickerAnchor.right,
+            zIndex: 9999,
+          }}
+        >
+          <Picker
+            data={data}
+            onEmojiSelect={(emoji: { native: string }) => {
+              if (reactionTargetMsgId !== null) handleReaction(reactionTargetMsgId, emoji.native);
+              setReactionPickerVisible(false);
+            }}
+            theme="auto"
+            locale="zh"
+            previewPosition="none"
+            skinTonePosition="none"
+          />
+        </div>
+      )}
       <ForwardedMessagesModal
         visible={forwardViewVisible}
         items={forwardViewItems}
