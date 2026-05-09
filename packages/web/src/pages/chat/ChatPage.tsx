@@ -48,6 +48,8 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [emojiVisible, setEmojiVisible] = useState(false);
+  const [emojiAnchor, setEmojiAnchor] = useState<{ top: number; left: number } | null>(null);
+
   const [convSearch, setConvSearch] = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
@@ -114,15 +116,17 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileAttachRef = useRef<HTMLInputElement>(null);
   const emojiContainerRef = useRef<HTMLDivElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
 
   // 点击 emoji 选择器外部时关闭
   useEffect(() => {
     if (!emojiVisible) return;
     const handler = (e: MouseEvent) => {
-      if (emojiContainerRef.current && !emojiContainerRef.current.contains(e.target as Node)) {
-        setEmojiVisible(false);
-      }
+      const target = e.target as Node;
+      const inButton = emojiContainerRef.current?.contains(target);
+      const inPicker = emojiPickerRef.current?.contains(target);
+      if (!inButton && !inPicker) setEmojiVisible(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -2183,28 +2187,39 @@ export default function ChatPage() {
 
             {/* Toolbar */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 1, alignItems: 'center' }}>
-              <div ref={emojiContainerRef} style={{ position: 'relative' }}>
+              <div ref={emojiContainerRef}>
                 <Button
                   size="small" theme="borderless" type="tertiary"
                   icon={<Smile size={16} />}
                   title="表情"
-                  onClick={() => setEmojiVisible((v) => !v)}
+                  onClick={() => {
+                    if (emojiVisible) { setEmojiVisible(false); return; }
+                    const rect = emojiContainerRef.current?.getBoundingClientRect();
+                    if (rect) setEmojiAnchor({ top: rect.top, left: rect.left });
+                    setEmojiVisible(true);
+                  }}
                 />
-                {emojiVisible && (
-                  <div
-                    style={{ position: 'absolute', bottom: '100%', left: 0, zIndex: 1000 }}
-                  >
-                    <Picker
-                      data={data}
-                      onEmojiSelect={handleEmojiSelect}
-                      theme="auto"
-                      locale="zh"
-                      previewPosition="none"
-                      skinTonePosition="none"
-                    />
-                  </div>
-                )}
               </div>
+              {emojiVisible && emojiAnchor && (
+                <div
+                  ref={emojiPickerRef}
+                  style={{
+                    position: 'fixed',
+                    bottom: window.innerHeight - emojiAnchor.top + 4,
+                    left: emojiAnchor.left,
+                    zIndex: 9999,
+                  }}
+                >
+                  <Picker
+                    data={data}
+                    onEmojiSelect={handleEmojiSelect}
+                    theme="auto"
+                    locale="zh"
+                    previewPosition="none"
+                    skinTonePosition="none"
+                  />
+                </div>
+              )}
 
               <Tooltip content="选择图片">
                 <Button
