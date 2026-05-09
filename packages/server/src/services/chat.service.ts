@@ -1003,10 +1003,9 @@ export async function forwardMessages(input: ForwardMessagesInput): Promise<void
         const originalExtra = (m.extra as ChatMessageExtra | null) ?? null;
         const extra: ChatMessageExtra = {};
         if (originalExtra?.asset) extra.asset = originalExtra.asset;
-        const msgType = m.type as ChatForwardedItem['type'];
         await sendMessage(targetConvId, {
           content: m.content,
-          type: msgType,
+          type: m.type,
           extra: Object.keys(extra).length > 0 ? extra : null,
         });
       }
