@@ -9,6 +9,7 @@ import {
   Pin, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter, BellOff, Images, AlertCircle,
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
+import { useAuth } from '@/hooks/useAuth';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon, fetchProtectedFile } from '@/utils/file-utils';
@@ -135,18 +136,9 @@ export default function ChatPage() {
     pendingImagesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
   }, []);
 
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [currentUserNickname, setCurrentUserNickname] = useState('我');
-  useEffect(() => {
-    try {
-      const token = localStorage.getItem('zenith_token');
-      if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1])) as { userId?: number; nickname?: string };
-        setCurrentUserId(payload.userId ?? null);
-        setCurrentUserNickname(payload.nickname ?? '我');
-      }
-    } catch { /* ignore */ }
-  }, []);
+  const { user: authUser } = useAuth();
+  const currentUserId = authUser?.id ?? null;
+  const currentUserNickname = authUser?.nickname ?? authUser?.username ?? '我';
 
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null;
   const mentionState = useMemo(() => {
@@ -420,7 +412,7 @@ export default function ChatPage() {
 
   const handleTyping = useCallback((newValue: string) => {
     if (!activeConvId || !currentUserId || !newValue.trim()) return;
-    if (typingThrottleRef.current) return; // 3秒内只发一次
+    if (typingThrottleRef.current) return;
     sendWsMessage({ type: 'chat:typing', payload: { conversationId: activeConvId, userId: currentUserId, nickname: currentUserNickname } });
     typingThrottleRef.current = setTimeout(() => { typingThrottleRef.current = null; }, 3000);
   }, [activeConvId, currentUserId, currentUserNickname]);
