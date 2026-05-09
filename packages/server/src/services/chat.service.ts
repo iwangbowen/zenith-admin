@@ -14,8 +14,8 @@ import type {
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
 
-function isPrivateIpv4(hostname: string): boolean {
-  const parts = hostname.split('.').map(Number);
+function isPrivateIpv4(ipv4: string): boolean {
+  const parts = ipv4.split('.').map(Number);
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
   const [a, b] = parts;
   if (a === 10) return true;
@@ -23,6 +23,24 @@ function isPrivateIpv4(hostname: string): boolean {
   if (a === 169 && b === 254) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
+  if (a === 0) return true; // 0.0.0.0/8
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 共享地址
+  return false;
+}
+
+function isPrivateHost(hostname: string): boolean {
+  const lower = hostname.toLowerCase().replaceAll(/^\[|\]$/g, '');
+  // IPv4 私网地址
+  if (isPrivateIpv4(lower)) return true;
+  // IPv6 loopback / 链路本地 / 唯一本地地址
+  if (lower === '::1' || lower === '0:0:0:0:0:0:0:1') return true;
+  if (lower.startsWith('fe80:')) return true; // 链路本地 fe80::/10
+  if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA fc00::/7
+  // IPv4-mapped IPv6 (::ffff:a.b.c.d)
+  if (lower.startsWith('::ffff:')) {
+    const ipv4 = lower.slice(7);
+    if (isPrivateIpv4(ipv4)) return true;
+  }
   return false;
 }
 
@@ -41,10 +59,8 @@ function validatePreviewUrl(rawUrl: string): URL {
   const host = parsed.hostname.toLowerCase();
   if (
     host === 'localhost'
-    || host === '::1'
-    || host === '[::1]'
     || host.endsWith('.local')
-    || isPrivateIpv4(host)
+    || isPrivateHost(host)
   ) {
     throw new HTTPException(400, { message: '不支持内网地址预览' });
   }
@@ -126,13 +142,36 @@ export async function getLinkPreview(rawUrl: string): Promise<ChatLinkPreview> {
   try {
     const resp = await fetch(parsed, {
       method: 'GET',
-      redirect: 'follow',
+      redirect: 'manual', // 禁止自动跟随重定向，防止 SSRF 绕过
       signal: controller.signal,
       headers: {
         accept: 'text/html,application/xhtml+xml',
         'user-agent': 'ZenithAdminLinkPreviewBot/1.0',
       },
     });
+
+    // 处理重定向：手动跟随一级，并对目标 URL 二次校验防止 SSRF
+    if (resp.status >= 300 && resp.status < 400) {
+      const location = resp.headers.get('location');
+      if (!location) return fallback;
+      try {
+        const redirectTarget = validatePreviewUrl(location);
+        const redirectResp = await fetch(redirectTarget, {
+          method: 'GET',
+          redirect: 'error', // 不再跟随二次重定向
+          signal: controller.signal,
+          headers: {
+            accept: 'text/html,application/xhtml+xml',
+            'user-agent': 'ZenithAdminLinkPreviewBot/1.0',
+          },
+        });
+        if (!redirectResp.ok) return fallback;
+        // 递归处理与下方相同的逻辑略显复杂，直接返回 fallback 并将 url 设为原始地址
+        return fallback;
+      } catch {
+        return fallback;
+      }
+    }
 
     if (!resp.ok) return fallback;
     const contentType = resp.headers.get('content-type')?.toLowerCase() ?? '';
@@ -703,10 +742,12 @@ export async function searchConversationMessages(
     endAt ? lte(chatMessages.createdAt, endAt) : undefined,
     keyword
       ? or(
-          sql`${chatMessages.content} ILIKE ${`%${keyword}%`}`,
-          sql`COALESCE(${users.nickname}, '') ILIKE ${`%${keyword}%`}`,
-          sql`COALESCE(${users.username}, '') ILIKE ${`%${keyword}%`}`,
-          sql`COALESCE(${chatMessages.extra} -> 'asset' ->> 'name', '') ILIKE ${`%${keyword}%`}`,
+          ...(() => { const p = `%${keyword}%`; return [
+            sql`${chatMessages.content} ILIKE ${p}`,
+            sql`COALESCE(${users.nickname}, '') ILIKE ${p}`,
+            sql`COALESCE(${users.username}, '') ILIKE ${p}`,
+            sql`COALESCE(${chatMessages.extra} -> 'asset' ->> 'name', '') ILIKE ${p}`,
+          ]; })(),
         )
       : undefined,
   );
@@ -790,8 +831,9 @@ export async function getMessageContext(
     .orderBy(asc(chatMessages.id))
     .limit(after);
 
+  const reversedBefore = [...beforeRows].reverse();
   const allRows = [
-    ...beforeRows.reverse(),
+    ...reversedBefore,
     ...target,
     ...afterRows,
   ];
@@ -872,7 +914,6 @@ export async function forwardMessages(input: ForwardMessagesInput): Promise<void
 
   // 鉴权：确认当前用户是所有目标会话的成员
   for (const targetConvId of input.targetConversationIds) {
-    // eslint-disable-next-line no-await-in-loop
     const member = await db.query.chatConversationMembers.findFirst({
       where: and(
         eq(chatConversationMembers.conversationId, targetConvId),
@@ -921,8 +962,6 @@ export async function forwardMessages(input: ForwardMessagesInput): Promise<void
     }
   }
 
-  const sender = senderMap.get(me.userId) ?? null;
-
   if (input.mode === 'merge') {
     // 合并转发：生成 forwardedMessages 列表，发送单条 forward 类型消息
     const forwardedItems: ChatForwardedItem[] = ordered
@@ -946,7 +985,6 @@ export async function forwardMessages(input: ForwardMessagesInput): Promise<void
       .join('\n');
 
     for (const targetConvId of input.targetConversationIds) {
-      // eslint-disable-next-line no-await-in-loop
       await sendMessage(targetConvId, {
         content: previewText,
         type: 'forward',
@@ -965,10 +1003,10 @@ export async function forwardMessages(input: ForwardMessagesInput): Promise<void
         const originalExtra = (m.extra as ChatMessageExtra | null) ?? null;
         const extra: ChatMessageExtra = {};
         if (originalExtra?.asset) extra.asset = originalExtra.asset;
-        // eslint-disable-next-line no-await-in-loop
+        const msgType = m.type as ChatForwardedItem['type'];
         await sendMessage(targetConvId, {
           content: m.content,
-          type: m.type as 'text' | 'image' | 'file',
+          type: msgType,
           extra: Object.keys(extra).length > 0 ? extra : null,
         });
       }
@@ -990,7 +1028,6 @@ export async function deleteMessagesForUser(messageIds: number[]): Promise<void>
   // 校验当前用户是这些消息所在会话的成员
   const convIds = [...new Set(msgs.map((m) => m.conversationId))];
   for (const convId of convIds) {
-    // eslint-disable-next-line no-await-in-loop
     const member = await db.query.chatConversationMembers.findFirst({
       where: and(
         eq(chatConversationMembers.conversationId, convId),
@@ -1307,7 +1344,7 @@ export async function removeGroupMember(conversationId: number, targetUserId: nu
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!operatorMember || operatorMember.role !== 'owner') {
+  if (operatorMember?.role !== 'owner') {
     throw new HTTPException(403, { message: '只有群主才能移除成员' });
   }
   if (targetUserId === me.userId) {
@@ -1374,11 +1411,11 @@ export async function updateGroupInfo(
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!member || member.role !== 'owner') {
+  if (member?.role !== 'owner') {
     throw new HTTPException(403, { message: '只有群主才能修改群聊信息' });
   }
 
-  const normalizedName = updates.name !== undefined ? (updates.name.trim() || null) : undefined;
+  const normalizedName = updates.name === undefined ? undefined : (updates.name.trim() || null);
   const normalizedAnnouncement = 'announcement' in updates ? (updates.announcement ?? null) : undefined;
   const nameChanged = normalizedName !== undefined && normalizedName !== (conv.name ?? null);
   const announcementChanged = normalizedAnnouncement !== undefined && normalizedAnnouncement !== (conv.announcement ?? null);
@@ -1438,7 +1475,7 @@ export async function transferGroupOwnership(conversationId: number, newOwnerId:
       eq(chatConversationMembers.userId, me.userId),
     ),
   });
-  if (!currentMember || currentMember.role !== 'owner') {
+  if (currentMember?.role !== 'owner') {
     throw new HTTPException(403, { message: '只有群主才能转让群主' });
   }
 
