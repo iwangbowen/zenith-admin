@@ -335,6 +335,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
       lastReadAt: chatConversationMembers.lastReadAt,
       isPinned: chatConversationMembers.isPinned,
       isStarred: chatConversationMembers.isStarred,
+      isMuted: chatConversationMembers.isMuted,
     })
     .from(chatConversationMembers)
     .where(eq(chatConversationMembers.userId, me.userId));
@@ -345,6 +346,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
   const lastReadMap = new Map(memberRows.map((r) => [r.conversationId, r.lastReadAt]));
   const pinnedMap = new Map(memberRows.map((r) => [r.conversationId, r.isPinned]));
   const starredMap = new Map(memberRows.map((r) => [r.conversationId, r.isStarred]));
+  const mutedMap = new Map(memberRows.map((r) => [r.conversationId, r.isMuted]));
 
   // 批量拉取会话基本信息
   const convRows = await db
@@ -430,6 +432,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
     unreadCount: unreadMap.get(conv.id) ?? 0,
     isPinned: pinnedMap.get(conv.id) ?? false,
     isStarred: starredMap.get(conv.id) ?? false,
+    isMuted: mutedMap.get(conv.id) ?? false,
     createdAt: formatDateTime(conv.createdAt),
     updatedAt: formatDateTime(conv.updatedAt),
   }));
@@ -509,6 +512,7 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
     unreadCount: 0,
     isPinned: false,
     isStarred: false,
+    isMuted: false,
     createdAt: formatDateTime(conv.createdAt),
     updatedAt: formatDateTime(conv.updatedAt),
   };
@@ -546,6 +550,25 @@ export async function starConversation(conversationId: number, star: boolean): P
   if (!member) throw new HTTPException(403, { message: '无权操作该会话' });
   await db.update(chatConversationMembers)
     .set({ isStarred: star })
+    .where(and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ));
+}
+
+// ─── 免打扰 / 取消免打扰 ──────────────────────────────────────────────────
+
+export async function muteConversation(conversationId: number, mute: boolean): Promise<void> {
+  const me = currentUser();
+  const member = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (!member) throw new HTTPException(403, { message: '无权操作该会话' });
+  await db.update(chatConversationMembers)
+    .set({ isMuted: mute })
     .where(and(
       eq(chatConversationMembers.conversationId, conversationId),
       eq(chatConversationMembers.userId, me.userId),
@@ -1179,6 +1202,7 @@ export async function createGroupConversation(name: string): Promise<ChatConvers
     unreadCount: 0,
     isPinned: false,
     isStarred: false,
+    isMuted: false,
     createdAt: formatDateTime(conv.createdAt),
     updatedAt: formatDateTime(conv.updatedAt),
   };

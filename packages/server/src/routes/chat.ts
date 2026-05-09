@@ -14,7 +14,7 @@ import {
   sendMessage, recallMessage, editMessage, markConversationRead, listChatUsers,
   createGroupConversation, addGroupMember, listGroupMembers,
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
-  pinConversation, starConversation, removeConversation,
+  pinConversation, starConversation, muteConversation, removeConversation,
   getLinkPreview, listPinnedMessages, listFavoriteMessages, listGlobalFavoriteMessages,
   toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, forwardMessages, deleteMessagesForUser, toggleReaction,
 } from '../services/chat.service';
@@ -428,6 +428,27 @@ chatRouter.openapi(
     const { id } = c.req.valid('param');
     const { star } = c.req.valid('json');
     await starConversation(id, star);
+    return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 免打扰 / 取消免打扰 ───────────────────────────────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'patch', path: '/conversations/{id}/mute', tags: ['Chat'], summary: '免打扰或取消免打扰会话',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ mute: z.boolean() })) },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('操作成功') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { mute } = c.req.valid('json');
+    await muteConversation(id, mute);
     return c.json(okBody(null), 200);
   },
 );

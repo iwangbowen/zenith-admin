@@ -595,6 +595,7 @@ export const chatConversationMembers = pgTable('chat_conversation_members', {
   role: chatMemberRoleEnum('role').notNull().default('member'),
   isPinned: boolean('is_pinned').notNull().default(false),
   isStarred: boolean('is_starred').notNull().default(false),
+  isMuted: boolean('is_muted').notNull().default(false),
   lastReadAt: timestamp('last_read_at', { withTimezone: true }),
   joinedAt: timestamp('joined_at').defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.conversationId, t.userId] })]);

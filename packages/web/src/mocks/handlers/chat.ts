@@ -115,6 +115,7 @@ export const chatHandlers = [
       unreadCount: 0,
       isPinned: false,
       isStarred: false,
+      isMuted: false,
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
@@ -246,6 +247,7 @@ export const chatHandlers = [
       unreadCount: 0,
       isPinned: false,
       isStarred: false,
+      isMuted: false,
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
@@ -288,6 +290,15 @@ export const chatHandlers = [
     const body = await request.json() as { star: boolean };
     const conv = mockChatConversations.find((c) => c.id === convId);
     if (conv) conv.isStarred = body.star;
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // 免打扰 / 取消免打扰
+  http.patch('/api/chat/conversations/:id/mute', async ({ params, request }) => {
+    const convId = Number(params.id);
+    const body = await request.json() as { mute: boolean };
+    const conv = mockChatConversations.find((c) => c.id === convId);
+    if (conv) conv.isMuted = body.mute;
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
 

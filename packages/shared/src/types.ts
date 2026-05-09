@@ -751,6 +751,7 @@ export interface ChatConversation {
   unreadCount: number;
   isPinned: boolean;
   isStarred: boolean;
+  isMuted: boolean;
   createdAt: string;
   updatedAt: string;
 }

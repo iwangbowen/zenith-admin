@@ -26,3 +26,9 @@ export const CHAT_MESSAGE_TYPE_OPTIONS: Array<{ value: ChatMessage['type']; labe
   { value: 'file', label: '文件' },
   { value: 'system', label: '系统' },
 ];
+
+export interface FailedMessage {
+  id: string;
+  convId: number;
+  content: string;
+}

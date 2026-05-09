@@ -6,7 +6,7 @@ import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import {
   Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users,
-  Pin, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter,
+  Pin, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter, BellOff, Images, AlertCircle,
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
@@ -20,7 +20,7 @@ import {
   extractFirstUrl, getFileExtension, getAssetMeta, getMessageSummary, shouldDisplayMessageTime,
   getImageDimensions,
 } from './utils';
-import type { ChatUser, PendingImage, PendingFile, SearchDatePreset } from './types';
+import type { ChatUser, PendingImage, PendingFile, SearchDatePreset, FailedMessage } from './types';
 import { CHAT_MESSAGE_TYPE_OPTIONS } from './types';
 import { UserAvatar, GroupGridAvatar } from './components/UserAvatar';
 import { NewChatPanel } from './components/NewChatPanel';
@@ -94,10 +94,18 @@ export default function ChatPage() {
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [failedMessages, setFailedMessages] = useState<FailedMessage[]>([]);
+  const [showMediaPanel, setShowMediaPanel] = useState(false);
+  const [mediaType, setMediaType] = useState<'image' | 'file'>('image');
+  const [mediaItems, setMediaItems] = useState<ChatMessage[]>([]);
+  const [mediaPage, setMediaPage] = useState(1);
+  const [mediaHasMore, setMediaHasMore] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState(false);
   const [previewImageId, setPreviewImageId] = useState<number | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileAttachRef = useRef<HTMLInputElement>(null);
   const emojiContainerRef = useRef<HTMLDivElement>(null);
@@ -324,6 +332,10 @@ export default function ChatPage() {
     setSearchPage(1);
     setSearchHasSearched(false);
     setContextMode(null);
+    setShowMediaPanel(false);
+    setMediaItems([]);
+    setMediaPage(1);
+    setMediaHasMore(false);
     // 恢复目标会话草稿
     setInput(loadDraft(conv.id));
     await fetchMessages(conv.id, 1);
@@ -453,8 +465,8 @@ export default function ChatPage() {
       if (Object.keys(extra).length > 0) body.extra = extra;
       const res = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, body);
       if (res.code !== 0) {
-        setInput(content);
-        Toast.error('文本发送失败');
+        const failId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        setFailedMessages((prev) => [...prev, { id: failId, convId: activeConvId, content }]);
       }
     }
 
@@ -905,6 +917,49 @@ export default function ChatPage() {
     await fetchMessages(activeConvId, 1);
   }, [activeConvId, fetchMessages]);
 
+  const fetchMediaItems = useCallback(async (convId: number, type: 'image' | 'file', p = 1) => {
+    setMediaLoading(true);
+    const qs = new URLSearchParams({ types: type, page: String(p), pageSize: '30' });
+    const res = await request.get<{ list: Array<{ message: ChatMessage }> }>(
+      `/api/chat/conversations/${convId}/messages/search?${qs.toString()}`,
+      { silent: true },
+    );
+    setMediaLoading(false);
+    if (res.code === 0 && res.data) {
+      const items = res.data.list.map((item) => item.message);
+      if (p === 1) {
+        setMediaItems(items);
+      } else {
+        setMediaItems((prev) => [...prev, ...items]);
+      }
+      setMediaPage(p);
+      setMediaHasMore(items.length >= 30);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showMediaPanel || !activeConvId) return;
+    void fetchMediaItems(activeConvId, mediaType, 1);
+  }, [showMediaPanel, activeConvId, mediaType, fetchMediaItems]);
+
+  // ① 自动上拉加载历史消息
+  useEffect(() => {
+    const isLocalSearchFallback = Boolean(msgSearch.trim()) && !(showSearchPanel && searchHasSearched);
+    if (!hasMore || loadingMsgs || !activeConvId || isLocalSearchFallback || contextMode) return;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !loadingMsgs && hasMore) {
+          void fetchMessages(activeConvId, page + 1);
+        }
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeConvId, hasMore, loadingMsgs, page, msgSearch, showSearchPanel, searchHasSearched, contextMode, fetchMessages]);
+
   const refreshGroupAvatarMembers = useCallback(async (conversationId: number) => {
     const res = await request.get<ChatGroupMember[]>(`/api/chat/conversations/${conversationId}/members`, { silent: true });
     if (res.code !== 0 || !res.data) return;
@@ -960,7 +1015,10 @@ export default function ChatPage() {
         }
         return updated;
       });
-      if (mentionedMe) Toast.info(`${msg.senderName ?? '有人'} @了你`);
+      if (mentionedMe) {
+        const isConvMuted = conversations.find((c) => c.id === msg.conversationId)?.isMuted ?? false;
+        if (!isConvMuted) Toast.info(`${msg.senderName ?? '有人'} @了你`);
+      }
     } else if (wsMsg.type === 'chat:recall') {
       const { messageId } = wsMsg.payload;
       setMessages((prev) =>
@@ -1229,6 +1287,7 @@ export default function ChatPage() {
               const isActive = conv.id === activeConvId;
               const isPinned = conv.isPinned ?? false;
               const isStarred = conv.isStarred ?? false;
+              const isMuted = conv.isMuted ?? false;
               let lastMsgText = '暂无消息';
               if (lastMsg) {
                 const summary = getMessageSummary(lastMsg);
@@ -1269,6 +1328,7 @@ export default function ChatPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, flex: 1 }}>
                           {isPinned && <Pin size={10} style={{ color: 'var(--semi-color-primary)', flexShrink: 0 }} />}
                           {isStarred && <Star size={10} style={{ color: '#facc15', flexShrink: 0 }} />}
+                          {isMuted && <BellOff size={10} style={{ color: 'var(--semi-color-text-3)', flexShrink: 0 }} />}
                           <Text strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {name}
                           </Text>
@@ -1367,6 +1427,24 @@ export default function ChatPage() {
                       }}
                     >
                       {(leftPaneContextMenu.conv.isStarred ?? false) ? '取消星标' : '标记星标'}
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      icon={<BellOff size={13} />}
+                      onClick={() => {
+                        const { conv } = leftPaneContextMenu;
+                        const isMuted = conv.isMuted ?? false;
+                        void request.patch(`/api/chat/conversations/${conv.id}/mute`, { mute: !isMuted }).then((r) => {
+                          if ((r as { code: number }).code === 0) {
+                            setConversations((prev) =>
+                              prev.map((c) => c.id === conv.id ? { ...c, isMuted: !isMuted } : c),
+                            );
+                            Toast.success(isMuted ? '已取消免打扰' : '已开启免打扰');
+                          }
+                        });
+                        setLeftPaneContextMenu(null);
+                      }}
+                    >
+                      {(leftPaneContextMenu.conv.isMuted ?? false) ? '取消免打扰' : '免打扰'}
                     </Dropdown.Item>
                     <Dropdown.Divider />
                     <Dropdown.Item
@@ -1505,7 +1583,22 @@ export default function ChatPage() {
                 onClick={() => {
                   setShowSearchPanel((v) => {
                     const next = !v;
-                    if (next) setShowMembers(false);
+                    if (next) { setShowMembers(false); setShowMediaPanel(false); }
+                    return next;
+                  });
+                }}
+              />
+            </Tooltip>
+            <Tooltip content={showMediaPanel ? '关闭媒体库' : '图片与文件'}>
+              <Button
+                size="small"
+                theme="borderless"
+                type={showMediaPanel ? 'primary' : 'tertiary'}
+                icon={<Images size={15} />}
+                onClick={() => {
+                  setShowMediaPanel((v) => {
+                    const next = !v;
+                    if (next) { setShowMembers(false); setShowSearchPanel(false); }
                     return next;
                   });
                 }}
@@ -1519,7 +1612,7 @@ export default function ChatPage() {
                   onClick={() => {
                     setShowMembers((v) => {
                       const next = !v;
-                      if (next) setShowSearchPanel(false);
+                      if (next) { setShowSearchPanel(false); setShowMediaPanel(false); }
                       return next;
                     });
                   }}
@@ -1563,13 +1656,11 @@ export default function ChatPage() {
                 </div>
               )}
               {hasMore && !useLocalSearchFallback && !contextMode && (
-                <div style={{ textAlign: 'center', marginBottom: 8 }}>
-                  <Button
-                    size="small" type="tertiary" theme="borderless" loading={loadingMsgs}
-                    onClick={() => { if (activeConvId) void fetchMessages(activeConvId, page + 1); }}
-                  >
-                    加载更多
-                  </Button>
+                <div
+                  ref={loadMoreSentinelRef}
+                  style={{ textAlign: 'center', marginBottom: 8, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {loadingMsgs && <Spin size="small" />}
                 </div>
               )}
               <Spin spinning={loadingMsgs && messages.length === 0}>
@@ -1603,6 +1694,43 @@ export default function ChatPage() {
                     onEdit={handleEditMessage}
                   />
                 ))}
+                {/* ⑥ 发送失败重试 */}
+                {failedMessages.filter((m) => m.convId === activeConvId).map((failed) => (
+                  <div
+                    key={failed.id}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px',
+                      background: 'var(--semi-color-danger-light-default)',
+                      border: '1px solid var(--semi-color-danger-light-active)',
+                      borderRadius: 8, margin: '4px 0',
+                    }}
+                  >
+                    <AlertCircle size={14} style={{ color: 'var(--semi-color-danger)', marginTop: 2, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 13, wordBreak: 'break-word', color: 'var(--semi-color-text-0)' }}>
+                      {failed.content}
+                    </span>
+                    <Button
+                      size="small"
+                      type="danger"
+                      theme="borderless"
+                      onClick={() => {
+                        setFailedMessages((prev) => prev.filter((m) => m.id !== failed.id));
+                        setInput(failed.content);
+                        requestAnimationFrame(() => inputRef.current?.focus());
+                      }}
+                    >
+                      重试
+                    </Button>
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      type="tertiary"
+                      onClick={() => setFailedMessages((prev) => prev.filter((m) => m.id !== failed.id))}
+                    >
+                      忽略
+                    </Button>
+                  </div>
+                ))}
                 <div ref={messagesEndRef} />
               </Spin>
               {pendingNewMsgCount > 0 && (
@@ -1628,7 +1756,7 @@ export default function ChatPage() {
             </div>
 
             {/* Group members sidebar */}
-            {activeConv.type === 'group' && showMembers && !showSearchPanel && (
+            {activeConv.type === 'group' && showMembers && !showSearchPanel && !showMediaPanel && (
               <GroupMembersPanel
                 conversationId={activeConv.id}
                 currentUserId={currentUserId}
@@ -1767,6 +1895,107 @@ export default function ChatPage() {
                       </Button>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* ⑤ 媒体库面板 */}
+            {showMediaPanel && !showSearchPanel && !showMembers && (
+              <div style={{ width: 320, borderLeft: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0, background: 'var(--semi-color-bg-1)' }}>
+                <div style={{ padding: '12px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Text strong style={{ flex: 1, fontSize: 13 }}>媒体文件</Text>
+                  <Button size="small" theme="borderless" type="tertiary" icon={<X size={14} />} onClick={() => setShowMediaPanel(false)} />
+                </div>
+                <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', gap: 8 }}>
+                  <Button
+                    size="small"
+                    theme={mediaType === 'image' ? 'solid' : 'borderless'}
+                    type={mediaType === 'image' ? 'primary' : 'tertiary'}
+                    onClick={() => setMediaType('image')}
+                  >
+                    图片
+                  </Button>
+                  <Button
+                    size="small"
+                    theme={mediaType === 'file' ? 'solid' : 'borderless'}
+                    type={mediaType === 'file' ? 'primary' : 'tertiary'}
+                    onClick={() => setMediaType('file')}
+                  >
+                    文件
+                  </Button>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+                  <Spin spinning={mediaLoading && mediaItems.length === 0}>
+                    {mediaItems.length === 0 && !mediaLoading && (
+                      <Empty
+                        description={`暂无${mediaType === 'image' ? '图片' : '文件'}消息`}
+                        imageStyle={{ width: 64 }}
+                        style={{ paddingTop: 40 }}
+                      />
+                    )}
+                    {mediaType === 'image' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+                        {mediaItems.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setPreviewImageId(item.id)}
+                            style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', aspectRatio: '1', overflow: 'hidden', borderRadius: 4 }}
+                          >
+                            <img
+                              src={item.extra?.asset?.thumbnailUrl ?? item.content}
+                              alt={item.extra?.asset?.name ?? '图片'}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {mediaType === 'file' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {mediaItems.map((item) => {
+                          const asset = item.extra?.asset;
+                          return (
+                            <div
+                              key={item.id}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--semi-color-bg-0)', border: '1px solid var(--semi-color-border)', borderRadius: 8 }}
+                            >
+                              <span style={{ fontSize: 22, flexShrink: 0 }}>{getFileTypeIcon(asset?.name ?? '')}</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <Text strong style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {asset?.name ?? '未知文件'}
+                                </Text>
+                                <Text type="tertiary" style={{ fontSize: 11 }}>
+                                  {asset?.size ? formatFileSize(asset.size) : ''}
+                                </Text>
+                              </div>
+                              <Button
+                                size="small"
+                                theme="borderless"
+                                type="primary"
+                                onClick={() => { window.open(item.content, '_blank'); }}
+                              >
+                                下载
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {mediaHasMore && (
+                      <div style={{ textAlign: 'center', marginTop: 8 }}>
+                        <Button
+                          size="small"
+                          type="tertiary"
+                          theme="borderless"
+                          loading={mediaLoading}
+                          onClick={() => { if (activeConvId) void fetchMediaItems(activeConvId, mediaType, mediaPage + 1); }}
+                        >
+                          加载更多
+                        </Button>
+                      </div>
+                    )}
+                  </Spin>
                 </div>
               </div>
             )}
