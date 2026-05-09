@@ -2057,7 +2057,7 @@ export default function ChatPage() {
           </Modal>
 
           {/* Input area */}
-          <div style={{ padding: '8px 16px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
+          <div style={{ padding: '4px 8px', borderTop: '1px solid var(--semi-color-border)' }}>
             {multiSelectMode ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', flexWrap: 'wrap' }}>
                 <Text style={{ flex: 1, fontSize: 13, minWidth: 80 }}>
@@ -2182,7 +2182,7 @@ export default function ChatPage() {
             )}
 
             {/* Toolbar */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 6, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 1, alignItems: 'center' }}>
               <div ref={emojiContainerRef} style={{ position: 'relative' }}>
                 <Button
                   size="small" theme="borderless" type="tertiary"
