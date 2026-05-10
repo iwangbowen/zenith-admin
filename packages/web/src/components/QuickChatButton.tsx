@@ -1,20 +1,18 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { FloatButton, Spin, Tooltip } from '@douyinfe/semi-ui';
+import { FloatButton, Spin } from '@douyinfe/semi-ui';
 import { MessageCircle, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { ChatConversation, WsMessage } from '@zenith/shared';
 import { useAuth } from '@/hooks/useAuth';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { usePreferences } from '@/hooks/usePreferences';
 import { request } from '@/utils/request';
 
 const QuickChatPanel = lazy(() => import('@/pages/chat/ChatPage'));
 
-export default function QuickChatButton() {
+export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => void }>) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { setPreferences } = usePreferences();
   const currentUserId = user?.id ?? null;
 
   const [open, setOpen] = useState(false);
@@ -78,19 +76,27 @@ export default function QuickChatButton() {
           from { opacity: 0; transform: translateY(10px) scale(0.98); }
           to   { opacity: 1; transform: translateY(0)    scale(1);    }
         }
-        .qc-float-wrapper:hover .qc-hide-btn { opacity: 1; pointer-events: auto; }
+        @keyframes qc-hide-btn-pop {
+          from { opacity: 0; transform: scale(0.6); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        .qc-float-wrapper { position: relative; }
+        .qc-float-wrapper:hover .qc-hide-btn {
+          opacity: 1;
+          pointer-events: auto;
+          animation: qc-hide-btn-pop 0.15s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
         .qc-hide-btn {
           opacity: 0;
           pointer-events: none;
-          transition: opacity 0.15s ease;
           position: absolute;
-          top: -8px;
-          right: -8px;
-          width: 20px;
-          height: 20px;
+          top: -7px;
+          right: -7px;
+          width: 18px;
+          height: 18px;
           border-radius: 50%;
-          background: var(--semi-color-text-2);
-          border: none;
+          background: var(--semi-color-text-1);
+          border: 2px solid var(--semi-color-bg-0);
           cursor: pointer;
           display: flex;
           align-items: center;
@@ -98,6 +104,8 @@ export default function QuickChatButton() {
           padding: 0;
           color: #fff;
           z-index: 1000;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+          transition: background 0.15s ease;
         }
         .qc-hide-btn:hover { background: var(--semi-color-danger); }
       `}</style>
@@ -107,23 +115,23 @@ export default function QuickChatButton() {
         style={{ position: 'fixed', insetInlineEnd: 24, bottom: 24, zIndex: 999 }}
       >
         <FloatButton
+          style={{ position: 'relative', bottom: 'unset', right: 'unset', insetInlineEnd: 'unset' }}
           icon={<MessageCircle size={20} />}
           badge={unreadCount > 0 ? { count: unreadCount, overflowCount: 99 } : undefined}
           onClick={() => setOpen((prev) => !prev)}
           shape="round"
         />
-        <Tooltip content="隐藏快捷聊天" position="left">
-          <button
-            className="qc-hide-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen(false);
-              setPreferences({ showQuickChat: false });
-            }}
-          >
-            <X size={12} />
-          </button>
-        </Tooltip>
+        <button
+          title="隐藏快捷聊天"
+          className="qc-hide-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(false);
+            onHide?.();
+          }}
+        >
+          <X size={12} />
+        </button>
       </div>
 
       {open && (

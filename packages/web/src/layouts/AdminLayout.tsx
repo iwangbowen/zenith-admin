@@ -1119,7 +1119,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       </div>
 
       {/* ===== 快捷聊天浮动按钮 ===== */}
-      {(preferences.showQuickChat ?? true) && <QuickChatButton />}
+      {(preferences.showQuickChat ?? true) && <QuickChatButton onHide={() => setPreferences({ showQuickChat: false })} />}
 
       {/* ===== 通知详情 Modal ===== */}
       <Modal
