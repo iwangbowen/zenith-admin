@@ -1440,7 +1440,6 @@ export default function ChatPage({
                     display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                     cursor: 'pointer', width: '100%', textAlign: 'left', border: 'none',
                     background: isActive ? 'var(--semi-color-primary-light-default)' : 'transparent',
-                    borderLeft: isActive ? '3px solid var(--semi-color-primary)' : '3px solid transparent',
                   }}
                   onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
                   onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
