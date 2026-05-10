@@ -231,8 +231,10 @@ export default function ChatPage({
     const convId = Number(convParam);
     if (!Number.isFinite(convId) || convId <= 0) return;
     if (conversations.length === 0) return; // 等列表加载完再处理
-    setActiveConvId(convId);
+    const conv = conversations.find((c) => c.id === convId);
+    if (!conv) return;
     setSearchParams((prev) => { prev.delete('conv'); return prev; }, { replace: true });
+    void handleSelectConv(conv);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations, isQuick]);
 
