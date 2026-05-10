@@ -292,9 +292,10 @@ export function MessageBubble({
               type="button"
               onClick={() => { if (msg.replyToId) onScrollToMessage(msg.replyToId); }}
               style={{
+                border: 'none',
                 background: 'var(--semi-color-fill-1)', borderLeft: '3px solid var(--semi-color-primary)',
                 padding: '4px 8px', borderRadius: 4, marginBottom: 4, fontSize: 12,
-                color: 'var(--semi-color-text-2)', border: 'none',
+                color: 'var(--semi-color-text-2)',
                 cursor: replied ? 'pointer' : 'default',
                 textAlign: 'left', display: 'block', width: '100%', maxWidth: '100%',
               }}
