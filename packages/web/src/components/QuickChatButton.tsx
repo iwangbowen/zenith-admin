@@ -4,7 +4,7 @@ import { MessageCircle, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { ChatConversation, WsMessage } from '@zenith/shared';
 import { useAuth } from '@/hooks/useAuth';
-import { useWebSocket } from '@/hooks/useWebSocket';
+import { useWebSocket, useWsConnected } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import './QuickChatButton.css';
 
@@ -24,6 +24,8 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
   const lastActiveConvIdRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const floatBtnRef = useRef<HTMLDivElement>(null);
+  const wsHasConnectedRef = useRef(false);
+  const wsDisconnectedSinceReadyRef = useRef(false);
 
   const closePanel = useCallback(() => {
     openRef.current = false;
@@ -97,6 +99,24 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
   }, [currentUserId, fetchUnreadCount, location.pathname]);
 
   useWebSocket(handleWsMessage);
+  const wsConnected = useWsConnected();
+
+  // WebSocket 重连成功后刷新未读数，修正断线期间漏掉的推送。
+  useEffect(() => {
+    if (!wsConnected) {
+      if (wsHasConnectedRef.current) wsDisconnectedSinceReadyRef.current = true;
+      return;
+    }
+
+    if (!wsHasConnectedRef.current) {
+      wsHasConnectedRef.current = true;
+      return;
+    }
+
+    if (!wsDisconnectedSinceReadyRef.current) return;
+    wsDisconnectedSinceReadyRef.current = false;
+    void fetchUnreadCount();
+  }, [fetchUnreadCount, wsConnected]);
 
   const handleOpenFullPage = useCallback((convId?: number | null) => {
     openRef.current = false;

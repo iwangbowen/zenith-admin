@@ -140,6 +140,8 @@ export default function ChatPage({
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const reactionPickerRef = useRef<HTMLDivElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
+  const wsHasConnectedRef = useRef(false);
+  const wsDisconnectedSinceReadyRef = useRef(false);
 
   // 点击 emoji 选择器外部时关闭
   useEffect(() => {
@@ -1167,6 +1169,38 @@ export default function ChatPage({
 
   useWebSocket(handleWsMessage);
   const wsConnected = useWsConnected();
+
+  // WebSocket 断线重连成功后，主动补拉会话列表与当前会话最新消息，避免断线期间漏消息。
+  useEffect(() => {
+    if (!wsConnected) {
+      if (wsHasConnectedRef.current) wsDisconnectedSinceReadyRef.current = true;
+      return;
+    }
+
+    if (!wsHasConnectedRef.current) {
+      wsHasConnectedRef.current = true;
+      return;
+    }
+
+    if (!wsDisconnectedSinceReadyRef.current) return;
+    wsDisconnectedSinceReadyRef.current = false;
+
+    const shouldStickToBottom = isNearBottom();
+    void (async () => {
+      await fetchConversations();
+
+      if (activeConvId && !contextMode) {
+        await fetchMessages(activeConvId, 1);
+        if (shouldStickToBottom) {
+          requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }));
+          request.post(`/api/chat/conversations/${activeConvId}/read`, {}, { silent: true }).catch(() => {});
+          setConversations((prev) => prev.map((c) => (c.id === activeConvId ? { ...c, unreadCount: 0 } : c)));
+        }
+      }
+
+      Toast.success('实时连接已恢复，已同步最新消息');
+    })();
+  }, [activeConvId, contextMode, fetchConversations, fetchMessages, isNearBottom, wsConnected]);
 
   // 草稿自动保存（input 变化时持久化）
   useEffect(() => {
