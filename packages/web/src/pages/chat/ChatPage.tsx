@@ -422,6 +422,10 @@ export default function ChatPage({
     await handleSelectConv(conv);
   }, [fetchConversations, handleSelectConv]);
 
+  const appendMessageOnce = useCallback((message: ChatMessage) => {
+    setMessages((prev) => (prev.some((item) => item.id === message.id) ? prev : [...prev, message]));
+  }, []);
+
   const sendFileMessage = useCallback(async (file: File) => {
     if (!activeConvId) return false;
     const fd = new FormData();
@@ -441,8 +445,9 @@ export default function ChatPage({
       type: 'file',
       extra: { asset },
     });
+    if (msgRes.code === 0 && msgRes.data) appendMessageOnce(msgRes.data);
     return msgRes.code === 0;
-  }, [activeConvId]);
+  }, [activeConvId, appendMessageOnce]);
 
   const handleTyping = useCallback((newValue: string) => {
     if (!activeConvId || !currentUserId || !newValue.trim()) return;
@@ -478,8 +483,9 @@ export default function ChatPage({
       type: 'image',
       extra: { asset },
     });
+    if (msgRes.code === 0 && msgRes.data) appendMessageOnce(msgRes.data);
     return msgRes.code === 0;
-  }, [activeConvId]);
+  }, [activeConvId, appendMessageOnce]);
 
   const fetchLinkPreview = useCallback(async (url: string): Promise<ChatLinkPreview | null> => {
     const res = await request.get<ChatLinkPreview>(`/api/chat/link-preview?url=${encodeURIComponent(url)}`, { silent: true });
@@ -522,12 +528,13 @@ export default function ChatPage({
       if (res.code !== 0) {
         const failId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
         setFailedMessages((prev) => [...prev, { id: failId, convId: activeConvId, content }]);
+      } else if (res.data) {
+        appendMessageOnce(res.data);
       }
     }
 
     if (imagesToSend.length > 0) {
       for (const item of imagesToSend) {
-        // eslint-disable-next-line no-await-in-loop
         const ok = await sendImageFile(item.file);
         if (!ok) failedImageCount += 1;
       }
@@ -535,7 +542,6 @@ export default function ChatPage({
 
     if (filesToSend.length > 0) {
       for (const item of filesToSend) {
-        // eslint-disable-next-line no-await-in-loop
         const ok = await sendFileMessage(item.file);
         if (!ok) failedFileCount += 1;
       }
@@ -552,7 +558,7 @@ export default function ChatPage({
     if (failedFileCount > 0) {
       Toast.error(`有 ${failedFileCount} 个文件发送失败`);
     }
-  }, [activeConvId, fetchLinkPreview, input, pendingFiles, pendingImages, replyTo, saveDraft, selectedMentions, sendFileMessage, sendImageFile, sending]);
+  }, [activeConvId, appendMessageOnce, fetchLinkPreview, input, pendingFiles, pendingImages, replyTo, saveDraft, selectedMentions, sendFileMessage, sendImageFile, sending]);
 
   const handleSelectImages = useCallback((files: File[]) => {
     const validFiles = files.filter((file) => file.type.startsWith('image/'));
@@ -736,7 +742,6 @@ export default function ChatPage({
     if (msgs.length === 0) { Toast.info('所选消息已全部收藏'); return; }
     let successCount = 0;
     for (const msg of msgs) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await request.patch<ChatMessage>(`/api/chat/messages/${msg.id}/favorite`, { favorite: true });
       if (res.code === 0 && res.data) {
         applyMessageUpdate(res.data);
@@ -1033,7 +1038,7 @@ export default function ChatPage({
       const mentionedMe = !isOwnMsg && (msg.extra?.mentions ?? []).some((item) => item.userId === currentUserId);
       const shouldAutoRead = msg.conversationId === activeConvId && (isOwnMsg || isNearBottom());
       if (msg.conversationId === activeConvId) {
-        setMessages((prev) => [...prev, msg]);
+        appendMessageOnce(msg);
         if (shouldAutoRead) {
           setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
           request.post(`/api/chat/conversations/${msg.conversationId}/read`, {}, { silent: true }).catch(() => {});
@@ -1130,7 +1135,7 @@ export default function ChatPage({
           : c),
       );
     }
-  }, [activeConvId, currentUserId, fetchConversations, isNearBottom, refreshGroupAvatarMembers]);
+  }, [activeConvId, appendMessageOnce, applyMessageUpdate, conversations, currentUserId, fetchConversations, isNearBottom, refreshGroupAvatarMembers]);
 
   const handleMessagesScroll = useCallback(() => {
     if (!activeConvId) return;
