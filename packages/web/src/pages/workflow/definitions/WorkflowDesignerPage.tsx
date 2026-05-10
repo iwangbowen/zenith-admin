@@ -92,7 +92,6 @@ function WorkflowNodeComponent({ data }: NodeProps) {
     textAlign: 'center',
     cursor: 'default',
     boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-    borderLeft: `3px solid ${accent}`,
     ...typeStyle,
   };
 
