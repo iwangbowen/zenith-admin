@@ -8,7 +8,7 @@ import Picker from '@emoji-mart/react';
 import {
   Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users,
   Pin, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter, BellOff, Images, AlertCircle,
-  ArrowLeft, ExternalLink,
+  ArrowLeft, ExternalLink, BarChart3,
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage, useWsConnected } from '@/hooks/useWebSocket';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,7 +17,7 @@ import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/da
 import { formatFileSize, getFileTypeIcon, fetchProtectedFile } from '@/utils/file-utils';
 import type {
   ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
-  ChatGroupMember, ChatMessageSearchItem, ChatMessageSearchResult, ChatMessageContext,
+  ChatGroupMember, ChatMessageSearchItem, ChatMessageSearchResult, ChatMessageContext, ChatVoteData,
 } from '@zenith/shared';
 import {
   extractFirstUrl, getFileExtension, getAssetMeta, getMessageSummary, shouldDisplayMessageTime,
@@ -30,6 +30,7 @@ import { NewChatPanel } from './components/NewChatPanel';
 import { GroupMembersPanel } from './components/GroupMembersPanel';
 import { ForwardModal } from './components/ForwardModal';
 import { ForwardedMessagesModal } from './components/ForwardedMessagesModal';
+import { VotePollModal } from './components/VotePollModal';
 import { MessageBubble } from './components/MessageBubble';
 
 import { MessageContent } from './components/MessageContent';
@@ -129,6 +130,7 @@ export default function ChatPage({
   const [forwardViewVisible, setForwardViewVisible] = useState(false);
   const [forwardViewItems, setForwardViewItems] = useState<NonNullable<ChatMessageExtra['forwardedMessages']>>([]);
   const [forwardViewTitle, setForwardViewTitle] = useState('');
+  const [showVoteModal, setShowVoteModal] = useState(false);
   const [favPreviewVisible, setFavPreviewVisible] = useState(false);
   const [favPreviewMsg, setFavPreviewMsg] = useState<ChatMessage | null>(null);
   const [contextMode, setContextMode] = useState<{ anchorMessageId: number; keyword: string } | null>(null);
@@ -855,6 +857,30 @@ export default function ChatPage({
     setReactionPickerVisible(true);
   }, []);
 
+  const handleCreateVote = useCallback(async (voteData: ChatVoteData, question: string) => {
+    if (!activeConvId) return;
+    const res = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
+      content: question,
+      type: 'vote',
+      extra: { voteData },
+    });
+    if (res.code === 0 && res.data) {
+      appendMessageOnce(res.data);
+      setShowVoteModal(false);
+      return;
+    }
+    Toast.error(res.message ?? '发起投票失败');
+  }, [activeConvId, appendMessageOnce]);
+
+  const handleVoteMessage = useCallback(async (msg: ChatMessage, optionIds: string[]) => {
+    const res = await request.post<ChatMessage>(`/api/chat/messages/${msg.id}/vote`, { optionIds });
+    if (res.code === 0 && res.data) {
+      applyMessageUpdate(res.data);
+      return;
+    }
+    Toast.error(res.message ?? '投票失败');
+  }, [applyMessageUpdate]);
+
   // 编辑消息（由 MessageBubble 内联编辑回调）
   // ─── 消息编辑 ─────────────────────────────────────────────────────────────
 
@@ -1132,6 +1158,11 @@ export default function ChatPage({
     } else if (wsMsg.type === 'chat:reaction') {
       const { messageId, reactions } = wsMsg.payload;
       setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, reactions } : m));
+    } else if (wsMsg.type === 'chat:vote-update') {
+      const { messageId, voteData } = wsMsg.payload;
+      setMessages((prev) => prev.map((m) =>
+        m.id === messageId ? { ...m, extra: { ...(m.extra ?? {}), voteData } } : m,
+      ));
     } else if (wsMsg.type === 'chat:typing') {
       const { conversationId, userId, nickname } = wsMsg.payload;
       if (conversationId !== activeConvId || userId === currentUserId) return;
@@ -2099,6 +2130,7 @@ export default function ChatPage({
                     onPickReactionEmoji={handlePickReactionEmoji}
                     currentUserId={currentUserId}
                     onEdit={handleEditMessage}
+                    onVote={handleVoteMessage}
                   />
                 ))}
                 {/* ⑥ 发送失败重试 */}
@@ -2639,6 +2671,14 @@ export default function ChatPage({
                   onClick={() => fileAttachRef.current?.click()}
                 />
               </Tooltip>
+              <Tooltip content="发起投票">
+                <Button
+                  size="small" theme="borderless" type="tertiary"
+                  icon={<BarChart3 size={16} />}
+                  onClick={() => setShowVoteModal(true)}
+                  disabled={!activeConvId}
+                />
+              </Tooltip>
               <input
                 ref={fileAttachRef}
                 type="file"
@@ -2768,6 +2808,11 @@ export default function ChatPage({
         onConfirm={(targetIds) => { void handleForwardConfirm(targetIds); }}
         onCancel={() => { setForwardModalVisible(false); setForwardingMessageIds([]); }}
         mode={forwardingMode}
+      />
+      <VotePollModal
+        visible={showVoteModal}
+        onClose={() => setShowVoteModal(false)}
+        onConfirm={handleCreateVote}
       />
       {/* Reaction emoji picker — fixed overlay */}
       {reactionPickerVisible && reactionPickerAnchor && (

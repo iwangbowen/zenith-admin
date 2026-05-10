@@ -16,7 +16,7 @@ import {
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
   pinConversation, starConversation, muteConversation, removeConversation,
   getLinkPreview, listPinnedMessages, listFavoriteMessages, listGlobalFavoriteMessages,
-  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, forwardMessages, deleteMessagesForUser, toggleReaction,
+  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, forwardMessages, deleteMessagesForUser, toggleReaction, submitVote,
 } from '../services/chat.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -175,7 +175,7 @@ chatRouter.openapi(
 
 const sendMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
-  type: z.enum(['text', 'image', 'file', 'forward']).default('text'),
+  type: z.enum(['text', 'image', 'file', 'forward', 'vote']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
   extra: ChatMessageExtraDTO.nullable().optional(),
 });
@@ -655,6 +655,27 @@ chatRouter.openapi(
     const { emoji } = c.req.valid('json');
     const reactions = await toggleReaction(id, emoji);
     return c.json(okBody(reactions), 200);
+  },
+);
+
+// ─── 投票 ──────────────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/messages/{id}/vote', tags: ['Chat'], summary: '参与投票',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ optionIds: z.array(z.string().min(1).max(36)).min(1).max(10) })) },
+    },
+    responses: { ...commonErrorResponses, ...ok(ChatMessageDTO, '更新后的投票消息') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { optionIds } = c.req.valid('json');
+    const updated = await submitVote(id, optionIds);
+    return c.json(okBody(updated), 200);
   },
 );
 

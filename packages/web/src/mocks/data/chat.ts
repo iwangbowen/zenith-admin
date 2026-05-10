@@ -54,6 +54,38 @@ export const mockChatMessages: ChatMessage[] = [
     createdAt: '2024-01-01 09:02:00',
     updatedAt: '2024-01-01 09:02:00',
   },
+  {
+    id: 4,
+    conversationId: 2,
+    senderId: 1,
+    senderName: '管理员',
+    senderAvatar: null,
+    type: 'vote',
+    content: '本周例会时间投票',
+    replyToId: null,
+    isRecalled: false,
+    isEdited: false,
+    extra: {
+      voteData: {
+        question: '本周例会安排在什么时候？',
+        options: [
+          { id: 'opt-1', label: '周三 15:00' },
+          { id: 'opt-2', label: '周四 10:00' },
+          { id: 'opt-3', label: '周五 16:00' },
+        ],
+        isMultiple: false,
+        isAnonymous: false,
+        expireAt: null,
+        votes: [
+          { userId: 2, optionIds: ['opt-2'], nickname: '张三' },
+        ],
+        isClosed: false,
+      },
+    },
+    reactions: [],
+    createdAt: '2024-01-02 10:05:00',
+    updatedAt: '2024-01-02 10:05:00',
+  },
 ];
 
 export const mockChatConversations: ChatConversation[] = [
@@ -77,14 +109,14 @@ export const mockChatConversations: ChatConversation[] = [
     name: '项目组',
     announcement: '欢迎加入项目组！有问题请 @ 管理员。',
     targetUser: null,
-    lastMessage: null,
+    lastMessage: mockChatMessages[3],
     unreadCount: 0,
     hasMentionUnread: false,
     isPinned: false,
     isStarred: false,
     isMuted: false,
     createdAt: '2024-01-02 10:00:00',
-    updatedAt: '2024-01-02 10:00:00',
+    updatedAt: '2024-01-02 10:05:00',
   },
 ];
 

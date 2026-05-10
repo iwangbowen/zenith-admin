@@ -603,7 +603,7 @@ export const chatConversationMembers = pgTable('chat_conversation_members', {
 export type ChatConversationMemberRow = typeof chatConversationMembers.$inferSelect;
 
 // ─── 聊天消息表 ───────────────────────────────────────────────────────────────
-export const chatMessageTypeEnum = pgEnum('chat_message_type', ['text', 'image', 'file', 'system', 'forward']);
+export const chatMessageTypeEnum = pgEnum('chat_message_type', ['text', 'image', 'file', 'system', 'forward', 'vote']);
 
 export const chatMessages = pgTable('chat_messages', {
   id: serial('id').primaryKey(),

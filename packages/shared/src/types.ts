@@ -365,7 +365,8 @@ export type WsMessage =
   | { type: 'chat:group-update'; payload: { conversationId: number; name?: string | null; announcement?: string | null } }
   | { type: 'chat:typing'; payload: { conversationId: number; userId: number; nickname: string } }
   | { type: 'chat:reaction'; payload: { conversationId: number; messageId: number; reactions: ChatReactionGroup[] } }
-  | { type: 'chat:edit'; payload: ChatMessage };
+  | { type: 'chat:edit'; payload: ChatMessage }
+  | { type: 'chat:vote-update'; payload: { conversationId: number; messageId: number; voteData: ChatVoteData } };
 
 // ─── 地区管理 ──────────────────────────────────────────────
 export type RegionLevel = 'province' | 'city' | 'county';
@@ -634,7 +635,28 @@ export interface WorkflowInstance {
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export type ChatConversationType = 'direct' | 'group';
-export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward';
+export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward' | 'vote';
+
+export interface ChatVoteOption {
+  id: string;
+  label: string;
+}
+
+export interface ChatVoteRecord {
+  userId: number;
+  optionIds: string[];
+  nickname: string;
+}
+
+export interface ChatVoteData {
+  question: string;
+  options: ChatVoteOption[];
+  isMultiple: boolean;
+  isAnonymous: boolean;
+  expireAt: string | null;
+  votes: ChatVoteRecord[];
+  isClosed: boolean;
+}
 export type ChatMemberRole = 'owner' | 'member';
 
 export interface ChatLinkPreview {
@@ -691,6 +713,7 @@ export interface ChatMessageExtra {
   forwardedMessages?: ChatForwardedItem[] | null;
   forwardSourceConvName?: string | null;
   hiddenFor?: number[] | null;
+  voteData?: ChatVoteData | null;
 }
 
 export interface ChatMessage {

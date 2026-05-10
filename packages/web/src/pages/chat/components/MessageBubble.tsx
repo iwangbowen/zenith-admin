@@ -15,7 +15,7 @@ export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
   onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji,
-  currentUserId, onEdit,
+  currentUserId, onEdit, onVote,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -39,6 +39,7 @@ export function MessageBubble({
   onPickReactionEmoji?: (messageId: number, e: React.MouseEvent) => void;
   currentUserId?: number | null;
   onEdit?: (msg: ChatMessage) => void;
+  onVote?: (msg: ChatMessage, optionIds: string[]) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -382,7 +383,14 @@ export function MessageBubble({
                   </div>
                 </div>
               ) : (
-                <MessageContent msg={msg} isSelf={isSelf} onOpenImage={onOpenImage} onOpenForwardView={onOpenForwardView} />
+                <MessageContent
+                  msg={msg}
+                  isSelf={isSelf}
+                  onOpenImage={onOpenImage}
+                  onOpenForwardView={onOpenForwardView}
+                  currentUserId={currentUserId}
+                  onVote={onVote}
+                />
               )}
             </div>
             <div style={{ display: 'flex', gap: 2, flexShrink: 0, paddingBottom: 2 }}>

@@ -9,7 +9,7 @@ import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/d
 import { pageOffset } from '../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import type {
-  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup,
+  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup, ChatVoteData,
 } from '@zenith/shared';
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
@@ -1621,6 +1621,72 @@ export async function toggleReaction(messageId: number, emoji: string): Promise<
   }
 
   return reactions;
+}
+
+// ─── 投票 ──────────────────────────────────────────────────────────────────
+
+export async function submitVote(messageId: number, optionIds: string[]): Promise<ChatMessage> {
+  const me = currentUser();
+
+  const msg = await ensureMessageAccessible(messageId);
+  if (msg.type !== 'vote') throw new HTTPException(400, { message: '该消息不是投票类型' });
+
+  const extra = (msg.extra as ChatMessageExtra | null) ?? {};
+  const voteData = extra.voteData;
+  if (!voteData) throw new HTTPException(400, { message: '投票数据异常' });
+
+  // 检查是否已关闭或过期
+  if (voteData.isClosed) throw new HTTPException(400, { message: '投票已关闭' });
+  if (voteData.expireAt) {
+    const expireDate = new Date(voteData.expireAt.replace(' ', 'T'));
+    if (Date.now() > expireDate.getTime()) throw new HTTPException(400, { message: '投票已结束' });
+  }
+
+  // 校验 optionIds
+  const validOptionIds = new Set(voteData.options.map((o) => o.id));
+  const sanitized = optionIds.filter((id) => validOptionIds.has(id));
+  if (sanitized.length === 0) throw new HTTPException(400, { message: '请选择有效选项' });
+  if (!voteData.isMultiple && sanitized.length > 1) throw new HTTPException(400, { message: '单选投票只能选择一个选项' });
+
+  // 获取当前用户昵称
+  const currentUserRow = await db.query.users.findFirst({
+    where: eq(users.id, me.userId),
+    columns: { nickname: true },
+  });
+  const nickname = currentUserRow?.nickname ?? '未知用户';
+
+  // 幂等更新：同一用户重复投票则覆盖
+  const existingVotes = voteData.votes.filter((v) => v.userId !== me.userId);
+  const updatedVotes = [...existingVotes, { userId: me.userId, optionIds: sanitized, nickname }];
+
+  const nextVoteData: ChatVoteData = { ...voteData, votes: updatedVotes };
+  const nextExtra: ChatMessageExtra = { ...extra, voteData: nextVoteData };
+
+  const [updated] = await db.update(chatMessages)
+    .set({ extra: nextExtra, updatedAt: new Date() })
+    .where(eq(chatMessages.id, messageId))
+    .returning();
+
+  const sender = updated.senderId
+    ? await db.query.users.findFirst({ where: eq(users.id, updated.senderId), columns: { id: true, nickname: true, avatar: true } })
+    : null;
+
+  const updatedMsg = mapChatMessage(updated, sender ?? null);
+
+  // 广播给会话内所有成员
+  const members = await db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, msg.conversationId));
+
+  for (const { userId } of members) {
+    sendToUser(userId, {
+      type: 'chat:vote-update',
+      payload: { conversationId: msg.conversationId, messageId, voteData: nextVoteData },
+    });
+  }
+
+  return updatedMsg;
 }
 
 // ─── 全局消息搜索 ────────────────────────────────────────────────────────────

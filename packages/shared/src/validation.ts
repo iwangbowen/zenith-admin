@@ -501,10 +501,31 @@ export const chatAnnouncementHistorySchema = z.object({
 
 export const chatForwardedItemSchema = z.object({
   senderName: z.string().max(100).nullable(),
-  type: z.enum(['text', 'image', 'file', 'system', 'forward']),
+  type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote']),
   content: z.string().max(4096),
   createdAt: z.string(),
   asset: chatAssetMetaSchema.nullable().optional(),
+});
+
+export const chatVoteOptionSchema = z.object({
+  id: z.string().max(36),
+  label: z.string().min(1).max(200),
+});
+
+export const chatVoteRecordSchema = z.object({
+  userId: z.number().int(),
+  optionIds: z.array(z.string().max(36)),
+  nickname: z.string().max(100),
+});
+
+export const chatVoteDataSchema = z.object({
+  question: z.string().min(1).max(500),
+  options: z.array(chatVoteOptionSchema).min(2).max(10),
+  isMultiple: z.boolean(),
+  isAnonymous: z.boolean(),
+  expireAt: z.string().nullable(),
+  votes: z.array(chatVoteRecordSchema),
+  isClosed: z.boolean(),
 });
 
 export const chatMessageExtraSchema = z.object({
@@ -517,11 +538,12 @@ export const chatMessageExtraSchema = z.object({
   forwardedMessages: z.array(chatForwardedItemSchema).max(100).nullable().optional(),
   forwardSourceConvName: z.string().max(100).nullable().optional(),
   hiddenFor: z.array(z.number().int()).nullable().optional(),
+  voteData: chatVoteDataSchema.nullable().optional(),
 }).strict();
 
 export const sendChatMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
-  type: z.enum(['text', 'image', 'file', 'forward']).default('text'),
+  type: z.enum(['text', 'image', 'file', 'forward', 'vote']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
   extra: chatMessageExtraSchema.nullable().optional(),
 });

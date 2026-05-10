@@ -67,12 +67,39 @@ export const ChatAnnouncementHistoryDTO = z
 export const ChatForwardedItemDTO = z
   .object({
     senderName: z.string().nullable(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote']),
     content: z.string(),
     createdAt: z.string(),
     asset: ChatAssetMetaDTO.nullable().optional(),
   })
   .openapi('ChatForwardedItem');
+
+export const ChatVoteOptionDTO = z
+  .object({
+    id: z.string(),
+    label: z.string(),
+  })
+  .openapi('ChatVoteOption');
+
+export const ChatVoteRecordDTO = z
+  .object({
+    userId: z.number().int(),
+    optionIds: z.array(z.string()),
+    nickname: z.string(),
+  })
+  .openapi('ChatVoteRecord');
+
+export const ChatVoteDataDTO = z
+  .object({
+    question: z.string(),
+    options: z.array(ChatVoteOptionDTO),
+    isMultiple: z.boolean(),
+    isAnonymous: z.boolean(),
+    expireAt: z.string().nullable(),
+    votes: z.array(ChatVoteRecordDTO),
+    isClosed: z.boolean(),
+  })
+  .openapi('ChatVoteData');
 
 export const ChatMessageExtraDTO = z
   .object({
@@ -85,6 +112,7 @@ export const ChatMessageExtraDTO = z
     forwardedMessages: z.array(ChatForwardedItemDTO).nullable().optional(),
     forwardSourceConvName: z.string().nullable().optional(),
     hiddenFor: z.array(z.number().int()).nullable().optional(),
+    voteData: ChatVoteDataDTO.nullable().optional(),
   })
   .strict()
   .openapi('ChatMessageExtra');
@@ -104,7 +132,7 @@ export const ChatMessageDTO = z
     senderId: z.number().int().nullable(),
     senderName: z.string().nullable(),
     senderAvatar: z.string().nullable().optional(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote']),
     content: z.string(),
     replyToId: z.number().int().nullable().optional(),
     isRecalled: z.boolean(),

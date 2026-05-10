@@ -6,12 +6,14 @@ import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
 const { Text } = Typography;
 
 export function MessageContent({
-  msg, isSelf, onOpenImage, onOpenForwardView,
+  msg, isSelf, onOpenImage, onOpenForwardView, currentUserId, onVote,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
   onOpenImage?: (msg: ChatMessage) => void;
   onOpenForwardView?: (items: NonNullable<ChatMessageExtra['forwardedMessages']>, title: string) => void;
+  currentUserId?: number | null;
+  onVote?: (msg: ChatMessage, optionIds: string[]) => void;
 }>) {
   const extra = getMessageExtra(msg);
   const asset = extra?.asset ?? null;
@@ -140,6 +142,97 @@ export function MessageContent({
             </Text>
           )}
         </div>
+      </div>
+    );
+  }
+
+  if (msg.type === 'vote') {
+    const voteData = extra?.voteData;
+    if (!voteData) {
+      return (
+        <div style={bubbleStyle}>
+          <Text type="tertiary">投票数据异常</Text>
+        </div>
+      );
+    }
+
+    const currentVote = voteData.votes.find((v) => v.userId === currentUserId);
+    const currentSelected = new Set(currentVote?.optionIds ?? []);
+    const totalVoters = voteData.votes.length;
+    const isExpired = voteData.expireAt
+      ? Date.now() > new Date(voteData.expireAt.replace(' ', 'T')).getTime()
+      : false;
+    const disabled = voteData.isClosed || isExpired;
+
+    return (
+      <div style={{ ...bubbleStyle, minWidth: 260, maxWidth: 360 }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>{voteData.question}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {voteData.options.map((option) => {
+            const count = voteData.votes.filter((v) => v.optionIds.includes(option.id)).length;
+            const ratio = totalVoters > 0 ? (count / totalVoters) * 100 : 0;
+            const selected = currentSelected.has(option.id);
+            return (
+              <button
+                key={option.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  if (!onVote) return;
+                  if (!voteData.isMultiple) {
+                    onVote(msg, [option.id]);
+                    return;
+                  }
+                  const next = new Set(currentSelected);
+                  if (next.has(option.id)) next.delete(option.id);
+                  else next.add(option.id);
+                  const optionIds = [...next];
+                  if (optionIds.length > 0) onVote(msg, optionIds);
+                }}
+                style={{
+                  border: selected ? '1px solid var(--semi-color-primary)' : '1px solid var(--semi-color-border)',
+                  background: selected ? 'var(--semi-color-primary-light-default)' : 'var(--semi-color-fill-0)',
+                  borderRadius: 8,
+                  padding: '8px 10px',
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                  <span>{option.label}</span>
+                  <span style={{ color: 'var(--semi-color-text-2)' }}>{count} 票</span>
+                </div>
+                <div
+                  style={{
+                    marginTop: 6,
+                    height: 6,
+                    width: '100%',
+                    borderRadius: 999,
+                    background: 'var(--semi-color-fill-2)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${ratio}%`,
+                      height: '100%',
+                      background: selected ? 'var(--semi-color-primary)' : 'var(--semi-color-primary-light-active)',
+                      transition: 'width 0.2s ease',
+                    }}
+                  />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, color: isSelf ? 'rgba(255,255,255,0.75)' : 'var(--semi-color-text-2)' }}>
+          {voteData.isMultiple ? '多选' : '单选'} · {voteData.isAnonymous ? '匿名投票' : '实名投票'} · 共 {totalVoters} 人参与
+        </div>
+        {(voteData.isClosed || isExpired) && (
+          <div style={{ marginTop: 4, fontSize: 12, color: 'var(--semi-color-warning)' }}>
+            {voteData.isClosed ? '该投票已关闭' : '该投票已截止'}
+          </div>
+        )}
       </div>
     );
   }

@@ -223,7 +223,7 @@ export const chatHandlers = [
     const body = await request.json() as { favorite: boolean };
     const msg = mockChatMessages.find((m) => m.id === msgId);
     if (!msg) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
-    msg.extra = { ...(msg.extra ?? {}), isFavorited: body.favorite };
+    msg.extra = { ...(msg.extra || {}), isFavorited: body.favorite };
     msg.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: 'ok', data: msg });
   }),
@@ -233,7 +233,36 @@ export const chatHandlers = [
     const body = await request.json() as { pin: boolean };
     const msg = mockChatMessages.find((m) => m.id === msgId);
     if (!msg) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
-    msg.extra = { ...(msg.extra ?? {}), isPinned: body.pin };
+    msg.extra = { ...(msg.extra || {}), isPinned: body.pin };
+    msg.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: 'ok', data: msg });
+  }),
+
+  // 投票
+  http.post('/api/chat/messages/:id/vote', async ({ params, request }) => {
+    const msgId = Number(params.id);
+    const body = await request.json() as { optionIds: string[] };
+    const msg = mockChatMessages.find((m) => m.id === msgId);
+    if (!msg) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
+    if (msg.type !== 'vote') return HttpResponse.json({ code: 400, message: '该消息不是投票类型', data: null }, { status: 400 });
+
+    const voteData = msg.extra?.voteData;
+    if (!voteData) return HttpResponse.json({ code: 400, message: '投票数据异常', data: null }, { status: 400 });
+    if (voteData.isClosed) return HttpResponse.json({ code: 400, message: '投票已关闭', data: null }, { status: 400 });
+
+    const validIds = new Set(voteData.options.map((o) => o.id));
+    const selected = (body.optionIds ?? []).filter((id) => validIds.has(id));
+    if (selected.length === 0) {
+      return HttpResponse.json({ code: 400, message: '请选择有效选项', data: null }, { status: 400 });
+    }
+    if (!voteData.isMultiple && selected.length > 1) {
+      return HttpResponse.json({ code: 400, message: '单选投票只能选择一个选项', data: null }, { status: 400 });
+    }
+
+    voteData.votes = [
+      ...voteData.votes.filter((v) => v.userId !== CURRENT_USER_ID),
+      { userId: CURRENT_USER_ID, optionIds: selected, nickname: CURRENT_USER_NICKNAME },
+    ];
     msg.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: 'ok', data: msg });
   }),

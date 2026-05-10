@@ -1,0 +1,1 @@
+ALTER TYPE "public"."chat_message_type" ADD VALUE 'vote';
