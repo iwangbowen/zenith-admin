@@ -2650,7 +2650,7 @@ export default function ChatPage({
                   合并转发
                 </Button>
                 <Button
-                  size="small" type="warning" theme="light" icon={<Bookmark size={14} />}
+                  size="small" type="primary" theme="light" icon={<Bookmark size={14} />}
                   disabled={selectedMessageIds.length === 0}
                   onClick={() => { void handleFavoriteSelected(); }}
                 >
