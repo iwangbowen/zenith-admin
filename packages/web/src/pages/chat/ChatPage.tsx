@@ -323,7 +323,7 @@ export default function ChatPage({
     setActiveConvId(message.conversationId);
     setMessages(res.data.list);
     setHasMore(res.data.hasBefore);
-    setOldestMsgId(null);
+    setOldestMsgId(res.data.list[0]?.id ?? null);
     setContextMode({ anchorMessageId: res.data.anchorMessageId, keyword: '收藏消息' });
     setTimeout(() => {
       const el = document.getElementById(`msg-${res.data!.anchorMessageId}`);
@@ -1036,7 +1036,7 @@ export default function ChatPage({
     }
     setMessages(res.data.list);
     setHasMore(res.data.hasBefore);
-    setOldestMsgId(null);
+    setOldestMsgId(res.data.list[0]?.id ?? null);
     setContextMode({ anchorMessageId: res.data.anchorMessageId, keyword: msgSearch.trim() || item.snippet });
     setTimeout(() => scrollToMessage(res.data.anchorMessageId), 80);
   }, [activeConvId, msgSearch, scrollToMessage]);
@@ -1074,7 +1074,7 @@ export default function ChatPage({
   // ① 自动上拉加载历史消息
   useEffect(() => {
     const isLocalSearchFallback = Boolean(msgSearch.trim()) && !(showSearchPanel && searchHasSearched);
-    if (!hasMore || loadingMsgs || !activeConvId || isLocalSearchFallback || contextMode) return;
+    if (!hasMore || loadingMsgs || !activeConvId || isLocalSearchFallback) return;
     const sentinel = loadMoreSentinelRef.current;
     if (!sentinel) return;
     const observer = new IntersectionObserver(
@@ -1087,7 +1087,7 @@ export default function ChatPage({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [activeConvId, hasMore, loadingMsgs, oldestMsgId, msgSearch, showSearchPanel, searchHasSearched, contextMode, fetchMessages]);
+  }, [activeConvId, hasMore, loadingMsgs, oldestMsgId, msgSearch, showSearchPanel, searchHasSearched, fetchMessages]);
 
   const refreshGroupAvatarMembers = useCallback(async (conversationId: number) => {
     const res = await request.get<ChatGroupMember[]>(`/api/chat/conversations/${conversationId}/members`, { silent: true });
@@ -1691,7 +1691,7 @@ export default function ChatPage({
                     setLeftPaneMode('conversations');
                     setMessages(res.data.list);
                     setHasMore(res.data.hasBefore);
-                    setOldestMsgId(null);
+                    setOldestMsgId(res.data.list[0]?.id ?? null);
                     setContextMode({ anchorMessageId: res.data.anchorMessageId, keyword: globalSearchKeyword.trim() });
                     setTimeout(() => scrollToMessage(res.data.anchorMessageId), 80);
                   }}
