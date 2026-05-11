@@ -1548,7 +1548,7 @@ export default function ChatPage({
               const isMuted = conv.isMuted ?? false;
               const hasMentionUnread = conv.hasMentionUnread ?? false;
               const hasFailedMsg = failedMessages.some((m) => m.convId === conv.id);
-              const draftText = isActive ? input : (draftsMap[conv.id] ?? '');
+              const draftText = isActive ? '' : (draftsMap[conv.id] ?? '');
               const hasDraft = draftText.trim().length > 0;
               let lastMsgText = '暂无消息';
               if (lastMsg) {
