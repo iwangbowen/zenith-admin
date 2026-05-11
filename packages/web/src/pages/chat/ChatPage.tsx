@@ -1106,6 +1106,7 @@ export default function ChatPage({
 
   const fetchMediaItems = useCallback(async (convId: number, type: 'image' | 'file' | 'link', p = 1) => {
     setMediaLoading(true);
+    if (p === 1) setMediaItems([]);  // 切换 tab 时立即清空，避免旧数据短暂闪烁
     const qs = type === 'link'
       ? new URLSearchParams({ types: 'text', keyword: 'http', page: String(p), pageSize: '30' })
       : new URLSearchParams({ types: type, page: String(p), pageSize: '30' });
