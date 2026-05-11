@@ -152,7 +152,7 @@ export function mockChatUser(userId = 1) {
 }
 
 export const mockChatUsers = [
-  { id: 2, nickname: '张三', username: 'zhangsan', avatar: null },
-  { id: 3, nickname: '李四', username: 'lisi', avatar: null },
-  { id: 4, nickname: '王五', username: 'wangwu', avatar: null },
+  { id: 2, nickname: '张三', username: 'zhangsan', avatar: null, phone: '13800000002', email: 'zhangsan@example.com', departmentName: '技术部', positionNames: ['高级工程师'] },
+  { id: 3, nickname: '李四', username: 'lisi', avatar: null, phone: '13800000003', email: 'lisi@example.com', departmentName: '产品部', positionNames: ['产品经理'] },
+  { id: 4, nickname: '王五', username: 'wangwu', avatar: null, phone: null, email: 'wangwu@example.com', departmentName: null, positionNames: [] },
 ];

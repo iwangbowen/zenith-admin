@@ -2,6 +2,7 @@ import { eq, and, desc, sql, inArray, or, ne, max, asc, gte, lte, lt, gt } from 
 import { db } from '../db';
 import {
   chatConversations, chatConversationMembers, chatMessages, users, chatMessageReactions,
+  departments, positions, userPositions,
 } from '../db/schema';
 import { sendToUser } from '../lib/ws-manager';
 import { currentUser } from '../lib/context';
@@ -390,6 +391,9 @@ export async function listConversations(): Promise<ChatConversation[]> {
         id: users.id,
         nickname: users.nickname,
         avatar: users.avatar,
+        phone: users.phone,
+        email: users.email,
+        departmentId: users.departmentId,
       })
       .from(chatConversationMembers)
       .innerJoin(users, eq(chatConversationMembers.userId, users.id))
@@ -399,8 +403,39 @@ export async function listConversations(): Promise<ChatConversation[]> {
       ))
     : [];
 
+  // 批量查部门名称
+  const deptIds = [...new Set(directTargetRows.map((r) => r.departmentId).filter((id): id is number => id != null))];
+  const deptRows = deptIds.length > 0
+    ? await db.select({ id: departments.id, name: departments.name }).from(departments).where(inArray(departments.id, deptIds))
+    : [];
+  const deptNameMap = new Map(deptRows.map((d) => [d.id, d.name]));
+
+  // 批量查岗位名称
+  const targetUserIds = directTargetRows.map((r) => r.id);
+  const positionRows = targetUserIds.length > 0
+    ? await db
+      .select({ userId: userPositions.userId, name: positions.name })
+      .from(userPositions)
+      .innerJoin(positions, eq(userPositions.positionId, positions.id))
+      .where(inArray(userPositions.userId, targetUserIds))
+    : [];
+  const positionNamesMap = new Map<number, string[]>();
+  for (const r of positionRows) {
+    const arr = positionNamesMap.get(r.userId) ?? [];
+    arr.push(r.name);
+    positionNamesMap.set(r.userId, arr);
+  }
+
   const directTargetMap = new Map(
-    directTargetRows.map((r) => [r.conversationId, { id: r.id, nickname: r.nickname, avatar: r.avatar }]),
+    directTargetRows.map((r) => [r.conversationId, {
+      id: r.id,
+      nickname: r.nickname,
+      avatar: r.avatar,
+      phone: r.phone ?? null,
+      email: r.email ?? null,
+      departmentName: r.departmentId ? (deptNameMap.get(r.departmentId) ?? null) : null,
+      positionNames: positionNamesMap.get(r.id) ?? [],
+    }]),
   );
 
   // 批量拉取消息时间（用于本地计算未读，避免逐会话 count 查询）
@@ -464,11 +499,24 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
   }
 
   // 检查对方用户是否存在
-  const targetUser = await db.query.users.findFirst({
+  const targetUserRow = await db.query.users.findFirst({
     where: eq(users.id, targetUserId),
-    columns: { id: true, nickname: true, avatar: true },
+    columns: { id: true, nickname: true, avatar: true, phone: true, email: true, departmentId: true },
+    with: {
+      department: { columns: { name: true } },
+      userPositions: { with: { position: { columns: { name: true } } } },
+    },
   });
-  if (!targetUser) throw new HTTPException(404, { message: '用户不存在' });
+  if (!targetUserRow) throw new HTTPException(404, { message: '用户不存在' });
+  const targetUser = {
+    id: targetUserRow.id,
+    nickname: targetUserRow.nickname,
+    avatar: targetUserRow.avatar,
+    phone: targetUserRow.phone ?? null,
+    email: targetUserRow.email ?? null,
+    departmentName: targetUserRow.department?.name ?? null,
+    positionNames: (targetUserRow.userPositions as Array<{ position: { name: string } }>).map((up) => up.position.name),
+  };
 
   // 查找已有的 direct 会话（双方都在的）
   const existingConvIds = await db

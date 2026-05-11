@@ -769,6 +769,10 @@ export interface ChatConversation {
     id: number;
     nickname: string;
     avatar: string | null;
+    phone?: string | null;
+    email?: string | null;
+    departmentName?: string | null;
+    positionNames?: string[];
   } | null;
   lastMessage: ChatMessage | null;
   unreadCount: number;
