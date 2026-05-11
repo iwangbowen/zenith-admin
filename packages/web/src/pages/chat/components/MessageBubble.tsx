@@ -15,7 +15,7 @@ export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
   onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji,
-  currentUserId, onEdit, onVote,
+  currentUserId, onEdit, onVote, isHighlighted,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -40,6 +40,7 @@ export function MessageBubble({
   currentUserId?: number | null;
   onEdit?: (msg: ChatMessage) => void;
   onVote?: (msg: ChatMessage, optionIds: string[]) => void;
+  isHighlighted?: boolean;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -182,7 +183,12 @@ export function MessageBubble({
     return (
       <div
         id={`msg-${msg.id}`}
-        style={{ textAlign: 'center', padding: '0 0 4px' }}
+        style={{
+          textAlign: 'center', padding: '0 0 4px',
+          background: isHighlighted ? 'var(--semi-color-primary-light-hover)' : undefined,
+          borderRadius: isHighlighted ? 8 : undefined,
+          transition: 'background 0.3s ease',
+        }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
@@ -223,7 +229,15 @@ export function MessageBubble({
 
   if (msg.isRecalled) {
     return (
-      <div style={{ textAlign: 'center', padding: '4px 0' }}>
+      <div
+        id={`msg-${msg.id}`}
+        style={{
+          textAlign: 'center', padding: '4px 0',
+          background: isHighlighted ? 'var(--semi-color-primary-light-hover)' : undefined,
+          borderRadius: isHighlighted ? 8 : undefined,
+          transition: 'background 0.3s ease',
+        }}
+      >
         <Tooltip content={fullTimeStr} position="top">
           <Text type="tertiary" style={{ fontSize: 12, cursor: 'default' }}>
             {isSelf ? '你' : (msg.senderName ?? '对方')}撤回了一条消息
@@ -249,10 +263,12 @@ export function MessageBubble({
       id={`msg-${msg.id}`}
       style={{
         display: 'flex', flexDirection: isSelf ? 'row-reverse' : 'row', gap: 8, marginBottom: 16, alignItems: 'flex-end',
-        background: isSelected ? 'var(--semi-color-primary-light-default)' : 'transparent',
+        background: isHighlighted
+          ? 'var(--semi-color-primary-light-hover)'
+          : isSelected ? 'var(--semi-color-primary-light-default)' : 'transparent',
         borderRadius: 8,
-        padding: multiSelectMode ? '2px 4px' : '0',
-        transition: 'background 0.15s ease',
+        padding: multiSelectMode ? '2px 4px' : (isHighlighted ? '4px 6px' : '0'),
+        transition: 'background 0.3s ease',
         cursor: multiSelectMode ? 'pointer' : 'default',
       }}
       onClick={multiSelectMode ? () => onToggleSelect?.(msg) : undefined}

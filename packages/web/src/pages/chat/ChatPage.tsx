@@ -3,6 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover,
 } from '@douyinfe/semi-ui';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
+
+// Virtuoso 中支持 prepend（向前加载历史消息）需要预留的虚拟 index 起点
+const VIRTUOSO_FIRST_INDEX_BUFFER = 10000;
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import {
@@ -151,10 +155,11 @@ export default function ChatPage({
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
   const previewSessionRef = useRef(0);
   const previewBlobUrlsRef = useRef<string[]>([]);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const isAtBottomRef = useRef(true);
+  const [firstItemIndex, setFirstItemIndex] = useState(VIRTUOSO_FIRST_INDEX_BUFFER);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileAttachRef = useRef<HTMLInputElement>(null);
   const emojiContainerRef = useRef<HTMLDivElement>(null);
@@ -232,12 +237,6 @@ export default function ChatPage({
     return members;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConv?.type, activeGroupMembers, currentUserId, mentionState]);
-
-  const isNearBottom = useCallback(() => {
-    const el = messagesContainerRef.current;
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-  }, []);
 
   const fetchConversations = useCallback(async () => {
     setLoadingConvs(true);
@@ -385,9 +384,6 @@ export default function ChatPage({
   }, [fetchFavoriteMessages, leftPaneMode]);
 
   const fetchMessages = useCallback(async (convId: number, beforeId?: number) => {
-    const el = messagesContainerRef.current;
-    const prevScrollHeight = el?.scrollHeight ?? 0;
-    const prevScrollTop = el?.scrollTop ?? 0;
     setLoadingMsgs(true);
     const qs = beforeId ? `beforeId=${beforeId}&limit=30` : 'limit=30';
     const res = await request.get<{ list: ChatMessage[]; hasMore: boolean }>(
@@ -400,17 +396,14 @@ export default function ChatPage({
       if (beforeId) {
         setMessages((prev) => [...newMsgs, ...prev]);
         setOldestMsgId(newMsgs[0]?.id ?? null);
-        requestAnimationFrame(() => {
-          const box = messagesContainerRef.current;
-          if (!box) return;
-          const delta = box.scrollHeight - prevScrollHeight;
-          box.scrollTop = prevScrollTop + delta;
-        });
+        // Virtuoso 通过 firstItemIndex 向前偏移来保持当前视口位置不跳动
+        setFirstItemIndex((prev) => prev - newMsgs.length);
       } else {
         setMessages(newMsgs);
         setOldestMsgId(newMsgs[0]?.id ?? null);
         setPendingNewMsgCount(0);
         setContextMode(null);
+        setFirstItemIndex(VIRTUOSO_FIRST_INDEX_BUFFER);
       }
       setHasMore(res.data.hasMore);
     }
@@ -480,7 +473,7 @@ export default function ChatPage({
     await fetchMessages(conv.id);
     await request.post(`/api/chat/conversations/${conv.id}/read`, {}, { silent: true });
     setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, unreadCount: 0, hasMentionUnread: false } : c));
-    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    setTimeout(() => virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' }), 100);
   }, [activeConvId, fetchMessages, input, loadDraft, onConvChange, saveDraft]);
 
   const handleNewDirectChat = useCallback(async (user: ChatUser) => {
@@ -694,17 +687,19 @@ export default function ChatPage({
     }
   }, [handleSelectImages]);
 
-  const highlightMessageEl = useCallback((el: HTMLElement) => {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.style.transition = 'background 0.3s ease';
-    el.style.background = 'var(--semi-color-primary-light-hover)';
-    setTimeout(() => { el.style.background = ''; }, 1200);
+  const triggerHighlight = useCallback((id: number) => {
+    setHighlightedMessageId(id);
+    setTimeout(() => {
+      setHighlightedMessageId((curr) => (curr === id ? null : curr));
+    }, 1200);
   }, []);
 
   const scrollToMessage = useCallback(async (id: number) => {
-    const el = document.getElementById(`msg-${id}`);
-    if (el) {
-      highlightMessageEl(el);
+    // 优先查看消息是否在当前加载的 messages 中
+    const idx = messages.findIndex((m) => m.id === id);
+    if (idx !== -1) {
+      virtuosoRef.current?.scrollToIndex({ index: firstItemIndex + idx, align: 'center', behavior: 'smooth' });
+      triggerHighlight(id);
       return;
     }
     // 消息不在当前加载范围内，调用 context 接口加载后再定位
@@ -720,13 +715,21 @@ export default function ChatPage({
     setMessages(res.data.list);
     setHasMore(res.data.hasBefore);
     setOldestMsgId(res.data.list[0]?.id ?? null);
+    setFirstItemIndex(VIRTUOSO_FIRST_INDEX_BUFFER);
     const anchorId = res.data.anchorMessageId;
     setContextMode({ anchorMessageId: anchorId, keyword: '' });
     setTimeout(() => {
-      const target = document.getElementById(`msg-${anchorId}`);
-      if (target) highlightMessageEl(target);
+      const anchorIdx = res.data?.list.findIndex((m) => m.id === anchorId) ?? -1;
+      if (anchorIdx !== -1) {
+        virtuosoRef.current?.scrollToIndex({
+          index: VIRTUOSO_FIRST_INDEX_BUFFER + anchorIdx,
+          align: 'center',
+          behavior: 'smooth',
+        });
+        triggerHighlight(anchorId);
+      }
     }, 80);
-  }, [activeConvId, highlightMessageEl]);
+  }, [activeConvId, firstItemIndex, messages, triggerHighlight]);
 
   const getReplyMessage = useCallback((id: number) => messages.find((m) => m.id === id), [messages]);
 
@@ -1136,24 +1139,6 @@ export default function ChatPage({
     void fetchMediaItems(activeConvId, mediaType, 1);
   }, [showMediaPanel, activeConvId, mediaType, fetchMediaItems]);
 
-  // ① 自动上拉加载历史消息
-  useEffect(() => {
-    const isLocalSearchFallback = Boolean(msgSearch.trim()) && !(showSearchPanel && searchHasSearched);
-    if (!hasMore || loadingMsgs || !activeConvId || isLocalSearchFallback) return;
-    const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && !loadingMsgs && hasMore) {
-          void fetchMessages(activeConvId, oldestMsgId ?? undefined);
-        }
-      },
-      { threshold: 0.1 },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [activeConvId, hasMore, loadingMsgs, oldestMsgId, msgSearch, showSearchPanel, searchHasSearched, fetchMessages]);
-
   const refreshGroupAvatarMembers = useCallback(async (conversationId: number) => {
     const res = await request.get<ChatGroupMember[]>(`/api/chat/conversations/${conversationId}/members`, { silent: true });
     if (res.code !== 0 || !res.data) return;
@@ -1168,11 +1153,11 @@ export default function ChatPage({
       const msg = wsMsg.payload;
       const isOwnMsg = msg.senderId === currentUserId;
       const mentionedMe = !isOwnMsg && (msg.extra?.mentions ?? []).some((item) => item.userId === currentUserId);
-      const shouldAutoRead = msg.conversationId === activeConvId && (isOwnMsg || isNearBottom());
+      const shouldAutoRead = msg.conversationId === activeConvId && (isOwnMsg || isAtBottomRef.current);
       if (msg.conversationId === activeConvId) {
         appendMessageOnce(msg);
         if (shouldAutoRead) {
-          setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+          setTimeout(() => virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' }), 80);
           request.post(`/api/chat/conversations/${msg.conversationId}/read`, {}, { silent: true }).catch(() => {});
           setPendingNewMsgCount(0);
         } else if (!isOwnMsg) {
@@ -1273,11 +1258,11 @@ export default function ChatPage({
           : c),
       );
     }
-  }, [activeConvId, appendMessageOnce, applyMessageUpdate, conversations, currentUserId, fetchConversations, isNearBottom, refreshGroupAvatarMembers]);
+  }, [activeConvId, appendMessageOnce, applyMessageUpdate, conversations, currentUserId, fetchConversations, refreshGroupAvatarMembers]);
 
-  const handleMessagesScroll = useCallback(() => {
-    if (!activeConvId) return;
-    if (!isNearBottom()) return;
+  const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
+    isAtBottomRef.current = atBottom;
+    if (!atBottom || !activeConvId) return;
     // 在上下文定位模式下滚动到底部时，自动恢复最新消息
     if (contextMode) {
       void restoreLatestMessages();
@@ -1286,7 +1271,13 @@ export default function ChatPage({
     if (pendingNewMsgCount > 0) setPendingNewMsgCount(0);
     request.post(`/api/chat/conversations/${activeConvId}/read`, {}, { silent: true }).catch(() => {});
     setConversations((prev) => prev.map((c) => (c.id === activeConvId ? { ...c, unreadCount: 0, hasMentionUnread: false } : c)));
-  }, [activeConvId, contextMode, isNearBottom, pendingNewMsgCount, restoreLatestMessages]);
+  }, [activeConvId, contextMode, pendingNewMsgCount, restoreLatestMessages]);
+
+  const handleStartReached = useCallback(() => {
+    const isLocalSearchFallback = Boolean(msgSearch.trim()) && !(showSearchPanel && searchHasSearched);
+    if (!hasMore || loadingMsgs || !activeConvId || isLocalSearchFallback) return;
+    void fetchMessages(activeConvId, oldestMsgId ?? undefined);
+  }, [activeConvId, fetchMessages, hasMore, loadingMsgs, msgSearch, oldestMsgId, searchHasSearched, showSearchPanel]);
 
   useWebSocket(handleWsMessage);
   const wsConnected = useWsConnected();
@@ -1306,14 +1297,14 @@ export default function ChatPage({
     if (!wsDisconnectedSinceReadyRef.current) return;
     wsDisconnectedSinceReadyRef.current = false;
 
-    const shouldStickToBottom = isNearBottom();
+    const shouldStickToBottom = isAtBottomRef.current;
     void (async () => {
       await fetchConversations();
 
       if (activeConvId && !contextMode) {
         await fetchMessages(activeConvId);
         if (shouldStickToBottom) {
-          requestAnimationFrame(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }));
+          requestAnimationFrame(() => virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' }));
           request.post(`/api/chat/conversations/${activeConvId}/read`, {}, { silent: true }).catch(() => {});
           setConversations((prev) => prev.map((c) => (c.id === activeConvId ? { ...c, unreadCount: 0, hasMentionUnread: false } : c)));
         }
@@ -1321,7 +1312,7 @@ export default function ChatPage({
 
       Toast.success('实时连接已恢复，已同步最新消息');
     })();
-  }, [activeConvId, contextMode, fetchConversations, fetchMessages, isNearBottom, wsConnected]);
+  }, [activeConvId, contextMode, fetchConversations, fetchMessages, wsConnected]);
 
   // 草稿自动保存（input 变化时持久化）
   useEffect(() => {
@@ -2193,147 +2184,184 @@ export default function ChatPage({
 
           <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
             {/* Messages */}
-            <div
-              ref={messagesContainerRef}
-              onScroll={handleMessagesScroll}
-              style={{ flex: 1, overflowY: 'auto', padding: isQuick ? '8px 12px' : '12px 20px', display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}
-            >
-              {!wsConnected && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    marginBottom: 10,
-                    padding: '8px 10px',
-                    borderRadius: 8,
-                    background: 'var(--semi-color-warning-light-default)',
-                    border: '1px solid var(--semi-color-warning-light-active)',
-                    color: 'var(--semi-color-warning)',
-                  }}
-                >
-                  <AlertCircle size={14} style={{ flexShrink: 0 }} />
-                  <Text style={{ flex: 1, fontSize: 12, color: 'inherit' }}>
-                    实时连接已断开，正在自动重连。重连期间仍可发送消息，但新消息可能会延迟同步。
-                  </Text>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative', overflow: 'hidden' }}>
+              {loadingMsgs && messages.length === 0 ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Spin size="middle" />
                 </div>
+              ) : displayMessages.length === 0 && failedMessages.filter((m) => m.convId === activeConvId).length === 0 ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
+                  {!wsConnected && (
+                    <div
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '8px 10px', borderRadius: 8,
+                        background: 'var(--semi-color-warning-light-default)',
+                        border: '1px solid var(--semi-color-warning-light-active)',
+                        color: 'var(--semi-color-warning)',
+                      }}
+                    >
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <Text style={{ flex: 1, fontSize: 12, color: 'inherit' }}>
+                        实时连接已断开，正在自动重连。重连期间仍可发送消息，但新消息可能会延迟同步。
+                      </Text>
+                    </div>
+                  )}
+                  <Empty description="发送第一条消息吧" imageStyle={{ width: 80 }} />
+                </div>
+              ) : (
+                <Virtuoso
+                  ref={virtuosoRef}
+                  style={{ flex: 1 }}
+                  data={displayMessages}
+                  firstItemIndex={firstItemIndex}
+                  initialTopMostItemIndex={Math.max(displayMessages.length - 1, 0)}
+                  followOutput={false}
+                  startReached={handleStartReached}
+                  atBottomStateChange={handleAtBottomStateChange}
+                  atBottomThreshold={120}
+                  increaseViewportBy={{ top: 600, bottom: 200 }}
+                  computeItemKey={(_idx, msg) => msg.id}
+                  components={{
+                    Header: () => (
+                      <div style={{ padding: isQuick ? '8px 12px 0' : '12px 20px 0' }}>
+                        {!wsConnected && (
+                          <div
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+                              padding: '8px 10px', borderRadius: 8,
+                              background: 'var(--semi-color-warning-light-default)',
+                              border: '1px solid var(--semi-color-warning-light-active)',
+                              color: 'var(--semi-color-warning)',
+                            }}
+                          >
+                            <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                            <Text style={{ flex: 1, fontSize: 12, color: 'inherit' }}>
+                              实时连接已断开，正在自动重连。重连期间仍可发送消息，但新消息可能会延迟同步。
+                            </Text>
+                          </div>
+                        )}
+                        {pinnedMessages.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
+                            <Text strong style={{ fontSize: 12 }}><Pin size={12} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />置顶消息</Text>
+                            {pinnedMessages.map((item) => (
+                              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => scrollToMessage(item.id)}
+                                  style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
+                                >
+                                  <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {getMessageSummary(item)}
+                                  </Text>
+                                </button>
+                                <button
+                                  type="button"
+                                  title="取消置顶"
+                                  onClick={() => { void handleTogglePinMessage(item); }}
+                                  style={{ flexShrink: 0, border: 'none', background: 'transparent', padding: 2, cursor: 'pointer', color: 'var(--semi-color-text-2)', display: 'flex', alignItems: 'center', borderRadius: 4 }}
+                                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-danger)'; }}
+                                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-text-2)'; }}
+                                >
+                                  <PinOff size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {hasMore && !useLocalSearchFallback && loadingMsgs && (
+                          <div style={{ textAlign: 'center', marginBottom: 8, minHeight: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Spin size="small" />
+                          </div>
+                        )}
+                      </div>
+                    ),
+                  }}
+                  itemContent={(virtualIndex, msg) => {
+                    const realIndex = virtualIndex - firstItemIndex;
+                    return (
+                      <div style={{ padding: isQuick ? '0 12px' : '0 20px' }}>
+                        <MessageBubble
+                          msg={msg}
+                          isSelf={msg.senderId === currentUserId}
+                          onReply={setReplyTo}
+                          onRecall={handleRecall}
+                          onOpenImage={(imageMsg) => { void openImagePreview(imageMsg, galleryImages); }}
+                          shouldShowTime={shouldDisplayMessageTime(msg, displayMessages[realIndex + 1])}
+                          getReplyMessage={getReplyMessage}
+                          onScrollToMessage={scrollToMessage}
+                          onToggleFavorite={handleToggleFavorite}
+                          onTogglePin={handleTogglePinMessage}
+                          onEditRecalled={handleEditRecalled}
+                          recalledDraft={recalledDrafts[msg.id]}
+                          multiSelectMode={multiSelectMode}
+                          isSelected={selectedMessageIds.includes(msg.id)}
+                          onToggleSelect={handleToggleSelectMessage}
+                          onForwardSingle={handleForwardSingle}
+                          onOpenForwardView={handleOpenForwardView}
+                          onDeleteMessage={handleDeleteSingle}
+                          onReaction={handleReaction}
+                          onPickReactionEmoji={handlePickReactionEmoji}
+                          currentUserId={currentUserId}
+                          onEdit={handleEditMessage}
+                          onVote={handleVoteMessage}
+                          isHighlighted={highlightedMessageId === msg.id}
+                        />
+                      </div>
+                    );
+                  }}
+                />
               )}
-              {pinnedMessages.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
-                  <Text strong style={{ fontSize: 12 }}><Pin size={12} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />置顶消息</Text>
-                  {pinnedMessages.map((item) => (
-                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <button
-                        type="button"
-                        onClick={() => scrollToMessage(item.id)}
-                        style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
+              {/* ⑥ 发送失败重试 */}
+              {failedMessages.filter((m) => m.convId === activeConvId).length > 0 && (
+                <div style={{ padding: isQuick ? '0 12px 8px' : '0 20px 8px', flexShrink: 0 }}>
+                  {failedMessages.filter((m) => m.convId === activeConvId).map((failed) => (
+                    <div
+                      key={failed.id}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px',
+                        background: 'var(--semi-color-danger-light-default)',
+                        border: '1px solid var(--semi-color-danger-light-active)',
+                        borderRadius: 8, margin: '4px 0',
+                      }}
+                    >
+                      <AlertCircle size={14} style={{ color: 'var(--semi-color-danger)', marginTop: 2, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: 13, wordBreak: 'break-word', color: 'var(--semi-color-text-0)' }}>
+                        {failed.content}
+                      </span>
+                      <Button
+                        size="small"
+                        type="danger"
+                        theme="borderless"
+                        onClick={() => {
+                          setFailedMessages((prev) => prev.filter((m) => m.id !== failed.id));
+                          setInput(failed.content);
+                          requestAnimationFrame(() => inputRef.current?.focus());
+                        }}
                       >
-                        <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {getMessageSummary(item)}
-                        </Text>
-                      </button>
-                      <button
-                        type="button"
-                        title="取消置顶"
-                        onClick={() => { void handleTogglePinMessage(item); }}
-                        style={{ flexShrink: 0, border: 'none', background: 'transparent', padding: 2, cursor: 'pointer', color: 'var(--semi-color-text-2)', display: 'flex', alignItems: 'center', borderRadius: 4 }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-danger)'; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-text-2)'; }}
+                        重试
+                      </Button>
+                      <Button
+                        size="small"
+                        theme="borderless"
+                        type="tertiary"
+                        onClick={() => setFailedMessages((prev) => prev.filter((m) => m.id !== failed.id))}
                       >
-                        <PinOff size={12} />
-                      </button>
+                        忽略
+                      </Button>
                     </div>
                   ))}
                 </div>
               )}
-              {hasMore && !useLocalSearchFallback && (
-                <div
-                  ref={loadMoreSentinelRef}
-                  style={{ textAlign: 'center', marginBottom: 8, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  {loadingMsgs && <Spin size="small" />}
-                </div>
-              )}
-              <Spin spinning={loadingMsgs && messages.length === 0}>
-                {displayMessages.length === 0 && !loadingMsgs && (
-                  <Empty description="发送第一条消息吧" style={{ margin: 'auto' }} imageStyle={{ width: 80 }} />
-                )}
-                {displayMessages.map((msg, index) => (
-                  <MessageBubble
-                    key={msg.id}
-                    msg={msg}
-                    isSelf={msg.senderId === currentUserId}
-                    onReply={setReplyTo}
-                    onRecall={handleRecall}
-                    onOpenImage={(imageMsg) => { void openImagePreview(imageMsg, galleryImages); }}
-                    shouldShowTime={shouldDisplayMessageTime(msg, displayMessages[index + 1])}
-                    getReplyMessage={getReplyMessage}
-                    onScrollToMessage={scrollToMessage}
-                    onToggleFavorite={handleToggleFavorite}
-                    onTogglePin={handleTogglePinMessage}
-                    onEditRecalled={handleEditRecalled}
-                    recalledDraft={recalledDrafts[msg.id]}
-                    multiSelectMode={multiSelectMode}
-                    isSelected={selectedMessageIds.includes(msg.id)}
-                    onToggleSelect={handleToggleSelectMessage}
-                    onForwardSingle={handleForwardSingle}
-                    onOpenForwardView={handleOpenForwardView}
-                    onDeleteMessage={handleDeleteSingle}
-                    onReaction={handleReaction}
-                    onPickReactionEmoji={handlePickReactionEmoji}
-                    currentUserId={currentUserId}
-                    onEdit={handleEditMessage}
-                    onVote={handleVoteMessage}
-                  />
-                ))}
-                {/* ⑥ 发送失败重试 */}
-                {failedMessages.filter((m) => m.convId === activeConvId).map((failed) => (
-                  <div
-                    key={failed.id}
-                    style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px',
-                      background: 'var(--semi-color-danger-light-default)',
-                      border: '1px solid var(--semi-color-danger-light-active)',
-                      borderRadius: 8, margin: '4px 0',
-                    }}
-                  >
-                    <AlertCircle size={14} style={{ color: 'var(--semi-color-danger)', marginTop: 2, flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: 13, wordBreak: 'break-word', color: 'var(--semi-color-text-0)' }}>
-                      {failed.content}
-                    </span>
-                    <Button
-                      size="small"
-                      type="danger"
-                      theme="borderless"
-                      onClick={() => {
-                        setFailedMessages((prev) => prev.filter((m) => m.id !== failed.id));
-                        setInput(failed.content);
-                        requestAnimationFrame(() => inputRef.current?.focus());
-                      }}
-                    >
-                      重试
-                    </Button>
-                    <Button
-                      size="small"
-                      theme="borderless"
-                      type="tertiary"
-                      onClick={() => setFailedMessages((prev) => prev.filter((m) => m.id !== failed.id))}
-                    >
-                      忽略
-                    </Button>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </Spin>
               {pendingNewMsgCount > 0 && (
-                <div style={{ position: 'sticky', bottom: 10, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+                <div style={{ position: 'absolute', bottom: 10, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
                   <Button
                     size="small"
                     theme="solid"
                     type="primary"
                     style={{ pointerEvents: 'auto' }}
                     onClick={() => {
-                      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                      virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' });
                       setPendingNewMsgCount(0);
                       if (activeConvId) {
                         void request.post(`/api/chat/conversations/${activeConvId}/read`, {}, { silent: true });
