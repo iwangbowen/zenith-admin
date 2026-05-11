@@ -694,38 +694,39 @@ export default function ChatPage({
     }
   }, [handleSelectImages]);
 
+  const highlightMessageEl = useCallback((el: HTMLElement) => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.style.transition = 'background 0.3s ease';
+    el.style.background = 'var(--semi-color-primary-light-hover)';
+    setTimeout(() => { el.style.background = ''; }, 1200);
+  }, []);
+
   const scrollToMessage = useCallback(async (id: number) => {
     const el = document.getElementById(`msg-${id}`);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.style.transition = 'background 0.3s ease';
-      el.style.background = 'var(--semi-color-primary-light-hover)';
-      setTimeout(() => { el.style.background = ''; }, 1200);
+      highlightMessageEl(el);
       return;
     }
-    // 消息不在当前视图，通过 context 接口加载并跳转
+    // 消息不在当前加载范围内，调用 context 接口加载后再定位
     if (!activeConvId) return;
     const res = await request.get<ChatMessageContext>(
       `/api/chat/conversations/${activeConvId}/messages/${id}/context?before=15&after=15`,
       { silent: true },
     );
     if (res.code !== 0 || !res.data) {
-      Toast.error(res.message ?? '无法定位到该消息');
+      Toast.error(res.message ?? '定位消息失败');
       return;
     }
     setMessages(res.data.list);
     setHasMore(res.data.hasBefore);
     setOldestMsgId(res.data.list[0]?.id ?? null);
-    setContextMode({ anchorMessageId: id, keyword: '引用消息' });
+    const anchorId = res.data.anchorMessageId;
+    setContextMode({ anchorMessageId: anchorId, keyword: '' });
     setTimeout(() => {
-      const target = document.getElementById(`msg-${id}`);
-      if (!target) return;
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      target.style.transition = 'background 0.3s ease';
-      target.style.background = 'var(--semi-color-primary-light-hover)';
-      setTimeout(() => { target.style.background = ''; }, 1200);
+      const target = document.getElementById(`msg-${anchorId}`);
+      if (target) highlightMessageEl(target);
     }, 80);
-  }, [activeConvId]);
+  }, [activeConvId, highlightMessageEl]);
 
   const getReplyMessage = useCallback((id: number) => messages.find((m) => m.id === id), [messages]);
 
@@ -2222,17 +2223,7 @@ export default function ChatPage({
                   ))}
                 </div>
               )}
-              {contextMode && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
-                  <Text style={{ flex: 1, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
-                    当前正在查看搜索定位结果：{contextMode.keyword}
-                  </Text>
-                  <Button size="small" theme="borderless" type="primary" onClick={() => { void restoreLatestMessages(); }}>
-                    返回最新消息
-                  </Button>
-                </div>
-              )}
-              {hasMore && !useLocalSearchFallback && !contextMode && (
+              {hasMore && !useLocalSearchFallback && (
                 <div
                   ref={loadMoreSentinelRef}
                   style={{ textAlign: 'center', marginBottom: 8, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
