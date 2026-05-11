@@ -1537,7 +1537,7 @@ export default function ChatPage({
           <Button
             size="small"
             theme={leftPaneMode === 'favorites' ? 'solid' : 'borderless'}
-            type={leftPaneMode === 'favorites' ? 'warning' : 'tertiary'}
+            type={leftPaneMode === 'favorites' ? 'primary' : 'tertiary'}
             icon={<Bookmark size={13} />}
             onClick={() => setLeftPaneMode('favorites')}
           >
