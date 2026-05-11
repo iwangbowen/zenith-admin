@@ -7,7 +7,7 @@ import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import {
   Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users,
-  Pin, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter, BellOff, Images, AlertCircle,
+  Pin, PinOff, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter, BellOff, Images, AlertCircle,
   ArrowLeft, ExternalLink, BarChart3,
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage, useWsConnected } from '@/hooks/useWebSocket';
@@ -2215,16 +2215,27 @@ export default function ChatPage({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
                   <Text strong style={{ fontSize: 12 }}><Pin size={12} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />置顶消息</Text>
                   {pinnedMessages.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => scrollToMessage(item.id)}
-                      style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
-                    >
-                      <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {getMessageSummary(item)}
-                      </Text>
-                    </button>
+                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button
+                        type="button"
+                        onClick={() => scrollToMessage(item.id)}
+                        style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
+                      >
+                        <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {getMessageSummary(item)}
+                        </Text>
+                      </button>
+                      <button
+                        type="button"
+                        title="取消置顶"
+                        onClick={() => { void handleTogglePinMessage(item); }}
+                        style={{ flexShrink: 0, border: 'none', background: 'transparent', padding: 2, cursor: 'pointer', color: 'var(--semi-color-text-2)', display: 'flex', alignItems: 'center', borderRadius: 4 }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-danger)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-text-2)'; }}
+                      >
+                        <PinOff size={12} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
