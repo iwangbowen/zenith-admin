@@ -139,6 +139,7 @@ export default function ChatPage({
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [failedMessages, setFailedMessages] = useState<FailedMessage[]>([]);
+  const [draftsMap, setDraftsMap] = useState<Record<number, string>>({});
   const [showMediaPanel, setShowMediaPanel] = useState(false);
   const [mediaType, setMediaType] = useState<'image' | 'file'>('image');
   const [mediaItems, setMediaItems] = useState<ChatMessage[]>([]);
@@ -246,6 +247,32 @@ export default function ChatPage({
   }, []);
 
   useEffect(() => { void fetchConversations(); }, [fetchConversations]);
+
+  // 初始化时从 localStorage 加载所有草稿
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('zenith_chat_drafts');
+      if (raw) {
+        const drafts = JSON.parse(raw) as Record<string, string>;
+        const map: Record<number, string> = {};
+        for (const [k, v] of Object.entries(drafts)) {
+          if (v.trim()) map[Number(k)] = v;
+        }
+        setDraftsMap(map);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // 用户正在输入时，实时更新当前会话的草稿 map（不写 localStorage，仅更新 state）
+  useEffect(() => {
+    if (!activeConvId) return;
+    setDraftsMap((prev) => {
+      if (input.trim()) return { ...prev, [activeConvId]: input };
+      const next = { ...prev };
+      delete next[activeConvId];
+      return next;
+    });
+  }, [activeConvId, input]);
 
   // 读取 URL ?conv= 参数，在会话列表加载后自动激活对应会话
   useEffect(() => {
@@ -401,6 +428,12 @@ export default function ChatPage({
         delete drafts[String(convId)];
       }
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(drafts));
+      setDraftsMap((prev) => {
+        if (text.trim()) return { ...prev, [convId]: text };
+        const next = { ...prev };
+        delete next[convId];
+        return next;
+      });
     } catch { /* ignore */ }
   }, []);
 
@@ -546,6 +579,7 @@ export default function ChatPage({
     setInput('');
     // 清除该会话草稿
     saveDraft(activeConvId, '');
+    setDraftsMap((prev) => { const next = { ...prev }; delete next[activeConvId]; return next; });
     setPendingImages([]);
     setPendingFiles([]);
     imagesToSend.forEach((item) => URL.revokeObjectURL(item.previewUrl));
@@ -1514,6 +1548,8 @@ export default function ChatPage({
               const isMuted = conv.isMuted ?? false;
               const hasMentionUnread = conv.hasMentionUnread ?? false;
               const hasFailedMsg = failedMessages.some((m) => m.convId === conv.id);
+              const draftText = isActive ? input : (draftsMap[conv.id] ?? '');
+              const hasDraft = draftText.trim().length > 0;
               let lastMsgText = '暂无消息';
               if (lastMsg) {
                 const summary = getMessageSummary(lastMsg);
@@ -1566,7 +1602,10 @@ export default function ChatPage({
                         {hasFailedMsg && (
                           <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--semi-color-danger)', fontWeight: 500 }}>[发送失败]</span>
                         )}
-                        {!hasFailedMsg && hasMentionUnread && (
+                        {!hasFailedMsg && hasDraft && (
+                          <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--semi-color-danger)', fontWeight: 500 }}>[草稿]</span>
+                        )}
+                        {!hasFailedMsg && !hasDraft && hasMentionUnread && (
                           <span
                             style={{
                               flexShrink: 0,
@@ -1582,10 +1621,10 @@ export default function ChatPage({
                           </span>
                         )}
                         <Text
-                          type={hasFailedMsg ? 'danger' : 'tertiary'}
+                          type={(hasFailedMsg || hasDraft) ? 'danger' : 'tertiary'}
                           style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
                         >
-                          {lastMsgText}
+                          {hasDraft ? draftText.trim() : lastMsgText}
                         </Text>
                       </div>
                       {lastMsg && (
