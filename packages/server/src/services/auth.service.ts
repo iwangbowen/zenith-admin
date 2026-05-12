@@ -226,18 +226,20 @@ export async function register(input: RegisterInput) {
   const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code));
 
   const { browser, os } = parseUserAgent(input.ua);
-  await registerSession({
-    tokenId,
-    userId: user.id,
-    username: user.username,
-    nickname: user.nickname,
-    tenantId: user.tenantId ?? null,
-    ip: input.ip,
-    browser,
-    os,
-    loginAt: new Date(),
-  });
-  await recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '注册并自动登录成功', userId: user.id });
+  await Promise.all([
+    registerSession({
+      tokenId,
+      userId: user.id,
+      username: user.username,
+      nickname: user.nickname,
+      tenantId: user.tenantId ?? null,
+      ip: input.ip,
+      browser,
+      os,
+      loginAt: new Date(),
+    }),
+    recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '注册并自动登录成功', userId: user.id }),
+  ]);
   const { password: _pw, ...userInfo } = user;
   return {
     user: { ...userInfo, roles: userRoleList, createdAt: formatDateTime(user.createdAt), updatedAt: formatDateTime(user.updatedAt) },

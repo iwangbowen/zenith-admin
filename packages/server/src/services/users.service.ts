@@ -311,28 +311,30 @@ export async function updateUser(id: number, data: UpdateUserInput) {
     ensureRoleIdsExist(nextRoleIds ?? [], user),
     ensurePositionIdsExist(nextPositionIds ?? [], user),
   ]);
-  // 更新时检查用户名/邮箱是否已被其他用户占用（排除自身）
+  // 更新时检查用户名/邮箱是否已被其他用户占用（排除自身），以及禁用时校验保护账号——三项独立并行
   const tc = tenantCondition(users, user);
-  if (data.username) {
-    const conds = tc ? [eq(users.username, data.username), ne(users.id, id), tc] : [eq(users.username, data.username), ne(users.id, id)];
-    const [dup] = await db.select({ id: users.id }).from(users).where(and(...conds)).limit(1);
-    if (dup) throw new HTTPException(400, { message: '用户名已存在' });
-  }
-  if (data.email) {
-    const conds = tc ? [eq(users.email, data.email), ne(users.id, id), tc] : [eq(users.email, data.email), ne(users.id, id)];
-    const [dup] = await db.select({ id: users.id }).from(users).where(and(...conds)).limit(1);
-    if (dup) throw new HTTPException(400, { message: '邮箱已存在' });
-  }
+  const [usernameDup, emailDup, disabledTarget] = await Promise.all([
+    data.username
+      ? db.select({ id: users.id }).from(users)
+          .where(tc ? and(eq(users.username, data.username), ne(users.id, id), tc) : and(eq(users.username, data.username), ne(users.id, id)))
+          .limit(1)
+      : Promise.resolve([] as { id: number }[]),
+    data.email
+      ? db.select({ id: users.id }).from(users)
+          .where(tc ? and(eq(users.email, data.email), ne(users.id, id), tc) : and(eq(users.email, data.email), ne(users.id, id)))
+          .limit(1)
+      : Promise.resolve([] as { id: number }[]),
+    data.status === 'disabled'
+      ? db.select({ id: users.id, username: users.username }).from(users)
+          .where(tc ? and(eq(users.id, id), tc) : eq(users.id, id))
+          .limit(1)
+      : Promise.resolve([] as { id: number; username: string }[]),
+  ]);
+  if (usernameDup[0]) throw new HTTPException(400, { message: '用户名已存在' });
+  if (emailDup[0]) throw new HTTPException(400, { message: '邮箱已存在' });
   if (data.status === 'disabled') {
-    const [target] = await db
-      .select({ id: users.id, username: users.username })
-      .from(users)
-      .where(tc ? and(eq(users.id, id), tc) : eq(users.id, id))
-      .limit(1);
-    if (!target) throw new HTTPException(404, { message: '用户不存在' });
-    if (isProtectedAdminUser(target.username)) {
-      throw new HTTPException(400, { message: 'admin 账号不允许禁用' });
-    }
+    if (!disabledTarget[0]) throw new HTTPException(404, { message: '用户不存在' });
+    if (isProtectedAdminUser(disabledTarget[0].username)) throw new HTTPException(400, { message: 'admin 账号不允许禁用' });
   }
   const nextValues = {
     ...rest,
