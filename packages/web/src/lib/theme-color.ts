@@ -15,7 +15,7 @@ interface ColorVars {
 }
 
 interface ThemeColorPreset {
-  key: ThemeColor;
+  key: string;
   name: string;
   light: ColorVars;
   dark: ColorVars;
