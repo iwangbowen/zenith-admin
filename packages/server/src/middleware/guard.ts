@@ -133,7 +133,11 @@ export function guard(opts: GuardOptions) {
       } catch {
         // 响应体非 JSON 或无 data，忽略
       }
-      writeOperationLog(c, opts.audit, Date.now() - start, body, beforeData, afterData).catch(() => {});
+      const durationMs = Date.now() - start;
+      const auditOpts = opts.audit;
+      setImmediate(() => {
+        writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData).catch(() => {});
+      });
       return;
     }
 
