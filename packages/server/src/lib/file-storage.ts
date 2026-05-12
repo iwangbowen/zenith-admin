@@ -164,7 +164,7 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
         Key: file.objectKey,
       }, (err, data) => {
         if (err) reject(new Error(String(err.message ?? err)));
-        else resolve(Buffer.isBuffer(data.Body) ? data.Body : Buffer.from(data.Body as Uint8Array));
+        else resolve(Buffer.isBuffer(data.Body) ? data.Body : Buffer.from(data.Body));
       });
     });
     return { buffer, contentType: file.mimeType ?? 'application/octet-stream', fileName: file.originalName };

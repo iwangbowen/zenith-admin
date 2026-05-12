@@ -28,7 +28,7 @@ export class GitHubProvider implements OAuthProvider {
       }),
     });
     const data = await resp.json() as Record<string, unknown>;
-    if (data.error) throw new Error(`GitHub OAuth error: ${data.error_description || data.error}`);
+    if (data.error) throw new Error(`GitHub OAuth error: ${(data.error_description || data.error) as string}`);
     return { accessToken: data.access_token as string };
   }
 

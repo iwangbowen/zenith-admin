@@ -53,6 +53,5 @@ export async function exportToExcel(
     }
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
-  return buffer as unknown as ArrayBuffer;
+  return await workbook.xlsx.writeBuffer();
 }

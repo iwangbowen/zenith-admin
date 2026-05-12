@@ -218,7 +218,7 @@ async function seed() {
     await db.insert(systemConfigs).values(cfgsToInsert.map((cfg) => ({
       configKey:   cfg.configKey,
       configValue: cfg.configValue,
-      configType:  cfg.configType as 'boolean' | 'string' | 'number' | 'json',
+      configType:  cfg.configType,
       description: cfg.description ?? '',
     })));
   }
