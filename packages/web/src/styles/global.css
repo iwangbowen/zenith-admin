@@ -239,29 +239,3 @@ body {
   color: var(--color-text-secondary);
   margin-top: 4px;
 }
-
-/* ===== 紧凑模式 ===== */
-[data-compact="true"] {
-  --header-height: 40px;
-}
-
-[data-compact="true"] .page-container {
-  padding: 8px;
-  gap: 8px;
-}
-
-[data-compact="true"] .page-container .semi-card-body {
-  padding: 8px 12px !important;
-}
-
-[data-compact="true"] .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
-  padding: 5px 12px;
-}
-
-[data-compact="true"] .semi-table-thead > .semi-table-row > .semi-table-row-head {
-  padding: 5px 12px;
-}
-
-[data-compact="true"] .responsive-toolbar {
-  gap: 8px;
-}

@@ -14,7 +14,6 @@ export interface UserPreferences {
   showMenuSearch: boolean;
   showFullscreen: boolean;
   showQuickChat: boolean;
-  compact: boolean;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -27,7 +26,6 @@ export const defaultPreferences: UserPreferences = {
   showMenuSearch: true,
   showFullscreen: true,
   showQuickChat: true,
-  compact: false,
 };
 
 function loadPreferences(): UserPreferences {
