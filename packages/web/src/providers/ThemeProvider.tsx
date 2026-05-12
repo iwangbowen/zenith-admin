@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { PREFERENCES_KEY } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
-import { applyThemeColor, type ThemeColor } from '@/lib/theme-color';
+import { applyThemeColor } from '@/lib/theme-color';
 import { defaultPreferences } from '@/hooks/usePreferences';
 
 type ThemePrefs = {
   colorMode: ThemeMode;
-  themeColor: ThemeColor;
+  themeColor: string;
 };
 
 const THEME_DEFAULTS: ThemePrefs = {
@@ -16,10 +16,10 @@ const THEME_DEFAULTS: ThemePrefs = {
 
 interface ThemeControllerValue {
   mode: ThemeMode;
-  themeColor: ThemeColor;
+  themeColor: string;
   isDark: boolean;
   setThemeMode: (mode: ThemeMode) => void;
-  setThemeColor: (color: ThemeColor) => void;
+  setThemeColor: (color: string) => void;
   cycleTheme: () => void;
   resetTheme: () => void;
 }
@@ -57,7 +57,7 @@ function persistThemePrefs(partial: Partial<ThemePrefs>) {
 
 export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   const initial = useMemo(() => loadThemePrefs(), []);
-  const [themeColor, setThemeColor] = useState<ThemeColor>(initial.themeColor);
+  const [themeColor, setThemeColor] = useState<string>(initial.themeColor);
   const { mode, setThemeMode: setThemeModeInternal } = useTheme(initial.colorMode);
 
   const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
@@ -71,7 +71,7 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
     persistThemePrefs({ colorMode: nextMode });
   }, [setThemeModeInternal]);
 
-  const updateThemeColor = useCallback((nextColor: ThemeColor) => {
+  const updateThemeColor = useCallback((nextColor: string) => {
     setThemeColor(nextColor);
     persistThemePrefs({ themeColor: nextColor });
   }, []);

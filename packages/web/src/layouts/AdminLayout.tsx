@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Button, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
-import { Bell, Building2, Check, Maximize2, Minimize2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
+import { Bell, Building2, Check, Maximize2, Minimize2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, Notice, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -128,6 +128,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   }, [menuTree]);
   const { preferences, setPreferences, resetPreferences } = usePreferences();
   const { mode, themeColor, setThemeMode, setThemeColor, resetTheme } = useThemeController();
+  const colorPickerRef = useRef<HTMLInputElement>(null);
 
   const handleThemeModeChange = useCallback((newMode: ThemeMode) => {
     setThemeMode(newMode);
@@ -1031,6 +1032,28 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       </Tooltip>
                     );
                   })}
+                  {/* 自定义颜色 */}
+                  <Tooltip content="自定义颜色" position="top">
+                    <button
+                      type="button"
+                      className={`theme-color-swatch theme-color-swatch--custom${themeColor.startsWith('#') ? ' theme-color-swatch--active' : ''}`}
+                      style={themeColor.startsWith('#') ? { backgroundColor: themeColor, color: themeColor } : {}}
+                      onClick={() => colorPickerRef.current?.click()}
+                      title="自定义颜色"
+                    >
+                      {themeColor.startsWith('#')
+                        ? <span className="theme-color-swatch__check"><Check size={14} strokeWidth={2.5} /></span>
+                        : <span className="theme-color-swatch__icon"><Palette size={14} /></span>
+                      }
+                    </button>
+                  </Tooltip>
+                  <input
+                    ref={colorPickerRef}
+                    type="color"
+                    style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+                    value={themeColor.startsWith('#') ? themeColor : '#3370ff'}
+                    onChange={(e) => setThemeColor(e.target.value)}
+                  />
                 </div>
               </div>
 
