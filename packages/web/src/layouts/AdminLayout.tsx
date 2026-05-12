@@ -165,6 +165,15 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     }
   }, []);
 
+  // 紧凑模式：同步到 document 根元素 data-compact 属性
+  useEffect(() => {
+    if (preferences.compact) {
+      document.documentElement.dataset['compact'] = 'true';
+    } else {
+      delete document.documentElement.dataset['compact'];
+    }
+  }, [preferences.compact]);
+
   // 每次 App 会话只弹一次：见过一次后不再重复
   const evictToastShownRef = useRef(false);
   const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs } = useTabsStore(
@@ -1058,6 +1067,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>显示面包屑导航</span>
                 <Switch checked={preferences.showBreadcrumb} onChange={(v) => setPreferences({ showBreadcrumb: v })} />
+              </div>
+
+              {/* ── 紧凑模式 ── */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>紧凑模式</span>
+                <Switch checked={preferences.compact ?? false} onChange={(v) => setPreferences({ compact: v })} />
               </div>
 
               {/* ── 菜单搜索 ── */}
