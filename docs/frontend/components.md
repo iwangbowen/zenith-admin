@@ -8,12 +8,12 @@
 
 搜索工具栏组件，用于所有 CRUD 列表页面的顶部筛选区域。
 
-### Props
+### SearchToolbar Props
 
 - `children: ReactNode`：工具栏内容（搜索输入框、下拉筛选、查询/重置按钮、新增等操作按钮），自动用 `<Space wrap>` 包裹
 - `className: string`：附加 CSS 类名，应用到外层容器
 
-### RegionSelect 使用示例
+### SearchToolbar 使用示例
 
 ```tsx
 import { SearchToolbar } from '../../components/SearchToolbar';
@@ -45,7 +45,7 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
 </SearchToolbar>
 ```
 
-### 注意事项
+### SearchToolbar 注意事项
 
 - 按钮文案统一为**「查询」「重置」「新增」**
 - `children` 内的元素会自动换行（`wrap`），响应式友好
@@ -58,29 +58,29 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
 
 **文件位置**：`packages/web/src/components/RegionSelect.tsx`
 
-### 功能特点
+### RegionSelect 功能特点
 
 - 支持省 → 市 → 区/县三级行政区划
 - 组件挂载时请求 `GET /api/regions`，并在当前组件实例中复用已加载的地区树数据
 - 返回所选区划的完整 code 路径（如 `['110000', '110100', '110101']`）
 - 内置搜索过滤（`filterTreeNode`）
 
-### Props
+### RegionSelect Props
 
 | Prop | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
+| --- | --- | --- | --- |
 | `value` | `string[]` | — | 当前选中的区划代码路径 |
 | `onChange` | `(value: string[] \| undefined) => void` | — | 选中变化回调，清空时传 `undefined` |
-| `placeholder` | `string` | `'请选择省/市/区'` | 占位文字（加载中自动替换为"加载中..."）|
+| `placeholder` | `string` | `'请选择省/市/区'` | 占位文字（加载中自动替换为"加载中..."） |
 | `disabled` | `boolean` | `false` | 是否禁用 |
 | `showClear` | `boolean` | `true` | 是否显示清空按钮 |
-| `changeOnSelect` | `boolean` | `true` | `true`：可选中任意层级（省/市/区均可作为最终结果）；`false`：必须选到最底层（区/县）|
+| `changeOnSelect` | `boolean` | `true` | `true`：可选中任意层级（省/市/区均可）；`false`：必须选到最底层（区/县） |
 | `style` | `CSSProperties` | — | 行内样式 |
 | `className` | `string` | — | 附加 CSS 类名 |
 
-### 使用示例
+### RegionSelect 使用示例
 
-**① 基础用法（可选到任意层级）**
+基础用法（可选到任意层级）：
 
 ```tsx
 import RegionSelect from '@/components/RegionSelect';
@@ -95,7 +95,7 @@ const [regionCodes, setRegionCodes] = useState<string[]>();
 />
 ```
 
-**② 必须选到县级（`changeOnSelect={false}`）**
+必须选到县级（`changeOnSelect={false}`）：
 
 ```tsx
 <RegionSelect
@@ -107,7 +107,7 @@ const [regionCodes, setRegionCodes] = useState<string[]>();
 />
 ```
 
-**③ 禁用状态**
+禁用状态：
 
 ```tsx
 <RegionSelect disabled placeholder="禁用" style={{ width: 320 }} />
@@ -131,17 +131,43 @@ const [regionCodes, setRegionCodes] = useState<string[]>();
 
 ---
 
-## DiffTable（操作日志变更对比）
+## DictTag
 
-**文件位置**：`packages/web/src/pages/system/operation-logs/`
+根据字典编码和字典项值，自动渲染带颜色的 Semi Design `Tag`。颜色来源于字典项的 `color` 字段，内部使用 `useDictItems` hook 按需拉取字典数据（带内存缓存，同一 `dictCode` 只请求一次）。
 
-用于在操作日志「详情」弹窗中展示**变更前后的实体字段对比**，纯展示组件，无需手动维护。
+**文件位置**：`packages/web/src/components/DictTag.tsx`
 
-### 渲染规则
+### DictTag Props
 
-- 每行代表一个字段，列出「字段名 / 变更前 / 变更后」
-- 有差异的行高亮显示（黄色背景）
-- `DELETE` 操作：只有 `beforeData`，展示被删除前的数据快照
-- `PUT` 操作：同时有 `beforeData` 和 `afterData`，展示完整字段变更对比
+| Prop | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `dictCode` | `string` | — | 字典编码，如 `'common_status'` |
+| `value` | `string \| undefined \| null` | — | 字典项的值，`null`/空串时渲染 `—` |
+| `fallback` | `string` | — | 找不到字典项时的兜底文本，默认显示原始 `value` |
+| `size` | `TagProps['size']` | `'small'` | Tag 尺寸，继承 Semi Design TagProps |
+| 其他 TagProps | — | — | 透传给底层 `<Tag>`（除 `color` 和 `children`） |
 
-> 这是只读组件，不需要主动维护。如果新的路由需要支持操作日志 Diff，请参考 [操作日志与变更记录](/backend/audit-log-changes) 中的接入说明。
+### DictTag 使用示例
+
+```tsx
+import DictTag from '@/components/DictTag';
+
+// 渲染状态 Tag（字典编码 common_status）
+<DictTag dictCode="common_status" value={record.status} />
+
+// 渲染性别 Tag，找不到时显示"未知"
+<DictTag dictCode="user_gender" value={record.gender} fallback="未知" />
+```
+
+### 配合 `useDictItems` 使用
+
+如果页面需要字典数据做下拉选项，可直接使用 `useDictItems` hook：
+
+```tsx
+import { useDictItems } from '@/hooks/useDictItems';
+
+const { items, loading, getLabel } = useDictItems('common_status');
+
+// items: DictItem[]，每项包含 { value, label, color, ... }
+// getLabel('enabled') => '启用'
+```
