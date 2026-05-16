@@ -170,9 +170,9 @@ where(sql`${users.username} = 'admin' AND ${users.tenantId} IS NULL`)
 
 > 只有 Drizzle 未抽象的表达式（`date(col AT TIME ZONE 'UTC')`、`setval()`、`pg_stat_*` 系统表、`excluded.xxx` upsert 引用）才允许保留裸 `sql` 模板。
 
-## 批量 upsert + `sql\`excluded.<column>\``
+## 批量 upsert + `sql\`excluded.&lt;column&gt;\``
 
-**不要在循环里逐条执行 upsert**。Drizzle 支持 `.values([...])` 数组语法，配合 `onConflictDoUpdate` 的 `set` 中使用 `sql\`excluded.<snake_case_column_name>\`` 完成单语句批量 upsert：
+**不要在循环里逐条执行 upsert**。Drizzle 支持 `.values([...])` 数组语法，配合 `onConflictDoUpdate` 的 `set` 中使用 `sql\`excluded.&lt;snake_case_column_name&gt;\`` 完成单语句批量 upsert：
 
 ```ts
 // ✅ 批量 upsert（单次 round-trip）
@@ -194,7 +194,7 @@ for (const row of menuRows) {
 
 **要点**：
 
-- `sql\`excluded.xxx\`` 中的列名必须是**数据库真实列名**（snake_case），不是 JS 属性名。写错会直接 `column excluded.<x> does not exist`。
+- `sql\`excluded.xxx\`` 中的列名必须是**数据库真实列名**（snake_case），不是 JS 属性名。写错会直接 `column excluded.&lt;x&gt; does not exist`。
 - 如果列数多且懒得手写，可简单复制定义里的 `integer('parent_id')` / `varchar('config_value')` 等 DB 名即可。
 - `updatedAt` 在 upsert 的 set 里仍需显式写 `new Date()`（因为 `$onUpdate` 只对 `.update()` 生效，对 `onConflictDoUpdate` 不自动触发）。
 
