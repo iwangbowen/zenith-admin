@@ -62,19 +62,55 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
 
 - 支持省 → 市 → 区/县三级行政区划
 - 组件挂载时请求 `GET /api/regions`，并在当前组件实例中复用已加载的地区树数据
-- 返回所选区划的完整 code 路径
+- 返回所选区划的完整 code 路径（如 `['110000', '110100', '110101']`）
+- 内置搜索过滤（`filterTreeNode`）
+
+### Props
+
+| Prop | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `value` | `string[]` | — | 当前选中的区划代码路径 |
+| `onChange` | `(value: string[] \| undefined) => void` | — | 选中变化回调，清空时传 `undefined` |
+| `placeholder` | `string` | `'请选择省/市/区'` | 占位文字（加载中自动替换为"加载中..."）|
+| `disabled` | `boolean` | `false` | 是否禁用 |
+| `showClear` | `boolean` | `true` | 是否显示清空按钮 |
+| `changeOnSelect` | `boolean` | `true` | `true`：可选中任意层级（省/市/区均可作为最终结果）；`false`：必须选到最底层（区/县）|
+| `style` | `CSSProperties` | — | 行内样式 |
+| `className` | `string` | — | 附加 CSS 类名 |
 
 ### 使用示例
 
+**① 基础用法（可选到任意层级）**
+
 ```tsx
-import RegionSelect from '../../components/RegionSelect';
+import RegionSelect from '@/components/RegionSelect';
+import { useState } from 'react';
+
+const [regionCodes, setRegionCodes] = useState<string[]>();
 
 <RegionSelect
   value={regionCodes}
-  onChange={(codes) => setRegionCodes(codes as string[])}
-  placeholder="请选择省/市/区"
-  style={{ width: 280 }}
+  onChange={setRegionCodes}
+  style={{ width: 320 }}
 />
+```
+
+**② 必须选到县级（`changeOnSelect={false}`）**
+
+```tsx
+<RegionSelect
+  value={regionCodes}
+  onChange={setRegionCodes}
+  changeOnSelect={false}
+  placeholder="请选择到县/区级"
+  style={{ width: 320 }}
+/>
+```
+
+**③ 禁用状态**
+
+```tsx
+<RegionSelect disabled placeholder="禁用" style={{ width: 320 }} />
 ```
 
 此组件已在用户管理的「省市区」字段使用，也可在任何需要行政区划选择的表单中复用。
