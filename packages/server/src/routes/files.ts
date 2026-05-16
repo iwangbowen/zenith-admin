@@ -1,10 +1,10 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, BatchIdsBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, BatchIdsBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO } from '../lib/openapi-dtos';
 import {
-  readFileContent, listManagedFiles, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, exportManagedFiles, getManagedFileBeforeAudit, batchDownloadFilesAsZip,
+  readFileContent, listManagedFiles, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, getManagedFileBeforeAudit, batchDownloadFilesAsZip,
 } from '../services/files.service';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -140,19 +140,6 @@ const batchDeleteRoute = defineOpenAPIRoute({
   },
 });
 
-const exportRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export', tags: ['Files'], summary: '导出文件列表 Excel',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:file:list' })] as const,
-    responses: { ...commonErrorResponses, ...okExcel('Excel 文件') },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportManagedFiles();
-    return excelStreamBody(c, stream, filename);
-  },
-});
-
 const uploadOneRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/upload-one', tags: ['Files'], summary: '上传单个文件',
@@ -183,7 +170,7 @@ const uploadOneRoute = defineOpenAPIRoute({
   },
 });
 
-filesRouter.openapiRoutes([contentRoute, listRoute, uploadRoute, uploadOneRoute, batchDeleteRoute, deleteRoute, exportRoute] as const);
+filesRouter.openapiRoutes([contentRoute, listRoute, uploadRoute, uploadOneRoute, batchDeleteRoute, deleteRoute] as const);
 
 // 非 OpenAPI 路由：批量下载打包为 zip 流式响应
 filesRouter.post('/batch-download', authMiddleware, guard({ permission: 'system:file:list' }), async (c) => {
