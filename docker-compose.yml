@@ -1,0 +1,135 @@
+# Zenith Admin — 生产环境 Docker Compose
+#
+# 用法：
+#   1. 复制 .env.docker → .env，按需修改敏感变量
+#   2. docker compose up -d
+#   3. 前端访问 http://localhost:80，API 地址 http://localhost:3300
+#
+# 服务拓扑：
+#   postgres  ─┐
+#   redis     ─┤─→  api (Node.js)  ─→  web (Nginx, 80)
+#
+name: zenith-admin
+
+services:
+  # ─── PostgreSQL ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: zenith-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zenith_admin
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zenith_admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── Redis ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: zenith-redis
+    restart: unless-stopped
+    # Enable password auth when REDIS_PASSWORD is set
+    command: >
+      sh -c "
+        if [ -n '$$REDIS_PASSWORD' ]; then
+          redis-server --requirepass $$REDIS_PASSWORD
+        else
+          redis-server
+        fi
+      "
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: >
+        sh -c "
+          if [ -n '$$REDIS_PASSWORD' ]; then
+            redis-cli -a $$REDIS_PASSWORD ping
+          else
+            redis-cli ping
+          fi
+        "
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ─── Backend API (Hono + Node.js) ────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    image: zenith-admin-api:${TAG:-latest}
+    container_name: zenith-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3300
+      # ── Auth ─────────────────────────────────────────────────────────────
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required in production}
+      # ── Database ─────────────────────────────────────────────────────────
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/zenith_admin
+      # ── Redis ─────────────────────────────────────────────────────────────
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      # ── CORS / Security ───────────────────────────────────────────────────
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      # ── Logging ───────────────────────────────────────────────────────────
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_DIR: /app/packages/server/logs
+      # ── Optional OAuth ────────────────────────────────────────────────────
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-http://localhost}
+    volumes:
+      # Persist local file uploads
+      - api_storage:/app/packages/server/storage
+      # Persist server logs
+      - api_logs:/app/packages/server/logs
+    ports:
+      - "${API_PORT:-3300}:3300"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3300/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ─── Frontend (Nginx serving Vite static build) ───────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: zenith-admin-web:${TAG:-latest}
+    container_name: zenith-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+volumes:
+  postgres_data:
+  redis_data:
+  api_storage:
+  api_logs:

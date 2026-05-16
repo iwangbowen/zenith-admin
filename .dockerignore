@@ -1,0 +1,39 @@
+# ─── Git / VCS ────────────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ─── Node.js dependencies (reinstalled inside container) ──────────────────────
+node_modules
+**/node_modules
+
+# ─── Build outputs (generated inside container) ───────────────────────────────
+**/dist
+**/.tsbuildinfo
+
+# ─── Test coverage ────────────────────────────────────────────────────────────
+**/coverage
+
+# ─── Environment files (never bake secrets into images) ───────────────────────
+**/.env
+**/.env.*
+!**/.env.example
+
+# ─── Runtime data (use Docker volumes instead) ────────────────────────────────
+packages/server/logs
+packages/server/storage
+
+# ─── Documentation ────────────────────────────────────────────────────────────
+docs
+
+# ─── Editor / OS ──────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Misc dev files ───────────────────────────────────────────────────────────
+*.log
+check_icons_tmp.*
