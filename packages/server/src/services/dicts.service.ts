@@ -3,7 +3,7 @@ import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { dicts, dictItems } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/datetime';
 import { currentUser } from '../lib/context';
 import { HTTPException } from 'hono/http-exception';
@@ -142,10 +142,10 @@ export async function getDictItemBeforeAudit(itemId: number) {
   return mapDictItem(row);
 }
 
-export async function exportDicts(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportDicts(): Promise<{ stream: ReadableStream; filename: string }> {
   const user = currentUser();
   const rows = await db.select().from(dicts).where(tenantCondition(dicts, user)).orderBy(asc(dicts.id));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '字典名称', key: 'name', width: 20 },
@@ -157,5 +157,5 @@ export async function exportDicts(): Promise<{ buffer: ArrayBuffer; filename: st
     rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '字典列表',
   );
-  return { buffer, filename: 'dicts.xlsx' };
+  return { stream, filename: 'dicts.xlsx' };
 }

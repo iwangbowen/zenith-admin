@@ -3,7 +3,7 @@ import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { cronJobs, cronJobLogs } from '../db/schema';
 import { scheduleJob, stopJob, runJobOnce, validateCronExpression } from '../lib/cron-scheduler';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 
@@ -87,9 +87,9 @@ export async function setCronJobStatus(id: number, status: 'enabled' | 'disabled
   return status === 'enabled' ? '已启用' : '已停用';
 }
 
-export async function exportCronJobs(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportCronJobs(): Promise<{ stream: ReadableStream; filename: string }> {
   const rows = await db.select().from(cronJobs).orderBy(desc(cronJobs.id));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '任务名称', key: 'name', width: 20 },
@@ -103,7 +103,7 @@ export async function exportCronJobs(): Promise<{ buffer: ArrayBuffer; filename:
     rows.map((r) => ({ ...r, lastRunAt: formatDateTimeForExcel(r.lastRunAt), createdAt: formatDateTimeForExcel(r.createdAt) })),
     '定时任务',
   );
-  return { buffer, filename: 'cron-jobs.xlsx' };
+  return { stream, filename: 'cron-jobs.xlsx' };
 }
 
 export async function listAllCronJobLogs(q: { page: number; pageSize: number }) {

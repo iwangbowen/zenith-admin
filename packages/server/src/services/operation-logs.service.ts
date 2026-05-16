@@ -2,7 +2,7 @@ import { count, desc, like, and, gte, lte, sql, eq } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { formatDateTime, formatDate, parseDateTimeInput } from '../lib/datetime';
@@ -79,10 +79,10 @@ export async function operationLogStats(daysRaw?: number) {
   };
 }
 
-export async function exportOperationLogs(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportOperationLogs(): Promise<{ stream: ReadableStream; filename: string }> {
   const user = currentUser();
   const rows = await db.select().from(operationLogs).where(tenantCondition(operationLogs, user)).orderBy(desc(operationLogs.id));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '用户名', key: 'username', width: 14 },
@@ -98,5 +98,5 @@ export async function exportOperationLogs(): Promise<{ buffer: ArrayBuffer; file
     rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '操作日志',
   );
-  return { buffer, filename: 'operation-logs.xlsx' };
+  return { stream, filename: 'operation-logs.xlsx' };
 }

@@ -11,7 +11,7 @@ import { getDataScopeCondition } from '../lib/data-scope';
 import { escapeLike } from '../lib/where-helpers';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { unlockUser as unlockUserSession } from '../lib/session-manager';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { clearUserPermissionCache } from '../lib/permissions';
 import type { JwtPayload } from '../middleware/auth';
 import type { User } from '@zenith/shared';
@@ -384,7 +384,7 @@ export async function unlockUserById(id: number) {
   await unlockUserSession(u.username);
 }
 
-export async function exportUsers(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportUsers(): Promise<{ stream: ReadableStream; filename: string }> {
   const user = currentUser();
   const tc = tenantCondition(users, user);
   const rawList = await db.query.users.findMany({
@@ -395,7 +395,7 @@ export async function exportUsers(): Promise<{ buffer: ArrayBuffer; filename: st
     departmentName: u.department?.name ?? '', status: u.status,
     createdAt: formatDateTimeForExcel(u.createdAt),
   }));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '用户名', key: 'username', width: 16 },
@@ -408,7 +408,7 @@ export async function exportUsers(): Promise<{ buffer: ArrayBuffer; filename: st
     list,
     '用户列表',
   );
-  return { buffer, filename: 'users.xlsx' };
+  return { stream, filename: 'users.xlsx' };
 }
 
 export async function getUserImportTemplate(): Promise<ArrayBuffer> {

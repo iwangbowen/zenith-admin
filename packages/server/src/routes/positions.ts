@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
 import { PositionDTO } from '../lib/openapi-dtos';
 import {
   listAllPositions,
@@ -125,8 +125,8 @@ const exportRoute = defineOpenAPIRoute({
     responses: { ...okExcel('Excel 文件') },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportPositions();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportPositions();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

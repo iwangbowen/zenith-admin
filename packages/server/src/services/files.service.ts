@@ -23,7 +23,7 @@ export function mapManagedFile(row: typeof managedFiles.$inferSelect) {
 import { and, desc, eq, inArray, like, or, gte, lte } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
@@ -195,7 +195,8 @@ export async function batchDownloadFilesAsZip(ids: number[]): Promise<{ stream: 
   const configMap = new Map(configs.map((c) => [c.id, c]));
 
   const { Readable, PassThrough } = await import('node:stream');
-  const { ZipArchive } = await import('archiver');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { ZipArchive } = await import('archiver') as any;
   const archive = new ZipArchive({ zlib: { level: 5 } });
   const passThrough = new PassThrough();
   archive.on('error', (err: Error) => passThrough.destroy(err));
@@ -215,20 +216,20 @@ export async function batchDownloadFilesAsZip(ids: number[]): Promise<{ stream: 
       // 单个文件读取失败时跳过，不中断整体打包
     }
   }
-  void archive.finalize();
+  archive.finalize();
 
   const webStream = Readable.toWeb(passThrough) as ReadableStream;
   return { stream: webStream, filename: `files_${Date.now()}.zip` };
 }
 
-export async function exportManagedFiles(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportManagedFiles(): Promise<{ stream: ReadableStream; filename: string }> {
   const user = currentUser();
   const rows = await db
     .select()
     .from(managedFiles)
     .where(tenantCondition(managedFiles, user))
     .orderBy(desc(managedFiles.id));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '文件名', key: 'originalName', width: 28 },
@@ -240,5 +241,5 @@ export async function exportManagedFiles(): Promise<{ buffer: ArrayBuffer; filen
     rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '文件列表',
   );
-  return { buffer, filename: 'files.xlsx' };
+  return { stream, filename: 'files.xlsx' };
 }

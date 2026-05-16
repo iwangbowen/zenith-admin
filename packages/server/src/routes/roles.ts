@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
 import { RoleDTO, UserDTO } from '../lib/openapi-dtos';
 import {
   listAllRoles,
@@ -165,8 +165,8 @@ const exportRouteDef = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okExcel('Excel 文件') },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportRoles();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportRoles();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

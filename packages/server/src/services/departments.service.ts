@@ -4,7 +4,7 @@ import { departments, users } from '../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { formatDateTime } from '../lib/datetime';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import type { Department, createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
@@ -155,10 +155,10 @@ export async function getDepartmentBeforeAudit(id: number) {
   return mapDepartment(row);
 }
 
-export async function exportDepartments(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportDepartments(): Promise<{ stream: ReadableStream; filename: string }> {
   const tc = tenantCondition(departments, currentUser());
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '部门名称', key: 'name', width: 20 },
@@ -171,5 +171,5 @@ export async function exportDepartments(): Promise<{ buffer: ArrayBuffer; filena
     rows.map((r) => ({ ...r, leader: r.leader ?? '', phone: r.phone ?? '', createdAt: formatDateTimeForExcel(r.createdAt) })),
     '部门列表',
   );
-  return { buffer, filename: 'departments.xlsx' };
+  return { stream, filename: 'departments.xlsx' };
 }

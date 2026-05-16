@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
+import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
 import { OperationLogDTO, OperationLogStatsDTO } from '../lib/openapi-dtos';
 import { listOperationLogs, operationLogStats, exportOperationLogs } from '../services/operation-logs.service';
 
@@ -49,8 +49,8 @@ const exportRoute = defineOpenAPIRoute({
     responses: { ...okExcel('Excel 文件') },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportOperationLogs();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportOperationLogs();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

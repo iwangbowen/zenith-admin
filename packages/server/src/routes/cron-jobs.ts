@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { validateCronExpression, getRegisteredHandlers } from '../lib/cron-scheduler';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
 import { CronJobDTO, CronJobLogDTO } from '../lib/openapi-dtos';
 import {
   listCronJobs,
@@ -140,8 +140,8 @@ const exportRouteDef = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okExcel('Excel 文件') },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportCronJobs();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportCronJobs();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

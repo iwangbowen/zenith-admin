@@ -3,7 +3,7 @@ import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { roles, roleMenus, userRoles } from '../db/schema';
 import { clearUserPermissionCache } from '../lib/permissions';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { HTTPException } from 'hono/http-exception';
@@ -142,10 +142,10 @@ export async function assignRoleUsers(id: number, userIds: number[]) {
   clearUserPermissionCache();
 }
 
-export async function exportRoles(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportRoles(): Promise<{ stream: ReadableStream; filename: string }> {
   const user = currentUser();
   const rows = await db.select().from(roles).where(tenantCondition(roles, user));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '角色名称', key: 'name', width: 18 },
@@ -157,7 +157,7 @@ export async function exportRoles(): Promise<{ buffer: ArrayBuffer; filename: st
     rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '角色列表',
   );
-  return { buffer, filename: 'roles.xlsx' };
+  return { stream, filename: 'roles.xlsx' };
 }
 
 export async function getRoleBeforeAudit(id: number) {

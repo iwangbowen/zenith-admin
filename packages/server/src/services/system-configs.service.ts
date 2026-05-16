@@ -2,7 +2,7 @@ import { eq, like, and, ne, desc } from 'drizzle-orm';
 import { mergeWhere, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { systemConfigs } from '../db/schema';
-import { exportToExcel } from '../lib/excel-export';
+import { streamToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { HTTPException } from 'hono/http-exception';
@@ -104,10 +104,10 @@ export async function getSystemConfigBeforeAudit(id: number) {
   return mapConfig(row);
 }
 
-export async function exportSystemConfigs(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportSystemConfigs(): Promise<{ stream: ReadableStream; filename: string }> {
   const user = currentUser();
   const rows = await db.select().from(systemConfigs).where(tenantCondition(systemConfigs, user)).orderBy(desc(systemConfigs.id));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '配置键', key: 'configKey', width: 30 },
@@ -118,5 +118,5 @@ export async function exportSystemConfigs(): Promise<{ buffer: ArrayBuffer; file
     rows.map(mapConfig),
     '系统配置',
   );
-  return { buffer, filename: 'system-configs.xlsx' };
+  return { stream, filename: 'system-configs.xlsx' };
 }

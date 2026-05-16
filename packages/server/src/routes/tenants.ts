@@ -4,7 +4,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { isPlatformAdmin } from '../lib/tenant';
 import type { AppEnv } from '../lib/context';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
 import { TenantDTO } from '../lib/openapi-dtos';
 import {
   listTenants,
@@ -74,8 +74,8 @@ const exportRouteDef = defineOpenAPIRoute({
     responses: { ...okExcel() },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportTenants();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportTenants();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody, BatchIdsBody,
+  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody, excelStreamBody, BatchIdsBody,
 } from '../lib/openapi-schemas';
 import { UserDTO, ImportResultDTO } from '../lib/openapi-dtos';
 import {
@@ -162,8 +162,8 @@ const exportUsersRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okExcel() },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportUsers();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportUsers();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

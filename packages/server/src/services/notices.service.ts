@@ -5,7 +5,7 @@ import type { DbExecutor } from '../db/types';
 import { notices, noticeRecipients, noticeReads, users, userRoles, roles, departments } from '../db/schema';
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
@@ -170,10 +170,10 @@ export async function listNotices(q: { page?: number; pageSize?: number; title?:
   return { list: rows.map((r) => ({ ...mapNotice(r), readCount: readCountMap.get(r.id) ?? 0 })), total: Number(total), page, pageSize };
 }
 
-export async function exportNotices(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportNotices(): Promise<{ stream: ReadableStream; filename: string }> {
   const user = currentUser();
   const rows = await db.select().from(notices).where(tenantCondition(notices, user)).orderBy(desc(notices.id));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '标题', key: 'title', width: 24 },
@@ -186,7 +186,7 @@ export async function exportNotices(): Promise<{ buffer: ArrayBuffer; filename: 
     rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '通知公告',
   );
-  return { buffer, filename: 'notices.xlsx' };
+  return { stream, filename: 'notices.xlsx' };
 }
 
 export async function batchDeleteNotices(ids: number[]) {

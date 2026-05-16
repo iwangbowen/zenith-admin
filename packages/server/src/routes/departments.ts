@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
-import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, okExcel, excelBody } from '../lib/openapi-schemas';
+import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
 import { DepartmentDTO } from '../lib/openapi-dtos';
 import {
   listDepartmentTree,
@@ -136,8 +136,8 @@ const exportRouteDef = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportDepartments();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportDepartments();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

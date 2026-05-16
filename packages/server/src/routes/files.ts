@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody, BatchIdsBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, BatchIdsBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO } from '../lib/openapi-dtos';
 import {
   readFileContent, listManagedFiles, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, exportManagedFiles, getManagedFileBeforeAudit, batchDownloadFilesAsZip,
@@ -148,8 +148,8 @@ const exportRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okExcel('Excel 文件') },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportManagedFiles();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportManagedFiles();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

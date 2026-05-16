@@ -4,7 +4,7 @@ import { guard, setAuditBeforeData } from '../middleware/guard';
 import { noticeRecipientSchema } from '@zenith/shared';
 import {
   ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody,
+  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody,
 } from '../lib/openapi-schemas';
 import { NoticeDTO, NoticeReadStatsDTO } from '../lib/openapi-dtos';
 import {
@@ -100,8 +100,8 @@ const exportRouteDef = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okExcel() },
   }),
   handler: async (c) => {
-    const { buffer, filename } = await exportNotices();
-    return excelBody(c, buffer, filename);
+    const { stream, filename } = await exportNotices();
+    return excelStreamBody(c, stream, filename);
   },
 });
 

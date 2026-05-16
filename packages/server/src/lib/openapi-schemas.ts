@@ -191,3 +191,16 @@ export function excelBody(c: Context<any>, buffer: ArrayBuffer | Buffer, filenam
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (c.body as any)(buffer) as never;
 }
+
+/**
+ * 设置 Excel 响应头并以 ReadableStream 形式返回文件，配合流式导出使用。
+ *
+ * @example
+ * return excelStreamBody(c, stream, 'users.xlsx');
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function excelStreamBody(c: Context<any>, stream: ReadableStream, filename: string): never {
+  c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+  return new Response(stream) as never;
+}

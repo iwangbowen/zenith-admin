@@ -55,3 +55,37 @@ export async function exportToExcel(
 
   return await workbook.xlsx.writeBuffer();
 }
+
+/** Generate a streaming Excel ReadableStream from column definitions and data rows */
+export async function streamToExcel(
+  columns: ExcelColumn[],
+  data: Record<string, unknown>[],
+  sheetName = 'Sheet1'
+): Promise<ReadableStream> {
+  const { PassThrough, Readable } = await import('node:stream');
+  const passThrough = new PassThrough();
+  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: passThrough });
+  const sheet = workbook.addWorksheet(sheetName);
+
+  sheet.columns = columns.map((col) => ({
+    key: col.key,
+    width: col.width ?? 18,
+  }));
+
+  const headerRow = sheet.addRow(columns.map((col) => col.header));
+  headerRow.font = { bold: true };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+  headerRow.commit();
+
+  for (const row of data) {
+    const values = columns.map((col) => {
+      const val = row[col.key];
+      return col.transform ? col.transform(val) : val;
+    });
+    sheet.addRow(values).commit();
+  }
+
+  sheet.commit();
+  await workbook.commit();
+  return Readable.toWeb(passThrough) as ReadableStream;
+}

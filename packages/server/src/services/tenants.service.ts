@@ -2,7 +2,7 @@ import { eq, like, and, ne, desc } from 'drizzle-orm';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { tenants } from '../db/schema';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 
@@ -90,9 +90,9 @@ export async function getTenantBeforeAudit(id: number) {
   return mapTenant(row);
 }
 
-export async function exportTenants(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportTenants(): Promise<{ stream: ReadableStream; filename: string }> {
   const rows = await db.select().from(tenants).orderBy(desc(tenants.id));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '租户名称', key: 'name', width: 20 },
@@ -107,5 +107,5 @@ export async function exportTenants(): Promise<{ buffer: ArrayBuffer; filename: 
     rows.map((r) => ({ ...r, expireAt: formatDateTimeForExcel(r.expireAt), createdAt: formatDateTimeForExcel(r.createdAt), updatedAt: formatDateTimeForExcel(r.updatedAt) })),
     '租户列表',
   );
-  return { buffer, filename: 'tenants.xlsx' };
+  return { stream, filename: 'tenants.xlsx' };
 }

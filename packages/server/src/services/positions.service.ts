@@ -5,7 +5,7 @@ import { positions, userPositions } from '../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
@@ -147,13 +147,13 @@ export async function getPositionBeforeAudit(id: number) {
   return mapPosition(row);
 }
 
-export async function exportPositions(): Promise<{ buffer: ArrayBuffer; filename: string }> {
+export async function exportPositions(): Promise<{ stream: ReadableStream; filename: string }> {
   const rows = await db
     .select()
     .from(positions)
     .where(tenantCondition(positions, currentUser()))
     .orderBy(asc(positions.sort));
-  const buffer = await exportToExcel(
+  const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '岗位名称', key: 'name', width: 18 },
@@ -166,5 +166,5 @@ export async function exportPositions(): Promise<{ buffer: ArrayBuffer; filename
     rows.map((r) => ({ ...r, remark: r.remark ?? '', createdAt: formatDateTimeForExcel(r.createdAt) })),
     '岗位列表',
   );
-  return { buffer, filename: 'positions.xlsx' };
+  return { stream, filename: 'positions.xlsx' };
 }
