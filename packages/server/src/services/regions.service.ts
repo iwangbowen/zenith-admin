@@ -5,6 +5,7 @@ import type { Region } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { formatDateTime } from '../lib/datetime';
+import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 
 export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {
   return {
@@ -121,4 +122,25 @@ export async function getRegionBeforeAudit(id: number) {
   const [row] = await db.select().from(regions).where(eq(regions.id, id)).limit(1);
   if (!row) return null;
   return mapRegion(row);
+}
+
+const LEVEL_LABELS: Record<string, string> = { province: '省级', city: '地级', county: '县级' };
+
+export async function exportRegions(): Promise<{ stream: ReadableStream; filename: string }> {
+  const rows = await db.select().from(regions).orderBy(asc(regions.sort), asc(regions.code));
+  const stream = await streamToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '地区名称', key: 'name', width: 20 },
+      { header: '区划代码', key: 'code', width: 14 },
+      { header: '级别', key: 'level', width: 10, transform: (v) => LEVEL_LABELS[v as string] ?? v },
+      { header: '父级代码', key: 'parentCode', width: 14, transform: (v) => (v as string | null) ?? '—' },
+      { header: '排序', key: 'sort', width: 8 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '禁用') },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
+    '地区列表',
+  );
+  return { stream, filename: 'regions.xlsx' };
 }

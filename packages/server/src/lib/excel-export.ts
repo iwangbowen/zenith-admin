@@ -56,36 +56,47 @@ export async function exportToExcel(
   return await workbook.xlsx.writeBuffer();
 }
 
-/** Generate a streaming Excel ReadableStream from column definitions and data rows */
-export async function streamToExcel(
+/** Generate a streaming Excel ReadableStream from column definitions and data rows.
+ *
+ * The returned ReadableStream is available immediately; data is written asynchronously
+ * to avoid backpressure deadlock (workbook.commit() would hang waiting for a consumer
+ * that hasn't started yet if we awaited it before returning the stream).
+ */
+export function streamToExcel(
   columns: ExcelColumn[],
   data: Record<string, unknown>[],
   sheetName = 'Sheet1'
 ): Promise<ReadableStream> {
-  const { PassThrough, Readable } = await import('node:stream');
-  const passThrough = new PassThrough();
-  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: passThrough });
-  const sheet = workbook.addWorksheet(sheetName);
+  return new Promise((resolve, reject) => {
+    import('node:stream').then(({ PassThrough, Readable }) => {
+      const passThrough = new PassThrough();
+      // Return the Web ReadableStream immediately so the HTTP response can start
+      // consuming it while ExcelJS writes data asynchronously.
+      resolve(Readable.toWeb(passThrough) as ReadableStream);
 
-  sheet.columns = columns.map((col) => ({
-    key: col.key,
-    width: col.width ?? 18,
-  }));
+      const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: passThrough });
+      const sheet = workbook.addWorksheet(sheetName);
 
-  const headerRow = sheet.addRow(columns.map((col) => col.header));
-  headerRow.font = { bold: true };
-  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
-  headerRow.commit();
+      sheet.columns = columns.map((col) => ({
+        key: col.key,
+        width: col.width ?? 18,
+      }));
 
-  for (const row of data) {
-    const values = columns.map((col) => {
-      const val = row[col.key];
-      return col.transform ? col.transform(val) : val;
-    });
-    sheet.addRow(values).commit();
-  }
+      const headerRow = sheet.addRow(columns.map((col) => col.header));
+      headerRow.font = { bold: true };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8E8E8' } };
+      headerRow.commit();
 
-  sheet.commit();
-  await workbook.commit();
-  return Readable.toWeb(passThrough) as ReadableStream;
+      for (const row of data) {
+        const values = columns.map((col) => {
+          const val = row[col.key];
+          return col.transform ? col.transform(val) : val;
+        });
+        sheet.addRow(values).commit();
+      }
+
+      sheet.commit();
+      workbook.commit().catch((err: Error) => passThrough.destroy(err));
+    }).catch(reject);
+  });
 }

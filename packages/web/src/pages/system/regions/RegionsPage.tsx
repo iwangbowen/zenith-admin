@@ -12,7 +12,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, ChevronsDownUp, ChevronsUpDown, Download } from 'lucide-react';
 import type { Region } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
@@ -47,6 +47,7 @@ export default function RegionsPage() {
   const formApi = useRef<FormApi | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<Region[]>([]);
   const [flatData, setFlatData] = useState<Region[]>([]);
   const [flatLoading, setFlatLoading] = useState(false);
@@ -327,6 +328,20 @@ export default function RegionsPage() {
           >
             {isAllExpanded ? '全部折叠' : '全部展开'}
           </Button>
+          {hasPermission('system:region:export') && (
+            <Button
+              type="primary"
+              icon={<Download size={14} />}
+              loading={exportLoading}
+              onClick={async () => {
+                setExportLoading(true);
+                try { await request.download('/api/regions/export', '地区列表.xlsx'); }
+                finally { setExportLoading(false); }
+              }}
+            >
+              导出
+            </Button>
+          )}
           {hasPermission('system:region:create') && (
             <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
               新增

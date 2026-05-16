@@ -65,6 +65,13 @@ export const regionsHandlers = [
     return HttpResponse.json({ code: 0, message: '更新成功', data: region });
   }),
 
+  // GET /export — 导出 Excel
+  http.get('/api/regions/export', () => {
+    return new HttpResponse(new Blob(['mock-excel-data']), {
+      headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    });
+  }),
+
   // DELETE /:id — 删除
   http.delete('/api/regions/:id', ({ params }) => {
     const id = Number(params.id);
