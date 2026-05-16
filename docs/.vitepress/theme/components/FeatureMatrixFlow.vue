@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter, withBase } from 'vitepress'
 import { gsap } from 'gsap'
 
 const baseItems = [
@@ -131,9 +132,10 @@ const resumeLane = (laneIndex: number) => {
   tweens[laneIndex]?.resume()
 }
 
+const router = useRouter()
+
 const goToFeaturesPage = () => {
-  if (typeof window === 'undefined') return
-  window.location.href = '/product/features'
+  router.go(withBase('/product/features'))
 }
 
 const initAnimation = () => {
