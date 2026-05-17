@@ -8,7 +8,7 @@ import type { User, Menu, Notice, Tenant, WsMessage, SystemConfig } from '@zenit
 import type { ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, type NavLayout } from '@/hooks/usePreferences';
 import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
-import { useThemeController } from '@/providers/ThemeProvider';
+import { useThemeController } from '@/providers/theme-controller';
 import { useTabsStore } from '@/hooks/useTabsStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';

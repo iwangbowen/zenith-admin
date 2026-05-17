@@ -1,8 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { PREFERENCES_KEY } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
 import { applyThemeColor } from '@/lib/theme-color';
 import { defaultPreferences, useOptionalPreferences } from '@/hooks/usePreferences';
+import { ThemeControllerContext, type ThemeControllerValue } from './theme-controller';
 
 type ThemePrefs = {
   colorMode: ThemeMode;
@@ -13,18 +14,6 @@ const THEME_DEFAULTS: ThemePrefs = {
   colorMode: defaultPreferences.colorMode,
   themeColor: defaultPreferences.themeColor,
 };
-
-interface ThemeControllerValue {
-  mode: ThemeMode;
-  themeColor: string;
-  isDark: boolean;
-  setThemeMode: (mode: ThemeMode) => void;
-  setThemeColor: (color: string) => void;
-  cycleTheme: () => void;
-  resetTheme: () => void;
-}
-
-const ThemeControllerContext = createContext<ThemeControllerValue | null>(null);
 
 function loadThemePrefs(): ThemePrefs {
   try {
@@ -121,12 +110,4 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
       {children}
     </ThemeControllerContext.Provider>
   );
-}
-
-export function useThemeController(): ThemeControllerValue {
-  const context = useContext(ThemeControllerContext);
-  if (!context) {
-    throw new Error('useThemeController must be used within ThemeProvider');
-  }
-  return context;
 }

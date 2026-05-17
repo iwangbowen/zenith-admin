@@ -1,9 +1,21 @@
 import { Typography } from '@douyinfe/semi-ui';
 import { getFileTypeIcon, formatFileSize } from '@/utils/file-utils';
-import { getMessageExtra, getAssetMeta, renderTextWithMentions } from '../utils';
+import { getMessageExtra, renderTextWithMentions } from '../utils';
 import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
 
 const { Text } = Typography;
+
+type ForwardedMessageItem = NonNullable<ChatMessageExtra['forwardedMessages']>[number];
+
+function getForwardedItemKey(item: ForwardedMessageItem): string {
+  return [item.createdAt, item.senderName ?? 'unknown', item.type, item.content].join('|');
+}
+
+function getForwardedItemPreview(item: ForwardedMessageItem): string {
+  if (item.type === 'image') return '[图片，点击查看]';
+  if (item.type === 'file') return `[文件] ${item.asset?.name ?? ''}`;
+  return item.content;
+}
 
 export function MessageContent({
   msg, isSelf, onOpenImage, onOpenForwardView, currentUserId, onVote,
@@ -29,7 +41,8 @@ export function MessageContent({
   if (msg.type === 'forward') {
     const items = extra?.forwardedMessages ?? [];
     const sourceConvName = extra?.forwardSourceConvName;
-    const title = `聊天记录${sourceConvName ? ` · ${sourceConvName}` : ''}`;
+    const sourceSuffix = sourceConvName ? ` · ${sourceConvName}` : '';
+    const title = `聊天记录${sourceSuffix}`;
     return (
       <button
         type="button"
@@ -54,13 +67,13 @@ export function MessageContent({
           <Text style={{ fontSize: 11, color: isSelf ? 'rgba(255,255,255,0.65)' : 'var(--semi-color-text-3)' }}>点击查看</Text>
         </div>
         <div style={{ padding: '6px 12px 8px' }}>
-          {items.slice(0, 4).map((item, idx) => (
-            <div key={idx} style={{ display: 'flex', gap: 6, marginBottom: 4, alignItems: 'flex-start' }}>
+          {items.slice(0, 4).map((item) => (
+            <div key={getForwardedItemKey(item)} style={{ display: 'flex', gap: 6, marginBottom: 4, alignItems: 'flex-start' }}>
               <Text style={{ fontSize: 11, color: isSelf ? 'rgba(255,255,255,0.75)' : 'var(--semi-color-text-3)', flexShrink: 0, lineHeight: 1.6 }}>
                 {item.senderName ?? '未知'}：
               </Text>
               <Text style={{ fontSize: 12, color: isSelf ? 'rgba(255,255,255,0.9)' : 'var(--semi-color-text-1)', lineHeight: 1.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                {item.type === 'image' ? '[图片，点击查看]' : item.type === 'file' ? `[文件] ${item.asset?.name ?? ''}` : item.content}
+                {getForwardedItemPreview(item)}
               </Text>
             </div>
           ))}

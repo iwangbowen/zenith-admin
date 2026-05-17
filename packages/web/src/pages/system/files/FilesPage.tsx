@@ -13,7 +13,6 @@ import {
   Select,
   Space,
   Spin,
-  Tag,
   Toast,
   Tooltip,
   Typography,
@@ -74,19 +73,6 @@ function uploadSingleFile(
   xhr.open('POST', `${apiBaseUrl}/api/files/upload`);
   if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
   xhr.send(formData);
-}
-
-type ProviderColor = 'blue' | 'orange' | 'green' | 'cyan' | 'grey';
-const providerColorMap: Record<string, { color: ProviderColor; label: string }> = {
-  local: { color: 'blue', label: '本地磁盘' },
-  oss: { color: 'orange', label: '阿里云 OSS' },
-  s3: { color: 'green', label: 'S3 存储' },
-  cos: { color: 'cyan', label: '腾讯云 COS' },
-};
-
-function ProviderTag({ provider }: Readonly<{ provider: string }>) {
-  const info = providerColorMap[provider] ?? { color: 'grey', label: provider };
-  return <Tag color={info.color} size="small">{info.label}</Tag>;
 }
 
 interface FileGridCardProps {
@@ -313,6 +299,12 @@ export default function FilesPage() {
     }
   }, [page, pageSize, searchParams]);
 
+  const fetchFilesRef = useRef(fetchFiles);
+
+  useEffect(() => {
+    fetchFilesRef.current = fetchFiles;
+  }, [fetchFiles]);
+
   useEffect(() => {
     fetchDefaultConfig();
   }, [fetchDefaultConfig]);
@@ -329,8 +321,8 @@ export default function FilesPage() {
     }
     const newPageSize = viewMode === 'grid' ? 24 : 10;
     setPage(1);
-    void fetchFiles(1, newPageSize); // eslint-disable-line react-hooks/exhaustive-deps
-  }, [viewMode]); // viewMode 来自 preferences context；fetchFiles 故意不列入依赖（显式传参，与闭包版本无关）
+    void fetchFilesRef.current(1, newPageSize);
+  }, [viewMode]);
 
   useEffect(() => {
     if (uploadProgressVisible && uploadItems.length > 0 &&
