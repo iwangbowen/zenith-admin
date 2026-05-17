@@ -393,7 +393,6 @@ export default function TagsPage() {
         onOk={handleSubmit}
         onCancel={() => { setModalVisible(false); setEditRecord(null); }}
         confirmLoading={submitting}
-        maskClosable={false}
         afterClose={() => { setColorValue(''); }}
         width={520}
         bodyStyle={{ paddingBottom: 24 }}
