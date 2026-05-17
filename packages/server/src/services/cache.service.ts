@@ -10,6 +10,7 @@ const CATEGORY_MAP: Record<string, string> = {
   perm: '权限缓存',
   login_attempt: '登录失败计数',
   login_lock: '登录锁定',
+  rl: '接口限流计数',
 };
 
 export function getSegment(key: string): string {
