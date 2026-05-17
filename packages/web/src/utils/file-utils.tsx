@@ -1,4 +1,4 @@
-import { File, FileAudio, FileArchive, FileCode, FileImage, FilePen, FileSpreadsheet, FileText, FileType, FileVideo } from 'lucide-react';
+import { File, FileAudio, FileArchive, FileCode, FileImage, FilePen, FileSpreadsheet, FileText, FileType, FileVideo, AppWindow } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 
@@ -52,6 +52,13 @@ export function getFileTypeIcon(mimeType?: string | null, iconSize = 15) {
     mimeType.includes('xml') || mimeType.includes('yaml') ||
     mimeType === 'application/x-sh' || mimeType === 'text/x-shellscript'
   ) return <FileCode size={size} color="var(--semi-color-tertiary)" />;
+  // 可执行文件（exe、dll、msi 等）
+  if (
+    mimeType === 'application/x-msdownload' ||
+    mimeType === 'application/vnd.microsoft.portable-executable' ||
+    mimeType === 'application/x-executable' ||
+    mimeType === 'application/x-msdos-program'
+  ) return <AppWindow size={size} color="var(--semi-color-warning)" />;
   // 纯文本 / Markdown / 文档
   if (mimeType.startsWith('text/') || mimeType.includes('document')) return <FileText size={size} color={color} />;
   return <File size={size} color={color} />;
