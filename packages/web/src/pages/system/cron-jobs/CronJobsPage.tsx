@@ -404,7 +404,22 @@ export default function CronJobsPage() {
             if (typeof v.cronExpression === 'string') setCronExprValue(v.cronExpression);
           }}
         >
-          <Form.Input field="name" label="任务名称" placeholder="请输入任务名称" rules={[{ required: true, message: '请输入任务名称' }]} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="name" label="任务名称" placeholder="请输入任务名称" rules={[{ required: true, message: '请输入任务名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="status"
+                label="状态"
+                optionList={[
+                  { value: 'enabled', label: '启用' },
+                  { value: 'disabled', label: '禁用' },
+                ]}
+                style={{ width: '100%' }}
+              />
+            </Col>
+          </Row>
           <Form.Input
             field="cronExpression"
             label="Cron 表达式"
@@ -430,17 +445,6 @@ export default function CronJobsPage() {
             placeholder="请选择处理器"
           />
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Select
-                field="status"
-                label="状态"
-                optionList={[
-                  { value: 'enabled', label: '启用' },
-                  { value: 'disabled', label: '禁用' },
-                ]}
-                style={{ width: '100%' }}
-              />
-            </Col>
             <Col span={12}>
               <Form.InputNumber
                 field="retryCount"
@@ -472,8 +476,8 @@ export default function CronJobsPage() {
               />
             </Col>
           </Row>
-          <Form.TextArea field="params" label="参数 JSON" placeholder='可选，如 {"key":"value"}' />
-          <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} />
+          <Form.TextArea field="params" label="参数 JSON" placeholder='可选，如 {"key":"value"}' rows={2} />
+          <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} rows={2} />
         </Form>
       </Modal>
 
