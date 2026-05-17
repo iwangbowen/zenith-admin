@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useContext, createContext } from 'react';
+import type { ReactNode } from 'react';
 import { PREFERENCES_KEY } from '@zenith/shared';
 
 export type NavLayout = 'vertical' | 'horizontal' | 'mixed';
@@ -14,6 +15,7 @@ export interface UserPreferences {
   showMenuSearch: boolean;
   showFullscreen: boolean;
   showQuickChat: boolean;
+  filesViewMode: 'list' | 'grid';
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -26,6 +28,7 @@ export const defaultPreferences: UserPreferences = {
   showMenuSearch: true,
   showFullscreen: true,
   showQuickChat: true,
+  filesViewMode: 'list',
 };
 
 function loadPreferences(): UserPreferences {
@@ -48,7 +51,15 @@ function savePreferences(prefs: UserPreferences) {
   }
 }
 
-export function usePreferences() {
+interface PreferencesContextValue {
+  preferences: UserPreferences;
+  setPreferences: (partial: Partial<UserPreferences>) => void;
+  resetPreferences: () => void;
+}
+
+const PreferencesContext = createContext<PreferencesContextValue | null>(null);
+
+export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<UserPreferences>(loadPreferences);
 
   const setPreferences = useCallback((partial: Partial<UserPreferences>) => {
@@ -64,5 +75,17 @@ export function usePreferences() {
     setPrefs({ ...defaultPreferences });
   }, []);
 
-  return { preferences: prefs, setPreferences, resetPreferences };
+  return (
+    <PreferencesContext.Provider value={{ preferences: prefs, setPreferences, resetPreferences }}>
+      {children}
+    </PreferencesContext.Provider>
+  );
+}
+
+export function usePreferences() {
+  const ctx = useContext(PreferencesContext);
+  if (!ctx) {
+    throw new Error('usePreferences must be used within PreferencesProvider');
+  }
+  return ctx;
 }

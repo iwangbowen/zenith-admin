@@ -28,6 +28,7 @@ import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl } from '@/utils/file-utils';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
+import { usePreferences } from '@/hooks/usePreferences';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import './FilesPage.css';
 
@@ -212,6 +213,7 @@ function FileGridCard({
 
 export default function FilesPage() {
   const { hasPermission } = usePermission();
+  const { preferences, setPreferences } = usePreferences();
   interface SearchParams {
     keyword: string;
     provider: string;
@@ -221,6 +223,8 @@ export default function FilesPage() {
 
   const defaultSearchParams: SearchParams = { keyword: '', provider: '', fileType: '', timeRange: null };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /** 区分"页面内点击切换"与"偏好面板外部修改"，防止双重请求 */
+  const isInternalToggleRef = useRef(false);
   const [data, setData] = useState<PaginatedResponse<ManagedFile> | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
@@ -228,7 +232,7 @@ export default function FilesPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(
-    () => localStorage.getItem('files_view_mode') === 'grid' ? 24 : 10,
+    () => (preferences.filesViewMode ?? 'list') === 'grid' ? 24 : 10,
   );
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
@@ -244,13 +248,11 @@ export default function FilesPage() {
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>(
-    () => (localStorage.getItem('files_view_mode') as 'list' | 'grid') || 'list',
-  );
+  const viewMode = preferences.filesViewMode ?? 'list';
 
   const toggleViewMode = (mode: 'list' | 'grid') => {
-    setViewMode(mode);
-    localStorage.setItem('files_view_mode', mode);
+    isInternalToggleRef.current = true;
+    setPreferences({ filesViewMode: mode });
     const newPageSize = mode === 'grid' ? 24 : 10;
     setPage(1);
     void fetchFiles(1, newPageSize);
@@ -318,6 +320,17 @@ export default function FilesPage() {
   useEffect(() => {
     void fetchFiles();
   }, [fetchFiles]);
+
+  // 偏好面板修改视图模式时同步 pageSize 并重新拉取数据
+  useEffect(() => {
+    if (isInternalToggleRef.current) {
+      isInternalToggleRef.current = false;
+      return;
+    }
+    const newPageSize = viewMode === 'grid' ? 24 : 10;
+    setPage(1);
+    void fetchFiles(1, newPageSize); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewMode]); // viewMode 来自 preferences context；fetchFiles 故意不列入依赖（显式传参，与闭包版本无关）
 
   useEffect(() => {
     if (uploadProgressVisible && uploadItems.length > 0 &&

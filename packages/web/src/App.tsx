@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Spin } from '@douyinfe/semi-ui';
 import { useAuth } from '@/hooks/useAuth';
 import { PermissionContext } from '@/hooks/usePermission';
+import { PreferencesProvider } from '@/hooks/usePreferences';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { request } from '@/utils/request';
 import type { Menu, User } from '@zenith/shared';
@@ -78,6 +79,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
   }
 
   return (
+    <PreferencesProvider>
     <PermissionContext.Provider value={permissions}>
       <Routes>
         <Route path="/" element={<AdminLayout user={user} onLogout={logout} presetMenus={menus} />}>
@@ -122,6 +124,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
       <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundPage /></Suspense>} />
     </Routes>
     </PermissionContext.Provider>
+    </PreferencesProvider>
   );
 }
 

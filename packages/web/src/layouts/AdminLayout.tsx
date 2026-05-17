@@ -1084,6 +1084,19 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 <Switch checked={preferences.showQuickChat ?? true} onChange={(v) => setPreferences({ showQuickChat: v })} />
               </div>
 
+              {/* ── 文件默认视图 ── */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>文件列表默认视图</span>
+                <RadioGroup
+                  type="button"
+                  value={preferences.filesViewMode ?? 'list'}
+                  onChange={(e) => setPreferences({ filesViewMode: e.target.value as 'list' | 'grid' })}
+                >
+                  <Radio value="list">列表</Radio>
+                  <Radio value="grid">网格</Radio>
+                </RadioGroup>
+              </div>
+
               <div className="prefs-section-divider" />
 
               {/* ── 多标签页 ── */}
