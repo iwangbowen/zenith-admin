@@ -127,7 +127,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     return result;
   }, [menuTree]);
   const { preferences, setPreferences, resetPreferences } = usePreferences();
-  const { mode, themeColor, setThemeMode, setThemeColor, resetTheme } = useThemeController();
+  const { mode, themeColor, setThemeMode, setThemeColor } = useThemeController();
 
   const handleThemeModeChange = useCallback((newMode: ThemeMode) => {
     setThemeMode(newMode);
@@ -1191,7 +1191,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       okButtonProps: { type: 'danger', theme: 'solid' },
                       onOk: () => {
                         resetPreferences();
-                        resetTheme();
                       },
                     });
                   }}

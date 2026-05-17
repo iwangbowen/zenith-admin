@@ -75,57 +75,69 @@ export function useOptionalPreferences() {
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<UserPreferences>(loadPreferences);
-  // 标记偏好变更是否来自服务器拉取，跳过回写避免 echo
-  const skipNextSyncRef = useRef(false);
-  // 跳过首次 localStorage 初始加载（不 PUT）
-  const initializedRef = useRef(false);
+  const prefsRef = useRef(prefs);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const applyLocalPreferences = useCallback((next: UserPreferences, persist = true) => {
+    prefsRef.current = next;
+    setPrefs(next);
+    if (persist) savePreferences(next);
+  }, []);
+
+  const putPreferences = useCallback((next: UserPreferences) => {
+    request.put('/api/auth/preferences', next, { silent: true }).catch(() => { /* ignore */ });
+  }, []);
+
+  const scheduleSync = useCallback((next: UserPreferences) => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      syncTimerRef.current = null;
+      putPreferences(next);
+    }, 500);
+  }, [putPreferences]);
+
+  const syncNow = useCallback((next: UserPreferences) => {
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
+    }
+    putPreferences(next);
+  }, [putPreferences]);
 
   // 组件挂载时（用户已登录）从服务器拉取偏好，覆盖本地缓存
   useEffect(() => {
+    let cancelled = false;
     request.get<Record<string, unknown> | null>('/api/auth/preferences', { silent: true })
       .then((res) => {
+        if (cancelled || res.code !== 0) return;
         if (res.code === 0 && res.data) {
-          skipNextSyncRef.current = true;
           const merged = { ...defaultPreferences, ...(res.data as Partial<UserPreferences>) };
-          setPrefs(merged);
-          savePreferences(merged);
+          applyLocalPreferences(merged);
+          return;
         }
+        // 老用户服务器端暂无偏好时，把本地缓存迁移到服务器。
+        scheduleSync(prefsRef.current);
       })
       .catch(() => { /* ignore */ });
-  }, []);
+    return () => { cancelled = true; };
+  }, [applyLocalPreferences, scheduleSync]);
 
-  // 监听 prefs 变化，防抖写服务器
-  useEffect(() => {
-    // 跳过初始 localStorage 加载
-    if (!initializedRef.current) {
-      initializedRef.current = true;
-      return;
-    }
-    // 跳过服务器拉取触发的变更（避免 echo）
-    if (skipNextSyncRef.current) {
-      skipNextSyncRef.current = false;
-      return;
-    }
-    const timer = setTimeout(() => {
-      request.put('/api/auth/preferences', prefs, { silent: true }).catch(() => { /* ignore */ });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [prefs]);
+  useEffect(() => () => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+  }, []);
 
   const setPreferences = useCallback((partial: Partial<UserPreferences>) => {
-    setPrefs((prev) => {
-      const next = { ...prev, ...partial };
-      savePreferences(next);
-      return next;
-    });
-  }, []);
+    const next = { ...prefsRef.current, ...partial };
+    applyLocalPreferences(next);
+    scheduleSync(next);
+  }, [applyLocalPreferences, scheduleSync]);
 
   const resetPreferences = useCallback(() => {
+    const next = { ...defaultPreferences };
     localStorage.removeItem(PREFERENCES_KEY);
-    skipNextSyncRef.current = true; // 跳过 effect，手动直接写服务器
-    setPrefs({ ...defaultPreferences });
-    request.put('/api/auth/preferences', defaultPreferences, { silent: true }).catch(() => { /* ignore */ });
-  }, []);
+    applyLocalPreferences(next, false);
+    syncNow(next);
+  }, [applyLocalPreferences, syncNow]);
 
   const value = useMemo(
     () => ({ preferences: prefs, setPreferences, resetPreferences }),
