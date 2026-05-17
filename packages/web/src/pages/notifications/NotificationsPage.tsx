@@ -189,7 +189,7 @@ export default function NotificationsPage() {
             <TabPane tab="已读消息" itemKey="read" />
           </Tabs>
           <Button
-            type="secondary"
+            type="primary"
             icon={<CheckCheck size={14} />}
             loading={markAllLoading}
             onClick={handleMarkAllRead}
