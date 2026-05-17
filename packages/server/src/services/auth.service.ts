@@ -290,10 +290,20 @@ export async function logoutSession() {
 
 export async function getMyProfile() {
   const userId = currentUser().userId;
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    with: {
+      department: { columns: { id: true, name: true } },
+      userPositions: { columns: {}, with: { position: true } },
+      userRoles: { columns: {}, with: { role: { columns: { id: true, name: true, code: true, description: true, status: true, createdAt: true, updatedAt: true } } } },
+    },
+  });
   if (!user) throw new HTTPException(404, { message: '用户不存在' });
-  const [userRoleList, requirePasswordChange, tenantRows] = await Promise.all([
-    getUserRoles(user.id),
+  const userRoleList = user.userRoles.map(({ role: r }) => ({
+    id: r.id, name: r.name, code: r.code, description: r.description, status: r.status,
+    createdAt: formatDateTime(r.createdAt), updatedAt: formatDateTime(r.updatedAt),
+  }));
+  const [requirePasswordChange, tenantRows] = await Promise.all([
     checkPasswordExpiry(user),
     user.tenantId
       ? db.select({ name: tenants.name }).from(tenants).where(eq(tenants.id, user.tenantId)).limit(1)
@@ -301,9 +311,16 @@ export async function getMyProfile() {
   ]);
   const permissions = isSuperAdmin(userRoleList.map((r) => r.code)) ? ['*'] : await getUserPermissions(user.id);
   const tenantName = tenantRows[0]?.name ?? null;
-  const { password: _pw, ...userInfo } = user;
+  const { password: _pw, department, userPositions: _up, userRoles: _ur, ...userInfo } = user;
   return {
     ...userInfo,
+    departmentId: user.departmentId,
+    departmentName: department?.name ?? null,
+    positions: user.userPositions.map(({ position: p }) => ({
+      id: p.id, name: p.name, code: p.code, sort: p.sort, status: p.status,
+      remark: p.remark ?? null,
+      createdAt: formatDateTime(p.createdAt), updatedAt: formatDateTime(p.updatedAt),
+    })),
     tenantName,
     roles: userRoleList,
     permissions,

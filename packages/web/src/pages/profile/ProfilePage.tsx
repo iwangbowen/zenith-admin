@@ -340,6 +340,26 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                             <Text type="tertiary" size="small">邮箱</Text>
                             <Text size="small">{user.email}</Text>
                           </div>
+                          {user.phone && (
+                            <div className="profile-meta-item">
+                              <Text type="tertiary" size="small">手机号</Text>
+                              <Text size="small">{user.phone}</Text>
+                            </div>
+                          )}
+                          {user.departmentName && (
+                            <div className="profile-meta-item">
+                              <Text type="tertiary" size="small">部门</Text>
+                              <Text size="small">{user.departmentName}</Text>
+                            </div>
+                          )}
+                          {user.positions && user.positions.length > 0 && (
+                            <div className="profile-meta-item">
+                              <Text type="tertiary" size="small">岗位</Text>
+                              <Space spacing={4} style={{ display: 'inline-flex', flexWrap: 'wrap' }}>
+                                {user.positions.map((p) => <Tag key={p.id} size="small" color="teal">{p.name}</Tag>)}
+                              </Space>
+                            </div>
+                          )}
                           <div className="profile-meta-item">
                             <Text type="tertiary" size="small">角色</Text>
                             {user.roles?.length ? (
