@@ -4,7 +4,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Table,
@@ -15,7 +14,9 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search, Tags, Trash2 } from 'lucide-react';
 import type { Tag, PaginatedResponse } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
+import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
+import DictTag from '@/components/DictTag';
 import { SearchToolbar } from '@/components/SearchToolbar';
 
 const { Text } = Typography;
@@ -105,12 +106,13 @@ function ColorInput({ value, onChange }: { value?: string; onChange?: (v: string
 
 export default function TagsPage() {
   const { hasPermission: can } = usePermission();
+  const { items: statusItems } = useDictItems('common_status');
 
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<Tag[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
 
   const [keyword, setKeyword] = useState('');
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
@@ -133,7 +135,7 @@ export default function TagsPage() {
   }, []);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, st: string | undefined, gn: string | undefined, ps = 20) => {
+    async (p: number, kw: string, st: string | undefined, gn: string | undefined, ps = 10) => {
       setLoading(true);
       try {
         const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
@@ -153,7 +155,7 @@ export default function TagsPage() {
   );
 
   useEffect(() => {
-    void fetchList(1, '', undefined, undefined, 20);
+    void fetchList(1, '', undefined, undefined, 10);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -210,29 +212,32 @@ export default function TagsPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    try {
-      await request.delete(`/api/tags/${id}`);
-      Toast.success('删除成功');
-      setSelectedRowKeys((prev) => prev.filter((k) => k !== id));
-      void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
-    } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message;
-      if (msg) Toast.error(msg);
-    }
+  const handleDelete = (id: number) => {
+    Modal.confirm({
+      title: '确定要删除该标签吗？',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        await request.delete(`/api/tags/${id}`);
+        Toast.success('删除成功');
+        setSelectedRowKeys(selectedRowKeys.filter((k) => k !== id));
+        void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
+      },
+    });
   };
 
-  const handleBatchDelete = async () => {
+  const handleBatchDelete = () => {
     if (!selectedRowKeys.length) return;
-    try {
-      await request.delete('/api/tags/batch', { ids: selectedRowKeys });
-      Toast.success(`已删除 ${selectedRowKeys.length} 条标签`);
-      setSelectedRowKeys([]);
-      void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
-    } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message;
-      if (msg) Toast.error(msg);
-    }
+    Modal.confirm({
+      title: `确认删除选中的 ${selectedRowKeys.length} 条标签？`,
+      content: '删除后无法恢复，请谨慎操作。',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        await request.delete('/api/tags/batch', { ids: selectedRowKeys });
+        Toast.success(`已删除 ${selectedRowKeys.length} 条标签`);
+        setSelectedRowKeys([]);
+        void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
+      },
+    });
   };
 
   const columns = [
@@ -273,11 +278,7 @@ export default function TagsPage() {
       dataIndex: 'status',
       width: 90,
       fixed: 'right' as const,
-      render: (v: string) => (
-        <Text type={v === 'enabled' ? 'success' : 'tertiary'}>
-          {v === 'enabled' ? '启用' : '禁用'}
-        </Text>
-      ),
+      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
     },
     {
       title: '操作',
@@ -292,11 +293,14 @@ export default function TagsPage() {
             </Button>
           )}
           {can('system:tag:delete') && (
-            <Popconfirm title="确定要删除吗？" onConfirm={() => handleDelete(record.id)}>
-              <Button theme="borderless" type="danger" size="small">
-                删除
-              </Button>
-            </Popconfirm>
+            <Button
+              theme="borderless"
+              type="danger"
+              size="small"
+              onClick={() => handleDelete(record.id)}
+            >
+              删除
+            </Button>
           )}
         </Space>
       ),
@@ -306,7 +310,7 @@ export default function TagsPage() {
   const groupOptions = groups.map((g) => ({ label: g, value: g }));
 
   return (
-    <div>
+    <div className="page-container">
       <SearchToolbar>
         <Input
           prefix={<Search size={14} />}
@@ -329,10 +333,7 @@ export default function TagsPage() {
           placeholder="状态"
           value={filterStatus}
           onChange={(v) => setFilterStatus(v as string | undefined)}
-          optionList={[
-            { label: '启用', value: 'enabled' },
-            { label: '禁用', value: 'disabled' },
-          ]}
+          optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
           showClear
           style={{ width: 100 }}
         />
@@ -343,18 +344,13 @@ export default function TagsPage() {
           重置
         </Button>
         {can('system:tag:delete') && selectedRowKeys.length > 0 && (
-          <Popconfirm
-            title={`确定要删除选中的 ${selectedRowKeys.length} 条标签吗？`}
-            onConfirm={handleBatchDelete}
-          >
-            <Button type="danger" icon={<Trash2 size={14} />}>
-              批量删除 ({selectedRowKeys.length})
-            </Button>
-          </Popconfirm>
+          <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+            批量删除 ({selectedRowKeys.length})
+          </Button>
         )}
         {can('system:tag:create') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-            新增标签
+            新增
           </Button>
         )}
       </SearchToolbar>
