@@ -180,6 +180,16 @@
   min-height: 0;
 }
 
+/* Sticky group headers: 只对顶层分组标题（系统管理、系统设置等）启用 sticky */
+/* 使用 > 直接子选择器，避免影响二级 sub-wrap（文件管理、审计日志）的标题 */
+/* top: -8px 将 sticky 阈值设为 border edge（消除 semi-navigation-list-wrapper 的 padding-top: 8px 间隙） */
+.admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-list > .semi-navigation-sub-wrap > .semi-navigation-sub-title {
+  position: sticky;
+  top: -8px;
+  z-index: 2;
+  background: var(--color-sidebar-bg) !important;
+}
+
 /* 侧边栏菜单极窄滚动条 */
 .admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar {
   width: 4px;
