@@ -300,36 +300,39 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
               <div className="profile-section">
                   <div className="section-title">基本信息</div>
                     <div className="profile-basic-overview">
-                      <button
-                        type="button"
-                        className="avatar-upload-trigger"
-                        onClick={openAvatarPicker}
-                        aria-label="更换头像"
-                      >
-                        {avatarLoading ? (
-                          <div className="avatar-loading-wrapper" style={{ width: 80, height: 80 }}><Spin /></div>
-                        ) : (
-                          <>
-                            <Avatar
-                              size="extra-large"
-                              color="blue"
-                              style={{ fontSize: 28, width: 80, height: 80 }}
-                              src={user.avatar || undefined}
-                            >
-                              {!user.avatar && (user.nickname?.charAt(0)?.toUpperCase() || 'U')}
-                            </Avatar>
-                            <div className="avatar-upload-mask">更换头像</div>
-                          </>
-                        )}
-                      </button>
-                      <input
-                        ref={avatarInputRef}
-                        id="avatar-file-input"
-                        type="file"
-                        accept="image/*"
-                        style={{ display: 'none' }}
-                        onChange={handleAvatarFileSelect}
-                      />
+                      <div className="avatar-column">
+                        <button
+                          type="button"
+                          className="avatar-upload-trigger"
+                          onClick={openAvatarPicker}
+                          aria-label="更换头像"
+                        >
+                          {avatarLoading ? (
+                            <div className="avatar-loading-wrapper" style={{ width: 80, height: 80 }}><Spin /></div>
+                          ) : (
+                            <>
+                              <Avatar
+                                size="extra-large"
+                                color="blue"
+                                style={{ fontSize: 28, width: 80, height: 80 }}
+                                src={user.avatar || undefined}
+                              >
+                                {!user.avatar && (user.nickname?.charAt(0)?.toUpperCase() || 'U')}
+                              </Avatar>
+                              <div className="avatar-upload-mask">更换头像</div>
+                            </>
+                          )}
+                        </button>
+                        <Button size="small" theme="light" loading={avatarLoading} onClick={openAvatarPicker} style={{ width: '100%' }}>更换头像</Button>
+                        <input
+                          ref={avatarInputRef}
+                          id="avatar-file-input"
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={handleAvatarFileSelect}
+                        />
+                      </div>
                       <div className="profile-basic-summary">
                         <div className="profile-basic-heading">
                           <Title heading={5} style={{ margin: 0 }}>{user.nickname}</Title>
@@ -372,9 +375,6 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                             <Text type="tertiary" size="small">注册时间</Text>
                             <Text size="small">{formatDateTime(user.createdAt)}</Text>
                           </div>
-                        </div>
-                        <div className="profile-basic-actions">
-                          <Button size="small" theme="light" loading={avatarLoading} onClick={openAvatarPicker}>更换头像</Button>
                         </div>
                       </div>
                     </div>

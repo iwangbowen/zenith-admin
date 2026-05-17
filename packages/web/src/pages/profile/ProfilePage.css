@@ -60,6 +60,14 @@
   background: var(--semi-color-fill-0);
 }
 
+.avatar-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .profile-basic-summary {
   flex: 1;
   min-width: 0;
@@ -91,12 +99,6 @@
 
 .profile-meta-item > .semi-typography:first-child {
   flex-shrink: 0;
-}
-
-.profile-basic-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .section-title {
@@ -220,8 +222,7 @@
   }
 
   .profile-basic-summary,
-  .profile-basic-heading,
-  .profile-basic-actions {
+  .profile-basic-heading {
     align-items: center;
   }
 
