@@ -812,3 +812,15 @@ export interface MessageTemplate {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface Tag {
+  id: number;
+  name: string;
+  color: string | null;
+  groupName: string | null;
+  description: string | null;
+  status: EntityStatus;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}

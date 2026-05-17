@@ -382,6 +382,21 @@ export type CreateMessageTemplateInput = z.infer<typeof createMessageTemplateSch
 export type UpdateMessageTemplateInput = z.infer<typeof updateMessageTemplateSchema>;
 export type PreviewMessageTemplateInput = z.infer<typeof previewMessageTemplateSchema>;
 
+// ─── 标签管理 Schema ─────────────────────────────────────────────────────────
+export const createTagSchema = z.object({
+  name:        z.string().min(1, '标签名称不能为空').max(50),
+  color:       z.string().max(20).optional(),
+  groupName:   z.string().max(50).optional(),
+  description: z.string().max(500).optional(),
+  status:      z.enum(['enabled', 'disabled']).default('enabled'),
+  sortOrder:   z.number().int().default(0),
+});
+
+export const updateTagSchema = createTagSchema.partial();
+
+export type CreateTagInput = z.infer<typeof createTagSchema>;
+export type UpdateTagInput = z.infer<typeof updateTagSchema>;
+
 // ─── 工作流引擎 Schema ────────────────────────────────────────────────────────
 export const workflowConditionOperatorSchema = z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains']);
 

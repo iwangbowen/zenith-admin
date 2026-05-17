@@ -309,6 +309,13 @@
       "when": 1778403599407,
       "tag": "0043_watery_bushwacker",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1779020046057,
+      "tag": "0044_crazy_omega_red",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,7 @@ import { cacheHandlers } from './cache';
 import { messageTemplatesHandlers } from './message-templates';
 import { workflowHandlers } from './workflow';
 import { chatHandlers } from './chat';
+import { tagsHandlers } from './tags';
 
 export const handlers = [
   ...authHandlers,
@@ -54,4 +55,5 @@ export const handlers = [
   ...messageTemplatesHandlers,
   ...workflowHandlers,
   ...chatHandlers,
+  ...tagsHandlers,
 ];

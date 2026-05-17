@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, messageTemplates } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, messageTemplates, tags } from './schema';
 import bcrypt from 'bcryptjs';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
@@ -334,6 +334,18 @@ async function seed() {
     },
   ]).onConflictDoNothing({ target: messageTemplates.code });
   logger.info('  ✔ Message templates seeded (onConflictDoNothing)');
+
+  // ── 标签 ────────────────────────────────────────────────────────────────────
+  await db.insert(tags).values([
+    { name: '重要',   color: '#ef4444', groupName: '优先级', description: '高优先级事项',   status: 'enabled', sortOrder: 1 },
+    { name: '紧急',   color: '#f97316', groupName: '优先级', description: '需要立即处理',   status: 'enabled', sortOrder: 2 },
+    { name: '普通',   color: '#6b7280', groupName: '优先级', description: '常规事项',       status: 'enabled', sortOrder: 3 },
+    { name: '新用户', color: '#2563eb', groupName: '用户标签', description: '新注册用户',   status: 'enabled', sortOrder: 1 },
+    { name: 'VIP',    color: '#a855f7', groupName: '用户标签', description: 'VIP 会员用户', status: 'enabled', sortOrder: 2 },
+    { name: '待处理', color: '#f59e0b', groupName: '状态标签', description: '等待处理的事项', status: 'enabled', sortOrder: 1 },
+    { name: '已完成', color: '#10b981', groupName: '状态标签', description: '已完成的事项', status: 'enabled', sortOrder: 2 },
+  ]).onConflictDoNothing({ target: tags.name });
+  logger.info('  ✔ Tags seeded (onConflictDoNothing)');
 
   logger.info('🎉 Seed complete.');
   process.exit(0);
