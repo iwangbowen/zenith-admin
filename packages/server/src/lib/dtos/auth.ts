@@ -2,7 +2,7 @@
  * Auth / OAuth 相关 DTO：登录、验证码、Token、用户画像、OAuth 账号/配置
  */
 import { z } from '@hono/zod-openapi';
-import { UserDTO } from './iam';
+import { UserDTO } from './users';
 
 export const CaptchaDTO = z
   .object({
