@@ -448,7 +448,7 @@ export default function RolesPage() {
                 title: '用户',
                 render: (_: unknown, u: User) => (
                   <Space>
-                    <Avatar size="extra-small" color="blue" style={{ fontSize: 11 }}>
+                    <Avatar size="extra-small" color="blue" style={{ fontSize: 11 }} src={u.avatar || undefined}>
                       {u.nickname?.charAt(0)?.toUpperCase() || 'U'}
                     </Avatar>
                     <span>{u.nickname}（{u.username}）</span>
