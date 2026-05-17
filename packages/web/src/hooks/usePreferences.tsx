@@ -16,6 +16,7 @@ export interface UserPreferences {
   showFullscreen: boolean;
   showQuickChat: boolean;
   filesViewMode: 'list' | 'grid';
+  sidebarStickyScroll: boolean;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -29,6 +30,7 @@ export const defaultPreferences: UserPreferences = {
   showFullscreen: true,
   showQuickChat: true,
   filesViewMode: 'list',
+  sidebarStickyScroll: true,
 };
 
 function loadPreferences(): UserPreferences {

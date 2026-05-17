@@ -767,7 +767,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       <div className="admin-body">
         {/* Sidebar — always in vertical, conditional in mixed */}
         {showSidebar && (
-          <aside className={`admin-sidebar${collapsed ? ' admin-sidebar--collapsed' : ''}`}>
+          <aside className={`admin-sidebar${collapsed ? ' admin-sidebar--collapsed' : ''}${preferences.sidebarStickyScroll !== false ? ' admin-sidebar--sticky-nav' : ''}`}>
             <Nav
               className="admin-sidebar__nav"
               mode="vertical"
@@ -1095,6 +1095,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   <Radio value="list">列表</Radio>
                   <Radio value="grid">网格</Radio>
                 </RadioGroup>
+              </div>
+
+              {/* ── 侧边栏分组标题 sticky ── */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>侧边栏分组标题滚动固定</span>
+                <Switch checked={preferences.sidebarStickyScroll ?? true} onChange={(v) => setPreferences({ sidebarStickyScroll: v })} />
               </div>
 
               <div className="prefs-section-divider" />
