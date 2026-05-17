@@ -35,6 +35,7 @@ const changePasswordSchema = z.object({
 const updateProfileSchema = z.object({
   nickname: z.string().min(1).max(32).optional(),
   email: z.email().optional(),
+  phone: z.string().regex(/^1[3-9]\d{9}$/, '请输入正确的手机号码').nullable().optional(),
   avatar: z.string().max(256).optional(),
 });
 const switchTenantSchema = z.object({ tenantId: z.number().int().positive().nullable() });

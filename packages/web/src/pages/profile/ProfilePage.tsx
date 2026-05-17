@@ -173,7 +173,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   // ─── 事件处理 ────────────────────────────────────────────────────────────────
 
-  async function handleUpdateProfile(values: { nickname: string; email: string }) {
+  async function handleUpdateProfile(values: { nickname: string; email: string; phone?: string }) {
     setProfileLoading(true);
     const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', values);
     setProfileLoading(false);
@@ -363,7 +363,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
                     <div className="section-title">资料编辑</div>
                   <Form
-                    initValues={{ nickname: user.nickname, email: user.email }}
+                    initValues={{ nickname: user.nickname, email: user.email, phone: user.phone ?? '' }}
                     onSubmit={handleUpdateProfile}
                     labelPosition="left"
                     labelWidth={80}
@@ -382,6 +382,15 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                       rules={[
                         { required: true, message: '邮箱不能为空' },
                         { type: 'email', message: '邮箱格式不正确' },
+                      ]}
+                      style={{ width: 320 }}
+                    />
+                    <Form.Input
+                      field="phone"
+                      label="手机号"
+                      placeholder="请输入手机号（选填）"
+                      rules={[
+                        { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' },
                       ]}
                       style={{ width: 320 }}
                     />
