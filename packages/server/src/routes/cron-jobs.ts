@@ -150,7 +150,7 @@ const logsRoute = defineOpenAPIRoute({
     method: 'get', path: '/logs', tags: ['CronJobs'], summary: '所有执行日志',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:cronjob:list' })] as const,
-    request: { query: PaginationQuery },
+    request: { query: PaginationQuery.extend({ jobId: z.coerce.number().int().positive().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(CronJobLogDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listAllCronJobLogs(c.req.valid('query'))), 200),

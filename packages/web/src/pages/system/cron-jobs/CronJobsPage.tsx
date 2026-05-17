@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
+  Dropdown,
   SideSheet,
   Form,
   Input,
   Modal,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   Toast,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, ScrollText } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, ScrollText, MoreHorizontal } from 'lucide-react';
 import type { CronJob, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -67,6 +70,9 @@ export default function CronJobsPage() {
   const [allLogsTotal, setAllLogsTotal] = useState(0);
   const [allLogsPage, setAllLogsPage] = useState(1);
   const [allLogsLoading, setAllLogsLoading] = useState(false);
+  const [allLogsJobFilter, setAllLogsJobFilter] = useState<number | null>(null);
+  const [switchLoadingIds, setSwitchLoadingIds] = useState<Set<number>>(new Set());
+  const [openMoreId, setOpenMoreId] = useState<number | null>(null);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
@@ -147,6 +153,24 @@ export default function CronJobsPage() {
     }
   };
 
+  const handleToggleStatus = async (id: number, currentStatus: string) => {
+    const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
+    setSwitchLoadingIds((prev) => new Set([...prev, id]));
+    try {
+      const res = await request.put(`/api/cron-jobs/${id}/status`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        void fetchData();
+      }
+    } finally {
+      setSwitchLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
   const fetchJobLogs = useCallback(async (jobId: number, p = 1) => {
     setLogsLoading(true);
     try {
@@ -162,10 +186,12 @@ export default function CronJobsPage() {
     }
   }, [logsPageSize]);
 
-  const fetchAllLogs = useCallback(async (p = 1) => {
+  const fetchAllLogs = useCallback(async (p = 1, jobId: number | null = allLogsJobFilter) => {
     setAllLogsLoading(true);
     try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(logsPageSize) }).toString();
+      const params: Record<string, string> = { page: String(p), pageSize: String(logsPageSize) };
+      if (jobId) params.jobId = String(jobId);
+      const query = new URLSearchParams(params).toString();
       const res = await request.get<PaginatedResponse<CronJobLog>>(`/api/cron-jobs/logs?${query}`);
       if (res.code === 0) {
         setAllLogsData(res.data.list);
@@ -175,7 +201,7 @@ export default function CronJobsPage() {
     } finally {
       setAllLogsLoading(false);
     }
-  }, [logsPageSize]);
+  }, [logsPageSize, allLogsJobFilter]);
 
   const openLogsDrawer = (record: CronJob) => {
     setLogsJobId(record.id);
@@ -206,38 +232,60 @@ export default function CronJobsPage() {
     running: 'blue',
   };
 
+  const lastRunStatusLabel: Record<string, string> = { success: '成功', fail: '失败', running: '运行中' };
+
   const columns: ColumnProps<CronJob>[] = [
     { title: '任务名称', dataIndex: 'name', width: 180, ellipsis: true },
-    { title: 'Cron 表达式', dataIndex: 'cronExpression', width: 150 },
+    {
+      title: 'Cron 表达式', dataIndex: 'cronExpression', width: 150,
+      render: (v: string) => (
+        <Tooltip content={v} position="top">
+          <span style={{ fontFamily: 'monospace', cursor: 'default' }}>{v}</span>
+        </Tooltip>
+      ),
+    },
     { title: '处理器', dataIndex: 'handler', width: 180, ellipsis: true },
     {
-      title: '上次执行', dataIndex: 'lastRunStatus', width: 90,
-      render: (v: string | null) =>
-        v ? <Tag color={runStatusColor[v] ?? 'grey'} size="small">{({'success': '成功', 'fail': '失败', 'running': '运行中'} as Record<string, string>)[v] ?? v}</Tag> : '—',
-    },
-    {
-      title: '上次执行时间', dataIndex: 'lastRunAt', width: 180,
-      render: (v: string | null) => v ? formatDateTime(v) : '—',
+      title: '上次执行',
+      width: 175,
+      render: (_: unknown, record: CronJob) => {
+        if (!record.lastRunStatus) return '—';
+        return (
+          <div>
+            <Tag color={runStatusColor[record.lastRunStatus] ?? 'grey'} size="small">
+              {lastRunStatusLabel[record.lastRunStatus] ?? record.lastRunStatus}
+            </Tag>
+            {record.lastRunAt && (
+              <div style={{ fontSize: 11, color: 'var(--semi-color-text-2)', marginTop: 2 }}>
+                {formatDateTime(record.lastRunAt)}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     { title: '描述', dataIndex: 'description', width: 200, ellipsis: true },
     {
-      title: '状态', dataIndex: 'status', width: 90,
+      title: '启用',
+      dataIndex: 'status',
+      width: 70,
       fixed: 'right',
-      render: (v: string) => (
-        <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>
+      render: (v: string, record: CronJob) => (
+        <Switch
+          checked={v === 'enabled'}
+          loading={switchLoadingIds.has(record.id)}
+          size="small"
+          onChange={() => { void handleToggleStatus(record.id, v); }}
+          disabled={!hasPermission('system:cronjob:update')}
+        />
       ),
     },
     {
       title: '操作',
       fixed: 'right',
-      width: 280,
+      width: 220,
       render: (_: unknown, record: CronJob) => (
         <Space>
-          {hasPermission('system:cronjob:list') && (
-            <Button theme="borderless" size="small" onClick={() => openLogsDrawer(record)}>
-              执行日志
-            </Button>
-          )}
           {hasPermission('system:cronjob:execute') && (
             <Button theme="borderless" size="small" onClick={() => handleRunOnce(record.id, record.name)}>
               执行
@@ -249,11 +297,38 @@ export default function CronJobsPage() {
             </Button>
           )}
           {hasPermission('system:cronjob:delete') && (
-            <Button theme="borderless" type="danger" size="small" onClick={() => {
-              Modal.confirm({ title: '确定要删除此任务吗？', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDelete(record.id) });
-            }}>
-              删除
-            </Button>
+            <Button
+              theme="borderless"
+              type="danger"
+              size="small"
+              onClick={() => {
+                Modal.confirm({
+                  title: '确定要删除此任务吗？',
+                  okButtonProps: { type: 'danger', theme: 'solid' },
+                  onOk: () => handleDelete(record.id),
+                });
+              }}
+            >删除</Button>
+          )}
+          {hasPermission('system:cronjob:list') && (
+            <Dropdown
+              trigger="custom"
+              visible={openMoreId === record.id}
+              onClickOutSide={() => setOpenMoreId(null)}
+              position="bottomRight"
+              render={
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={() => { setOpenMoreId(null); openLogsDrawer(record); }}>执行日志</Dropdown.Item>
+                </Dropdown.Menu>
+              }
+            >
+              <Button
+                theme="borderless"
+                size="small"
+                icon={<MoreHorizontal size={14} />}
+                onClick={() => setOpenMoreId(openMoreId === record.id ? null : record.id)}
+              />
+            </Dropdown>
           )}
         </Space>
       ),
@@ -285,7 +360,7 @@ export default function CronJobsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsDrawerVisible(true); void fetchAllLogs(1); }}>执行日志</Button>
+          <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); void fetchAllLogs(1, null); }}>全部执行日志</Button>
           <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
           {hasPermission('system:cronjob:create') && (
             <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
@@ -405,10 +480,25 @@ export default function CronJobsPage() {
       <SideSheet
         title="全部执行日志"
         visible={allLogsDrawerVisible}
-        onCancel={() => setAllLogsDrawerVisible(false)}
+        onCancel={() => { setAllLogsDrawerVisible(false); setAllLogsJobFilter(null); }}
         width={1060}
         closeOnEsc
       >
+        <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Select
+            placeholder="过滤任务"
+            value={allLogsJobFilter ?? undefined}
+            onChange={(v) => {
+              const jobId = (v as number | undefined) ?? null;
+              setAllLogsJobFilter(jobId);
+              setAllLogsPage(1);
+              void fetchAllLogs(1, jobId);
+            }}
+            style={{ width: 220 }}
+            showClear
+            optionList={data.map((job) => ({ value: job.id, label: job.name }))}
+          />
+        </div>
         <Table
           bordered
           size="small"
@@ -468,7 +558,7 @@ export default function CronJobsPage() {
             currentPage: allLogsPage,
             pageSize: logsPageSize,
             total: allLogsTotal,
-            onPageChange: (p) => { setAllLogsPage(p); void fetchAllLogs(p); },
+            onPageChange: (p) => { setAllLogsPage(p); void fetchAllLogs(p, allLogsJobFilter); },
             showTotal: true,
           }}
         />

@@ -106,11 +106,12 @@ export async function exportCronJobs(): Promise<{ stream: ReadableStream; filena
   return { stream, filename: 'cron-jobs.xlsx' };
 }
 
-export async function listAllCronJobLogs(q: { page: number; pageSize: number }) {
-  const { page, pageSize } = q;
+export async function listAllCronJobLogs(q: { page: number; pageSize: number; jobId?: number }) {
+  const { page, pageSize, jobId } = q;
+  const where = jobId ? eq(cronJobLogs.jobId, jobId) : undefined;
   const [total, rows] = await Promise.all([
-    db.$count(cronJobLogs),
-    withPagination(db.select().from(cronJobLogs).orderBy(desc(cronJobLogs.startedAt)).$dynamic(), page, pageSize),
+    db.$count(cronJobLogs, where),
+    withPagination(db.select().from(cronJobLogs).where(where).orderBy(desc(cronJobLogs.startedAt)).$dynamic(), page, pageSize),
   ]);
   return { list: rows.map(mapLog), total, page, pageSize };
 }
