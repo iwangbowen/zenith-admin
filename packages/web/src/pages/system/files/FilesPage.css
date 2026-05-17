@@ -59,8 +59,8 @@
 
 .files-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
   min-height: 120px;
 }
 
@@ -101,7 +101,7 @@
 }
 
 .files-grid-card__media {
-  height: 120px;
+  height: 90px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -286,7 +286,7 @@
 }
 
 .files-grid-card__info {
-  padding: 8px 10px 4px;
+  padding: 6px 8px 4px;
   flex: 1;
 }
 
@@ -297,14 +297,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--semi-color-text-0);
-  margin-bottom: 2px;
+  margin-bottom: 1px;
   cursor: default;
 }
 
 .files-grid-card__date {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--semi-color-text-3);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

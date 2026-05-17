@@ -133,7 +133,7 @@ function FileGridCard({
           ) : (
             <>
               <span className="files-grid-card__icon">
-                {getFileTypeIcon(file.mimeType, 36)}
+                {getFileTypeIcon(file.mimeType, 28)}
               </span>
               {ext && <span className="files-grid-card__type-badge">{ext}</span>}
             </>
