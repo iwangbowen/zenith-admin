@@ -142,7 +142,6 @@ function FileGridCard({
           <div className="files-grid-card__name">{file.originalName}</div>
         </Tooltip>
         <div className="files-grid-card__meta">
-          <ProviderTag provider={file.provider} />
           <span style={{ flex: 1 }}>{formatFileSize(file.size)}</span>
           <Dropdown
             trigger="click"
