@@ -109,6 +109,7 @@ function FileGridCard({
   canDelete, previewLoading, downloadLoading,
 }: Readonly<FileGridCardProps>) {
   const isImage = file.mimeType?.startsWith('image/');
+  const isPreviewable = isImage || file.mimeType?.startsWith('video/');
   const ext = file.originalName.includes('.') ? file.originalName.split('.').pop()?.toUpperCase() : '';
   return (
     <div className={`files-grid-card${selected ? ' files-grid-card--selected' : ''}`}>
@@ -144,11 +145,13 @@ function FileGridCard({
           )}
         </button>
         <div className="files-grid-card__quick-actions">
-          <Tooltip content="预览" position="top">
-            <button type="button" className="files-grid-card__quick-btn" onClick={(e) => { e.stopPropagation(); onPreview(file); }}>
-              <Eye size={15} />
-            </button>
-          </Tooltip>
+          {isPreviewable && (
+            <Tooltip content="预览" position="top">
+              <button type="button" className="files-grid-card__quick-btn" onClick={(e) => { e.stopPropagation(); onPreview(file); }}>
+                <Eye size={15} />
+              </button>
+            </Tooltip>
+          )}
           <Tooltip content="下载" position="top">
             <button type="button" className="files-grid-card__quick-btn" disabled={downloadLoading} onClick={(e) => { e.stopPropagation(); onDownload(file); }}>
               <Download size={15} />
