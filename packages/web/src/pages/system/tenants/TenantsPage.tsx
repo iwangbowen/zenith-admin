@@ -9,6 +9,8 @@ import {
   Form,
   Toast,
   Tag,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
@@ -241,7 +243,7 @@ export default function TenantsPage() {
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
         onOk={handleModalOk}
-        width={520}
+        width={660}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
@@ -250,23 +252,49 @@ export default function TenantsPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Input field="name" label="租户名称" placeholder="请输入租户名称" rules={[{ required: true, message: '请输入租户名称' }]} />
-          <Form.Input field="code" label="租户编码" placeholder="请输入租户编码" rules={[{ required: true, message: '请输入租户编码' }]} disabled={!!editingTenant} />
-          <Form.Input field="contactName" label="联系人" placeholder="请输入联系人" />
-          <Form.Input field="contactPhone" label="联系电话" placeholder="请输入联系电话" />
-          <Form.InputNumber field="maxUsers" label="最大用户数" min={1} placeholder="不填则不限" />
-          <Form.Select
-            field="status"
-            label="状态"
-            style={{ width: '100%' }}
-            optionList={[
-              { value: 'enabled', label: '正常' },
-              { value: 'disabled', label: '停用' },
-            ]}
-            placeholder="请选择状态"
-          />
-          <Form.DatePicker field="expireAt" label="到期时间" type="dateTime" placeholder="不填则永不过期" />
-          <Form.TextArea field="remark" label="备注" placeholder="请输入备注" rows={3} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="name" label="租户名称" placeholder="请输入租户名称" rules={[{ required: true, message: '请输入租户名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="code" label="租户编码" placeholder="请输入租户编码" rules={[{ required: true, message: '请输入租户编码' }]} disabled={!!editingTenant} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="contactName" label="联系人" placeholder="请输入联系人" />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="contactPhone" label="联系电话" placeholder="请输入联系电话" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.InputNumber field="maxUsers" label="最大用户数" min={1} placeholder="不填则不限" style={{ width: '100%' }} />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="status"
+                label="状态"
+                style={{ width: '100%' }}
+                optionList={[
+                  { value: 'enabled', label: '正常' },
+                  { value: 'disabled', label: '停用' },
+                ]}
+                placeholder="请选择状态"
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.DatePicker field="expireAt" label="到期时间" type="dateTime" placeholder="不填则永不过期" style={{ width: '100%' }} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="remark" label="备注" placeholder="请输入备注" rows={3} />
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>
