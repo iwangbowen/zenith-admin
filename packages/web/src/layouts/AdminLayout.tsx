@@ -654,17 +654,17 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 textAlign: 'center',
               }}
             >
-              <Typography.Text
-                link
+              <Button
+                theme="borderless"
+                type="primary"
                 size="small"
-                style={{ cursor: 'pointer' }}
                 onClick={() => {
                   setNoticePopVisible(false);
                   navigate('/notifications');
                 }}
               >
                 查看全部通知
-              </Typography.Text>
+              </Button>
             </div>
           </div>
         }
