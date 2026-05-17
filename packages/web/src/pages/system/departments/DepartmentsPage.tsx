@@ -338,7 +338,8 @@ export default function DepartmentsPage() {
           key={editingDepartment?.id ?? 'new-department'}
           getFormApi={(api) => { formApi.current = api; }}
           initValues={formInitValues}
-          labelPosition="top"
+          labelPosition="left"
+          labelWidth={90}
         >
           <Form.TreeSelect
             field="parentId"
