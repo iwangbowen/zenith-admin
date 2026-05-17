@@ -2,7 +2,9 @@ import OSS from 'ali-oss';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import COS from 'cos-nodejs-sdk-v5';
 import { randomUUID } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { promises as fs, createWriteStream } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import type { FileStorageConfigRow, ManagedFileRow } from '../db/schema';
 import { formatDate } from './datetime';
@@ -84,26 +86,35 @@ export function buildManagedFileUrl(fileId: number) {
   return `/api/files/${fileId}/content`;
 }
 
+/** 将 Web API ReadableStream 转换为 Node.js Readable，绕过 DOM/Node 类型不兼容问题 */
+function toNodeReadable(stream: ReadableStream<Uint8Array>): Readable {
+  return Readable.fromWeb(stream as unknown as Parameters<typeof Readable.fromWeb>[0]);
+}
+
 export async function uploadFileByConfig(config: FileStorageConfigRow, file: File) {
-  const buffer = Buffer.from(await file.arrayBuffer());
   const objectKey = buildObjectKey(file.name, config.basePath);
   const extension = path.extname(file.name).replace('.', '').toLowerCase() || undefined;
   const mimeType = file.type || undefined;
+  const size = file.size;
 
   if (config.provider === 'local') {
     const rootPath = resolveLocalRoot(config);
     const targetPath = path.join(rootPath, ...objectKey.split('/'));
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, buffer);
+    await pipeline(toNodeReadable(file.stream()), createWriteStream(targetPath));
   } else if (config.provider === 'oss') {
     const client = createOssClient(config);
-    await client.put(objectKey, buffer, mimeType ? { headers: { 'Content-Type': mimeType } } : undefined);
+    await client.putStream(objectKey, toNodeReadable(file.stream()), {
+      contentLength: size,
+      ...(mimeType ? { mime: mimeType } : {}),
+    } as unknown as OSS.PutStreamOptions);
   } else if (config.provider === 's3') {
     const client = createS3Client(config);
     await client.send(new PutObjectCommand({
       Bucket: config.s3Bucket!,
       Key: objectKey,
-      Body: buffer,
+      Body: toNodeReadable(file.stream()),
+      ContentLength: size,
       ...(mimeType ? { ContentType: mimeType } : {}),
     }));
   } else if (config.provider === 'cos') {
@@ -113,7 +124,8 @@ export async function uploadFileByConfig(config: FileStorageConfigRow, file: Fil
         Bucket: config.cosBucket!,
         Region: config.cosRegion!,
         Key: objectKey,
-        Body: buffer,
+        Body: toNodeReadable(file.stream()),
+        ContentLength: size,
         ...(mimeType ? { ContentType: mimeType } : {}),
       }, (err) => {
         if (err) reject(new Error(String(err.message ?? err)));
@@ -124,7 +136,7 @@ export async function uploadFileByConfig(config: FileStorageConfigRow, file: Fil
     throw new Error(`不支持的存储类型: ${config.provider}`);
   }
 
-  return { objectKey, size: buffer.byteLength, mimeType, extension };
+  return { objectKey, size, mimeType, extension };
 }
 
 export async function readStoredFile(file: ManagedFileRow, config: FileStorageConfigRow) {
