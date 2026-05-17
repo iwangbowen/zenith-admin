@@ -21,7 +21,8 @@
 
 ### 表格
 
-- 表格必须带边框：`bordered`
+- 数据表格必须使用 `ConfigurableTable` 组件（`@/components/ConfigurableTable`），并保持带边框属性：`bordered`
+- `ConfigurableTable` 在 `Table` 基础上内置了列显隐配置功能（右上角「列设置」下拉菜单），用户选择会持久化到 `localStorage`
 - "操作"列必须右侧固定：`fixed: 'right'`
 - "状态"列必须放在"操作"列左侧（紧靠操作列），并同样添加 `fixed: 'right'`
 
@@ -44,7 +45,7 @@
 ### 基本用法
 
 ```tsx
-<Table
+<ConfigurableTable
   bordered
   virtualized                              // 开启虚拟滚动
   scroll={{ y: 'calc(100vh - 260px)' }}   // 必须设置 scroll.y

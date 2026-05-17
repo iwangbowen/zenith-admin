@@ -17,16 +17,17 @@ packages/web/src/pages/xxx/XxxPage.tsx
 ```tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Button, Table, Form, Input, Select, Space,
+  Button, Form, Input, Select, Space,
   Modal, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus, Trash2 } from 'lucide-react';
-import { SearchToolbar } from '../../components/SearchToolbar';
-import { request } from '../../utils/request';
-import { formatDateTime, formatDateTimeForApi } from '../../utils/date';
-import { useDictItems } from '../../hooks/useDictItems';
+import ConfigurableTable from '@/components/ConfigurableTable';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import { request } from '@/utils/request';
+import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
+import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import type { Xxx, PaginatedResponse } from '@zenith/shared';
 
@@ -284,13 +285,14 @@ export default function XxxPage() {
       </SearchToolbar>
 
       {/* 数据表格 */}
-      <Table
+      <ConfigurableTable
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
         loading={loading}
         rowKey="id"
         size="small"
+        empty="暂无数据"
         pagination={{
           currentPage: page,
           pageSize,
@@ -306,7 +308,6 @@ export default function XxxPage() {
           showTotal: true,
           showSizeChanger: true,
         }}
-        scroll={{ x: 'max-content' }}
       />
 
       {/* 新增/编辑弹窗（共用一个） */}
@@ -460,8 +461,8 @@ const handleBatchDelete = () => {
   </Button>
 )}
 
-// 4. Table 增加 rowSelection
-<Table
+// 4. ConfigurableTable 增加 rowSelection
+<ConfigurableTable
   rowSelection={{
     selectedRowKeys,
     onChange: (keys) => setSelectedRowKeys(keys as number[]),
@@ -477,7 +478,7 @@ const handleBatchDelete = () => {
 
 ## 虚拟化表格（大数据量）
 
-当列表数据量较大（通常 > 500 条，如地区省市县、日志等）时，为 `Table` 开启 `virtualized`。
+当列表数据量较大（通常 > 500 条，如地区省市县、日志等）时，为 `ConfigurableTable` 开启 `virtualized`。
 
 ### 弹性全宽方案（推荐）
 
@@ -506,7 +507,7 @@ const columns: ColumnProps<Region>[] = [
   },
 ];
 
-<Table
+<ConfigurableTable
   bordered
   virtualized
   scroll={{ y: 'calc(100vh - 260px)' }}  // 只设 y，不设 x
@@ -522,7 +523,7 @@ const columns: ColumnProps<Region>[] = [
 所有列都有显式 `width` 时（含 `fixed: 'right'` 的状态列），必须设 `scroll.x` = 各列宽度之和，否则表头与数据行错位：
 
 ```tsx
-<Table
+<ConfigurableTable
   virtualized
   scroll={{ x: 1050, y: 'calc(100vh - 260px)' }}
   columns={columns}

@@ -159,7 +159,7 @@ ALLOWED_ORIGINS=
 所有 CRUD 列表页面（参考 `packages/web/src/pages/users/UsersPage.tsx`）采用无卡片（Cardless）设计方案：
 
 - 搜索区域统一使用 `SearchToolbar` 组件（`packages/web/src/components/SearchToolbar.tsx`）。
-- 数据表格必须使用带边框属性：`<Table bordered {...props} />`。
+- 数据表格必须使用 `ConfigurableTable` 组件（`packages/web/src/components/ConfigurableTable.tsx`），保持带边框属性：`<ConfigurableTable bordered {...props} />`。
 - 整体背景由 `AdminLayout` 统一负责，列表页不要自行包裹 `<Card>`。
 
 顶部搜索栏和操作按钮必须遵循统一布局：

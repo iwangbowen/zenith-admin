@@ -4,6 +4,73 @@
 
 ---
 
+## ConfigurableTable
+
+所有 CRUD 列表页面的标准数据表格组件，在 Semi Design `Table` 基础上封装了**列显隐配置**功能。
+
+**文件位置**：`packages/web/src/components/ConfigurableTable.tsx`
+
+### ConfigurableTable 功能特点
+
+- 右上角内置「列设置」下拉菜单，用户可勾选/取消勾选各列的显示状态
+- 列显隐配置自动持久化到 `localStorage`（key 默认根据页面路径 + 列 key 自动生成）
+- 操作列（key/title 为 `action`/`actions`/`operation`/`operations`/`操作`）默认不可隐藏
+- 完全透传 Semi Design `TableProps`，使用方式与 `<Table>` 一致
+
+### ConfigurableTable 扩展 Props
+
+| Prop | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `columnSettings` | `boolean` | `true` | 是否显示列设置按钮 |
+| `columnSettingsKey` | `string` | 自动生成 | 自定义 localStorage 存储 key |
+| `alwaysVisibleColumnKeys` | `string[]` | `[]` | 额外指定不可隐藏的列 key |
+| `columnSettingsLabel` | `string` | `'列设置'` | 列设置按钮文字 |
+
+### ConfigurableTable 使用示例
+
+```tsx
+import ConfigurableTable from '@/components/ConfigurableTable';
+
+// 标准分页列表
+<ConfigurableTable
+  bordered
+  columns={columns}
+  dataSource={data?.list ?? []}
+  loading={loading}
+  rowKey="id"
+  size="small"
+  empty="暂无数据"
+  pagination={{
+    currentPage: page,
+    pageSize,
+    total: data?.total ?? 0,
+    onPageChange: (p) => { setPage(p); void fetchList(p, pageSize); },
+    onPageSizeChange: (s) => { setPageSize(s); void fetchList(1, s); },
+    showTotal: true,
+    showSizeChanger: true,
+  }}
+/>
+
+// 虚拟化大数据量列表
+<ConfigurableTable
+  bordered
+  virtualized
+  scroll={{ y: 'calc(100vh - 260px)' }}
+  columns={columns}
+  dataSource={data}
+  rowKey="id"
+  pagination={false}
+/>
+```
+
+### ConfigurableTable 注意事项
+
+- 所有 CRUD 列表页**必须**使用 `ConfigurableTable` 替代裸 `Table`，并保留 `bordered` 属性
+- 操作列自动不可隐藏，无需额外配置 `alwaysVisibleColumnKeys`
+- 若需关闭列设置功能（如只有 1-2 列的简单表格），传 `columnSettings={false}`
+
+---
+
 ## SearchToolbar
 
 搜索工具栏组件，用于所有 CRUD 列表页面的顶部筛选区域。
