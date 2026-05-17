@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Table,
   Button,
+  Dropdown,
   Input,
   Select,
   Space,
@@ -14,7 +15,7 @@ import {
   DatePicker,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, MoreHorizontal } from 'lucide-react';
 import type { Role, Menu, User, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -245,25 +246,19 @@ export default function RolesPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 420,
+      width: 320,
       align: 'center',
       render: (_v, row) => (
         <Space>
-          {hasPermission('system:role:assign') && <Button theme="borderless" size="small" onClick={() => openMenuModal(row)}>
-            菜单权限
-          </Button>}
-          {hasPermission('system:role:assign') && <Button theme="borderless" size="small" onClick={() => openUserModal(row)}>
-            分配用户
-          </Button>}
-          {hasPermission('system:role:update') && <Button theme="borderless" size="small" onClick={() => openDataScopeModal(row)}>
-            数据权限
-          </Button>}
           {hasPermission('system:role:update') && <Button
             theme="borderless"
             size="small"
             onClick={() => { setEditingRole(row); setModalVisible(true); }}
           >
             编辑
+          </Button>}
+          {hasPermission('system:role:assign') && <Button theme="borderless" size="small" onClick={() => openMenuModal(row)}>
+            菜单权限
           </Button>}
           {hasPermission('system:role:delete') && <Button theme="borderless" size="small" type="danger" onClick={() => {
             Modal.confirm({
@@ -272,6 +267,27 @@ export default function RolesPage() {
               onOk: () => handleDelete(row.id),
             });
           }}>删除</Button>}
+          {(hasPermission('system:role:assign') || hasPermission('system:role:update')) && (
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              clickToHide
+              render={
+                <Dropdown.Menu>
+                  {hasPermission('system:role:assign') && (
+                    <Dropdown.Item onClick={() => openUserModal(row)}>分配用户</Dropdown.Item>
+                  )}
+                  {hasPermission('system:role:update') && (
+                    <Dropdown.Item onClick={() => openDataScopeModal(row)}>数据权限</Dropdown.Item>
+                  )}
+                </Dropdown.Menu>
+              }
+            >
+              <span style={{ display: 'inline-block' }}>
+                <Button theme="borderless" size="small" icon={<MoreHorizontal size={14} />} />
+              </span>
+            </Dropdown>
+          )}
         </Space>
       ),
     },
