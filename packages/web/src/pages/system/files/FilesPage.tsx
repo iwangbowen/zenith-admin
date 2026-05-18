@@ -879,7 +879,7 @@ export default function FilesPage() {
           })()}
           <List
             grid={{
-              gutter: 10,
+              gutter: [10, 10],
               xs: 12,
               sm: 8,
               md: 6,
