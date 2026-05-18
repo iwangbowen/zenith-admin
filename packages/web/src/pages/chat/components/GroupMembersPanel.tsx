@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Button, Modal, Toast, Tooltip, TextArea, Input, Tag, Spin, Typography } from '@douyinfe/semi-ui';
+import { Button, Modal, Toast, Tooltip, TextArea, Input, Tag, Typography, List as SemiList } from '@douyinfe/semi-ui';
 import { UserPlus, UserMinus, Crown, Pencil } from 'lucide-react';
 import { request } from '@/utils/request';
 import { UserAvatar } from './UserAvatar';
@@ -189,28 +189,33 @@ export function GroupMembersPanel({
             <UserSearchList onSelect={handleAdd} excludeIds={memberIds} />
           </div>
         )}
-        <Spin spinning={loading}>
-          {sortedMembers.map((m) => {
+        <SemiList
+          dataSource={sortedMembers}
+          loading={loading}
+          emptyContent={<Text type="tertiary" style={{ display: 'block', padding: '16px 0', textAlign: 'center', fontSize: 12 }}>暂无成员</Text>}
+          renderItem={(m: ChatGroupMember) => {
             const isSelf = m.id === currentUserId;
             return (
-              <div
+              <SemiList.Item
                 key={m.id}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--semi-color-border)' }}
-              >
-                <UserAvatar name={m.nickname} avatar={m.avatar} size={28} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Text style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>
-                      {m.nickname}
-                    </Text>
-                    {m.role === 'owner' && (
-                      <Tag size="small" color="amber" style={{ padding: '0 4px', lineHeight: '16px', fontSize: 10 }}>
-                        <Crown size={9} style={{ marginRight: 2 }} />群主
-                      </Tag>
-                    )}
+                align="center"
+                style={{ padding: '6px 0' }}
+                header={<UserAvatar name={m.nickname} avatar={m.avatar} size={28} />}
+                main={(
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Text style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>
+                        {m.nickname}
+                      </Text>
+                      {m.role === 'owner' && (
+                        <Tag size="small" color="amber" style={{ padding: '0 4px', lineHeight: '16px', fontSize: 10 }}>
+                          <Crown size={9} style={{ marginRight: 2 }} />群主
+                        </Tag>
+                      )}
+                    </div>
                   </div>
-                </div>
-                {isOwner && !isSelf && (
+                )}
+                extra={isOwner && !isSelf && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                     <Tooltip content="转让群主">
                       <Button
@@ -234,10 +239,10 @@ export function GroupMembersPanel({
                     </Tooltip>
                   </div>
                 )}
-              </div>
+              />
             );
-          })}
-        </Spin>
+          }}
+        />
       </div>
     </div>
   );

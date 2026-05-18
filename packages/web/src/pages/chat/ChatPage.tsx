@@ -1752,55 +1752,61 @@ export default function ChatPage({
                 <Spin />
               </div>
             )}
-            {leftPaneMode === 'globalSearch' && globalSearchHasSearched && !globalSearchLoading && globalSearchResults.length === 0 && (
-              <Empty description="未找到相关消息" style={{ padding: '30px 0' }} imageStyle={{ width: 60 }} />
-            )}
-            {leftPaneMode === 'globalSearch' && !globalSearchLoading && globalSearchResults.map((item) => {
-              const convName = globalSearchConvNames[String(item.message.conversationId)] ?? '会话';
-              return (
-                <button
-                  key={item.message.id}
-                  type="button"
-                  onClick={async () => {
-                    const res = await request.get<import('@zenith/shared').ChatMessageContext>(
-                      `/api/chat/conversations/${item.message.conversationId}/messages/${item.message.id}/context?before=15&after=15`,
-                      { silent: true },
+              {leftPaneMode === 'globalSearch' && globalSearchHasSearched && !globalSearchLoading && (
+                <SemiList
+                  dataSource={globalSearchResults}
+                  emptyContent={<Empty description="未找到相关消息" style={{ padding: '30px 0' }} imageStyle={{ width: 60 }} />}
+                  split={false}
+                  renderItem={(item: ChatMessageSearchItem) => {
+                    const convName = globalSearchConvNames[String(item.message.conversationId)] ?? '会话';
+                    return (
+                      <SemiList.Item
+                        key={item.message.id}
+                        onClick={async () => {
+                          const res = await request.get<ChatMessageContext>(
+                            `/api/chat/conversations/${item.message.conversationId}/messages/${item.message.id}/context?before=15&after=15`,
+                            { silent: true },
+                          );
+                          if (res.code !== 0 || !res.data) {
+                            import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error('定位消息失败'));
+                            return;
+                          }
+                          const targetConv = conversations.find((c) => c.id === item.message.conversationId);
+                          if (!targetConv) {
+                            // 会话不在列表中，刷新列表再定位
+                            await fetchConversations();
+                          }
+                          setActiveConvId(item.message.conversationId);
+                          onConvChange?.(item.message.conversationId);
+                          setLeftPaneMode('conversations');
+                          setMessages(res.data.list);
+                          setHasMore(res.data.hasBefore);
+                          setOldestMsgId(res.data.list[0]?.id ?? null);
+                          setContextMode({ anchorMessageId: res.data.anchorMessageId, keyword: globalSearchKeyword.trim() });
+                          setTimeout(() => scrollToMessage(res.data.anchorMessageId), 80);
+                        }}
+                        style={{ padding: '8px 12px', cursor: 'pointer' }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--semi-color-fill-0)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                        main={(
+                          <div style={{ minWidth: 0, width: '100%' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 2 }}>
+                              <Text strong style={{ fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{convName}</Text>
+                              <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(item.message.createdAt)}</Text>
+                            </div>
+                            {item.message.senderName && (
+                              <Text type="secondary" style={{ display: 'block', fontSize: 11, marginBottom: 2 }}>{item.message.senderName}</Text>
+                            )}
+                            <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.snippet}
+                            </Text>
+                          </div>
+                        )}
+                      />
                     );
-                    if (res.code !== 0 || !res.data) {
-                      import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error('定位消息失败'));
-                      return;
-                    }
-                    const targetConv = conversations.find((c) => c.id === item.message.conversationId);
-                    if (!targetConv) {
-                      // 会话不在列表中，刷新列表再定位
-                      await fetchConversations();
-                    }
-                    setActiveConvId(item.message.conversationId);
-                    onConvChange?.(item.message.conversationId);
-                    setLeftPaneMode('conversations');
-                    setMessages(res.data.list);
-                    setHasMore(res.data.hasBefore);
-                    setOldestMsgId(res.data.list[0]?.id ?? null);
-                    setContextMode({ anchorMessageId: res.data.anchorMessageId, keyword: globalSearchKeyword.trim() });
-                    setTimeout(() => scrollToMessage(res.data.anchorMessageId), 80);
                   }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--semi-color-border)' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 2 }}>
-                    <Text strong style={{ fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{convName}</Text>
-                    <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(item.message.createdAt)}</Text>
-                  </div>
-                  {item.message.senderName && (
-                    <Text type="secondary" style={{ display: 'block', fontSize: 11, marginBottom: 2 }}>{item.message.senderName}</Text>
-                  )}
-                  <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.snippet}
-                  </Text>
-                </button>
-              );
-            })}
+                />
+              )}
             {leftPaneMode === 'globalSearch' && globalSearchHasSearched && !globalSearchLoading
               && globalSearchResults.length < globalSearchTotal && (
               <div style={{ padding: '8px 12px', textAlign: 'center' }}>
@@ -2254,31 +2260,37 @@ export default function ChatPage({
                           </div>
                         )}
                         {pinnedMessages.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
                             <Text strong style={{ fontSize: 12 }}><Pin size={12} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />置顶消息</Text>
-                            {pinnedMessages.map((item) => (
-                              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <button
-                                  type="button"
-                                  onClick={() => scrollToMessage(item.id)}
-                                  style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
-                                >
-                                  <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {getMessageSummary(item)}
-                                  </Text>
-                                </button>
-                                <button
-                                  type="button"
-                                  title="取消置顶"
-                                  onClick={() => { void handleTogglePinMessage(item); }}
-                                  style={{ flexShrink: 0, border: 'none', background: 'transparent', padding: 2, cursor: 'pointer', color: 'var(--semi-color-text-2)', display: 'flex', alignItems: 'center', borderRadius: 4 }}
-                                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-danger)'; }}
-                                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-text-2)'; }}
-                                >
-                                  <PinOff size={12} />
-                                </button>
-                              </div>
-                            ))}
+                              <SemiList
+                                dataSource={pinnedMessages}
+                                split={false}
+                                renderItem={(item: ChatMessage) => (
+                                  <SemiList.Item
+                                    key={item.id}
+                                    align="center"
+                                    onClick={() => scrollToMessage(item.id)}
+                                    style={{ padding: 0, cursor: 'pointer' }}
+                                    main={(
+                                      <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {getMessageSummary(item)}
+                                      </Text>
+                                    )}
+                                    extra={(
+                                      <button
+                                        type="button"
+                                        title="取消置顶"
+                                        onClick={(event) => { event.stopPropagation(); void handleTogglePinMessage(item); }}
+                                        style={{ flexShrink: 0, border: 'none', background: 'transparent', padding: 2, cursor: 'pointer', color: 'var(--semi-color-text-2)', display: 'flex', alignItems: 'center', borderRadius: 4 }}
+                                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-danger)'; }}
+                                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--semi-color-text-2)'; }}
+                                      >
+                                        <PinOff size={12} />
+                                      </button>
+                                    )}
+                                  />
+                                )}
+                              />
                           </div>
                         )}
                         {hasMore && !useLocalSearchFallback && loadingMsgs && (

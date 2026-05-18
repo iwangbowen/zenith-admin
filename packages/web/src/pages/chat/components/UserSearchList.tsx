@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Input, Empty, Spin, Typography } from '@douyinfe/semi-ui';
+import { Input, Empty, Typography, List as SemiList } from '@douyinfe/semi-ui';
 import { Search } from 'lucide-react';
 import { request } from '@/utils/request';
 import { UserAvatar } from './UserAvatar';
@@ -29,35 +29,30 @@ export function UserSearchList({ onSelect, excludeIds }: Readonly<{ onSelect: (u
   }, [keyword, search]);
 
   return (
-    <>
-      <Input prefix={<Search size={14} />} placeholder="搜索用户名 / 昵称" value={keyword} onChange={setKeyword} size="small" />
-      <Spin spinning={loading}>
-        <div style={{ marginTop: 8, maxHeight: 240, overflowY: 'auto' }}>
-          {ulist.length === 0 && !loading && (
-            <Empty description="暂无用户" style={{ padding: '16px 0' }} imageStyle={{ width: 56 }} />
+    <SemiList
+      dataSource={ulist}
+      loading={loading}
+      split={false}
+      style={{ marginTop: 8, maxHeight: 280, overflowY: 'auto' }}
+      header={<Input prefix={<Search size={14} />} placeholder="搜索用户名 / 昵称" value={keyword} onChange={setKeyword} size="small" />}
+      emptyContent={<Empty description="暂无用户" style={{ padding: '16px 0' }} imageStyle={{ width: 56 }} />}
+      renderItem={(u: ChatUser) => (
+        <SemiList.Item
+          key={u.id}
+          align="center"
+          onClick={() => onSelect(u)}
+          style={{ padding: '8px 4px', cursor: 'pointer', borderRadius: 6 }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--semi-color-fill-0)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          header={<UserAvatar name={u.nickname} avatar={u.avatar} />}
+          main={(
+            <div>
+              <Text strong style={{ fontSize: 13 }}>{u.nickname}</Text>
+              <Text type="tertiary" style={{ fontSize: 12, display: 'block' }}>@{u.username}</Text>
+            </div>
           )}
-          {ulist.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => onSelect(u)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px',
-                cursor: 'pointer', borderRadius: 6, border: 'none', background: 'transparent',
-                width: '100%', textAlign: 'left',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-            >
-              <UserAvatar name={u.nickname} avatar={u.avatar} />
-              <div>
-                <Text strong style={{ fontSize: 13 }}>{u.nickname}</Text>
-                <Text type="tertiary" style={{ fontSize: 12, display: 'block' }}>@{u.username}</Text>
-              </div>
-            </button>
-          ))}
-        </div>
-      </Spin>
-    </>
+        />
+      )}
+    />
   );
 }

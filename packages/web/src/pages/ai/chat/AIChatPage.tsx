@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { AIChatDialogue, AIChatInput, Typography, Button, Tag, RadioGroup, Radio, Select, Toast } from '@douyinfe/semi-ui';
+import { AIChatDialogue, AIChatInput, Typography, Button, Tag, RadioGroup, Radio, Select, Toast, List as SemiList } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import { MessageSquarePlus, Trash2, Globe, AlignLeft, AlignJustify, Bot, Wrench } from 'lucide-react';
 
@@ -427,54 +427,49 @@ export default function AIChatPage() {
           </Button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px' }}>
-          {conversations.map((conv) => (
-            <button
-              key={conv.id}
-              onClick={() => setActiveConvId(conv.id)}
-              style={{
-                padding: '8px 10px',
-                borderRadius: 6,
-                marginBottom: 2,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                width: '100%',
-                border: 'none',
-                textAlign: 'left',
-                background:
-                  activeConvId === conv.id
-                    ? 'var(--semi-color-primary-light-default)'
-                    : 'transparent',
-                color:
-                  activeConvId === conv.id
-                    ? 'var(--semi-color-primary)'
-                    : 'var(--semi-color-text-0)',
-              }}
-            >
-              <Text
-                ellipsis={{ showTooltip: true }}
-                style={{
-                  flex: 1,
-                  fontSize: 13,
-                  color: 'inherit',
-                }}
-              >
-                {conv.title}
-              </Text>
-              <Button
-                theme="borderless"
-                size="small"
-                icon={<Trash2 size={12} />}
-                type="danger"
-                style={{ flexShrink: 0, marginLeft: 4, opacity: 0.6 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteConversation(conv.id);
-                }}
-              />
-            </button>
-          ))}
+          <SemiList
+            dataSource={conversations}
+            split={false}
+            renderItem={(conv) => {
+              const active = activeConvId === conv.id;
+              return (
+                <SemiList.Item
+                  key={conv.id}
+                  align="center"
+                  onClick={() => setActiveConvId(conv.id)}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 6,
+                    marginBottom: 2,
+                    cursor: 'pointer',
+                    background: active ? 'var(--semi-color-primary-light-default)' : 'transparent',
+                    color: active ? 'var(--semi-color-primary)' : 'var(--semi-color-text-0)',
+                  }}
+                  main={(
+                    <Text
+                      ellipsis={{ showTooltip: true }}
+                      style={{ flex: 1, fontSize: 13, color: 'inherit' }}
+                    >
+                      {conv.title}
+                    </Text>
+                  )}
+                  extra={(
+                    <Button
+                      theme="borderless"
+                      size="small"
+                      icon={<Trash2 size={12} />}
+                      type="danger"
+                      style={{ flexShrink: 0, marginLeft: 4, opacity: 0.6 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteConversation(conv.id);
+                      }}
+                    />
+                  )}
+                />
+              );
+            }}
+          />
         </div>
         <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
           <Text type="tertiary" size="small">
