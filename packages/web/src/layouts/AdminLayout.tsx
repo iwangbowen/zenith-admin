@@ -733,7 +733,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         }
       >
         <div className="admin-header__user">
-          <Avatar size="small" color="blue" style={{ fontSize: 12, flexShrink: 0 }} src={user.avatar || undefined}>
+          <Avatar size="small" style={{ backgroundColor: user.avatar ? undefined : 'var(--semi-color-primary)', color: '#fff', fontSize: 12, flexShrink: 0 }} src={user.avatar || undefined}>
             {!user.avatar && (user.nickname?.charAt(0)?.toUpperCase() || 'U')}
           </Avatar>
           <span className="admin-header__username">{user.nickname}</span>

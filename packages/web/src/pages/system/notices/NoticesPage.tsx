@@ -343,7 +343,7 @@ export default function NoticesPage() {
         dataIndex: 'username',
         render: (_: unknown, u: NoticeReadStats['list'][number]) => (
           <Space>
-            <Avatar size="extra-extra-small" src={u.avatar ?? undefined}>
+            <Avatar size="extra-extra-small" src={u.avatar ?? undefined} style={{ backgroundColor: u.avatar ? undefined : 'var(--semi-color-primary)', color: '#fff' }}>
               {u.nickname?.[0] ?? 'U'}
             </Avatar>
             <span>

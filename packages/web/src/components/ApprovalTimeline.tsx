@@ -69,16 +69,20 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
 
             {/* 审批人 + 时间 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: task.comment ? 6 : 0 }}>
-              <Avatar
-                size="extra-extra-small"
-                style={{
-                  backgroundColor: isSkipped ? 'var(--semi-color-fill-2)' : 'var(--semi-color-primary-light-active)',
-                  flexShrink: 0,
-                }}
-                src={task.assigneeAvatar ?? undefined}
-              >
-                {(task.assigneeName ?? '?').charAt(0)}
-              </Avatar>
+              {(() => {
+                let avatarBg: string | undefined;
+                if (isSkipped) avatarBg = 'var(--semi-color-fill-2)';
+                else if (!task.assigneeAvatar) avatarBg = 'var(--semi-color-primary)';
+                return (
+                  <Avatar
+                    size="extra-extra-small"
+                    style={{ backgroundColor: avatarBg, color: '#fff', flexShrink: 0 }}
+                    src={task.assigneeAvatar ?? undefined}
+                  >
+                    {(task.assigneeName ?? '?').charAt(0)}
+                  </Avatar>
+                );
+              })()}
               <Typography.Text size="small" type="tertiary">
                 {task.assigneeName ?? '未指定'}
               </Typography.Text>
