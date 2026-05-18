@@ -1136,19 +1136,15 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   {/* ── 标签页动画 ── */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>标签页动画</span>
-                    <div className="tab-anim-picker">
+                    <RadioGroup
+                      type="button"
+                      value={preferences.tabAnimation ?? 'none'}
+                      onChange={(e) => setPreferences({ tabAnimation: e.target.value as 'none' | 'fade' | 'slide' | 'scale' })}
+                    >
                       {(['none', 'fade', 'slide', 'scale'] as const).map((anim) => {
                         const labels: Record<string, string> = { none: '无', fade: '淡入', slide: '滑入', scale: '缩放' };
-                        const btn = (
-                          <button
-                            type="button"
-                            className={`tab-anim-picker__btn${preferences.tabAnimation === anim ? ' tab-anim-picker__btn--active' : ''}`}
-                            onClick={() => setPreferences({ tabAnimation: anim })}
-                          >
-                            {labels[anim]}
-                          </button>
-                        );
-                        if (anim === 'none') return <span key={anim}>{btn}</span>;
+                        const radio = <Radio value={anim}>{labels[anim]}</Radio>;
+                        if (anim === 'none') return radio;
                         return (
                           <Popover
                             key={anim}
@@ -1164,11 +1160,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                               </div>
                             }
                           >
-                            {btn}
+                            {radio}
                           </Popover>
                         );
                       })}
-                    </div>
+                    </RadioGroup>
                   </div>
                 </>
               )}
