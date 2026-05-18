@@ -371,7 +371,6 @@ export default function MenusPage() {
               style={{ width: '100%' }}
               placeholder="请选择父级菜单"
               filterTreeNode
-              expandAll
             />
           </Form.Slot>
 
