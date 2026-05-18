@@ -1665,36 +1665,44 @@ export default function ChatPage({
                 }}
               />
             )}
-            {leftPaneMode === 'favorites' && favoriteMessages.length === 0 && !loadingConvs && (
-              <Empty description="暂无收藏消息" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />
+            {leftPaneMode === 'favorites' && (
+              <SemiList
+                dataSource={favoriteMessages}
+                emptyContent={loadingConvs ? null : <Empty description="暂无收藏消息" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />}
+                split={false}
+                renderItem={(msg: ChatMessage) => {
+                  const conv = conversations.find((item) => item.id === msg.conversationId);
+                  const convName = conv?.type === 'direct' ? (conv.targetUser?.nickname ?? '私聊') : (conv?.name ?? '群聊');
+                  return (
+                    <SemiList.Item
+                      key={msg.id}
+                      onClick={() => {
+                        setFavPreviewMsg(msg);
+                        setFavPreviewVisible(true);
+                      }}
+                      onRightClick={(e) => {
+                        e.preventDefault();
+                        setLeftPaneContextMenu({ x: e.clientX, y: e.clientY, type: 'favorite', msg });
+                      }}
+                      style={{ padding: '10px 12px', cursor: 'pointer' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--semi-color-fill-0)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                      main={(
+                        <div style={{ minWidth: 0, width: '100%' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                            <Text strong style={{ fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{convName}</Text>
+                            <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(msg.createdAt)}</Text>
+                          </div>
+                          <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {getMessageSummary(msg)}
+                          </Text>
+                        </div>
+                      )}
+                    />
+                  );
+                }}
+              />
             )}
-            {leftPaneMode === 'favorites' && favoriteMessages.map((msg) => {
-              const conv = conversations.find((item) => item.id === msg.conversationId);
-              const convName = conv?.type === 'direct' ? (conv.targetUser?.nickname ?? '私聊') : (conv?.name ?? '群聊');
-              return (
-                <button
-                  key={msg.id}
-                  type="button"
-                  onClick={() => {
-                    setFavPreviewMsg(msg);
-                    setFavPreviewVisible(true);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setLeftPaneContextMenu({ x: e.clientX, y: e.clientY, type: 'favorite', msg });
-                  }}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '10px 12px', cursor: 'pointer' }}
-                >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                      <Text strong style={{ fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{convName}</Text>
-                      <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(msg.createdAt)}</Text>
-                    </div>
-                    <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {getMessageSummary(msg)}
-                    </Text>
-                </button>
-              );
-            })}
             {leftPaneMode === 'globalSearch' && (
               <div style={{ padding: '8px 12px 0' }}>
                 <Input
