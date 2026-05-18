@@ -5,7 +5,12 @@ export const MESSAGE_TIME_GROUP_GAP_MS = 5 * 60 * 1000;
 export const URL_REGEX = /(https?:\/\/[^\s]+)/ig;
 
 export function getAvatarColor(name: string): string {
-  const colors = ['#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#a18cd1', '#fbc2eb', '#a1c4fd'];
+  const colors = [
+    'var(--semi-color-primary)',
+    'var(--semi-color-success)',
+    'var(--semi-color-warning)',
+    'var(--semi-color-danger)',
+  ];
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (name.codePointAt(i) ?? 0) + ((hash << 5) - hash);
   return colors[Math.abs(hash) % colors.length];

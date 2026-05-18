@@ -364,7 +364,7 @@ export default function UsersPage() {
       ellipsis: { showTitle: false },
       render: (_: unknown, record: User) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <Avatar size="extra-small" color="blue" style={{ fontSize: 11 }} src={record.avatar || undefined}>
+          <Avatar size="extra-small" style={{ backgroundColor: record.avatar ? undefined : 'var(--semi-color-primary)', color: '#fff', fontSize: 11 }} src={record.avatar || undefined}>
             {record.nickname?.charAt(0)?.toUpperCase() || 'U'}
           </Avatar>
           <span className="table-cell-ellipsis" title={`${record.nickname}（${record.username}）`}>
