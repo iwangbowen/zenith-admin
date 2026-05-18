@@ -200,20 +200,22 @@ export default function LogFilesPage() {
             onClick={() => void fetchFiles()}
           />
         </div>
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--semi-color-border)' }}>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索文件名"
-            value={keyword}
-            onChange={(value) => setKeyword(value)}
-            showClear
-            size="small"
-          />
-        </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <SemiList
             dataSource={filteredFiles}
             loading={listLoading}
+            header={(
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--semi-color-border)' }}>
+                <Input
+                  prefix={<Search size={14} />}
+                  placeholder="搜索文件名"
+                  value={keyword}
+                  onChange={(value) => setKeyword(value)}
+                  showClear
+                  size="small"
+                />
+              </div>
+            )}
             emptyContent={(
               <div style={{ padding: '24px 16px', textAlign: 'center' }}>
                 <Typography.Text type="tertiary" size="small">

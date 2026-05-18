@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover,
+  List as SemiList,
 } from '@douyinfe/semi-ui';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 
@@ -1554,116 +1555,119 @@ export default function ChatPage({
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <Spin spinning={loadingConvs}>
-            {leftPaneMode === 'conversations' && filteredConvs.length === 0 && !loadingConvs && (
-              <Empty description="暂无会话" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />
+            {leftPaneMode === 'conversations' && (
+              <SemiList
+                dataSource={filteredConvs}
+                emptyContent={loadingConvs ? null : <Empty description="暂无会话" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />}
+                split={false}
+                renderItem={(conv: ChatConversation) => {
+                  const name = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '未知用户') : (conv.name ?? '群聊');
+                  const avatarName = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '?') : (conv.name ?? '?');
+                  const avatar = conv.type === 'direct' ? conv.targetUser?.avatar : null;
+                  const groupMembers = conv.type === 'group' ? groupAvatarMap[conv.id] : undefined;
+                  const avatarNode = conv.type === 'group'
+                    ? <GroupGridAvatar name={avatarName} size={38} members={groupMembers} />
+                    : <UserAvatar name={avatarName} avatar={avatar} size={38} />;
+                  const lastMsg = conv.lastMessage;
+                  const isActive = conv.id === activeConvId;
+                  const isPinned = conv.isPinned ?? false;
+                  const isStarred = conv.isStarred ?? false;
+                  const isMuted = conv.isMuted ?? false;
+                  const hasMentionUnread = conv.hasMentionUnread ?? false;
+                  const hasFailedMsg = failedMessages.some((m) => m.convId === conv.id);
+                  const draftText = isActive ? '' : (draftsMap[conv.id] ?? '');
+                  const hasDraft = draftText.trim().length > 0;
+                  let lastMsgText = '暂无消息';
+                  if (lastMsg) {
+                    const summary = getMessageSummary(lastMsg);
+                    if (conv.type === 'group' && lastMsg.senderName && lastMsg.type !== 'system' && !lastMsg.isRecalled) {
+                      lastMsgText = `${lastMsg.senderName}：${summary}`;
+                    } else {
+                      lastMsgText = summary;
+                    }
+                  }
+
+                  return (
+                    <SemiList.Item
+                      key={conv.id}
+                      align="center"
+                      onClick={() => { void handleSelectConv(conv); }}
+                      onRightClick={(e) => {
+                        e.preventDefault();
+                        setLeftPaneContextMenu({ x: e.clientX, y: e.clientY, type: 'conversation', conv });
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        background: isActive ? 'var(--semi-color-primary-light-default)' : 'transparent',
+                      }}
+                      onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--semi-color-fill-0)'; }}
+                      onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                      header={conv.unreadCount > 0 ? (
+                        <Badge count={conv.unreadCount} overflowCount={99} dot={false}>
+                          {avatarNode}
+                        </Badge>
+                      ) : avatarNode}
+                      main={(
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* 第一行：图标 + 名称 + 免打扰 */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, flex: 1 }}>
+                              {isPinned && <Pin size={10} style={{ color: 'var(--semi-color-primary)', flexShrink: 0 }} />}
+                              {isStarred && <Star size={10} style={{ color: '#facc15', flexShrink: 0 }} />}
+                              <Text strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {name}
+                              </Text>
+                            </div>
+                            {isMuted && <BellOff size={11} style={{ color: 'var(--semi-color-text-3)', flexShrink: 0 }} />}
+                          </div>
+                          {/* 第二行：消息预览 + 时间 */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, marginTop: 2 }}>
+                            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                              {hasFailedMsg && (
+                                <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--semi-color-danger)', fontWeight: 500 }}>[发送失败]</span>
+                              )}
+                              {!hasFailedMsg && hasDraft && (
+                                <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--semi-color-danger)', fontWeight: 500 }}>[草稿]</span>
+                              )}
+                              {!hasFailedMsg && !hasDraft && hasMentionUnread && (
+                                <span
+                                  style={{
+                                    flexShrink: 0,
+                                    fontSize: 11,
+                                    lineHeight: '16px',
+                                    padding: '0 4px',
+                                    borderRadius: 4,
+                                    color: 'var(--semi-color-danger)',
+                                    background: 'var(--semi-color-danger-light-default)',
+                                  }}
+                                >
+                                  @我
+                                </span>
+                              )}
+                              <Text
+                                type={(hasFailedMsg || hasDraft) ? 'danger' : 'tertiary'}
+                                style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+                              >
+                                {hasDraft ? draftText.trim() : lastMsgText}
+                              </Text>
+                            </div>
+                            {lastMsg && (
+                              <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>
+                                {formatConvTime(lastMsg.createdAt)}
+                              </Text>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    />
+                  );
+                }}
+              />
             )}
             {leftPaneMode === 'favorites' && favoriteMessages.length === 0 && !loadingConvs && (
               <Empty description="暂无收藏消息" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />
             )}
-            {leftPaneMode === 'conversations' && filteredConvs.map((conv) => {
-              const name = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '未知用户') : (conv.name ?? '群聊');
-              const avatarName = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '?') : (conv.name ?? '?');
-              const avatar = conv.type === 'direct' ? conv.targetUser?.avatar : null;
-              const groupMembers = conv.type === 'group' ? groupAvatarMap[conv.id] : undefined;
-              const avatarNode = conv.type === 'group'
-                ? <GroupGridAvatar name={avatarName} size={38} members={groupMembers} />
-                : <UserAvatar name={avatarName} avatar={avatar} size={38} />;
-              const lastMsg = conv.lastMessage;
-              const isActive = conv.id === activeConvId;
-              const isPinned = conv.isPinned ?? false;
-              const isStarred = conv.isStarred ?? false;
-              const isMuted = conv.isMuted ?? false;
-              const hasMentionUnread = conv.hasMentionUnread ?? false;
-              const hasFailedMsg = failedMessages.some((m) => m.convId === conv.id);
-              const draftText = isActive ? '' : (draftsMap[conv.id] ?? '');
-              const hasDraft = draftText.trim().length > 0;
-              let lastMsgText = '暂无消息';
-              if (lastMsg) {
-                const summary = getMessageSummary(lastMsg);
-                if (conv.type === 'group' && lastMsg.senderName && lastMsg.type !== 'system' && !lastMsg.isRecalled) {
-                  lastMsgText = `${lastMsg.senderName}：${summary}`;
-                } else {
-                  lastMsgText = summary;
-                }
-              }
-
-              return (
-                <button
-                  key={conv.id}
-                  type="button"
-                  onClick={() => { void handleSelectConv(conv); }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setLeftPaneContextMenu({ x: e.clientX, y: e.clientY, type: 'conversation', conv });
-                  }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                    cursor: 'pointer', width: '100%', textAlign: 'left', border: 'none',
-                    background: isActive ? 'var(--semi-color-primary-light-default)' : 'transparent',
-                  }}
-                  onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
-                  onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                >
-                    {conv.unreadCount > 0 ? (
-                      <Badge count={conv.unreadCount} overflowCount={99} dot={false}>
-                        {avatarNode}
-                      </Badge>
-                    ) : (
-                      avatarNode
-                    )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* 第一行：图标 + 名称 + 免打扰 */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, flex: 1 }}>
-                        {isPinned && <Pin size={10} style={{ color: 'var(--semi-color-primary)', flexShrink: 0 }} />}
-                        {isStarred && <Star size={10} style={{ color: '#facc15', flexShrink: 0 }} />}
-                        <Text strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {name}
-                        </Text>
-                      </div>
-                      {isMuted && <BellOff size={11} style={{ color: 'var(--semi-color-text-3)', flexShrink: 0 }} />}
-                    </div>
-                    {/* 第二行：消息预览 + 时间 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, marginTop: 2 }}>
-                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
-                        {hasFailedMsg && (
-                          <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--semi-color-danger)', fontWeight: 500 }}>[发送失败]</span>
-                        )}
-                        {!hasFailedMsg && hasDraft && (
-                          <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--semi-color-danger)', fontWeight: 500 }}>[草稿]</span>
-                        )}
-                        {!hasFailedMsg && !hasDraft && hasMentionUnread && (
-                          <span
-                            style={{
-                              flexShrink: 0,
-                              fontSize: 11,
-                              lineHeight: '16px',
-                              padding: '0 4px',
-                              borderRadius: 4,
-                              color: 'var(--semi-color-danger)',
-                              background: 'var(--semi-color-danger-light-default)',
-                            }}
-                          >
-                            @我
-                          </span>
-                        )}
-                        <Text
-                          type={(hasFailedMsg || hasDraft) ? 'danger' : 'tertiary'}
-                          style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
-                        >
-                          {hasDraft ? draftText.trim() : lastMsgText}
-                        </Text>
-                      </div>
-                      {lastMsg && (
-                        <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>
-                          {formatConvTime(lastMsg.createdAt)}
-                        </Text>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
             {leftPaneMode === 'favorites' && favoriteMessages.map((msg) => {
               const conv = conversations.find((item) => item.id === msg.conversationId);
               const convName = conv?.type === 'direct' ? (conv.targetUser?.nickname ?? '私聊') : (conv?.name ?? '群聊');
