@@ -183,7 +183,7 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.9);
   border: none;
-  color: var(--semi-color-text-0);
+  color: var(--semi-color-black);
   cursor: pointer;
   transition: background 0.12s ease, transform 0.12s ease;
   padding: 0;
