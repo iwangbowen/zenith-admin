@@ -437,7 +437,7 @@ export default function UsersPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 280,
+      width: 200,
       render: (_: unknown, record: User) => (
         <Space>
           {hasPermission('system:user:update') && <Button
@@ -448,14 +448,6 @@ export default function UsersPage() {
               setModalVisible(true);
             }}
           >编辑</Button>}
-          {hasPermission('system:user:update') && <Button
-            theme="borderless"
-            size="small"
-            onClick={() => {
-              setPasswordUser(record);
-              setPasswordModalVisible(true);
-            }}
-          >修改密码</Button>}
           {hasPermission('system:user:delete') && (() => {
             const isAdmin = isAdminUser(record);
             const deleteBtn = (
@@ -491,6 +483,10 @@ export default function UsersPage() {
               clickToHide
               render={
                 <Dropdown.Menu>
+                  <Dropdown.Item onClick={() => {
+                    setPasswordUser(record);
+                    setPasswordModalVisible(true);
+                  }}>修改密码</Dropdown.Item>
                   <Dropdown.Item onClick={() => handleUnlock(record.id)}>解锁</Dropdown.Item>
                 </Dropdown.Menu>
               }
