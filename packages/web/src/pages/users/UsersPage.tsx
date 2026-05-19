@@ -771,7 +771,7 @@ export default function UsersPage() {
           key={passwordUser?.id ?? 'password-form'}
           getFormApi={(api) => { passwordFormApi.current = api; }}
           labelPosition="left"
-          labelWidth={72}
+          labelWidth={90}
         >
           <Form.Input
             field="password"
