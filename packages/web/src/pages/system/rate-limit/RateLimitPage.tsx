@@ -95,7 +95,8 @@ function formatWindow(ms: number): string {
 }
 
 export default function RateLimitPage() {
-  const canManage = usePermission('system:rate-limit:manage');
+  const { hasPermission } = usePermission();
+  const canManage = hasPermission('system:rate-limit:manage');
   const [rules, setRules] = useState<RateLimitRule[]>([]);
   const [stats, setStats] = useState<RateLimitStats>({ items: [] });
   const [loading, setLoading] = useState(false);
@@ -246,7 +247,7 @@ export default function RateLimitPage() {
       <Title heading={5} style={{ marginTop: 32, marginBottom: 12 }}>最近拦截记录</Title>
       <ConfigurableTable
         bordered
-        rowKey={(row: { _rowId: string }) => row._rowId}
+        rowKey="_rowId"
         loading={loading}
         dataSource={stats.items.flatMap((s) =>
           s.recentBlocks.map((b, idx) => ({

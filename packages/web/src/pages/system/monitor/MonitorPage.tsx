@@ -909,7 +909,7 @@ export default function MonitorPage() {
                 size="small"
                 bordered
                 dataSource={wsMetrics.recentDisconnects}
-                rowKey={(r: WsDisconnect) => `${r.tokenId}-${r.at}`}
+                rowKey={(r) => (r ? `${r.tokenId}-${r.at}` : '')}
                 pagination={wsMetrics.recentDisconnects.length > 10 ? { pageSize: 10 } : false}
                 empty={<Text type="tertiary">暂无断开记录</Text>}
                 columns={[
