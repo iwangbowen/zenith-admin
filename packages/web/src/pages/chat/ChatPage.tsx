@@ -1298,10 +1298,9 @@ export default function ChatPage({
   }, [activeConvId, contextMode, pendingNewMsgCount, restoreLatestMessages]);
 
   const handleStartReached = useCallback(() => {
-    const isLocalSearchFallback = Boolean(msgSearch.trim()) && !(showSearchPanel && searchHasSearched);
-    if (!hasMore || loadingMsgs || !activeConvId || isLocalSearchFallback) return;
+    if (!hasMore || loadingMsgs || !activeConvId) return;
     void fetchMessages(activeConvId, oldestMsgId ?? undefined);
-  }, [activeConvId, fetchMessages, hasMore, loadingMsgs, msgSearch, oldestMsgId, searchHasSearched, showSearchPanel]);
+  }, [activeConvId, fetchMessages, hasMore, loadingMsgs, oldestMsgId]);
 
   useWebSocket(handleWsMessage);
   const wsConnected = useWsConnected();
@@ -1425,14 +1424,8 @@ export default function ChatPage({
   }, [onUnreadChange, totalUnread]);
 
   const galleryImages = messages.filter((m) => m.type === 'image' && !m.isRecalled);
-  const useLocalSearchFallback = Boolean(msgSearch.trim()) && !(showSearchPanel && searchHasSearched);
   const visibleMessages = messages.filter((m) => !currentUserId || !(m.extra?.hiddenFor ?? []).includes(currentUserId));
-  const displayMessages = useLocalSearchFallback
-    ? visibleMessages.filter((m) => {
-      const keyword = msgSearch.toLowerCase();
-      return (m.content ?? '').toLowerCase().includes(keyword) || (m.senderName ?? '').toLowerCase().includes(keyword);
-    })
-    : visibleMessages;
+  const displayMessages = visibleMessages;
 
   useEffect(() => {
     const groupIds = conversations.filter((c) => c.type === 'group').map((c) => c.id);
@@ -2296,7 +2289,7 @@ export default function ChatPage({
                               />
                           </div>
                         )}
-                        {hasMore && !useLocalSearchFallback && loadingMsgs && (
+                        {hasMore && loadingMsgs && (
                           <div style={{ textAlign: 'center', marginBottom: 8, minHeight: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Spin size="small" />
                           </div>
