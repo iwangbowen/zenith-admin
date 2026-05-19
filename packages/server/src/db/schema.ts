@@ -491,6 +491,25 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 export type PasswordResetTokenRow = typeof passwordResetTokens.$inferSelect;
 export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
 
+// ─── 限流规则 ─────────────────────────────────────────────────────────────────
+export const rateLimitKeyTypeEnum = pgEnum('rate_limit_key_type', ['ip', 'user', 'ip_path']);
+
+export const rateLimitRules = pgTable('rate_limit_rules', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull().unique(),
+  description: varchar('description', { length: 255 }),
+  windowMs: integer('window_ms').notNull(),
+  limit: integer('limit').notNull(),
+  keyType: rateLimitKeyTypeEnum('key_type').default('ip').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  blockedMessage: varchar('blocked_message', { length: 255 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type RateLimitRuleRow = typeof rateLimitRules.$inferSelect;
+export type NewRateLimitRule = typeof rateLimitRules.$inferInsert;
+
 // ─── 消息模板 ─────────────────────────────────────────────────────────────────
 export const messageChannelEnum = pgEnum('message_channel', ['email', 'sms', 'in_app']);
 

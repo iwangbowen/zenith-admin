@@ -1,0 +1,290 @@
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Button,
+  Card,
+  Form,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Switch,
+  Tag,
+  Toast,
+  Tooltip,
+  Typography,
+} from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
+import { Gauge, Lock, RotateCcw, ShieldOff, Unlock, Zap } from 'lucide-react';
+import { request } from '@/utils/request';
+import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import ConfigurableTable from '@/components/ConfigurableTable';
+
+const { Title, Text } = Typography;
+
+interface RateLimitRule {
+  id: number;
+  name: string;
+  description: string | null;
+  windowMs: number;
+  limit: number;
+  keyType: 'ip' | 'user' | 'ip_path';
+  enabled: boolean;
+  blockedMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RecentBlock {
+  at: string;
+  key: string;
+  path: string;
+}
+
+interface RateLimitStatItem {
+  name: string;
+  description: string | null;
+  windowMs: number;
+  limit: number;
+  keyType: string;
+  enabled: boolean;
+  hitCount: number;
+  blockedCount: number;
+  blockRate: number;
+  recentBlocks: RecentBlock[];
+}
+
+interface RateLimitStats {
+  items: RateLimitStatItem[];
+}
+
+interface UpdateForm {
+  windowMs: number;
+  limit: number;
+  keyType: 'ip' | 'user' | 'ip_path';
+  enabled: boolean;
+  blockedMessage: string | null;
+}
+
+const KEY_TYPE_OPTIONS = [
+  { label: 'IP 地址', value: 'ip' },
+  { label: '登录用户', value: 'user' },
+  { label: 'IP + 路径', value: 'ip_path' },
+];
+
+function formatWindow(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec} 秒`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} 分钟`;
+  const hr = Math.floor(min / 60);
+  return `${hr} 小时`;
+}
+
+export default function RateLimitPage() {
+  const canManage = usePermission('system:rate-limit:manage');
+  const [rules, setRules] = useState<RateLimitRule[]>([]);
+  const [stats, setStats] = useState<RateLimitStats>({ items: [] });
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState<RateLimitRule | null>(null);
+  const [formApi, setFormApi] = useState<FormApi<UpdateForm> | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [rulesRes, statsRes] = await Promise.all([
+        request.get<RateLimitRule[]>('/api/rate-limit/rules'),
+        request.get<RateLimitStats>('/api/rate-limit/stats'),
+      ]);
+      if (rulesRes.code === 0) setRules(rulesRes.data);
+      if (statsRes.code === 0) setStats(statsRes.data);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleSave = async () => {
+    if (!editing || !formApi) return;
+    try {
+      const values = await formApi.validate();
+      const res = await request.patch<RateLimitRule>(`/api/rate-limit/rules/${editing.id}`, values);
+      if (res.code === 0) {
+        Toast.success('规则已更新');
+        setEditing(null);
+        await fetchData();
+      }
+    } catch { /* validation error */ }
+  };
+
+  const handleUnblock = async (name: string, key: string) => {
+    const res = await request.post<null>('/api/rate-limit/unblock', { name, key });
+    if (res.code === 0) {
+      Toast.success(`已解封：${key}`);
+      await fetchData();
+    }
+  };
+
+  const handleResetStats = async (name: string) => {
+    const res = await request.post<null>('/api/rate-limit/reset-stats', { name });
+    if (res.code === 0) {
+      Toast.success('统计已清空');
+      await fetchData();
+    }
+  };
+
+  const statsByName = new Map(stats.items.map((s) => [s.name, s]));
+
+  return (
+    <div>
+      <SearchToolbar>
+        <Text type="tertiary" style={{ fontSize: 13 }}>
+          管理 API 接口限流规则，保存后立即热更新到运行中的服务，无需重启。
+        </Text>
+        <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} loading={loading}>
+          刷新
+        </Button>
+      </SearchToolbar>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 16, marginTop: 16 }}>
+        {rules.map((rule) => {
+          const stat = statsByName.get(rule.name);
+          const hit = stat?.hitCount ?? 0;
+          const blocked = stat?.blockedCount ?? 0;
+          const rate = stat?.blockRate ?? 0;
+          return (
+            <Card
+              key={rule.id}
+              style={{ borderTop: `3px solid ${rule.enabled ? 'var(--semi-color-success)' : 'var(--semi-color-disabled-text)'}` }}
+              title={
+                <Space>
+                  <Gauge size={16} />
+                  <span style={{ fontWeight: 600 }}>{rule.name}</span>
+                  {rule.enabled
+                    ? <Tag size="small" color="green">启用中</Tag>
+                    : <Tag size="small" color="grey">已禁用</Tag>}
+                </Space>
+              }
+              headerExtraContent={
+                canManage && (
+                  <Space>
+                    <Button size="small" theme="borderless" onClick={() => setEditing(rule)}>编辑</Button>
+                    <Popconfirm title="确定清空该规则的统计计数器？" onConfirm={() => handleResetStats(rule.name)}>
+                      <Button size="small" theme="borderless" type="danger">重置统计</Button>
+                    </Popconfirm>
+                  </Space>
+                )
+              }
+            >
+              {rule.description && (
+                <Text type="tertiary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                  {rule.description}
+                </Text>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                <InfoBlock label="时间窗口" value={formatWindow(rule.windowMs)} />
+                <InfoBlock label="窗口内上限" value={`${rule.limit} 次`} />
+                <InfoBlock label="计数维度" value={KEY_TYPE_OPTIONS.find((o) => o.value === rule.keyType)?.label ?? rule.keyType} />
+                <InfoBlock label="拦截率" value={`${rate}%`} />
+              </div>
+              <div style={{ display: 'flex', gap: 24, paddingTop: 8, borderTop: '1px solid var(--semi-color-border)' }}>
+                <Stat icon={<Zap size={14} />} label="命中" value={hit} />
+                <Stat icon={<ShieldOff size={14} />} label="拦截" value={blocked} danger={blocked > 0} />
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Title heading={5} style={{ marginTop: 32, marginBottom: 12 }}>最近拦截记录</Title>
+      <ConfigurableTable
+        bordered
+        rowKey={(row: { _rowId: string }) => row._rowId}
+        loading={loading}
+        dataSource={stats.items.flatMap((s) =>
+          s.recentBlocks.map((b, idx) => ({
+            _rowId: `${s.name}-${b.at}-${b.key}-${idx}`,
+            rule: s.name,
+            at: b.at,
+            key: b.key,
+            path: b.path,
+          })),
+        )}
+        pagination={{ pageSize: 20 }}
+        columns={[
+          { title: '规则', dataIndex: 'rule', width: 120, render: (v: string) => <Tag color="blue" size="small">{v}</Tag> },
+          { title: '拦截时间', dataIndex: 'at', width: 180 },
+          { title: '触发 Key', dataIndex: 'key', render: (v: string) => <Text copyable>{v}</Text> },
+          { title: '请求路径', dataIndex: 'path', render: (v: string) => <Text code>{v || '-'}</Text> },
+          {
+            title: '操作',
+            dataIndex: '_op',
+            width: 120,
+            fixed: 'right',
+            render: (_: unknown, row: { rule: string; key: string }) =>
+              canManage ? (
+                <Tooltip content="清除该 key 在 Redis 中的限流计数窗口，立即放行">
+                  <Button theme="borderless" size="small" icon={<Unlock size={14} />} onClick={() => handleUnblock(row.rule, row.key)}>
+                    解封
+                  </Button>
+                </Tooltip>
+              ) : <Lock size={14} style={{ color: 'var(--semi-color-text-3)' }} />,
+          },
+        ]}
+      />
+
+      <Modal
+        title={editing ? `编辑限流规则：${editing.name}` : ''}
+        visible={editing !== null}
+        onCancel={() => setEditing(null)}
+        onOk={handleSave}
+        okText="保存（立即生效）"
+        cancelText="取消"
+        width={520}
+      >
+        {editing && (
+          <Form<UpdateForm>
+            getFormApi={setFormApi}
+            initValues={{
+              windowMs: editing.windowMs,
+              limit: editing.limit,
+              keyType: editing.keyType,
+              enabled: editing.enabled,
+              blockedMessage: editing.blockedMessage,
+            }}
+            labelPosition="left"
+            labelWidth={110}
+          >
+            <Form.Switch field="enabled" label="启用" />
+            <Form.InputNumber field="windowMs" label="时间窗口(ms)" min={1000} step={1000} style={{ width: '100%' }} rules={[{ required: true }]} />
+            <Form.InputNumber field="limit" label="窗口内上限" min={1} style={{ width: '100%' }} rules={[{ required: true }]} />
+            <Form.Select field="keyType" label="计数维度" optionList={KEY_TYPE_OPTIONS} style={{ width: '100%' }} />
+            <Form.Input field="blockedMessage" label="拦截提示文案" placeholder="为空使用默认提示" />
+          </Form>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function InfoBlock({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 500 }}>{value}</div>
+    </div>
+  );
+}
+
+function Stat({ icon, label, value, danger }: { readonly icon: React.ReactNode; readonly label: string; readonly value: number; readonly danger?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ color: danger ? 'var(--semi-color-danger)' : 'var(--semi-color-text-2)' }}>{icon}</span>
+      <Text type="tertiary" style={{ fontSize: 12 }}>{label}</Text>
+      <Text strong style={{ color: danger ? 'var(--semi-color-danger)' : undefined }}>{value.toLocaleString()}</Text>
+    </div>
+  );
+}

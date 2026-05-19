@@ -22,7 +22,8 @@ import { closeRedis } from './lib/redis';
 import logger from './lib/logger';
 import { errBody } from './lib/openapi-schemas';
 import { ipAccessMiddleware } from './middleware/ip-access';
-import { authRateLimit, captchaRateLimit, sensitiveRateLimit } from './middleware/rate-limit';
+import { authRateLimit, captchaRateLimit, sensitiveRateLimit, bootstrapRateLimitRules } from './middleware/rate-limit';
+import rateLimitRoutes from './routes/rate-limit';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
 import departmentsRoutes from './routes/departments';
@@ -195,6 +196,7 @@ app.route('/api/workflows/definitions', workflowDefinitionsRoutes);
 app.route('/api/workflows', workflowInstancesRoutes);
 app.route('/api/chat', chatRoutes);
 app.route('/api/tags', tagsRoutes);
+app.route('/api/rate-limit', rateLimitRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 app.route('/api/health', healthRoutes);
 app.route('/api/log-files', logFilesRoutes);
@@ -239,6 +241,9 @@ logger.info(`Server starting on port ${config.port}...`);
 const server = serve({ fetch: app.fetch, port: config.port });
 injectWebSocket(server);
 logger.info(`Server running at http://localhost:${config.port}`);
+
+// 启动后异步加载限流规则到内存（失败时使用代码内默认规则）
+void bootstrapRateLimitRules();
 
 let shuttingDown = false;
 async function shutdown(signal: NodeJS.Signals) {

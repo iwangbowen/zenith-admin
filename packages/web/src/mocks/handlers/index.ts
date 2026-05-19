@@ -26,6 +26,7 @@ import { messageTemplatesHandlers } from './message-templates';
 import { workflowHandlers } from './workflow';
 import { chatHandlers } from './chat';
 import { tagsHandlers } from './tags';
+import { rateLimitHandlers } from './rate-limit';
 
 export const handlers = [
   ...authHandlers,
@@ -56,4 +57,5 @@ export const handlers = [
   ...workflowHandlers,
   ...chatHandlers,
   ...tagsHandlers,
+  ...rateLimitHandlers,
 ];
