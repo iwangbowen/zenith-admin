@@ -3059,7 +3059,7 @@ export default function ChatPage({
           </div>
         }
         visible={showSearchPanel}
-        onCancel={() => setShowSearchPanel(false)}
+        onCancel={resetSearchFilters}
         footer={null}
         width={900}
         bodyStyle={{ padding: 0, maxHeight: '80vh' }}
