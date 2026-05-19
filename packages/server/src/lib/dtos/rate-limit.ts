@@ -34,6 +34,11 @@ export const RateLimitStatItemDTO = z
       key: z.string(),
       path: z.string(),
     })),
+    hourlySeries: z.array(z.object({
+      hour: z.string(),
+      hits: z.number().int(),
+      blocked: z.number().int(),
+    })),
   })
   .openapi('RateLimitStatItem');
 

@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import dayjs from 'dayjs';
 import { db } from '../db';
 import { rateLimitRules } from '../db/schema';
 import type { RateLimitRuleRow } from '../db/schema';
@@ -104,15 +105,41 @@ async function readRecent(name: string): Promise<RecentBlock[]> {
   });
 }
 
+interface HourlyPoint {
+  hour: string;
+  hits: number;
+  blocked: number;
+}
+
+async function readHourlySeries(name: string): Promise<HourlyPoint[]> {
+  const [hitsMap, blockedMap] = await Promise.all([
+    redis.hgetall(`${STATS_PREFIX}${name}:hourly:hits`),
+    redis.hgetall(`${STATS_PREFIX}${name}:hourly:blocked`),
+  ]);
+  const now = dayjs().startOf('hour');
+  const series: HourlyPoint[] = [];
+  for (let i = 23; i >= 0; i--) {
+    const t = now.subtract(i, 'hour');
+    const hk = t.format('YYYY-MM-DD HH');
+    series.push({
+      hour: t.format('MM-DD HH:00'),
+      hits: Number(hitsMap[hk] ?? 0) || 0,
+      blocked: Number(blockedMap[hk] ?? 0) || 0,
+    });
+  }
+  return series;
+}
+
 /** 聚合所有规则的统计数据（命中/拦截/最近拦截） */
 export async function getRateLimitStats() {
   const cfgs: RuleConfig[] = listRuleConfigs();
   const items = await Promise.all(
     cfgs.map(async (cfg) => {
-      const [hit, blocked, recent] = await Promise.all([
+      const [hit, blocked, recent, hourlySeries] = await Promise.all([
         readNumber(`${STATS_PREFIX}${cfg.name}:hit`),
         readNumber(`${STATS_PREFIX}${cfg.name}:blocked`),
         readRecent(cfg.name),
+        readHourlySeries(cfg.name),
       ]);
       return {
         name: cfg.name,
@@ -125,6 +152,7 @@ export async function getRateLimitStats() {
         blockedCount: blocked,
         blockRate: hit > 0 ? Math.round((blocked / hit) * 10000) / 100 : 0,
         recentBlocks: recent,
+        hourlySeries,
       };
     }),
   );
@@ -144,6 +172,8 @@ export async function resetRateLimitStats(name: string) {
     `${STATS_PREFIX}${name}:hit`,
     `${STATS_PREFIX}${name}:blocked`,
     `${STATS_PREFIX}${name}:recent`,
+    `${STATS_PREFIX}${name}:hourly:hits`,
+    `${STATS_PREFIX}${name}:hourly:blocked`,
   );
   return { reset: true };
 }

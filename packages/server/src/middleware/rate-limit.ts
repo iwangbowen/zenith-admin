@@ -5,6 +5,7 @@ import { config } from '../config';
 import { errBody } from '../lib/openapi-schemas';
 import { getClientIp } from '../lib/request-helpers';
 import logger from '../lib/logger';
+import dayjs from 'dayjs';
 import { db } from '../db';
 import { rateLimitRules } from '../db/schema';
 import { currentUser } from '../lib/context';
@@ -34,6 +35,11 @@ const compiledLimiters = new Map<string, MiddlewareHandler>();
 const RL_PREFIX = `${config.redis.keyPrefix}rl:`;
 const STATS_PREFIX = `${config.redis.keyPrefix}rlstats:`;
 const STATS_TTL = 7 * 24 * 60 * 60;
+const HOURLY_TTL = 25 * 60 * 60;
+
+function currentHourKey(): string {
+  return dayjs().format('YYYY-MM-DD HH');
+}
 
 const ioredisAdapter = {
   scriptLoad(script: string): Promise<string> {
@@ -93,7 +99,9 @@ function buildLimiter(rule: RuleConfig): MiddlewareHandler {
       try {
         const blockedKey = `${STATS_PREFIX}${rule.name}:blocked`;
         const recentKey = `${STATS_PREFIX}${rule.name}:recent`;
+        const hourlyBlockedKey = `${STATS_PREFIX}${rule.name}:hourly:blocked`;
         const ts = Date.now();
+        const hk = currentHourKey();
         await redis
           .multi()
           .incr(blockedKey)
@@ -101,6 +109,8 @@ function buildLimiter(rule: RuleConfig): MiddlewareHandler {
           .zadd(recentKey, ts, `${ts}|${key}|${c.req.path}`)
           .zremrangebyrank(recentKey, 0, -201)
           .expire(recentKey, STATS_TTL)
+          .hincrby(hourlyBlockedKey, hk, 1)
+          .expire(hourlyBlockedKey, HOURLY_TTL)
           .exec();
       } catch (err) {
         logger.warn('[rate-limit] stats record failed', err);
@@ -124,7 +134,15 @@ function makeNamed(name: RateLimitName): MiddlewareHandler {
     if (!rule?.enabled) return next();
     try {
       const k = `${STATS_PREFIX}${name}:hit`;
-      await redis.multi().incr(k).expire(k, STATS_TTL).exec();
+      const hk = currentHourKey();
+      const hourlyHitsKey = `${STATS_PREFIX}${name}:hourly:hits`;
+      await redis
+        .multi()
+        .incr(k)
+        .expire(k, STATS_TTL)
+        .hincrby(hourlyHitsKey, hk, 1)
+        .expire(hourlyHitsKey, HOURLY_TTL)
+        .exec();
     } catch {
       /* ignore stats failure */
     }

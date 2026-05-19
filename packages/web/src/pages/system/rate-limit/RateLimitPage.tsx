@@ -20,6 +20,16 @@ import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 const { Title, Text } = Typography;
 
@@ -53,6 +63,7 @@ interface RateLimitStatItem {
   blockedCount: number;
   blockRate: number;
   recentBlocks: RecentBlock[];
+  hourlySeries: { hour: string; hits: number; blocked: number }[];
 }
 
 interface RateLimitStats {
@@ -194,6 +205,39 @@ export default function RateLimitPage() {
                 <Stat icon={<Zap size={14} />} label="命中" value={hit} />
                 <Stat icon={<ShieldOff size={14} />} label="拦截" value={blocked} danger={blocked > 0} />
               </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Title heading={5} style={{ marginTop: 32, marginBottom: 12 }}>近 24 小时拦截趋势</Title>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
+        {stats.items.map((item) => {
+          const totalHits = item.hourlySeries.reduce((acc, p) => acc + p.hits, 0);
+          const totalBlocked = item.hourlySeries.reduce((acc, p) => acc + p.blocked, 0);
+          return (
+            <Card
+              key={`trend-${item.name}`}
+              title={
+                <Space>
+                  <span style={{ fontWeight: 600 }}>{item.name}</span>
+                  <Tag size="small" color="blue">命中 {totalHits.toLocaleString()}</Tag>
+                  <Tag size="small" color="red">拦截 {totalBlocked.toLocaleString()}</Tag>
+                </Space>
+              }
+              bodyStyle={{ padding: '8px 12px 12px' }}
+            >
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={item.hourlySeries} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
+                  <XAxis dataKey="hour" tick={{ fontSize: 11 }} interval={3} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <ChartTooltip />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="hits" name="命中" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="blocked" name="拦截" stroke="#ef4444" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
             </Card>
           );
         })}

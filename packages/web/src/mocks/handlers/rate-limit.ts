@@ -48,6 +48,19 @@ export const rateLimitHandlers = [
   http.get('/api/rate-limit/stats', () => {
     const items = rules.map((r) => {
       const s = stats[r.name as keyof typeof stats] ?? { hit: 0, blocked: 0, recent: [] };
+      const now = new Date();
+      now.setMinutes(0, 0, 0);
+      const hourlySeries = Array.from({ length: 24 }, (_, i) => {
+        const t = new Date(now.getTime() - (23 - i) * 3600 * 1000);
+        const mm = String(t.getMonth() + 1).padStart(2, '0');
+        const dd = String(t.getDate()).padStart(2, '0');
+        const hh = String(t.getHours()).padStart(2, '0');
+        return {
+          hour: `${mm}-${dd} ${hh}:00`,
+          hits: r.enabled ? Math.floor(Math.random() * 600) + 50 : 0,
+          blocked: r.enabled ? Math.floor(Math.random() * 5) : 0,
+        };
+      });
       return {
         name: r.name,
         description: r.description,
@@ -59,6 +72,7 @@ export const rateLimitHandlers = [
         blockedCount: s.blocked,
         blockRate: s.hit > 0 ? Math.round((s.blocked / s.hit) * 10000) / 100 : 0,
         recentBlocks: s.recent,
+        hourlySeries,
       };
     });
     return HttpResponse.json({ code: 0, message: 'success', data: { items } });
