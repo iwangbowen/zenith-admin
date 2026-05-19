@@ -12,8 +12,8 @@ import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import {
   Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, MoreHorizontal,
-  Pin, PinOff, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter, BellOff, Images, AlertCircle,
-  ArrowLeft, ExternalLink, BarChart3,
+  Pin, PinOff, Star, X, Paperclip, Bookmark, History, Forward, Trash2, BellOff, Images, AlertCircle,
+  ArrowLeft, ExternalLink, BarChart3, MessageSquare,
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage, useWsConnected } from '@/hooks/useWebSocket';
 import { useAuth } from '@/hooks/useAuth';
@@ -2117,26 +2117,6 @@ export default function ChatPage({
             )}
             {!isQuick && (
               <>
-                <Input
-                  size="small"
-                  prefix={<Search size={12} />}
-                  placeholder="搜索消息"
-                  value={msgSearch}
-                  onChange={setMsgSearch}
-                  onEnterPress={() => { void executeSearch(1); }}
-                  showClear
-                  style={{ width: 240 }}
-                />
-                <Tooltip content="执行搜索">
-                  <Button
-                    size="small"
-                    theme="solid"
-                    type="primary"
-                    icon={<Search size={14} />}
-                    loading={searchLoading}
-                    onClick={() => { void executeSearch(1); }}
-                  />
-                </Tooltip>
                 {activeConv.type === 'group' && (
                   <Tooltip content="群公告历史">
                     <Button
@@ -2152,12 +2132,12 @@ export default function ChatPage({
                     />
                   </Tooltip>
                 )}
-                <Tooltip content={showSearchPanel ? '关闭搜索面板' : '高级筛选'}>
+                <Tooltip content={showSearchPanel ? '关闭聊天记录' : '聊天记录'}>
                   <Button
                     size="small"
                     theme="borderless"
                     type={showSearchPanel ? 'primary' : 'tertiary'}
-                    icon={<ListFilter size={15} />}
+                    icon={<Search size={15} />}
                     onClick={() => {
                       setShowSearchPanel((v) => {
                         const next = !v;
@@ -2442,140 +2422,6 @@ export default function ChatPage({
               />
             )}
 
-            {!isQuick && showSearchPanel && (
-              <div style={{ width: 380, borderLeft: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0, background: 'var(--semi-color-bg-1)' }}>
-                <div style={{ padding: '12px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Text strong style={{ flex: 1, fontSize: 13 }}>消息搜索</Text>
-                  <Text type="tertiary" style={{ fontSize: 12 }}>{searchHasSearched ? `共 ${searchTotal} 条` : '未搜索'}</Text>
-                  <Button size="small" theme="borderless" type="tertiary" icon={<X size={14} />} onClick={() => setShowSearchPanel(false)} />
-                </div>
-
-                <div style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <Input
-                    size="small"
-                    prefix={<Search size={13} />}
-                    placeholder="搜索消息内容 / 文件名 / 发送人"
-                    value={msgSearch}
-                    onChange={setMsgSearch}
-                    onEnterPress={() => { void executeSearch(1); }}
-                    showClear
-                  />
-
-                  <Select
-                    multiple
-                    showClear
-                    placeholder="消息类别（可多选）"
-                    value={searchTypeFilters}
-                    onChange={(val) => setSearchTypeFilters(((val as ChatMessage['type'][]) ?? []))}
-                    optionList={CHAT_MESSAGE_TYPE_OPTIONS}
-                    maxTagCount={2}
-                  />
-
-                  <Select
-                    showClear
-                    filter
-                    placeholder="发送人"
-                    value={searchSenderId}
-                    onChange={(val) => setSearchSenderId(val ? Number(val) : undefined)}
-                    optionList={senderOptions}
-                  />
-
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {[
-                      { value: 'today', label: '今天' },
-                      { value: '7d', label: '近7天' },
-                      { value: '30d', label: '近30天' },
-                    ].map((item) => (
-                      <Button
-                        key={item.value}
-                        size="small"
-                        theme={searchDatePreset === item.value ? 'solid' : 'borderless'}
-                        type={searchDatePreset === item.value ? 'primary' : 'tertiary'}
-                        onClick={() => applyDatePreset(item.value as SearchDatePreset)}
-                      >
-                        {item.label}
-                      </Button>
-                    ))}
-                    {searchTimeRange && (
-                      <Button size="small" theme="borderless" type="tertiary" onClick={() => applyDatePreset('')}>清空时间</Button>
-                    )}
-                  </div>
-
-                  <DatePicker
-                    type="dateTimeRange"
-                    placeholder={['开始时间', '结束时间']}
-                    value={searchTimeRange ?? undefined}
-                    onChange={(val) => {
-                      setSearchDatePreset('');
-                      setSearchTimeRange(val ? (val as [Date, Date]) : null);
-                    }}
-                    style={{ width: '100%' }}
-                  />
-
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button type="primary" loading={searchLoading} icon={<Search size={14} />} onClick={() => { void executeSearch(1); }}>查询</Button>
-                    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={resetSearchFilters}>重置</Button>
-                  </div>
-                </div>
-
-                <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-                  {!searchHasSearched && (
-                    <Empty description="输入关键词或设置筛选条件后开始搜索" style={{ paddingTop: 48 }} imageStyle={{ width: 72 }} />
-                  )}
-                  {searchHasSearched && searchResults.length === 0 && !searchLoading && (
-                    <Empty description="没有找到符合条件的消息" style={{ paddingTop: 48 }} imageStyle={{ width: 72 }} />
-                  )}
-                  <SemiList
-                    split={false}
-                    dataSource={searchResults}
-                    renderItem={(item) => {
-                      const typeLabel = CHAT_MESSAGE_TYPE_OPTIONS.find((option) => option.value === item.message.type)?.label ?? item.message.type;
-                      return (
-                        <SemiList.Item key={item.message.id} style={{ padding: 0, marginBottom: 10, border: 'none' }}>
-                          <button
-                            type="button"
-                            onClick={() => { void jumpToSearchResult(item); }}
-                            style={{
-                              width: '100%', textAlign: 'left', border: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-0)', borderRadius: 8,
-                              padding: '10px 12px', cursor: 'pointer',
-                            }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-bg-0)'; }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                                <Tag size="small" color="light-blue">{typeLabel}</Tag>
-                                <Text strong style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {item.message.senderName ?? '未知发送人'}
-                                </Text>
-                              </div>
-                              <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(item.message.createdAt)}</Text>
-                            </div>
-                            <Text style={{ display: 'block', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                              {item.snippet}
-                            </Text>
-                          </button>
-                        </SemiList.Item>
-                      );
-                    }}
-                  />
-
-                  {searchHasSearched && searchResults.length < searchTotal && (
-                    <div style={{ textAlign: 'center', marginTop: 4 }}>
-                      <Button
-                        size="small"
-                        type="tertiary"
-                        theme="borderless"
-                        loading={searchLoading}
-                        onClick={() => { void executeSearch(searchPage + 1); }}
-                      >
-                        加载更多结果
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
             {/* ⑤ 媒体库面板 */}
             {!isQuick && showMediaPanel && !showSearchPanel && !showMembers && (
@@ -3209,6 +3055,162 @@ export default function ChatPage({
           </Modal>
         );
       })()}
+
+      {/* 聊天记录搜索弹窗 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <MessageSquare size={16} style={{ color: 'var(--semi-color-text-2)' }} />
+            <span>聊天记录</span>
+            <Text type="tertiary" style={{ fontSize: 12, marginLeft: 'auto' }}>{searchHasSearched ? `共 ${searchTotal} 条` : '未搜索'}</Text>
+          </div>
+        }
+        visible={showSearchPanel}
+        onCancel={() => setShowSearchPanel(false)}
+        footer={null}
+        width={900}
+        bodyStyle={{ padding: 0, maxHeight: '80vh' }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'row', height: '100%', maxHeight: '80vh' }}>
+          {/* 左列：搜索条件 */}
+          <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid var(--semi-color-border)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+            <Input
+              size="small"
+              prefix={<Search size={13} />}
+              placeholder="搜索消息内容 / 文件名 / 发送人"
+              value={msgSearch}
+              onChange={setMsgSearch}
+              onEnterPress={() => { void executeSearch(1); }}
+              showClear
+            />
+
+            <Select
+              multiple
+              showClear
+              placeholder="消息类别（可多选）"
+              value={searchTypeFilters}
+              onChange={(val) => setSearchTypeFilters(((val as ChatMessage['type'][]) ?? []))}
+              optionList={CHAT_MESSAGE_TYPE_OPTIONS}
+              maxTagCount={2}
+            />
+
+            <Select
+              showClear
+              filter
+              placeholder="发送人"
+              value={searchSenderId}
+              onChange={(val) => setSearchSenderId(val ? Number(val) : undefined)}
+              optionList={senderOptions}
+            />
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {[
+                { value: 'today', label: '今天' },
+                { value: '7d', label: '近7天' },
+                { value: '30d', label: '近30天' },
+              ].map((item) => (
+                <Button
+                  key={item.value}
+                  size="small"
+                  theme={searchDatePreset === item.value ? 'solid' : 'borderless'}
+                  type={searchDatePreset === item.value ? 'primary' : 'tertiary'}
+                  onClick={() => applyDatePreset(item.value as SearchDatePreset)}
+                >
+                  {item.label}
+                </Button>
+              ))}
+              {searchTimeRange && (
+                <Button size="small" theme="borderless" type="tertiary" onClick={() => applyDatePreset('')}>清空时间</Button>
+              )}
+            </div>
+
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchTimeRange ?? undefined}
+              onChange={(val) => {
+                setSearchDatePreset('');
+                setSearchTimeRange(val ? (val as [Date, Date]) : null);
+              }}
+              style={{ width: '100%' }}
+            />
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button type="primary" loading={searchLoading} icon={<Search size={14} />} onClick={() => { void executeSearch(1); }}>查询</Button>
+              <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={resetSearchFilters}>重置</Button>
+            </div>
+          </div>
+
+          {/* 右列：搜索结果 */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: 12, minHeight: 0 }}>
+            {!searchHasSearched && (
+              <Empty description="输入关键词或设置筛选条件后开始搜索" style={{ paddingTop: 48 }} imageStyle={{ width: 72 }} />
+            )}
+            {searchHasSearched && searchResults.length === 0 && !searchLoading && (
+              <Empty description="没有找到符合条件的消息" style={{ paddingTop: 48 }} imageStyle={{ width: 72 }} />
+            )}
+            <SemiList
+              split={false}
+              dataSource={searchResults}
+              renderItem={(item) => {
+                const typeLabel = CHAT_MESSAGE_TYPE_OPTIONS.find((option) => option.value === item.message.type)?.label ?? item.message.type;
+                return (
+                  <SemiList.Item
+                    key={item.message.id}
+                    style={{ padding: 0, marginBottom: 10, border: 'none' }}
+                    extra={
+                      <Button
+                        size="small"
+                        type="primary"
+                        onClick={() => {
+                          setShowSearchPanel(false);
+                          void jumpToSearchResult(item);
+                        }}
+                      >
+                        定位
+                      </Button>
+                    }
+                  >
+                    <div
+                      style={{
+                        width: '100%', textAlign: 'left', border: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-0)', borderRadius: 8,
+                        padding: '10px 12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <Tag size="small" color="light-blue">{typeLabel}</Tag>
+                          <Text strong style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {item.message.senderName ?? '未知发送人'}
+                          </Text>
+                        </div>
+                        <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(item.message.createdAt)}</Text>
+                      </div>
+                      <Text style={{ display: 'block', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {item.snippet}
+                      </Text>
+                    </div>
+                  </SemiList.Item>
+                );
+              }}
+            />
+
+            {searchHasSearched && searchResults.length < searchTotal && (
+              <div style={{ textAlign: 'center', marginTop: 4 }}>
+                <Button
+                  size="small"
+                  type="tertiary"
+                  theme="borderless"
+                  loading={searchLoading}
+                  onClick={() => { void executeSearch(searchPage + 1); }}
+                >
+                  加载更多结果
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
