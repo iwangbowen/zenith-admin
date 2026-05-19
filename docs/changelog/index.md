@@ -4,6 +4,44 @@
 
 ---
 
+## v0.22.0 - 2026-05-19
+
+### Added
+
+#### 接口限流可视化与动态配置
+
+- 新增「系统管理 → 接口限流」管理页面，支持对 `auth` / `captcha` / `sensitive` 三类限流规则进行可视化配置（时间窗口、上限、计数维度 ip/user/ip_path、启用开关、自定义拦截提示）
+- 限流规则改为数据库驱动 + 内存缓存，保存后立即热更新到运行中的服务，无需重启
+- 实时统计每条规则的命中次数、拦截次数、拦截率，并展示最近 100 条拦截记录（含触发 Key 与请求路径）
+- 新增「近 24 小时拦截趋势」折线图（命中 / 拦截 双线），通过 Redis Hash 按小时聚合
+- 支持按需「解封」单个被限流 Key 与「重置统计」操作
+- 新增数据库表 `rate_limit_rules`、枚举 `rate_limit_key_type`，迁移 `0046_useful_mastermind.sql`
+- 新增菜单：`系统管理 → 接口限流`（id 320/321/322），权限 `system:rate-limit:view` / `system:rate-limit:manage`
+- 后端新增路由：`GET /api/rate-limit/rules`、`PATCH /api/rate-limit/rules/{id}`、`GET /api/rate-limit/stats`、`POST /api/rate-limit/unblock`、`POST /api/rate-limit/reset-stats`
+
+#### WebSocket 连接监控
+
+- 监控页面新增 WebSocket 在线连接数、累计连接数、断开次数等关键指标
+- 展示最近 50 条 WebSocket 断开记录（含 token、断开原因、时长）
+
+#### 聊天功能增强
+
+- 聊天页面新增聊天记录搜索面板，支持按关键字、发送人、时间范围多条件筛选与结果定位
+- 聊天消息列表改用 Semi UI `List` 组件，提升样式一致性与交互体验
+- 公告历史改用 `List` 组件展示，并支持群主删除公告历史
+
+### Changed
+
+- 优化聊天记录定位按钮文案与样式（「定位到聊天位置」）
+- 限流页面权限校验改用解构 `hasPermission`，规范用法
+- 用户管理表单调整密码输入框标签宽度（72 → 90）以适配中文标签
+
+### Fixed
+
+- 修复 `MonitorPage` 中 `rowKey` 在 `WsDisconnect` 数据下的类型不兼容，导致构建失败的问题
+
+---
+
 ## v0.21.0 - 2026-05-18
 
 ### Added
