@@ -4,6 +4,53 @@
 
 ---
 
+## v0.23.0 - 2026-05-21
+
+### Added
+
+#### 审计字段（Audit Columns）通用化
+
+- 新增通用审计列辅助函数 `auditColumns()`，业务主表统一展开 `...auditColumns()` 自动拥有 `created_by` / `updated_by` 字段
+- `db` 实例通过 Proxy 拦截 `insert` / `update` / `insert().onConflictDoUpdate({set})` 操作，自动从审计上下文（audit-context）写入 `created_by` / `updated_by`，业务代码无需手动赋值
+- 新增 `auditFields` DTO 片段（`lib/dtos/_audit.ts`），所有响应实体 DTO 通过展开 `...auditFields` 统一暴露审计字段
+
+#### 工作流功能增强
+
+- 工作流定义与实例新增创建者（`createdBy`）和更新者（`updatedBy`）字段，通过通用审计列自动维护
+
+#### 多租户工具函数
+
+- 新增 `tenantCondition(table, user)` 和 `getCreateTenantId(user)` 工具函数，简化多租户数据隔离逻辑
+- 工具函数在 `MULTI_TENANT_MODE=false` 时返回 `null`/`undefined`，与单实例行为兼容
+
+#### 用户详情懒查询
+
+- 新增用户详情懒查询功能，支持按需获取用户角色、部门等关联信息，避免全量加载性能开销
+
+#### 站内信管理
+
+- 新增「站内信管理」页面，支持对站内信进行增删改查及发送管理
+
+#### 短信功能模块
+
+- 新增「短信配置」管理页面，支持多服务商短信配置
+- 新增「短信发送日志」管理页面，记录短信发送历史
+- 新增「短信模板」管理页面，支持模板创建与维护
+
+### Changed
+
+#### 部门管理
+
+- 新增部门时支持设置负责人 ID（`leaderId`）字段
+- 优化部门负责人相关字段逻辑与数据结构
+
+#### 邮件/站内信模板
+
+- 优化邮件模板表单布局，提升编辑体验
+- 优化站内信模板表单布局
+
+---
+
 ## v0.22.0 - 2026-05-19
 
 ### Added
