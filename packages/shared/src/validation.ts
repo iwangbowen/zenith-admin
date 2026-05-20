@@ -357,30 +357,103 @@ export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
 export type SwitchTenantInput = z.infer<typeof switchTenantSchema>;
 export type UpdateOauthConfigInput = z.infer<typeof updateOauthConfigSchema>;
 
-// ─── 消息模板 ─────────────────────────────────────────────────────────────────
-export const MESSAGE_CHANNELS = ['email', 'sms', 'in_app'] as const;
-export type MessageChannel = typeof MESSAGE_CHANNELS[number];
+// ─── 通知模块（邮件 / 短信 / 站内信）─────────────────────────────────────────
+export const SMS_PROVIDERS = ['aliyun', 'tencent'] as const;
+export const SEND_STATUSES = ['pending', 'success', 'failed'] as const;
+export const SEND_SOURCES = ['manual', 'test', 'system', 'api'] as const;
+export const IN_APP_MESSAGE_TYPES = ['info', 'success', 'warning', 'error'] as const;
 
-export const createMessageTemplateSchema = z.object({
+// ── 邮件模板 ────────────────────────────────────────────────────────────────
+export const createEmailTemplateSchema = z.object({
   name: z.string().min(1, '模板名称不能为空').max(100),
   code: z.string().min(1, '模板编码不能为空').max(100).regex(/^[a-zA-Z]\w*$/, '编码只能包含字母、数字和下划线，且以字母开头'),
-  channel: z.enum(['email', 'sms', 'in_app'], { error: '请选择渠道类型' }),
-  subject: z.string().max(200).optional(),
-  content: z.string().min(1, '模板内容不能为空'),
+  subject: z.string().min(1, '邮件主题不能为空').max(200),
+  content: z.string().min(1, '邮件内容不能为空'),
   variables: z.string().optional(),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   remark: z.string().max(500).optional(),
 });
+export const updateEmailTemplateSchema = createEmailTemplateSchema.partial();
+export type CreateEmailTemplateInput = z.infer<typeof createEmailTemplateSchema>;
+export type UpdateEmailTemplateInput = z.infer<typeof updateEmailTemplateSchema>;
 
-export const updateMessageTemplateSchema = createMessageTemplateSchema.partial();
-
-export const previewMessageTemplateSchema = z.object({
-  variables: z.record(z.string(), z.string()),
+// ── 邮件发送（手动 / 测试）─────────────────────────────────────────────────
+export const sendEmailSchema = z.object({
+  templateId: z.number().int().positive().optional(),
+  toEmail: z.email('邮箱格式不正确'),
+  subject: z.string().min(1).max(200).optional(),
+  content: z.string().min(1).optional(),
+  variables: z.record(z.string(), z.string()).optional(),
 });
+export type SendEmailInput = z.infer<typeof sendEmailSchema>;
 
-export type CreateMessageTemplateInput = z.infer<typeof createMessageTemplateSchema>;
-export type UpdateMessageTemplateInput = z.infer<typeof updateMessageTemplateSchema>;
-export type PreviewMessageTemplateInput = z.infer<typeof previewMessageTemplateSchema>;
+// ── 短信服务商配置 ──────────────────────────────────────────────────────────
+export const createSmsConfigSchema = z.object({
+  name: z.string().min(1, '配置名称不能为空').max(100),
+  provider: z.enum(SMS_PROVIDERS, { error: '请选择短信服务商' }),
+  accessKeyId: z.string().min(1, 'AccessKeyId 不能为空').max(256),
+  accessKeySecret: z.string().min(1, 'AccessKeySecret 不能为空').max(512),
+  region: z.string().max(64).optional(),
+  signName: z.string().min(1, '签名不能为空').max(64),
+  isDefault: z.boolean().default(false),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(500).optional(),
+});
+export const updateSmsConfigSchema = createSmsConfigSchema.partial().extend({
+  accessKeySecret: z.string().max(512).optional(), // 更新时允许不传（保持原值）
+});
+export type CreateSmsConfigInput = z.infer<typeof createSmsConfigSchema>;
+export type UpdateSmsConfigInput = z.infer<typeof updateSmsConfigSchema>;
+
+// ── 短信模板 ────────────────────────────────────────────────────────────────
+export const createSmsTemplateSchema = z.object({
+  name: z.string().min(1, '模板名称不能为空').max(100),
+  code: z.string().min(1, '模板编码不能为空').max(100).regex(/^[a-zA-Z]\w*$/, '编码只能包含字母、数字和下划线，且以字母开头'),
+  templateCode: z.string().min(1, '厂商模板ID不能为空').max(100),
+  signName: z.string().max(64).optional(),
+  content: z.string().min(1, '模板内容不能为空'),
+  variables: z.string().optional(),
+  provider: z.enum(SMS_PROVIDERS, { error: '请选择适用服务商' }),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(500).optional(),
+});
+export const updateSmsTemplateSchema = createSmsTemplateSchema.partial();
+export type CreateSmsTemplateInput = z.infer<typeof createSmsTemplateSchema>;
+export type UpdateSmsTemplateInput = z.infer<typeof updateSmsTemplateSchema>;
+
+// ── 短信发送（手动 / 测试）─────────────────────────────────────────────────
+export const sendSmsSchema = z.object({
+  templateId: z.number().int().positive(),
+  phone: z.string().regex(/^1[3-9]\d{9}$/, '手机号格式不正确'),
+  variables: z.record(z.string(), z.string()).optional(),
+});
+export type SendSmsInput = z.infer<typeof sendSmsSchema>;
+
+// ── 站内信模板 ──────────────────────────────────────────────────────────────
+export const createInAppTemplateSchema = z.object({
+  name: z.string().min(1, '模板名称不能为空').max(100),
+  code: z.string().min(1, '模板编码不能为空').max(100).regex(/^[a-zA-Z]\w*$/, '编码只能包含字母、数字和下划线，且以字母开头'),
+  title: z.string().min(1, '标题不能为空').max(200),
+  content: z.string().min(1, '内容不能为空'),
+  type: z.enum(IN_APP_MESSAGE_TYPES).default('info'),
+  variables: z.string().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(500).optional(),
+});
+export const updateInAppTemplateSchema = createInAppTemplateSchema.partial();
+export type CreateInAppTemplateInput = z.infer<typeof createInAppTemplateSchema>;
+export type UpdateInAppTemplateInput = z.infer<typeof updateInAppTemplateSchema>;
+
+// ── 站内信发送 ──────────────────────────────────────────────────────────────
+export const sendInAppSchema = z.object({
+  templateId: z.number().int().positive().optional(),
+  userIds: z.array(z.number().int().positive()).min(1, '至少选择一名收件人'),
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().min(1).optional(),
+  type: z.enum(IN_APP_MESSAGE_TYPES).default('info'),
+  variables: z.record(z.string(), z.string()).optional(),
+});
+export type SendInAppInput = z.infer<typeof sendInAppSchema>;
 
 // ─── 标签管理 Schema ─────────────────────────────────────────────────────────
 export const createTagSchema = z.object({

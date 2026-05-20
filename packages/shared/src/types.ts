@@ -797,21 +797,135 @@ export interface ChatConversation {
   updatedAt: string;
 }
 
-// ─── 消息模板 ─────────────────────────────────────────────────────────────────
-export type MessageChannelType = 'email' | 'sms' | 'in_app';
+// ─── 通知模块（邮件 / 短信 / 站内信）─────────────────────────────────────────
+export type SendStatus = 'pending' | 'success' | 'failed';
+export type SendSource = 'manual' | 'test' | 'system' | 'api';
+export type SmsProvider = 'aliyun' | 'tencent';
+export type InAppMessageType = 'info' | 'success' | 'warning' | 'error';
 
-export interface MessageTemplate {
+// 邮件模板
+export interface EmailTemplate {
   id: number;
   name: string;
   code: string;
-  channel: MessageChannelType;
-  subject: string | null;
+  subject: string;
   content: string;
   variables: string | null;
   status: EntityStatus;
   remark: string | null;
+  tenantId?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// 邮件发送记录
+export interface EmailSendLog {
+  id: number;
+  templateId: number | null;
+  templateName?: string | null;
+  toEmail: string;
+  subject: string;
+  content: string;
+  status: SendStatus;
+  errorMsg: string | null;
+  source: SendSource;
+  userId: number | null;
+  userName?: string | null;
+  ip: string | null;
+  tenantId?: number | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+// 短信服务商配置
+export interface SmsConfig {
+  id: number;
+  name: string;
+  provider: SmsProvider;
+  accessKeyId: string;
+  accessKeySecret?: string; // 列表/详情返回时可能脱敏
+  region: string | null;
+  signName: string;
+  isDefault: boolean;
+  status: EntityStatus;
+  remark: string | null;
+  tenantId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 短信模板
+export interface SmsTemplate {
+  id: number;
+  name: string;
+  code: string;
+  templateCode: string;
+  signName: string | null;
+  content: string;
+  variables: string | null;
+  provider: SmsProvider;
+  status: EntityStatus;
+  remark: string | null;
+  tenantId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 短信发送记录
+export interface SmsSendLog {
+  id: number;
+  configId: number | null;
+  templateId: number | null;
+  templateName?: string | null;
+  provider: SmsProvider;
+  phone: string;
+  content: string;
+  status: SendStatus;
+  errorMsg: string | null;
+  bizId: string | null;
+  deliveryStatus: string | null;
+  deliveredAt: string | null;
+  source: SendSource;
+  userId: number | null;
+  userName?: string | null;
+  ip: string | null;
+  tenantId?: number | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+// 站内信模板
+export interface InAppTemplate {
+  id: number;
+  name: string;
+  code: string;
+  title: string;
+  content: string;
+  type: InAppMessageType;
+  variables: string | null;
+  status: EntityStatus;
+  remark: string | null;
+  tenantId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 站内信收件记录
+export interface InAppMessage {
+  id: number;
+  templateId: number | null;
+  userId: number;
+  userName?: string | null;
+  title: string;
+  content: string;
+  type: InAppMessageType;
+  isRead: boolean;
+  readAt: string | null;
+  source: SendSource;
+  senderId: number | null;
+  senderName?: string | null;
+  tenantId?: number | null;
+  createdAt: string;
 }
 
 export interface Tag {

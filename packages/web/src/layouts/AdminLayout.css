@@ -396,10 +396,17 @@
   padding-left: 28px !important;
 }
 
-/* 子级菜单缩进 — 二级子项（文件配置、文件列表等） */
+/* 子级菜单缩进 — 二级子项（文件配置、文件列表，以及二级目录标题如邮件/短信/站内信管理） */
 .admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-sub .semi-navigation-sub > .semi-navigation-item-normal,
+.admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-sub .semi-navigation-sub > .semi-navigation-sub-wrap > .semi-navigation-sub-title,
 .admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-sub .semi-navigation-sub > .admin-nav-link-wrapper > .semi-navigation-item {
   padding-left: 44px !important;
+}
+
+/* 子级菜单缩进 — 三级子项（二级目录下的叶子，如 邮件配置/邮件模板/邮件发送记录） */
+.admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-sub .semi-navigation-sub .semi-navigation-sub > .semi-navigation-item-normal,
+.admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-sub .semi-navigation-sub .semi-navigation-sub > .admin-nav-link-wrapper > .semi-navigation-item {
+  padding-left: 60px !important;
 }
 
 /* ===== Main area ===== */

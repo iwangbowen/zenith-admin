@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, messageTemplates, tags } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags } from './schema';
 import bcrypt from 'bcryptjs';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
@@ -291,12 +291,11 @@ async function seed() {
   ]).onConflictDoNothing({ target: tenants.code });
   logger.info('  ✔ Tenants seeded (onConflictDoNothing)');
 
-  // ─── 消息模板示例数据 ───────────────────────────────────────────────────────────────
-  await db.insert(messageTemplates).values([
+  // ─── 邮件模板示例数据 ───────────────────────────────────────────────────────
+  await db.insert(emailTemplates).values([
     {
       name: '欢迎注册邮件',
       code: 'user_welcome_email',
-      channel: 'email',
       subject: '欢迎加入 {{app_name}}',
       content: '亲爱的 {{username}}，\n\n欢迎注册 {{app_name}}！\n您的账户已成功创建，请单击以下链接完成验证：\n{{verify_link}}\n\n此链接 24 小时内有效。',
       variables: JSON.stringify({ username: '用户名', app_name: '应用名称', verify_link: '验证链接' }),
@@ -306,35 +305,64 @@ async function seed() {
     {
       name: '密码重置邮件',
       code: 'user_reset_password_email',
-      channel: 'email',
       subject: '重置您的密码',
       content: '亲爱的 {{username}}，\n\n我们收到了您的密码重置申请。请单击以下链接重置密码：\n{{reset_link}}\n\n此链接 2 小时内有效。如果您未发起此请求，请忽略此邮件。',
       variables: JSON.stringify({ username: '用户名', reset_link: '重置密码链接' }),
       status: 'enabled',
       remark: '用户密码重置流程所用模板',
     },
+  ]).onConflictDoNothing({ target: emailTemplates.code });
+  logger.info('  ✔ Email templates seeded (onConflictDoNothing)');
+
+  // ─── 短信模板示例数据 ───────────────────────────────────────────────────────
+  await db.insert(smsTemplates).values([
     {
       name: '验证码短信',
       code: 'user_verification_sms',
-      channel: 'sms',
-      subject: null,
+      templateCode: 'SMS_DEMO_VERIFICATION',
+      signName: 'Zenith',
       content: '【{{app_name}}】您的验证码为 {{code}}，{{expire_minutes}} 分钟内有效，请勿泄露。',
       variables: JSON.stringify({ app_name: '应用名称', code: '验证码', expire_minutes: '有效分钟数' }),
+      provider: 'aliyun',
       status: 'enabled',
-      remark: '短信验证码模板',
+      remark: '短信验证码模板（需绑定实际厂商模板 ID）',
     },
+  ]).onConflictDoNothing({ target: smsTemplates.code });
+  logger.info('  ✔ SMS templates seeded (onConflictDoNothing)');
+
+  // ─── 短信服务商配置示例 ─────────────────────────────────────────────────────
+  const existingSmsConfig = await db.select({ id: smsConfigs.id }).from(smsConfigs).limit(1);
+  if (existingSmsConfig.length === 0) {
+    await db.insert(smsConfigs).values([
+      {
+        name: '阿里云短信（示例）',
+        provider: 'aliyun',
+        accessKeyId: 'LTAI5tDemoAccessKeyId',
+        accessKeySecret: 'DemoAccessKeySecretReplaceMe',
+        region: 'cn-hangzhou',
+        signName: 'Zenith',
+        isDefault: true,
+        status: 'disabled',
+        remark: '初始环境占位配置，需填实际凭证后启用',
+      },
+    ]);
+  }
+  logger.info('  ✔ SMS configs seeded (skip if exists)');
+
+  // ─── 站内信模板示例数据 ─────────────────────────────────────────────────────
+  await db.insert(inAppTemplates).values([
     {
       name: '系统公告',
       code: 'system_notice_in_app',
-      channel: 'in_app',
-      subject: '系统公告：{{title}}',
+      title: '系统公告：{{title}}',
       content: '{{content}}',
+      type: 'info',
       variables: JSON.stringify({ title: '公告标题', content: '公告内容' }),
       status: 'enabled',
-      remark: '纳内系统公告通知模板',
+      remark: '系统公告通知模板',
     },
-  ]).onConflictDoNothing({ target: messageTemplates.code });
-  logger.info('  ✔ Message templates seeded (onConflictDoNothing)');
+  ]).onConflictDoNothing({ target: inAppTemplates.code });
+  logger.info('  ✔ In-app templates seeded (onConflictDoNothing)');
 
   // ── 标签 ────────────────────────────────────────────────────────────────────
   await db.insert(tags).values([

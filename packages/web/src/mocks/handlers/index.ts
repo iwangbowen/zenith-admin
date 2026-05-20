@@ -22,11 +22,17 @@ import { dbBackupsHandlers } from './db-backups';
 import { apiTokensHandlers } from './api-tokens';
 import { tenantsHandlers } from './tenants';
 import { cacheHandlers } from './cache';
-import { messageTemplatesHandlers } from './message-templates';
 import { workflowHandlers } from './workflow';
 import { chatHandlers } from './chat';
 import { tagsHandlers } from './tags';
 import { rateLimitHandlers } from './rate-limit';
+import { emailTemplatesHandlers } from './email-templates';
+import { emailSendLogsHandlers } from './email-send-logs';
+import { smsConfigsHandlers } from './sms-configs';
+import { smsTemplatesHandlers } from './sms-templates';
+import { smsSendLogsHandlers } from './sms-send-logs';
+import { inAppTemplatesHandlers } from './in-app-templates';
+import { inAppMessagesHandlers } from './in-app-messages';
 
 export const handlers = [
   ...authHandlers,
@@ -53,9 +59,15 @@ export const handlers = [
   ...apiTokensHandlers,
   ...tenantsHandlers,
   ...cacheHandlers,
-  ...messageTemplatesHandlers,
   ...workflowHandlers,
   ...chatHandlers,
   ...tagsHandlers,
   ...rateLimitHandlers,
+  ...emailTemplatesHandlers,
+  ...emailSendLogsHandlers,
+  ...smsConfigsHandlers,
+  ...smsTemplatesHandlers,
+  ...smsSendLogsHandlers,
+  ...inAppTemplatesHandlers,
+  ...inAppMessagesHandlers,
 ];

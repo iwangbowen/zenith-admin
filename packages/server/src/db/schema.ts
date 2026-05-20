@@ -510,25 +510,145 @@ export const rateLimitRules = pgTable('rate_limit_rules', {
 export type RateLimitRuleRow = typeof rateLimitRules.$inferSelect;
 export type NewRateLimitRule = typeof rateLimitRules.$inferInsert;
 
-// ─── 消息模板 ─────────────────────────────────────────────────────────────────
-export const messageChannelEnum = pgEnum('message_channel', ['email', 'sms', 'in_app']);
+// ─── 通知模块：邮件 / 短信 / 站内信 ────────────────────────────────────────────
+// 通用枚举
+export const smsProviderEnum = pgEnum('sms_provider', ['aliyun', 'tencent']);
+export const sendStatusEnum = pgEnum('send_status', ['pending', 'success', 'failed']);
+export const sendSourceEnum = pgEnum('send_source', ['manual', 'test', 'system', 'api']);
+export const inAppMessageTypeEnum = pgEnum('in_app_message_type', ['info', 'success', 'warning', 'error']);
 
-export const messageTemplates = pgTable('message_templates', {
+// ── 邮件模板 ────────────────────────────────────────────────────────────────
+export const emailTemplates = pgTable('email_templates', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 100 }).notNull(),
   code: varchar('code', { length: 100 }).notNull().unique(),
-  channel: messageChannelEnum('channel').notNull(),
-  subject: varchar('subject', { length: 200 }),
+  subject: varchar('subject', { length: 200 }).notNull(),
   content: text('content').notNull(),
   variables: text('variables'),
   status: statusEnum('status').default('enabled').notNull(),
   remark: text('remark'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
+export type EmailTemplateRow = typeof emailTemplates.$inferSelect;
+export type NewEmailTemplate = typeof emailTemplates.$inferInsert;
 
-export type MessageTemplateRow = typeof messageTemplates.$inferSelect;
-export type NewMessageTemplate = typeof messageTemplates.$inferInsert;
+// ── 邮件发送记录 ────────────────────────────────────────────────────────────
+export const emailSendLogs = pgTable('email_send_logs', {
+  id: serial('id').primaryKey(),
+  templateId: integer('template_id').references(() => emailTemplates.id, { onDelete: 'set null' }),
+  toEmail: varchar('to_email', { length: 256 }).notNull(),
+  subject: varchar('subject', { length: 200 }).notNull(),
+  content: text('content').notNull(),
+  status: sendStatusEnum('status').default('pending').notNull(),
+  errorMsg: text('error_msg'),
+  source: sendSourceEnum('source').default('manual').notNull(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  ip: varchar('ip', { length: 64 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+export type EmailSendLogRow = typeof emailSendLogs.$inferSelect;
+export type NewEmailSendLog = typeof emailSendLogs.$inferInsert;
+
+// ── 短信服务商配置 ──────────────────────────────────────────────────────────
+export const smsConfigs = pgTable('sms_configs', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  provider: smsProviderEnum('provider').notNull(),
+  accessKeyId: varchar('access_key_id', { length: 256 }).notNull().default(''),
+  accessKeySecret: varchar('access_key_secret', { length: 512 }).notNull().default(''),
+  region: varchar('region', { length: 64 }),
+  signName: varchar('sign_name', { length: 64 }).notNull().default(''),
+  isDefault: boolean('is_default').notNull().default(false),
+  status: statusEnum('status').default('enabled').notNull(),
+  remark: text('remark'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type SmsConfigRow = typeof smsConfigs.$inferSelect;
+export type NewSmsConfig = typeof smsConfigs.$inferInsert;
+
+// ── 短信模板 ────────────────────────────────────────────────────────────────
+export const smsTemplates = pgTable('sms_templates', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  code: varchar('code', { length: 100 }).notNull().unique(),
+  templateCode: varchar('template_code', { length: 100 }).notNull().default(''),
+  signName: varchar('sign_name', { length: 64 }),
+  content: text('content').notNull(),
+  variables: text('variables'),
+  provider: smsProviderEnum('provider').notNull(),
+  status: statusEnum('status').default('enabled').notNull(),
+  remark: text('remark'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type SmsTemplateRow = typeof smsTemplates.$inferSelect;
+export type NewSmsTemplate = typeof smsTemplates.$inferInsert;
+
+// ── 短信发送记录 ────────────────────────────────────────────────────────────
+export const smsSendLogs = pgTable('sms_send_logs', {
+  id: serial('id').primaryKey(),
+  configId: integer('config_id').references(() => smsConfigs.id, { onDelete: 'set null' }),
+  templateId: integer('template_id').references(() => smsTemplates.id, { onDelete: 'set null' }),
+  provider: smsProviderEnum('provider').notNull(),
+  phone: varchar('phone', { length: 32 }).notNull(),
+  content: text('content').notNull(),
+  status: sendStatusEnum('status').default('pending').notNull(),
+  errorMsg: text('error_msg'),
+  bizId: varchar('biz_id', { length: 128 }),
+  deliveryStatus: varchar('delivery_status', { length: 32 }),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  source: sendSourceEnum('source').default('manual').notNull(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  ip: varchar('ip', { length: 64 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+export type SmsSendLogRow = typeof smsSendLogs.$inferSelect;
+export type NewSmsSendLog = typeof smsSendLogs.$inferInsert;
+
+// ── 站内信模板 ──────────────────────────────────────────────────────────────
+export const inAppTemplates = pgTable('in_app_templates', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  code: varchar('code', { length: 100 }).notNull().unique(),
+  title: varchar('title', { length: 200 }).notNull(),
+  content: text('content').notNull(),
+  type: inAppMessageTypeEnum('type').default('info').notNull(),
+  variables: text('variables'),
+  status: statusEnum('status').default('enabled').notNull(),
+  remark: text('remark'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type InAppTemplateRow = typeof inAppTemplates.$inferSelect;
+export type NewInAppTemplate = typeof inAppTemplates.$inferInsert;
+
+// ── 站内信收件记录 ──────────────────────────────────────────────────────────
+export const inAppMessages = pgTable('in_app_messages', {
+  id: serial('id').primaryKey(),
+  templateId: integer('template_id').references(() => inAppTemplates.id, { onDelete: 'set null' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 200 }).notNull(),
+  content: text('content').notNull(),
+  type: inAppMessageTypeEnum('type').default('info').notNull(),
+  isRead: boolean('is_read').notNull().default(false),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  source: sendSourceEnum('source').default('system').notNull(),
+  senderId: integer('sender_id').references(() => users.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+export type InAppMessageRow = typeof inAppMessages.$inferSelect;
+export type NewInAppMessage = typeof inAppMessages.$inferInsert;
 
 // ─── 标签管理 ─────────────────────────────────────────────────────────────────
 
@@ -830,4 +950,45 @@ export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => 
 export const chatMessageReactionsRelations = relations(chatMessageReactions, ({ one }) => ({
   message: one(chatMessages, { fields: [chatMessageReactions.messageId], references: [chatMessages.id] }),
   user: one(users, { fields: [chatMessageReactions.userId], references: [users.id] }),
+}));
+
+// ─── 通知模块 relations ─────────────────────────────────────────────────────
+export const emailTemplatesRelations = relations(emailTemplates, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [emailTemplates.tenantId], references: [tenants.id] }),
+  logs: many(emailSendLogs),
+}));
+
+export const emailSendLogsRelations = relations(emailSendLogs, ({ one }) => ({
+  template: one(emailTemplates, { fields: [emailSendLogs.templateId], references: [emailTemplates.id] }),
+  user: one(users, { fields: [emailSendLogs.userId], references: [users.id] }),
+  tenant: one(tenants, { fields: [emailSendLogs.tenantId], references: [tenants.id] }),
+}));
+
+export const smsConfigsRelations = relations(smsConfigs, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [smsConfigs.tenantId], references: [tenants.id] }),
+  logs: many(smsSendLogs),
+}));
+
+export const smsTemplatesRelations = relations(smsTemplates, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [smsTemplates.tenantId], references: [tenants.id] }),
+  logs: many(smsSendLogs),
+}));
+
+export const smsSendLogsRelations = relations(smsSendLogs, ({ one }) => ({
+  config: one(smsConfigs, { fields: [smsSendLogs.configId], references: [smsConfigs.id] }),
+  template: one(smsTemplates, { fields: [smsSendLogs.templateId], references: [smsTemplates.id] }),
+  user: one(users, { fields: [smsSendLogs.userId], references: [users.id] }),
+  tenant: one(tenants, { fields: [smsSendLogs.tenantId], references: [tenants.id] }),
+}));
+
+export const inAppTemplatesRelations = relations(inAppTemplates, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [inAppTemplates.tenantId], references: [tenants.id] }),
+  messages: many(inAppMessages),
+}));
+
+export const inAppMessagesRelations = relations(inAppMessages, ({ one }) => ({
+  template: one(inAppTemplates, { fields: [inAppMessages.templateId], references: [inAppTemplates.id] }),
+  user: one(users, { fields: [inAppMessages.userId], references: [users.id], relationName: 'inAppMessageUser' }),
+  sender: one(users, { fields: [inAppMessages.senderId], references: [users.id], relationName: 'inAppMessageSender' }),
+  tenant: one(tenants, { fields: [inAppMessages.tenantId], references: [tenants.id] }),
 }));
