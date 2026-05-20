@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Form, Input, Modal, Select, Space, Switch, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { PaginatedResponse, SmsConfig, SmsProvider } from '@zenith/shared';
@@ -165,28 +165,59 @@ export default function SmsConfigsPage() {
 
       <Modal title={editingRecord ? '编辑短信配置' : '新增短信配置'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={560}>
+        confirmLoading={submitting} width={720} bodyStyle={{ paddingBottom: 24 }}>
         <Form
           key={editingRecord?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
-          labelPosition="left" labelWidth={110}
+          labelPosition="left" labelWidth={120}
           initValues={editingRecord
             ? { ...editingRecord, accessKeySecret: '' }
             : { status: 'enabled', isDefault: false, provider: 'aliyun' }}
         >
-          <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} />
-          <Form.Select field="provider" label="服务商" style={{ width: '100%' }} optionList={PROVIDER_OPTIONS}
-            rules={[{ required: true, message: '请选择服务商' }]} />
-          <Form.Input field="accessKeyId" label="AccessKeyId" rules={[{ required: true, message: '请输入 AccessKeyId' }]} />
-          <Form.Input field="accessKeySecret" label="AccessKeySecret" mode="password"
-            placeholder={editingRecord ? '不修改请留空' : '请输入 AccessKeySecret'}
-            rules={editingRecord ? [] : [{ required: true, message: '请输入 AccessKeySecret' }]} />
-          <Form.Input field="signName" label="短信签名" rules={[{ required: true, message: '请输入短信签名' }]} />
-          <Form.Input field="region" label="地域" placeholder="如：cn-hangzhou" />
-          <Form.Switch field="isDefault" label="设为默认" />
-          <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
-          <Form.TextArea field="remark" label="备注" rows={2} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="name" label="名称" placeholder="请输入名称"
+                rules={[{ required: true, message: '请输入名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Select field="provider" label="服务商" style={{ width: '100%' }} optionList={PROVIDER_OPTIONS}
+                placeholder="请选择服务商" rules={[{ required: true, message: '请选择服务商' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="signName" label="短信签名" placeholder="请输入短信签名"
+                rules={[{ required: true, message: '请输入短信签名' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="region" label="地域" placeholder="如：cn-hangzhou" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="accessKeyId" label="AccessKeyId" placeholder="请输入 AccessKeyId"
+                rules={[{ required: true, message: '请输入 AccessKeyId' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="accessKeySecret" label="AccessKeySecret" mode="password"
+                placeholder={editingRecord ? '不修改请留空' : '请输入 AccessKeySecret'}
+                rules={editingRecord ? [] : [{ required: true, message: '请输入 AccessKeySecret' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} placeholder="请选择状态"
+                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+            </Col>
+            <Col span={12}>
+              <Form.Switch field="isDefault" label="设为默认" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="remark" label="备注" rows={2} placeholder="请输入备注" />
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>
