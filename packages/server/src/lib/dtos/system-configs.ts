@@ -2,6 +2,7 @@
  * 系统配置、密码策略相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const SystemConfigDTO = z
   .object({
@@ -10,6 +11,7 @@ export const SystemConfigDTO = z
     configValue: z.string().openapi({ example: 'Zenith Admin' }),
     configType: z.enum(['string', 'number', 'boolean', 'json']),
     description: z.string(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

@@ -6,6 +6,17 @@ export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button'])
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss', 's3', 'cos']);
 export const dataScopeEnum = pgEnum('data_scope', ['all', 'dept', 'self']);
 
+/**
+ * 通用审计列：`created_by` / `updated_by` 指向 `users.id`（保留 set null）。
+ * 用法：在 pgTable 列定义末尾展开 `...auditColumns()`。
+ * 该字段由 db/index.ts 的 Proxy 在 insert/update 时根据审计上下文自动注入，
+ * 业务代码无需手填。
+ */
+export const auditColumns = () => ({
+  createdBy: integer('created_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  updatedBy: integer('updated_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+});
+
 // ─── 租户表 ───────────────────────────────────────────────────────────────────
 export const tenants = pgTable('tenants', {
   id: serial('id').primaryKey(),
@@ -18,6 +29,7 @@ export const tenants = pgTable('tenants', {
   expireAt: timestamp('expire_at', { withTimezone: true }),
   maxUsers: integer('max_users'),
   remark: text('remark'),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -37,6 +49,7 @@ export const departments = pgTable('departments', {
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('departments_tenant_code_unique').on(t.tenantId, t.code)]);
@@ -53,6 +66,7 @@ export const positions = pgTable('positions', {
   status: statusEnum('status').notNull().default('enabled'),
   remark: varchar('remark', { length: 256 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('positions_tenant_code_unique').on(t.tenantId, t.code)]);
@@ -73,6 +87,7 @@ export const users = pgTable('users', {
   status: statusEnum('status').notNull().default('enabled'),
   preferences: jsonb('preferences'),
   passwordUpdatedAt: timestamp('password_updated_at').defaultNow().notNull(),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
@@ -97,6 +112,7 @@ export const menus = pgTable('menus', {
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   visible: boolean('visible').notNull().default(true),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -113,6 +129,7 @@ export const roles = pgTable('roles', {
   status: statusEnum('status').notNull().default('enabled'),
   dataScope: dataScopeEnum('data_scope').notNull().default('all'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('roles_tenant_code_unique').on(t.tenantId, t.code)]);
@@ -146,6 +163,7 @@ export const dicts = pgTable('dicts', {
   description: varchar('description', { length: 256 }),
   status: statusEnum('status').notNull().default('enabled'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('dicts_tenant_code_unique').on(t.tenantId, t.code)]);
@@ -163,6 +181,7 @@ export const dictItems = pgTable('dict_items', {
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (table) => [
@@ -199,6 +218,7 @@ export const fileStorageConfigs = pgTable('file_storage_configs', {
   cosSecretId: varchar('cos_secret_id', { length: 128 }),
   cosSecretKey: varchar('cos_secret_key', { length: 256 }),
   remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -218,6 +238,7 @@ export const managedFiles = pgTable('managed_files', {
   mimeType: varchar('mime_type', { length: 128 }),
   extension: varchar('extension', { length: 32 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -280,6 +301,7 @@ export const notices = pgTable('notices', {
   createById: integer('create_by_id'),
   createByName: varchar('create_by_name', { length: 32 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -317,6 +339,7 @@ export const systemConfigs = pgTable('system_configs', {
   configType: configTypeEnum('config_type').notNull().default('string'),
   description: varchar('description', { length: 256 }).notNull().default(''),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [unique('system_configs_tenant_key_unique').on(t.tenantId, t.configKey)]);
@@ -342,6 +365,7 @@ export const cronJobs = pgTable('cron_jobs', {
   nextRunAt: timestamp('next_run_at', { withTimezone: true }),
   lastRunStatus: cronRunStatusEnum('last_run_status'),
   lastRunMessage: varchar('last_run_message', { length: 1024 }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -376,6 +400,7 @@ export const regions = pgTable('regions', {
   parentCode: varchar('parent_code', { length: 12 }),
   sort:       integer('sort').notNull().default(0),
   status:     statusEnum('status').notNull().default('enabled'),
+  ...auditColumns(),
   createdAt:  timestamp('created_at').defaultNow().notNull(),
   updatedAt:  timestamp('updated_at').defaultNow().notNull(),
 });
@@ -396,6 +421,7 @@ export const emailConfigs = pgTable('email_configs', {
   fromEmail: varchar('from_email', { length: 128 }).notNull().default(''),
   encryption: emailEncryptionEnum('encryption').notNull().default('ssl'),
   status: statusEnum('status').notNull().default('enabled'),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -434,6 +460,7 @@ export const oauthConfigs = pgTable('oauth_configs', {
   agentId: varchar('agent_id', { length: 128 }),
   corpId: varchar('corp_id', { length: 128 }),
   enabled: boolean('enabled').notNull().default(false),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -457,8 +484,9 @@ export const dbBackups = pgTable('db_backups', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
   durationMs: integer('duration_ms'),
   errorMessage: text('error_message'),
-  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type DbBackupRow = typeof dbBackups.$inferSelect;
@@ -472,7 +500,9 @@ export const userApiTokens = pgTable('user_api_tokens', {
   token: varchar('token', { length: 128 }).notNull().unique(),
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type UserApiTokenRow = typeof userApiTokens.$inferSelect;
@@ -503,6 +533,7 @@ export const rateLimitRules = pgTable('rate_limit_rules', {
   keyType: rateLimitKeyTypeEnum('key_type').default('ip').notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   blockedMessage: varchar('blocked_message', { length: 255 }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -528,6 +559,7 @@ export const emailTemplates = pgTable('email_templates', {
   status: statusEnum('status').default('enabled').notNull(),
   remark: text('remark'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -566,6 +598,7 @@ export const smsConfigs = pgTable('sms_configs', {
   status: statusEnum('status').default('enabled').notNull(),
   remark: text('remark'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -585,6 +618,7 @@ export const smsTemplates = pgTable('sms_templates', {
   status: statusEnum('status').default('enabled').notNull(),
   remark: text('remark'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -626,6 +660,7 @@ export const inAppTemplates = pgTable('in_app_templates', {
   status: statusEnum('status').default('enabled').notNull(),
   remark: text('remark'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -660,6 +695,7 @@ export const tags = pgTable('tags', {
   description: text('description'),
   status:      statusEnum('status').notNull().default('enabled'),
   sortOrder:   integer('sort_order').notNull().default(0),
+  ...auditColumns(),
   createdAt:   timestamp('created_at').defaultNow().notNull(),
   updatedAt:   timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -684,7 +720,7 @@ export const workflowDefinitions = pgTable('workflow_definitions', {
   status: workflowDefinitionStatusEnum('status').default('draft').notNull(),
   version: integer('version').default(1).notNull(),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
-  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -703,6 +739,7 @@ export const workflowInstances = pgTable('workflow_instances', {
   currentNodeKey: varchar('current_node_key', { length: 64 }),
   initiatorId: integer('initiator_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -736,7 +773,7 @@ export const chatConversations = pgTable('chat_conversations', {
   type: chatConversationTypeEnum('type').notNull().default('direct'),
   name: varchar('name', { length: 64 }),
   announcement: varchar('announcement', { length: 500 }),
-  createdById: integer('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+  ...auditColumns(),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -930,7 +967,7 @@ export const workflowTasksRelations = relations(workflowTasks, ({ one }) => ({
 }));
 
 export const chatConversationsRelations = relations(chatConversations, ({ one, many }) => ({
-  createdBy: one(users, { fields: [chatConversations.createdById], references: [users.id] }),
+  createdByUser: one(users, { fields: [chatConversations.createdBy], references: [users.id] }),
   tenant: one(tenants, { fields: [chatConversations.tenantId], references: [tenants.id] }),
   members: many(chatConversationMembers),
   messages: many(chatMessages),

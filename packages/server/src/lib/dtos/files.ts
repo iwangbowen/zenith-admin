@@ -2,6 +2,7 @@
  * 文件存储相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const FileStorageConfigDTO = z
   .object({
@@ -28,6 +29,7 @@ export const FileStorageConfigDTO = z
     cosSecretId: z.string().nullable().optional(),
     cosSecretKey: z.string().nullable().optional(),
     remark: z.string().nullable().optional(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -45,6 +47,7 @@ export const ManagedFileDTO = z
     mimeType: z.string().nullable().optional(),
     extension: z.string().nullable().optional(),
     url: z.string().openapi({ example: 'https://example.com/files/avatar.png' }),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

@@ -2,6 +2,7 @@
  * 菜单相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const MenuDTO: z.ZodType = z
   .object({
@@ -17,6 +18,7 @@ export const MenuDTO: z.ZodType = z
     sort: z.number().int().openapi({ example: 1 }),
     status: z.enum(['enabled', 'disabled']),
     visible: z.boolean().openapi({ example: true }),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
     get children() {

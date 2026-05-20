@@ -4,6 +4,7 @@
 import { z } from '@hono/zod-openapi';
 import { PositionDTO } from './positions';
 import { RoleDTO } from './roles';
+import { auditFields } from './_audit';
 
 export const UserDTO = z
   .object({
@@ -23,6 +24,7 @@ export const UserDTO = z
     status: z.enum(['enabled', 'disabled']).openapi({ example: 'enabled' }),
     passwordUpdatedAt: z.string().optional(),
     requirePasswordChange: z.boolean().optional(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

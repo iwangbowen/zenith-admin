@@ -2,6 +2,7 @@
  * Auth / OAuth 相关 DTO：登录、验证码、Token、用户画像、OAuth 账号/配置
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 import { UserDTO } from './users';
 
 export const CaptchaDTO = z
@@ -78,6 +79,7 @@ export const OAuthConfigItemDTO = z
     enabled: z.boolean(),
     agentId: z.string().nullable().optional(),
     corpId: z.string().nullable().optional(),
+    ...auditFields,
     createdAt: z.union([z.string(), z.date()]).nullable().optional(),
     updatedAt: z.union([z.string(), z.date()]).nullable().optional(),
   })

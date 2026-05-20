@@ -2,6 +2,7 @@
  * 租户相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const TenantDTO = z
   .object({
@@ -15,6 +16,7 @@ export const TenantDTO = z
     expireAt: z.string().nullable().optional(),
     maxUsers: z.number().int().nullable().optional(),
     remark: z.string().nullable().optional(),
+    ...auditFields,
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
   })

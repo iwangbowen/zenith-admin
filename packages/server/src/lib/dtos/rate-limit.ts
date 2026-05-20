@@ -2,6 +2,7 @@
  * 接口限流（rate limit）相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const RateLimitRuleDTO = z
   .object({
@@ -13,6 +14,7 @@ export const RateLimitRuleDTO = z
     keyType: z.enum(['ip', 'user', 'ip_path']),
     enabled: z.boolean(),
     blockedMessage: z.string().nullable(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

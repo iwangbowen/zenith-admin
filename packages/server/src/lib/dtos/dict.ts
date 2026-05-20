@@ -2,6 +2,7 @@
  * 字典相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const DictDTO = z
   .object({
@@ -10,6 +11,7 @@ export const DictDTO = z
     code: z.string().openapi({ example: 'user_status' }),
     description: z.string().nullable().optional(),
     status: z.enum(['enabled', 'disabled']),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -25,6 +27,7 @@ export const DictItemDTO = z
     sort: z.number().int(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable().optional(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

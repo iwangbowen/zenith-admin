@@ -2,6 +2,7 @@
  * 站内信模板 / 站内信收件记录 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const InAppTemplateDTO = z
   .object({
@@ -14,6 +15,7 @@ export const InAppTemplateDTO = z
     variables: z.string().nullable(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

@@ -2,6 +2,7 @@
  * 通知公告相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const NoticeDTO = z
   .object({
@@ -15,6 +16,7 @@ export const NoticeDTO = z
     publishTime: z.string().nullable(),
     createById: z.number().int().nullable(),
     createByName: z.string().nullable(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
     readCount: z.number().int().optional(),

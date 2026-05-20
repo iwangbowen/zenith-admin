@@ -2,6 +2,7 @@
  * 聊天 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const ChatUserDTO = z
   .object({
@@ -174,6 +175,7 @@ export const ChatConversationDTO = z
     unreadCount: z.number().int(),
     isPinned: z.boolean(),
     isStarred: z.boolean(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

@@ -2,6 +2,7 @@
  * API Token 相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const ApiTokenListItemDTO = z
   .object({
@@ -10,7 +11,9 @@ export const ApiTokenListItemDTO = z
     tokenPrefix: z.string(),
     lastUsedAt: z.string().nullable(),
     expiresAt: z.string().nullable(),
+    ...auditFields,
     createdAt: z.string(),
+    updatedAt: z.string().optional(),
   })
   .openapi('ApiTokenListItem');
 

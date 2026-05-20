@@ -2,6 +2,7 @@
  * 工作流相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const WorkflowDefinitionDTO = z
   .object({
@@ -13,7 +14,7 @@ export const WorkflowDefinitionDTO = z
     status: z.enum(['draft', 'published', 'disabled']),
     version: z.number().int(),
     tenantId: z.number().int().nullable(),
-    createdBy: z.number().int().nullable(),
+    ...auditFields,
     createdByName: z.string().nullable().optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -51,6 +52,7 @@ export const WorkflowInstanceDTO = z
     initiatorAvatar: z.string().nullable().optional(),
     tenantId: z.number().int().nullable(),
     tasks: z.array(WorkflowTaskDTO).nullable().optional(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

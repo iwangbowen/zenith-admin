@@ -55,7 +55,6 @@ export async function createDbBackup(input: { type: 'pg_dump' | 'drizzle_export'
     name: backupName,
     type,
     status: 'pending',
-    createdBy: user.userId,
   }).returning();
   const runBackup = type === 'pg_dump' ? createPgDumpBackup : createDrizzleExportBackup;
   runBackup(backup.id).catch((err) => {

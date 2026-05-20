@@ -95,7 +95,6 @@ export async function createDefinition(data: {
     flowData: data.flowData ?? null,
     formFields: data.formFields ?? null,
     status: data.status ?? 'draft',
-    createdBy: user.userId,
     tenantId: getCreateTenantId(user),
   }).returning();
   return mapDefinition(row);

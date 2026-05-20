@@ -591,7 +591,6 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
   // 创建新会话
   const [conv] = await db.insert(chatConversations).values({
     type: 'direct',
-    createdById: me.userId,
     tenantId: me.tenantId,
   }).returning();
 
@@ -1315,7 +1314,6 @@ export async function createGroupConversation(name: string): Promise<ChatConvers
   const [conv] = await db.insert(chatConversations).values({
     type: 'group',
     name,
-    createdById: me.userId,
     tenantId: me.tenantId,
   }).returning();
 

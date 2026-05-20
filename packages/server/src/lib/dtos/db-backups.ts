@@ -2,6 +2,7 @@
  * 数据库备份相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const DbBackupItemDTO = z
   .object({
@@ -16,8 +17,9 @@ export const DbBackupItemDTO = z
     completedAt: z.string().nullable(),
     durationMs: z.number().nullable().optional(),
     errorMessage: z.string().nullable().optional(),
-    createdBy: z.number().int().nullable().optional(),
+    ...auditFields,
     createdByName: z.string().nullable().optional(),
     createdAt: z.string(),
+    updatedAt: z.string(),
   })
   .openapi('DbBackupItem');

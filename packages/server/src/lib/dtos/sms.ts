@@ -2,6 +2,7 @@
  * 短信配置 / 短信模板 / 短信发送记录 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const SmsConfigDTO = z
   .object({
@@ -15,6 +16,7 @@ export const SmsConfigDTO = z
     isDefault: z.boolean(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -32,6 +34,7 @@ export const SmsTemplateDTO = z
     provider: z.enum(['aliyun', 'tencent']),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

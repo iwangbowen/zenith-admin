@@ -2,6 +2,7 @@
  * 定时任务相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const CronJobDTO = z
   .object({
@@ -19,6 +20,7 @@ export const CronJobDTO = z
     nextRunAt: z.string().nullable(),
     lastRunStatus: z.enum(['success', 'fail', 'running']).nullable(),
     lastRunMessage: z.string().nullable(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

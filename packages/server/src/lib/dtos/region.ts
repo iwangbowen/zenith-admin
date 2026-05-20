@@ -2,6 +2,7 @@
  * 地区相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const RegionDTO: z.ZodType = z
   .object({
@@ -12,6 +13,7 @@ export const RegionDTO: z.ZodType = z
     parentCode: z.string().nullable(),
     sort: z.number().int(),
     status: z.enum(['enabled', 'disabled']),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
     get children() {

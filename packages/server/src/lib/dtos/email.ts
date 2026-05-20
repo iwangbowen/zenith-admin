@@ -2,6 +2,7 @@
  * 邮件模板 / 邮件发送记录 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const EmailTemplateDTO = z
   .object({
@@ -13,6 +14,7 @@ export const EmailTemplateDTO = z
     variables: z.string().nullable(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable(),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
   })

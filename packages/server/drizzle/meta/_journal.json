@@ -351,6 +351,13 @@
       "when": 1779370607561,
       "tag": "0049_drop_legacy_message_template_menus",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1779292461061,
+      "tag": "0050_zippy_hex",
+      "breakpoints": true
     }
   ]
 }

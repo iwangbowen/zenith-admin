@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
+import { runAsUser } from '../lib/audit-context';
 import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
@@ -25,6 +26,7 @@ async function seed() {
   // ─── 1. 管理员账号 ─────────────────────────────────────────────────────────
   // 注意：tenant_id 为 NULL 时复合唯一约束 (tenant_id, username) 不生效（NULL != NULL），
   // 必须先查询是否已存在，再决定是否插入，避免重复创建。
+  // 首位管理员是审计链路的起点，本身允许 created_by/updated_by 为 NULL。
   const existingAdmin = await db.select({ id: users.id }).from(users)
     .where(and(eq(users.username, 'admin'), isNull(users.tenantId)))
     .limit(1);
@@ -40,6 +42,21 @@ async function seed() {
   }
   logger.info('  ✔ Admin user seeded (skip if exists)');
 
+  const [adminRow] = await db.select({ id: users.id }).from(users)
+    .where(and(eq(users.username, 'admin'), isNull(users.tenantId)))
+    .limit(1);
+  if (!adminRow) throw new Error('Admin user not found after seeding');
+  const adminId = adminRow.id;
+
+  // 后续所有 seed 写入均以管理员身份执行，由 db Proxy 自动注入
+  // created_by / updated_by = adminId
+  await runAsUser(adminId, () => seedRest());
+
+  logger.info('🎉 Seed complete.');
+  process.exit(0);
+}
+
+async function seedRest() {
   // ─── 2. 菜单数据（数据来源：@zenith/shared SEED_MENUS）─────────────────────
   const menuRows = SEED_MENUS.map((row) => ({
     id: row.id,
@@ -375,9 +392,6 @@ async function seed() {
     { name: '已完成', color: '#10b981', groupName: '状态标签', description: '已完成的事项', status: 'enabled', sortOrder: 2 },
   ]).onConflictDoNothing({ target: tags.name });
   logger.info('  ✔ Tags seeded (onConflictDoNothing)');
-
-  logger.info('🎉 Seed complete.');
-  process.exit(0);
 }
 
 try {

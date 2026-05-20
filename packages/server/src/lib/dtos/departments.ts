@@ -2,6 +2,7 @@
  * 部门相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { auditFields } from './_audit';
 
 export const DepartmentDTO: z.ZodType = z
   .object({
@@ -15,6 +16,7 @@ export const DepartmentDTO: z.ZodType = z
     email: z.string().optional(),
     sort: z.number().int(),
     status: z.enum(['enabled', 'disabled']),
+    ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
     get children() {
