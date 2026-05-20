@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import type { AuthEnv, JwtPayload } from '../middleware/auth';
 import { db } from '../db';
 import { users, departments } from '../db/schema';
+import { getUserPermissions } from './permissions';
 
 /** 从 DB 加载的完整用户详情（部门 + 岗位 + 角色），仅在需要时懒查询。 */
 export interface CurrentUserDetail {
@@ -203,4 +204,89 @@ export async function hasPosition(...codes: string[]): Promise<boolean> {
   const detail = await currentUserDetail();
   if (!detail) return false;
   return detail.positions.some((p) => codes.includes(p.code));
+}
+
+// ─── 多租户快捷工具（无需 DB，直接从 JWT Payload 取） ─────────────────────────
+
+/** 快捷获取当前登录用户所属租户 ID（`null` 表示平台超管，无租户归属）。 */
+export function currentTenantId(): number | null {
+  return currentUser().tenantId ?? null;
+}
+
+/**
+ * 快捷获取超管切换视角时的目标租户 ID。
+ * 普通用户或超管未切换视角时返回 `undefined`。
+ */
+export function currentViewingTenantId(): number | null | undefined {
+  return currentUser().viewingTenantId;
+}
+
+/**
+ * 获取当前生效的租户 ID（兼容超管切换视角场景）。
+ *
+ * - 超管切换到某租户视角时，返回 `viewingTenantId`
+ * - 其他情况返回 `tenantId`（可能为 `null`，表示平台超管）
+ *
+ * 在多租户数据过滤时统一使用此函数，而不是直接读 `tenantId`：
+ * ```ts
+ * const tId = effectiveTenantId();
+ * if (tId) where.push(eq(table.tenantId, tId));
+ * ```
+ */
+export function effectiveTenantId(): number | null {
+  const { tenantId, viewingTenantId } = currentUser();
+  return viewingTenantId ?? tenantId ?? null;
+}
+
+// ─── 其他常用快捷工具 ─────────────────────────────────────────────────────────
+
+/** 快捷获取当前登录用户的用户名。 */
+export function currentUsername(): string {
+  return currentUser().username;
+}
+
+/**
+ * 判断当前请求是否已认证（有登录用户）。
+ * 在匿名可访问接口中用于区分登录/未登录状态。
+ *
+ * ```ts
+ * if (isAuthenticated()) {
+ *   const uid = currentUserId();
+ *   // 已登录用户专属逻辑
+ * }
+ * ```
+ */
+export function isAuthenticated(): boolean {
+  return currentUserOrNull() !== undefined;
+}
+
+/**
+ * 判断当前登录用户是否同时拥有**所有**指定角色（全匹配）。
+ * 与 `hasRole`（任意匹配）互补。
+ *
+ * @example
+ * if (hasAllRoles('admin', 'auditor')) {
+ *   // 只有同时拥有 admin 和 auditor 角色才允许
+ * }
+ */
+export function hasAllRoles(...codes: string[]): boolean {
+  const userRoleCodes = currentUser().roles;
+  return codes.every((code) => userRoleCodes.includes(code));
+}
+
+/**
+ * 判断当前登录用户是否拥有指定菜单权限标识（任意一个匹配即返回 `true`）。
+ * 通过 `permissions.ts` 的带缓存查询，同一用户 5 分钟内仅查一次数据库。
+ *
+ * 超管（`super_admin` 角色）始终返回 `true`，无需权限查询。
+ *
+ * @example
+ * if (await hasPermission('system:user:delete')) {
+ *   // 有删除用户权限才执行
+ * }
+ */
+export async function hasPermission(...codes: string[]): Promise<boolean> {
+  if (isSuperAdmin()) return true;
+  const permissions = await getUserPermissions(currentUserId());
+  return codes.some((code) => permissions.includes(code));
 }

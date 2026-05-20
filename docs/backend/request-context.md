@@ -133,6 +133,79 @@ if (await isInDepartment(5, true)) { ... }
 
 ---
 
+## 多租户工具（无需 DB）
+
+### `currentTenantId()`
+
+快捷获取当前登录用户所属租户 ID。平台超管（无租户归属）时返回 `null`。
+
+```ts
+const tId = currentTenantId(); // number | null
+```
+
+### `currentViewingTenantId()`
+
+超管切换租户视角时，返回目标租户 ID；未切换时返回 `undefined`。
+
+### `effectiveTenantId()`
+
+**推荐在多租户数据过滤时统一使用此函数。** 超管切换视角时返回 `viewingTenantId`，否则返回 `tenantId`：
+
+```ts
+const tId = effectiveTenantId();
+if (tId) where.push(eq(table.tenantId, tId));
+```
+
+---
+
+## 其他常用快捷工具
+
+### `currentUsername()`
+
+快捷获取当前登录用户的用户名（等价于 `currentUser().username`）。
+
+```ts
+const name = currentUsername();
+```
+
+### `isAuthenticated()`
+
+判断当前请求是否已认证（有登录用户）。适用于匿名可访问接口中区分登录/未登录状态。
+
+```ts
+if (isAuthenticated()) {
+  // 已登录用户专属逻辑
+}
+```
+
+### `hasAllRoles(...codes)`
+
+判断当前用户是否**同时拥有所有**指定角色（全匹配），与 `hasRole`（任意匹配）互补。
+
+```ts
+if (hasAllRoles('admin', 'auditor')) {
+  // 必须同时拥有 admin 和 auditor 角色
+}
+```
+
+### `hasPermission(...codes)`
+
+判断当前用户是否拥有指定菜单权限标识（任意一个匹配即 `true`）。
+通过 `permissions.ts` 带 5 分钟内存缓存，同一用户多次调用只查一次 DB。
+**超管自动返回 `true`，无需权限查询。**
+
+```ts
+if (await hasPermission('system:user:delete')) {
+  // 有删除用户权限
+}
+
+if (await hasPermission('system:user:export', 'system:user:import')) {
+  // 有导出或导入权限之一
+}
+```
+
+---
+
 ## 审计日志快照
 
 ### `setAuditBefore(data)`
@@ -152,9 +225,16 @@ await updateUser(id, body);
 ```ts
 import {
   currentUserId,
+  currentUsername,
   currentUserRoles,
+  currentTenantId,
+  currentViewingTenantId,
+  effectiveTenantId,
   hasRole,
+  hasAllRoles,
   isSuperAdmin,
+  isAuthenticated,
+  hasPermission,
   currentUserDetail,
   hasPosition,
   isInDepartment,
