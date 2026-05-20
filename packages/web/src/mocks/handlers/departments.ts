@@ -1,21 +1,27 @@
 import { http, HttpResponse } from 'msw';
 import { mockDepartments, getNextDeptId } from '@/mocks/data/departments';
+import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
 import type { Department } from '@zenith/shared';
+
+function withLeaderName(dept: Department): Department {
+  const leader = dept.leaderId ? mockUsers.find((u) => u.id === dept.leaderId) : undefined;
+  return { ...dept, leaderName: leader?.nickname ?? null };
+}
 
 function buildDeptTree(list: Department[], parentId: number = 0): Department[] {
   return list
     .filter((d) => d.parentId === parentId)
     .map((d) => {
       const children = buildDeptTree(list, d.id);
-      return children.length > 0 ? { ...d, children } : { ...d };
+      return children.length > 0 ? { ...withLeaderName(d), children } : { ...withLeaderName(d) };
     });
 }
 
 export const departmentsHandlers = [
   // 部门平铺列表（供下拉框使用）
   http.get('/api/departments/flat', () => {
-    return HttpResponse.json({ code: 0, message: 'ok', data: mockDepartments });
+    return HttpResponse.json({ code: 0, message: 'ok', data: mockDepartments.map(withLeaderName) });
   }),
 
   // 部门树
@@ -23,7 +29,7 @@ export const departmentsHandlers = [
     const url = new URL(request.url);
     const flat = url.searchParams.get('flat');
     if (flat === 'true') {
-      return HttpResponse.json({ code: 0, message: 'ok', data: mockDepartments });
+      return HttpResponse.json({ code: 0, message: 'ok', data: mockDepartments.map(withLeaderName) });
     }
     return HttpResponse.json({ code: 0, message: 'ok', data: buildDeptTree(mockDepartments) });
   }),

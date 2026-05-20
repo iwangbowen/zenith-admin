@@ -1,7 +1,7 @@
 import { db } from './index';
 import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, messageTemplates, tags } from './schema';
 import bcrypt from 'bcryptjs';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
@@ -108,7 +108,6 @@ async function seed() {
     parentId: row.parentId,
     name: row.name,
     code: row.code,
-    leader: row.leader ?? null,
     phone: row.phone ?? null,
     email: row.email ?? null,
     sort: row.sort,
@@ -121,7 +120,6 @@ async function seed() {
         parentId: sql`excluded.parent_id`,
         name:     sql`excluded.name`,
         code:     sql`excluded.code`,
-        leader:   sql`excluded.leader`,
         phone:    sql`excluded.phone`,
         email:    sql`excluded.email`,
         sort:     sql`excluded.sort`,
@@ -166,6 +164,9 @@ async function seed() {
     await db.update(users).set({ departmentId: 1, updatedAt: new Date() }).where(eq(users.id, adminUser.id));
     await db.insert(userRoles).values({ userId: adminUser.id, roleId: 1 }).onConflictDoNothing();
     await db.insert(userPositions).values({ userId: adminUser.id, positionId: 1 }).onConflictDoNothing();
+    // 将种子部门的负责人设置为超管
+    await db.update(departments).set({ leaderId: adminUser.id, updatedAt: new Date() })
+      .where(inArray(departments.id, SEED_DEPARTMENTS.map((d) => d.id)));
     logger.info('  ✔ Admin user-role binding seeded');
   }
 

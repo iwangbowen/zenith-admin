@@ -13,7 +13,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Search, Plus, RotateCcw, Download, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
-import type { Department } from '@zenith/shared';
+import type { Department, User, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -110,6 +110,28 @@ export default function DepartmentsPage() {
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const { items: statusItems } = useDictItems('common_status');
 
+  const [leaderOptions, setLeaderOptions] = useState<Array<{ value: number; label: string }>>([]);
+  const [leaderSearchLoading, setLeaderSearchLoading] = useState(false);
+
+  const fetchLeaderOptions = useCallback(async (keyword = '') => {
+    setLeaderSearchLoading(true);
+    try {
+      const params = new URLSearchParams({ pageSize: '50' });
+      if (keyword) params.set('keyword', keyword);
+      const res = await request.get<PaginatedResponse<User>>(`/api/users?${params.toString()}`);
+      if (res.code === 0) {
+        setLeaderOptions(
+          res.data.list.map((u) => ({
+            value: u.id,
+            label: u.departmentName ? `${u.nickname}-${u.departmentName}` : u.nickname,
+          }))
+        );
+      }
+    } finally {
+      setLeaderSearchLoading(false);
+    }
+  }, []);
+
   const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
 
   const allRowKeys = useMemo(() => {
@@ -172,7 +194,7 @@ export default function DepartmentsPage() {
         parentId: editingDepartment.parentId,
         name: editingDepartment.name,
         code: editingDepartment.code,
-        leader: editingDepartment.leader,
+        leaderId: editingDepartment.leaderId ?? undefined,
         phone: editingDepartment.phone,
         email: editingDepartment.email,
         sort: editingDepartment.sort,
@@ -222,7 +244,7 @@ export default function DepartmentsPage() {
   const columns: ColumnProps<Department>[] = [
     { title: '部门名称', dataIndex: 'name', width: 220 },
     { title: '部门编码', dataIndex: 'code', width: 180, ellipsis: true },
-    { title: '负责人', dataIndex: 'leader', width: 120, render: (value) => value || '—' },
+    { title: '负责人', dataIndex: 'leaderName', width: 120, render: (value) => value || '—' },
     { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || '—' },
     { title: '邮箱', dataIndex: 'email', width: 200, ellipsis: true, render: (value) => value || '—' },
     { title: '排序', dataIndex: 'sort', width: 90 },
@@ -252,6 +274,7 @@ export default function DepartmentsPage() {
             onClick={() => {
               setEditingDepartment(record);
               setModalVisible(true);
+              void fetchLeaderOptions();
             }}
           >编辑</Button>}
           {hasPermission('system:department:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
@@ -304,6 +327,7 @@ export default function DepartmentsPage() {
             onClick={() => {
               setEditingDepartment(null);
               setModalVisible(true);
+              void fetchLeaderOptions();
             }}
           >
             新增
@@ -359,7 +383,18 @@ export default function DepartmentsPage() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Input field="leader" label="负责人" placeholder="请输入负责人" />
+              <Form.Select
+                field="leaderId"
+                label="负责人"
+                placeholder="请选择负责人"
+                showClear
+                filter
+                remote
+                loading={leaderSearchLoading}
+                optionList={leaderOptions}
+                onSearch={(keyword) => void fetchLeaderOptions(keyword)}
+                style={{ width: '100%' }}
+              />
             </Col>
             <Col span={12}>
               <Form.Input field="phone" label="联系电话" placeholder="请输入联系电话" />

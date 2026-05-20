@@ -164,8 +164,8 @@ export const SEED_ROLES: Role[] = [
 // ─── 部门 ─────────────────────────────────────────────────────────────────────
 
 export const SEED_DEPARTMENTS: Department[] = [
-  { id: 1, parentId: 0, name: '总部',  code: 'headquarters', leader: '管理员', phone: '13800000000', email: 'admin@zenith.dev', sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, parentId: 1, name: '技术部', code: 'technology',   leader: '管理员', phone: '13800000001', email: 'tech@zenith.dev',  sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, parentId: 0, name: '总部',  code: 'headquarters', leaderId: 1, phone: '13800000000', email: 'admin@zenith.dev', sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, parentId: 1, name: '技术部', code: 'technology',   leaderId: 1, phone: '13800000001', email: 'tech@zenith.dev',  sort: 1, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 岗位 ─────────────────────────────────────────────────────────────────────

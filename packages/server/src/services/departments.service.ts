@@ -1,4 +1,4 @@
-import { asc, eq, and } from 'drizzle-orm';
+import { asc, eq, and, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { departments, users } from '../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -15,13 +15,17 @@ export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>;
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
-export function mapDepartment(row: typeof departments.$inferSelect): Omit<Department, 'children'> {
+export function mapDepartment(
+  row: typeof departments.$inferSelect,
+  leaderName?: string | null,
+): Omit<Department, 'children'> {
   return {
     id: row.id,
     parentId: row.parentId,
     name: row.name,
     code: row.code,
-    leader: row.leader ?? undefined,
+    leaderId: row.leaderId ?? null,
+    leaderName: leaderName ?? null,
     phone: row.phone ?? undefined,
     email: row.email ?? undefined,
     sort: row.sort,
@@ -29,6 +33,17 @@ export function mapDepartment(row: typeof departments.$inferSelect): Omit<Depart
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
+}
+
+async function buildLeaderMap(leaderIds: number[]): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  if (leaderIds.length === 0) return map;
+  const leaderUsers = await db
+    .select({ id: users.id, nickname: users.nickname })
+    .from(users)
+    .where(inArray(users.id, leaderIds));
+  leaderUsers.forEach((u) => map.set(u.id, u.nickname));
+  return map;
 }
 
 // ─── 树形结构构建 ─────────────────────────────────────────────────────────────
@@ -92,7 +107,10 @@ export async function ensureParentValid(parentId: number, currentId?: number) {
 export async function listDepartmentTree(params: { keyword?: string; status?: string }): Promise<Department[]> {
   const tc = tenantCondition(departments, currentUser());
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
-  const tree = buildDepartmentTree(rows.map(mapDepartment));
+  const leaderIds = [...new Set(rows.map((r) => r.leaderId).filter((id): id is number => id !== null))];
+  const leaderMap = await buildLeaderMap(leaderIds);
+  const mapped = rows.map((r) => mapDepartment(r, r.leaderId ? leaderMap.get(r.leaderId) ?? null : null));
+  const tree = buildDepartmentTree(mapped);
   const { keyword = '', status } = params;
   return keyword || status ? filterDepartmentTree(tree, keyword, status) : tree;
 }
@@ -100,7 +118,9 @@ export async function listDepartmentTree(params: { keyword?: string; status?: st
 export async function listDepartmentsFlat(): Promise<Omit<Department, 'children'>[]> {
   const tc = tenantCondition(departments, currentUser());
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
-  return rows.map(mapDepartment);
+  const leaderIds = [...new Set(rows.map((r) => r.leaderId).filter((id): id is number => id !== null))];
+  const leaderMap = await buildLeaderMap(leaderIds);
+  return rows.map((r) => mapDepartment(r, r.leaderId ? leaderMap.get(r.leaderId) ?? null : null));
 }
 
 export async function createDepartment(input: CreateDepartmentInput): Promise<Omit<Department, 'children'>> {
@@ -110,7 +130,8 @@ export async function createDepartment(input: CreateDepartmentInput): Promise<Om
       .insert(departments)
       .values({ ...input, tenantId: getCreateTenantId(currentUser()) })
       .returning();
-    return mapDepartment(row);
+    const leaderMap = await buildLeaderMap(row.leaderId ? [row.leaderId] : []);
+    return mapDepartment(row, row.leaderId ? leaderMap.get(row.leaderId) ?? null : null);
   } catch (err) {
     rethrowPgUniqueViolation(err, '部门编码已存在');
   }
@@ -128,7 +149,8 @@ export async function updateDepartment(id: number, input: UpdateDepartmentInput)
       .where(and(eq(departments.id, id), tc))
       .returning();
     if (!row) throw new HTTPException(404, { message: '部门不存在' });
-    return mapDepartment(row);
+    const leaderMap = await buildLeaderMap(row.leaderId ? [row.leaderId] : []);
+    return mapDepartment(row, row.leaderId ? leaderMap.get(row.leaderId) ?? null : null);
   } catch (err) {
     if (err instanceof HTTPException) throw err;
     rethrowPgUniqueViolation(err, '部门编码已存在');
@@ -152,23 +174,31 @@ export async function getDepartmentBeforeAudit(id: number) {
   const tc = tenantCondition(departments, currentUser());
   const [row] = await db.select().from(departments).where(and(eq(departments.id, id), tc)).limit(1);
   if (!row) return null;
-  return mapDepartment(row);
+  const leaderMap = await buildLeaderMap(row.leaderId ? [row.leaderId] : []);
+  return mapDepartment(row, row.leaderId ? leaderMap.get(row.leaderId) ?? null : null);
 }
 
 export async function exportDepartments(): Promise<{ stream: ReadableStream; filename: string }> {
   const tc = tenantCondition(departments, currentUser());
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort));
+  const leaderIds = [...new Set(rows.map((r) => r.leaderId).filter((id): id is number => id !== null))];
+  const leaderMap = await buildLeaderMap(leaderIds);
   const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },
       { header: '部门名称', key: 'name', width: 20 },
       { header: '部门编码', key: 'code', width: 16 },
-      { header: '负责人', key: 'leader', width: 14 },
+      { header: '负责人', key: 'leaderName', width: 14 },
       { header: '电话', key: 'phone', width: 16 },
       { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '禁用') },
       { header: '创建时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, leader: r.leader ?? '', phone: r.phone ?? '', createdAt: formatDateTimeForExcel(r.createdAt) })),
+    rows.map((r) => ({
+      ...r,
+      leaderName: r.leaderId ? leaderMap.get(r.leaderId) ?? '' : '',
+      phone: r.phone ?? '',
+      createdAt: formatDateTimeForExcel(r.createdAt),
+    })),
     '部门列表',
   );
   return { stream, filename: 'departments.xlsx' };

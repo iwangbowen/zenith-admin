@@ -103,7 +103,7 @@ export const createDepartmentSchema = z.object({
   parentId: z.number().int().min(0).default(0),
   name: z.string().min(1, '部门名称不能为空').max(64),
   code: z.string().min(1, '部门编码不能为空').max(64).regex(/^\w+$/, '部门编码只能包含字母、数字和下划线'),
-  leader: z.string().max(32).optional(),
+  leaderId: z.number().int().nullable().optional(),
   phone: z.string().max(32).optional(),
   email: z.preprocess(
     (value) => (value === '' ? undefined : value),

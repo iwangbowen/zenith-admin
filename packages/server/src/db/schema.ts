@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const statusEnum = pgEnum('status', ['enabled', 'disabled']);
@@ -31,7 +31,7 @@ export const departments = pgTable('departments', {
   parentId: integer('parent_id').notNull().default(0),
   name: varchar('name', { length: 64 }).notNull(),
   code: varchar('code', { length: 64 }).notNull(),
-  leader: varchar('leader', { length: 32 }),
+  leaderId: integer('leader_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   phone: varchar('phone', { length: 32 }),
   email: varchar('email', { length: 128 }),
   sort: integer('sort').notNull().default(0),
@@ -68,7 +68,7 @@ export const users = pgTable('users', {
   password: varchar('password', { length: 128 }).notNull(),
   avatar: varchar('avatar', { length: 256 }),
   phone: varchar('phone', { length: 20 }),
-  departmentId: integer('department_id').references(() => departments.id, { onDelete: 'set null' }),
+  departmentId: integer('department_id').references((): AnyPgColumn => departments.id, { onDelete: 'set null' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   status: statusEnum('status').notNull().default('enabled'),
   preferences: jsonb('preferences'),
@@ -690,6 +690,7 @@ export const tenantsRelations = relations(tenants, ({ many }) => ({
 export const departmentsRelations = relations(departments, ({ one, many }) => ({
   tenant: one(tenants, { fields: [departments.tenantId], references: [tenants.id] }),
   users: many(users),
+  leader: one(users, { fields: [departments.leaderId], references: [users.id], relationName: 'departmentLeader' }),
 }));
 
 export const positionsRelations = relations(positions, ({ one, many }) => ({
@@ -705,6 +706,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   oauthAccounts: many(userOauthAccounts),
   apiTokens: many(userApiTokens),
   passwordResetTokens: many(passwordResetTokens),
+  leadingDepartments: many(departments, { relationName: 'departmentLeader' }),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({
