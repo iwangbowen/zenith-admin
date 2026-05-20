@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Form, Input, Modal, Select, Space, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { CheckCheck, Plus, RotateCcw, Search } from 'lucide-react';
 import type { InAppMessage, InAppMessageType, InAppTemplate, PaginatedResponse, User } from '@zenith/shared';
@@ -182,20 +182,46 @@ export default function InAppMessagesPage() {
         scroll={{ x: 1400 }} />
 
       <Modal title="发送站内信" visible={sendVisible} onOk={handleSend}
-        onCancel={() => setSendVisible(false)} confirmLoading={submitting} width={600}>
+        onCancel={() => setSendVisible(false)} confirmLoading={submitting} width={720} bodyStyle={{ paddingBottom: 24 }}>
         <Form key="send" getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
-          labelPosition="left" labelWidth={90} initValues={{ type: 'info' }}>
-          <Form.Select field="userIds" label="收件人" multiple filter style={{ width: '100%' }}
-            optionList={users.map((u) => ({ label: `${u.nickname || u.username} (${u.username})`, value: u.id }))}
-            rules={[{ required: true, message: '请选择收件人' }]} />
-          <Form.Select field="templateId" label="模板" style={{ width: '100%' }} showClear
-            optionList={templates.map((t) => ({ label: `${t.name} (${t.code})`, value: t.id }))}
-            placeholder="可选，使用模板时将自动填充标题与内容" />
-          <Form.Input field="title" label="标题" rules={[{ required: true, message: '请输入标题' }]} />
-          <Form.TextArea field="content" label="内容" rows={5} rules={[{ required: true, message: '请输入内容' }]} />
-          <Form.Select field="type" label="类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS}
-            rules={[{ required: true, message: '请选择类型' }]} />
-          <Form.Input field="variables" label="变量" placeholder='如：{"username":"张三"}' />
+          labelPosition="left" labelWidth={120} initValues={{ type: 'info' }}>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Select field="userIds" label="收件人" multiple filter style={{ width: '100%' }}
+                optionList={users.map((u) => ({ label: `${u.nickname || u.username} (${u.username})`, value: u.id }))}
+                placeholder="请选择收件人"
+                rules={[{ required: true, message: '请选择收件人' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select field="templateId" label="模板" style={{ width: '100%' }} showClear
+                optionList={templates.map((t) => ({ label: `${t.name} (${t.code})`, value: t.id }))}
+                placeholder="可选，使用模板自动填充" />
+            </Col>
+            <Col span={12}>
+              <Form.Select field="type" label="类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS}
+                placeholder="请选择类型"
+                rules={[{ required: true, message: '请选择类型' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Input field="title" label="标题" placeholder="请输入标题"
+                rules={[{ required: true, message: '请输入标题' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="content" label="内容" rows={5} placeholder="请输入内容"
+                rules={[{ required: true, message: '请输入内容' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Input field="variables" label="变量" placeholder='如：{"username":"张三"}' />
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>

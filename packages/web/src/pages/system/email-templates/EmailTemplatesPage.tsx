@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Form, Input, Modal, Select, Space, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { EmailTemplate, PaginatedResponse } from '@zenith/shared';
@@ -141,22 +141,49 @@ export default function EmailTemplatesPage() {
 
       <Modal title={editingRecord ? '编辑邮件模板' : '新增邮件模板'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={640}>
+        confirmLoading={submitting} width={720} bodyStyle={{ paddingBottom: 24 }}>
         <Form
           key={editingRecord?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
-          labelPosition="left" labelWidth={90}
+          labelPosition="left" labelWidth={120}
           initValues={editingRecord ?? { status: 'enabled' }}
         >
-          <Form.Input field="name" label="模板名称" rules={[{ required: true, message: '请输入模板名称' }]} />
-          <Form.Input field="code" label="模板编码" disabled={!!editingRecord}
-            rules={[{ required: true, message: '请输入模板编码' }]} placeholder="如：welcome_email" />
-          <Form.Input field="subject" label="邮件主题" rules={[{ required: true, message: '请输入邮件主题' }]} />
-          <Form.TextArea field="content" label="邮件内容" rows={6} rules={[{ required: true, message: '请输入邮件内容' }]} />
-          <Form.Input field="variables" label="变量" placeholder='如：{"username":"用户名"}' />
-          <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
-          <Form.TextArea field="remark" label="备注" rows={2} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="name" label="模板名称" placeholder="请输入模板名称"
+                rules={[{ required: true, message: '请输入模板名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="code" label="模板编码" disabled={!!editingRecord} placeholder="如：welcome_email"
+                rules={[{ required: true, message: '请输入模板编码' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="subject" label="邮件主题" placeholder="请输入邮件主题"
+                rules={[{ required: true, message: '请输入邮件主题' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} placeholder="请选择状态"
+                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="content" label="邮件内容" rows={6} placeholder="请输入邮件内容"
+                rules={[{ required: true, message: '请输入邮件内容' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Input field="variables" label="变量" placeholder='如：{"username":"用户名"}' />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="remark" label="备注" rows={2} placeholder="请输入备注" />
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>

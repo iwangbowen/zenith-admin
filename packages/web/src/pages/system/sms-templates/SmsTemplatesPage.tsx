@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Form, Input, Modal, Select, Space, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { PaginatedResponse, SmsTemplate, SmsProvider } from '@zenith/shared';
@@ -151,25 +151,58 @@ export default function SmsTemplatesPage() {
 
       <Modal title={editingRecord ? '编辑短信模板' : '新增短信模板'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={580}>
+        confirmLoading={submitting} width={720} bodyStyle={{ paddingBottom: 24 }}>
         <Form
           key={editingRecord?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
-          labelPosition="left" labelWidth={110}
+          labelPosition="left" labelWidth={120}
           initValues={editingRecord ?? { status: 'enabled', provider: 'aliyun' }}
         >
-          <Form.Input field="name" label="模板名称" rules={[{ required: true, message: '请输入模板名称' }]} />
-          <Form.Input field="code" label="模板编码" disabled={!!editingRecord}
-            rules={[{ required: true, message: '请输入模板编码' }]} />
-          <Form.Input field="templateCode" label="服务商模板号" rules={[{ required: true, message: '请输入服务商模板号' }]} />
-          <Form.Input field="signName" label="短信签名" />
-          <Form.TextArea field="content" label="模板内容" rows={4} rules={[{ required: true, message: '请输入模板内容' }]} />
-          <Form.Input field="variables" label="变量" placeholder='如：{"code":"验证码"}' />
-          <Form.Select field="provider" label="服务商" style={{ width: '100%' }} optionList={PROVIDER_OPTIONS}
-            rules={[{ required: true, message: '请选择服务商' }]} />
-          <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
-          <Form.TextArea field="remark" label="备注" rows={2} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="name" label="模板名称" placeholder="请输入模板名称"
+                rules={[{ required: true, message: '请输入模板名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="code" label="模板编码" disabled={!!editingRecord} placeholder="如：order_paid"
+                rules={[{ required: true, message: '请输入模板编码' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="templateCode" label="服务商模板号" placeholder="请输入服务商模板号"
+                rules={[{ required: true, message: '请输入服务商模板号' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="signName" label="短信签名" placeholder="可选" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select field="provider" label="服务商" style={{ width: '100%' }} optionList={PROVIDER_OPTIONS}
+                placeholder="请选择服务商" rules={[{ required: true, message: '请选择服务商' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Select field="status" label="状态" style={{ width: '100%' }} placeholder="请选择状态"
+                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="content" label="模板内容" rows={4} placeholder="请输入模板内容"
+                rules={[{ required: true, message: '请输入模板内容' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Input field="variables" label="变量" placeholder='如：{"code":"验证码"}' />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="remark" label="备注" rows={2} placeholder="请输入备注" />
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>
