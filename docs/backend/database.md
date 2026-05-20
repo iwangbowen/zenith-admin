@@ -104,6 +104,20 @@ like(users.username, `%${keyword}%`)
 | `file_storage_configs` | 存储配置（local / OSS / S3 / COS） |
 | `managed_files` | 已上传文件记录（`url` 字段由服务端动态拼接，不存入数据库） |
 
+### 通用审计字段（`created_by` / `updated_by`）
+
+所有业务主表均含 `created_by` / `updated_by` 两列（指向 `users.id`，`ON DELETE SET NULL`），由 schema 中的 [`auditColumns()`](../../packages/server/src/db/schema.ts) 展开。赋值由 [`db/index.ts`](../../packages/server/src/db/index.ts) 的 Proxy 统一拦截：
+
+- **读取顺序**：`overrideStore`（`runAsUser()` 包裹）→ 请求上下文中的当前用户（`auth` 中间件设置）→ `null`。
+- **拦截点**：`db.insert(t).values(d)` / `db.update(t).set(d)` / `db.insert(t).values(d).onConflictDoUpdate({set})` 及其在 `db.transaction()` 中的子事务版本。
+- **严禁**：service / route / seed / cron 任意位置手动赋值 `createdBy` / `updatedBy`。
+- **例外**（**不**加审计列）：
+  - 多对多关联表：`user_roles`、`user_positions`、`role_menus`、`notice_reads`、`notice_recipients`、`chat_conversation_members`、`chat_message_reactions`
+  - 追加型日志：`login_logs`、`operation_logs`、`cron_job_logs`、`email_send_logs`、`sms_send_logs`、`in_app_messages`
+  - 用户自身/临时凭证：`user_oauth_accounts`、`password_reset_tokens`、`chat_messages`
+  - 工作流运行时：`workflow_tasks`
+- **种子数据**：`db/seed.ts` 主函数被 `runAsUser(adminId, ...)` 包裹，所有种子记录的创建人 / 修改人默认为 admin。
+
 ### 通知与审计
 
 | 表名 | 说明 |

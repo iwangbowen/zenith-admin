@@ -22,6 +22,8 @@ export const xxxs = pgTable('xxxs', {
   status:      statusEnum('status').notNull().default('enabled'),
   // 外键（FK 字段 + onDelete 策略）：
   parentId:    integer('parent_id').references(() => xxxs.id, { onDelete: 'set null' }),
+  // 通用审计列（created_by / updated_by → users.id, ON DELETE SET NULL）：
+  ...auditColumns(),
   // 时间戳：
   createdAt:   timestamp('created_at').defaultNow().notNull(),
   updatedAt:   timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -31,6 +33,8 @@ export const xxxs = pgTable('xxxs', {
 export type XxxRow = typeof xxxs.$inferSelect;
 export type NewXxx = typeof xxxs.$inferInsert;
 ```
+
+> **审计列必加**：所有业务主表必须展开 `...auditColumns()`，由 `packages/server/src/db/index.ts` 的 Proxy 在 `insert().values()` / `update().set()` / `insert().onConflictDoUpdate({set})` 时根据 `audit-context`（来自 `auth` 中间件或 `runAsUser()`）自动写入 `created_by` / `updated_by`，**禁止**业务代码手动赋值。例外（**不要**加审计列）：纯关联表（如 `xxx_yyys`）、追加型日志（`*_logs`）、临时凭证（`*_tokens`）、IM 消息等"作者天然就是当前用户"的实体。
 
 ### 多对多关联表模板
 
@@ -94,6 +98,9 @@ export interface Xxx {
   // 关联实体嵌套（多对多时）：
   yyys?: Yyy[];
   yyyIds?: number[];
+  // 审计字段（由后端 Proxy 自动写入，可选透出给前端）：
+  createdBy?: number | null;
+  updatedBy?: number | null;
   // 时间字段序列化为字符串（YYYY-MM-DD HH:mm:ss）：
   createdAt: string;
   updatedAt: string;
@@ -123,6 +130,9 @@ export function mapXxx(row: XxxRow) {
     name:        row.name,
     description: row.description ?? null,
     status:      row.status,
+    // 审计字段：由 db Proxy 自动写入，按需透出（如需在前端显示创建人/修改人）
+    createdBy:   row.createdBy ?? null,
+    updatedBy:   row.updatedBy ?? null,
     createdAt:   formatDateTime(row.createdAt),
     updatedAt:   formatDateTime(row.updatedAt),
   };
@@ -151,12 +161,15 @@ export async function ensureXxxExists(id: number) {
 > **必读：实体 DTO 必须集中在 `packages/server/src/lib/dtos/` 子目录中（按业务域拆分：`roles` / `positions` / `users` / `menus` / `departments` / `tenants` / `api-tokens` / `auth` / `dict` / `files` / `logs` / `notices` / `system-configs` / `cron-jobs` / `email-config` / `cache` / `db-backups` / `monitor` / `sessions` / `workflow` / `dashboard` / `region` / `messages`）。** 新增实体时先在对应子文件中添加：
 >
 > ```typescript
+> import { auditFields } from './_audit';
+>
 > export const XxxDTO = z
 >   .object({
 >     id: z.number().int(),
 >     name: z.string(),
 >     description: z.string().nullable().optional(),
 >     status: z.enum(['enabled', 'disabled']),
+>     ...auditFields, // createdBy / updatedBy（由 db Proxy 自动写入，DTO 中为可选）
 >     createdAt: z.string(),
 >     updatedAt: z.string(),
 >   })

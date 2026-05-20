@@ -24,6 +24,7 @@
 | **批量操作路由顺序** | `DELETE /batch` 必须注册在 `DELETE /{id}` 之前，防止路由冲突 |
 | **批量按钮显示时机** | 批量操作按钮仅在 `selectedRowKeys.length > 0` 时显示，放在查询/重置按钮之后 |
 | **updatedAt 自动维护** | schema 中所有表的 `updatedAt` 已配置 `.$onUpdate(() => new Date())`，**禁止**在 `db.update().set({})` 中手动传入 `updatedAt: new Date()` |
+| **审计字段统一拦截** | 业务主表必须在 schema 展开 `...auditColumns()`；DTO 中使用 `...auditFields`（来自 `lib/dtos/_audit.ts`）。`created_by` / `updated_by` 由 `packages/server/src/db/index.ts` 的 Proxy 在 `insert` / `update` / `insert().onConflictDoUpdate({set})` 时根据 `audit-context` 自动写入，**禁止**在 service、route、seed 中手动赋值；需指定操作人时用 `runAsUser(userId, fn)` 包裹。关联表 / `*_logs` / `*_tokens` / IM 消息等**不要**加审计列 |
 | **计数查询** | 单表计数统一使用 `db.$count(table, where)`，禁止 `db.select({ total: count() }).from(table).where(where)` |
 | **并行查询** | 分页列表中 count 和 list 是独立操作，**必须**用 `const [total, rows] = await Promise.all([db.$count(...), db.select()...])` 并行执行，禁止串行 `await` |
 | **事务** | 多步写操作（replace 模式 delete+insert、写主表+关联表）必须用 `db.transaction()`；辅助写函数接受 `executor: DbTransaction \| typeof db` 参数；副作用（WebSocket、邮件）不放入事务 |
