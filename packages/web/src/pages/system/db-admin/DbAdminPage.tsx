@@ -28,7 +28,6 @@ import {
   History,
   Trash2,
   Search,
-  Filter,
 } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import Editor from '@monaco-editor/react';
@@ -464,7 +463,6 @@ export default function DbAdminPage() {
       if (filterable) {
         const current = rowsFilters[c.name] ?? '';
         const active = current.length > 0;
-        col.filterIcon = <Filter size={12} style={{ color: active ? 'var(--semi-color-primary)' : undefined }} />;
         col.filteredValue = active ? [current] : [];
         col.renderFilterDropdown = (renderProps) => (
           <ColumnFilterDropdown
