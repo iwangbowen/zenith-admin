@@ -1,4 +1,5 @@
 import { eq, and, ilike, desc, inArray, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { inAppMessages, inAppTemplates, users } from '../db/schema';
@@ -72,6 +73,81 @@ export async function listMyInAppMessages(q: ListInAppMessagesQuery) {
     page: q.page,
     pageSize: q.pageSize,
   };
+}
+
+/** 管理员视角：列出全租户的站内信（不限收件人） */
+export async function listAllInAppMessages(q: Omit<ListInAppMessagesQuery, 'recipientId'> & { recipientId?: number; senderId?: number }) {
+  const conditions: SQL[] = [];
+  const tenant = tenantScope(inAppMessages);
+  if (tenant) conditions.push(tenant);
+  if (q.keyword) conditions.push(ilike(inAppMessages.title, `%${escapeLike(q.keyword)}%`));
+  if (q.type) conditions.push(eq(inAppMessages.type, q.type));
+  if (typeof q.isRead === 'boolean') conditions.push(eq(inAppMessages.isRead, q.isRead));
+  if (q.recipientId) conditions.push(eq(inAppMessages.userId, q.recipientId));
+  if (q.senderId) conditions.push(eq(inAppMessages.senderId, q.senderId));
+  const where = mergeWhere(and(...conditions));
+
+  const sender = alias(users, 'sender');
+  const recipient = alias(users, 'recipient');
+
+  const rows = await withPagination(
+    db.select({
+      msg: inAppMessages,
+      templateName: inAppTemplates.name,
+      senderName: sender.username,
+      recipientName: recipient.username,
+      recipientNickname: recipient.nickname,
+    })
+      .from(inAppMessages)
+      .leftJoin(inAppTemplates, eq(inAppMessages.templateId, inAppTemplates.id))
+      .leftJoin(sender, eq(inAppMessages.senderId, sender.id))
+      .leftJoin(recipient, eq(inAppMessages.userId, recipient.id))
+      .where(where)
+      .orderBy(desc(inAppMessages.id))
+      .$dynamic(),
+    q.page,
+    q.pageSize,
+  );
+  const total = await db.$count(inAppMessages, where);
+  return {
+    list: rows.map((r) => ({
+      id: r.msg.id,
+      templateId: r.msg.templateId,
+      templateName: r.templateName ?? null,
+      senderId: r.msg.senderId,
+      senderName: r.senderName ?? null,
+      userId: r.msg.userId,
+      username: r.recipientNickname || r.recipientName || null,
+      source: r.msg.source,
+      title: r.msg.title,
+      content: r.msg.content,
+      type: r.msg.type,
+      isRead: r.msg.isRead,
+      readAt: r.msg.readAt ? formatDateTime(r.msg.readAt) : null,
+      createdAt: formatDateTime(r.msg.createdAt),
+    })),
+    total,
+    page: q.page,
+    pageSize: q.pageSize,
+  };
+}
+
+/** 管理员删除任意站内信 */
+export async function adminDeleteInAppMessage(id: number) {
+  const [row] = await db.select().from(inAppMessages)
+    .where(and(eq(inAppMessages.id, id), tenantScope(inAppMessages))).limit(1);
+  if (!row) throw new HTTPException(404, { message: '消息不存在' });
+  await db.delete(inAppMessages).where(eq(inAppMessages.id, id));
+}
+
+/** 管理员标记任意站内信为已读 */
+export async function adminMarkAsRead(id: number) {
+  const [row] = await db.select().from(inAppMessages)
+    .where(and(eq(inAppMessages.id, id), tenantScope(inAppMessages))).limit(1);
+  if (!row) throw new HTTPException(404, { message: '消息不存在' });
+  if (row.isRead) return { count: 0 };
+  await db.update(inAppMessages).set({ isRead: true, readAt: new Date() }).where(eq(inAppMessages.id, id));
+  return { count: 1 };
 }
 
 export async function unreadCount(userId?: number) {

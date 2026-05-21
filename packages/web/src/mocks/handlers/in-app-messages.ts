@@ -6,6 +6,47 @@ import { mockDateTime } from '@/mocks/utils/date';
 import type { InAppMessage } from '@zenith/shared';
 
 export const inAppMessagesHandlers = [
+  http.get('/api/in-app-messages/admin', ({ request }) => {
+    const url = new URL(request.url);
+    const keyword = url.searchParams.get('keyword') ?? '';
+    const type = url.searchParams.get('type') ?? '';
+    const isRead = url.searchParams.get('isRead');
+    const recipientId = url.searchParams.get('recipientId');
+    const senderId = url.searchParams.get('senderId');
+    const page = Number(url.searchParams.get('page') ?? '1');
+    const pageSize = Number(url.searchParams.get('pageSize') ?? '20');
+    const filtered = mockInAppMessages.filter((m) => {
+      if (keyword && !m.title.includes(keyword) && !m.content.includes(keyword)) return false;
+      if (type && m.type !== type) return false;
+      if (isRead === 'true' && !m.isRead) return false;
+      if (isRead === 'false' && m.isRead) return false;
+      if (recipientId && m.userId !== Number(recipientId)) return false;
+      if (senderId && m.senderId !== Number(senderId)) return false;
+      return true;
+    });
+    const total = filtered.length;
+    const list = filtered.slice((page - 1) * pageSize, page * pageSize)
+      .map((m) => ({ ...m, username: m.userName ?? null }));
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+  }),
+
+  http.post('/api/in-app-messages/admin/:id/read', ({ params }) => {
+    const m = mockInAppMessages.find((x) => x.id === Number(params.id));
+    if (!m) return HttpResponse.json({ code: 404, message: '站内信不存在', data: null }, { status: 404 });
+    if (!m.isRead) {
+      m.isRead = true;
+      m.readAt = mockDateTime();
+    }
+    return HttpResponse.json({ code: 0, message: '已标记已读', data: null });
+  }),
+
+  http.delete('/api/in-app-messages/admin/:id', ({ params }) => {
+    const idx = mockInAppMessages.findIndex((x) => x.id === Number(params.id));
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '站内信不存在', data: null }, { status: 404 });
+    mockInAppMessages.splice(idx, 1);
+    return HttpResponse.json({ code: 0, message: '删除成功', data: null });
+  }),
+
   http.get('/api/in-app-messages', ({ request }) => {
     const url = new URL(request.url);
     const keyword = url.searchParams.get('keyword') ?? '';

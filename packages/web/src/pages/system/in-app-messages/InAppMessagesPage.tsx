@@ -46,7 +46,7 @@ export default function InAppMessagesPage() {
         if (kw) params.set('keyword', kw);
         if (t) params.set('type', t);
         if (isRead !== undefined) params.set('isRead', isRead);
-        const res = await request.get<PaginatedResponse<InAppMessage>>(`/api/in-app-messages?${params}`);
+        const res = await request.get<PaginatedResponse<InAppMessage>>(`/api/in-app-messages/admin?${params}`);
         setList(res.data?.list ?? []);
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
@@ -115,7 +115,7 @@ export default function InAppMessagesPage() {
   };
 
   const handleMarkRead = async (id: number) => {
-    const res = await request.post(`/api/in-app-messages/${id}/read`);
+    const res = await request.post(`/api/in-app-messages/admin/${id}/read`);
     if (res.code !== 0) return;
     Toast.success('已标记为已读');
     globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
@@ -140,7 +140,7 @@ export default function InAppMessagesPage() {
       title: '确定要删除该消息吗？',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete(`/api/in-app-messages/${id}`);
+        const res = await request.delete(`/api/in-app-messages/admin/${id}`);
         if (res.code !== 0) return;
         Toast.success('删除成功');
         globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
@@ -159,7 +159,7 @@ export default function InAppMessagesPage() {
         return <Tag color={it?.color ?? 'grey'} type="light">{it?.label ?? v}</Tag>;
       },
     },
-    { title: '收件人', dataIndex: 'userName', width: 120, render: (v: string | null) => v || '—' },
+    { title: '收件人', dataIndex: 'username', width: 120, render: (v: string | null) => v || '—' },
     { title: '发送人', dataIndex: 'senderName', width: 120, render: (v: string | null) => v || '系统' },
     { title: '阅读时间', dataIndex: 'readAt', width: 180, render: (v: string | null) => v || '—' },
     { title: '创建时间', dataIndex: 'createdAt', width: 180 },

@@ -10,6 +10,7 @@ import { InAppMessageDTO, InAppSendResultDTO, UnreadCountDTO } from '../lib/open
 import {
   listMyInAppMessages, markAsRead, markAllAsRead, unreadCount,
   deleteInAppMessage, sendInApp,
+  listAllInAppMessages, adminDeleteInAppMessage, adminMarkAsRead,
 } from '../services/in-app-messages.service';
 
 const inAppMessagesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -93,6 +94,53 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-inAppMessagesRouter.openapiRoutes([listRoute, unreadCountRoute, sendRoute, markAllReadRoute, markReadRoute, deleteRoute] as const);
+const adminListRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/admin', tags: ['InAppMessages'], summary: '管理员视角：全部站内信',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:in-app-message:list' })] as const,
+    request: {
+      query: PaginationQuery.extend({
+        keyword: z.string().optional(),
+        type: z.enum(IN_APP_MESSAGE_TYPES).optional(),
+        isRead: z.union([z.boolean(), z.enum(['true', 'false']).transform((v) => v === 'true')]).optional(),
+        recipientId: z.coerce.number().int().positive().optional(),
+        senderId: z.coerce.number().int().positive().optional(),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...okPaginated(InAppMessageDTO, '管理员视角站内信列表') },
+  }),
+  handler: async (c) => c.json(okBody(await listAllInAppMessages(c.req.valid('query'))), 200),
+});
+
+const adminMarkReadRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/admin/{id}/read', tags: ['InAppMessages'], summary: '管理员：标记任意站内信为已读',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:in-app-message:update' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已标记') },
+  }),
+  handler: async (c) => {
+    await adminMarkAsRead(c.req.valid('param').id);
+    return c.json(okBody(null, '已标记'), 200);
+  },
+});
+
+const adminDeleteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/admin/{id}', tags: ['InAppMessages'], summary: '管理员：删除任意站内信',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:in-app-message:delete' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  handler: async (c) => {
+    await adminDeleteInAppMessage(c.req.valid('param').id);
+    return c.json(okBody(null, '删除成功'), 200);
+  },
+});
+
+inAppMessagesRouter.openapiRoutes([listRoute, adminListRoute, unreadCountRoute, sendRoute, markAllReadRoute, markReadRoute, adminMarkReadRoute, deleteRoute, adminDeleteRoute] as const);
 
 export default inAppMessagesRouter;
