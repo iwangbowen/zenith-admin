@@ -215,12 +215,14 @@ export default function InAppMessagesPage() {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Select field="templateId" label="模板" style={{ width: '100%' }} showClear
+            <Col span={24}>
+              <Form.Select field="templateId" label="模板" style={{ width: '100%' }} showClear filter
                 optionList={templates.map((t) => ({ label: `${t.name} (${t.code})`, value: t.id }))}
                 placeholder="可选，使用模板自动填充" />
             </Col>
-            <Col span={12}>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
               <Form.Select field="type" label="类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS}
                 placeholder="请选择类型"
                 rules={[{ required: true, message: '请选择类型' }]} />
