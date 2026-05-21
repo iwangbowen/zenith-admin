@@ -293,7 +293,7 @@ export async function getTableRows(params: RowsParams): Promise<{
     const validCols = await db.execute(sql`
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = ${schema} AND table_name = ${name}
-        AND column_name = ANY(${filterCols}::text[])
+        AND column_name IN (${sql.join(filterCols.map((c) => sql`${c}`), sql`, `)})
     `);
     const validSet = new Set(
       (validCols as unknown as Array<{ column_name: string }>).map((r) => r.column_name),
