@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Switch, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { PaginatedResponse, SmsConfig, SmsProvider } from '@zenith/shared';
