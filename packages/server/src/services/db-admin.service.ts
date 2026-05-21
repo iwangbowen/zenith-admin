@@ -11,7 +11,7 @@
  */
 import { sql, desc, eq, and } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db';
+import { db, pgClient } from '../db';
 import type { DbExecutor } from '../db/types';
 import { dbAdminQueryHistory } from '../db/schema';
 import { currentUserId } from '../lib/context';
@@ -380,27 +380,49 @@ export async function explainQuery(sqlText: string): Promise<{ plan: unknown; du
 }
 
 // ─── 6. 导出 CSV ────────────────────────────────────────────────────────────────
-export async function exportQueryCsv(sqlText: string): Promise<string> {
+export async function exportQueryCsv(sqlText: string): Promise<ReadableStream<Uint8Array>> {
   const trimmed = sqlText.trim().replace(/;\s*$/, '');
   if (!trimmed) throw new HTTPException(400, { message: 'SQL 不能为空' });
 
-  try {
-    return await runReadOnly(async (tx) => {
-      const rows = await tx.execute(sql.raw(trimmed));
-      const data = rows as unknown as Array<Record<string, unknown>>;
-      const first = data[0];
-      if (!first) return '';
-      const headers = Object.keys(first);
-      const lines = [headers.map(csvEscape).join(',')];
-      for (const row of data) {
-        lines.push(headers.map((h) => csvEscape(serializeCell(row[h]))).join(','));
+  const encoder = new TextEncoder();
+  const BATCH_SIZE = 1000;
+
+  // 用底层 postgres-js client：begin() 内开启只读事务 + cursor() 分批读取，
+  // 避免一次性把全部结果集载入内存，导出 100w 行也只需 ~ batch 大小的临时空间。
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let headersWritten = false;
+      let headerKeys: string[] = [];
+      try {
+        await pgClient.begin(async (tx) => {
+          await tx.unsafe(`SET LOCAL TRANSACTION READ ONLY`);
+          await tx.unsafe(`SET LOCAL statement_timeout = '${QUERY_TIMEOUT}'`);
+          await tx.unsafe(`SET LOCAL idle_in_transaction_session_timeout = '${QUERY_TIMEOUT}'`);
+          const cursor = tx.unsafe(trimmed).cursor(BATCH_SIZE);
+          for await (const rows of cursor) {
+            if (!Array.isArray(rows) || rows.length === 0) continue;
+            if (!headersWritten) {
+              headerKeys = Object.keys(rows[0] as Record<string, unknown>);
+              controller.enqueue(encoder.encode('\uFEFF' + headerKeys.map(csvEscape).join(',') + '\n'));
+              headersWritten = true;
+            }
+            const chunk: string[] = [];
+            for (const row of rows as Array<Record<string, unknown>>) {
+              chunk.push(headerKeys.map((h) => csvEscape(serializeCell(row[h]))).join(','));
+            }
+            controller.enqueue(encoder.encode(chunk.join('\n') + '\n'));
+          }
+          if (!headersWritten) {
+            controller.enqueue(encoder.encode('\uFEFF'));
+          }
+        });
+        controller.close();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        controller.error(new HTTPException(400, { message: `导出失败：${msg}` }));
       }
-      return '\uFEFF' + lines.join('\n');
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new HTTPException(400, { message: `导出失败：${msg}` });
-  }
+    },
+  });
 }
 
 // ─── 7. SQL 执行历史 ────────────────────────────────────────────────────────────

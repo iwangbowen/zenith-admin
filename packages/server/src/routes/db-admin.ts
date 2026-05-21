@@ -210,13 +210,15 @@ router.post('/query/export.csv', authMiddleware, guard({
   audit: { description: '导出 SQL 结果 CSV', module: '数据库管理' },
 }), async (c) => {
   const body = await c.req.json<{ sql?: string }>();
-  const csv = await exportQueryCsv(body.sql ?? '');
+  const stream = await exportQueryCsv(body.sql ?? '');
   const filename = `query_${Date.now()}.csv`;
-  return new Response(csv, {
+  return new Response(stream, {
     status: 200,
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 });

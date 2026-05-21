@@ -100,6 +100,9 @@ function wrapExecutor<T extends object>(executor: T): T {
 
 export const db = wrapExecutor(rawDb);
 
+/** 底层 postgres-js 客户端。仅供需要原生能力（如 cursor 流式读取）的场景使用。 */
+export const pgClient = client;
+
 export async function closeDb(): Promise<void> {
   await client.end({ timeout: 5 });
 }
