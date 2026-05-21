@@ -348,7 +348,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       msg.type === 'announcement:read' ||
       msg.type === 'announcement:read-all'
     ) {
-      window.dispatchEvent(new CustomEvent('announcement:refresh', { detail: msg }));
+      globalThis.dispatchEvent(new CustomEvent('announcement:refresh', { detail: msg }));
       if (msg.type === 'announcement:new') {
         Notification.info({
           title: '新公告',
@@ -713,13 +713,15 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </div>
         }
       >
-        <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
-          <Badge dot={unreadCount > 0} className="admin-notify-badge" style={{ zIndex: 1 }}>
-            <button className="admin-theme-btn" title="我的消息">
-              <Bell size={16} strokeWidth={1.5} />
-            </button>
-          </Badge>
-        </div>
+        <Tooltip content="我的消息" position="bottom">
+          <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
+            <Badge dot={unreadCount > 0} className="admin-notify-badge" style={{ zIndex: 1 }}>
+              <button className="admin-theme-btn" title="我的消息">
+                <Bell size={16} strokeWidth={1.5} />
+              </button>
+            </Badge>
+          </div>
+        </Tooltip>
       </Popover>
       <Tooltip content={<span>颜色模式：{themeLabelMap[mode].label}</span>} position="bottom">
         <Dropdown
