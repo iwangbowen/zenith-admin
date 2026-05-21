@@ -1527,13 +1527,19 @@ export default function ChatPage({
         </div>
 
         {showNewChat && (
-          <div style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
+          <Modal
+            title="新建对话"
+            visible={showNewChat}
+            onCancel={() => setShowNewChat(false)}
+            footer={null}
+            width={480}
+            centered
+          >
             <NewChatPanel
-              onSelectUser={handleNewDirectChat}
-              onGroupCreated={handleGroupCreated}
-              onClose={() => setShowNewChat(false)}
+              onSelectUser={(u) => { handleNewDirectChat(u); setShowNewChat(false); }}
+              onGroupCreated={(c) => { handleGroupCreated(c); setShowNewChat(false); }}
             />
-          </div>
+          </Modal>
         )}
 
         <div style={{ padding: '8px 12px' }}>

@@ -1,18 +1,15 @@
 import { useState } from 'react';
-import { Button, Input, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Input, Tabs, TabPane, Toast } from '@douyinfe/semi-ui';
 import { request } from '@/utils/request';
 import { UserSearchList } from './UserSearchList';
 import type { ChatConversation } from '@zenith/shared';
 import type { ChatUser } from '../types';
 
-const { Title } = Typography;
-
 export function NewChatPanel({
-  onSelectUser, onGroupCreated, onClose,
+  onSelectUser, onGroupCreated,
 }: Readonly<{
   onSelectUser: (user: ChatUser) => void;
   onGroupCreated: (conv: ChatConversation) => void;
-  onClose: () => void;
 }>) {
   const [groupName, setGroupName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -30,32 +27,25 @@ export function NewChatPanel({
   };
 
   return (
-    <div style={{ padding: '12px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-        <Title heading={6} style={{ margin: 0, flex: 1 }}>新建对话</Title>
-        <Button size="small" type="tertiary" theme="borderless" onClick={onClose}>取消</Button>
-      </div>
-      <Tabs size="small" defaultActiveKey="direct">
-        <TabPane tab="私聊" itemKey="direct">
-          <div style={{ paddingTop: 8 }}>
-            <UserSearchList onSelect={onSelectUser} />
-          </div>
-        </TabPane>
-        <TabPane tab="创建群聊" itemKey="group">
-          <div style={{ paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Input
-              placeholder="群聊名称（最多 64 字符）"
-              value={groupName}
-              onChange={setGroupName}
-              maxLength={64}
-              size="small"
-            />
-            <Button type="primary" size="small" loading={creating} onClick={() => { void handleCreateGroup(); }} block>
-              创建群聊
-            </Button>
-          </div>
-        </TabPane>
-      </Tabs>
-    </div>
+    <Tabs size="small" defaultActiveKey="direct">
+      <TabPane tab="私聊" itemKey="direct">
+        <div style={{ paddingTop: 8 }}>
+          <UserSearchList onSelect={onSelectUser} />
+        </div>
+      </TabPane>
+      <TabPane tab="创建群聊" itemKey="group">
+        <div style={{ paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Input
+            placeholder="群聊名称（最多 64 字符）"
+            value={groupName}
+            onChange={setGroupName}
+            maxLength={64}
+          />
+          <Button type="primary" loading={creating} onClick={() => { void handleCreateGroup(); }} block>
+            创建群聊
+          </Button>
+        </div>
+      </TabPane>
+    </Tabs>
   );
 }
