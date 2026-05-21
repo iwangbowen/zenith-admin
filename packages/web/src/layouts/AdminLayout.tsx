@@ -43,6 +43,16 @@ function getMenuIcon(iconName?: string): React.ReactNode {
   return <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>;
 }
 
+// 提取为模块级函数，避免组件内嵌套函数超过 4 层
+const updateMessageRead = (id: number) => (prev: InAppMessage[]) =>
+  prev.map((m) => (m.id === id ? { ...m, isRead: true } : m));
+const updateMessageReadIfUnread = (id: number) => (prev: InAppMessage[]) =>
+  prev.map((m) => (m.id === id && !m.isRead ? { ...m, isRead: true } : m));
+const markAllMessagesRead = (prev: InAppMessage[]) =>
+  prev.map((m) => (m.isRead ? m : { ...m, isRead: true }));
+const removeMessageById = (id: number) => (prev: InAppMessage[]) =>
+  prev.filter((m) => m.id !== id);
+
 type NavItem = {
   itemKey: string;
   text: string;
@@ -320,16 +330,16 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         position: 'topRight',
       });
     } else if (msg.type === 'in-app-message:read') {
-      setInAppMessages((prev) => prev.map((m) => (m.id === msg.payload.id && !m.isRead ? { ...m, isRead: true } : m)));
+      setInAppMessages(updateMessageReadIfUnread(msg.payload.id));
       setUnreadCount((c) => Math.max(0, c - 1));
     } else if (msg.type === 'in-app-message:read-all') {
-      setInAppMessages((prev) => prev.map((m) => (m.isRead ? m : { ...m, isRead: true })));
+      setInAppMessages(markAllMessagesRead);
       setUnreadCount(0);
     } else if (msg.type === 'in-app-message:deleted') {
       setInAppMessages((prev) => {
         const target = prev.find((m) => m.id === msg.payload.id);
         if (target && !target.isRead) setUnreadCount((c) => Math.max(0, c - 1));
-        return prev.filter((m) => m.id !== msg.payload.id);
+        return removeMessageById(msg.payload.id)(prev);
       });
     } else if (msg.type === 'chat:message') {
       // 只在当前不在 /chat 页面时增加未读
@@ -353,7 +363,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const markAsRead = (id: number) => {
     request.post(`/api/in-app-messages/${id}/read`, undefined, { silent: true }).then((res) => {
       if (res.code !== 0) return;
-      setInAppMessages((prev) => prev.map((m) => (m.id === id ? { ...m, isRead: true } : m)));
+      setInAppMessages(updateMessageRead(id));
       setUnreadCount((c) => Math.max(0, c - 1));
     });
   };
@@ -470,7 +480,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   useEffect(() => {
     const pageTitle = resolveTitle(location.pathname);
-    document.title = pageTitle !== location.pathname ? `${pageTitle} - ${config.appTitle}` : config.appTitle;
+    document.title = pageTitle === location.pathname ? config.appTitle : `${pageTitle} - ${config.appTitle}`;
   }, [location.pathname, resolveTitle]);
 
   // Sync current route to tabs
@@ -543,8 +553,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   // ─── Render wrappers ──────────────────────────────────────────────────────
   const renderWrapper = useCallback(
-    ({ itemElement, props }: { itemElement: React.ReactNode; props: { itemKey?: string | number } }) => {
-      const itemKey = String(props.itemKey ?? '');
+    (args: { itemElement: React.ReactNode; props: { itemKey?: string | number } }) => {
+      const { itemElement, props: itemProps } = args;
+      const itemKey = String(itemProps.itemKey ?? '');
       if (!itemKey.startsWith('/')) return itemElement;
       return (
         <NavLink to={itemKey} className="admin-nav-link-wrapper">
@@ -556,8 +567,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   );
 
   const mixedTopRenderWrapper = useCallback(
-    ({ itemElement, props }: { itemElement: React.ReactNode; props: { itemKey?: string | number } }) => {
-      const key = String(props.itemKey ?? '');
+    (args: { itemElement: React.ReactNode; props: { itemKey?: string | number } }) => {
+      const { itemElement, props: itemProps } = args;
+      const key = String(itemProps.itemKey ?? '');
       const topItem = navItems.find((i) => i.itemKey === key);
       if (topItem?.items?.length) return <>{itemElement}</>;
       if (key.startsWith('/')) {
@@ -759,20 +771,39 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     </div>
   );
 
+  const navigateHome = useCallback(() => navigate('/'), [navigate]);
+  const handleNavigateHomeKey = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      navigate('/');
+    }
+  }, [navigate]);
+
+  const mixedTopSelectedKeys = effectiveTopKey ? [effectiveTopKey] : [];
+  const topNavSelectedKeys = navLayout === 'mixed' ? mixedTopSelectedKeys : currentSelectedKeys;
+  const stickyNavClass = preferences.sidebarStickyScroll === false ? '' : ' admin-sidebar--sticky-nav';
+  const sidebarClassName = `admin-sidebar${collapsed ? ' admin-sidebar--collapsed' : ''}${stickyNavClass}`;
+
   const adminLayoutEl = (
     <div className="admin-layout">
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && (
         <header className="admin-topbar">
-          <div className="admin-topbar__brand" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
+          <button
+            type="button"
+            className="admin-topbar__brand"
+            style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
+            onClick={navigateHome}
+            onKeyDown={handleNavigateHomeKey}
+          >
             <div className="admin-sidebar__logo">Z</div>
             <span className="admin-sidebar__title">Zenith Admin</span>
-          </div>
+          </button>
           <Nav
             className="admin-topbar__nav"
             mode="horizontal"
             items={navLayout === 'mixed' ? mixedTopNavItems : navItems}
-            selectedKeys={navLayout === 'mixed' ? (effectiveTopKey ? [effectiveTopKey] : []) : currentSelectedKeys}
+            selectedKeys={topNavSelectedKeys}
             onSelect={navLayout === 'mixed' ? handleMixedTopSelect : undefined}
             renderWrapper={navLayout === 'mixed' ? mixedTopRenderWrapper : renderWrapper}
             style={{ height: '100%', background: 'transparent' }}
@@ -784,7 +815,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       <div className="admin-body">
         {/* Sidebar — always in vertical, conditional in mixed */}
         {showSidebar && (
-          <aside className={`admin-sidebar${collapsed ? ' admin-sidebar--collapsed' : ''}${preferences.sidebarStickyScroll !== false ? ' admin-sidebar--sticky-nav' : ''}`}>
+          <aside className={sidebarClassName}>
             <Nav
               className="admin-sidebar__nav"
               mode="vertical"
@@ -797,8 +828,24 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               onOpenChange={({ openKeys: nextOpenKeys }) => setOpenKeys((nextOpenKeys ?? []).map(String))}
               onCollapseChange={setCollapsed}
               header={navLayout === 'vertical' ? {
-                logo: <div className="admin-sidebar__logo" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>Z</div>,
-                text: <span className="admin-sidebar__title" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>Zenith Admin</span>,
+                logo: (
+                  <button
+                    type="button"
+                    className="admin-sidebar__logo"
+                    style={{ cursor: 'pointer', border: 0, padding: 0, font: 'inherit' }}
+                    onClick={navigateHome}
+                    onKeyDown={handleNavigateHomeKey}
+                  >Z</button>
+                ),
+                text: (
+                  <button
+                    type="button"
+                    className="admin-sidebar__title"
+                    style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
+                    onClick={navigateHome}
+                    onKeyDown={handleNavigateHomeKey}
+                  >Zenith Admin</button>
+                ),
               } : undefined}
               footer={{
                 collapseButton: true,
@@ -967,7 +1014,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 {breadcrumbs.map((crumb, index) => (
                   <Breadcrumb.Item key={crumb.title}>
                     {index === 0 && crumb.path === '/' ? (
-                      <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>首页</span>
+                      <button
+                        type="button"
+                        onClick={navigateHome}
+                        onKeyDown={handleNavigateHomeKey}
+                        style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
+                      >首页</button>
                     ) : (
                       crumb.title
                     )}
