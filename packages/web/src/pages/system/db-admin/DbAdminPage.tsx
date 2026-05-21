@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
   Button,
-  Descriptions,
   Empty,
   Input,
   JsonViewer,
@@ -346,7 +345,10 @@ export default function DbAdminPage() {
   const renderCell = (v: unknown): React.ReactNode => {
     if (v == null) return <Text type="quaternary">NULL</Text>;
     if (typeof v === 'object') return <Text code>{JSON.stringify(v)}</Text>;
-    const str = String(v);
+    let str: string;
+    if (typeof v === 'string') str = v;
+    else if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') str = v.toString();
+    else str = JSON.stringify(v);
     if (str.length > 80) return <Tooltip content={<div style={{ maxWidth: 400, wordBreak: 'break-all' }}>{str}</div>}>{str.slice(0, 80) + '…'}</Tooltip>;
     return str;
   };
@@ -362,7 +364,7 @@ export default function DbAdminPage() {
     }));
 
   const historyColumns: ColumnProps<HistoryItem>[] = [
-    { title: '时间', dataIndex: 'executedAt', width: 170 },
+    { title: '时间', dataIndex: 'executedAt', width: 170, render: (v: string) => formatDateTime(v) },
     { title: '状态', dataIndex: 'success', width: 80, render: (v: boolean) =>
       v ? <Badge type="success" dot /> : <Badge type="danger" dot />,
     },
@@ -467,11 +469,7 @@ export default function DbAdminPage() {
 
             {/* 右侧详情 */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid var(--semi-color-border)', borderRadius: 6, overflow: 'hidden', minWidth: 0 }}>
-              {!selected ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Empty image={<Database size={48} />} title="请选择一张表" />
-                </div>
-              ) : (
+              {selected ? (
                 <>
                   <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>
                     <Title heading={6} style={{ margin: 0 }}>
@@ -553,6 +551,10 @@ export default function DbAdminPage() {
                     </TabPane>
                   </Tabs>
                 </>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Empty image={<Database size={48} />} title="请选择一张表" />
+                </div>
               )}
             </div>
           </div>
@@ -654,7 +656,3 @@ export default function DbAdminPage() {
     </div>
   );
 }
-
-// 防止"未使用导入"
-void formatDateTime;
-void Descriptions;
