@@ -770,7 +770,7 @@ export default function DbAdminPage() {
                     rowKey="__key"
                     pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOpts: [20, 50, 100] }}
                     size="small"
-                    scroll={{ x: 'max-content', y: 400 }}
+                    scroll={{ x: 'max-content' }}
                   />
                 )}
               </div>
