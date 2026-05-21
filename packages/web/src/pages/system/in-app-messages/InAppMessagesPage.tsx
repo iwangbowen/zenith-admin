@@ -81,9 +81,30 @@ export default function InAppMessagesPage() {
   const handleSend = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
     try { values = (await formRef.current?.validate())!; } catch { return; }
+    // 变量字段是 JSON 字符串，提交前解析为对象
+    if (typeof values.variables === 'string') {
+      const raw = values.variables.trim();
+      if (raw) {
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            values.variables = parsed as Record<string, string>;
+          } else {
+            Toast.error('变量必须是 JSON 对象');
+            return;
+          }
+        } catch {
+          Toast.error('变量 JSON 格式错误');
+          return;
+        }
+      } else {
+        delete values.variables;
+      }
+    }
     setSubmitting(true);
     try {
-      await request.post('/api/in-app-messages/send', values);
+      const res = await request.post('/api/in-app-messages/send', values);
+      if (res.code !== 0) return;
       Toast.success('发送成功');
       setSendVisible(false);
       void fetchList(1, keyword, filterType, filterRead, pageSize);

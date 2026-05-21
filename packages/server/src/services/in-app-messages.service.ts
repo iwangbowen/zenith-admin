@@ -133,8 +133,9 @@ export async function sendInApp(input: SendInAppInput) {
     templateId = tpl.id;
     type = tpl.type;
     const vars = input.variables ?? {};
-    title = renderTemplate(tpl.title, vars);
-    content = renderTemplate(tpl.content, vars);
+    // 用户已显式填写时优先用用户输入，否则用模板渲染结果
+    if (!input.title) title = renderTemplate(tpl.title, vars);
+    if (!input.content) content = renderTemplate(tpl.content, vars);
   }
   if (!title || !content) {
     throw new HTTPException(400, { message: '标题与内容不能为空' });
