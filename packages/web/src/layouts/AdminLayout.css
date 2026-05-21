@@ -78,11 +78,6 @@
   background: var(--color-sidebar-active);
 }
 
-.admin-topbar__nav .semi-navigation-item-normal:hover,
-.admin-topbar__nav .semi-navigation-sub-title:hover {
-  background: var(--color-sidebar-hover);
-}
-
 /* ===== Body (sidebar + main side by side) ===== */
 .admin-body {
   flex: 1;
@@ -110,7 +105,8 @@
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  background: linear-gradient(135deg, #4d8aff 0%, #3370ff 100%);
+  background-color: #2855cc;
+  background-image: linear-gradient(135deg, #4d8aff 0%, #3370ff 100%);
   box-shadow: 0 2px 6px rgba(51, 112, 255, 0.25);
   display: flex;
   align-items: center;
@@ -180,16 +176,7 @@
   min-height: 0;
 }
 
-/* Sticky group headers: 只对顶层分组标题（系统管理、系统设置等）启用 sticky */
-/* 由 .admin-sidebar--sticky-nav 类名控制开关，通过用户偏好设置切换 */
-/* 使用 > 直接子选择器，避免影响二级 sub-wrap（文件管理、审计日志）的标题 */
-/* top: -8px 将 sticky 阈值设为 border edge（消除 semi-navigation-list-wrapper 的 padding-top: 8px 间隙） */
-.admin-sidebar--sticky-nav .admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-list > .semi-navigation-sub-wrap > .semi-navigation-sub-title {
-  position: sticky;
-  top: -8px;
-  z-index: 2;
-  background: var(--color-sidebar-bg) !important;
-}
+/* Sticky group headers: 进一步插入到 sidebar 全部规则之后（避免 no-descending-specificity 告警） */
 
 /* 侧边栏菜单极窄滚动条 */
 .admin-sidebar__nav .semi-navigation-list-wrapper::-webkit-scrollbar {
@@ -217,7 +204,7 @@
   color: inherit;
 }
 
-/* 紧凑布局：减小菜单项内边距，去除 Semi 默认的固定高度和 margin-bottom */
+/* 紧凑布局：减小菜单项内边距，去除 Semi 默认的固定高度和 margin-bottom；一级菜单字体样式与子级菜单保持一致 */
 .admin-sidebar__nav .semi-navigation-item,
 .admin-sidebar__nav .semi-navigation-sub-title {
   padding-top: 4px !important;
@@ -225,11 +212,6 @@
   font-size: 13px;
   height: auto !important;
   margin-bottom: 0 !important;
-}
-
-/* 一级菜单字体样式与子级菜单保持一致 */
-.admin-sidebar__nav .semi-navigation-item,
-.admin-sidebar__nav .semi-navigation-sub-title {
   font-weight: 500;
   letter-spacing: 0.2px;
 }
@@ -256,6 +238,12 @@
 /* hover 只高亮被悬停的那一项，不让父容器发光 */
 .admin-sidebar__nav .semi-navigation-item-normal:hover,
 .admin-sidebar__nav .semi-navigation-sub-title:hover {
+  background: var(--color-sidebar-hover);
+}
+
+/* 顶部导航 hover：紧跟 sidebar 同类规则，满足 no-descending-specificity 约束 */
+.admin-topbar__nav .semi-navigation-item-normal:hover,
+.admin-topbar__nav .semi-navigation-sub-title:hover {
   background: var(--color-sidebar-hover);
 }
 
@@ -407,6 +395,17 @@
 .admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-sub .semi-navigation-sub .semi-navigation-sub > .semi-navigation-item-normal,
 .admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-sub .semi-navigation-sub .semi-navigation-sub > .admin-nav-link-wrapper > .semi-navigation-item {
   padding-left: 60px !important;
+}
+
+/* Sticky group headers: 只对顶层分组标题（系统管理、系统设置等）启用 sticky */
+/* 由 .admin-sidebar--sticky-nav 类名控制开关，通过用户偏好设置切换 */
+/* 使用 > 直接子选择器，避免影响二级 sub-wrap（文件管理、审计日志）的标题 */
+/* top: -8px 将 sticky 阈值设为 border edge（消除 semi-navigation-list-wrapper 的 padding-top: 8px 间隙） */
+.admin-sidebar--sticky-nav .admin-sidebar__nav:not(.semi-navigation-collapsed) .semi-navigation-list > .semi-navigation-sub-wrap > .semi-navigation-sub-title {
+  position: sticky;
+  top: -8px;
+  z-index: 2;
+  background: var(--color-sidebar-bg) !important;
 }
 
 /* ===== Main area ===== */
