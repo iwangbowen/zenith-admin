@@ -610,7 +610,8 @@ export default function DbAdminPage() {
                       )}
                     </TabPane>
                     <TabPane tab="数据" itemKey="data">
-                      {rowsLoading ? <Spin /> : rows && (
+                      {!rows && rowsLoading && <Spin />}
+                      {rows && (
                         <div style={{ width: '100%' }}>
                           <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Text type="tertiary" size="small">
@@ -624,6 +625,7 @@ export default function DbAdminPage() {
                           </div>
                           <ConfigurableTable
                             bordered
+                            loading={rowsLoading}
                             columns={buildDataColumns(
                               rows.list[0]
                                 ? Object.keys(rows.list[0]).map((n) => ({ name: n }))
