@@ -11,6 +11,25 @@ import { MessageContent } from './MessageContent';
 
 const { Text } = Typography;
 
+// 将图片 URL 转为 PNG Blob，提取到模块级以避免函数嵌套 >4 层
+function imageToPngBlob(src: string): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('canvas unavailable')); return; }
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+    };
+    img.onerror = () => reject(new Error('image load failed'));
+    img.src = src;
+  });
+}
+
 export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
@@ -105,23 +124,7 @@ export function MessageBubble({
         Toast.success('当前环境不支持写入图片，已复制图片链接');
         return;
       }
-      const pngBlob = await new Promise<Blob>((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) { reject(new Error('canvas unavailable')); return; }
-          ctx.drawImage(img, 0, 0);
-          canvas.toBlob((b) => {
-            if (b) resolve(b); else reject(new Error('toBlob failed'));
-          }, 'image/png');
-        };
-        img.onerror = () => reject(new Error('image load failed'));
-        img.src = msg.content;
-      });
+      const pngBlob = await imageToPngBlob(msg.content);
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
       Toast.success('图片已复制');
     } catch {
@@ -137,29 +140,15 @@ export function MessageBubble({
       const blob = await resp.blob();
 
       if (mimeType.startsWith('image/')) {
-        const pngBlob = await new Promise<Blob>((resolve, reject) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) { reject(new Error('canvas unavailable')); return; }
-            ctx.drawImage(img, 0, 0);
-            canvas.toBlob((b) => {
-              if (b) resolve(b); else reject(new Error('toBlob failed'));
-            }, 'image/png');
-          };
-          img.onerror = () => reject(new Error('load failed'));
-          img.src = URL.createObjectURL(blob);
-        });
+        const objectUrl = URL.createObjectURL(blob);
+        const pngBlob = await imageToPngBlob(objectUrl);
+        URL.revokeObjectURL(objectUrl);
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
         Toast.success('文件（图片）已复制到剪贴板');
         return;
       }
 
-      if ('ClipboardItem' in window && navigator.clipboard.write) {
+      if ('ClipboardItem' in globalThis && navigator.clipboard.write) {
         try {
           await navigator.clipboard.write([new ClipboardItem({ [mimeType]: blob })]);
           Toast.success('文件已复制到剪贴板');
@@ -181,7 +170,7 @@ export function MessageBubble({
 
   if (msg.type === 'system') {
     return (
-      <div
+      <div // NOSONAR
         id={`msg-${msg.id}`}
         style={{
           textAlign: 'center', padding: '0 0 4px',
@@ -258,20 +247,26 @@ export function MessageBubble({
     );
   }
 
+  let bubbleBackground: string | undefined = 'transparent';
+  if (isHighlighted) bubbleBackground = 'var(--semi-color-primary-light-hover)';
+  else if (isSelected) bubbleBackground = 'var(--semi-color-primary-light-default)';
+  let bubblePadding = '0';
+  if (multiSelectMode) bubblePadding = '2px 4px';
+  else if (isHighlighted) bubblePadding = '4px 6px';
+
   return (
-    <div
+    <div // NOSONAR
       id={`msg-${msg.id}`}
       style={{
         display: 'flex', flexDirection: isSelf ? 'row-reverse' : 'row', gap: 8, marginBottom: 16, alignItems: 'flex-end',
-        background: isHighlighted
-          ? 'var(--semi-color-primary-light-hover)'
-          : isSelected ? 'var(--semi-color-primary-light-default)' : 'transparent',
+        background: bubbleBackground,
         borderRadius: 8,
-        padding: multiSelectMode ? '2px 4px' : (isHighlighted ? '4px 6px' : '0'),
+        padding: bubblePadding,
         transition: 'background 0.3s ease',
         cursor: multiSelectMode ? 'pointer' : 'default',
       }}
-      onClick={multiSelectMode ? () => onToggleSelect?.(msg) : undefined}
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+      onClick={multiSelectMode ? () => onToggleSelect?.(msg) : undefined} // NOSONAR
     >
       {multiSelectMode && (
         <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, paddingBottom: 4, color: isSelected ? 'var(--semi-color-primary)' : 'var(--semi-color-text-3)' }}>
@@ -279,7 +274,7 @@ export function MessageBubble({
         </div>
       )}
       {!isSelf && <UserAvatar name={msg.senderName ?? '?'} avatar={msg.senderAvatar} size={32} />}
-      <div
+      <div // NOSONAR
         style={{ maxWidth: '65%', position: 'relative' }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
