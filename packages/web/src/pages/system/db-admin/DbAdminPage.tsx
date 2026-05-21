@@ -34,6 +34,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import Editor from '@monaco-editor/react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
+import { useThemeController } from '@/providers/theme-controller';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -114,6 +115,8 @@ export default function DbAdminPage() {
   const { hasPermission } = usePermission();
   const canQuery = hasPermission('system:db-admin:query');
   const canExport = hasPermission('system:db-admin:export');
+  const { isDark } = useThemeController();
+  const monacoTheme = isDark ? 'vs-dark' : 'light';
 
   const [activeTab, setActiveTab] = useState<string>('browse');
 
@@ -558,6 +561,7 @@ export default function DbAdminPage() {
               <Editor
                 height="240px"
                 defaultLanguage="sql"
+                theme={monacoTheme}
                 value={sql}
                 onChange={(v) => setSql(v ?? '')}
                 onMount={(ed) => { editorRef.current = ed; }}
