@@ -303,7 +303,26 @@ export async function getTableRows(params: RowsParams): Promise<{
   const fullName = `${quoteIdent(schema)}.${quoteIdent(name)}`;
   const offset = (page - 1) * pageSize;
   const dir = orderDir === 'desc' ? 'DESC' : 'ASC';
-  const orderClause = orderBy ? sql.raw(`ORDER BY ${quoteIdent(orderBy)} ${dir}`) : sql.raw('');
+
+  // 未指定排序时回退到主键 ASC，避免 UPDATE 后行的物理顺序漂移
+  let effectiveOrderClause: ReturnType<typeof sql.raw> = sql.raw('');
+  if (orderBy) {
+    effectiveOrderClause = sql.raw(`ORDER BY ${quoteIdent(orderBy)} ${dir}`);
+  } else {
+    const pkRows = await db.execute(sql`
+      SELECT a.attname AS col
+      FROM pg_index i
+      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+      WHERE i.indrelid = ${`${schema}.${name}`}::regclass AND i.indisprimary
+      ORDER BY array_position(i.indkey, a.attnum)
+    `);
+    const pkCols = (pkRows as unknown as Array<{ col: string }>).map((r) => r.col);
+    if (pkCols.length > 0) {
+      const orderExpr = pkCols.map((c) => quoteIdent(c) + ' ASC').join(', ');
+      effectiveOrderClause = sql.raw(`ORDER BY ${orderExpr}`);
+    }
+  }
+  const orderClause = effectiveOrderClause;
 
   const whereSql = filterEntries.length > 0
     ? sql`WHERE ${sql.join(

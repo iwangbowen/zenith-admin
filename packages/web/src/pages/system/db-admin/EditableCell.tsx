@@ -59,7 +59,7 @@ interface Props {
   primaryKey: string[];
   record: Record<string, unknown>;
   readOnly?: boolean;
-  onSaved: () => void;
+  onSaved: (newValue: unknown) => void;
 }
 
 function toEditValue(raw: unknown, kind: Kind): string | number | boolean | null {
@@ -130,7 +130,7 @@ export function EditableCell(props: Readonly<Props>): JSX.Element {
         savedRef.current = true;
         Toast.success('已保存');
         setEditing(false);
-        onSaved();
+        onSaved(next);
       }
     } finally {
       setSaving(false);

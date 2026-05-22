@@ -47,6 +47,33 @@ import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
 import { EditableCell } from './EditableCell';
 
+interface RenderEditableCellOptions {
+  columnName: string;
+  dataType?: string;
+  schema: string;
+  table: string;
+  primaryKey: string[];
+  readOnly: boolean;
+  onCellSaved: (rowKey: unknown, columnName: string, newValue: unknown) => void;
+}
+
+function renderEditableCell(opts: RenderEditableCellOptions) {
+  const Cell = (value: unknown, record: Record<string, unknown>) => (
+    <EditableCell
+      value={value}
+      columnName={opts.columnName}
+      dataType={opts.dataType}
+      schema={opts.schema}
+      table={opts.table}
+      primaryKey={opts.primaryKey}
+      record={record}
+      readOnly={opts.readOnly}
+      onSaved={(nv) => opts.onCellSaved(record.__key, opts.columnName, nv)}
+    />
+  );
+  return Cell;
+}
+
 const { Title, Text } = Typography;
 
 interface ColumnFilterDropdownProps {
@@ -559,6 +586,19 @@ export default function DbAdminPage() {
     return filterKeys.map((n) => ({ name: n }));
   };
 
+  const handleCellSaved = useCallback(
+    (rowKey: unknown, columnName: string, newValue: unknown) => {
+      setRows((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          list: prev.list.map((r, i) => (i === rowKey ? { ...r, [columnName]: newValue } : r)),
+        };
+      });
+    },
+    [],
+  );
+
   const makeOnCellDblClick = (colName: string) => (record?: Record<string, unknown>) => ({
     onDoubleClick: () => { if (record) openEditRow(record, colName); },
     style: { cursor: 'pointer' as const },
@@ -595,19 +635,15 @@ export default function DbAdminPage() {
       };
       if (inlineEnabled && editable) {
         const isPk = editable.primaryKey.includes(c.name);
-        col.render = (value: unknown, record: Record<string, unknown>) => (
-          <EditableCell
-            value={value}
-            columnName={c.name}
-            dataType={c.dataType}
-            schema={editable.schema!}
-            table={editable.table!}
-            primaryKey={editable.primaryKey}
-            record={record}
-            readOnly={isPk}
-            onSaved={refreshRows}
-          />
-        );
+        col.render = renderEditableCell({
+          columnName: c.name,
+          dataType: c.dataType,
+          schema: editable.schema!,
+          table: editable.table!,
+          primaryKey: editable.primaryKey,
+          readOnly: isPk,
+          onCellSaved: handleCellSaved,
+        });
       } else if (editable?.canWriteRow) {
         col.onCell = makeOnCellDblClick(c.name);
       }
