@@ -133,6 +133,74 @@ export interface ErDiagramFk {
   referencedColumns: string[];
 }
 
+export interface ErDiagramColumn {
+  name: string;
+  dataType: string;
+  isPrimaryKey: boolean;
+}
+
+export interface ErDiagramTable {
+  schema: string;
+  name: string;
+  columns: ErDiagramColumn[];
+}
+
+export interface ErDiagramSchema {
+  tables: ErDiagramTable[];
+  foreignKeys: ErDiagramFk[];
+}
+
+/** 一次性读取数据库内所有用户表 + 列 + 主键标记，用于 ER 图渲染 */
+export async function getErSchema(): Promise<ErDiagramSchema> {
+  const [tableRows, foreignKeys] = await Promise.all([
+    db.execute(sql`
+      SELECT ns.nspname AS schema,
+             cls.relname AS "table",
+             a.attname AS column_name,
+             format_type(a.atttypid, a.atttypmod) AS data_type,
+             COALESCE(pk.is_pk, FALSE) AS is_primary_key,
+             a.attnum AS attnum
+      FROM pg_class cls
+      JOIN pg_namespace ns ON ns.oid = cls.relnamespace
+      JOIN pg_attribute a ON a.attrelid = cls.oid AND a.attnum > 0 AND NOT a.attisdropped
+      LEFT JOIN LATERAL (
+        SELECT TRUE AS is_pk
+        FROM pg_index i
+        WHERE i.indrelid = cls.oid
+          AND i.indisprimary
+          AND a.attnum = ANY (i.indkey)
+        LIMIT 1
+      ) pk ON TRUE
+      WHERE cls.relkind IN ('r', 'p')
+        AND ns.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+      ORDER BY ns.nspname, cls.relname, a.attnum
+    `),
+    listAllForeignKeys(),
+  ]);
+
+  const tablesMap = new Map<string, ErDiagramTable>();
+  (tableRows as unknown as Array<{
+    schema: string; table: string; column_name: string; data_type: string; is_primary_key: boolean;
+  }>).forEach((r) => {
+    const key = `${r.schema}.${r.table}`;
+    let t = tablesMap.get(key);
+    if (!t) {
+      t = { schema: r.schema, name: r.table, columns: [] };
+      tablesMap.set(key, t);
+    }
+    t.columns.push({
+      name: r.column_name,
+      dataType: r.data_type,
+      isPrimaryKey: r.is_primary_key,
+    });
+  });
+
+  return {
+    tables: Array.from(tablesMap.values()),
+    foreignKeys,
+  };
+}
+
 /** 一次性读取数据库内所有外键关系，用于 ER 图渲染 */
 export async function listAllForeignKeys(): Promise<ErDiagramFk[]> {
   const rows = await db.execute(sql`

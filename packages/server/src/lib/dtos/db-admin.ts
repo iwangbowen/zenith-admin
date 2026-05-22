@@ -103,3 +103,26 @@ export const DbAdminErDiagramFkDTO = z
     referencedColumns: z.array(z.string()),
   })
   .openapi('DbAdminErDiagramFk');
+
+export const DbAdminErColumnDTO = z
+  .object({
+    name: z.string(),
+    dataType: z.string(),
+    isPrimaryKey: z.boolean(),
+  })
+  .openapi('DbAdminErColumn');
+
+export const DbAdminErTableDTO = z
+  .object({
+    schema: z.string(),
+    name: z.string(),
+    columns: z.array(DbAdminErColumnDTO),
+  })
+  .openapi('DbAdminErTable');
+
+export const DbAdminErSchemaDTO = z
+  .object({
+    tables: z.array(DbAdminErTableDTO),
+    foreignKeys: z.array(DbAdminErDiagramFkDTO),
+  })
+  .openapi('DbAdminErSchema');

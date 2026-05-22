@@ -49,7 +49,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
 import { EditableCell } from './EditableCell';
-import { ErDiagram } from './ErDiagram';
+import { ErDiagram, type ErSchema } from './ErDiagram';
 import { buildInsertSql, buildUpdateSql, copyToClipboard } from './sql-format';
 
 async function copyRowSqlAndToast(sql: string, label: string) {
@@ -289,15 +289,7 @@ export default function DbAdminPage() {
   const [activeTab, setActiveTab] = useState<string>('browse');
 
   // ER 图
-  interface ErFk {
-    schema: string;
-    table: string;
-    columns: string[];
-    referencedSchema: string;
-    referencedTable: string;
-    referencedColumns: string[];
-  }
-  const [erFks, setErFks] = useState<ErFk[] | null>(null);
+  const [erSchema, setErSchema] = useState<ErSchema | null>(null);
   const [erLoading, setErLoading] = useState(false);
 
   // 表浏览
@@ -430,8 +422,8 @@ export default function DbAdminPage() {
 
   const loadEr = useCallback(async () => {
     setErLoading(true);
-    const res = await request.get<ErFk[]>('/api/db-admin/er-diagram');
-    if (res.code === 0 && res.data) setErFks(res.data);
+    const res = await request.get<ErSchema>('/api/db-admin/er-schema');
+    if (res.code === 0 && res.data) setErSchema(res.data);
     setErLoading(false);
   }, []);
 
@@ -451,8 +443,8 @@ export default function DbAdminPage() {
   }, [activeTab, historyPage, historyPageSize, loadHistory]);
 
   useEffect(() => {
-    if (activeTab === 'er' && erFks === null && !erLoading) void loadEr();
-  }, [activeTab, erFks, erLoading, loadEr]);
+    if (activeTab === 'er' && erSchema === null && !erLoading) void loadEr();
+  }, [activeTab, erSchema, erLoading, loadEr]);
 
   const handleSelectTable = (item: TableItem) => {
     setSelected(item);
@@ -1430,24 +1422,17 @@ export default function DbAdminPage() {
             <Space>
               <Button icon={<RefreshCw size={14} />} onClick={() => void loadEr()} loading={erLoading}>刷新</Button>
               <Text type="tertiary" size="small">
-                {erFks ? (() => {
-                  const ts = new Set<string>();
-                  erFks.forEach((f) => {
-                    ts.add(`${f.schema}.${f.table}`);
-                    ts.add(`${f.referencedSchema}.${f.referencedTable}`);
-                  });
-                  return `共 ${erFks.length} 条外键关系，涉及 ${ts.size} 张表`;
-                })() : ''}
+                {erSchema ? `共 ${erSchema.tables.length} 张表，${erSchema.foreignKeys.length} 条外键关系` : ''}
               </Text>
             </Space>
             {(() => {
-              if (erLoading && !erFks) return <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>;
-              if (!erFks) return <Empty title="暂无数据" />;
-              if (erFks.length === 0) return <Empty title="数据库内没有外键关系" />;
+              if (erLoading && !erSchema) return <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>;
+              if (!erSchema) return <Empty title="暂无数据" />;
+              if (erSchema.tables.length === 0) return <Empty title="数据库内没有用户表" />;
               return (
                 <ErDiagram
-                  fks={erFks}
-                  onNodeClick={(full) => {
+                  schema={erSchema}
+                  onNodeDoubleClick={(full) => {
                     const [s, n] = full.split('.');
                     const t = tables.find((x) => x.schema === s && x.name === n);
                     if (t) {
