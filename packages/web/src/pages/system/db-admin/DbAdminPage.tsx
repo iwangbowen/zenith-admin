@@ -12,6 +12,7 @@ import {
   Modal,
   Pagination,
   Popconfirm,
+  Select,
   Space,
   Spin,
   Tabs,
@@ -34,6 +35,7 @@ import {
   Copy,
   ArrowRight,
   Plus,
+  Network,
 } from 'lucide-react';
 import type { editor as MonacoEditor, KeyMod as KeyModT, KeyCode as KeyCodeT, Position } from 'monaco-editor';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -47,6 +49,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
 import { EditableCell } from './EditableCell';
+import { ErDiagram } from './ErDiagram';
 import { buildInsertSql, buildUpdateSql, copyToClipboard } from './sql-format';
 
 async function copyRowSqlAndToast(sql: string, label: string) {
@@ -125,25 +128,72 @@ interface ColumnFilterDropdownProps {
 
 function ColumnFilterDropdown(props: Readonly<ColumnFilterDropdownProps>) {
   const { columnName, tempFilteredValue, setTempFilteredValue, confirm, clear, close } = props;
-  const tempValue = Array.isArray(tempFilteredValue) && tempFilteredValue.length > 0
+  const initialRaw = Array.isArray(tempFilteredValue) && tempFilteredValue.length > 0
     ? String(tempFilteredValue[0])
     : '';
+  const parseInitial = (s: string): { op: string; value: string } => {
+    const m = /^(eq|neq|gt|gte|lt|lte|like|ilike|isnull|notnull)\|(.*)$/s.exec(s);
+    if (m) return { op: m[1], value: m[2] };
+    return { op: 'ilike', value: s };
+  };
+  const initial = parseInitial(initialRaw);
+  const needsValue = !['isnull', 'notnull'].includes(initial.op);
+  const buildEncoded = (op: string, value: string): string => {
+    if (op === 'isnull' || op === 'notnull') return `${op}|`;
+    return `${op}|${value}`;
+  };
   const apply = () => {
-    const kw = tempValue.trim();
-    confirm({ filteredValue: kw ? [kw] : [] });
+    const kw = initial.value.trim();
+    const op = initial.op;
+    if (op !== 'isnull' && op !== 'notnull' && kw.length === 0) {
+      confirm({ filteredValue: [] });
+      return;
+    }
+    confirm({ filteredValue: [buildEncoded(op, kw)] });
   };
   const reset = () => { clear(); close(); };
-  const handleInputChange = (v: string) => setTempFilteredValue(v ? [v] : []);
+  const handleOpChange = (v: unknown) => {
+    const op = String(v);
+    if (op === 'isnull' || op === 'notnull') {
+      setTempFilteredValue([buildEncoded(op, '')]);
+    } else {
+      setTempFilteredValue([buildEncoded(op, initial.value)]);
+    }
+  };
+  const handleValueChange = (v: string) => {
+    setTempFilteredValue([buildEncoded(initial.op, v)]);
+  };
   return (
-    <div style={{ padding: 8, width: 240 }}>
-      <Input
-        size="small"
-        autoFocus
-        value={tempValue}
-        onChange={handleInputChange}
-        onEnterPress={apply}
-        placeholder={`筛选 ${columnName}……`}
-      />
+    <div style={{ padding: 8, width: 260 }}>
+      <Space vertical align="start" style={{ width: '100%' }}>
+        <Select
+          size="small"
+          value={initial.op}
+          onChange={handleOpChange}
+          style={{ width: '100%' }}
+          optionList={[
+            { label: '包含 (ILIKE)', value: 'ilike' },
+            { label: '等于 =', value: 'eq' },
+            { label: '不等于 ≠', value: 'neq' },
+            { label: '大于 >', value: 'gt' },
+            { label: '大于等于 ≥', value: 'gte' },
+            { label: '小于 <', value: 'lt' },
+            { label: '小于等于 ≤', value: 'lte' },
+            { label: '为空 IS NULL', value: 'isnull' },
+            { label: '非空 IS NOT NULL', value: 'notnull' },
+          ]}
+        />
+        {needsValue && (
+          <Input
+            size="small"
+            autoFocus
+            value={initial.value}
+            onChange={handleValueChange}
+            onEnterPress={apply}
+            placeholder={`筛选 ${columnName}……`}
+          />
+        )}
+      </Space>
       <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
         <Button size="small" theme="borderless" onClick={reset}>重置</Button>
         <Button size="small" theme="solid" type="primary" onClick={apply}>筛选</Button>
@@ -238,6 +288,18 @@ export default function DbAdminPage() {
 
   const [activeTab, setActiveTab] = useState<string>('browse');
 
+  // ER 图
+  interface ErFk {
+    schema: string;
+    table: string;
+    columns: string[];
+    referencedSchema: string;
+    referencedTable: string;
+    referencedColumns: string[];
+  }
+  const [erFks, setErFks] = useState<ErFk[] | null>(null);
+  const [erLoading, setErLoading] = useState(false);
+
   // 表浏览
   const [tables, setTables] = useState<TableItem[]>([]);
   const [tablesLoading, setTablesLoading] = useState(false);
@@ -253,6 +315,8 @@ export default function DbAdminPage() {
   const [rowsOrderBy, setRowsOrderBy] = useState<string | undefined>(undefined);
   const [rowsOrderDir, setRowsOrderDir] = useState<'asc' | 'desc' | undefined>(undefined);
   const [rowsFilters, setRowsFilters] = useState<Record<string, string>>({});
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string | number>>([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   // SQL 控制台
   const [sql, setSql] = useState<string>(DEFAULT_SQL);
@@ -364,6 +428,13 @@ export default function DbAdminPage() {
     setHistoryLoading(false);
   }, []);
 
+  const loadEr = useCallback(async () => {
+    setErLoading(true);
+    const res = await request.get<ErFk[]>('/api/db-admin/er-diagram');
+    if (res.code === 0 && res.data) setErFks(res.data);
+    setErLoading(false);
+  }, []);
+
   useEffect(() => { void loadTables(); }, [loadTables]);
 
   useEffect(() => {
@@ -379,6 +450,10 @@ export default function DbAdminPage() {
     if (activeTab === 'history') void loadHistory(historyPage, historyPageSize);
   }, [activeTab, historyPage, historyPageSize, loadHistory]);
 
+  useEffect(() => {
+    if (activeTab === 'er' && erFks === null && !erLoading) void loadEr();
+  }, [activeTab, erFks, erLoading, loadEr]);
+
   const handleSelectTable = (item: TableItem) => {
     setSelected(item);
     setStructure(null);
@@ -387,6 +462,7 @@ export default function DbAdminPage() {
     setRowsOrderBy(undefined);
     setRowsOrderDir(undefined);
     setRowsFilters({});
+    setSelectedRowKeys([]);
   };
 
   const handleRowsPageChange = (page: number, pageSize: number) => {
@@ -570,8 +646,74 @@ export default function DbAdminPage() {
 
   const refreshRows = useCallback(() => {
     if (!selected) return;
+    setSelectedRowKeys([]);
     void loadRows(selected, rowsPage, rowsPageSize, rowsOrderBy, rowsOrderDir, rowsFilters);
   }, [selected, rowsPage, rowsPageSize, rowsOrderBy, rowsOrderDir, rowsFilters, loadRows]);
+
+  const handleBatchDelete = useCallback(async () => {
+    if (!selected || !structure || structure.primaryKey.length === 0 || !rows) return;
+    const pkCols = structure.primaryKey;
+    const targets = selectedRowKeys
+      .map((k) => rows.list[Number(k)])
+      .filter((r): r is Record<string, unknown> => Boolean(r));
+    if (targets.length === 0) return;
+    setBatchDeleting(true);
+    let ok = 0;
+    let fail = 0;
+    for (const row of targets) {
+      const pk: Record<string, unknown> = {};
+      for (const k of pkCols) pk[k] = row[k];
+      const res = await request.delete<{ deleted: number }>(
+        `/api/db-admin/tables/${encodeURIComponent(selected.schema)}/${encodeURIComponent(selected.name)}/rows`,
+        { pk },
+      );
+      if (res.code === 0) ok++;
+      else fail++;
+    }
+    setBatchDeleting(false);
+    setSelectedRowKeys([]);
+    if (fail === 0) Toast.success(`已删除 ${ok} 行`);
+    else Toast.warning(`删除完成：成功 ${ok}，失败 ${fail}`);
+    if (selected) void loadRows(selected, rowsPage, rowsPageSize, rowsOrderBy, rowsOrderDir, rowsFilters);
+  }, [selected, structure, rows, selectedRowKeys, rowsPage, rowsPageSize, rowsOrderBy, rowsOrderDir, rowsFilters, loadRows]);
+
+  const selectedRowsData = useCallback((): Array<Record<string, unknown>> => {
+    if (!rows) return [];
+    return selectedRowKeys
+      .map((k) => rows.list[Number(k)])
+      .filter((r): r is Record<string, unknown> => Boolean(r));
+  }, [rows, selectedRowKeys]);
+
+  const handleBatchCopyInsert = useCallback(async () => {
+    if (!selected) return;
+    const targets = selectedRowsData();
+    if (targets.length === 0) return;
+    const sqls = targets.map((row) => {
+      const clean: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row)) if (!k.startsWith('__')) clean[k] = v;
+      return buildInsertSql(selected.schema, selected.name, clean);
+    });
+    void copyToClipboard(sqls.join('\n'), `已复制 ${targets.length} 条 INSERT SQL`);
+  }, [selected, selectedRowsData]);
+
+  const handleBatchCopyUpdate = useCallback(async () => {
+    if (!selected || !structure || structure.primaryKey.length === 0) return;
+    const pkCols = structure.primaryKey;
+    const targets = selectedRowsData();
+    if (targets.length === 0) return;
+    const sqls = targets.map((row) => {
+      const pk: Record<string, unknown> = {};
+      for (const k of pkCols) pk[k] = row[k];
+      const changes: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row)) {
+        if (k.startsWith('__')) continue;
+        if (pkCols.includes(k)) continue;
+        changes[k] = v;
+      }
+      return buildUpdateSql(selected.schema, selected.name, pk, changes);
+    });
+    void copyToClipboard(sqls.join('\n'), `已复制 ${targets.length} 条 UPDATE SQL`);
+  }, [selected, structure, selectedRowsData]);
 
   const openCreateRow = () => {
     setRowModalMode('create');
@@ -642,6 +784,31 @@ export default function DbAdminPage() {
     style: { cursor: 'pointer' as const },
   });
 
+  const handleFkJump = useCallback((fk: ForeignKeyInfo, value?: unknown) => {
+    const target = tables.find((t) => t.schema === fk.referencedSchema && t.name === fk.referencedTable);
+    if (!target) {
+      Toast.warning(`未找到引用表 ${fk.referencedSchema}.${fk.referencedTable}`);
+      return;
+    }
+    setSelected(target);
+    setStructure(null);
+    setRows(null);
+    setRowsPage(1);
+    setRowsOrderBy(undefined);
+    setRowsOrderDir(undefined);
+    if (value != null && fk.referencedColumns.length === 1) {
+      let strVal: string;
+      if (typeof value === 'string') strVal = value;
+      else if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') strVal = value.toString();
+      else strVal = JSON.stringify(value);
+      setRowsFilters({ [fk.referencedColumns[0]]: strVal });
+    } else {
+      setRowsFilters({});
+    }
+    setSelectedRowKeys([]);
+    setInnerTab('data');
+  }, [tables]);
+
   const buildDataColumns = (
     cols: Array<{ name: string; dataType?: string }>,
     options?: {
@@ -653,6 +820,12 @@ export default function DbAdminPage() {
     const sortable = options?.sortable ?? false;
     const filterable = options?.filterable ?? false;
     const editable = options?.editable;
+    const fkByColumn = new Map<string, ForeignKeyInfo>();
+    if (structure?.foreignKeys) {
+      for (const fk of structure.foreignKeys) {
+        if (fk.columns.length === 1) fkByColumn.set(fk.columns[0], fk);
+      }
+    }
     const inlineEnabled = Boolean(
       editable?.canWriteRow
       && editable.primaryKey.length > 0
@@ -660,9 +833,18 @@ export default function DbAdminPage() {
       && editable.table,
     );
     const result: ColumnProps<Record<string, unknown>>[] = cols.map((c) => {
-      const titleNode = c.dataType
-        ? <Space spacing={4}><Text>{c.name}</Text><Text type="tertiary" size="small">{c.dataType}</Text></Space>
-        : c.name;
+      const fk = fkByColumn.get(c.name);
+      const titleNode = (
+        <Space spacing={4}>
+          <Text>{c.name}</Text>
+          {c.dataType && <Text type="tertiary" size="small">{c.dataType}</Text>}
+          {fk && (
+            <Tooltip content={`外键 → ${fk.referencedSchema}.${fk.referencedTable}.${fk.referencedColumns.join(',')}`}>
+              <Tag size="small" color="blue" style={{ cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); handleFkJump(fk); }}>FK</Tag>
+            </Tooltip>
+          )}
+        </Space>
+      );
       const col: ColumnProps<Record<string, unknown>> = {
         title: titleNode,
         dataIndex: c.name,
@@ -943,9 +1125,31 @@ export default function DbAdminPage() {
                               )}
                             </Space>
                           </div>
+                          {selectedRowKeys.length > 0 && (
+                            <div style={{ marginBottom: 8, padding: '6px 12px', background: 'var(--semi-color-fill-0)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <Text size="small">已选 <Text strong>{selectedRowKeys.length}</Text> 行</Text>
+                              <Space>
+                                {hasPrimaryKey && isWritableTable && canWrite && (
+                                  <Popconfirm
+                                    title={`确认删除选中的 ${selectedRowKeys.length} 行？`}
+                                    onConfirm={() => void handleBatchDelete()}
+                                  >
+                                    <Button size="small" type="danger" theme="solid" loading={batchDeleting} icon={<Trash2 size={14} />}>批量删除</Button>
+                                  </Popconfirm>
+                                )}
+                                <Button size="small" icon={<Copy size={14} />} onClick={() => void handleBatchCopyInsert()}>复制为 INSERT SQL</Button>
+                                {hasPrimaryKey && (
+                                  <Button size="small" icon={<Copy size={14} />} onClick={() => void handleBatchCopyUpdate()}>复制为 UPDATE SQL</Button>
+                                )}
+                                <Button size="small" theme="borderless" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+                              </Space>
+                            </div>
+                          )}
                           <ConfigurableTable
                             bordered
                             loading={rowsLoading}
+                            columnSettings
+                            columnSettingsKey={selected ? `db-admin:cols:${selected.schema}.${selected.name}` : undefined}
                             columns={buildDataColumns(
                               resolveDataCols(structure, rows.list, Object.keys(rowsFilters)),
                               {
@@ -963,9 +1167,15 @@ export default function DbAdminPage() {
                             )}
                             dataSource={rows.list.map((r, i) => ({ ...r, __key: i }))}
                             rowKey="__key"
+                            rowSelection={hasPrimaryKey ? {
+                              selectedRowKeys,
+                              onChange: (keys?: Array<string | number>) => setSelectedRowKeys(keys ?? []),
+                              fixed: true,
+                            } : undefined}
                             pagination={false}
                             size="small"
                             scroll={{ x: 'max-content' }}
+                            resizable
                             onChange={({ filters: columnFilters, sorter, extra }) => {
                               const changeType = extra?.changeType;
                               if (changeType === 'sorter') {
@@ -1212,6 +1422,42 @@ export default function DbAdminPage() {
               pageSizeOpts={[20, 50, 100]}
               onChange={(p, ps) => { setHistoryPage(p); setHistoryPageSize(ps); }}
             />
+          </Space>
+        </TabPane>
+
+        <TabPane tab={<span><Network size={14} style={{ verticalAlign: -2, marginRight: 4 }} />ER 图</span>} itemKey="er">
+          <Space vertical align="start" style={{ width: '100%' }}>
+            <Space>
+              <Button icon={<RefreshCw size={14} />} onClick={() => void loadEr()} loading={erLoading}>刷新</Button>
+              <Text type="tertiary" size="small">
+                {erFks ? (() => {
+                  const ts = new Set<string>();
+                  erFks.forEach((f) => {
+                    ts.add(`${f.schema}.${f.table}`);
+                    ts.add(`${f.referencedSchema}.${f.referencedTable}`);
+                  });
+                  return `共 ${erFks.length} 条外键关系，涉及 ${ts.size} 张表`;
+                })() : ''}
+              </Text>
+            </Space>
+            {(() => {
+              if (erLoading && !erFks) return <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>;
+              if (!erFks) return <Empty title="暂无数据" />;
+              if (erFks.length === 0) return <Empty title="数据库内没有外键关系" />;
+              return (
+                <ErDiagram
+                  fks={erFks}
+                  onNodeClick={(full) => {
+                    const [s, n] = full.split('.');
+                    const t = tables.find((x) => x.schema === s && x.name === n);
+                    if (t) {
+                      setActiveTab('browse');
+                      handleSelectTable(t);
+                    }
+                  }}
+                />
+              );
+            })()}
           </Space>
         </TabPane>
       </Tabs>

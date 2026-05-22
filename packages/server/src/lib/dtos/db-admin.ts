@@ -92,3 +92,14 @@ export const DbAdminQueryHistoryItemDTO = z
     executedAt: z.string(),
   })
   .openapi('DbAdminQueryHistoryItem');
+
+export const DbAdminErDiagramFkDTO = z
+  .object({
+    schema: z.string(),
+    table: z.string(),
+    columns: z.array(z.string()),
+    referencedSchema: z.string(),
+    referencedTable: z.string(),
+    referencedColumns: z.array(z.string()),
+  })
+  .openapi('DbAdminErDiagramFk');

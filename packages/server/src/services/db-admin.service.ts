@@ -124,6 +124,54 @@ export async function listTables(): Promise<TableItem[]> {
 }
 
 // ─── 2. 表结构 ──────────────────────────────────────────────────────────────────
+export interface ErDiagramFk {
+  schema: string;
+  table: string;
+  columns: string[];
+  referencedSchema: string;
+  referencedTable: string;
+  referencedColumns: string[];
+}
+
+/** 一次性读取数据库内所有外键关系，用于 ER 图渲染 */
+export async function listAllForeignKeys(): Promise<ErDiagramFk[]> {
+  const rows = await db.execute(sql`
+    SELECT ns.nspname AS schema,
+           cls.relname AS "table",
+           ARRAY(
+             SELECT a.attname FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
+             JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
+             ORDER BY k.ord
+           ) AS columns,
+           ref_ns.nspname AS referenced_schema,
+           ref_cls.relname AS referenced_table,
+           ARRAY(
+             SELECT a.attname FROM unnest(con.confkey) WITH ORDINALITY AS k(attnum, ord)
+             JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.attnum
+             ORDER BY k.ord
+           ) AS referenced_columns
+    FROM pg_constraint con
+    JOIN pg_class cls ON cls.oid = con.conrelid
+    JOIN pg_namespace ns ON ns.oid = cls.relnamespace
+    JOIN pg_class ref_cls ON ref_cls.oid = con.confrelid
+    JOIN pg_namespace ref_ns ON ref_ns.oid = ref_cls.relnamespace
+    WHERE con.contype = 'f'
+      AND ns.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    ORDER BY ns.nspname, cls.relname, con.conname
+  `);
+  return (rows as unknown as Array<{
+    schema: string; table: string; columns: string[];
+    referenced_schema: string; referenced_table: string; referenced_columns: string[];
+  }>).map((r) => ({
+    schema: r.schema,
+    table: r.table,
+    columns: r.columns ?? [],
+    referencedSchema: r.referenced_schema,
+    referencedTable: r.referenced_table,
+    referencedColumns: r.referenced_columns ?? [],
+  }));
+}
+
 export async function getTableStructure(schema: string, name: string): Promise<TableStructure> {
   assertIdent(schema, 'schema');
   assertIdent(name, 'table');
@@ -324,14 +372,36 @@ export async function getTableRows(params: RowsParams): Promise<{
   }
   const orderClause = effectiveOrderClause;
 
-  const whereSql = filterEntries.length > 0
-    ? sql`WHERE ${sql.join(
-        filterEntries.map(([col, kw]) =>
-          sql`${sql.raw(quoteIdent(col))}::text ILIKE ${'%' + kw + '%'}`,
-        ),
-        sql.raw(' AND '),
-      )}`
-    : sql.raw('');
+  const whereSql = (() => {
+    const OP_RE = /^(eq|neq|gt|gte|lt|lte|like|ilike|isnull|notnull)\|([\s\S]*)$/;
+    const parsed = filterEntries
+      .map(([col, raw]) => {
+        const m = OP_RE.exec(raw);
+        if (m) return { col, op: m[1], val: m[2] };
+        return { col, op: 'ilike', val: raw };
+      })
+      .filter((f) => {
+        if (f.op === 'isnull' || f.op === 'notnull') return true;
+        return f.val.length > 0;
+      });
+    if (parsed.length === 0) return sql.raw('');
+    const conds = parsed.map(({ col, op, val }) => {
+      const c = sql.raw(quoteIdent(col));
+      switch (op) {
+        case 'eq': return sql`${c}::text = ${val}`;
+        case 'neq': return sql`${c}::text <> ${val}`;
+        case 'gt': return sql`${c} > ${val}`;
+        case 'gte': return sql`${c} >= ${val}`;
+        case 'lt': return sql`${c} < ${val}`;
+        case 'lte': return sql`${c} <= ${val}`;
+        case 'like': return sql`${c}::text LIKE ${'%' + val + '%'}`;
+        case 'ilike': return sql`${c}::text ILIKE ${'%' + val + '%'}`;
+        case 'isnull': return sql`${c} IS NULL`;
+        case 'notnull': return sql`${c} IS NOT NULL`;
+      }
+    });
+    return sql`WHERE ${sql.join(conds, sql.raw(' AND '))}`;
+  })();
 
   return runReadOnly(async (tx) => {
     const [listRows, totalRows] = await Promise.all([

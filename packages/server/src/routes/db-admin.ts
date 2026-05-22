@@ -18,6 +18,7 @@ import {
   DbAdminQueryResultDTO,
   DbAdminExplainResultDTO,
   DbAdminQueryHistoryItemDTO,
+  DbAdminErDiagramFkDTO,
 } from '../lib/openapi-dtos';
 import {
   listTables,
@@ -32,6 +33,7 @@ import {
   listQueryHistory,
   clearQueryHistory,
   deleteQueryHistory,
+  listAllForeignKeys,
 } from '../services/db-admin.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -266,6 +268,16 @@ const clearHistoryRoute = defineOpenAPIRoute({
   },
 });
 
+const erDiagramRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/er-diagram', tags: ['DbAdmin'], summary: 'ER 图（所有外键关系）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(DbAdminErDiagramFkDTO), '外键关系列表') },
+  }),
+  handler: async (c) => c.json(okBody(await listAllForeignKeys()), 200),
+});
+
 router.openapiRoutes([
   listTablesRoute,
   tableStructureRoute,
@@ -278,6 +290,7 @@ router.openapiRoutes([
   historyRoute,
   deleteHistoryRoute,
   clearHistoryRoute,
+  erDiagramRoute,
 ] as const);
 
 // CSV 导出：流式响应，不在 OpenAPI Spec 中暴露（避免 schema 复杂度）
