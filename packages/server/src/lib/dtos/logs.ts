@@ -55,9 +55,18 @@ export const LogRowDTO = z
 
 export const OperationLogStatsDTO = z
   .object({
+    summary: z.object({
+      total: z.number(),
+      successCount: z.number(),
+      failCount: z.number(),
+      avgDurationMs: z.number().nullable(),
+      uniqueUsers: z.number(),
+    }),
     moduleStats: z.array(z.object({ module: z.string(), count: z.number() })),
-    dailyStats: z.array(z.object({ date: z.string(), count: z.number() })),
+    dailyStats: z.array(z.object({ date: z.string(), count: z.number(), successCount: z.number(), failCount: z.number() })),
     userStats: z.array(z.object({ username: z.string(), count: z.number() })),
+    methodStats: z.array(z.object({ method: z.string(), count: z.number() })),
+    hourlyStats: z.array(z.object({ hour: z.number(), count: z.number() })),
   })
   .openapi('OperationLogStats');
 

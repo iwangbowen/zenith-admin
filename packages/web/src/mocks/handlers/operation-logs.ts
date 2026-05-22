@@ -24,13 +24,24 @@ const MOCK_USER_STATS = [
   { username: 'auditor', count: 28 },
 ];
 
-function buildMockDailyStats(days: number): { date: string; count: number }[] {
+const MOCK_METHOD_STATS = [
+  { method: 'GET', count: 480 },
+  { method: 'POST', count: 210 },
+  { method: 'PUT', count: 95 },
+  { method: 'DELETE', count: 48 },
+  { method: 'PATCH', count: 22 },
+];
+
+// Simulate realistic hourly traffic (night low, morning spike, noon drop, afternoon high)
+const MOCK_HOURLY_BASE = [1,1,0,0,1,2,5,18,32,38,35,28,22,30,36,40,38,34,28,20,14,9,5,3];
+
+function buildMockDailyStats(days: number): { date: string; count: number; successCount: number; failCount: number }[] {
   const today = dayjs().startOf('day');
   return Array.from({ length: days }, (_, i) => {
     const date = mockDate(today.subtract(days - 1 - i, 'day').valueOf());
-    // Simulate realistic traffic with weekday/weekend pattern and some noise
-    const baseCount = i === days - 1 ? 12 : Math.floor(Math.random() * 40 + 5);
-    return { date, count: baseCount };
+    const total = i === days - 1 ? 12 : Math.floor(Math.random() * 40 + 5);
+    const failCount = Math.floor(total * (0.02 + Math.random() * 0.06));
+    return { date, count: total, successCount: total - failCount, failCount };
   });
 }
 
@@ -69,13 +80,37 @@ export const operationLogsHandlers = [
       count: Math.round(u.count * scale * (0.8 + Math.random() * 0.4)),
     })).sort((a, b) => b.count - a.count);
 
+    const methodStats = MOCK_METHOD_STATS.map((m) => ({
+      method: m.method,
+      count: Math.round(m.count * scale * (0.8 + Math.random() * 0.4)),
+    }));
+
+    const hourlyStats = MOCK_HOURLY_BASE.map((base, hour) => ({
+      hour,
+      count: Math.round(base * scale * (0.7 + Math.random() * 0.6)),
+    }));
+
+    const dailyStats = buildMockDailyStats(days);
+    const total = dailyStats.reduce((s, d) => s + d.count, 0);
+    const successCount = dailyStats.reduce((s, d) => s + d.successCount, 0);
+    const failCount = dailyStats.reduce((s, d) => s + d.failCount, 0);
+
     return HttpResponse.json({
       code: 0,
       message: 'ok',
       data: {
+        summary: {
+          total,
+          successCount,
+          failCount,
+          avgDurationMs: Math.round(80 + Math.random() * 120),
+          uniqueUsers: 5,
+        },
         moduleStats,
-        dailyStats: buildMockDailyStats(days),
+        dailyStats,
         userStats,
+        methodStats,
+        hourlyStats,
       },
     });
   }),

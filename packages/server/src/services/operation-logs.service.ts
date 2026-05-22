@@ -62,20 +62,51 @@ export async function operationLogStats(daysRaw?: number) {
   const tc = tenantCondition(operationLogs, user);
   const baseWhere = tc ? and(gte(operationLogs.createdAt, startDate), tc) : gte(operationLogs.createdAt, startDate);
   const moduleCount = count();
-  const dailyCount = count();
   const userCount = count();
-  const [moduleStats, dailyStats, userStats] = await Promise.all([
+  const methodCount = count();
+  const hourlyCount = count();
+  const [summaryRows, moduleStats, dailyStats, userStats, methodStats, hourlyStats] = await Promise.all([
+    db.select({
+      total: count(),
+      successCount: sql<number>`(count(case when ${operationLogs.responseCode} >= 200 and ${operationLogs.responseCode} < 400 then 1 end))::integer`,
+      failCount: sql<number>`(count(case when ${operationLogs.responseCode} >= 400 then 1 end))::integer`,
+      avgDurationMs: sql<number | null>`round(avg(${operationLogs.durationMs}))::float`,
+      uniqueUsers: sql<number>`(count(distinct ${operationLogs.userId}))::integer`,
+    }).from(operationLogs).where(baseWhere),
     db.select({ module: operationLogs.module, count: moduleCount }).from(operationLogs).where(baseWhere).groupBy(operationLogs.module).orderBy(desc(moduleCount)).limit(20),
     db.select({
       date: sql<string>`to_char(date(${operationLogs.createdAt}), 'YYYY-MM-DD')`,
-      count: dailyCount,
+      count: count(),
+      successCount: sql<number>`(count(case when ${operationLogs.responseCode} >= 200 and ${operationLogs.responseCode} < 400 then 1 end))::integer`,
+      failCount: sql<number>`(count(case when ${operationLogs.responseCode} >= 400 then 1 end))::integer`,
     }).from(operationLogs).where(baseWhere).groupBy(sql`date(${operationLogs.createdAt})`).orderBy(sql`date(${operationLogs.createdAt})`),
     db.select({ username: operationLogs.username, count: userCount }).from(operationLogs).where(baseWhere).groupBy(operationLogs.username).orderBy(desc(userCount)).limit(10),
+    db.select({ method: operationLogs.method, count: methodCount }).from(operationLogs).where(baseWhere).groupBy(operationLogs.method).orderBy(desc(methodCount)),
+    db.select({
+      hour: sql<number>`(extract(hour from ${operationLogs.createdAt}))::integer`,
+      count: hourlyCount,
+    }).from(operationLogs).where(baseWhere).groupBy(sql`extract(hour from ${operationLogs.createdAt})`).orderBy(sql`extract(hour from ${operationLogs.createdAt})`),
   ]);
+  const s = summaryRows[0] ?? { total: 0, successCount: 0, failCount: 0, avgDurationMs: null, uniqueUsers: 0 };
+  const hourlyMap = new Map(hourlyStats.map((r) => [r.hour, r.count]));
   return {
+    summary: {
+      total: s.total,
+      successCount: Number(s.successCount),
+      failCount: Number(s.failCount),
+      avgDurationMs: s.avgDurationMs == null ? null : Math.round(Number(s.avgDurationMs)),
+      uniqueUsers: Number(s.uniqueUsers),
+    },
     moduleStats: moduleStats.map((r) => ({ module: r.module ?? '未知模块', count: r.count })),
-    dailyStats: dailyStats.map((r) => ({ date: r.date || startDateLabel, count: r.count })),
+    dailyStats: dailyStats.map((r) => ({
+      date: r.date || startDateLabel,
+      count: r.count,
+      successCount: Number(r.successCount),
+      failCount: Number(r.failCount),
+    })),
     userStats: userStats.map((r) => ({ username: r.username ?? '未知用户', count: r.count })),
+    methodStats: methodStats.map((r) => ({ method: r.method, count: r.count })),
+    hourlyStats: Array.from({ length: 24 }, (_, h) => ({ hour: h, count: hourlyMap.get(h) ?? 0 })),
   };
 }
 

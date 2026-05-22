@@ -248,9 +248,18 @@ export interface OperationLog {
 }
 
 export interface OperationLogStats {
+  summary: {
+    total: number;
+    successCount: number;
+    failCount: number;
+    avgDurationMs: number | null;
+    uniqueUsers: number;
+  };
   moduleStats: { module: string; count: number }[];
-  dailyStats: { date: string; count: number }[];
+  dailyStats: { date: string; count: number; successCount: number; failCount: number }[];
   userStats: { username: string; count: number }[];
+  methodStats: { method: string; count: number }[];
+  hourlyStats: { hour: number; count: number }[];
 }
 
 // ─── 公告 ──────────────────────────────────────────────────
