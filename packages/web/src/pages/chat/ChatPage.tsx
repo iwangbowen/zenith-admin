@@ -28,6 +28,7 @@ import {
   extractFirstUrl, getFileExtension, getAssetMeta, getMessageSummary, shouldDisplayMessageTime,
   getImageDimensions,
 } from './utils';
+import './ChatPage.css';
 import type { ChatUser, PendingImage, PendingFile, SearchDatePreset, FailedMessage } from './types';
 import { CHAT_MESSAGE_TYPE_OPTIONS } from './types';
 import { UserAvatar, GroupGridAvatar } from './components/UserAvatar';
@@ -1621,10 +1622,11 @@ export default function ChatPage({
           </Button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }}>
           <Spin spinning={loadingConvs}>
             {leftPaneMode === 'conversations' && (
               <SemiList
+                className="chat-conv-list"
                 dataSource={filteredConvs}
                 emptyContent={loadingConvs ? null : <Empty description="暂无会话" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />}
                 split={false}
@@ -1735,6 +1737,7 @@ export default function ChatPage({
             )}
             {leftPaneMode === 'favorites' && (
               <SemiList
+                className="chat-conv-list"
                 dataSource={favoriteMessages}
                 emptyContent={loadingConvs ? null : <Empty description="暂无收藏消息" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />}
                 split={false}

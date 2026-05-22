@@ -1,0 +1,12 @@
+.chat-conv-list .semi-list-item {
+  overflow: hidden;
+}
+
+.chat-conv-list .semi-list-item-body {
+  min-width: 0;
+}
+
+.chat-conv-list .semi-list-item-body-main {
+  flex: 1;
+  min-width: 0;
+}
