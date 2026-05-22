@@ -200,13 +200,4 @@ httpGet(url, { proxy: 'http://127.0.0.1:7890' });
 
 如确实需要按环境切换代理，建议在调用处通过 `getSystemConfig` 等业务渠道读取后再传入。
 
-## 当前迁移情况
-
-下列出站调用已全部走 `http-client`：
-
-- [`packages/server/src/lib/oauth/github.ts`](https://github.com/iwangbowen/zenith-admin/blob/master/packages/server/src/lib/oauth/github.ts) — GitHub OAuth `access_token` 与 `user` 接口
-- [`packages/server/src/lib/oauth/dingtalk.ts`](https://github.com/iwangbowen/zenith-admin/blob/master/packages/server/src/lib/oauth/dingtalk.ts) — 钉钉新版 OAuth 2.0
-- [`packages/server/src/lib/oauth/wechat-work.ts`](https://github.com/iwangbowen/zenith-admin/blob/master/packages/server/src/lib/oauth/wechat-work.ts) — 企业微信 OAuth
-- [`packages/server/src/services/chat.service.ts`](https://github.com/iwangbowen/zenith-admin/blob/master/packages/server/src/services/chat.service.ts) — 消息链接预览抓取（保留 SSRF 防护：`redirect: 'manual'` + 私网 IP 拦截）
-
 新增任何外呼请直接使用 `httpRequest` / `httpGet` / `httpPost` 等，**不要**重新引入 `fetch()`。
