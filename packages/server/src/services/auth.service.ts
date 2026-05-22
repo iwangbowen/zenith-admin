@@ -67,6 +67,7 @@ export async function recordLoginLog(params: LoginLogParams) {
     ip,
     browser,
     os,
+    userAgent: ua || null,
     status,
     message,
     tenantId: tenantId ?? null,

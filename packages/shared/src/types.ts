@@ -219,6 +219,7 @@ export interface LoginLog {
   ip: string | null;
   browser: string | null;
   os: string | null;
+  userAgent: string | null;
   status: 'success' | 'fail';
   message: string | null;
   createdAt: string;

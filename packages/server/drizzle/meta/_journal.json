@@ -379,6 +379,13 @@
       "when": 1779580800000,
       "tag": "0053_table_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1779664000000,
+      "tag": "0054_great_norrin_radd",
+      "breakpoints": true
     }
   ]
 }

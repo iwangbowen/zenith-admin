@@ -11,6 +11,7 @@ export const LoginLogDTO = z
     ip: z.string().nullable(),
     browser: z.string().nullable(),
     os: z.string().nullable(),
+    userAgent: z.string().nullable(),
     status: z.enum(['success', 'fail']),
     message: z.string().nullable(),
     createdAt: z.string(),

@@ -111,6 +111,10 @@ export function LoginLogsTable({
                 </div>
               ))}
             </div>
+            <div style={{ padding: '8px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
+              <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12, marginBottom: 2 }}>User-Agent</div>
+              <div style={{ fontSize: 13, wordBreak: 'break-all' }}>{detailLog.userAgent ?? '-'}</div>
+            </div>
           </div>
         )}
       </Modal>

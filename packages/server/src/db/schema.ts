@@ -256,6 +256,7 @@ export const loginLogs = pgTable('login_logs', {
   ip: varchar('ip', { length: 64 }),
   browser: varchar('browser', { length: 64 }),
   os: varchar('os', { length: 64 }),
+  userAgent: varchar('user_agent', { length: 512 }),
   status: loginStatusEnum('status').notNull(),
   message: varchar('message', { length: 256 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
