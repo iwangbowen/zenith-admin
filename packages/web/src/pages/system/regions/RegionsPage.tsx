@@ -56,8 +56,24 @@ export default function RegionsPage() {
   const [editingRegion, setEditingRegion] = useState<Region | null>(null);
   const [editingLevel, setEditingLevel] = useState<string>('province');
   const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
+  const [tableHeight, setTableHeight] = useState(500);
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
 
   const { items: statusItems } = useDictItems('common_status');
+
+  useEffect(() => {
+    const el = tableWrapperRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setTableHeight(Math.floor(entry.contentRect.height));
+      }
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const fetchRegions = useCallback(async (params = searchParams) => {
     setLoading(true);
@@ -220,6 +236,7 @@ export default function RegionsPage() {
     {
       title: '地区名称',
       dataIndex: 'name',
+      width: 240,
     },
     {
       title: '区划代码',
@@ -288,7 +305,7 @@ export default function RegionsPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-container" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <SearchToolbar>
           <Input
             prefix={<Search size={14} />}
@@ -349,18 +366,22 @@ export default function RegionsPage() {
           )}
       </SearchToolbar>
 
-      <ConfigurableTable
-        bordered
-        columns={columns}
-        dataSource={data}
-        loading={loading}
-        rowKey="id"
-        size="small"
+      <div ref={tableWrapperRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <ConfigurableTable
+          bordered
+          columns={columns}
+          dataSource={data}
+          loading={loading}
+          rowKey="id"
+          size="small"
         expandedRowKeys={expandedRowKeys}
         onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Region => 'id' in r).map((r) => r.id) ?? [])}
         childrenRecordName="children"
         pagination={false}
+        virtualized
+        scroll={{ y: tableHeight, x: 'max-content' }}
       />
+      </div>
 
       <Modal
         title={editingRegion ? '编辑地区' : '新增地区'}
