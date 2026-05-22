@@ -80,12 +80,11 @@ function formatAvgDuration(ms: number): string {
   return `${ms}ms`;
 }
 
-function StatCard({ title, value, sub, color }: StatCardProps) {
+function StatCard({ title, value, sub, color: _color }: StatCardProps) {
   return (
     <div
       style={{
         ...sectionStyle,
-        borderLeft: `3px solid ${color}`,
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
