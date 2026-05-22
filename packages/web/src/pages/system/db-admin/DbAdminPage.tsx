@@ -45,6 +45,7 @@ import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
+import { EditableCell } from './EditableCell';
 
 const { Title, Text } = Typography;
 
@@ -568,12 +569,18 @@ export default function DbAdminPage() {
     options?: {
       sortable?: boolean;
       filterable?: boolean;
-      editable?: { primaryKey: string[]; canWriteRow: boolean };
+      editable?: { primaryKey: string[]; canWriteRow: boolean; schema?: string; table?: string };
     },
   ): ColumnProps<Record<string, unknown>>[] => {
     const sortable = options?.sortable ?? false;
     const filterable = options?.filterable ?? false;
     const editable = options?.editable;
+    const inlineEnabled = Boolean(
+      editable?.canWriteRow
+      && editable.primaryKey.length > 0
+      && editable.schema
+      && editable.table,
+    );
     const result: ColumnProps<Record<string, unknown>>[] = cols.map((c) => {
       const titleNode = c.dataType
         ? <Space spacing={4}><Text>{c.name}</Text><Text type="tertiary" size="small">{c.dataType}</Text></Space>
@@ -586,7 +593,22 @@ export default function DbAdminPage() {
         ellipsis: { showTitle: false },
         render: renderCell,
       };
-      if (editable?.canWriteRow) {
+      if (inlineEnabled && editable) {
+        const isPk = editable.primaryKey.includes(c.name);
+        col.render = (value: unknown, record: Record<string, unknown>) => (
+          <EditableCell
+            value={value}
+            columnName={c.name}
+            dataType={c.dataType}
+            schema={editable.schema!}
+            table={editable.table!}
+            primaryKey={editable.primaryKey}
+            record={record}
+            readOnly={isPk}
+            onSaved={refreshRows}
+          />
+        );
+      } else if (editable?.canWriteRow) {
         col.onCell = makeOnCellDblClick(c.name);
       }
       if (sortable) {
@@ -843,8 +865,13 @@ export default function DbAdminPage() {
                               {
                                 sortable: true,
                                 filterable: true,
-                                editable: canWrite && isWritableTable
-                                  ? { primaryKey: structure?.primaryKey ?? [], canWriteRow: hasPrimaryKey }
+                                editable: canWrite && isWritableTable && selected
+                                  ? {
+                                      primaryKey: structure?.primaryKey ?? [],
+                                      canWriteRow: hasPrimaryKey,
+                                      schema: selected.schema,
+                                      table: selected.name,
+                                    }
                                   : undefined,
                               },
                             )}
