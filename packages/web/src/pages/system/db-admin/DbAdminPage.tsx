@@ -4,6 +4,7 @@ import {
   Banner,
   Button,
   Collapse,
+  Dropdown,
   Empty,
   Input,
   JsonViewer,
@@ -46,6 +47,43 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
 import { EditableCell } from './EditableCell';
+import { buildInsertSql, buildUpdateSql, copyToClipboard } from './sql-format';
+
+async function copyRowSqlAndToast(sql: string, label: string) {
+  const ok = await copyToClipboard(sql);
+  if (ok) Toast.success(`已复制 ${label}`);
+  else Toast.warning('复制失败');
+}
+
+function renderRowSqlMenu(
+  schema: string,
+  table: string,
+  pkCols: string[],
+  record: Record<string, unknown>,
+) {
+  const cleanRow: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(record)) {
+    if (!k.startsWith('__')) cleanRow[k] = v;
+  }
+  const pk: Record<string, unknown> = {};
+  for (const k of pkCols) pk[k] = record[k];
+  const insertSql = buildInsertSql(schema, table, cleanRow);
+  const updateChanges: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(cleanRow)) {
+    if (!pkCols.includes(k)) updateChanges[k] = v;
+  }
+  const updateSql = buildUpdateSql(schema, table, pk, updateChanges);
+  return (
+    <Dropdown.Menu>
+      <Dropdown.Item onClick={() => void copyRowSqlAndToast(insertSql, 'INSERT SQL')}>
+        复制为 INSERT SQL
+      </Dropdown.Item>
+      <Dropdown.Item onClick={() => void copyRowSqlAndToast(updateSql, 'UPDATE SQL')}>
+        复制为 UPDATE SQL
+      </Dropdown.Item>
+    </Dropdown.Menu>
+  );
+}
 
 interface RenderEditableCellOptions {
   columnName: string;
@@ -671,10 +709,13 @@ export default function DbAdminPage() {
       return col;
     });
     if (editable?.canWriteRow && editable.primaryKey.length > 0) {
+      const schemaName = editable.schema;
+      const tableName = editable.table;
+      const pkCols = editable.primaryKey;
       result.push({
         title: '操作',
         key: '__actions',
-        width: 130,
+        width: 180,
         fixed: 'right',
         render: (_, record) => (
           <Space>
@@ -686,6 +727,15 @@ export default function DbAdminPage() {
             >
               <Button theme="borderless" type="danger" size="small">删除</Button>
             </Popconfirm>
+            {schemaName && tableName && (
+              <Dropdown
+                trigger="click"
+                position="bottomRight"
+                render={renderRowSqlMenu(schemaName, tableName, pkCols, record)}
+              >
+                <Button theme="borderless" size="small">SQL</Button>
+              </Dropdown>
+            )}
           </Space>
         ),
       });

@@ -1,0 +1,29 @@
+.db-admin-editable-cell {
+  cursor: cell;
+  display: inline-block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  font: inherit;
+  color: inherit;
+  border-radius: 3px;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.db-admin-editable-cell:hover {
+  background-color: var(--semi-color-fill-0);
+  border-color: var(--semi-color-border);
+}
+
+.db-admin-editable-cell:focus-visible {
+  outline: none;
+  border-color: var(--semi-color-primary);
+}
+
+.db-admin-json-invalid .semi-input-textarea,
+.db-admin-json-invalid textarea {
+  border-color: var(--semi-color-danger) !important;
+}

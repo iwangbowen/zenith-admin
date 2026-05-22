@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import {
   Input,
   TextArea,
   InputNumber,
   Switch,
   Popover,
+  Dropdown,
   Button,
   Space,
   Spin,
@@ -14,6 +15,9 @@ import {
 } from '@douyinfe/semi-ui';
 
 import { request } from '@/utils/request';
+
+import './db-admin.css';
+import { buildUpdateSql, copyToClipboard } from './sql-format';
 
 const { Text } = Typography;
 
@@ -78,9 +82,68 @@ function toEditValue(raw: unknown, kind: Kind): string | number | boolean | null
 function toApiValue(v: unknown, kind: Kind): unknown {
   if (v === '' || v === undefined) return null;
   if (kind === 'json' && typeof v === 'string') {
-    try { return JSON.parse(v); } catch { return v; }
+    return JSON.parse(v);
   }
   return v;
+}
+
+function valueDisplayForCopy(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+interface ContextMenuProps {
+  value: unknown;
+  schema: string;
+  table: string;
+  columnName: string;
+  pk: Record<string, unknown> | null;
+  readOnly: boolean;
+  onSetNull: () => void;
+  children: JSX.Element;
+}
+
+function CellContextMenu({
+  value, schema, table, columnName, pk, readOnly, onSetNull, children,
+}: Readonly<ContextMenuProps>): JSX.Element {
+  const handleCopyValue = async () => {
+    const ok = await copyToClipboard(valueDisplayForCopy(value));
+    if (ok) Toast.success('已复制值');
+    else Toast.warning('复制失败');
+  };
+
+  const handleCopyUpdateSql = async () => {
+    if (!pk) {
+      Toast.warning('无主键，无法生成 UPDATE SQL');
+      return;
+    }
+    const sql = buildUpdateSql(schema, table, pk, { [columnName]: value });
+    const ok = await copyToClipboard(sql);
+    if (ok) Toast.success('已复制 UPDATE SQL');
+    else Toast.warning('复制失败');
+  };
+
+  const menu = (
+    <Dropdown.Menu>
+      <Dropdown.Item onClick={() => void handleCopyValue()}>复制值</Dropdown.Item>
+      {!readOnly && (
+        <Dropdown.Item onClick={onSetNull} disabled={value === null || value === undefined}>
+          设为 NULL
+        </Dropdown.Item>
+      )}
+      <Dropdown.Divider />
+      <Dropdown.Item onClick={() => void handleCopyUpdateSql()} disabled={!pk}>
+        复制为 UPDATE SQL
+      </Dropdown.Item>
+    </Dropdown.Menu>
+  );
+
+  return (
+    <Dropdown trigger="contextMenu" position="bottomLeft" render={menu}>
+      {children}
+    </Dropdown>
+  );
 }
 
 export function EditableCell(props: Readonly<Props>): JSX.Element {
@@ -100,22 +163,48 @@ export function EditableCell(props: Readonly<Props>): JSX.Element {
     }
   }, [editing, value, kind]);
 
-  const buildPk = (): Record<string, unknown> | null => {
+  const pk = useMemo<Record<string, unknown> | null>(() => {
     if (primaryKey.length === 0) return null;
-    const pk: Record<string, unknown> = {};
-    for (const k of primaryKey) pk[k] = record[k];
-    return pk;
-  };
+    const out: Record<string, unknown> = {};
+    for (const k of primaryKey) out[k] = record[k];
+    return out;
+  }, [primaryKey, record]);
+
+  const jsonError = useMemo<string | null>(() => {
+    if (!editing || kind !== 'json') return null;
+    const s = String(draft ?? '').trim();
+    if (s === '') return null;
+    try {
+      JSON.parse(s);
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : 'JSON 解析失败';
+    }
+  }, [editing, kind, draft]);
 
   const save = async (overrideValue?: unknown) => {
     if (savedRef.current) return;
-    const pk = buildPk();
     if (!pk) {
       Toast.warning('无主键，无法保存');
       return;
     }
-    const next = overrideValue === undefined ? toApiValue(draft, kind) : overrideValue;
-    const prev = toApiValue(toEditValue(value, kind), kind);
+    let next: unknown;
+    if (overrideValue === undefined) {
+      try {
+        next = toApiValue(draft, kind);
+      } catch {
+        Toast.error('JSON 格式错误，请检查');
+        return;
+      }
+    } else {
+      next = overrideValue;
+    }
+    let prev: unknown;
+    try {
+      prev = toApiValue(toEditValue(value, kind), kind);
+    } catch {
+      prev = value;
+    }
     if (JSON.stringify(next) === JSON.stringify(prev)) {
       setEditing(false);
       return;
@@ -142,35 +231,53 @@ export function EditableCell(props: Readonly<Props>): JSX.Element {
     setEditing(false);
   };
 
-  // 只读单元格
-  if (readOnly) {
-    return <span style={{ color: 'var(--semi-color-text-2)' }}>{formatDisplay(value)}</span>;
-  }
+  const handleSetNull = () => { void save(null); };
 
-  // boolean: 直接渲染 Switch，点击即保存
-  if (kind === 'bool') {
-    return (
-      <Switch
-        size="small"
-        loading={saving}
-        checked={Boolean(value)}
-        onChange={(checked) => void save(checked)}
-      />
+  const wrapWithMenu = (child: JSX.Element) => (
+    <CellContextMenu
+      value={value}
+      schema={schema}
+      table={table}
+      columnName={columnName}
+      pk={pk}
+      readOnly={Boolean(readOnly)}
+      onSetNull={handleSetNull}
+    >
+      {child}
+    </CellContextMenu>
+  );
+
+  if (readOnly) {
+    return wrapWithMenu(
+      <span style={{ color: 'var(--semi-color-text-2)' }}>{formatDisplay(value)}</span>,
     );
   }
 
-  // long-text / json: 使用 Popover + TextArea
+  if (kind === 'bool') {
+    return wrapWithMenu(
+      <span>
+        <Switch
+          size="small"
+          loading={saving}
+          checked={Boolean(value)}
+          onChange={(checked) => void save(checked)}
+        />
+      </span>,
+    );
+  }
+
   if (editing && (kind === 'json' || kind === 'long-text')) {
     return (
       <Popover
         visible
         trigger="custom"
         position="bottom"
-        onClickOutSide={() => { if (!saving) void save(); }}
+        onClickOutSide={() => { if (!saving && !jsonError) void save(); }}
         content={(
           // eslint-disable-next-line sonarjs/no-static-element-interactions, jsx-a11y/no-static-element-interactions
           <div
             style={{ width: 420 }}
+            className={jsonError ? 'db-admin-json-invalid' : undefined}
             onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
               if (e.key === 'Escape') cancel();
             }}
@@ -181,10 +288,21 @@ export function EditableCell(props: Readonly<Props>): JSX.Element {
               autosize={{ minRows: 3, maxRows: 10 }}
               placeholder={kind === 'json' ? '{ "key": "value" }' : ''}
             />
+            {jsonError && (
+              <Text type="danger" size="small" style={{ display: 'block', marginTop: 4 }}>
+                JSON 错误：{jsonError}
+              </Text>
+            )}
             <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
               <Space>
                 <Button size="small" onClick={cancel}>取消</Button>
-                <Button size="small" type="primary" loading={saving} onClick={() => void save()}>
+                <Button
+                  size="small"
+                  type="primary"
+                  loading={saving}
+                  disabled={!!jsonError}
+                  onClick={() => void save()}
+                >
                   保存
                 </Button>
               </Space>
@@ -197,7 +315,6 @@ export function EditableCell(props: Readonly<Props>): JSX.Element {
     );
   }
 
-  // 内联编辑：int / number / text
   if (editing) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter') void save();
@@ -232,27 +349,16 @@ export function EditableCell(props: Readonly<Props>): JSX.Element {
     );
   }
 
-  return (
+  return wrapWithMenu(
     <button
       type="button"
+      className="db-admin-editable-cell"
       onDoubleClick={() => setEditing(true)}
-      style={{
-        cursor: 'cell',
-        display: 'inline-block',
-        width: '100%',
-        textAlign: 'left',
-        background: 'transparent',
-        border: 'none',
-        padding: 0,
-        font: 'inherit',
-        color: 'inherit',
-      }}
-      title="双击编辑"
+      title="双击编辑 · 右键更多"
     >
       {formatDisplay(value)}
-    </button>
+    </button>,
   );
 }
 
-// Re-export for parent usage
 EditableCell.displayName = 'EditableCell';
