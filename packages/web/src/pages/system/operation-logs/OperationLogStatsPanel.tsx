@@ -266,7 +266,7 @@ export default function OperationLogStatsPanel() {
                 <Tooltip
                   contentStyle={tooltipStyle}
                   formatter={(v) => [`${v} 次`, '操作次数']}
-                  labelFormatter={(l: number) => `${String(l).padStart(2, '0')}:00 – ${String(l).padStart(2, '0')}:59`}
+                  labelFormatter={(l) => `${String(l).padStart(2, '0')}:00 – ${String(l).padStart(2, '0')}:59`}
                 />
                 <Bar dataKey="count" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
               </BarChart>

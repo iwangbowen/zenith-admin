@@ -8,6 +8,7 @@ import { scheduleSendToUsers } from '../lib/ws-manager';
 import { currentUser } from '../lib/context';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
+import { httpGet } from '../lib/http-client';
 import { HTTPException } from 'hono/http-exception';
 import type {
   SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup, ChatVoteData,
@@ -154,8 +155,7 @@ export async function getLinkPreview(rawUrl: string): Promise<ChatLinkPreview> {
   const timer = setTimeout(() => controller.abort(), 5000);
 
   try {
-    const resp = await fetch(parsed, {
-      method: 'GET',
+    const resp = await httpGet(parsed.toString(), {
       redirect: 'manual', // 禁止自动跟随重定向，防止 SSRF 绕过
       signal: controller.signal,
       headers: {
@@ -170,8 +170,7 @@ export async function getLinkPreview(rawUrl: string): Promise<ChatLinkPreview> {
       if (!location) return fallback;
       try {
         const redirectTarget = validatePreviewUrl(location);
-        const redirectResp = await fetch(redirectTarget, {
-          method: 'GET',
+        const redirectResp = await httpGet(redirectTarget.toString(), {
           redirect: 'error', // 不再跟随二次重定向
           signal: controller.signal,
           headers: {
@@ -180,7 +179,6 @@ export async function getLinkPreview(rawUrl: string): Promise<ChatLinkPreview> {
           },
         });
         if (!redirectResp.ok) return fallback;
-        // 递归处理与下方相同的逻辑略显复杂，直接返回 fallback 并将 url 设为原始地址
         return fallback;
       } catch {
         return fallback;

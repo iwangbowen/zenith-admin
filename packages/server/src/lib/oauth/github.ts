@@ -1,3 +1,4 @@
+import { httpGet, httpPost, HttpClientError } from '../http-client';
 import type { OAuthProvider, OAuthProviderConfig, OAuthTokenResult, OAuthUserInfo } from './types';
 
 export class GitHubProvider implements OAuthProvider {
@@ -15,28 +16,25 @@ export class GitHubProvider implements OAuthProvider {
   }
 
   async getToken(code: string): Promise<OAuthTokenResult> {
-    const resp = await fetch('https://github.com/login/oauth/access_token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        client_id: this.cfg.clientId,
-        client_secret: this.cfg.clientSecret,
-        code,
-      }),
+    const resp = await httpPost('https://github.com/login/oauth/access_token', {
+      client_id: this.cfg.clientId,
+      client_secret: this.cfg.clientSecret,
+      code,
+    }, {
+      headers: { Accept: 'application/json' },
     });
-    const data = await resp.json() as Record<string, unknown>;
+    if (!resp.ok) throw new HttpClientError('GitHub token request failed', { status: resp.status, url: resp.url });
+    const data = await resp.json<Record<string, unknown>>();
     if (data.error) throw new Error(`GitHub OAuth error: ${(data.error_description || data.error) as string}`);
     return { accessToken: data.access_token as string };
   }
 
   async getUserInfo(token: OAuthTokenResult): Promise<OAuthUserInfo> {
-    const resp = await fetch('https://api.github.com/user', {
+    const resp = await httpGet('https://api.github.com/user', {
       headers: { Authorization: `Bearer ${token.accessToken}`, Accept: 'application/json' },
     });
-    const user = await resp.json() as Record<string, unknown>;
+    if (!resp.ok) throw new HttpClientError('GitHub userinfo request failed', { status: resp.status, url: resp.url });
+    const user = await resp.json<Record<string, unknown>>();
     return {
       openId: String(user.id),
       nickname: (user.login as string) || (user.name as string) || '',

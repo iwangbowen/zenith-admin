@@ -1,3 +1,4 @@
+import { httpGet, httpPost, HttpClientError } from '../http-client';
 import type { OAuthProvider, OAuthProviderConfig, OAuthTokenResult, OAuthUserInfo } from './types';
 
 const NEW_API = 'https://api.dingtalk.com';
@@ -19,17 +20,14 @@ export class DingTalkProvider implements OAuthProvider {
   }
 
   async getToken(code: string): Promise<OAuthTokenResult> {
-    const resp = await fetch(`${NEW_API}/v1.0/oauth2/userAccessToken`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        clientId: this.cfg.clientId,
-        clientSecret: this.cfg.clientSecret,
-        code,
-        grantType: 'authorization_code',
-      }),
+    const resp = await httpPost(`${NEW_API}/v1.0/oauth2/userAccessToken`, {
+      clientId: this.cfg.clientId,
+      clientSecret: this.cfg.clientSecret,
+      code,
+      grantType: 'authorization_code',
     });
-    const data = await resp.json() as Record<string, unknown>;
+    if (!resp.ok) throw new HttpClientError('DingTalk token request failed', { status: resp.status, url: resp.url });
+    const data = await resp.json<Record<string, unknown>>();
     if (!data.accessToken) throw new Error(`DingTalk OAuth error: ${JSON.stringify(data)}`);
     return {
       accessToken: data.accessToken as string,
@@ -39,10 +37,11 @@ export class DingTalkProvider implements OAuthProvider {
   }
 
   async getUserInfo(token: OAuthTokenResult): Promise<OAuthUserInfo> {
-    const resp = await fetch(`${NEW_API}/v1.0/contact/users/me`, {
+    const resp = await httpGet(`${NEW_API}/v1.0/contact/users/me`, {
       headers: { 'x-acs-dingtalk-access-token': token.accessToken },
     });
-    const data = await resp.json() as Record<string, unknown>;
+    if (!resp.ok) throw new HttpClientError('DingTalk userinfo request failed', { status: resp.status, url: resp.url });
+    const data = await resp.json<Record<string, unknown>>();
     return {
       openId: data.openId as string,
       unionId: data.unionId as string | undefined,
