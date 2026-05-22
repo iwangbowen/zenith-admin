@@ -403,7 +403,7 @@ export default function AIChatPage() {
   );
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* 左侧：会话列表 */}
       <div
         style={{

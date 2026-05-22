@@ -212,7 +212,7 @@ export default function AISidebarPage() {
   const [mcpOptions, setMcpOptions] = useState<MCPReactOption[]>(INITIAL_MCP_OPTIONS);
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden', gap: 0 }}>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden', gap: 0 }}>
       <style>{embeddedContainerStyle}</style>
       {/* 主内容区 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>

@@ -958,7 +958,7 @@ export default function DbAdminPage() {
         }}
       >
         <TabPane tab={<span><TableIcon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />表浏览</span>} itemKey="browse">
-          <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 240px)', minHeight: 480 }}>
+          <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 480 }}>
             {/* 左侧表列表 */}
             <div style={{ width: 320, display: 'flex', flexDirection: 'column', border: '1px solid var(--semi-color-border)', borderRadius: 6, overflow: 'hidden' }}>
               <div style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', flexShrink: 0 }}>

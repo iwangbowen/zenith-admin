@@ -360,8 +360,6 @@ export default function RegionsPage() {
         onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Region => 'id' in r).map((r) => r.id) ?? [])}
         childrenRecordName="children"
         pagination={false}
-        virtualized
-        scroll={{ y: 'calc(100vh - 260px)' }}
       />
 
       <Modal

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Switch, TextArea, Toast, Spin, Typography } from '@douyinfe/semi-ui';
-import type { SystemConfig } from '@zenith/shared';
+import {
+  Button, Card, Switch, TextArea, Toast, Spin, Typography,
+  Tabs, TabPane, Table, Tag, Input, Select,
+} from '@douyinfe/semi-ui';
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import type { IpAccessLog, SystemConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import { Search, RotateCcw } from 'lucide-react';
 
 const { Title, Text } = Typography;
 
@@ -34,8 +40,6 @@ export default function IpAccessPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<'whitelist' | 'blacklist' | null>(null);
   const [configs, setConfigs] = useState<IpConfigMap>({});
-
-  // Form state
   const [whitelistEnabled, setWhitelistEnabled] = useState(false);
   const [whitelistText, setWhitelistText] = useState('');
   const [blacklistEnabled, setBlacklistEnabled] = useState(false);
