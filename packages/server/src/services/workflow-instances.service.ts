@@ -18,6 +18,8 @@ export function mapTask(
     status: row.status,
     comment: row.comment,
     actionAt: formatNullableDateTime(row.actionAt),
+    externalCallbackId: row.externalCallbackId ?? null,
+    externalDispatchStatus: row.externalDispatchStatus ?? null,
     createdAt: formatDateTime(row.createdAt),
   };
 }
@@ -63,11 +65,62 @@ import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, users } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import type { DbExecutor } from '../db/types';
+import { workflowEventBus } from '../lib/workflow-event-bus';
+
+/** 发射实例生命周期事件的辅助函数 */
+function emitInstanceEvent(
+  type: 'instance.created' | 'instance.approved' | 'instance.rejected' | 'instance.withdrawn',
+  instance: ReturnType<typeof mapInstance>,
+  actor: { userId: number; name?: string | null },
+) {
+  workflowEventBus.emit({
+    type,
+    instanceId: instance.id,
+    definitionId: instance.definitionId,
+    tenantId: instance.tenantId ?? null,
+    actor,
+    instance,
+  } as Parameters<typeof workflowEventBus.emit>[0]);
+}
+
+/** 发射任务生命周期事件的辅助函数 */
+function emitTaskEvent(
+  type: 'task.created' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred' | 'task.assigned',
+  task: WorkflowTaskDto,
+  meta: { definitionId: number; tenantId: number | null; actor?: { userId: number; name?: string | null }; comment?: string | null },
+) {
+  workflowEventBus.emit({
+    type,
+    instanceId: task.instanceId,
+    definitionId: meta.definitionId,
+    tenantId: meta.tenantId,
+    actor: meta.actor,
+    task,
+    comment: meta.comment,
+  } as Parameters<typeof workflowEventBus.emit>[0]);
+}
+
+/** 发射节点进入/离开事件 */
+function emitNodeEvent(
+  type: 'node.entered' | 'node.left',
+  meta: { instanceId: number; definitionId: number; tenantId: number | null; nodeKey: string; nodeName: string; nodeType: WorkflowTaskDto['nodeType']; actor?: { userId: number; name?: string | null } },
+) {
+  workflowEventBus.emit({
+    type,
+    instanceId: meta.instanceId,
+    definitionId: meta.definitionId,
+    tenantId: meta.tenantId,
+    actor: meta.actor,
+    nodeKey: meta.nodeKey,
+    nodeName: meta.nodeName,
+    nodeType: meta.nodeType,
+  } as Parameters<typeof workflowEventBus.emit>[0]);
+}
 
 /**
  * 将引擎输出的 TaskAction[] 展开为实际需插入的 workflow_tasks 行。
@@ -126,7 +179,7 @@ async function expandTasksToRows(
       continue;
     }
     const fallbackMethod: Exclude<WorkflowApproveMethod, 'auto'> = userIds.length > 1 ? 'and' : 'or';
-    const method: Exclude<WorkflowApproveMethod, 'auto'> = rawMethod && rawMethod !== 'auto' ? rawMethod : fallbackMethod;
+    const method: Exclude<WorkflowApproveMethod, 'auto'> = rawMethod ?? fallbackMethod;
     userIds.forEach((uid, idx) => {
       rows.push({
         instanceId: ctx.instanceId,
@@ -377,7 +430,7 @@ export async function createInstance(data: { definitionId: number; title: string
   if (initialResult.tasksToCreate.length === 0 && !initialResult.finished) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }
-  const instance = await db.transaction(async (tx) => {
+  const { instance, createdTasks } = await db.transaction(async (tx) => {
     const [createdInstance] = await tx.insert(workflowInstances).values({
       definitionId: def.id,
       definitionSnapshot: def,
@@ -388,6 +441,7 @@ export async function createInstance(data: { definitionId: number; title: string
       initiatorId: user.userId,
       tenantId: getCreateTenantId(user),
     }).returning();
+    let inserted: typeof workflowTasks.$inferSelect[] = [];
     if (initialResult.tasksToCreate.length > 0) {
       const rows = await expandTasksToRows(initialResult.tasksToCreate, {
         instanceId: createdInstance.id,
@@ -395,11 +449,22 @@ export async function createInstance(data: { definitionId: number; title: string
         executor: tx,
         formData,
       });
-      if (rows.length > 0) await tx.insert(workflowTasks).values(rows);
+      if (rows.length > 0) {
+        inserted = await tx.insert(workflowTasks).values(rows).returning();
+      }
     }
-    return createdInstance;
+    return { instance: createdInstance, createdTasks: inserted };
   });
-  return mapInstance(instance);
+  const instanceDto = mapInstance(instance);
+  const actor = { userId: user.userId, name: user.username };
+  emitInstanceEvent('instance.created', instanceDto, actor);
+  for (const t of createdTasks) {
+    emitTaskEvent('task.created', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
+    if (t.assigneeId && t.status === 'pending') {
+      emitTaskEvent('task.assigned', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
+    }
+  }
+  return instanceDto;
 }
 
 export async function withdrawInstance(id: number) {
@@ -411,13 +476,20 @@ export async function withdrawInstance(id: number) {
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以撤回' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '只能撤回进行中的申请' });
-  const updated = await db.transaction(async (tx) => {
-    await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
-      .where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending')));
+  const { row: updated, cancelledTasks } = await db.transaction(async (tx) => {
+    const cancelled = await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
+      .where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending')))
+      .returning();
     const [row] = await tx.update(workflowInstances).set({ status: 'withdrawn' }).where(and(...conditions)).returning();
-    return row;
+    return { row, cancelledTasks: cancelled };
   });
-  return mapInstance(updated);
+  const instanceDto = mapInstance(updated);
+  const actor = { userId: user.userId, name: user.username };
+  for (const t of cancelledTasks) {
+    emitTaskEvent('task.skipped', mapTask(t), { definitionId: updated.definitionId, tenantId: updated.tenantId, actor });
+  }
+  emitInstanceEvent('instance.withdrawn', instanceDto, actor);
+  return instanceDto;
 }
 
 export interface ApproveResult {
@@ -439,21 +511,20 @@ export async function approveTask(taskId: number, comment?: string): Promise<App
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
 
   const updated = await db.transaction(async (tx) => {
-    await tx.update(workflowTasks).set({
+    const [approvedTask] = await tx.update(workflowTasks).set({
       status: 'approved',
       comment: comment ?? null,
       actionAt: new Date(),
-    }).where(eq(workflowTasks.id, taskId));
+    }).where(eq(workflowTasks.id, taskId)).returning();
 
     // 检查当前节点是否已足够推进（会签/或签/顺序会签）
     const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey);
     if (!completed) {
-      // 节点尚未完成（如会签还有人未处理 / 顺序会签等待下一位）
       const [row] = await tx.update(workflowInstances)
         .set({ currentNodeKey: task.nodeKey })
         .where(eq(workflowInstances.id, inst.id))
         .returning();
-      return { row, finished: false, advanced: false };
+      return { row, finished: false, advanced: false, approvedTask, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
     const allTasks = await tx.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')));
@@ -464,9 +535,10 @@ export async function approveTask(taskId: number, comment?: string): Promise<App
 
     if (advanceResult.finished && advanceResult.tasksToCreate.length === 0) {
       const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      return { row, finished: true, advanced: true };
+      return { row, finished: true, advanced: true, approvedTask, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
+    let newTasks: typeof workflowTasks.$inferSelect[] = [];
     if (advanceResult.tasksToCreate.length > 0) {
       const rows = await expandTasksToRows(advanceResult.tasksToCreate, {
         instanceId: inst.id,
@@ -474,20 +546,37 @@ export async function approveTask(taskId: number, comment?: string): Promise<App
         executor: tx,
         formData,
       });
-      if (rows.length > 0) await tx.insert(workflowTasks).values(rows);
+      if (rows.length > 0) newTasks = await tx.insert(workflowTasks).values(rows).returning();
     }
 
     if (advanceResult.finished) {
       const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      return { row, finished: true, advanced: true };
+      return { row, finished: true, advanced: true, approvedTask, newTasks };
     }
 
     const [row] = await tx.update(workflowInstances)
       .set({ currentNodeKey: advanceResult.currentNodeKeys[0] ?? null })
       .where(eq(workflowInstances.id, inst.id))
       .returning();
-    return { row, finished: false, advanced: true };
+    return { row, finished: false, advanced: true, approvedTask, newTasks };
   });
+
+  const actor = { userId: user.userId, name: user.username };
+  const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
+  emitTaskEvent('task.approved', mapTask(updated.approvedTask), { ...meta, comment });
+  if (updated.advanced) {
+    emitNodeEvent('node.left', { instanceId: updated.row.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType });
+  }
+  for (const t of updated.newTasks) {
+    emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
+    emitTaskEvent('task.created', mapTask(t), meta);
+    if (t.assigneeId && t.status === 'pending') {
+      emitTaskEvent('task.assigned', mapTask(t), meta);
+    }
+  }
+  if (updated.finished) {
+    emitInstanceEvent('instance.approved', mapInstance(updated.row), actor);
+  }
 
   let message: string;
   if (updated.finished) {
@@ -547,17 +636,19 @@ export async function rejectTask(taskId: number, comment: string) {
 
   const updated = await db.transaction(async (tx) => {
     // 当前任务 → rejected
-    await tx.update(workflowTasks)
+    const [rejectedTask] = await tx.update(workflowTasks)
       .set({ status: 'rejected', comment, actionAt: new Date() })
-      .where(eq(workflowTasks.id, taskId));
+      .where(eq(workflowTasks.id, taskId))
+      .returning();
     // 同节点其他 pending / waiting 任务跳过
-    await tx.update(workflowTasks)
+    const skipped = await tx.update(workflowTasks)
       .set({ status: 'skipped', actionAt: new Date() })
       .where(and(
         eq(workflowTasks.instanceId, inst.id),
         eq(workflowTasks.nodeKey, task.nodeKey),
         or(eq(workflowTasks.status, 'pending'), eq(workflowTasks.status, 'waiting')),
-      ));
+      ))
+      .returning();
 
     // 终止：实例置为 rejected
     if (strategy === 'terminate' || !targetNodeKey || !flowData) {
@@ -565,7 +656,7 @@ export async function rejectTask(taskId: number, comment: string) {
         .set({ status: 'rejected', currentNodeKey: null })
         .where(eq(workflowInstances.id, inst.id))
         .returning();
-      return { row, terminated: true };
+      return { row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
     // 回退：实例保持 running，在目标节点重新生成任务
@@ -592,12 +683,11 @@ export async function rejectTask(taskId: number, comment: string) {
     }
 
     if (tasksToCreate.length === 0) {
-      // 找不到合法目标，降级为终止
       const [row] = await tx.update(workflowInstances)
         .set({ status: 'rejected', currentNodeKey: null })
         .where(eq(workflowInstances.id, inst.id))
         .returning();
-      return { row, terminated: true };
+      return { row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
     const rows = await expandTasksToRows(tasksToCreate, {
@@ -606,14 +696,32 @@ export async function rejectTask(taskId: number, comment: string) {
       executor: tx,
       formData,
     });
-    if (rows.length > 0) await tx.insert(workflowTasks).values(rows);
+    let newTasks: typeof workflowTasks.$inferSelect[] = [];
+    if (rows.length > 0) newTasks = await tx.insert(workflowTasks).values(rows).returning();
 
     const [row] = await tx.update(workflowInstances)
       .set({ currentNodeKey: newCurrentKey })
       .where(eq(workflowInstances.id, inst.id))
       .returning();
-    return { row, terminated: false };
+    return { row, terminated: false, rejectedTask, skippedTasks: skipped, newTasks };
   });
+
+  const actor = { userId: user.userId, name: user.username };
+  const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
+  emitTaskEvent('task.rejected', mapTask(updated.rejectedTask), { ...meta, comment });
+  for (const t of updated.skippedTasks) {
+    emitTaskEvent('task.skipped', mapTask(t), meta);
+  }
+  emitNodeEvent('node.left', { instanceId: updated.row.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType });
+  if (updated.terminated) {
+    emitInstanceEvent('instance.rejected', mapInstance(updated.row), actor);
+  } else {
+    for (const t of updated.newTasks) {
+      emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
+      emitTaskEvent('task.created', mapTask(t), meta);
+      if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
+    }
+  }
 
   return mapInstance(updated.row);
 }

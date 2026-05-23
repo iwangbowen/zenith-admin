@@ -411,7 +411,10 @@ export type WsMessage =
   | { type: 'chat:typing'; payload: { conversationId: number; userId: number; nickname: string } }
   | { type: 'chat:reaction'; payload: { conversationId: number; messageId: number; reactions: ChatReactionGroup[] } }
   | { type: 'chat:edit'; payload: ChatMessage }
-  | { type: 'chat:vote-update'; payload: { conversationId: number; messageId: number; voteData: ChatVoteData } };
+  | { type: 'chat:vote-update'; payload: { conversationId: number; messageId: number; voteData: ChatVoteData } }
+  | { type: 'workflow:taskCreated'; payload: { instanceId: number; taskId: number; instanceTitle: string; nodeName: string } }
+  | { type: 'workflow:taskFinished'; payload: { instanceId: number; taskId: number; decision: 'approved' | 'rejected' | 'skipped' } }
+  | { type: 'workflow:instanceFinished'; payload: { instanceId: number; status: WorkflowInstanceStatus; title: string } };
 
 // ─── 地区管理 ──────────────────────────────────────────────
 export type RegionLevel = 'province' | 'city' | 'county';
@@ -531,7 +534,8 @@ export interface UserApiTokenCreated {
 // ─── 工作流引擎 ───────────────────────────────────────────────────────────────
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
 export type WorkflowInstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
-export type WorkflowTaskStatus = 'pending' | 'approved' | 'rejected' | 'skipped';
+export type WorkflowTaskStatus = 'pending' | 'approved' | 'rejected' | 'skipped' | 'waiting';
+export type WorkflowTaskExternalDispatchStatus = 'pending' | 'dispatched' | 'failed' | 'fallback';
 export type WorkflowNodeType =
   | 'start'
   | 'approve'
@@ -624,6 +628,40 @@ export interface WorkflowNodeConfig {
   rejectStrategy?: WorkflowRejectStrategy;
   /** 当 rejectStrategy = 'returnToNode' 时，目标节点的 key */
   rejectToNodeKey?: string;
+  /** 触发器节点配置（type === 'trigger' 时生效） */
+  triggerConfig?: WorkflowTriggerNodeConfig;
+  /** 外部审批配置（type === 'approve' 时生效） */
+  externalApproval?: WorkflowExternalApprovalConfig;
+}
+
+/** 触发器节点配置 */
+export interface WorkflowTriggerNodeConfig {
+  triggerType: WorkflowTriggerType;
+  /** webhook / callback：目标 URL */
+  webhookUrl?: string;
+  httpMethod?: 'GET' | 'POST' | 'PUT';
+  headers?: Record<string, string>;
+  /** 请求体模板（支持 {{form.field}} 占位） */
+  bodyTemplate?: string;
+  /** updateData / deleteData：操作的表单字段 key 列表 */
+  fieldKeys?: string[];
+  /** updateData：字段 key → 新值（支持 {{form.field}} 占位） */
+  fieldValues?: Record<string, string>;
+  /** 失败策略 */
+  onFailure?: 'continue' | 'retry' | 'block';
+  maxRetries?: number;
+  timeoutMs?: number;
+}
+
+/** 外部审批配置 */
+export interface WorkflowExternalApprovalConfig {
+  enabled: boolean;
+  url: string;
+  secret: string;
+  signMode?: WorkflowEventSignMode;
+  timeoutMs?: number;
+  /** 调用外部 URL 失败时的兜底策略 */
+  fallbackStrategy?: 'manual' | 'autoApprove' | 'autoReject';
 }
 
 // React Flow 数据结构（flowData JSON）
@@ -786,6 +824,9 @@ export interface WorkflowTask {
   status: WorkflowTaskStatus;
   comment: string | null;
   actionAt: string | null;
+  /** 外部审批回调 ID（task.status='waiting' + externalApproval 启用时生效） */
+  externalCallbackId?: string | null;
+  externalDispatchStatus?: WorkflowTaskExternalDispatchStatus | null;
   createdAt: string;
 }
 
@@ -806,6 +847,132 @@ export interface WorkflowInstance {
   tasks?: WorkflowTask[];
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── 流程事件总线 ─────────────────────────────────────────────────────────────
+export type WorkflowEventType =
+  | 'instance.created'
+  | 'instance.approved'
+  | 'instance.rejected'
+  | 'instance.withdrawn'
+  | 'node.entered'
+  | 'node.left'
+  | 'task.created'
+  | 'task.assigned'
+  | 'task.approved'
+  | 'task.rejected'
+  | 'task.skipped'
+  | 'task.transferred';
+
+export interface WorkflowEventActor {
+  userId: number;
+  name?: string | null;
+}
+
+export interface WorkflowEventBase {
+  /** 唯一事件 ID（uuid），用于外部系统幂等 */
+  eventId: string;
+  type: WorkflowEventType;
+  /** ISO 时间戳（YYYY-MM-DD HH:mm:ss） */
+  occurredAt: string;
+  instanceId: number;
+  definitionId: number;
+  tenantId: number | null;
+  actor?: WorkflowEventActor;
+}
+
+export interface WorkflowInstanceEventPayload extends WorkflowEventBase {
+  type: 'instance.created' | 'instance.approved' | 'instance.rejected' | 'instance.withdrawn';
+  instance: WorkflowInstance;
+}
+
+export interface WorkflowNodeEventPayload extends WorkflowEventBase {
+  type: 'node.entered' | 'node.left';
+  nodeKey: string;
+  nodeName: string;
+  nodeType: WorkflowNodeType | null;
+}
+
+export interface WorkflowTaskEventPayload extends WorkflowEventBase {
+  type: 'task.created' | 'task.assigned' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred';
+  task: WorkflowTask;
+  comment?: string | null;
+}
+
+export type WorkflowEvent =
+  | WorkflowInstanceEventPayload
+  | WorkflowNodeEventPayload
+  | WorkflowTaskEventPayload;
+
+// ─── 流程事件订阅 ────────────────────────────────────────────────────────────
+export type WorkflowEventSignMode = 'hmacSha256' | 'none';
+export type WorkflowEventDeliveryStatus = 'pending' | 'success' | 'failed' | 'retrying';
+
+export interface WorkflowEventSubscription {
+  id: number;
+  name: string;
+  description: string | null;
+  /** null = 全局（订阅所有流程定义） */
+  definitionId: number | null;
+  definitionName?: string | null;
+  events: WorkflowEventType[];
+  url: string;
+  /** 已脱敏（列表/详情）或明文（请求"显示"时） */
+  secret: string;
+  signMode: WorkflowEventSignMode;
+  headers: Record<string, string> | null;
+  enabled: boolean;
+  tenantId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowEventDelivery {
+  id: number;
+  subscriptionId: number;
+  subscriptionName?: string | null;
+  instanceId: number | null;
+  taskId: number | null;
+  eventId: string;
+  eventType: WorkflowEventType;
+  payload: WorkflowEvent | null;
+  attempt: number;
+  status: WorkflowEventDeliveryStatus;
+  requestUrl: string;
+  requestHeaders: Record<string, string> | null;
+  responseStatus: number | null;
+  responseBody: string | null;
+  errorMessage: string | null;
+  durationMs: number | null;
+  nextRetryAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  tenantId: number | null;
+  createdAt: string;
+}
+
+// ─── 触发器节点执行 ──────────────────────────────────────────────────────────
+export type WorkflowTriggerExecutionStatus = 'success' | 'failed' | 'skipped' | 'retrying';
+export type WorkflowTriggerType = 'webhook' | 'callback' | 'updateData' | 'deleteData';
+
+export interface WorkflowTriggerExecution {
+  id: number;
+  instanceId: number;
+  taskId: number | null;
+  nodeKey: string;
+  nodeName: string;
+  triggerType: WorkflowTriggerType;
+  status: WorkflowTriggerExecutionStatus;
+  attempt: number;
+  requestUrl: string | null;
+  requestMethod: string | null;
+  requestBody: string | null;
+  responseStatus: number | null;
+  responseBody: string | null;
+  errorMessage: string | null;
+  durationMs: number | null;
+  tenantId: number | null;
+  createdAt: string;
 }
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────

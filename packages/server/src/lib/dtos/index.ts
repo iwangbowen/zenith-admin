@@ -20,6 +20,7 @@ export * from './db-admin';
 export * from './monitor';
 export * from './sessions';
 export * from './workflow';
+export * from './workflow-events';
 export * from './dashboard';
 export * from './region';
 export * from './sms';

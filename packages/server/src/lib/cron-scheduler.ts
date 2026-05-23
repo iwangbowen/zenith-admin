@@ -40,6 +40,12 @@ handlerRegistry.set('databaseBackup', async (params) => {
   return `数据库备份完成 (${type}), ID: ${backup.id}`;
 });
 
+handlerRegistry.set('retryWorkflowEventDeliveries', async () => {
+  const { retryWorkflowEventDeliveries } = await import('./workflow-subscribers/webhook');
+  const { retried } = await retryWorkflowEventDeliveries();
+  return `重试了 ${retried} 个事件投递`;
+});
+
 // ─── Public API ────────────────────────────────────────────────
 
 /** Get list of registered handler names */

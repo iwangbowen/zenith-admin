@@ -764,6 +764,10 @@ export type NewTag = typeof tags.$inferInsert;
 export const workflowDefinitionStatusEnum = pgEnum('workflow_definition_status', ['draft', 'published', 'disabled']);
 export const workflowInstanceStatusEnum = pgEnum('workflow_instance_status', ['draft', 'running', 'approved', 'rejected', 'withdrawn']);
 export const workflowTaskStatusEnum = pgEnum('workflow_task_status', ['pending', 'approved', 'rejected', 'skipped', 'waiting']);
+export const workflowEventSignModeEnum = pgEnum('workflow_event_sign_mode', ['hmacSha256', 'none']);
+export const workflowEventDeliveryStatusEnum = pgEnum('workflow_event_delivery_status', ['pending', 'success', 'failed', 'retrying']);
+export const workflowTriggerExecutionStatusEnum = pgEnum('workflow_trigger_execution_status', ['pending', 'running', 'success', 'failed', 'retrying']);
+export const workflowTaskExternalDispatchStatusEnum = pgEnum('workflow_task_external_dispatch_status', ['pending', 'dispatched', 'failed', 'fallback']);
 export const workflowApproveMethodEnum = pgEnum('workflow_approve_method', ['and', 'or', 'sequential']);
 export const workflowNodeTypeEnum = pgEnum('workflow_node_type', [
   'start',
@@ -868,11 +872,89 @@ export const workflowTasks = pgTable('workflow_tasks', {
   taskOrder: integer('task_order'),
   /** 多人审批方式（仅同一 nodeKey 多 task 时生效） */
   approveMethod: workflowApproveMethodEnum('approve_method'),
+  /** 外部审批：回调 ID（task.status='waiting' 期间有效） */
+  externalCallbackId: varchar('external_callback_id', { length: 64 }).unique(),
+  /** 外部审批：调度状态 */
+  externalDispatchStatus: workflowTaskExternalDispatchStatusEnum('external_dispatch_status'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 export type WorkflowTaskRow = typeof workflowTasks.$inferSelect;
 export type NewWorkflowTask = typeof workflowTasks.$inferInsert;
+
+// ─── 工作流事件订阅 / 投递 / 触发器执行 ─────────────────────────────────────
+export const workflowEventSubscriptions = pgTable('workflow_event_subscriptions', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  description: varchar('description', { length: 256 }),
+  /** 为 null 表示订阅全部流程；否则仅订阅指定流程 */
+  definitionId: integer('definition_id').references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
+  /** 订阅的事件类型列表，存为 JSON 数组字符串 */
+  events: text('events').notNull(),
+  url: varchar('url', { length: 512 }).notNull(),
+  secret: varchar('secret', { length: 256 }),
+  signMode: workflowEventSignModeEnum('sign_mode').default('hmacSha256').notNull(),
+  /** 自定义请求头，JSON 字符串 */
+  headers: text('headers'),
+  enabled: boolean('enabled').default(true).notNull(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedBy: integer('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type WorkflowEventSubscriptionRow = typeof workflowEventSubscriptions.$inferSelect;
+export type NewWorkflowEventSubscription = typeof workflowEventSubscriptions.$inferInsert;
+
+export const workflowEventDeliveries = pgTable('workflow_event_deliveries', {
+  id: serial('id').primaryKey(),
+  subscriptionId: integer('subscription_id').notNull().references(() => workflowEventSubscriptions.id, { onDelete: 'cascade' }),
+  instanceId: integer('instance_id'),
+  taskId: integer('task_id'),
+  eventId: varchar('event_id', { length: 64 }).notNull(),
+  eventType: varchar('event_type', { length: 64 }).notNull(),
+  payload: jsonb('payload'),
+  attempt: integer('attempt').default(0).notNull(),
+  status: workflowEventDeliveryStatusEnum('status').default('pending').notNull(),
+  requestUrl: varchar('request_url', { length: 512 }),
+  requestHeaders: text('request_headers'),
+  responseStatus: integer('response_status'),
+  responseBody: text('response_body'),
+  errorMessage: text('error_message'),
+  durationMs: integer('duration_ms'),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type WorkflowEventDeliveryRow = typeof workflowEventDeliveries.$inferSelect;
+export type NewWorkflowEventDelivery = typeof workflowEventDeliveries.$inferInsert;
+
+export const workflowTriggerExecutions = pgTable('workflow_trigger_executions', {
+  id: serial('id').primaryKey(),
+  instanceId: integer('instance_id').notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  taskId: integer('task_id').references(() => workflowTasks.id, { onDelete: 'set null' }),
+  nodeKey: varchar('node_key', { length: 64 }).notNull(),
+  nodeName: varchar('node_name', { length: 64 }),
+  triggerType: varchar('trigger_type', { length: 32 }).notNull(),
+  status: workflowTriggerExecutionStatusEnum('status').default('pending').notNull(),
+  attempt: integer('attempt').default(0).notNull(),
+  requestUrl: varchar('request_url', { length: 512 }),
+  requestMethod: varchar('request_method', { length: 16 }),
+  requestBody: text('request_body'),
+  responseStatus: integer('response_status'),
+  responseBody: text('response_body'),
+  errorMessage: text('error_message'),
+  durationMs: integer('duration_ms'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type WorkflowTriggerExecutionRow = typeof workflowTriggerExecutions.$inferSelect;
+export type NewWorkflowTriggerExecution = typeof workflowTriggerExecutions.$inferInsert;
 
 // ─── 聊天会话表 ───────────────────────────────────────────────────────────────
 export const chatConversationTypeEnum = pgEnum('chat_conversation_type', ['direct', 'group']);

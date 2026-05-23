@@ -69,6 +69,9 @@ import inAppMessagesRoutes from './routes/in-app-messages';
 import { createWsRoute } from './routes/ws';
 import stripAnsi from 'strip-ansi';
 import { initCronScheduler, stopAllJobs } from './lib/cron-scheduler';
+import { registerWsWorkflowSubscriber } from './lib/workflow-subscribers/ws';
+import { registerWebhookWorkflowSubscriber } from './lib/workflow-subscribers/webhook';
+import workflowEventSubscriptionsRoutes from './routes/workflow-event-subscriptions';
 import { initTelemetry } from './lib/telemetry';
 import { metricsSampler } from './lib/metrics-sampler';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
@@ -206,6 +209,7 @@ app.route('/api/api-tokens', apiTokensRoutes);
 app.route('/api/cache', cacheRoutes);
 app.route('/api/workflows/definitions', workflowDefinitionsRoutes);
 app.route('/api/workflows/categories', workflowCategoriesRoutes);
+app.route('/api/workflows/event-subscriptions', workflowEventSubscriptionsRoutes);
 app.route('/api/workflows', workflowInstancesRoutes);
 app.route('/api/chat', chatRoutes);
 app.route('/api/tags', tagsRoutes);
@@ -296,3 +300,8 @@ try {
 } catch (err) {
   logger.error('Failed to initialize cron scheduler', err);
 }
+
+// 注册工作流事件总线的内置订阅者
+registerWsWorkflowSubscriber();
+registerWebhookWorkflowSubscriber();
+logger.info('Workflow event subscribers registered');
