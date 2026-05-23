@@ -99,6 +99,19 @@ export default defineConfig({
           { text: '外呼 HTTP 客户端', link: '/backend/http-client' },
           { text: '定时任务', link: '/backend/cron-jobs' },
           { text: 'WebSocket 事件清单', link: '/backend/websocket-events' },
+          {
+            text: '工作流',
+            collapsed: true,
+            items: [
+              { text: '总览', link: '/backend/workflow/' },
+              { text: '节点类型与节点标识', link: '/backend/workflow/node-types' },
+              { text: '审批方式与驳回策略', link: '/backend/workflow/approval' },
+              { text: '事件总线', link: '/backend/workflow/event-bus' },
+              { text: '事件订阅', link: '/backend/workflow/event-subscriptions' },
+              { text: '触发器节点', link: '/backend/workflow/trigger-nodes' },
+              { text: '外部审批', link: '/backend/workflow/external-approval' },
+            ],
+          },
         ],
       },
       {
