@@ -1,5 +1,5 @@
 import { Avatar, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
-import { CheckCircle2, Clock, CornerUpLeft, Mail, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, CornerUpLeft, Mail, RotateCcw, XCircle } from 'lucide-react';
 import type { WorkflowTask } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 
@@ -14,13 +14,27 @@ const TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
 
 /** 审批流时间线，使用 Semi Design Timeline 组件统一渲染 */
 export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTask[] }>) {
+  const sorted = [...tasks].sort((a, b) => a.id - b.id);
+
   // 为每个 rejected 任务定位"已回退至"的目标节点：取 id 严格大于当前任务、且非抄送节点的第一条后续任务
   const returnTargetMap = new Map<number, string>();
-  const sorted = [...tasks].sort((a, b) => a.id - b.id);
   for (const t of sorted) {
     if (t.status !== 'rejected') continue;
     const next = sorted.find(n => n.id > t.id && n.nodeType !== 'ccNode' && n.nodeKey !== t.nodeKey);
     if (next) returnTargetMap.set(t.id, next.nodeName);
+  }
+
+  // 标记"被驳回回退后重新推进"的任务：当存在 rejected 任务，且后续出现的同 nodeKey 或初始节点任务视为重新审批
+  const regeneratedIds = new Set<number>();
+  const seenNodeKeys = new Set<string>();
+  let hasRejection = false;
+  for (const t of sorted) {
+    if (t.status === 'rejected') {
+      hasRejection = true;
+    } else if (hasRejection && seenNodeKeys.has(t.nodeKey)) {
+      regeneratedIds.add(t.id);
+    }
+    seenNodeKeys.add(t.nodeKey);
   }
 
   return (
@@ -30,17 +44,21 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
         const isRejected = task.status === 'rejected';
         const isSkipped = task.status === 'skipped';
         const isCc = task.nodeType === 'ccNode';
+        const isRegenerated = regeneratedIds.has(task.id);
+        const returnTargetName = returnTargetMap.get(task.id);
 
         // Semi Design Tokens — 自动适配暗色模式
         let iconColor = 'var(--semi-color-primary)';
         if (isApproved) iconColor = 'var(--semi-color-success)';
         else if (isRejected) iconColor = 'var(--semi-color-danger)';
         else if (isSkipped) iconColor = 'var(--semi-color-tertiary)';
+        else if (isRegenerated) iconColor = 'var(--semi-color-warning)';
 
         let StatusIcon = Clock;
         if (isApproved) StatusIcon = CheckCircle2;
         else if (isRejected) StatusIcon = XCircle;
         else if (isCc) StatusIcon = Mail;
+        else if (isRegenerated) StatusIcon = RotateCcw;
 
         let actionText = '';
         if (isApproved && !isCc) actionText = '已同意';
@@ -73,6 +91,9 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
                 <Tag color={TASK_STATUS_MAP[task.status]?.color ?? 'grey'} size="small" style={{ flexShrink: 0 }}>
                   {actionText}
                 </Tag>
+              )}
+              {isRegenerated && (
+                <Tag color="orange" size="small" style={{ flexShrink: 0 }}>重新审批</Tag>
               )}
             </div>
 
@@ -111,6 +132,21 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
                 borderRadius: 6,
               }}>
                 <Typography.Text size="small" type="secondary">{task.comment}</Typography.Text>
+              </div>
+            )}
+
+            {/* 驳回回退提示 */}
+            {isRejected && returnTargetName && (
+              <div style={{
+                marginTop: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                color: 'var(--semi-color-warning)',
+                fontSize: 12,
+              }}>
+                <CornerUpLeft size={12} />
+                <span>已退回至「{returnTargetName}」重新审批</span>
               </div>
             )}
           </Timeline.Item>
