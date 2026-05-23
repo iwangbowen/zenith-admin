@@ -945,21 +945,20 @@ export default function DbAdminPage() {
 
   // ─── 主渲染 ──────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: 16 }}>
+    <div style={{ padding: 16, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
         type="line"
+        className="tabs-fill-height"
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        contentStyle={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
         tabBarStyle={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-          background: 'var(--semi-color-bg-1)',
           marginBottom: 8,
         }}
       >
-        <TabPane tab={<span><TableIcon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />表浏览</span>} itemKey="browse">
-          <div style={{ height: '100%', minHeight: 480 }}>
+        <TabPane tab={<span><TableIcon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />表浏览</span>} itemKey="browse" style={{ height: '100%' }}>
+          <div style={{ height: '100%' }}>
             <MasterDetailLayout
               defaultSize={320}
               minSize={240}

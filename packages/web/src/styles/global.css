@@ -92,6 +92,14 @@ body {
   color: var(--semi-color-primary);
 }
 
+/* Utility: make Tabs fill its container height.
+   Semi Design wraps tab pane content in a motion overlay that sizes itself
+   to content height, breaking percentage-height children. This fixes it. */
+.tabs-fill-height .semi-tabs-pane-motion-overlay,
+.tabs-fill-height .semi-tabs-pane-motion-overlay > div {
+  height: 100%;
+}
+
 /* Semi override for compact feel */
 .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
   padding: 8px 12px;
