@@ -46,6 +46,7 @@ import { useThemeController } from '@/providers/theme-controller';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
 import { EditableCell } from './EditableCell';
@@ -958,9 +959,17 @@ export default function DbAdminPage() {
         }}
       >
         <TabPane tab={<span><TableIcon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />表浏览</span>} itemKey="browse">
-          <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 480 }}>
-            {/* 左侧表列表 */}
-            <div style={{ width: 320, display: 'flex', flexDirection: 'column', border: '1px solid var(--semi-color-border)', borderRadius: 6, overflow: 'hidden' }}>
+          <div style={{ height: '100%', minHeight: 480 }}>
+            <MasterDetailLayout
+              gap={12}
+              bordered
+              divider={false}
+              defaultSize={320}
+              minSize={240}
+              maxSize={520}
+              persistKey="db-admin-browse"
+              master={(
+                <>
               <div style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
                 <Space style={{ width: '100%' }}>
                   <Input
@@ -1041,10 +1050,10 @@ export default function DbAdminPage() {
                 );
               })()}
               </div>
-            </div>
-
-            {/* 右侧详情 */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid var(--semi-color-border)', borderRadius: 6, overflow: 'hidden', minWidth: 0 }}>
+                </>
+              )}
+              detail={(
+                <>
               {selected ? (
                 <>
                   <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -1243,7 +1252,9 @@ export default function DbAdminPage() {
                   <Empty image={<Database size={48} />} title="请选择一张表" />
                 </div>
               )}
-            </div>
+                </>
+              )}
+            />
           </div>
         </TabPane>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button, Tag, Space, Modal, Toast, Spin, Typography, Input, List as SemiList } from '@douyinfe/semi-ui';
 import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2, Search } from 'lucide-react';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { formatFileSize } from '@/utils/file-utils';
@@ -172,35 +173,31 @@ export default function LogFilesPage() {
   };
 
   return (
-    <div style={{ display: 'flex', gap: 12, height: '100%', overflow: 'hidden' }}>
-      {/* ── 左侧文件列表 ─────────────────────────────────────── */}
-      <div style={{
-        width: 260,
-        flexShrink: 0,
-        border: '1px solid var(--semi-color-border)',
-        borderRadius: 6,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        background: 'var(--semi-color-bg-1)',
-      }}>
-        <div style={{
-          padding: '10px 12px',
-          borderBottom: '1px solid var(--semi-color-border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <Typography.Text strong style={{ fontSize: 13 }}>日志文件</Typography.Text>
-          <Button
-            icon={<RefreshCw size={13} />}
-            size="small"
-            theme="borderless"
-            loading={listLoading}
-            onClick={() => void fetchFiles()}
-          />
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+    <div style={{ padding: 12, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+    <MasterDetailLayout
+      gap={12}
+      bordered
+      divider={false}
+      defaultSize={260}
+      minSize={200}
+      maxSize={480}
+      persistKey="log-files"
+      master={(
+        <>
+          <MasterDetailLayout.Header
+            extra={(
+              <Button
+                icon={<RefreshCw size={13} />}
+                size="small"
+                theme="borderless"
+                loading={listLoading}
+                onClick={() => void fetchFiles()}
+              />
+            )}
+          >
+            <Typography.Text strong style={{ fontSize: 13 }}>日志文件</Typography.Text>
+          </MasterDetailLayout.Header>
+          <MasterDetailLayout.Body padding={0}>
           <SemiList
             dataSource={filteredFiles}
             loading={listLoading}
@@ -262,22 +259,13 @@ export default function LogFilesPage() {
               );
             }}
           />
-        </div>
-      </div>
-
-      {/* ── 右侧内容区 ───────────────────────────────────────── */}
-      <div style={{
-        flex: 1,
-        border: '1px solid var(--semi-color-border)',
-        borderRadius: 6,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        background: 'var(--semi-color-bg-1)',
-        minWidth: 0,
-      }}>
-        {selected ? (
-          <>
+          </MasterDetailLayout.Body>
+        </>
+      )}
+      detail={(
+        <>
+          {selected ? (
+            <>
             {/* 顶部工具栏 */}
             <div style={{
               padding: '10px 16px',
@@ -373,14 +361,16 @@ export default function LogFilesPage() {
                 }
               </pre>
             )}
-          </>
-        ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <FileText size={40} style={{ color: 'var(--semi-color-text-3)' }} />
-            <Typography.Text type="tertiary">请从左侧选择一个日志文件查看</Typography.Text>
-          </div>
-        )}
-      </div>
+            </>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <FileText size={40} style={{ color: 'var(--semi-color-text-3)' }} />
+              <Typography.Text type="tertiary">请从左侧选择一个日志文件查看</Typography.Text>
+            </div>
+          )}
+        </>
+      )}
+    />
     </div>
   );
 }

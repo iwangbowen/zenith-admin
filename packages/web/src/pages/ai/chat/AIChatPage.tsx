@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { AIChatDialogue, AIChatInput, Typography, Button, Tag, RadioGroup, Radio, Select, Toast, List as SemiList } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import { MessageSquarePlus, Trash2, Globe, AlignLeft, AlignJustify, Bot, Wrench } from 'lucide-react';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 
 const { Configure } = AIChatInput;
 const { Title, Text } = Typography;
@@ -403,30 +404,29 @@ export default function AIChatPage() {
   );
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      {/* 左侧：会话列表 */}
-      <div
-        style={{
-          width: 220,
-          borderRight: '1px solid var(--semi-color-border)',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--semi-color-bg-1)',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ padding: '16px 12px 8px' }}>
-          <Button
-            theme="solid"
-            type="primary"
-            icon={<MessageSquarePlus size={14} />}
-            style={{ width: '100%' }}
-            onClick={handleNewConversation}
-          >
-            新建对话
-          </Button>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px' }}>
+    <div style={{ padding: 12, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+    <MasterDetailLayout
+      gap={12}
+      bordered
+      divider={false}
+      defaultSize={220}
+      minSize={180}
+      maxSize={400}
+      persistKey="ai-chat"
+      master={(
+        <>
+          <div style={{ padding: '16px 12px 8px' }}>
+            <Button
+              theme="solid"
+              type="primary"
+              icon={<MessageSquarePlus size={14} />}
+              style={{ width: '100%' }}
+              onClick={handleNewConversation}
+            >
+              新建对话
+            </Button>
+          </div>
+          <MasterDetailLayout.Body style={{ padding: '4px 8px' }}>
           <SemiList
             dataSource={conversations}
             split={false}
@@ -470,17 +470,17 @@ export default function AIChatPage() {
               );
             }}
           />
-        </div>
-        <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
-          <Text type="tertiary" size="small">
-            演示模式 · 模拟 AI 回复
-          </Text>
-        </div>
-      </div>
-
-      {/* 右侧：对话区 */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* 顶栏 */}
+          </MasterDetailLayout.Body>
+          <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
+            <Text type="tertiary" size="small">
+              演示模式 · 模拟 AI 回复
+            </Text>
+          </div>
+        </>
+      )}
+      detail={(
+        <>
+          {/* 顶栏 */}
         <div
           style={{
             padding: '12px 20px',
@@ -582,7 +582,9 @@ export default function AIChatPage() {
             style={{ borderRadius: 12 }}
           />
         </div>
-      </div>
+        </>
+      )}
+    />
     </div>
   );
 }

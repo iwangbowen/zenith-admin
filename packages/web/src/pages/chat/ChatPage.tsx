@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage, useWsConnected } from '@/hooks/useWebSocket';
 import { useAuth } from '@/hooks/useAuth';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
 import { formatFileSize, getFileTypeIcon, fetchProtectedFile } from '@/utils/file-utils';
@@ -1500,21 +1501,20 @@ export default function ChatPage({
   const rootStyle: React.CSSProperties = isQuick
     ? {
       display: 'flex',
+      flexDirection: 'column',
       height: '100%',
       minHeight: 0,
-      border: 'none',
-      borderRadius: 0,
       overflow: 'hidden',
       background: 'var(--semi-color-bg-1)',
     }
     : {
       display: 'flex',
+      flexDirection: 'column',
       height: '100%',
       minHeight: 500,
-      border: '1px solid var(--semi-color-border)',
-      borderRadius: 8,
+      padding: 12,
+      boxSizing: 'border-box',
       overflow: 'hidden',
-      background: 'var(--semi-color-bg-1)',
     };
 
   const hasFailedInCurrentConv = failedMessages.some((m) => m.convId === activeConvId);
@@ -1523,17 +1523,18 @@ export default function ChatPage({
 
   return (
     <div style={rootStyle}>
-
-      {/* Left: conversation list */}
-      <div
-        style={{
-          width: isQuick ? '100%' : 280,
-          borderRight: isQuick ? 'none' : '1px solid var(--semi-color-border)',
-          display: isQuick && activeConv ? 'none' : 'flex',
-          flexDirection: 'column',
-          flexShrink: 0,
-        }}
-      >
+      <MasterDetailLayout
+        defaultSize={280}
+        minSize={220}
+        maxSize={420}
+        gap={isQuick ? 0 : 12}
+        bordered={!isQuick}
+        divider={isQuick}
+        persistKey={isQuick ? undefined : 'messages'}
+        responsiveBreakpoint={isQuick ? 99999 : undefined}
+        responsiveActive={activeConv ? 'detail' : 'master'}
+        master={(
+          <>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
           {totalUnread > 0 ? (
             <Badge count={totalUnread} overflowCount={99} style={{ flex: 1 }}>
@@ -2047,11 +2048,10 @@ export default function ChatPage({
             )}
           </Spin>
         </div>
-      </div>
-
-      {/* Right: chat area */}
-      {activeConv ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          </>
+        )}
+        detail={activeConv ? (
+          <>
           {/* Header */}
           <div style={{ padding: isQuick ? '10px 12px' : '10px 20px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: isQuick ? 6 : 10 }}>
             {isQuick && (
@@ -2984,15 +2984,16 @@ export default function ChatPage({
               </>
             )}
           </div>
-        </div>
-      ) : (
-        !isQuick && <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Empty
-            description={<span>选择一个会话开始聊天，<br />或点击右上角「+」新建</span>}
-            imageStyle={{ width: 100 }}
-          />
-        </div>
-      )}
+          </>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Empty
+              description={<span>选择一个会话开始聊天，<br />或点击右上角「+」新建</span>}
+              imageStyle={{ width: 100 }}
+            />
+          </div>
+        )}
+      />
       <ForwardModal
         visible={forwardModalVisible}
         conversations={conversations}

@@ -2,15 +2,10 @@ import React, { useState } from 'react';
 import { Sidebar, Annotation, MCPConfigure, Button, Typography, Tag, Tabs, TabPane, Toast } from '@douyinfe/semi-ui';
 import type { MCPReactOption } from '@douyinfe/semi-ui/lib/es/sideBar/mcpConfigure/content';
 import { PanelRight, PanelRightClose, Search, FileText, Code2, Wrench, Bot, Palette } from 'lucide-react';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 
 const { Title, Text, Paragraph } = Typography;
-const { Container, CodeContent, FileContent } = Sidebar;
-
-// 内嵌在 Tab 中时隐藏 Container 自带的标题栏
-const embeddedContainerStyle = `
-  .embedded-container .semi-sidebar-container-header { display: none !important; }
-  .embedded-container.semi-resizable-resizable { min-width: 0 !important; width: auto !important; }
-`;
+const { CodeContent, FileContent } = Sidebar;
 
 const DEMO_ANNOTATIONS = [
   {
@@ -212,10 +207,20 @@ export default function AISidebarPage() {
   const [mcpOptions, setMcpOptions] = useState<MCPReactOption[]>(INITIAL_MCP_OPTIONS);
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden', gap: 0 }}>
-      <style>{embeddedContainerStyle}</style>
-      {/* 主内容区 */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+    <div style={{ padding: 12, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+    <MasterDetailLayout
+      side="right"
+      gap={12}
+      bordered
+      divider={false}
+      defaultSize={380}
+      minSize={300}
+      maxSize={600}
+      collapsed={!sidebarVisible}
+      persistKey="ai-sidebar"
+      detail={(
+        <>
+        {/* 主内容区 */}
         {/* 顶栏 */}
         <div
           style={{
@@ -307,86 +312,71 @@ export default function AISidebarPage() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* 右侧：Sidebar */}
-      {sidebarVisible && (
-        <Container
-          visible={sidebarVisible}
-          onCancel={() => setSidebarVisible(false)}
-          title="AI 信息栏"
-          motion={false}
-          resizable
-          defaultSize={{ width: 380 }}
-          minWidth={300}
-          maxWidth={600}
-          showClose={false}
-          style={{ borderLeft: '1px solid var(--semi-color-border)', position: 'relative', height: '100%' }}
-        >
-          <Tabs
-            activeKey={activeTabKey}
-            onChange={setActiveTabKey}
-            size="small"
-            style={{ padding: '0 4px' }}
-          >
-            <TabPane tab="MCP 配置" itemKey="mcp">
-              <div style={{ padding: '8px 0' }}>
-                <MCPConfigure
-                  visible
-                  motion={false}
-                  resizable={false}
-                  className="embedded-container"
-                  options={mcpOptions}
-                  onStatusChange={(options) => {
-                    setMcpOptions(options);
-                  }}
-                  onAddClick={() => {
-                    Toast.info('添加新的 MCP Server');
-                  }}
-                />
-              </div>
-            </TabPane>
-            <TabPane tab="参考来源" itemKey="references">
-              <div style={{ padding: '8px 0' }}>
-                <Annotation
-                  info={DEMO_ANNOTATIONS}
-                  activeKey={annotationKey}
-                  onChange={setAnnotationKey}
-                  onClick={(_e, item) => {
-                    if (item?.url && item.url !== '#') {
-                      Toast.info(`打开链接：${item.title}`);
-                    }
-                  }}
-                  visible
-                  motion={false}
-                  className="embedded-container"
-                  style={{ border: 'none', boxShadow: 'none' }}
-                />
-              </div>
-            </TabPane>
-            <TabPane tab="代码预览" itemKey="code">
-              <div style={{ padding: '8px 0' }}>
-                <CodeContent
-                  codes={DEMO_CODES}
-                  activeKey={codeActiveKey}
-                  onChange={setCodeActiveKey}
-                  style={{ border: 'none', boxShadow: 'none' }}
-                />
-              </div>
-            </TabPane>
-            <TabPane tab="文档说明" itemKey="files">
-              <div style={{ padding: '8px 0' }}>
-                <FileContent
-                  files={DEMO_FILES}
-                  activeKey={fileActiveKey}
-                  onChange={setFileActiveKey}
-                  style={{ border: 'none', boxShadow: 'none' }}
-                />
-              </div>
-            </TabPane>
-          </Tabs>
-        </Container>
+        </>
       )}
+      master={(
+        <Tabs
+          activeKey={activeTabKey}
+          onChange={setActiveTabKey}
+          size="small"
+          style={{ padding: '0 4px', height: '100%', display: 'flex', flexDirection: 'column' }}
+        >
+          <TabPane tab="MCP 配置" itemKey="mcp">
+            <div style={{ padding: '8px 0' }}>
+              <MCPConfigure
+                visible
+                motion={false}
+                resizable={false}
+                options={mcpOptions}
+                onStatusChange={(options) => {
+                  setMcpOptions(options);
+                }}
+                onAddClick={() => {
+                  Toast.info('添加新的 MCP Server');
+                }}
+              />
+            </div>
+          </TabPane>
+          <TabPane tab="参考来源" itemKey="references">
+            <div style={{ padding: '8px 0' }}>
+              <Annotation
+                info={DEMO_ANNOTATIONS}
+                activeKey={annotationKey}
+                onChange={setAnnotationKey}
+                onClick={(_e, item) => {
+                  if (item?.url && item.url !== '#') {
+                    Toast.info(`打开链接：${item.title}`);
+                  }
+                }}
+                visible
+                motion={false}
+                style={{ border: 'none', boxShadow: 'none' }}
+              />
+            </div>
+          </TabPane>
+          <TabPane tab="代码预览" itemKey="code">
+            <div style={{ padding: '8px 0' }}>
+              <CodeContent
+                codes={DEMO_CODES}
+                activeKey={codeActiveKey}
+                onChange={setCodeActiveKey}
+                style={{ border: 'none', boxShadow: 'none' }}
+              />
+            </div>
+          </TabPane>
+          <TabPane tab="文档说明" itemKey="files">
+            <div style={{ padding: '8px 0' }}>
+              <FileContent
+                files={DEMO_FILES}
+                activeKey={fileActiveKey}
+                onChange={setFileActiveKey}
+                style={{ border: 'none', boxShadow: 'none' }}
+              />
+            </div>
+          </TabPane>
+        </Tabs>
+      )}
+    />
     </div>
   );
 }
