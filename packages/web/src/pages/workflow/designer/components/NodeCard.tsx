@@ -151,6 +151,7 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly
     <button
       type="button"
       className="fd-node-card"
+      data-fd-node-id={node.id}
       onClick={readOnly ? undefined : () => onEdit(node)}
       tabIndex={readOnly ? -1 : 0}
     >

@@ -108,7 +108,7 @@ export default function WorkflowInstanceDetailPanel({
       <Tabs type="line" style={{ marginTop: 8 }}>
         <TabPane tab="表单内容" itemKey="form">{renderFormData()}</TabPane>
         <TabPane tab="流程图" itemKey="graph">
-          <WorkflowGraphView flowData={flowData} />
+          <WorkflowGraphView flowData={flowData} tasks={instance.tasks ?? []} />
         </TabPane>
         <TabPane tab="节点列表" itemKey="nodes">
           <WorkflowNodeListView flowData={flowData} />
