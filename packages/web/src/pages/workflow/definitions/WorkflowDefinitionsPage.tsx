@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Input, Modal, Select, Space, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Input, Modal, Select, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Plus, RotateCcw, Search } from 'lucide-react';
+import { MoreHorizontal, Plus, RotateCcw, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowDefinition, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -9,6 +9,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -29,6 +30,8 @@ export default function WorkflowDefinitionsPage() {
   const [status, setStatus] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchStatus, setSearchStatus] = useState('');
+  const [historyTarget, setHistoryTarget] = useState<WorkflowDefinition | null>(null);
+  const [openMoreId, setOpenMoreId] = useState<number | null>(null);
 
   const fetchList = useCallback(async (p = page, kw = searchKeyword, st = searchStatus) => {
     setLoading(true);
@@ -136,7 +139,7 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 240,
       render: (_: unknown, record: WorkflowDefinition) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => navigate(`/workflow/designer/${record.id}`)}>
@@ -170,6 +173,24 @@ export default function WorkflowDefinitionsPage() {
               });
             }}>删除</Button>
           )}
+          <Dropdown
+            trigger="custom"
+            visible={openMoreId === record.id}
+            onClickOutSide={() => setOpenMoreId(null)}
+            position="bottomRight"
+            render={
+              <Dropdown.Menu>
+                <Dropdown.Item onClick={() => { setOpenMoreId(null); setHistoryTarget(record); }}>历史版本</Dropdown.Item>
+              </Dropdown.Menu>
+            }
+          >
+            <Button
+              theme="borderless"
+              size="small"
+              icon={<MoreHorizontal size={14} />}
+              onClick={() => setOpenMoreId(openMoreId === record.id ? null : record.id)}
+            />
+          </Dropdown>
         </Space>
       ),
     },
@@ -218,6 +239,16 @@ export default function WorkflowDefinitionsPage() {
           onPageChange: (p) => { void fetchList(p); },
         }}
       />
+      {historyTarget && (
+        <WorkflowVersionsModal
+          visible={!!historyTarget}
+          definitionId={historyTarget.id}
+          currentVersion={historyTarget.version}
+          currentStatus={historyTarget.status}
+          onCancel={() => setHistoryTarget(null)}
+          onRestored={() => { void fetchList(); }}
+        />
+      )}
     </div>
   );
 }

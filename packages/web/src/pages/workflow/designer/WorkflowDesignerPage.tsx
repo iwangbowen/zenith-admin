@@ -3,11 +3,12 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Modal, Spin, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Button, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowFormField } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowFormField } from '@zenith/shared';
 import { request } from '@/utils/request';
+
+import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
 
 import type { FlowNode, FlowBranch, FlowNodeType, FlowProcess, BranchNodeType, ConditionGroup } from './types';
 import {
@@ -80,8 +81,6 @@ export default function WorkflowDesignerPage() {
 
   // 历史版本
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
-  const [versions, setVersions] = useState<WorkflowDefinitionVersion[]>([]);
-  const [versionsLoading, setVersionsLoading] = useState(false);
 
   // 更多设置
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettingsData>(DEFAULT_ADVANCED_SETTINGS);
@@ -338,32 +337,9 @@ export default function WorkflowDesignerPage() {
   // 已发布流程也允许编辑；保存后后端会自动将 status 转为 draft，需重新发布。
 
   // 历史版本
-  const openHistoryModal = async () => {
+  const openHistoryModal = () => {
     if (isNew || !id) return;
     setHistoryModalVisible(true);
-    setVersionsLoading(true);
-    try {
-      const res = await request.get<WorkflowDefinitionVersion[]>(`/api/workflows/definitions/${id}/versions`);
-      if (res.code === 0) setVersions(res.data ?? []);
-    } finally {
-      setVersionsLoading(false);
-    }
-  };
-
-  const handleRestoreVersion = (ver: WorkflowDefinitionVersion) => {
-    Modal.confirm({
-      title: `确认恢复到 v${ver.version}？`,
-      content: '当前未保存的修改将被覆盖，流程将转为草稿状态，需要重新发布。',
-      onOk: async () => {
-        const res = await request.post<WorkflowDefinition>(`/api/workflows/definitions/${id}/versions/${ver.id}/restore`, {});
-        if (res.code === 0) {
-          Toast.success('已恢复为草稿');
-          setHistoryModalVisible(false);
-          // 重新加载页面以同步画布
-          globalThis.location.reload();
-        }
-      },
-    });
   };
 
   if (pageLoading) {
@@ -564,41 +540,16 @@ export default function WorkflowDesignerPage() {
       />
 
       {/* 历史版本 */}
-      <Modal
-        title="历史版本"
-        visible={historyModalVisible}
-        onCancel={() => setHistoryModalVisible(false)}
-        footer={null}
-        width={720}
-      >
-        <Table
-          dataSource={versions}
-          loading={versionsLoading}
-          rowKey="id"
-          pagination={false}
-          columns={[
-            { title: '版本号', dataIndex: 'version', width: 90, render: (v: number) => <Tag color="blue">v{v}</Tag> },
-            { title: '名称', dataIndex: 'name' },
-            { title: '发布人', dataIndex: 'publishedByName', width: 120, render: (v?: string) => v ?? '-' },
-            { title: '发布时间', dataIndex: 'publishedAt', width: 170 },
-            {
-              title: '操作',
-              width: 100,
-              fixed: 'right',
-              render: (_: unknown, record: WorkflowDefinitionVersion) => (
-                <Button
-                  theme="borderless"
-                  size="small"
-                  onClick={() => handleRestoreVersion(record)}
-                  disabled={record.version === definition?.version && definition?.status === 'published'}
-                >
-                  恢复
-                </Button>
-              ),
-            },
-          ] as ColumnProps<WorkflowDefinitionVersion>[]}
+      {id && !isNew && (
+        <WorkflowVersionsModal
+          visible={historyModalVisible}
+          definitionId={Number(id)}
+          currentVersion={definition?.version}
+          currentStatus={definition?.status}
+          onCancel={() => setHistoryModalVisible(false)}
+          onRestored={() => globalThis.location.reload()}
         />
-      </Modal>
+      )}
     </div>
   );
 }
