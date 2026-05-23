@@ -57,6 +57,7 @@ export default function RegionsPage() {
   const [editingLevel, setEditingLevel] = useState<string>('province');
   const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
   const [tableHeight, setTableHeight] = useState(500);
+  const [tableWidth, setTableWidth] = useState(0);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
 
   const { items: statusItems } = useDictItems('common_status');
@@ -68,6 +69,7 @@ export default function RegionsPage() {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setTableHeight(Math.floor(entry.contentRect.height));
+        setTableWidth(Math.floor(entry.contentRect.width));
       }
     });
 
@@ -232,11 +234,15 @@ export default function RegionsPage() {
     }
   }
 
+  const FIXED_COLS_WIDTH = 140 + 90 + 120 + 70 + 180 + 90 + 160; // 其他列总宽
+  const nameColWidth = Math.max(240, tableWidth - FIXED_COLS_WIDTH);
+  const totalTableWidth = nameColWidth + FIXED_COLS_WIDTH;
+
   const columns: ColumnProps<Region>[] = [
     {
       title: '地区名称',
       dataIndex: 'name',
-      width: 240,
+      width: nameColWidth,
     },
     {
       title: '区划代码',
@@ -305,7 +311,7 @@ export default function RegionsPage() {
   ];
 
   return (
-    <div className="page-container" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="page-container regions-page" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <SearchToolbar>
           <Input
             prefix={<Search size={14} />}
@@ -366,7 +372,7 @@ export default function RegionsPage() {
           )}
       </SearchToolbar>
 
-      <div ref={tableWrapperRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div ref={tableWrapperRef} style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden' }}>
         <ConfigurableTable
           bordered
           columns={columns}
@@ -379,7 +385,7 @@ export default function RegionsPage() {
         childrenRecordName="children"
         pagination={false}
         virtualized
-        scroll={{ y: tableHeight, x: 'max-content' }}
+        scroll={{ y: tableHeight, x: totalTableWidth }}
       />
       </div>
 
