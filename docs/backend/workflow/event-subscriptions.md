@@ -1,6 +1,6 @@
 # 事件订阅（HTTP Webhook）
 
-事件订阅用于把工作流事件以 HTTP POST 形式投递到外部系统，由 [webhook.ts 订阅者](../../../packages/server/src/lib/workflow-subscribers/webhook.ts) 监听总线后按数据库配置分发。
+事件订阅用于把工作流事件以 HTTP POST 形式投递到外部系统，由 `webhook` 订阅者监听总线后按数据库配置分发。
 
 ## 订阅表字段（`workflow_event_subscriptions`）
 

@@ -2,7 +2,7 @@
 
 ## 审批方式（`WorkflowApproveMethod`）
 
-挂载位置：`WorkflowNodeConfig.approveMethod`（[packages/shared/src/types.ts](../../../packages/shared/src/types.ts)）。
+挂载位置：`WorkflowNodeConfig.approveMethod`（定义于 `packages/shared/src/types.ts`）。
 
 | 取值 | 行为 |
 | --- | --- |

@@ -4,9 +4,9 @@
 
 | 层 | 主要位置 | 职责 |
 | --- | --- | --- |
-| 前端设计器 | [packages/web/src/pages/workflow/designer](../../../packages/web/src/pages/workflow/designer) | 树形流程编辑、节点配置、版本管理 |
-| 后端运行时 | [packages/server/src/services/workflow-instances.service.ts](../../../packages/server/src/services/workflow-instances.service.ts) | 创建实例、推进节点、审批/驳回 |
-| 事件总线 + 订阅者 | [packages/server/src/lib/workflow-event-bus.ts](../../../packages/server/src/lib/workflow-event-bus.ts)、[packages/server/src/lib/workflow-subscribers/](../../../packages/server/src/lib/workflow-subscribers/) | 节点/任务/实例变更的统一事件广播 |
+| 前端设计器 | `packages/web/src/pages/workflow/designer` | 树形流程编辑、节点配置、版本管理 |
+| 后端运行时 | `packages/server/src/services/workflow-instances.service.ts` | 创建实例、推进节点、审批/驳回 |
+| 事件总线 + 订阅者 | `packages/server/src/lib/workflow-event-bus.ts`、`packages/server/src/lib/workflow-subscribers/` | 节点/任务/实例变更的统一事件广播 |
 
 ## 数据库表
 

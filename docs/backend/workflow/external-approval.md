@@ -1,6 +1,6 @@
 # 外部审批
 
-外部审批用于把审批任务转交到外部系统（如钉钉、企业微信、第三方审批中心）。当审批节点开启 `externalApproval.enabled` 时，节点产生的 `task.created` 事件会被 [external-approver.ts 订阅者](../../../packages/server/src/lib/workflow-subscribers/external-approver.ts) 接管，对外发起派发请求，外部系统通过回调推进任务状态。
+外部审批用于把审批任务转交到外部系统（如钉钉、企业微信、第三方审批中心）。当审批节点开启 `externalApproval.enabled` 时，节点产生的 `task.created` 事件会被 `external-approver` 订阅者接管，对外发起派发请求，外部系统通过回调推进任务状态。
 
 ## 节点配置（`WorkflowNodeConfig.externalApproval`）
 

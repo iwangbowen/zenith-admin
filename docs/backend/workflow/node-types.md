@@ -2,7 +2,7 @@
 
 ## 节点类型清单
 
-`FlowNodeType` 联合（[packages/web/src/pages/workflow/designer/types.ts](../../../packages/web/src/pages/workflow/designer/types.ts)）：
+`FlowNodeType` 联合（定义于 `packages/web/src/pages/workflow/designer/types.ts`）：
 
 | 类型 | 含义 |
 | --- | --- |
@@ -28,11 +28,11 @@
 - 在 `WorkflowNodeConfig.rejectToNodeKey` 中作为驳回目标的稳定引用；
 - 在 webhook payload 与外部审批回调中显示为 `nodeKey`。
 
-约束（[NodeConfigDrawer.tsx](../../../packages/web/src/pages/workflow/designer/components/NodeConfigDrawer.tsx)）：
+约束（在设计器 `NodeConfigDrawer` 中校验）：
 
 - 正则 `^[a-zA-Z][a-zA-Z0-9_]*$`，字母开头，仅字母/数字/下划线；
 - 保留字 `start` / `end` 不允许；
 - 同一流程内唯一；
-- 留空时回退到节点 `id`（[utils.ts treeToFlat](../../../packages/web/src/pages/workflow/designer/utils.ts) 中 `node.key || node.id`）。
+- 留空时回退到节点 `id`（设计器 `treeToFlat` 中 `node.key || node.id`）。
 
 > 设置后保存的流程定义中 `process` 字段会保留 `node.key`；事件 payload 的 `nodeKey` 字段会优先使用它。

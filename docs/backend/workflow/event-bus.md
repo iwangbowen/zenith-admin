@@ -1,10 +1,10 @@
 # 工作流事件总线
 
-工作流引擎在状态变化的关键点统一通过 [workflow-event-bus.ts](../../../packages/server/src/lib/workflow-event-bus.ts) 发出事件。该总线基于 Node 内置 `EventEmitter`，每次 `emit()` 内部使用 `queueMicrotask()` 异步隔离分发，单个监听器抛错不会影响其他监听器。
+工作流引擎在状态变化的关键点统一通过 `workflow-event-bus.ts` 发出事件。该总线基于 Node 内置 `EventEmitter`，每次 `emit()` 内部使用 `queueMicrotask()` 异步隔离分发，单个监听器抛错不会影响其他监听器。
 
 ## 事件类型清单
 
-`WorkflowEventType`（[packages/shared/src/types.ts](../../../packages/shared/src/types.ts)）：
+`WorkflowEventType`（定义于 `packages/shared/src/types.ts`）：
 
 | 事件 | 触发时机 |
 | --- | --- |
@@ -47,14 +47,14 @@ interface WorkflowEventBase {
 
 ## 内置订阅者
 
-模块启动时自动注册的订阅者位于 [packages/server/src/lib/workflow-subscribers/](../../../packages/server/src/lib/workflow-subscribers/)：
+模块启动时自动注册的订阅者位于 `packages/server/src/lib/workflow-subscribers/`：
 
 | 文件 | 监听事件 | 作用 |
 | --- | --- | --- |
-| [trigger.ts](../../../packages/server/src/lib/workflow-subscribers/trigger.ts) | `node.entered` | 执行触发器节点的 HTTP 调用 |
-| [external-approver.ts](../../../packages/server/src/lib/workflow-subscribers/external-approver.ts) | `task.created` | 派发外部审批请求 |
-| [webhook.ts](../../../packages/server/src/lib/workflow-subscribers/webhook.ts) | 全部 | 按 `workflow_event_subscriptions` 配置投递到外部 URL |
-| [ws.ts](../../../packages/server/src/lib/workflow-subscribers/ws.ts) | 全部 | 通过 WebSocket 推送到在线用户 |
+| `trigger.ts` | `node.entered` | 执行触发器节点的 HTTP 调用 |
+| `external-approver.ts` | `task.created` | 派发外部审批请求 |
+| `webhook.ts` | 全部 | 按 `workflow_event_subscriptions` 配置投递到外部 URL |
+| `ws.ts` | 全部 | 通过 WebSocket 推送到在线用户 |
 
 ## 在代码侧订阅事件
 
