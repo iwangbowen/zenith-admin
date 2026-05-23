@@ -71,7 +71,11 @@ import stripAnsi from 'strip-ansi';
 import { initCronScheduler, stopAllJobs } from './lib/cron-scheduler';
 import { registerWsWorkflowSubscriber } from './lib/workflow-subscribers/ws';
 import { registerWebhookWorkflowSubscriber } from './lib/workflow-subscribers/webhook';
+import { registerTriggerWorkflowSubscriber } from './lib/workflow-subscribers/trigger';
+import { registerExternalApproverSubscriber } from './lib/workflow-subscribers/external-approver';
 import workflowEventSubscriptionsRoutes from './routes/workflow-event-subscriptions';
+import workflowTriggerExecutionsRoutes from './routes/workflow-trigger-executions';
+import workflowExternalCallbackRoutes from './routes/workflow-external-callback';
 import { initTelemetry } from './lib/telemetry';
 import { metricsSampler } from './lib/metrics-sampler';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
@@ -210,6 +214,8 @@ app.route('/api/cache', cacheRoutes);
 app.route('/api/workflows/definitions', workflowDefinitionsRoutes);
 app.route('/api/workflows/categories', workflowCategoriesRoutes);
 app.route('/api/workflows/event-subscriptions', workflowEventSubscriptionsRoutes);
+app.route('/api/workflows/trigger-executions', workflowTriggerExecutionsRoutes);
+app.route('/api/public/workflow/external-callback', workflowExternalCallbackRoutes);
 app.route('/api/workflows', workflowInstancesRoutes);
 app.route('/api/chat', chatRoutes);
 app.route('/api/tags', tagsRoutes);
@@ -304,4 +310,6 @@ try {
 // 注册工作流事件总线的内置订阅者
 registerWsWorkflowSubscriber();
 registerWebhookWorkflowSubscriber();
+registerTriggerWorkflowSubscriber();
+registerExternalApproverSubscriber();
 logger.info('Workflow event subscribers registered');

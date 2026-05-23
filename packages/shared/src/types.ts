@@ -952,7 +952,7 @@ export interface WorkflowEventDelivery {
 }
 
 // ─── 触发器节点执行 ──────────────────────────────────────────────────────────
-export type WorkflowTriggerExecutionStatus = 'success' | 'failed' | 'skipped' | 'retrying';
+export type WorkflowTriggerExecutionStatus = 'pending' | 'running' | 'success' | 'failed' | 'retrying';
 export type WorkflowTriggerType = 'webhook' | 'callback' | 'updateData' | 'deleteData';
 
 export interface WorkflowTriggerExecution {

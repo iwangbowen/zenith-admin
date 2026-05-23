@@ -71,6 +71,8 @@ import { currentUser } from '../lib/context';
 import { resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import type { DbExecutor } from '../db/types';
 import { workflowEventBus } from '../lib/workflow-event-bus';
+import { randomBytes } from 'node:crypto';
+import type { WorkflowEventActor } from '@zenith/shared';
 
 /** 发射实例生命周期事件的辅助函数 */
 function emitInstanceEvent(
@@ -141,6 +143,21 @@ async function expandTasksToRows(
         nodeType: t.nodeType,
         assigneeId: t.assigneeId,
         status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
+      });
+      continue;
+    }
+    // 外部审批：不解析人员，生成一条 waiting + callbackId 任务，由 external-approver 订阅者派发
+    const extCfg = t.nodeConfig.externalApproval;
+    if (t.nodeType === 'approve' && extCfg?.enabled) {
+      rows.push({
+        instanceId: ctx.instanceId,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: 'approve',
+        assigneeId: null,
+        status: 'waiting' as const,
+        externalCallbackId: randomBytes(16).toString('hex'),
+        externalDispatchStatus: 'pending' as const,
       });
       continue;
     }
@@ -505,7 +522,27 @@ export async function approveTask(taskId: number, comment?: string): Promise<App
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  return approveTaskCore(task, inst, comment, { userId: user.userId, name: user.username });
+}
 
+/** 外部审批回调：根据 callbackId 找到 waiting 任务并审批通过 */
+export async function approveTaskByCallback(callbackId: string, comment: string | undefined, approverName: string): Promise<ApproveResult> {
+  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
+  if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
+  if (task.status !== 'waiting') throw new HTTPException(400, { message: '回调任务已处理' });
+  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
+  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  return approveTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
+}
+
+async function approveTaskCore(
+  task: typeof workflowTasks.$inferSelect,
+  inst: typeof workflowInstances.$inferSelect,
+  comment: string | undefined,
+  actor: WorkflowEventActor,
+): Promise<ApproveResult> {
+  const taskId = task.id;
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };
   const flowData = snapshot?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
@@ -561,7 +598,6 @@ export async function approveTask(taskId: number, comment?: string): Promise<App
     return { row, finished: false, advanced: true, approvedTask, newTasks };
   });
 
-  const actor = { userId: user.userId, name: user.username };
   const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
   emitTaskEvent('task.approved', mapTask(updated.approvedTask), { ...meta, comment });
   if (updated.advanced) {
@@ -600,7 +636,27 @@ export async function rejectTask(taskId: number, comment: string) {
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  return rejectTaskCore(task, inst, comment, { userId: user.userId, name: user.username });
+}
 
+/** 外部审批回调：根据 callbackId 找到 waiting 任务并驳回 */
+export async function rejectTaskByCallback(callbackId: string, comment: string, approverName: string) {
+  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
+  if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
+  if (task.status !== 'waiting') throw new HTTPException(400, { message: '回调任务已处理' });
+  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
+  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  return rejectTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
+}
+
+async function rejectTaskCore(
+  task: typeof workflowTasks.$inferSelect,
+  inst: typeof workflowInstances.$inferSelect,
+  comment: string,
+  actor: WorkflowEventActor,
+) {
+  const taskId = task.id;
   // 读取节点驳回策略
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
   const flowData = snapshot?.flowData;
@@ -706,7 +762,6 @@ export async function rejectTask(taskId: number, comment: string) {
     return { row, terminated: false, rejectedTask, skippedTasks: skipped, newTasks };
   });
 
-  const actor = { userId: user.userId, name: user.username };
   const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
   emitTaskEvent('task.rejected', mapTask(updated.rejectedTask), { ...meta, comment });
   for (const t of updated.skippedTasks) {
