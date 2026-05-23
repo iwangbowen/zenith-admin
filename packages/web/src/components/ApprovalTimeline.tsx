@@ -1,5 +1,5 @@
 import { Avatar, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
-import { CheckCircle2, Clock, Mail, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, CornerUpLeft, Mail, XCircle } from 'lucide-react';
 import type { WorkflowTask } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 
@@ -14,6 +14,15 @@ const TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
 
 /** 审批流时间线，使用 Semi Design Timeline 组件统一渲染 */
 export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTask[] }>) {
+  // 为每个 rejected 任务定位"已回退至"的目标节点：取 id 严格大于当前任务、且非抄送节点的第一条后续任务
+  const returnTargetMap = new Map<number, string>();
+  const sorted = [...tasks].sort((a, b) => a.id - b.id);
+  for (const t of sorted) {
+    if (t.status !== 'rejected') continue;
+    const next = sorted.find(n => n.id > t.id && n.nodeType !== 'ccNode' && n.nodeKey !== t.nodeKey);
+    if (next) returnTargetMap.set(t.id, next.nodeName);
+  }
+
   return (
     <Timeline style={{ paddingLeft: 4 }}>
       {tasks.map((task) => {
