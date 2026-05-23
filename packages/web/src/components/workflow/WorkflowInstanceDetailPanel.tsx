@@ -72,29 +72,40 @@ export default function WorkflowInstanceDetailPanel({
 
   return (
     <div>
-      <Descriptions
-        row
-        size="medium"
-        data={[
-          { key: '申请标题', value: instance.title },
-          ...(definition?.categoryName ? [{ key: '流程分类', value: definition.categoryName }] : []),
-          { key: '流程名称', value: instance.definitionName ?? '—' },
-          { key: '发起人', value: instance.initiatorName ?? '—' },
-          {
-            key: '当前状态',
-            value: statusInfo
+      {/* 顶部紧凑信息条 */}
+      <div style={{ marginBottom: 8 }}>
+        {/* 标题行：申请标题 + 状态 */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+          <Typography.Title heading={5} style={{ margin: 0, lineHeight: 1.4, flex: 1, minWidth: 0 }}>
+            {instance.title}
+          </Typography.Title>
+          <div style={{ flexShrink: 0, marginTop: 2 }}>
+            {statusInfo
               ? <Tag color={statusInfo.color}>{statusInfo.text}</Tag>
-              : <span>{instance.status}</span>,
-          },
-          { key: '提交时间', value: formatDateTime(instance.createdAt) },
-        ]}
-      />
+              : <span style={{ fontSize: 13 }}>{instance.status}</span>}
+          </div>
+        </div>
+        {/* 元信息行：流程 · 发起人 · 时间 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--semi-color-text-2)', flexWrap: 'wrap' }}>
+          <span>{instance.definitionName ?? '—'}</span>
+          {definition?.categoryName && (
+            <>
+              <span>·</span>
+              <Tag size="small" color="blue" style={{ cursor: 'default' }}>{definition.categoryName}</Tag>
+            </>
+          )}
+          <span>·</span>
+          <span>{instance.initiatorName ?? '—'}</span>
+          <span>·</span>
+          <span>{formatDateTime(instance.createdAt)}</span>
+        </div>
+      </div>
 
       {extraActions ? (
-        <div style={{ marginTop: 12 }}>{extraActions}</div>
+        <div style={{ marginBottom: 8 }}>{extraActions}</div>
       ) : null}
 
-      <Tabs type="line" style={{ marginTop: 16 }}>
+      <Tabs type="line" style={{ marginTop: 8 }}>
         <TabPane tab="表单内容" itemKey="form">{renderFormData()}</TabPane>
         <TabPane tab="流程图" itemKey="graph">
           <WorkflowGraphView flowData={flowData} />

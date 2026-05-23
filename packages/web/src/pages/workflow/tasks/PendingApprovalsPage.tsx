@@ -146,12 +146,12 @@ export default function PendingApprovalsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 160,
       fixed: 'right',
       render: (_: unknown, record: PendingItem) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => openDetail(record)}>
-            查看详情
+            详情
           </Button>
           <Button
             theme="borderless"

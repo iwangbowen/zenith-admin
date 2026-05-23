@@ -16,7 +16,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import dayjs from 'dayjs';
-import { Eye, FileInput, Plus, RotateCcw, Search } from 'lucide-react';
+import { FileInput, Plus, RotateCcw, Search } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowInstance, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
@@ -237,7 +237,7 @@ export default function MyApplicationsPage() {
       fixed: 'right',
       render: (_: unknown, record: WorkflowInstance) => (
         <Space>
-          <Button theme="borderless" size="small" icon={<Eye size={13} />} onClick={() => openDetail(record.id)}>
+          <Button theme="borderless" size="small" onClick={() => openDetail(record.id)}>
             详情
           </Button>
         </Space>
