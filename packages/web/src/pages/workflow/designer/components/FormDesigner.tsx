@@ -45,13 +45,13 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
           { span: 12, fields: [] },
           { span: 12, fields: [] },
         ],
-      } as WorkflowFormField;
+      };
     case 'divider':
       return {
         key: `field_${Date.now()}`,
         label: '分割线',
         type: 'divider',
-      } as WorkflowFormField;
+      };
     case 'group':
       return {
         key: `field_${Date.now()}`,
@@ -59,7 +59,7 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
         type: 'group',
         title: '分组标题',
         children: [],
-      } as WorkflowFormField;
+      };
     case 'select':
     case 'multiSelect':
       field.options = ['选项1', '选项2', '选项3'];
@@ -85,7 +85,7 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
         label: '说明文字',
         type: 'description',
         description: '请在此处填写说明文字...',
-      } as WorkflowFormField;
+      };
     case 'serialNumber':
       field.serialPrefix = '';
       break;
