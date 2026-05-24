@@ -12,6 +12,8 @@ import {
   Empty,
   Typography,
   Tag,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
@@ -89,11 +91,11 @@ export default function UserGroupsPage() {
   useEffect(() => {
     void (async () => {
       const [uRes, dRes] = await Promise.all([
-        request.get<PaginatedResponse<User>>('/api/users?page=1&pageSize=1000'),
+        request.get<{ code: number; message: string; data: User[] }>('/api/users/all'),
         request.get<Department[]>('/api/departments'),
       ]);
       if (uRes.code === 0) {
-        setAllUsers(uRes.data.list.map(u => ({
+        setAllUsers(uRes.data.map(u => ({
           id: u.id, username: u.username, nickname: u.nickname,
           email: u.email, departmentName: (u as User & { departmentName?: string }).departmentName,
         })));
@@ -304,7 +306,7 @@ export default function UserGroupsPage() {
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditing(null); }}
         onOk={handleModalOk}
-        width={560}
+        width={660}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
@@ -314,29 +316,45 @@ export default function UserGroupsPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Input field="name" label="名称" placeholder="请输入用户组名称" rules={[{ required: true, message: '请输入用户组名称' }]} />
-          <Form.Input field="code" label="编码" placeholder="字母数字下划线" rules={[
-            { required: true, message: '请输入用户组编码' },
-            { pattern: /^\w+$/, message: '编码只能包含字母、数字和下划线' },
-          ]} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="name" label="名称" placeholder="请输入用户组名称" rules={[{ required: true, message: '请输入用户组名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="code" label="编码" placeholder="字母数字下划线" rules={[
+                { required: true, message: '请输入用户组编码' },
+                { pattern: /^\w+$/, message: '编码只能包含字母、数字和下划线' },
+              ]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select
+                field="ownerId" label="负责人" placeholder="请选择负责人（可选）"
+                style={{ width: '100%' }} filter showClear
+                optionList={allUsers.map(u => ({ value: u.id, label: `${u.nickname} (${u.username})` }))}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="departmentId" label="所属部门" placeholder="请选择部门（可选）"
+                style={{ width: '100%' }} filter showClear
+                optionList={departments.map(d => ({ value: d.id, label: d.name }))}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select
+                field="status" label="状态" style={{ width: '100%' }}
+                optionList={[
+                  { value: 'enabled', label: '启用' },
+                  { value: 'disabled', label: '禁用' },
+                ]}
+              />
+            </Col>
+          </Row>
           <Form.TextArea field="description" label="描述" placeholder="请输入描述（可选）" maxCount={256} />
-          <Form.Select
-            field="ownerId" label="负责人" placeholder="请选择负责人（可选）"
-            style={{ width: '100%' }} filter showClear
-            optionList={allUsers.map(u => ({ value: u.id, label: `${u.nickname} (${u.username})` }))}
-          />
-          <Form.Select
-            field="departmentId" label="所属部门" placeholder="请选择部门（可选）"
-            style={{ width: '100%' }} filter showClear
-            optionList={departments.map(d => ({ value: d.id, label: d.name }))}
-          />
-          <Form.Select
-            field="status" label="状态" style={{ width: '100%' }}
-            optionList={[
-              { value: 'enabled', label: '启用' },
-              { value: 'disabled', label: '禁用' },
-            ]}
-          />
         </Form>
       </Modal>
 
