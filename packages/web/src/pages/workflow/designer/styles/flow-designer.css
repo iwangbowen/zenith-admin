@@ -117,7 +117,7 @@ body[theme-mode='dark'] .fd-node-card:hover {
 
 .fd-node-card__header-actions button:hover {
   color: #fff;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .fd-node-card__body {
@@ -205,7 +205,7 @@ body[theme-mode='dark'] .fd-node-card:hover {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #3296fa;
+  background: #085ec0;
   color: #fff;
   border: none;
   cursor: pointer;
@@ -213,11 +213,11 @@ body[theme-mode='dark'] .fd-node-card:hover {
   align-items: center;
   justify-content: center;
   transition: all 0.15s;
-  box-shadow: 0 1px 4px rgba(50, 150, 250, 0.4);
+  box-shadow: 0 1px 4px rgba(8, 94, 192, 0.4);
 }
 
 .fd-add-node-btn:hover {
-  background: #1677ff;
+  background: #0658b5;
   transform: scale(1.15);
   box-shadow: 0 2px 8px rgba(22, 119, 255, 0.5);
 }
@@ -333,7 +333,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 }
 
 .fd-branch-add-btn:hover {
-  background: #3296fa;
+  background: #085ec0;
   color: #fff;
 }
 
@@ -480,13 +480,13 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   transition: opacity 0.15s;
 }
 
-.fd-branch-title:hover .fd-branch-title__close {
-  opacity: 1;
-}
-
 .fd-branch-title__close:hover {
   background: var(--semi-color-danger);
   color: var(--semi-color-white);
+}
+
+.fd-branch-title:hover .fd-branch-title__close {
+  opacity: 1;
 }
 
 /* ─── 汇聚连接线 ──────────────────────────────────────────────────── */
