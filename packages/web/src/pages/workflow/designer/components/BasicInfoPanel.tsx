@@ -68,7 +68,8 @@ export default function BasicInfoPanel({
             description: definition?.description ?? '',
             categoryId: categoryId ?? undefined,
           }}
-          labelPosition="top"
+          labelPosition="left"
+          labelWidth={120}
           onValueChange={(values: Record<string, unknown>) => {
             if (typeof values.name === 'string') onFieldChange('name', values.name);
             if (typeof values.description === 'string') onFieldChange('description', values.description);

@@ -17,7 +17,8 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
       <div className="fd-basic-info__inner">
         <Form
           initValues={settings as unknown as Record<string, unknown>}
-          labelPosition="top"
+          labelPosition="left"
+          labelWidth={180}
           onValueChange={(values: Record<string, unknown>) => {
             onChange({ ...settings, ...values } as AdvancedSettingsData);
           }}
