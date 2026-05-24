@@ -4,6 +4,8 @@
 import { Form, Select, Tag } from '@douyinfe/semi-ui';
 import type { WorkflowDefinition } from '@zenith/shared';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { useMemo } from 'react';
+import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 
 type InitiatorScopeType = 'all' | 'users' | 'departments' | 'roles';
 
@@ -13,7 +15,7 @@ interface BasicInfoPanelProps {
   categoryId: number | null;
   users: Array<{ id: number; nickname: string }>;
   roles: Array<{ id: number; name: string }>;
-  departments: Array<{ id: number; name: string }>;
+  departments: Array<{ id: number; name: string; parentId: number | null }>;
   initiatorScopeType: InitiatorScopeType;
   initiatorScopeIds: number[];
   onFieldChange: (field: string, value: string) => void;
@@ -52,9 +54,35 @@ export default function BasicInfoPanel({
   let targetOptions: Array<{ value: number; label: string }> = roles.map((r) => ({ value: r.id, label: r.name }));
   if (initiatorScopeType === 'users') {
     targetOptions = users.map((u) => ({ value: u.id, label: `${u.nickname} (#${u.id})` }));
-  } else if (initiatorScopeType === 'departments') {
-    targetOptions = departments.map((d) => ({ value: d.id, label: d.name }));
   }
+
+  const departmentTreeData = useMemo<TreeNodeData[]>(() => {
+    const nodeMap = new Map<number, TreeNodeData>();
+    const rootNodes: TreeNodeData[] = [];
+
+    departments.forEach((item) => {
+      nodeMap.set(item.id, {
+        key: String(item.id),
+        value: item.id,
+        label: item.name,
+        children: [],
+      });
+    });
+
+    departments.forEach((item) => {
+      const currentNode = nodeMap.get(item.id);
+      if (!currentNode) return;
+
+      if (item.parentId && nodeMap.has(item.parentId)) {
+        const parentNode = nodeMap.get(item.parentId)!;
+        parentNode.children = [...(parentNode.children ?? []), currentNode];
+      } else {
+        rootNodes.push(currentNode);
+      }
+    });
+
+    return rootNodes;
+  }, [departments]);
   let scopePlaceholder = '请选择角色';
   if (initiatorScopeType === 'users') scopePlaceholder = '请选择人员';
   else if (initiatorScopeType === 'departments') scopePlaceholder = '请选择部门';
@@ -67,12 +95,16 @@ export default function BasicInfoPanel({
             name: definition?.name ?? '',
             description: definition?.description ?? '',
             categoryId: categoryId ?? undefined,
+            initiatorScopeIds,
           }}
           labelPosition="left"
           labelWidth={120}
           onValueChange={(values: Record<string, unknown>) => {
             if (typeof values.name === 'string') onFieldChange('name', values.name);
             if (typeof values.description === 'string') onFieldChange('description', values.description);
+            if (Array.isArray(values.initiatorScopeIds)) {
+              onInitiatorScopeIdsChange(values.initiatorScopeIds.map(Number).filter((x) => Number.isInteger(x) && x > 0));
+            }
           }}
         >
           <Form.Input
@@ -114,18 +146,29 @@ export default function BasicInfoPanel({
             />
           </Form.Slot>
           {initiatorScopeType !== 'all' && (
-            <Form.Slot label="可发起对象">
-              <Select
-                value={initiatorScopeIds}
+            initiatorScopeType === 'departments' ? (
+              <Form.TreeSelect
+                field="initiatorScopeIds"
+                label="可发起对象"
+                treeData={departmentTreeData}
+                multiple
+                placeholder={scopePlaceholder}
+                style={{ width: '100%' }}
+                filterTreeNode
+                showClear
+              />
+            ) : (
+              <Form.Select
+                field="initiatorScopeIds"
+                label="可发起对象"
                 multiple
                 filter
                 maxTagCount={3}
                 style={{ width: '100%' }}
                 optionList={targetOptions}
-                onChange={(v) => onInitiatorScopeIdsChange((Array.isArray(v) ? v : []).map(Number).filter((x) => Number.isInteger(x) && x > 0))}
                 placeholder={scopePlaceholder}
               />
-            </Form.Slot>
+            )
           )}
           {!isNew && definition && (
             <>

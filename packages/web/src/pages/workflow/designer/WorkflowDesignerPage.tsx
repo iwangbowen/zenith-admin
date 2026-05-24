@@ -44,7 +44,7 @@ import './styles/flow-designer.css';
 
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
-interface DepartmentOption { id: number; name: string; }
+interface DepartmentOption { id: number; name: string; parentId: number | null; }
 
 // ─── 主组件 ───────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ export default function WorkflowDesignerPage() {
     });
     request.get<DepartmentOption[]>('/api/departments/flat').then((res) => {
       if (res.code === 0 && res.data) {
-        setDepartments(res.data.map((d) => ({ id: d.id, name: d.name })));
+        setDepartments(res.data.map((d) => ({ id: d.id, name: d.name, parentId: d.parentId ?? null })));
       }
     });
     request.get<Array<{ id: number; name: string }>>('/api/user-groups/all').then(res => {
