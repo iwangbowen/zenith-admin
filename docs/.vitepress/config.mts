@@ -104,8 +104,12 @@ export default defineConfig({
             collapsed: true,
             items: [
               { text: '总览', link: '/backend/workflow/' },
-              { text: '节点类型与节点标识', link: '/backend/workflow/node-types' },
+              { text: '流程设计器', link: '/backend/workflow/designer' },
+              { text: '表单设计', link: '/backend/workflow/form-design' },
+              { text: '节点配置', link: '/backend/workflow/node-config' },
               { text: '审批方式与驳回策略', link: '/backend/workflow/approval' },
+              { text: '流程实例生命周期', link: '/backend/workflow/instance-lifecycle' },
+              { text: '权限与范围控制', link: '/backend/workflow/permissions' },
               { text: '事件总线', link: '/backend/workflow/event-bus' },
               { text: '事件订阅', link: '/backend/workflow/event-subscriptions' },
               { text: '触发器节点', link: '/backend/workflow/trigger-nodes' },
