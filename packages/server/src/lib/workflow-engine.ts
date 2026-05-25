@@ -472,10 +472,20 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
   }
 
   // 检查排他/路由网关出边是否配置了条件
-  const { nodeMap, outEdges } = buildAdjacency(flowData);
+  const { nodeMap, outEdges, inEdges } = buildAdjacency(flowData);
   for (const node of flowData.nodes) {
     if (node.data.type === 'exclusiveGateway' || node.data.type === 'routeGateway') {
       const outs = outEdges.get(node.id) ?? [];
+      const ins = inEdges.get(node.id) ?? [];
+      // 合流型（多入单出）：作为 merge 使用，无需条件/默认分支
+      const isMerge = outs.length <= 1 && ins.length >= 2;
+      if (isMerge) {
+        if (outs.length === 0) {
+          errors.push(`排他/路由网关"${node.data.label}"缺少出边`);
+        }
+        continue;
+      }
+      // 分流型（单入多出）：必须 ≥2 出边、有条件、有默认分支
       if (outs.length < 2) {
         errors.push(`排他/路由网关"${node.data.label}"至少需要2条出边`);
       }
