@@ -3,7 +3,7 @@
  *
  * 渲染多列分支布局，每列内部可递归渲染子节点。
  */
-import { Trash2, X } from 'lucide-react';
+import { Pencil, Trash2, X } from 'lucide-react';
 import { Popconfirm } from '@douyinfe/semi-ui';
 import type { FlowNode, FlowBranch, FlowNodeType, BranchNodeType } from '../types';
 import { NODE_COLOR_MAP, BRANCH_ADD_LABEL } from '../constants';
@@ -16,6 +16,8 @@ interface BranchContainerProps {
   onEditBranch: (branch: FlowBranch, branchNodeId: string) => void;
   onAddNodeInBranch: (branchNodeId: string, branchId: string, nodeType: FlowNodeType) => void;
   onDeleteNode?: (nodeId: string) => void;
+  /** 点击路由分支头部提示行时打开节点配置抽屉 */
+  onEditNode?: (node: FlowNode) => void;
   renderChildren: (childNode: FlowNode | undefined, parentId: string) => React.ReactNode;
   /** 可选：表单字段列表，用于路由分支展示「路由字段：XXX」提示 */
   formFields?: ReadonlyArray<{ key: string; label: string; type?: string }>;
@@ -58,6 +60,7 @@ export default function BranchContainer({
   onEditBranch,
   onAddNodeInBranch,
   onDeleteNode,
+  onEditNode,
   renderChildren,
   formFields,
   readOnly = false,
@@ -77,12 +80,21 @@ export default function BranchContainer({
     : null;
 
   return (
-    <div className="fd-branch-wrap">
+    <>
       {branchType === 'routeBranch' && (
-        <div className="fd-branch-route-hint">
-          路由字段：<strong>{routeFieldLabel ?? '未选择'}</strong>
-        </div>
+        <button
+          type="button"
+          className="fd-branch-route-hint"
+          onClick={readOnly ? undefined : () => onEditNode?.(node)}
+          title={readOnly ? undefined : '点击调整路由字段'}
+          disabled={readOnly}
+        >
+          <span className="fd-branch-route-hint__label">路由字段：</span>
+          <span className="fd-branch-route-hint__value">{routeFieldLabel ?? '未选择'}</span>
+          {!readOnly && <Pencil size={12} className="fd-branch-route-hint__icon" />}
+        </button>
       )}
+      <div className="fd-branch-wrap">
       {!readOnly && (
       <div className="fd-branch-toolbar">
         <button
@@ -158,5 +170,6 @@ export default function BranchContainer({
         ))}
       </div>
     </div>
+    </>
   );
 }

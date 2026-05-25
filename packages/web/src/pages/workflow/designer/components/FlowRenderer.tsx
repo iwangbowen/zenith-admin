@@ -60,6 +60,7 @@ export default function FlowRenderer({
             onEditBranch={editBranch}
             onAddNodeInBranch={addInBranch}
             onDeleteNode={deleteNode}
+            onEditNode={editNode}
             formFields={formFields}
             renderChildren={(childNode, key) => renderNodeChain(childNode, key)}
             readOnly={readOnly}

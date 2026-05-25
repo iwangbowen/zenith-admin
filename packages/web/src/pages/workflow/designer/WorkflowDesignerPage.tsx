@@ -193,7 +193,37 @@ export default function WorkflowDesignerPage() {
   }, []);
 
   const handleSaveNode = useCallback((nodeId: string, updates: { name?: string; key?: string; props?: Record<string, unknown> }) => {
-    setProcess(prev => updateNode(prev, nodeId, updates));
+    setProcess(prev => {
+      // 检测路由分支节点的 routeFieldKey 变更，若变更则清空子分支的 caseValue
+      const findNode = (n: FlowNode | undefined): FlowNode | undefined => {
+        if (!n) return undefined;
+        if (n.id === nodeId) return n;
+        if (n.children) {
+          const f = findNode(n.children);
+          if (f) return f;
+        }
+        if (n.branches) {
+          for (const b of n.branches) {
+            if (b.children) {
+              const f = findNode(b.children);
+              if (f) return f;
+            }
+          }
+        }
+        return undefined;
+      };
+      const existing = findNode(prev.initiator);
+      let next = updateNode(prev, nodeId, updates);
+      if (existing?.type === 'routeBranch' && updates.props && 'routeFieldKey' in updates.props) {
+        const oldKey = ((existing.props?.routeFieldKey as string | undefined) ?? '').trim();
+        const newKey = ((updates.props.routeFieldKey as string | undefined) ?? '').trim();
+        if (oldKey !== newKey) {
+          next = resetRouteCaseValues(next, nodeId);
+          if (oldKey) Toast.info('路由字段已切换，分支匹配值已清空');
+        }
+      }
+      return next;
+    });
     setDrawerVisible(false);
     setEditingNode(null);
   }, [setProcess]);

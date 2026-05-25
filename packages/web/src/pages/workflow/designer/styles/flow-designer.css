@@ -480,14 +480,50 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 }
 
 .fd-branch-route-hint {
-  margin: 0 auto 8px;
-  padding: 4px 12px;
-  background: #fff1f0;
-  color: #f5222d;
-  border: 1px solid #ffccc7;
+  margin: 0 0 16px;
+  padding: 2px 12px;
+  background: var(--semi-color-bg-2);
+  color: var(--semi-color-danger);
+  border: 1px solid var(--semi-color-danger);
   border-radius: 12px;
+  font: inherit;
   font-size: 12px;
-  width: fit-content;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.fd-branch-route-hint:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.fd-branch-route-hint:hover:not(:disabled) {
+  background: var(--semi-color-danger);
+  color: #fff;
+}
+
+.fd-branch-route-hint__label {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.fd-branch-route-hint__value {
+  color: inherit;
+  font-weight: 600;
+}
+
+.fd-branch-route-hint__icon {
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
+.fd-branch-route-hint:hover:not(:disabled) .fd-branch-route-hint__icon {
+  opacity: 1;
 }
 
 .fd-branch-title__priority {

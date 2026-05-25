@@ -20,7 +20,7 @@ import AdvancedSettingsTab from './tabs/AdvancedSettingsTab';
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
 interface UserGroupOption { id: number; name: string; }
-interface FormField { key: string; label: string; }
+interface FormField { key: string; label: string; type?: string }
 
 function stringifyHeadersOrBody(v: unknown): string {
   if (typeof v === 'string') return v;
@@ -122,6 +122,7 @@ export default function NodeConfigDrawer({
   const isDelay = node?.type === 'delay';
   const isTrigger = node?.type === 'trigger';
   const isSubProcess = node?.type === 'subProcess';
+  const isRouteBranch = node?.type === 'routeBranch';
   const hasAssigneeSettings = isApprover || isHandler || isCc;
   const hasFormPermission = isApprover || isHandler || isCc || isInitiator;
   const hasOperationPermission = isApprover;
@@ -540,6 +541,30 @@ export default function NodeConfigDrawer({
           </div>
         </div>
       )}
+      {/* 路由分支节点配置 */}
+      {isRouteBranch && (() => {
+        const routableFields = formFields.filter(f => f.type === 'select' || f.type === 'radio');
+        return (
+          <div className="fd-drawer-tab-content">
+            <Typography.Title heading={6} style={{ marginBottom: 16 }}>路由配置</Typography.Title>
+            <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
+              选择用于路由判断的表单字段（仅支持下拉/单选类型）。切换字段后，现有分支的匹配值会被清空。
+            </Typography.Text>
+            <Form.Slot label="路由字段">
+              <Select
+                value={(props.routeFieldKey as string) ?? ''}
+                onChange={(v) => handlePropsChange({ routeFieldKey: v })}
+                placeholder={routableFields.length === 0 ? '表单中暂无可用的下拉/单选字段' : '请选择路由字段'}
+                style={{ width: '100%' }}
+                optionList={routableFields.map(f => ({ value: f.key, label: f.label }))}
+                emptyContent="暂无可用字段"
+                disabled={routableFields.length === 0}
+                showClear
+              />
+            </Form.Slot>
+          </div>
+        );
+      })()}
     </SideSheet>
   );
 }
@@ -589,6 +614,10 @@ function getDefaultProps(type: FlowNodeType): Record<string, unknown> {
         delayType: 'fixed',
         delayValue: 1,
         delayUnit: 'hour',
+      };
+    case 'routeBranch':
+      return {
+        routeFieldKey: '',
       };
     case 'trigger':
       return {
