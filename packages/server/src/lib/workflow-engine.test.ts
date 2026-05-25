@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   evaluateCondition,
+  evaluateConditionGroups,
   advanceFlow,
   getInitialTasks,
   validateFlowData,
@@ -127,6 +128,31 @@ describe('evaluateCondition', () => {
   it('handles null/undefined field values', () => {
     expect(evaluateCondition({ field: 'x', operator: 'eq', value: '' }, {})).toBe(true);
     expect(evaluateCondition({ field: 'x', operator: 'gt', value: 0 }, {})).toBe(false);
+  });
+});
+
+describe('evaluateConditionGroups', () => {
+  it('matches any group and respects each group logic', () => {
+    const groups = [
+      {
+        type: 'and' as const,
+        rules: [
+          { field: 'amount', operator: 'gte' as const, value: 1000 },
+          { field: 'dept', operator: 'eq' as const, value: '财务' },
+        ],
+      },
+      {
+        type: 'or' as const,
+        rules: [
+          { field: 'urgent', operator: 'eq' as const, value: true },
+          { field: 'level', operator: 'gte' as const, value: 3 },
+        ],
+      },
+    ];
+
+    expect(evaluateConditionGroups(groups, { amount: 1200, dept: '财务', urgent: false, level: 1 })).toBe(true);
+    expect(evaluateConditionGroups(groups, { amount: 200, dept: '行政', urgent: false, level: 4 })).toBe(true);
+    expect(evaluateConditionGroups(groups, { amount: 200, dept: '行政', urgent: false, level: 1 })).toBe(false);
   });
 });
 
@@ -352,6 +378,36 @@ function makeRouteFlow(): WorkflowFlowData {
   };
 }
 
+function makeCompoundConditionFlow(): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'gw', type: 'exclusiveGateway', label: '复合条件' } },
+      { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'a-hit', type: 'approve', label: '命中审批', assigneeId: 30 } },
+      { id: 'n4', position: { x: 2, y: 1 }, data: { key: 'a-default', type: 'approve', label: '默认审批', assigneeId: 31 } },
+      { id: 'n5', position: { x: 3, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      {
+        id: 'e2',
+        source: 'n2',
+        target: 'n3',
+        conditions: [{
+          type: 'and',
+          rules: [
+            { field: 'amount', operator: 'gte', value: 1000 },
+            { field: 'dept', operator: 'eq', value: '财务' },
+          ],
+        }],
+      },
+      { id: 'e3', source: 'n2', target: 'n4', isDefault: true },
+      { id: 'e4', source: 'n3', target: 'n5' },
+      { id: 'e5', source: 'n4', target: 'n5' },
+    ],
+  };
+}
+
 function makeInclusiveFlow(): WorkflowFlowData {
   return {
     nodes: [
@@ -390,6 +446,22 @@ function makeAutoFlow(autoType: 'delay' | 'trigger' | 'subProcess'): WorkflowFlo
   };
 }
 
+function makeAutoApprovalFlow(approvalType: 'autoApprove' | 'autoReject'): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'auto-approval', type: 'approve', label: '自动审批', approvalType } },
+      { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'a1', type: 'approve', label: '人工审批', assigneeId: 99 } },
+      { id: 'n4', position: { x: 3, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n3', target: 'n4' },
+    ],
+  };
+}
+
 describe('advanceFlow - handler node', () => {
   it('creates handler task at start', () => {
     const result = getInitialTasks(makeHandlerFlow());
@@ -413,6 +485,16 @@ describe('advanceFlow - route gateway', () => {
   it('falls back to default branch when no condition matches', () => {
     const result = advanceFlow(makeRouteFlow(), 'start', { vip: 'false' }, new Set(['start']));
     expect(result.tasksToCreate[0].nodeKey).toBe('a-normal');
+  });
+});
+
+describe('advanceFlow - compound branch conditions', () => {
+  it('routes by full condition groups instead of only the first rule', () => {
+    const hit = advanceFlow(makeCompoundConditionFlow(), 'start', { amount: 1200, dept: '财务' }, new Set(['start']));
+    expect(hit.tasksToCreate[0].nodeKey).toBe('a-hit');
+
+    const miss = advanceFlow(makeCompoundConditionFlow(), 'start', { amount: 1200, dept: '行政' }, new Set(['start']));
+    expect(miss.tasksToCreate[0].nodeKey).toBe('a-default');
   });
 });
 
@@ -443,4 +525,20 @@ describe('advanceFlow - auto nodes (delay/trigger/subProcess)', () => {
       expect(approveTask?.assigneeId).toBe(99);
     });
   }
+});
+
+describe('advanceFlow - auto approval nodes', () => {
+  it('returns an approved auto task without creating a manual current node', () => {
+    const result = getInitialTasks(makeAutoApprovalFlow('autoApprove'));
+    expect(result.rejected).toBe(false);
+    expect(result.tasksToCreate).toHaveLength(1);
+    expect(result.tasksToCreate[0]).toMatchObject({ nodeKey: 'auto-approval', autoStatus: 'approved' });
+    expect(result.currentNodeKeys).toEqual([]);
+  });
+
+  it('marks the flow as rejected for auto reject nodes', () => {
+    const result = getInitialTasks(makeAutoApprovalFlow('autoReject'));
+    expect(result.rejected).toBe(true);
+    expect(result.tasksToCreate[0]).toMatchObject({ nodeKey: 'auto-approval', autoStatus: 'rejected' });
+  });
 });

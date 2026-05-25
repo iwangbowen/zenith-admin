@@ -37,7 +37,7 @@ interface ApproverSettingsTabProps {
   roles: RoleOption[];
   userGroups?: UserGroupOption[];
   formFields: Array<{ key: string; label: string; type?: string }>;
-  allNodes?: Array<{ id: string; name: string; type: FlowNodeType }>;
+  allNodes?: Array<{ id: string; key?: string; name: string; type: FlowNodeType }>;
   onChange: (updates: Record<string, unknown>) => void;
 }
 
@@ -296,7 +296,7 @@ export default function ApproverSettingsTab({
                 onChange={(v) => onChange({ nodeApproverNodeId: v })}
                 style={{ width: '100%' }}
                 placeholder="请选择前序审批节点"
-                optionList={approverNodes.map(n => ({ value: n.id, label: n.name }))}
+                optionList={approverNodes.map(n => ({ value: n.key || n.id, label: n.key ? `${n.name}（${n.key}）` : n.name }))}
                 emptyContent="暂无前序审批节点"
               />
               <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>

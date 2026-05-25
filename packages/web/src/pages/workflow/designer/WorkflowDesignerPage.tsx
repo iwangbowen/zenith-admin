@@ -124,6 +124,12 @@ export default function WorkflowDesignerPage() {
           if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
             history.reset((fd as unknown as Record<string, unknown>).process);
           }
+          if (fd && 'settings' in fd && (fd as unknown as Record<string, unknown>).settings) {
+            setAdvancedSettings({
+              ...DEFAULT_ADVANCED_SETTINGS,
+              ...((fd as unknown as Record<string, unknown>).settings as Partial<AdvancedSettingsData>),
+            });
+          }
         }
       }).finally(() => setPageLoading(false));
     }
@@ -291,7 +297,7 @@ export default function WorkflowDesignerPage() {
     setSaving(true);
     try {
       const flat = treeToFlat(process);
-      const flowData = { ...flat, process };
+      const flowData = { ...flat, process, settings: advancedSettings };
       const payload = {
         name: meta.name,
         description: meta.description ?? null,

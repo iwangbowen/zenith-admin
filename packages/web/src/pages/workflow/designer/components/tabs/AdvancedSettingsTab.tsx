@@ -22,7 +22,7 @@ interface UserOption { id: number; nickname: string; }
 interface AdvancedSettingsTabProps {
   rejectStrategy: RejectStrategy;
   rejectToNodeKey?: string;
-  availableRejectNodes?: Array<{ id: string; name: string; type: string }>;
+  availableRejectNodes?: Array<{ id: string; key?: string; name: string; type: string }>;
   emptyStrategy: EmptyAssigneeStrategy;
   emptyAssignTo?: number;
   sameInitiatorStrategy?: SameInitiatorStrategy;
@@ -84,8 +84,8 @@ export default function AdvancedSettingsTab({
             placeholder={availableRejectNodes.length === 0 ? '当前节点之前没有可选节点' : '请选择回退节点'}
             disabled={availableRejectNodes.length === 0}
             optionList={availableRejectNodes.map((n) => ({
-              value: n.id,
-              label: `${n.name}（${n.type === 'approver' ? '审批人' : '办理人'}）`,
+              value: n.key || n.id,
+              label: `${n.name}（${n.type === 'approver' ? '审批人' : '办理人'}${n.key ? ` · ${n.key}` : ''}）`,
             }))}
           />
         </div>

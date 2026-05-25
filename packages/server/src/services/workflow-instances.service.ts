@@ -64,7 +64,7 @@ import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { advanceFlow, getInitialTasks, validateFlowData, type TaskAction } from '../lib/workflow-engine';
+import { advanceFlow, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
 import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
@@ -128,12 +128,102 @@ function emitNodeEvent(
  * - approve / handler：调用 resolver 展开为多人，依据 approveMethod 写入状态／sequence
  * - ccNode / delay / trigger / subProcess：保持原样
  */
+interface ExpandedTaskRows {
+  rows: Array<typeof workflowTasks.$inferInsert>;
+  autoApprovedNodeKeys: string[];
+  autoRejectedNodeKey: string | null;
+}
+
+async function resolveAdminAssigneeId(exec: DbExecutor): Promise<number | null> {
+  const [admin] = await exec.select({ id: users.id }).from(users)
+    .where(and(eq(users.username, 'admin'), eq(users.status, 'enabled')))
+    .limit(1);
+  if (admin) return admin.id;
+  const [firstEnabled] = await exec.select({ id: users.id }).from(users)
+    .where(eq(users.status, 'enabled'))
+    .limit(1);
+  return firstEnabled?.id ?? null;
+}
+
+async function resolveSameInitiatorReplacement(
+  task: TaskAction,
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
+): Promise<number[]> {
+  const strategy = task.nodeConfig.sameInitiatorStrategy;
+  if (strategy === 'toDirectManager') {
+    return resolveAssigneeIds({ ...task.nodeConfig, assigneeType: 'manager', managerLevel: 1 }, {
+      initiatorId: ctx.initiatorId,
+      executor: ctx.executor,
+      formData: ctx.formData,
+      instanceId: ctx.instanceId,
+    });
+  }
+  if (strategy === 'toDeptHead') {
+    return resolveAssigneeIds({ ...task.nodeConfig, assigneeType: 'department' }, {
+      initiatorId: ctx.initiatorId,
+      executor: ctx.executor,
+      formData: ctx.formData,
+      instanceId: ctx.instanceId,
+    });
+  }
+  return [];
+}
+
+async function applyAssigneeRuntimeStrategies(
+  task: TaskAction,
+  userIds: number[],
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
+): Promise<number[]> {
+  let ids = [...new Set(userIds)];
+  const sameInitiatorStrategy = task.nodeConfig.sameInitiatorStrategy
+    ?? (ctx.settings?.autoApproveIfSameUser ? 'autoSkip' : 'selfApprove');
+
+  if (ids.includes(ctx.initiatorId) && sameInitiatorStrategy !== 'selfApprove') {
+    ids = ids.filter((id) => id !== ctx.initiatorId);
+    if (sameInitiatorStrategy === 'toDirectManager' || sameInitiatorStrategy === 'toDeptHead') {
+      const replacements = await resolveSameInitiatorReplacement(task, ctx);
+      ids = [...new Set([...ids, ...replacements.filter((id) => id !== ctx.initiatorId)])];
+    }
+  }
+
+  if ((task.nodeConfig.deduplicateStrategy ?? 'autoSkip') === 'autoSkip' && ids.length > 0) {
+    const approvedRows = await ctx.executor.select({ assigneeId: workflowTasks.assigneeId }).from(workflowTasks)
+      .where(and(eq(workflowTasks.instanceId, ctx.instanceId), eq(workflowTasks.status, 'approved')));
+    const approvedUsers = new Set(approvedRows.map((row) => row.assigneeId).filter((id): id is number => typeof id === 'number'));
+    ids = ids.filter((id) => !approvedUsers.has(id));
+  }
+
+  return ids;
+}
+
 async function expandTasksToRows(
   tasks: TaskAction[],
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown> },
-): Promise<Array<typeof workflowTasks.$inferInsert>> {
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
+): Promise<ExpandedTaskRows> {
   const rows: Array<typeof workflowTasks.$inferInsert> = [];
+  const autoApprovedNodeKeys: string[] = [];
+  let autoRejectedNodeKey: string | null = null;
+
+  const pushAutoRow = (task: TaskAction, status: 'approved' | 'rejected') => {
+    rows.push({
+      instanceId: ctx.instanceId,
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
+      nodeType: task.nodeType,
+      assigneeId: null,
+      status,
+      actionAt: new Date(),
+    });
+    if (status === 'approved') autoApprovedNodeKeys.push(task.nodeKey);
+    else autoRejectedNodeKey = task.nodeKey;
+  };
+
   for (const t of tasks) {
+    if (t.autoStatus) {
+      pushAutoRow(t, t.autoStatus);
+      continue;
+    }
+
     if (t.nodeType !== 'approve' && t.nodeType !== 'handler') {
       rows.push({
         instanceId: ctx.instanceId,
@@ -141,7 +231,8 @@ async function expandTasksToRows(
         nodeName: t.nodeName,
         nodeType: t.nodeType,
         assigneeId: t.assigneeId,
-        status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
+        status: t.nodeType === 'ccNode' ? 'skipped' as const : 'approved' as const,
+        actionAt: t.nodeType === 'ccNode' ? null : new Date(),
       });
       continue;
     }
@@ -160,42 +251,51 @@ async function expandTasksToRows(
       });
       continue;
     }
-    // 节点级"自动通过/拒绝"开关（前端 ApprovalType）也可能通过 nodeConfig 传入；
-    // 这里先处理 approveMethod=='auto' 的多人审批"自动通过"语义：直接落 approved 行。
     const rawMethod = t.nodeConfig.approveMethod;
-    if (rawMethod === 'auto') {
-      rows.push({
-        instanceId: ctx.instanceId,
-        nodeKey: t.nodeKey,
-        nodeName: t.nodeName,
-        nodeType: t.nodeType,
-        assigneeId: null,
-        status: 'approved' as const,
-        actionAt: new Date(),
-      });
-      continue;
-    }
 
-    const userIds = await resolveAssigneeIds(t.nodeConfig, {
+    const resolvedUserIds = await resolveAssigneeIds(t.nodeConfig, {
       initiatorId: ctx.initiatorId,
       executor: ctx.executor,
       formData: ctx.formData,
       instanceId: ctx.instanceId,
     });
-    // 未解析到任何人：写入一条无 assignee 的 pending 任务作为占位（避免隐性 stall）
+
+    const userIds = await applyAssigneeRuntimeStrategies(t, resolvedUserIds, ctx);
     if (userIds.length === 0) {
-      rows.push({
-        instanceId: ctx.instanceId,
-        nodeKey: t.nodeKey,
-        nodeName: t.nodeName,
-        nodeType: t.nodeType,
-        assigneeId: null,
-        status: 'pending' as const,
-      });
+      const emptyStrategy = t.nodeConfig.emptyStrategy ?? 'autoApprove';
+      if (emptyStrategy === 'assignTo' && t.nodeConfig.emptyAssignTo) {
+        rows.push({
+          instanceId: ctx.instanceId,
+          nodeKey: t.nodeKey,
+          nodeName: t.nodeName,
+          nodeType: t.nodeType,
+          assigneeId: t.nodeConfig.emptyAssignTo,
+          status: 'pending' as const,
+        });
+      } else if (emptyStrategy === 'assignToAdmin') {
+        const adminId = await resolveAdminAssigneeId(ctx.executor);
+        if (adminId) {
+          rows.push({
+            instanceId: ctx.instanceId,
+            nodeKey: t.nodeKey,
+            nodeName: t.nodeName,
+            nodeType: t.nodeType,
+            assigneeId: adminId,
+            status: 'pending' as const,
+          });
+        } else {
+          pushAutoRow(t, 'rejected');
+        }
+      } else if (emptyStrategy === 'reject') {
+        pushAutoRow(t, 'rejected');
+      } else {
+        pushAutoRow(t, 'approved');
+      }
       continue;
     }
+
     const fallbackMethod: Exclude<WorkflowApproveMethod, 'auto'> = userIds.length > 1 ? 'and' : 'or';
-    const method: Exclude<WorkflowApproveMethod, 'auto'> = rawMethod ?? fallbackMethod;
+    const method: Exclude<WorkflowApproveMethod, 'auto'> = rawMethod && rawMethod !== 'auto' ? rawMethod : fallbackMethod;
     userIds.forEach((uid, idx) => {
       rows.push({
         instanceId: ctx.instanceId,
@@ -210,7 +310,63 @@ async function expandTasksToRows(
       });
     });
   }
-  return rows;
+  return { rows, autoApprovedNodeKeys, autoRejectedNodeKey };
+}
+
+async function getCompletedNodeKeys(exec: DbExecutor, instanceId: number): Promise<Set<string>> {
+  const rows = await exec.select({ nodeKey: workflowTasks.nodeKey }).from(workflowTasks)
+    .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.status, 'approved')));
+  const keys = new Set(rows.map((row) => row.nodeKey));
+  keys.add('start');
+  return keys;
+}
+
+async function materializeAdvanceResult(
+  initial: AdvanceResult,
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
+): Promise<{ createdTasks: typeof workflowTasks.$inferSelect[]; finished: boolean; rejected: boolean; currentNodeKeys: string[] }> {
+  const createdTasks: typeof workflowTasks.$inferSelect[] = [];
+  const pendingResults: AdvanceResult[] = [initial];
+  const autoApprovedQueue: string[] = [];
+  const processedAutoKeys = new Set<string>();
+  let finished = false;
+  let rejected = false;
+  let currentNodeKeys: string[] = [];
+
+  while ((pendingResults.length > 0 || autoApprovedQueue.length > 0) && !rejected) {
+    if (pendingResults.length === 0) {
+      const autoNodeKey = autoApprovedQueue.shift();
+      if (!autoNodeKey || processedAutoKeys.has(autoNodeKey)) continue;
+      processedAutoKeys.add(autoNodeKey);
+      const completedKeys = await getCompletedNodeKeys(ctx.executor, ctx.instanceId);
+      pendingResults.push(advanceFlow(ctx.flowData, autoNodeKey, ctx.formData, completedKeys));
+      continue;
+    }
+
+    const result = pendingResults.shift();
+    if (!result) continue;
+    if (result.finished) finished = true;
+    if (result.currentNodeKeys.length > 0) currentNodeKeys = result.currentNodeKeys;
+
+    if (result.tasksToCreate.length > 0) {
+      const expanded = await expandTasksToRows(result.tasksToCreate, ctx);
+      if (expanded.rows.length > 0) {
+        const inserted = await ctx.executor.insert(workflowTasks).values(expanded.rows).returning();
+        createdTasks.push(...inserted);
+        const activeKeys = [...new Set(inserted
+          .filter((task) => task.status === 'pending' || task.status === 'waiting')
+          .map((task) => task.nodeKey))];
+        if (activeKeys.length > 0) currentNodeKeys = activeKeys;
+      }
+      autoApprovedQueue.push(...expanded.autoApprovedNodeKeys);
+      if (expanded.autoRejectedNodeKey) rejected = true;
+    }
+
+    if (result.rejected) rejected = true;
+  }
+
+  if (rejected) return { createdTasks, finished: false, rejected: true, currentNodeKeys: [] };
+  return { createdTasks, finished, rejected: false, currentNodeKeys };
 }
 
 /**
@@ -462,7 +618,7 @@ export async function createInstance(data: { definitionId: number; title: string
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
   const formData: Record<string, unknown> = data.formData ?? {};
   const initialResult = getInitialTasks(flowData, formData);
-  if (initialResult.tasksToCreate.length === 0 && !initialResult.finished) {
+  if (initialResult.tasksToCreate.length === 0 && !initialResult.finished && !initialResult.rejected) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }
   const { instance, createdTasks } = await db.transaction(async (tx) => {
@@ -471,34 +627,43 @@ export async function createInstance(data: { definitionId: number; title: string
       definitionSnapshot: def,
       title: data.title,
       formData,
-      status: initialResult.finished ? 'approved' : 'running',
-      currentNodeKey: initialResult.currentNodeKeys[0] ?? null,
+      status: 'running',
+      currentNodeKey: null,
       initiatorId: user.userId,
       tenantId: getCreateTenantId(user),
     }).returning();
-    let inserted: typeof workflowTasks.$inferSelect[] = [];
-    if (initialResult.tasksToCreate.length > 0) {
-      const rows = await expandTasksToRows(initialResult.tasksToCreate, {
-        instanceId: createdInstance.id,
-        initiatorId: user.userId,
-        executor: tx,
-        formData,
-      });
-      if (rows.length > 0) {
-        inserted = await tx.insert(workflowTasks).values(rows).returning();
-      }
-    }
-    return { instance: createdInstance, createdTasks: inserted };
+    const materialized = await materializeAdvanceResult(initialResult, {
+      instanceId: createdInstance.id,
+      initiatorId: user.userId,
+      executor: tx,
+      flowData,
+      formData,
+      settings: flowData.settings,
+    });
+    const [updatedInstance] = await tx.update(workflowInstances).set({
+      status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
+      currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
+    }).where(eq(workflowInstances.id, createdInstance.id)).returning();
+    return { instance: updatedInstance, createdTasks: materialized.createdTasks };
   });
   const instanceDto = mapInstance(instance);
   const actor = { userId: user.userId, name: user.username };
   emitInstanceEvent('instance.created', instanceDto, actor);
   for (const t of createdTasks) {
+    emitNodeEvent('node.entered', { instanceId: instance.id, definitionId: instance.definitionId, tenantId: instance.tenantId, actor, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
     emitTaskEvent('task.created', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
     if (t.assigneeId && t.status === 'pending') {
       emitTaskEvent('task.assigned', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
     }
+    if (t.status === 'approved') {
+      emitTaskEvent('task.approved', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
+    }
+    if (t.status === 'rejected') {
+      emitTaskEvent('task.rejected', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
+    }
   }
+  if (instance.status === 'approved') emitInstanceEvent('instance.approved', instanceDto, actor);
+  if (instance.status === 'rejected') emitInstanceEvent('instance.rejected', instanceDto, actor);
   return instanceDto;
 }
 
@@ -511,6 +676,10 @@ export async function withdrawInstance(id: number) {
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以撤回' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '只能撤回进行中的申请' });
+  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  if (snapshot?.flowData?.settings?.allowWithdraw === false) {
+    throw new HTTPException(400, { message: '该流程不允许发起人撤回' });
+  }
   const { row: updated, cancelledTasks } = await db.transaction(async (tx) => {
     const cancelled = await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
       .where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending')))
@@ -579,7 +748,7 @@ async function approveTaskCore(
         .set({ currentNodeKey: task.nodeKey })
         .where(eq(workflowInstances.id, inst.id))
         .returning();
-      return { row, finished: false, advanced: false, approvedTask, newTasks: [] as typeof workflowTasks.$inferSelect[] };
+      return { row, finished: false, rejected: false, advanced: false, approvedTask, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
     const allTasks = await tx.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')));
@@ -587,33 +756,30 @@ async function approveTaskCore(
     completedKeys.add('start');
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
     const advanceResult = advanceFlow(flowData, task.nodeKey, formData, completedKeys);
+    const materialized = await materializeAdvanceResult(advanceResult, {
+      instanceId: inst.id,
+      initiatorId: inst.initiatorId,
+      executor: tx,
+      flowData,
+      formData,
+      settings: flowData.settings,
+    });
 
-    if (advanceResult.finished && advanceResult.tasksToCreate.length === 0) {
-      const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      return { row, finished: true, advanced: true, approvedTask, newTasks: [] as typeof workflowTasks.$inferSelect[] };
+    if (materialized.rejected) {
+      const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
+      return { row, finished: false, rejected: true, advanced: true, approvedTask, newTasks: materialized.createdTasks };
     }
 
-    let newTasks: typeof workflowTasks.$inferSelect[] = [];
-    if (advanceResult.tasksToCreate.length > 0) {
-      const rows = await expandTasksToRows(advanceResult.tasksToCreate, {
-        instanceId: inst.id,
-        initiatorId: inst.initiatorId,
-        executor: tx,
-        formData,
-      });
-      if (rows.length > 0) newTasks = await tx.insert(workflowTasks).values(rows).returning();
-    }
-
-    if (advanceResult.finished) {
+    if (materialized.finished) {
       const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      return { row, finished: true, advanced: true, approvedTask, newTasks };
+      return { row, finished: true, rejected: false, advanced: true, approvedTask, newTasks: materialized.createdTasks };
     }
 
     const [row] = await tx.update(workflowInstances)
-      .set({ currentNodeKey: advanceResult.currentNodeKeys[0] ?? null })
+      .set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null })
       .where(eq(workflowInstances.id, inst.id))
       .returning();
-    return { row, finished: false, advanced: true, approvedTask, newTasks };
+    return { row, finished: false, rejected: false, advanced: true, approvedTask, newTasks: materialized.createdTasks };
   });
 
   const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
@@ -627,13 +793,24 @@ async function approveTaskCore(
     if (t.assigneeId && t.status === 'pending') {
       emitTaskEvent('task.assigned', mapTask(t), meta);
     }
+    if (t.status === 'approved') {
+      emitTaskEvent('task.approved', mapTask(t), meta);
+    }
+    if (t.status === 'rejected') {
+      emitTaskEvent('task.rejected', mapTask(t), meta);
+    }
   }
   if (updated.finished) {
     emitInstanceEvent('instance.approved', mapInstance(updated.row), actor);
   }
+  if (updated.rejected) {
+    emitInstanceEvent('instance.rejected', mapInstance(updated.row), actor);
+  }
 
   let message: string;
-  if (updated.finished) {
+  if (updated.rejected) {
+    message = '审批通过，后续自动拒绝节点已终止流程';
+  } else if (updated.finished) {
     message = '审批通过，流程已完成';
   } else if (updated.advanced) {
     message = '审批通过，流程已推进';
@@ -735,28 +912,29 @@ async function rejectTaskCore(
 
     // 回退：实例保持 running，在目标节点重新生成任务
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
-    let tasksToCreate: TaskAction[] = [];
-    let newCurrentKey: string | null = null;
+    let advanceResult: AdvanceResult | null = null;
 
     if (strategy === 'returnStart') {
-      const initial = getInitialTasks(flowData, formData);
-      tasksToCreate = initial.tasksToCreate;
-      newCurrentKey = initial.currentNodeKeys[0] ?? null;
+      advanceResult = getInitialTasks(flowData, formData);
     } else {
       const targetCfg = flowData.nodes.find((n) => n.data.key === targetNodeKey)?.data;
       if (targetCfg && (targetCfg.type === 'approve' || targetCfg.type === 'handler')) {
-        tasksToCreate = [{
-          nodeKey: targetCfg.key,
-          nodeName: targetCfg.label,
-          nodeType: targetCfg.type,
-          assigneeId: targetCfg.assigneeId ?? null,
-          nodeConfig: targetCfg,
-        }];
-        newCurrentKey = targetCfg.key;
+        advanceResult = {
+          finished: false,
+          rejected: false,
+          tasksToCreate: [{
+            nodeKey: targetCfg.key,
+            nodeName: targetCfg.label,
+            nodeType: targetCfg.type,
+            assigneeId: targetCfg.assigneeId ?? null,
+            nodeConfig: targetCfg,
+          }],
+          currentNodeKeys: [targetCfg.key],
+        };
       }
     }
 
-    if (tasksToCreate.length === 0) {
+    if (!advanceResult || (advanceResult.tasksToCreate.length === 0 && !advanceResult.finished && !advanceResult.rejected)) {
       const [row] = await tx.update(workflowInstances)
         .set({ status: 'rejected', currentNodeKey: null })
         .where(eq(workflowInstances.id, inst.id))
@@ -764,20 +942,36 @@ async function rejectTaskCore(
       return { row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
-    const rows = await expandTasksToRows(tasksToCreate, {
+    const materialized = await materializeAdvanceResult(advanceResult, {
       instanceId: inst.id,
       initiatorId: inst.initiatorId,
       executor: tx,
+      flowData,
       formData,
+      settings: flowData.settings,
     });
-    let newTasks: typeof workflowTasks.$inferSelect[] = [];
-    if (rows.length > 0) newTasks = await tx.insert(workflowTasks).values(rows).returning();
+
+    if (materialized.rejected) {
+      const [row] = await tx.update(workflowInstances)
+        .set({ status: 'rejected', currentNodeKey: null })
+        .where(eq(workflowInstances.id, inst.id))
+        .returning();
+      return { row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: materialized.createdTasks };
+    }
+
+    if (materialized.finished) {
+      const [row] = await tx.update(workflowInstances)
+        .set({ status: 'approved', currentNodeKey: null })
+        .where(eq(workflowInstances.id, inst.id))
+        .returning();
+      return { row, terminated: false, finished: true, rejectedTask, skippedTasks: skipped, newTasks: materialized.createdTasks };
+    }
 
     const [row] = await tx.update(workflowInstances)
-      .set({ currentNodeKey: newCurrentKey })
+      .set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null })
       .where(eq(workflowInstances.id, inst.id))
       .returning();
-    return { row, terminated: false, rejectedTask, skippedTasks: skipped, newTasks };
+    return { row, terminated: false, finished: false, rejectedTask, skippedTasks: skipped, newTasks: materialized.createdTasks };
   });
 
   const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
@@ -793,7 +987,10 @@ async function rejectTaskCore(
       emitNodeEvent('node.entered', { instanceId: updated.row.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
       emitTaskEvent('task.created', mapTask(t), meta);
       if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
+      if (t.status === 'approved') emitTaskEvent('task.approved', mapTask(t), meta);
+      if (t.status === 'rejected') emitTaskEvent('task.rejected', mapTask(t), meta);
     }
+    if (updated.finished) emitInstanceEvent('instance.approved', mapInstance(updated.row), actor);
   }
 
   return mapInstance(updated.row);

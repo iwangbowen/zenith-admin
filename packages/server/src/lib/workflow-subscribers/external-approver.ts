@@ -11,7 +11,7 @@ import { db } from '../../db';
 import { workflowInstances, workflowTasks } from '../../db/schema';
 import { workflowEventBus } from '../workflow-event-bus';
 import { httpPost } from '../http-client';
-import { approveTask, rejectTask } from '../../services/workflow-instances.service';
+import { approveTaskByCallback, rejectTaskByCallback } from '../../services/workflow-instances.service';
 import logger from '../logger';
 import type { WorkflowFlowData, WorkflowExternalApprovalConfig } from '@zenith/shared';
 
@@ -28,12 +28,13 @@ async function applyFallback(
   strategy: WorkflowExternalApprovalConfig['fallbackStrategy'] = 'manual',
 ): Promise<void> {
   if (strategy === 'manual') return; // 维持任务待人工处理
-  await db.update(workflowTasks).set({ externalDispatchStatus: 'fallback' }).where(eq(workflowTasks.id, taskId));
+  const [task] = await db.update(workflowTasks).set({ externalDispatchStatus: 'fallback' }).where(eq(workflowTasks.id, taskId)).returning();
+  if (!task?.externalCallbackId) return;
   try {
     if (strategy === 'autoApprove') {
-      await approveTask(taskId, FALLBACK_COMMENT);
+      await approveTaskByCallback(task.externalCallbackId, FALLBACK_COMMENT, 'fallback');
     } else if (strategy === 'autoReject') {
-      await rejectTask(taskId, FALLBACK_COMMENT);
+      await rejectTaskByCallback(task.externalCallbackId, FALLBACK_COMMENT, 'fallback');
     }
   } catch (err) {
     logger.error('[external-approver] fallback 执行失败', { taskId, strategy, err });

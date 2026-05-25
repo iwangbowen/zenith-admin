@@ -108,7 +108,7 @@ export function collectAllNodes(root: FlowNode | undefined): Array<{ id: string;
 export function findAncestorApproverNodes(
   root: FlowNode | undefined,
   targetId: string,
-): Array<{ id: string; name: string; type: FlowNodeType }> {
+): Array<{ id: string; key?: string; name: string; type: FlowNodeType }> {
   const path: FlowNode[] = [];
   function walk(node: FlowNode | undefined): boolean {
     if (!node) return false;
@@ -126,7 +126,7 @@ export function findAncestorApproverNodes(
   if (!walk(root)) return [];
   return path
     .filter((n) => n.type === 'approver' || n.type === 'handler')
-    .map((n) => ({ id: n.id, name: n.name, type: n.type }));
+    .map((n) => ({ id: n.id, key: n.key, name: n.name, type: n.type }));
 }
 
 // ─── 节点链表操作 ────────────────────────────────────────────────────
@@ -421,6 +421,37 @@ interface FlatEdge {
     operator: string;
     value: string | number | boolean;
   } | null;
+  conditions?: Array<{
+    type: 'and' | 'or';
+    rules: Array<{
+      field: string;
+      operator: string;
+      value: string | number | boolean;
+    }>;
+  }> | null;
+  isDefault?: boolean;
+}
+
+function normalizeBranchConditions(branch: FlowBranch): FlatEdge['conditions'] {
+  const groups = branch.conditions
+    ?.map(group => ({
+      type: group.type,
+      rules: group.rules.filter(rule => rule.field !== ''),
+    }))
+    .filter(group => group.rules.length > 0);
+  return groups?.length ? groups : null;
+}
+
+function firstBranchRule(conditions: FlatEdge['conditions']): FlatEdge['condition'] {
+  return conditions?.[0]?.rules[0] ?? null;
+}
+
+function applyBranchEdgeMeta(edge: FlatEdge, branch: FlowBranch): void {
+  const conditions = normalizeBranchConditions(branch);
+  edge.label = branch.name;
+  edge.isDefault = !!branch.isDefault;
+  edge.conditions = conditions;
+  edge.condition = firstBranchRule(conditions);
 }
 
 /** 将树结构转换为扁平 nodes + edges（用于后端保存） */
@@ -495,25 +526,19 @@ function flattenNode(
 
     // Process each branch
     for (const branch of node.branches) {
+      const edgeStartIndex = edges.length;
       const branchEndIds = flattenNode(branch.children, forkId, nodes, edges);
+      const branchEdges = edges.slice(edgeStartIndex);
+      const firstBranchEdge = branchEdges.find(e => e.source === forkId && e.target !== joinId);
 
-      // 如果分支有条件，在 fork → first_node 的边上加条件
-      if (branch.conditions?.length && branch.conditions[0].rules.length > 0) {
-        const firstRule = branch.conditions[0].rules[0];
-        const existingEdge = edges.find(e => e.source === forkId && branchEndIds.includes(e.target));
-        // 只在无分支内容时需要直接连接 fork→join
-        if (!branch.children) {
-          edges.push({
-            id: `e-${forkId}-${joinId}-${branch.id}`,
-            source: forkId,
-            target: joinId,
-            condition: { field: firstRule.field, operator: firstRule.operator, value: firstRule.value },
-          });
-        } else if (existingEdge) {
-          existingEdge.condition = { field: firstRule.field, operator: firstRule.operator, value: firstRule.value };
-        }
-      } else if (!branch.children) {
-        edges.push({ id: `e-${forkId}-${joinId}-${branch.id}`, source: forkId, target: joinId });
+      // 分支元数据必须挂在 fork → 分支首节点（或空分支时 fork → join）的边上。
+      // 旧实现只取第一条规则，且多节点分支会找不到首边，导致条件丢失。
+      if (!branch.children) {
+        const edge: FlatEdge = { id: `e-${forkId}-${joinId}-${branch.id}`, source: forkId, target: joinId };
+        applyBranchEdgeMeta(edge, branch);
+        edges.push(edge);
+      } else if (firstBranchEdge) {
+        applyBranchEdgeMeta(firstBranchEdge, branch);
       }
 
       for (const endId of branchEndIds) {

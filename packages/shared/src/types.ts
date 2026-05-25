@@ -558,6 +558,11 @@ export interface WorkflowEdgeCondition {
   value: string | number | boolean;
 }
 
+export interface WorkflowConditionGroup {
+  type: 'and' | 'or';
+  rules: WorkflowEdgeCondition[];
+}
+
 /** 审批人来源类型 */
 export type WorkflowAssigneeType =
   | 'user'              // 指定成员
@@ -582,6 +587,28 @@ export type WorkflowApproveMethod =
   | 'sequential'  // 顺序会签：按顺序逐一通过
   | 'auto';       // 自动通过
 
+export type WorkflowApprovalType = 'manual' | 'autoApprove' | 'autoReject';
+export type WorkflowEmptyAssigneeStrategy = 'autoApprove' | 'assignToAdmin' | 'reject' | 'assignTo';
+export type WorkflowSameInitiatorStrategy = 'selfApprove' | 'autoSkip' | 'toDirectManager' | 'toDeptHead';
+export type WorkflowDeduplicateStrategy = 'autoSkip' | 'repeatApprove';
+export type WorkflowOperationPermission =
+  | 'approve'
+  | 'reject'
+  | 'transfer'
+  | 'addSign'
+  | 'return'
+  | 'comment'
+  | 'signature'
+  | 'opinionRequired';
+export type WorkflowFieldPermission = 'read' | 'edit' | 'hidden';
+
+export interface WorkflowTimeoutConfig {
+  enabled: boolean;
+  duration: number;
+  action: 'remind' | 'autoApprove' | 'autoReject';
+  remindCount?: number;
+}
+
 /** 审批节点被驳回时的处理策略 */
 export type WorkflowRejectStrategy =
   | 'terminate'      // 终止流程
@@ -601,6 +628,8 @@ export interface WorkflowNodeConfig {
   isDefault?: boolean;            // 排他网关：是否默认出口
   /** 审批人来源类型（人工节点） */
   assigneeType?: WorkflowAssigneeType;
+  approvalType?: WorkflowApprovalType;
+  excludeFromStats?: boolean;
   /** 当 assigneeType = 'user' 时指定的成员 IDs */
   userIds?: number[] | null;
   /** 当 assigneeType = 'role' 时指定的角色 IDs */
@@ -611,6 +640,14 @@ export interface WorkflowNodeConfig {
   userGroupIds?: number[] | null;
   /** 审批方式（人工节点，多人时生效） */
   approveMethod?: WorkflowApproveMethod;
+  emptyStrategy?: WorkflowEmptyAssigneeStrategy;
+  emptyAssignTo?: number;
+  emptyAssignToName?: string;
+  sameInitiatorStrategy?: WorkflowSameInitiatorStrategy;
+  deduplicateStrategy?: WorkflowDeduplicateStrategy;
+  operations?: WorkflowOperationPermission[];
+  fieldPermissions?: Record<string, WorkflowFieldPermission>;
+  timeout?: WorkflowTimeoutConfig;
   /** manager / multiLevelManager 的层级（1 = 直属上级） */
   managerLevel?: number;
   /** 多级模式的终点类型 */
@@ -632,6 +669,10 @@ export interface WorkflowNodeConfig {
   triggerConfig?: WorkflowTriggerNodeConfig;
   /** 外部审批配置（type === 'approve' 时生效） */
   externalApproval?: WorkflowExternalApprovalConfig;
+  onlyOnApprove?: boolean;
+  subProcessId?: number;
+  subProcessName?: string;
+  isAsync?: boolean;
 }
 
 /** 触发器节点配置 */
@@ -672,6 +713,16 @@ export interface WorkflowEdge {
   type?: string;
   label?: string;
   condition?: WorkflowEdgeCondition | null;  // 排他网关出边的条件
+  conditions?: WorkflowConditionGroup[] | null;
+  isDefault?: boolean;
+}
+
+export interface WorkflowAdvancedSettings {
+  allowWithdraw: boolean;
+  allowResubmit: boolean;
+  notifyInitiator: boolean;
+  autoApproveIfSameUser: boolean;
+  timeoutAction: 'none' | 'auto-approve' | 'auto-reject' | 'notify';
 }
 
 export interface WorkflowFlowData {
@@ -684,6 +735,7 @@ export interface WorkflowFlowData {
   edges: WorkflowEdge[];
   /** 钉钉/飞书风格流程树结构（新版设计器使用） */
   process?: Record<string, unknown>;
+  settings?: WorkflowAdvancedSettings;
 }
 
 // 表单字段类型

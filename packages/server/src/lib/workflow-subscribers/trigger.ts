@@ -9,7 +9,7 @@
  * 当前为非阻塞执行：流程已经在 expandTasksToRows 中往下推进，
  * 触发器仅产生 workflow_trigger_executions 跟踪记录。
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowInstances, workflowTasks } from '../../db/schema';
 import { workflowEventBus } from '../workflow-event-bus';
@@ -124,7 +124,7 @@ async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: st
 
   // 找到对应的占位 task（trigger 节点会在 expandTasksToRows 中生成一个无 assignee 的任务）
   const [task] = await db.select().from(workflowTasks)
-    .where(eq(workflowTasks.instanceId, instanceId))
+    .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeKey, nodeKey)))
     .orderBy(workflowTasks.id);
   const taskId = task?.nodeKey === nodeKey ? task.id : null;
 

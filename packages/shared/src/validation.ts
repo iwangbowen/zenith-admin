@@ -498,6 +498,11 @@ export const workflowEdgeConditionSchema = z.object({
   value: z.union([z.string(), z.number(), z.boolean()]),
 });
 
+export const workflowConditionGroupSchema = z.object({
+  type: z.enum(['and', 'or']),
+  rules: z.array(workflowEdgeConditionSchema).min(1),
+});
+
 export const workflowNodeTypeSchema = z.enum([
   'start',
   'approve',
@@ -521,6 +526,20 @@ export const workflowAssigneeTypeSchema = z.enum([
 ]);
 
 export const workflowApproveMethodSchema = z.enum(['and', 'or', 'sequential', 'auto']);
+export const workflowApprovalTypeSchema = z.enum(['manual', 'autoApprove', 'autoReject']);
+export const workflowEmptyAssigneeStrategySchema = z.enum(['autoApprove', 'assignToAdmin', 'reject', 'assignTo']);
+export const workflowSameInitiatorStrategySchema = z.enum(['selfApprove', 'autoSkip', 'toDirectManager', 'toDeptHead']);
+export const workflowDeduplicateStrategySchema = z.enum(['autoSkip', 'repeatApprove']);
+export const workflowOperationPermissionSchema = z.enum([
+  'approve', 'reject', 'transfer', 'addSign', 'return', 'comment', 'signature', 'opinionRequired',
+]);
+export const workflowFieldPermissionSchema = z.enum(['read', 'edit', 'hidden']);
+export const workflowTimeoutConfigSchema = z.object({
+  enabled: z.boolean(),
+  duration: z.number().int().min(1),
+  action: z.enum(['remind', 'autoApprove', 'autoReject']),
+  remindCount: z.number().int().min(1).optional(),
+});
 
 export const workflowNodeConfigSchema = z.looseObject({
   key: z.string().min(1),
@@ -532,11 +551,21 @@ export const workflowNodeConfigSchema = z.looseObject({
   assigneeNames: z.array(z.string()).nullable().optional(),
   isDefault: z.boolean().optional(),
   assigneeType: workflowAssigneeTypeSchema.optional(),
+  approvalType: workflowApprovalTypeSchema.optional(),
+  excludeFromStats: z.boolean().optional(),
   userIds: z.array(z.number().int()).nullable().optional(),
   roleIds: z.array(z.number().int()).nullable().optional(),
   deptIds: z.array(z.number().int()).nullable().optional(),
   userGroupIds: z.array(z.number().int()).nullable().optional(),
   approveMethod: workflowApproveMethodSchema.optional(),
+  emptyStrategy: workflowEmptyAssigneeStrategySchema.optional(),
+  emptyAssignTo: z.number().int().optional(),
+  emptyAssignToName: z.string().optional(),
+  sameInitiatorStrategy: workflowSameInitiatorStrategySchema.optional(),
+  deduplicateStrategy: workflowDeduplicateStrategySchema.optional(),
+  operations: z.array(workflowOperationPermissionSchema).optional(),
+  fieldPermissions: z.record(z.string(), workflowFieldPermissionSchema).optional(),
+  timeout: workflowTimeoutConfigSchema.optional(),
   managerLevel: z.number().int().min(1).optional(),
   multiLevelEndType: z.enum(['topLevel', 'level', 'role']).optional(),
   multiLevelEndLevel: z.number().int().min(1).optional(),
@@ -545,6 +574,10 @@ export const workflowNodeConfigSchema = z.looseObject({
   formDeptField: z.string().optional(),
   formDeptHeadLevel: z.number().int().min(1).optional(),
   nodeApproverNodeId: z.string().optional(),
+  onlyOnApprove: z.boolean().optional(),
+  subProcessId: z.number().int().optional(),
+  subProcessName: z.string().optional(),
+  isAsync: z.boolean().optional(),
 });
 
 export const workflowFieldVisibilityConditionSchema = z.object({

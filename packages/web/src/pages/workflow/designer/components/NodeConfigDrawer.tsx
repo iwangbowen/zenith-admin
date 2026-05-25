@@ -47,7 +47,7 @@ interface NodeConfigDrawerProps {
   formFields: FormField[];
   allNodes?: Array<{ id: string; key?: string; name: string; type: FlowNodeType }>;
   /** 可选为“驳回到指定节点”的候选节点（当前节点之前同一执行路径上的审批/办理节点） */
-  rejectableAncestorNodes?: Array<{ id: string; name: string; type: FlowNodeType }>;
+  rejectableAncestorNodes?: Array<{ id: string; key?: string; name: string; type: FlowNodeType }>;
   onSave: (nodeId: string, updates: { name?: string; key?: string; props?: Record<string, unknown> }) => void;
   onCancel: () => void;
 }

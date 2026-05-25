@@ -15,6 +15,7 @@ import type {
   WorkflowNodeConfig,
   WorkflowEdge,
   WorkflowEdgeCondition,
+  WorkflowConditionGroup,
 } from '@zenith/shared';
 
 // ─── 图遍历工具 ───────────────────────────────────────────────────────────────
@@ -94,6 +95,39 @@ export function evaluateCondition(
   }
 }
 
+export function evaluateConditionGroup(
+  group: WorkflowConditionGroup,
+  formData: Record<string, unknown>,
+): boolean {
+  if (group.rules.length === 0) return false;
+  if (group.type === 'or') {
+    return group.rules.some((rule) => evaluateCondition(rule, formData));
+  }
+  return group.rules.every((rule) => evaluateCondition(rule, formData));
+}
+
+export function evaluateConditionGroups(
+  groups: WorkflowConditionGroup[],
+  formData: Record<string, unknown>,
+): boolean {
+  if (groups.length === 0) return false;
+  return groups.some((group) => evaluateConditionGroup(group, formData));
+}
+
+function edgeHasCondition(edge: WorkflowEdge): boolean {
+  return !!edge.condition || !!edge.conditions?.length;
+}
+
+function edgeMatchesCondition(edge: WorkflowEdge, formData: Record<string, unknown>): boolean {
+  if (edge.conditions?.length) return evaluateConditionGroups(edge.conditions, formData);
+  if (edge.condition) return evaluateCondition(edge.condition, formData);
+  return false;
+}
+
+function isDefaultEdge(edge: WorkflowEdge, targetNode?: FlowNode): boolean {
+  return !!edge.isDefault || !!targetNode?.data.isDefault || !edgeHasCondition(edge);
+}
+
 // ─── 引擎核心 ─────────────────────────────────────────────────────────────────
 
 /**
@@ -127,9 +161,9 @@ function computeReachableNodeIds(
       for (const { target, edge } of outs) {
         const tgtNode = nodeMap.get(target);
         if (!tgtNode) continue;
-        if (edge.condition) {
-          if (evaluateCondition(edge.condition, formData)) { chosen = target; break; }
-        } else if (tgtNode.data.isDefault || !fallback) {
+        if (edgeHasCondition(edge)) {
+          if (edgeMatchesCondition(edge, formData)) { chosen = target; break; }
+        } else if (isDefaultEdge(edge, tgtNode) || !fallback) {
           fallback = target;
         }
       }
@@ -141,9 +175,9 @@ function computeReachableNodeIds(
       for (const { target, edge } of outs) {
         const tgtNode = nodeMap.get(target);
         if (!tgtNode) continue;
-        if (edge.condition) {
-          if (evaluateCondition(edge.condition, formData)) { queue.push(target); matched++; }
-        } else if (tgtNode.data.isDefault || !fallback) {
+        if (edgeHasCondition(edge)) {
+          if (edgeMatchesCondition(edge, formData)) { queue.push(target); matched++; }
+        } else if (isDefaultEdge(edge, tgtNode) || !fallback) {
           fallback = target;
         }
       }
@@ -163,12 +197,16 @@ export interface TaskAction {
   assigneeId: number | null;
   /** 节点完整配置，供上层解析 assigneeType / approveMethod 等 */
   nodeConfig: WorkflowNodeConfig;
+  /** 自动审批/拒绝节点的系统决策，调用方据此落库并继续推进或终止 */
+  autoStatus?: 'approved' | 'rejected';
 }
 
 /** 引擎推进结果 */
 export interface AdvanceResult {
   /** 流程是否结束 */
   finished: boolean;
+  /** 流程是否被自动拒绝 */
+  rejected?: boolean;
   /** 需要创建的新任务 */
   tasksToCreate: TaskAction[];
   /** 流程当前所在节点（可能有多个，如并行网关 fork 后） */
@@ -194,12 +232,13 @@ export function advanceFlow(
   // 找到当前节点对应的 flowNode ID
   const currentFlowNode = flowData.nodes.find(n => n.data.key === currentNodeKey);
   if (!currentFlowNode) {
-    return { finished: false, tasksToCreate: [], currentNodeKeys: [] };
+    return { finished: false, rejected: false, tasksToCreate: [], currentNodeKeys: [] };
   }
 
   const tasksToCreate: TaskAction[] = [];
   const currentNodeKeys: string[] = [];
   let finished = false;
+  let rejected = false;
 
   // 统一推进到下一个节点：根据节点类型决定 创建任务 / 标记结束 / 继续入队
   function enqueueNext(targetId: string, queue: string[]): void {
@@ -207,6 +246,29 @@ export function advanceFlow(
     if (!nextNode) return;
     const t = nextNode.data.type;
     if (t === 'approve' || t === 'handler') {
+      if (nextNode.data.approvalType === 'autoReject') {
+        tasksToCreate.push({
+          nodeKey: nextNode.data.key,
+          nodeName: nextNode.data.label,
+          nodeType: t,
+          assigneeId: null,
+          nodeConfig: nextNode.data,
+          autoStatus: 'rejected',
+        });
+        rejected = true;
+        return;
+      }
+      if (nextNode.data.approvalType === 'autoApprove' || nextNode.data.approveMethod === 'auto') {
+        tasksToCreate.push({
+          nodeKey: nextNode.data.key,
+          nodeName: nextNode.data.label,
+          nodeType: t,
+          assigneeId: null,
+          nodeConfig: nextNode.data,
+          autoStatus: 'approved',
+        });
+        return;
+      }
       tasksToCreate.push({
         nodeKey: nextNode.data.key,
         nodeName: nextNode.data.label,
@@ -230,6 +292,7 @@ export function advanceFlow(
   while (queue.length > 0) {
     const nodeId = queue.shift();
     if (!nodeId || visited.has(nodeId)) continue;
+    if (rejected) break;
     visited.add(nodeId);
 
     const node = nodeMap.get(nodeId);
@@ -255,14 +318,13 @@ export function advanceFlow(
         const targetNode = nodeMap.get(target);
         if (!targetNode) continue;
 
-        if (edge.condition) {
-          if (evaluateCondition(edge.condition, formData)) {
+        if (edgeHasCondition(edge)) {
+          if (edgeMatchesCondition(edge, formData)) {
             chosenTarget = target;
             break;
           }
         }
-        if (targetNode.data.isDefault) defaultTarget = target;
-        if (!edge.condition && !defaultTarget) defaultTarget = target;
+        if (isDefaultEdge(edge, targetNode) && !defaultTarget) defaultTarget = target;
       }
 
       const nextId = chosenTarget ?? defaultTarget;
@@ -281,14 +343,12 @@ export function advanceFlow(
           for (const { target, edge } of outs) {
             const targetNode = nodeMap.get(target);
             if (!targetNode) continue;
-            if (edge.condition) {
-              if (evaluateCondition(edge.condition, formData)) {
+            if (edgeHasCondition(edge)) {
+              if (edgeMatchesCondition(edge, formData)) {
                 enqueueNext(target, queue);
                 matched++;
               }
-            } else if (targetNode.data.isDefault) {
-              defaultTarget = target;
-            } else if (!defaultTarget) {
+            } else if (isDefaultEdge(edge, targetNode) || !defaultTarget) {
               defaultTarget = target;
             }
           }
@@ -345,7 +405,7 @@ export function advanceFlow(
     }
   }
 
-  return { finished, tasksToCreate, currentNodeKeys };
+  return { finished, rejected, tasksToCreate, currentNodeKeys };
 }
 
 /**
@@ -357,7 +417,7 @@ export function getInitialTasks(
 ): AdvanceResult {
   const startNode = flowData.nodes.find(n => n.data.type === 'start');
   if (!startNode) {
-    return { finished: false, tasksToCreate: [], currentNodeKeys: [] };
+    return { finished: false, rejected: false, tasksToCreate: [], currentNodeKeys: [] };
   }
   return advanceFlow(flowData, startNode.data.key, formData, new Set(['start']));
 }
@@ -378,17 +438,29 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
   const approveNodes = flowData.nodes.filter(n => n.data.type === 'approve' || n.data.type === 'handler');
   if (approveNodes.length === 0) errors.push('流程至少需要一个审批/办理节点');
 
+  const keys = new Set<string>();
+  for (const node of flowData.nodes) {
+    if (keys.has(node.data.key)) {
+      errors.push(`节点标识"${node.data.key}"重复`);
+    }
+    keys.add(node.data.key);
+  }
+
   // 检查排他/路由网关出边是否配置了条件
-  const { outEdges } = buildAdjacency(flowData);
+  const { nodeMap, outEdges } = buildAdjacency(flowData);
   for (const node of flowData.nodes) {
     if (node.data.type === 'exclusiveGateway' || node.data.type === 'routeGateway') {
       const outs = outEdges.get(node.id) ?? [];
       if (outs.length < 2) {
         errors.push(`排他/路由网关"${node.data.label}"至少需要2条出边`);
       }
-      const hasCondition = outs.some(o => o.edge.condition);
+      const hasCondition = outs.some(o => edgeHasCondition(o.edge));
       if (!hasCondition && outs.length > 1) {
         errors.push(`排他/路由网关"${node.data.label}"的出边需要配置条件`);
+      }
+      const hasDefault = outs.some(o => isDefaultEdge(o.edge, nodeMap.get(o.target)));
+      if (!hasDefault && outs.length > 1) {
+        errors.push(`排他/路由网关"${node.data.label}"需要保留一个默认分支`);
       }
     }
     if (node.data.type === 'parallelGateway' || node.data.type === 'inclusiveGateway') {
