@@ -51,7 +51,7 @@ function injectOnUpdate(table: unknown, data: unknown): unknown {
   return { updatedBy: userId, ...(data as object) };
 }
 
-type AnyBuilder = { values?: Function; set?: Function; onConflictDoUpdate?: Function };
+type AnyBuilder = { values?: (...args: unknown[]) => unknown; set?: (...args: unknown[]) => unknown; onConflictDoUpdate?: (...args: unknown[]) => unknown };
 
 function wrapInsertReturn(insert: AnyBuilder, table: unknown): AnyBuilder {
   // 同时拦截 .onConflictDoUpdate({ set })：冲突时也注入 updated_by
