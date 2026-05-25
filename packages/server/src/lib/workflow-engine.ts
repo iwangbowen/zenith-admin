@@ -389,7 +389,16 @@ export function advanceFlow(
         }
       }
       for (const { target } of outs) enqueueNext(target, queue);
-    } else if (nodeType === 'delay' || nodeType === 'trigger' || nodeType === 'subProcess') {
+    } else if (nodeType === 'delay') {
+      // 延迟节点：创建 waiting 任务，由调度器在 wakeAt 时唤醒；本次 BFS 在此停止
+      tasksToCreate.push({
+        nodeKey: node.data.key,
+        nodeName: node.data.label,
+        nodeType: 'delay',
+        assigneeId: null,
+        nodeConfig: node.data,
+      });
+    } else if (nodeType === 'trigger' || nodeType === 'subProcess') {
       // 自动节点占位实现：创建一条无 assignee 的任务记录用于追踪，并继续推进
       tasksToCreate.push({
         nodeKey: node.data.key,

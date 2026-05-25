@@ -673,6 +673,14 @@ export interface WorkflowNodeConfig {
   subProcessId?: number;
   subProcessName?: string;
   isAsync?: boolean;
+  /** 延迟节点：延迟类型 */
+  delayType?: 'fixed' | 'toDate';
+  /** 延迟节点（fixed）：时长数值 */
+  delayValue?: number;
+  /** 延迟节点（fixed）：时长单位 */
+  delayUnit?: 'minute' | 'hour' | 'day';
+  /** 延迟节点（toDate）：表单中目标日期字段的 key */
+  targetDate?: string;
 }
 
 /** 触发器节点配置 */

@@ -878,6 +878,8 @@ export const workflowTasks = pgTable('workflow_tasks', {
   externalCallbackId: varchar('external_callback_id', { length: 64 }).unique(),
   /** 外部审批：调度状态 */
   externalDispatchStatus: workflowTaskExternalDispatchStatusEnum('external_dispatch_status'),
+  /** delay 节点的唤醒时间（status='waiting' 期间有效，由调度器扫描） */
+  wakeAt: timestamp('wake_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

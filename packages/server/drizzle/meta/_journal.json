@@ -449,6 +449,13 @@
       "when": 1779664403000,
       "tag": "0063_elite_thanos",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1779720709869,
+      "tag": "0064_mixed_inertia",
+      "breakpoints": true
     }
   ]
 }

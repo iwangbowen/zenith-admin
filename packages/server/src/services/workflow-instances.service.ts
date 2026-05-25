@@ -72,6 +72,8 @@ import { resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import type { DbExecutor } from '../db/types';
 import { workflowEventBus } from '../lib/workflow-event-bus';
 import { randomBytes } from 'node:crypto';
+import { delayScheduler } from '../lib/delay-scheduler';
+import dayjs from 'dayjs';
 
 /** 发射实例生命周期事件的辅助函数 */
 function emitInstanceEvent(
@@ -196,6 +198,22 @@ async function applyAssigneeRuntimeStrategies(
   return ids;
 }
 
+function computeDelayWakeAt(nodeConfig: TaskAction['nodeConfig'], formData: Record<string, unknown>): Date {
+  const delayType = nodeConfig.delayType ?? 'fixed';
+  if (delayType === 'toDate') {
+    const key = nodeConfig.targetDate;
+    const raw = key ? formData[key] : undefined;
+    if (raw) {
+      const d = dayjs(raw as string | number | Date);
+      if (d.isValid()) return d.toDate();
+    }
+    return new Date();
+  }
+  const value = Number(nodeConfig.delayValue ?? 0);
+  const unit = (nodeConfig.delayUnit ?? 'hour') as 'minute' | 'hour' | 'day';
+  if (!Number.isFinite(value) || value <= 0) return new Date();
+  return dayjs().add(value, unit).toDate();
+}
 async function expandTasksToRows(
   tasks: TaskAction[],
   ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
@@ -221,6 +239,20 @@ async function expandTasksToRows(
   for (const t of tasks) {
     if (t.autoStatus) {
       pushAutoRow(t, t.autoStatus);
+      continue;
+    }
+
+    if (t.nodeType === 'delay') {
+      const wakeAt = computeDelayWakeAt(t.nodeConfig, ctx.formData ?? {});
+      rows.push({
+        instanceId: ctx.instanceId,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: 'delay',
+        assigneeId: null,
+        status: 'waiting' as const,
+        wakeAt,
+      });
       continue;
     }
 
@@ -661,6 +693,9 @@ export async function createInstance(data: { definitionId: number; title: string
     if (t.status === 'rejected') {
       emitTaskEvent('task.rejected', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
     }
+    if (t.nodeType === 'delay' && t.status === 'waiting' && t.wakeAt) {
+      delayScheduler.scheduleAt(t.id, t.wakeAt);
+    }
   }
   if (instance.status === 'approved') emitInstanceEvent('instance.approved', instanceDto, actor);
   if (instance.status === 'rejected') emitInstanceEvent('instance.rejected', instanceDto, actor);
@@ -723,7 +758,7 @@ export async function approveTaskByCallback(callbackId: string, comment: string 
   return approveTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
 }
 
-async function approveTaskCore(
+export async function approveTaskCore(
   task: typeof workflowTasks.$inferSelect,
   inst: typeof workflowInstances.$inferSelect,
   comment: string | undefined,
@@ -798,6 +833,9 @@ async function approveTaskCore(
     }
     if (t.status === 'rejected') {
       emitTaskEvent('task.rejected', mapTask(t), meta);
+    }
+    if (t.nodeType === 'delay' && t.status === 'waiting' && t.wakeAt) {
+      delayScheduler.scheduleAt(t.id, t.wakeAt);
     }
   }
   if (updated.finished) {
