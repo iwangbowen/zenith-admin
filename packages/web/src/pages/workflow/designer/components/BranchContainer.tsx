@@ -3,7 +3,8 @@
  *
  * 渲染多列分支布局，每列内部可递归渲染子节点。
  */
-import { X } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
+import { Popconfirm } from '@douyinfe/semi-ui';
 import type { FlowNode, FlowBranch, FlowNodeType, BranchNodeType } from '../types';
 import { NODE_COLOR_MAP, BRANCH_ADD_LABEL } from '../constants';
 import AddNodeButton from './AddNodeButton';
@@ -14,6 +15,7 @@ interface BranchContainerProps {
   onRemoveBranch: (branchNodeId: string, branchId: string) => void;
   onEditBranch: (branch: FlowBranch, branchNodeId: string) => void;
   onAddNodeInBranch: (branchNodeId: string, branchId: string, nodeType: FlowNodeType) => void;
+  onDeleteNode?: (nodeId: string) => void;
   renderChildren: (childNode: FlowNode | undefined, parentId: string) => React.ReactNode;
   readOnly?: boolean;
 }
@@ -48,6 +50,7 @@ export default function BranchContainer({
   onRemoveBranch,
   onEditBranch,
   onAddNodeInBranch,
+  onDeleteNode,
   renderChildren,
   readOnly = false,
 }: Readonly<BranchContainerProps>) {
@@ -60,14 +63,33 @@ export default function BranchContainer({
   return (
     <div className="fd-branch-wrap">
       {!readOnly && (
-      <button
-        className="fd-branch-add-btn"
-        type="button"
-        style={{ borderColor: color, color }}
-        onClick={() => onAddBranch(node.id)}
-      >
-        {addLabel}
-      </button>
+      <div className="fd-branch-toolbar">
+        <button
+          className="fd-branch-add-btn"
+          type="button"
+          style={{ borderColor: color, color }}
+          onClick={() => onAddBranch(node.id)}
+        >
+          {addLabel}
+        </button>
+        {onDeleteNode && (
+          <Popconfirm
+            title="确认删除整个分支节点？"
+            content="所有分支及其内部节点将被一并删除"
+            position="top"
+            onConfirm={() => onDeleteNode(node.id)}
+          >
+            <button
+              type="button"
+              className="fd-branch-delete-btn"
+              title="删除整个分支节点"
+            >
+              <Trash2 size={12} />
+              <span>删除分支</span>
+            </button>
+          </Popconfirm>
+        )}
+      </div>
       )}
 
       <div className="fd-branch-box">

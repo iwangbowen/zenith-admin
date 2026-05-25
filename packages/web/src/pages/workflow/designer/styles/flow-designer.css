@@ -315,12 +315,18 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 }
 
 /* 添加条件/分支按钮（位于 fd-branch-wrap 内，fd-branch-box 之前） */
-.fd-branch-add-btn {
+.fd-branch-toolbar {
   position: absolute;
-  top: -8px;
+  top: -12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fd-branch-add-btn {
   padding: 2px 16px;
   border-radius: 12px;
   background: var(--semi-color-bg-2);
@@ -334,6 +340,26 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 
 .fd-branch-add-btn:hover {
   background: #085ec0;
+  color: #fff;
+}
+
+.fd-branch-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 12px;
+  border-radius: 12px;
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-danger);
+  color: var(--semi-color-danger);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.fd-branch-delete-btn:hover {
+  background: var(--semi-color-danger);
   color: #fff;
 }
 

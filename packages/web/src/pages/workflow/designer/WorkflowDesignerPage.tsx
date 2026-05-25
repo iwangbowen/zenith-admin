@@ -231,8 +231,8 @@ export default function WorkflowDesignerPage() {
     setConditionEditorVisible(true);
   }, []);
 
-  const handleSaveBranchConditions = useCallback((branchId: string, conditions: ConditionGroup[]) => {
-    setProcess(prev => updateBranch(prev, branchId, { conditions }));
+  const handleSaveBranchConditions = useCallback((branchId: string, updates: { name: string; conditions: ConditionGroup[] }) => {
+    setProcess(prev => updateBranch(prev, branchId, updates));
     setConditionEditorVisible(false);
     setEditingBranch(null);
   }, [setProcess]);

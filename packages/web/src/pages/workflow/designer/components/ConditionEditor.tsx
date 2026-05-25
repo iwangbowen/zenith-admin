@@ -23,7 +23,7 @@ interface ConditionEditorProps {
   visible: boolean;
   branch: FlowBranch | null;
   formFields: FormField[];
-  onSave: (branchId: string, conditions: ConditionGroup[]) => void;
+  onSave: (branchId: string, updates: { name: string; conditions: ConditionGroup[] }) => void;
   onCancel: () => void;
 }
 
@@ -72,6 +72,7 @@ export default function ConditionEditor({
   onSave,
   onCancel,
 }: Readonly<ConditionEditorProps>) {
+  const [name, setName] = useState<string>(branch?.name ?? '');
   const [groups, setGroups] = useState<ConditionGroup[]>(() => initGroups(branch));
   const [groupKeys, setGroupKeys] = useState<string[]>(() => initGroups(branch).map(() => nextGroupKey()));
   const [ruleKeys, setRuleKeys] = useState<string[][]>(() =>
@@ -81,6 +82,7 @@ export default function ConditionEditor({
   // 当 branch 变化时重新初始化
   useEffect(() => {
     const g = initGroups(branch);
+    setName(branch?.name ?? '');
     setGroups(g);
     setGroupKeys(g.map(() => nextGroupKey()));
     setRuleKeys(g.map(gr => gr.rules.map(() => nextRuleKey())));
@@ -146,7 +148,8 @@ export default function ConditionEditor({
         rules: g.rules.filter(r => r.field !== ''),
       }))
       .filter(g => g.rules.length > 0);
-    onSave(branch.id, cleaned);
+    const trimmedName = name.trim() || branch.name;
+    onSave(branch.id, { name: trimmedName, conditions: cleaned });
   };
 
   const fieldOptions = formFields.map(f => ({ value: f.key, label: f.label }));
@@ -175,6 +178,16 @@ export default function ConditionEditor({
         </div>
       ) : (
         <div className="fd-condition-editor">
+          <div style={{ marginBottom: 16 }}>
+            <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>分支名称</Typography.Text>
+            <Input
+              value={name}
+              onChange={setName}
+              placeholder="请输入分支名称"
+              maxLength={20}
+              showClear
+            />
+          </div>
           {groups.map((group, gi) => (
             <div key={groupKeys[gi]} className="fd-condition-group">
               {/* 条件组头部 */}
