@@ -17,6 +17,8 @@ interface BranchContainerProps {
   onAddNodeInBranch: (branchNodeId: string, branchId: string, nodeType: FlowNodeType) => void;
   onDeleteNode?: (nodeId: string) => void;
   renderChildren: (childNode: FlowNode | undefined, parentId: string) => React.ReactNode;
+  /** 可选：表单字段列表，用于路由分支展示「路由字段：XXX」提示 */
+  formFields?: ReadonlyArray<{ key: string; label: string; type?: string }>;
   readOnly?: boolean;
 }
 
@@ -26,13 +28,18 @@ function getBranchNameClass(type: BranchNodeType, isDefault?: boolean): string {
     case 'conditionBranch': return 'fd-branch-title__name fd-branch-title__name--condition';
     case 'parallelBranch': return 'fd-branch-title__name fd-branch-title__name--parallel';
     case 'inclusiveBranch': return 'fd-branch-title__name fd-branch-title__name--inclusive';
+    case 'routeBranch': return 'fd-branch-title__name fd-branch-title__name--route';
     default: return 'fd-branch-title__name fd-branch-title__name--condition';
   }
 }
 
 function getBranchDesc(branch: FlowBranch, branchType: BranchNodeType): string {
-  if (branch.isDefault) return '未满足其它条件时，将进入此分支';
+  if (branch.isDefault) return '未命中其它分支时，将进入此分支';
   if (branchType === 'parallelBranch') return '无需配置条件，同时执行';
+  if (branchType === 'routeBranch') {
+    const v = branch.caseValue?.trim();
+    return v ? `匹配值：${v}` : '点击配置路由值';
+  }
   if (branch.conditions?.length) {
     const totalRules = branch.conditions.reduce((s, g) => s + g.rules.length, 0);
     const groupInfo = branch.conditions.map(g => {
@@ -52,6 +59,7 @@ export default function BranchContainer({
   onAddNodeInBranch,
   onDeleteNode,
   renderChildren,
+  formFields,
   readOnly = false,
 }: Readonly<BranchContainerProps>) {
   const branches = node.branches ?? [];
@@ -60,8 +68,21 @@ export default function BranchContainer({
   const addLabel = BRANCH_ADD_LABEL[branchType] ?? '添加分支';
   const canRemoveBranch = branches.length > 2;
 
+  // 路由分支顶部提示行：展示当前已选的路由字段
+  const routeFieldKey = node.type === 'routeBranch'
+    ? (node.props?.routeFieldKey as string | undefined)?.trim()
+    : undefined;
+  const routeFieldLabel = routeFieldKey
+    ? (formFields?.find(f => f.key === routeFieldKey)?.label ?? routeFieldKey)
+    : null;
+
   return (
     <div className="fd-branch-wrap">
+      {branchType === 'routeBranch' && (
+        <div className="fd-branch-route-hint">
+          路由字段：<strong>{routeFieldLabel ?? '未选择'}</strong>
+        </div>
+      )}
       {!readOnly && (
       <div className="fd-branch-toolbar">
         <button

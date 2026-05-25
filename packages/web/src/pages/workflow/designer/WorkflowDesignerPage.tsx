@@ -22,6 +22,8 @@ import {
   updateBranch,
   addBranch as addBranchToProcess,
   removeBranch as removeBranchFromProcess,
+  resetRouteCaseValues,
+  validateRouteBranches,
   treeToFlat,
   deepClone,
   collectAllNodes,
@@ -32,6 +34,7 @@ import { useHistoryState } from './hooks/useHistoryState';
 import FlowRenderer from './components/FlowRenderer';
 import NodeConfigDrawer from './components/NodeConfigDrawer';
 import ConditionEditor from './components/ConditionEditor';
+import RouteBranchEditor, { type RouteBranchEditorUpdates } from './components/RouteBranchEditor';
 import FormDesigner from './components/FormDesigner';
 import FormPreview from './components/FormPreview';
 import BasicInfoPanel from './components/BasicInfoPanel';
@@ -68,7 +71,9 @@ export default function WorkflowDesignerPage() {
 
   // 分支条件编辑
   const [editingBranch, setEditingBranch] = useState<FlowBranch | null>(null);
+  const [editingBranchParent, setEditingBranchParent] = useState<FlowNode | null>(null);
   const [conditionEditorVisible, setConditionEditorVisible] = useState(false);
+  const [routeEditorVisible, setRouteEditorVisible] = useState(false);
 
   // 缩放
   const [zoom, setZoom] = useState(100);
@@ -226,16 +231,63 @@ export default function WorkflowDesignerPage() {
     setProcess(prev => removeBranchFromProcess(prev, branchNodeId, branchId));
   }, [setProcess]);
 
-  const handleEditBranch = useCallback((branch: FlowBranch, _branchNodeId: string) => {
+  const handleEditBranch = useCallback((branch: FlowBranch, branchNodeId: string) => {
+    // 根据父节点类型分流到对应编辑器
+    const findNode = (n: FlowNode | undefined): FlowNode | undefined => {
+      if (!n) return undefined;
+      if (n.id === branchNodeId) return n;
+      if (n.children) {
+        const f = findNode(n.children);
+        if (f) return f;
+      }
+      if (n.branches) {
+        for (const b of n.branches) {
+          if (b.children) {
+            const f = findNode(b.children);
+            if (f) return f;
+          }
+        }
+      }
+      return undefined;
+    };
+    const parent = findNode(process.initiator);
     setEditingBranch(deepClone(branch));
-    setConditionEditorVisible(true);
-  }, []);
+    setEditingBranchParent(parent ? deepClone(parent) : null);
+    if (parent?.type === 'routeBranch') {
+      setRouteEditorVisible(true);
+    } else {
+      setConditionEditorVisible(true);
+    }
+  }, [process]);
 
   const handleSaveBranchConditions = useCallback((branchId: string, updates: { name: string; conditions: ConditionGroup[] }) => {
     setProcess(prev => updateBranch(prev, branchId, updates));
     setConditionEditorVisible(false);
     setEditingBranch(null);
+    setEditingBranchParent(null);
   }, [setProcess]);
+
+  const handleSaveRouteBranch = useCallback((branchId: string, updates: RouteBranchEditorUpdates) => {
+    const parent = editingBranchParent;
+    setProcess(prev => {
+      let next = prev;
+      // 如果切换了路由字段：先写父节点 props，再清空其它分支的 caseValue
+      if (parent && updates.newRouteFieldKey !== undefined) {
+        next = updateNode(next, parent.id, { props: { routeFieldKey: updates.newRouteFieldKey } });
+        next = resetRouteCaseValues(next, parent.id);
+        if (parent.props?.routeFieldKey) {
+          Toast.info('路由字段已切换，其它分支的匹配值已清空');
+        }
+      }
+      const branchUpdates: { name: string; caseValue?: string } = { name: updates.name };
+      if (updates.caseValue !== undefined) branchUpdates.caseValue = updates.caseValue;
+      next = updateBranch(next, branchId, branchUpdates);
+      return next;
+    });
+    setRouteEditorVisible(false);
+    setEditingBranch(null);
+    setEditingBranchParent(null);
+  }, [setProcess, editingBranchParent]);
 
   // ─── 导入导出 ─────────────────────────────────────────────────────
 
@@ -279,6 +331,12 @@ export default function WorkflowDesignerPage() {
     if (!metaName.trim()) {
       Toast.warning('请先填写流程名称');
       setCurrentStep(1);
+      return;
+    }
+    const routeErrors = validateRouteBranches(process);
+    if (routeErrors.length > 0) {
+      Toast.warning(`路由分支配置不完整：${routeErrors[0]}`);
+      setCurrentStep(3);
       return;
     }
     await doSave({
@@ -550,6 +608,7 @@ export default function WorkflowDesignerPage() {
               onAddBranch={handleAddBranch}
               onRemoveBranch={handleRemoveBranch}
               onEditBranch={handleEditBranch}
+              formFields={formFields}
             />
           </div>
         </div>
@@ -590,7 +649,17 @@ export default function WorkflowDesignerPage() {
         branch={editingBranch}
         formFields={formFields}
         onSave={handleSaveBranchConditions}
-        onCancel={() => { setConditionEditorVisible(false); setEditingBranch(null); }}
+        onCancel={() => { setConditionEditorVisible(false); setEditingBranch(null); setEditingBranchParent(null); }}
+      />
+
+      {/* 路由分支编辑器 */}
+      <RouteBranchEditor
+        visible={routeEditorVisible}
+        branch={editingBranch}
+        parentNode={editingBranchParent}
+        formFields={formFields}
+        onSave={handleSaveRouteBranch}
+        onCancel={() => { setRouteEditorVisible(false); setEditingBranch(null); setEditingBranchParent(null); }}
       />
 
       {/* 历史版本 */}

@@ -19,6 +19,7 @@ interface FlowRendererProps {
   onAddBranch?: (branchNodeId: string) => void;
   onRemoveBranch?: (branchNodeId: string, branchId: string) => void;
   onEditBranch?: (branch: FlowBranch, branchNodeId: string) => void;
+  formFields?: ReadonlyArray<{ key: string; label: string; type?: string }>;
   readOnly?: boolean;
 }
 
@@ -34,6 +35,7 @@ export default function FlowRenderer({
   onAddBranch,
   onRemoveBranch,
   onEditBranch,
+  formFields,
   readOnly = false,
 }: Readonly<FlowRendererProps>) {
 
@@ -58,6 +60,7 @@ export default function FlowRenderer({
             onEditBranch={editBranch}
             onAddNodeInBranch={addInBranch}
             onDeleteNode={deleteNode}
+            formFields={formFields}
             renderChildren={(childNode, key) => renderNodeChain(childNode, key)}
             readOnly={readOnly}
           />

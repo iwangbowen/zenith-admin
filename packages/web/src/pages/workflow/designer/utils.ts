@@ -38,9 +38,9 @@ export function createNode(type: FlowNode['type'], name?: string): FlowNode {
   if (type === 'conditionBranch' || type === 'parallelBranch' || type === 'inclusiveBranch' || type === 'routeBranch') {
     const count = DEFAULT_BRANCH_COUNT[type];
     node.branches = [];
+    const hasDefault = type === 'conditionBranch' || type === 'routeBranch';
     for (let i = 0; i < count; i++) {
-      if (type === 'conditionBranch' && i === count - 1) {
-        // 条件分支的最后一个是"其它情况"
+      if (hasDefault && i === count - 1) {
         node.branches.push({
           id: genId('branch'),
           name: '其它情况',
@@ -58,6 +58,9 @@ export function createNode(type: FlowNode['type'], name?: string): FlowNode {
           priority: type === 'parallelBranch' ? undefined : i + 1,
         });
       }
+    }
+    if (type === 'routeBranch') {
+      node.props = { routeFieldKey: '' };
     }
   }
 
@@ -228,7 +231,7 @@ export function updateNode(
 export function updateBranch(
   process: FlowProcess,
   branchId: string,
-  updates: Partial<Pick<FlowBranch, 'name' | 'conditions' | 'priority'>>,
+  updates: Partial<Pick<FlowBranch, 'name' | 'conditions' | 'priority' | 'caseValue'>>,
 ): FlowProcess {
   const cloned = deepClone(process);
   traverseAll(cloned.initiator, (node) => {
@@ -238,9 +241,22 @@ export function updateBranch(
         if (updates.name !== undefined) branch.name = updates.name;
         if (updates.conditions !== undefined) branch.conditions = updates.conditions;
         if (updates.priority !== undefined) branch.priority = updates.priority;
+        if (updates.caseValue !== undefined) branch.caseValue = updates.caseValue;
       }
     }
   });
+  return cloned;
+}
+
+/** 重置路由分支节点下所有非默认分支的 caseValue（用于切换路由字段后清理脏数据） */
+export function resetRouteCaseValues(process: FlowProcess, routeNodeId: string): FlowProcess {
+  const cloned = deepClone(process);
+  const node = findNodeById(cloned.initiator, routeNodeId);
+  if (node?.branches) {
+    for (const b of node.branches) {
+      if (!b.isDefault) b.caseValue = '';
+    }
+  }
   return cloned;
 }
 
@@ -446,12 +462,66 @@ function firstBranchRule(conditions: FlatEdge['conditions']): FlatEdge['conditio
   return conditions?.[0]?.rules[0] ?? null;
 }
 
-function applyBranchEdgeMeta(edge: FlatEdge, branch: FlowBranch): void {
-  const conditions = normalizeBranchConditions(branch);
+function applyBranchEdgeMeta(edge: FlatEdge, branch: FlowBranch, parentNode?: FlowNode): void {
   edge.label = branch.name;
   edge.isDefault = !!branch.isDefault;
+
+  // 路由分支：把 caseValue 编译成单条 eq 规则的条件组，复用现有引擎
+  if (parentNode?.type === 'routeBranch' && !branch.isDefault) {
+    const routeFieldKey = (parentNode.props?.routeFieldKey as string | undefined)?.trim();
+    const caseValue = branch.caseValue;
+    if (routeFieldKey && caseValue !== undefined && caseValue !== '') {
+      const conditions: FlatEdge['conditions'] = [{
+        type: 'and',
+        rules: [{ field: routeFieldKey, operator: 'eq', value: caseValue }],
+      }];
+      edge.conditions = conditions;
+      edge.condition = firstBranchRule(conditions);
+    } else {
+      edge.conditions = null;
+      edge.condition = null;
+    }
+    return;
+  }
+
+  const conditions = normalizeBranchConditions(branch);
   edge.conditions = conditions;
   edge.condition = firstBranchRule(conditions);
+}
+
+/**
+ * 校验路由分支：
+ * - 父节点必须设置 routeFieldKey
+ * - 非默认分支必须设置 caseValue，且不重复
+ * 返回错误信息列表；空数组表示通过。
+ */
+export function validateRouteBranches(process: FlowProcess): string[] {
+  const errors: string[] = [];
+  traverseAll(process.initiator, (node) => {
+    if (node.type !== 'routeBranch' || !node.branches) return;
+    const routeFieldKey = (node.props?.routeFieldKey as string | undefined)?.trim();
+    const label = node.name || '路由分支';
+    if (!routeFieldKey) {
+      errors.push(`「${label}」未选择路由字段`);
+      return;
+    }
+    const seen = new Set<string>();
+    let hasNonDefault = false;
+    for (const b of node.branches) {
+      if (b.isDefault) continue;
+      hasNonDefault = true;
+      const v = b.caseValue?.trim();
+      if (!v) {
+        errors.push(`「${label} / ${b.name}」未设置匹配值`);
+      } else if (seen.has(v)) {
+        errors.push(`「${label}」分支匹配值「${v}」重复`);
+      } else {
+        seen.add(v);
+      }
+    }
+    if (!hasNonDefault) errors.push(`「${label}」至少需要一个非默认分支`);
+  });
+  return errors;
 }
 
 /** 将树结构转换为扁平 nodes + edges（用于后端保存） */
@@ -535,10 +605,10 @@ function flattenNode(
       // 旧实现只取第一条规则，且多节点分支会找不到首边，导致条件丢失。
       if (!branch.children) {
         const edge: FlatEdge = { id: `e-${forkId}-${joinId}-${branch.id}`, source: forkId, target: joinId };
-        applyBranchEdgeMeta(edge, branch);
+        applyBranchEdgeMeta(edge, branch, node);
         edges.push(edge);
       } else if (firstBranchEdge) {
-        applyBranchEdgeMeta(firstBranchEdge, branch);
+        applyBranchEdgeMeta(firstBranchEdge, branch, node);
       }
 
       for (const endId of branchEndIds) {

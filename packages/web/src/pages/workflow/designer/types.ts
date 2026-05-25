@@ -212,6 +212,8 @@ export interface FlowBranch {
   name: string;
   priority?: number;
   conditions?: ConditionGroup[];
+  /** 路由分支专用：与父节点 props.routeFieldKey 字段做相等匹配的值 */
+  caseValue?: string;
   isDefault?: boolean;
   children?: FlowNode;
 }
