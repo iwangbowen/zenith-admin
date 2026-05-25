@@ -133,7 +133,10 @@ export default function WorkflowDesignerPage() {
         }
       }).finally(() => setPageLoading(false));
     }
-  }, [id, isNew, history]);
+    // history.reset 是稳定的 useCallback，不需要追踪；
+    // 不能将 history 对象本身加入依赖，否则每次添加节点（pastLen 变化）都会重新触发数据加载
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isNew]);
 
   useEffect(() => {
     request.get<UserOption[]>('/api/users/all').then(res => {
