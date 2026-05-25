@@ -412,7 +412,8 @@ export function advanceFlow(
         for (const { target } of outs) enqueueNext(target, queue);
       }
     } else if (nodeType === 'subProcess') {
-      // 占位实现：创建追踪任务并继续推进（Batch 3 处理）
+      // 子流程节点：waitChild=true（默认）则等待子实例完成，否则即时推进
+      const waitChild = node.data.subProcessWaitChild !== false;
       tasksToCreate.push({
         nodeKey: node.data.key,
         nodeName: node.data.label,
@@ -420,7 +421,9 @@ export function advanceFlow(
         assigneeId: null,
         nodeConfig: node.data,
       });
-      for (const { target } of outs) enqueueNext(target, queue);
+      if (!waitChild) {
+        for (const { target } of outs) enqueueNext(target, queue);
+      }
     } else {
       // start / approve / handler — 已完成的节点，向后推进
       for (const { target } of outs) enqueueNext(target, queue);

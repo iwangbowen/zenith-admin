@@ -672,6 +672,12 @@ export interface WorkflowNodeConfig {
   onlyOnApprove?: boolean;
   subProcessId?: number;
   subProcessName?: string;
+  /** 子流程：父实例字段映射到子实例 formData（key=子字段 key，value 支持 {{form.x}} 模板，引用父实例 formData） */
+  subProcessFieldMapping?: Record<string, string>;
+  /** 子流程：子实例审批通过后回填父实例 formData（key=父字段 key，value=子字段 key） */
+  subProcessOutputMapping?: Record<string, string>;
+  /** 子流程：是否等待子实例结束才推进父流程（默认 true） */
+  subProcessWaitChild?: boolean;
   isAsync?: boolean;
   /** 延迟节点：延迟类型 */
   delayType?: 'fixed' | 'toDate';

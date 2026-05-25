@@ -851,6 +851,10 @@ export const workflowInstances = pgTable('workflow_instances', {
   currentNodeKey: varchar('current_node_key', { length: 64 }),
   initiatorId: integer('initiator_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  /** 子流程：父实例 ID（subProcess 节点触发产生的子实例填此字段） */
+  parentInstanceId: integer('parent_instance_id'),
+  /** 子流程：父实例中触发本子流程的 subProcess 任务 ID，子实例完成时用于唤醒父任务 */
+  parentTaskId: integer('parent_task_id'),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
