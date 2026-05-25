@@ -76,6 +76,7 @@ import { registerExternalApproverSubscriber } from './lib/workflow-subscribers/e
 import workflowEventSubscriptionsRoutes from './routes/workflow-event-subscriptions';
 import workflowTriggerExecutionsRoutes from './routes/workflow-trigger-executions';
 import workflowExternalCallbackRoutes from './routes/workflow-external-callback';
+import workflowTriggerCallbackRoutes from './routes/workflow-trigger-callback';
 import { initTelemetry } from './lib/telemetry';
 import { metricsSampler } from './lib/metrics-sampler';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
@@ -216,6 +217,7 @@ app.route('/api/workflows/categories', workflowCategoriesRoutes);
 app.route('/api/workflows/event-subscriptions', workflowEventSubscriptionsRoutes);
 app.route('/api/workflows/trigger-executions', workflowTriggerExecutionsRoutes);
 app.route('/api/public/workflow/external-callback', workflowExternalCallbackRoutes);
+app.route('/api/public/workflow/trigger-callback', workflowTriggerCallbackRoutes);
 app.route('/api/workflows', workflowInstancesRoutes);
 app.route('/api/chat', chatRoutes);
 app.route('/api/tags', tagsRoutes);

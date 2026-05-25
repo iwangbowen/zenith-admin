@@ -700,6 +700,10 @@ export interface WorkflowTriggerNodeConfig {
   onFailure?: 'continue' | 'retry' | 'block';
   maxRetries?: number;
   timeoutMs?: number;
+  /** callback 类型回调验签模式（默认 none） */
+  callbackSignMode?: 'none' | 'hmacSha256';
+  /** callback 类型 HMAC 密钥（callbackSignMode='hmacSha256' 时必填） */
+  callbackSecret?: string;
 }
 
 /** 外部审批配置 */

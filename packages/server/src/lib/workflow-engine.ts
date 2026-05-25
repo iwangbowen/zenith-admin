@@ -398,12 +398,25 @@ export function advanceFlow(
         assigneeId: null,
         nodeConfig: node.data,
       });
-    } else if (nodeType === 'trigger' || nodeType === 'subProcess') {
-      // 自动节点占位实现：创建一条无 assignee 的任务记录用于追踪，并继续推进
+    } else if (nodeType === 'trigger') {
+      // 触发器节点：callback 类型需等待外部回调，其他类型立即推进
+      const isCallback = node.data.triggerConfig?.triggerType === 'callback';
       tasksToCreate.push({
         nodeKey: node.data.key,
         nodeName: node.data.label,
-        nodeType,
+        nodeType: 'trigger',
+        assigneeId: null,
+        nodeConfig: node.data,
+      });
+      if (!isCallback) {
+        for (const { target } of outs) enqueueNext(target, queue);
+      }
+    } else if (nodeType === 'subProcess') {
+      // 占位实现：创建追踪任务并继续推进（Batch 3 处理）
+      tasksToCreate.push({
+        nodeKey: node.data.key,
+        nodeName: node.data.label,
+        nodeType: 'subProcess',
         assigneeId: null,
         nodeConfig: node.data,
       });

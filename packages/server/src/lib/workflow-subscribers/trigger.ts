@@ -24,24 +24,31 @@ import type {
 
 const TIMEOUT_MS_DEFAULT = 10_000;
 
-function renderTemplate(template: string, formData: Record<string, unknown>): string {
-  return template.replace(/\{\{form\.([^}]+)\}\}/g, (_, key) => {
-    const v = formData[key.trim()];
-    if (v === undefined || v === null) return '';
-    if (typeof v === 'object') return '';
-    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
-    return '';
-  });
+function renderTemplate(
+  template: string,
+  formData: Record<string, unknown>,
+  extras: Record<string, string> = {},
+): string {
+  return template
+    .replace(/\{\{form\.([^}]+)\}\}/g, (_, key) => {
+      const v = formData[key.trim()];
+      if (v === undefined || v === null) return '';
+      if (typeof v === 'object') return '';
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+      return '';
+    })
+    .replace(/\{\{([a-zA-Z_]\w*)\}\}/g, (_, key) => extras[key] ?? '');
 }
 
 async function executeHttpTrigger(
   cfg: WorkflowTriggerNodeConfig,
   formData: Record<string, unknown>,
+  extras: Record<string, string> = {},
 ): Promise<{ status: 'success' | 'failed'; responseStatus: number | null; responseBody: string | null; errorMessage: string | null; durationMs: number; requestUrl: string; requestMethod: string; requestBody: string | null }> {
   const url = cfg.webhookUrl ?? '';
   const method = (cfg.httpMethod ?? 'POST').toUpperCase() as 'GET' | 'POST' | 'PUT';
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...cfg.headers };
-  const bodyStr = method === 'GET' || !cfg.bodyTemplate ? null : renderTemplate(cfg.bodyTemplate, formData);
+  const bodyStr = method === 'GET' || !cfg.bodyTemplate ? null : renderTemplate(cfg.bodyTemplate, formData, extras);
   const t0 = Date.now();
 
   if (!url) {
@@ -133,7 +140,13 @@ async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: st
 
   let result: Awaited<ReturnType<typeof executeHttpTrigger>>;
   if (triggerType === 'webhook' || triggerType === 'callback') {
-    result = await executeHttpTrigger(cfg, formData);
+    const extras: Record<string, string> = {};
+    if (triggerType === 'callback' && task?.externalCallbackId) {
+      const base = (process.env.PUBLIC_BASE_URL ?? '').replace(/\/+$/, '');
+      extras.callbackUrl = `${base}/api/public/workflow/trigger-callback/${task.externalCallbackId}`;
+      extras.callbackId = task.externalCallbackId;
+    }
+    result = await executeHttpTrigger(cfg, formData, extras);
   } else if (triggerType === 'updateData' || triggerType === 'deleteData') {
     const m = await executeDataMutation(cfg, instanceId, formData);
     result = {

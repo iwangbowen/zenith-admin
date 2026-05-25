@@ -256,6 +256,19 @@ async function expandTasksToRows(
       continue;
     }
 
+    if (t.nodeType === 'trigger' && t.nodeConfig.triggerConfig?.triggerType === 'callback') {
+      rows.push({
+        instanceId: ctx.instanceId,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: 'trigger',
+        assigneeId: null,
+        status: 'waiting' as const,
+        externalCallbackId: randomBytes(16).toString('hex'),
+      });
+      continue;
+    }
+
     if (t.nodeType !== 'approve' && t.nodeType !== 'handler') {
       rows.push({
         instanceId: ctx.instanceId,

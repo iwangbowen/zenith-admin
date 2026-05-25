@@ -3,6 +3,7 @@ import { db } from '../db';
 import { workflowTasks, workflowInstances } from '../db/schema';
 import { approveTaskCore } from './workflow-instances.service';
 import logger from '../lib/logger';
+import { HTTPException } from 'hono/http-exception';
 
 /**
  * 唤醒指定的 delay 任务：将其标记为 approved 并推进流程。
@@ -22,4 +23,24 @@ export async function resumeDelayTask(taskId: number): Promise<void> {
     return;
   }
   await approveTaskCore(task, inst, '延迟到期自动唤醒', { userId: 0, name: 'system:delay' });
+}
+
+/**
+ * 触发器回调唤醒：通过 externalCallbackId 找到等待中的 trigger 任务，标记为 approved 并推进流程。
+ * 供 /api/public/workflow/trigger-callback 路由调用。
+ */
+export async function resumeTriggerTask(
+  callbackId: string,
+  comment: string | undefined,
+  callerName: string,
+): Promise<{ instanceId: number; nodeKey: string }> {
+  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
+  if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
+  if (task.nodeType !== 'trigger') throw new HTTPException(400, { message: '该回调不属于触发器任务' });
+  if (task.status !== 'waiting') throw new HTTPException(400, { message: '回调任务已处理' });
+  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  await approveTaskCore(task, inst, comment ?? `触发器回调：${callerName}`, { userId: 0, name: `trigger:${callerName}` });
+  return { instanceId: inst.id, nodeKey: task.nodeKey };
 }
