@@ -178,11 +178,20 @@ export default function AdvancedSettingsTab({
                 value={timeout.duration}
                 onChange={(v) => handleTimeoutChange({ duration: v as number })}
                 min={1}
-                max={720}
-                placeholder="请输入超时时间"
+                max={9999}
+                placeholder="请输入"
                 style={{ width: 100 }}
               />
-              <span style={{ fontSize: 13 }}>小时</span>
+              <Select
+                value={timeout.unit ?? 'hours'}
+                onChange={(v) => handleTimeoutChange({ unit: v as TimeoutConfig['unit'] })}
+                style={{ width: 90 }}
+                optionList={[
+                  { value: 'minutes', label: '分钟' },
+                  { value: 'hours', label: '小时' },
+                  { value: 'days', label: '天' },
+                ]}
+              />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 13 }}>超时后</span>

@@ -46,6 +46,12 @@ handlerRegistry.set('retryWorkflowEventDeliveries', async () => {
   return `重试了 ${retried} 个事件投递`;
 });
 
+handlerRegistry.set('processWorkflowTaskTimeouts', async () => {
+  const { processWorkflowTaskTimeouts } = await import('./workflow-timeout-processor');
+  const r = await processWorkflowTaskTimeouts();
+  return `扫描 ${r.processed} 个超时任务：提醒 ${r.reminded}，自动通过 ${r.approved}，自动拒绝 ${r.rejected}`;
+});
+
 // ─── Public API ────────────────────────────────────────────────
 
 /** Get list of registered handler names */

@@ -549,6 +549,7 @@ export const workflowActionButtonConfigSchema = z.object({
 export const workflowTimeoutConfigSchema = z.object({
   enabled: z.boolean(),
   duration: z.number().int().min(1),
+  unit: z.enum(['minutes', 'hours', 'days']).optional(),
   action: z.enum(['remind', 'autoApprove', 'autoReject']),
   remindCount: z.number().int().min(1).optional(),
 });

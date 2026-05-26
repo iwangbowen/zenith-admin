@@ -635,6 +635,8 @@ export interface WorkflowActionButtonConfig {
 export interface WorkflowTimeoutConfig {
   enabled: boolean;
   duration: number;
+  /** 时间单位（默认 hours，向后兼容） */
+  unit?: 'minutes' | 'hours' | 'days';
   action: 'remind' | 'autoApprove' | 'autoReject';
   remindCount?: number;
 }

@@ -470,6 +470,13 @@
       "when": 1779769299127,
       "tag": "0066_burly_eternity",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1779770377312,
+      "tag": "0067_clumsy_sunspot",
+      "breakpoints": true
     }
   ]
 }

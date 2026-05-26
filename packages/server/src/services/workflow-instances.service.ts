@@ -75,6 +75,7 @@ import type { DbExecutor } from '../db/types';
 import { workflowEventBus } from '../lib/workflow-event-bus';
 import { randomBytes } from 'node:crypto';
 import { delayScheduler } from '../lib/delay-scheduler';
+import { computeTimeoutAt } from '../lib/workflow-timeout';
 import dayjs from 'dayjs';
 import logger from '../lib/logger';
 
@@ -542,7 +543,9 @@ async function expandTasksToRows(
     const ratioPct = method === 'ratio'
       ? Math.min(100, Math.max(1, t.nodeConfig.approveRatio ?? 51))
       : null;
+    const timeoutAt = computeTimeoutAt(t.nodeConfig.timeout);
     userIds.forEach((uid, idx) => {
+      const isPending = !(method === 'sequential' && idx > 0);
       rows.push({
         instanceId: ctx.instanceId,
         nodeKey: t.nodeKey,
@@ -554,6 +557,8 @@ async function expandTasksToRows(
         taskOrder: method === 'sequential' ? idx : null,
         approveMethod: userIds.length > 1 ? method : null,
         approveRatio: userIds.length > 1 ? ratioPct : null,
+        // 仅给 pending 的任务设置 timeoutAt；waiting 的在提升时重算
+        timeoutAt: isPending ? timeoutAt : null,
       });
     });
   }
@@ -626,6 +631,7 @@ async function checkNodeCompletion(
   tx: DbExecutor,
   instanceId: number,
   nodeKey: string,
+  flowData?: WorkflowFlowData,
 ): Promise<{ completed: boolean; method: WorkflowApproveMethod | null }> {
   const siblings = await tx.select().from(workflowTasks)
     .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeKey, nodeKey)));
@@ -658,7 +664,9 @@ async function checkNodeCompletion(
       .filter((t) => t.status === 'waiting')
       .sort((a, b) => (a.taskOrder ?? 0) - (b.taskOrder ?? 0))[0];
     if (nextWaiting) {
-      await tx.update(workflowTasks).set({ status: 'pending' })
+      const nextTimeoutCfg = flowData?.nodes.find((n) => n.data.key === nodeKey)?.data.timeout;
+      const nextTimeoutAt = computeTimeoutAt(nextTimeoutCfg);
+      await tx.update(workflowTasks).set({ status: 'pending', timeoutAt: nextTimeoutAt, timeoutRemindCount: 0 })
         .where(eq(workflowTasks.id, nextWaiting.id));
     }
     return { completed: false, method };
@@ -1033,7 +1041,7 @@ export async function approveTaskCore(
     }).where(eq(workflowTasks.id, taskId)).returning();
 
     // 检查当前节点是否已足够推进（会签/或签/顺序会签）
-    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey);
+    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData);
     if (!completed) {
       const [row] = await tx.update(workflowInstances)
         .set({ currentNodeKey: task.nodeKey })

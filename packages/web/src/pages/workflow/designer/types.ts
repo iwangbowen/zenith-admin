@@ -108,7 +108,9 @@ export type ActionButtonsConfig = Partial<Record<ActionButtonKey, ActionButtonCo
 /** 超时处理配置 */
 export interface TimeoutConfig {
   enabled: boolean;
-  duration: number;       // 单位：小时
+  duration: number;
+  /** 时间单位（默认 hours，向后兼容） */
+  unit?: 'minutes' | 'hours' | 'days';
   action: 'remind' | 'autoApprove' | 'autoReject';
   remindCount?: number;   // 提醒次数（action='remind' 时）
 }
