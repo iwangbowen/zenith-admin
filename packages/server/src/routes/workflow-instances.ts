@@ -122,10 +122,10 @@ const approveRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
-    const { comment, attachments } = c.req.valid('json');
+    const { comment, attachments, selectedNextApprovers } = c.req.valid('json');
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
-    const result = await approveTask(taskId, comment, attachments);
+    const result = await approveTask(taskId, comment, attachments, selectedNextApprovers);
     return c.json(okBody(result.instance, result.message), 200);
   },
 });

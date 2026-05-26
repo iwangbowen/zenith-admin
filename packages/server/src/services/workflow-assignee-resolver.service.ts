@@ -26,6 +26,8 @@ export interface ResolveAssigneeContext {
   formData?: Record<string, unknown>;
   /** 当前流程实例 ID（nodeApprover 策略使用） */
   instanceId?: number;
+  /** 上一节点审批人在审批时为本次创建的 approverSelect 节点选择的用户 ID 列表 */
+  selectedNextApprovers?: number[];
 }
 
 /** 从给定部门开始向上走 levels 层，返回最终所在的部门 ID（找不到则返回 null） */
@@ -124,8 +126,18 @@ export async function resolveAssigneeIds(
       break;
     }
     case 'approverSelect': {
-      // 由上一节点审批人在审批时指定；创建任务时返回空，
-      // 实际审批人会在审批上一节点时写入（后续节点事件逻辑处理）
+      // 由上一节点审批人在审批时选定
+      const picked = ctx.selectedNextApprovers ?? [];
+      if (picked.length === 0) break;
+      // 若设计器限定了可选范围（selectScopeIds + selectScopeType==='user'），进行交集过滤
+      const scopeType = node.selectScopeType;
+      const scopeIds = node.selectScopeIds ?? [];
+      if (scopeType === 'user' && scopeIds.length > 0) {
+        const allow = new Set(scopeIds);
+        picked.filter((id) => allow.has(id)).forEach((id) => result.add(id));
+      } else {
+        picked.forEach((id) => result.add(id));
+      }
       break;
     }
     case 'role': {

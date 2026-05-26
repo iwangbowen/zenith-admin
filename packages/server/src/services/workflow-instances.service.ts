@@ -401,7 +401,7 @@ export async function resumeParentSubProcess(
 
 async function expandTasksToRows(
   tasks: TaskAction[],
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: number[] },
 ): Promise<ExpandedTaskRows> {
   const rows: Array<typeof workflowTasks.$inferInsert> = [];
   const autoApprovedNodeKeys: string[] = [];
@@ -500,6 +500,7 @@ async function expandTasksToRows(
       executor: ctx.executor,
       formData: ctx.formData,
       instanceId: ctx.instanceId,
+      selectedNextApprovers: ctx.selectedNextApprovers,
     });
 
     const userIds = await applyAssigneeRuntimeStrategies(t, resolvedUserIds, ctx);
@@ -565,7 +566,7 @@ async function getCompletedNodeKeys(exec: DbExecutor, instanceId: number): Promi
 
 async function materializeAdvanceResult(
   initial: AdvanceResult,
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: number[] },
 ): Promise<{ createdTasks: typeof workflowTasks.$inferSelect[]; finished: boolean; rejected: boolean; currentNodeKeys: string[] }> {
   const createdTasks: typeof workflowTasks.$inferSelect[] = [];
   const pendingResults: AdvanceResult[] = [initial];
@@ -959,7 +960,7 @@ export interface ApproveResult {
   message: string;
 }
 
-export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>): Promise<ApproveResult> {
+export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>, selectedNextApprovers?: number[]): Promise<ApproveResult> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
@@ -977,7 +978,7 @@ export async function approveTask(taskId: number, comment?: string, attachments?
   const enrichedComment = attachments && attachments.length > 0
     ? `${comment ?? ''}\n[附件]${attachments.map((a) => a.name).join(', ')}`.trim()
     : comment;
-  return approveTaskCore(task, inst, enrichedComment, { userId: user.userId, name: user.username });
+  return approveTaskCore(task, inst, enrichedComment, { userId: user.userId, name: user.username }, { selectedNextApprovers });
 }
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并审批通过 */
@@ -996,6 +997,7 @@ export async function approveTaskCore(
   inst: typeof workflowInstances.$inferSelect,
   comment: string | undefined,
   actor: WorkflowEventActor,
+  options?: { selectedNextApprovers?: number[] },
 ): Promise<ApproveResult> {
   const taskId = task.id;
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };
@@ -1031,6 +1033,7 @@ export async function approveTaskCore(
       flowData,
       formData,
       settings: flowData.settings,
+      selectedNextApprovers: options?.selectedNextApprovers,
     });
 
     if (materialized.rejected) {

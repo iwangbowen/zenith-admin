@@ -599,6 +599,13 @@ export const workflowNodeConfigSchema = z.looseObject({
   subProcessId: z.number().int().optional(),
   subProcessName: z.string().optional(),
   isAsync: z.boolean().optional(),
+  nodeListeners: z.array(z.object({
+    type: z.literal('webhook'),
+    url: z.url('URL 格式不正确').max(1000),
+    method: z.enum(['GET', 'POST']).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    events: z.array(z.enum(['onCreate', 'onApprove', 'onReject'])).min(1, '至少选择一个事件'),
+  })).optional(),
 });
 
 export const workflowFieldVisibilityConditionSchema = z.object({
@@ -679,6 +686,8 @@ export const approveWorkflowTaskSchema = z.object({
     url: z.string().max(1024),
     size: z.number().int().nonnegative().optional(),
   })).optional(),
+  /** 当下一节点为 approverSelect 类型时，由当前审批人指定的下一节点审批人 ID 列表 */
+  selectedNextApprovers: z.array(z.number().int().positive()).optional(),
 });
 
 export const rejectWorkflowTaskSchema = z.object({

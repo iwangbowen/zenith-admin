@@ -732,6 +732,20 @@ export interface WorkflowNodeConfig {
   delayUnit?: 'minute' | 'hour' | 'day';
   /** 延迟节点（toDate）：表单中目标日期字段的 key */
   targetDate?: string;
+  /** 节点级事件监听器（独立于定义级订阅，按节点配置在设计器中维护） */
+  nodeListeners?: NodeListenerConfig[];
+}
+
+/** 节点监听器触发事件 */
+export type NodeListenerEvent = 'onCreate' | 'onApprove' | 'onReject';
+
+/** 节点级事件监听器（webhook） */
+export interface NodeListenerConfig {
+  type: 'webhook';
+  url: string;
+  method?: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  events: NodeListenerEvent[];
 }
 
 /** 触发器节点配置 */
