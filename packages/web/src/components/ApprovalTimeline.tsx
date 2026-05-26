@@ -1,5 +1,5 @@
 import { Avatar, Tag, Timeline, Typography, Toast } from '@douyinfe/semi-ui';
-import { CheckCircle2, Clock, CornerUpLeft, Mail, RotateCcw, XCircle, ExternalLink, Copy } from 'lucide-react';
+import { CheckCircle2, Clock, CornerUpLeft, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog } from 'lucide-react';
 import type { WorkflowTask } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 
@@ -139,6 +139,24 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
                 borderRadius: 6,
               }}>
                 <Typography.Text size="small" type="secondary">{task.comment}</Typography.Text>
+              </div>
+            )}
+
+            {/* 转办链路 / 委派提示 */}
+            {((task.transferChain?.length ?? 0) > 0 || task.delegatedFromId) && (
+              <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+                {(task.transferChain?.length ?? 0) > 0 && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Forward size={12} />
+                    <span>已经手 {task.transferChain!.length} 人</span>
+                  </span>
+                )}
+                {task.delegatedFromId && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--semi-color-warning)' }}>
+                    <UserCog size={12} />
+                    <span>委派任务 · 反馈后回到原委派人</span>
+                  </span>
+                )}
               </div>
             )}
 
