@@ -475,6 +475,28 @@ export const workflowHandlers = [
     return HttpResponse.json({ code: 0, message: `已加签 ${body.targetUserIds.length} 人`, data: null });
   }),
 
+  // 减签
+  http.post('/api/workflows/tasks/:taskId/reduce-sign', async ({ params, request }) => {
+    const body = await request.json() as { targetTaskIds: number[]; comment?: string };
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
+    if (taskIdx === -1) return err('任务不存在', 404);
+    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
+    if (body.targetTaskIds.includes(Number(params.taskId))) return err('不能减去自己');
+    const now = mockDateTime();
+    const suffix = body.comment ? `：${body.comment}` : '';
+    let removed = 0;
+    body.targetTaskIds.forEach((tid) => {
+      const idx = mockWorkflowTasks.findIndex((t) => t.id === tid);
+      if (idx === -1) return;
+      const t = mockWorkflowTasks[idx];
+      if (t.status !== 'pending' && t.status !== 'waiting') return;
+      if (!t.comment?.includes('[加签')) return;
+      mockWorkflowTasks[idx] = { ...t, status: 'skipped', actionAt: now, comment: `[减签]${suffix}` };
+      removed += 1;
+    });
+    return HttpResponse.json({ code: 0, message: `已减签 ${removed} 人`, data: null });
+  }),
+
   // 退回
   http.post('/api/workflows/tasks/:taskId/return', async ({ params, request }) => {
     const body = await request.json() as { targetNodeKey: string; comment: string };

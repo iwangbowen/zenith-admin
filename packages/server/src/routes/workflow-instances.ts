@@ -1,13 +1,13 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, returnWorkflowTaskSchema } from '@zenith/shared';
+import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema } from '@zenith/shared';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody } from '../lib/openapi-schemas';
 import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowTaskDTO } from '../lib/openapi-dtos';
 import {
   listMyInstances, listPendingMine, listAllInstances, getInstanceDetail,
   createInstance, withdrawInstance, approveTask, rejectTask, getWorkflowInstanceBeforeAudit, getWorkflowTaskBeforeAudit,
-  transferTask, delegateTask, addSignTask, returnTask,
+  transferTask, delegateTask, addSignTask, reduceSignTask, returnTask,
 } from '../services/workflow-instances.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -228,6 +228,29 @@ const addSignRoute = defineOpenAPIRoute({
   },
 });
 
+const reduceSignRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/tasks/{taskId}/reduce-sign', tags: ['WorkflowInstances'], summary: '减签',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:task:handle', audit: { description: '减签任务', module: '工作流管理' } })] as const,
+    request: { params: taskIdParam, body: { content: jsonContent(reduceSignWorkflowTaskSchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      ...okMsg('已减签'),
+      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { taskId } = c.req.valid('param');
+    const { targetTaskIds, comment } = c.req.valid('json');
+    const before = await getWorkflowTaskBeforeAudit(taskId);
+    if (before) setAuditBeforeData(c, before);
+    const r = await reduceSignTask(taskId, targetTaskIds, comment);
+    return c.json(okBody(null, r.message), 200);
+  },
+});
+
 const returnRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/tasks/{taskId}/return', tags: ['WorkflowInstances'], summary: '退回',
@@ -251,6 +274,6 @@ const returnRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, pendingMineRoute, allRoute, detailRoute, createInstanceRoute, withdrawRoute, approveRoute, rejectRoute, transferRoute, delegateRoute, addSignRoute, returnRoute] as const);
+router.openapiRoutes([listRoute, pendingMineRoute, allRoute, detailRoute, createInstanceRoute, withdrawRoute, approveRoute, rejectRoute, transferRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute] as const);
 
 export default router;

@@ -60,7 +60,7 @@ export function mapInstance(
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { count, countDistinct, eq, and, desc, ilike, or } from 'drizzle-orm';
+import { count, countDistinct, eq, and, desc, ilike, or, inArray } from 'drizzle-orm';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
@@ -1486,6 +1486,50 @@ export async function addSignTask(
     if (t.assigneeId) emitTaskEvent('task.assigned', mapTask(t), meta);
   }
   return { created: created.map((t) => mapTask(t)), message: `已加签 ${created.length} 人` };
+}
+
+/** 减签：取消同节点上以加签方式创建的其他 pending 任务（仅限加签产生的任务，不能减去原始审批人） */
+export async function reduceSignTask(taskId: number, targetTaskIds: number[], comment?: string) {
+  const { task, inst, actor } = await getOwnPendingTask(taskId);
+  if (targetTaskIds.length === 0) throw new HTTPException(400, { message: '请选择要减签的任务' });
+  if (targetTaskIds.includes(task.id)) throw new HTTPException(400, { message: '不能减去自己' });
+
+  const targets = await db.select().from(workflowTasks).where(and(
+    eq(workflowTasks.instanceId, inst.id),
+    eq(workflowTasks.nodeKey, task.nodeKey),
+    inArray(workflowTasks.id, targetTaskIds),
+  ));
+  if (targets.length !== targetTaskIds.length) throw new HTTPException(400, { message: '部分任务不存在或不同节点' });
+  for (const t of targets) {
+    if (t.status !== 'pending' && t.status !== 'waiting') {
+      throw new HTTPException(400, { message: '仅可减签未处理的任务' });
+    }
+    if (!t.comment?.startsWith('[加签-')) {
+      throw new HTTPException(400, { message: '仅可减去加签产生的任务，原始审批人不可移除' });
+    }
+  }
+
+  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const flowData = snapshot?.flowData;
+  const suffix = comment ? `：${comment}` : '';
+  const reduceComment = `[减签] 由 ${actor.name ?? '系统'} 发起${suffix}`;
+
+  const removed = await db.transaction(async (tx) => {
+    const updated = await tx.update(workflowTasks).set({
+      status: 'skipped',
+      actionAt: new Date(),
+      comment: reduceComment,
+    }).where(inArray(workflowTasks.id, targetTaskIds)).returning();
+    // 复核节点完成状态（例如 and 会签减后可能已足）
+    await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData);
+    return updated;
+  });
+
+  const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
+  for (const t of removed) {
+    emitTaskEvent('task.skipped', mapTask(t), meta);
+  }
+  return { removed: removed.map((t) => mapTask(t)), message: `已减签 ${removed.length} 人` };
 }
 
 /** 退回：将当前任务驳回到指定前序节点（使用 rejectTaskCore 的 returnToNode 路径） */

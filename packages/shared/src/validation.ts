@@ -714,6 +714,11 @@ export const addSignWorkflowTaskSchema = z.object({
   comment: z.string().max(500).optional(),
 });
 
+export const reduceSignWorkflowTaskSchema = z.object({
+  targetTaskIds: z.array(z.number().int().positive()).min(1, '请选择要减签的任务'),
+  comment: z.string().max(500).optional(),
+});
+
 export const returnWorkflowTaskSchema = z.object({
   targetNodeKey: z.string().min(1, '请选择退回节点'),
   comment: z.string().min(1, '退回原因不能为空').max(500),
@@ -727,6 +732,7 @@ export type RejectWorkflowTaskInput = z.infer<typeof rejectWorkflowTaskSchema>;
 export type TransferWorkflowTaskInput = z.infer<typeof transferWorkflowTaskSchema>;
 export type DelegateWorkflowTaskInput = z.infer<typeof delegateWorkflowTaskSchema>;
 export type AddSignWorkflowTaskInput = z.infer<typeof addSignWorkflowTaskSchema>;
+export type ReduceSignWorkflowTaskInput = z.infer<typeof reduceSignWorkflowTaskSchema>;
 export type ReturnWorkflowTaskInput = z.infer<typeof returnWorkflowTaskSchema>;
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
