@@ -151,6 +151,7 @@ export function PDFPreviewPanel({ file, onClose }: PDFPreviewPanelProps) {
           config={{
             theme: themeConfig,
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
+            i18n: { defaultLocale: 'zh-CN' },
             tabBar: 'never',
             disabledCategories: ['annotation', 'form', 'redaction', 'insert', 'signature'],
           }}
