@@ -32,6 +32,7 @@ const DEFAULT_BUTTONS: Record<WorkflowActionButtonKey, WorkflowActionButtonConfi
   transfer: { enabled: false, displayName: '转办', opinionName: '转办说明' },
   delegate: { enabled: false, displayName: '委派', opinionName: '委派说明' },
   addSign: { enabled: false, displayName: '加签', opinionName: '加签说明' },
+  reduceSign: { enabled: false, displayName: '减签', opinionName: '减签说明' },
   return: { enabled: false, displayName: '退回', opinionName: '退回原因' },
 };
 
@@ -52,6 +53,7 @@ export default function PendingApprovalsPage() {
   const transferFormApi = useRef<FormApi | null>(null);
   const delegateFormApi = useRef<FormApi | null>(null);
   const addSignFormApi = useRef<FormApi | null>(null);
+  const reduceSignFormApi = useRef<FormApi | null>(null);
   const returnFormApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<PendingItem> | null>(null);
@@ -63,6 +65,7 @@ export default function PendingApprovalsPage() {
   const [transferVisible, setTransferVisible] = useState(false);
   const [delegateVisible, setDelegateVisible] = useState(false);
   const [addSignVisible, setAddSignVisible] = useState(false);
+  const [reduceSignVisible, setReduceSignVisible] = useState(false);
   const [returnVisible, setReturnVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
@@ -87,7 +90,19 @@ export default function PendingApprovalsPage() {
   const btnTransfer = useMemo(() => resolveButton(actionButtons, 'transfer'), [actionButtons]);
   const btnDelegate = useMemo(() => resolveButton(actionButtons, 'delegate'), [actionButtons]);
   const btnAddSign = useMemo(() => resolveButton(actionButtons, 'addSign'), [actionButtons]);
+  const btnReduceSign = useMemo(() => resolveButton(actionButtons, 'reduceSign'), [actionButtons]);
   const btnReturn = useMemo(() => resolveButton(actionButtons, 'return'), [actionButtons]);
+
+  /** 同节点上加签产生的、尚未处理的兄弟任务（用于减签候选） */
+  const reduceSignCandidates = useMemo(() => {
+    if (!detail || !currentTask) return [] as WorkflowTask[];
+    return (detail.tasks ?? []).filter((t) =>
+      t.id !== currentTask.id
+      && t.nodeKey === currentTask.nodeKey
+      && (t.status === 'pending' || t.status === 'waiting')
+      && (t.comment?.startsWith('[加签') ?? false),
+    );
+  }, [detail, currentTask]);
 
   const returnTargetOptions = useMemo(() => {
     if (!detailDef || !currentTask) return [] as Array<{ label: string; value: string }>;
@@ -301,6 +316,13 @@ export default function PendingApprovalsPage() {
     } catch { /* validation */ }
   };
 
+  const handleReduceSign = async () => {
+    try {
+      const values = await reduceSignFormApi.current?.validate() as { targetTaskIds: number[]; comment?: string };
+      await submitSimpleAction('reduce-sign', values, '已减签', () => setReduceSignVisible(false));
+    } catch { /* validation */ }
+  };
+
   const handleReturn = async () => {
     try {
       const values = await returnFormApi.current?.validate() as { targetNodeKey: string; comment: string };
@@ -434,6 +456,11 @@ export default function PendingApprovalsPage() {
                 {btnAddSign.enabled && (
                   <Button onClick={() => openUserPickerModal(() => setAddSignVisible(true))}>
                     {btnAddSign.displayName ?? '加签'}
+                  </Button>
+                )}
+                {btnAddSign.enabled && reduceSignCandidates.length > 0 && (
+                  <Button onClick={() => setReduceSignVisible(true)}>
+                    {btnReduceSign.displayName ?? '减签'}
                   </Button>
                 )}
                 {btnReturn.enabled && (
@@ -612,6 +639,31 @@ export default function PendingApprovalsPage() {
             <Form.Radio value="after">后加签（自己之后再审批）</Form.Radio>
           </Form.RadioGroup>
           <Form.TextArea field="comment" label={btnAddSign.opinionName ?? '加签说明'} rows={3} />
+        </Form>
+      </Modal>
+
+      {/* 减签弹窗 */}
+      <Modal
+        title={btnReduceSign.displayName ?? '减签'}
+        visible={reduceSignVisible}
+        onCancel={() => setReduceSignVisible(false)}
+        onOk={() => void handleReduceSign()}
+        okButtonProps={{ loading: submitting, type: 'primary' }}
+        okText="确认"
+        style={{ width: 480 }}
+      >
+        <Form getFormApi={api => { reduceSignFormApi.current = api; }}>
+          <Form.CheckboxGroup
+            field="targetTaskIds"
+            label="选择要减签的加签人"
+            rules={[{ required: true, message: '请至少选择一项' }]}
+            options={reduceSignCandidates.map((t) => {
+              const who = t.assigneeName ?? `用户${t.assigneeId ?? ''}`;
+              const note = t.comment?.replace(/^\[加签-?\w*\]\s*/, '') ?? '';
+              return { label: `${who}（${note}）`, value: t.id };
+            })}
+          />
+          <Form.TextArea field="comment" label={btnReduceSign.opinionName ?? '减签说明'} rows={3} />
         </Form>
       </Modal>
 

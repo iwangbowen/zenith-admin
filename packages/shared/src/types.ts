@@ -617,6 +617,7 @@ export type WorkflowActionButtonKey =
   | 'transfer'   // 转办
   | 'delegate'   // 委派
   | 'addSign'    // 加签
+  | 'reduceSign' // 减签
   | 'return';    // 退回
 
 /** 单个操作按钮的配置 */
