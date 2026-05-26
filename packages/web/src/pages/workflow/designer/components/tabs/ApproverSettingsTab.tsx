@@ -3,7 +3,7 @@
  * 支持多种指定策略：指定成员、角色、主管、发起人自己、表单联系人、发起人自选、
  * 连续多级上级、连续多级部门负责人、节点审批人、用户组、表单内部门
  */
-import { Form, Select, InputNumber, Typography, RadioGroup, Radio, Tooltip, Checkbox } from '@douyinfe/semi-ui';
+import { Form, Select, InputNumber, Typography, RadioGroup, Radio, Tooltip, Checkbox, TextArea } from '@douyinfe/semi-ui';
 import type { AssigneeType, ApproveMethod, ApprovalType, FlowNodeType } from '../../types';
 import {
   ASSIGNEE_TYPE_OPTIONS,
@@ -15,6 +15,10 @@ import { CircleHelp } from 'lucide-react';
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
 interface UserGroupOption { id: number; name: string; }
+interface PositionOption { id: number; name: string; }
+interface DepartmentOption { id: number; name: string; parentId?: number | null; }
+
+type SelectScopeType = 'user' | 'role' | 'department' | 'userGroup';
 
 interface ApproverSettingsTabProps {
   nodeType: FlowNodeType;
@@ -33,9 +37,17 @@ interface ApproverSettingsTabProps {
   userGroupIds?: number[];
   formDeptField?: string;
   formDeptHeadLevel?: number;
+  postIds?: number[];
+  deptMemberDeptIds?: number[];
+  deptMemberIncludeChildren?: boolean;
+  selectScopeType?: SelectScopeType;
+  selectScopeIds?: number[];
+  assigneeExpression?: string;
   users: UserOption[];
   roles: RoleOption[];
   userGroups?: UserGroupOption[];
+  positions?: PositionOption[];
+  departments?: DepartmentOption[];
   formFields: Array<{ key: string; label: string; type?: string }>;
   allNodes?: Array<{ id: string; key?: string; name: string; type: FlowNodeType }>;
   onChange: (updates: Record<string, unknown>) => void;
@@ -58,9 +70,17 @@ export default function ApproverSettingsTab({
   userGroupIds = [],
   formDeptField,
   formDeptHeadLevel = 1,
+  postIds = [],
+  deptMemberDeptIds = [],
+  deptMemberIncludeChildren = false,
+  selectScopeType = 'user',
+  selectScopeIds = [],
+  assigneeExpression = '',
   users,
   roles,
   userGroups = [],
+  positions = [],
+  departments = [],
   formFields,
   allNodes = [],
   onChange,
@@ -72,6 +92,13 @@ export default function ApproverSettingsTab({
 
   // 前序审批/办理节点列表（用于"节点审批人"类型）
   const approverNodes = allNodes.filter(n => n.type === 'approver' || n.type === 'handler');
+
+  // 自选范围的可选项（共用：initiatorSelectScope / approverSelect）
+  let selectScopeOptions: Array<{ value: number; label: string }> = [];
+  if (selectScopeType === 'user') selectScopeOptions = users.map(u => ({ value: u.id, label: u.nickname }));
+  else if (selectScopeType === 'role') selectScopeOptions = roles.map(r => ({ value: r.id, label: r.name }));
+  else if (selectScopeType === 'department') selectScopeOptions = departments.map(d => ({ value: d.id, label: d.name }));
+  else selectScopeOptions = userGroups.map(g => ({ value: g.id, label: g.name }));
   // 部门类型字段（用于"表单内部门"类型）
   const deptFields = formFields.filter(f => f.type === 'department');
 
@@ -346,6 +373,146 @@ export default function ApproverSettingsTab({
                 />
               </Form.Slot>
             </>
+          )}
+
+          {/* 指定岗位 */}
+          {assigneeType === 'post' && (
+            <Form.Slot label="选择岗位">
+              <Select
+                value={postIds}
+                onChange={(v) => {
+                  const ids = v as number[];
+                  const names = ids.map(id => positions.find(p => p.id === id)?.name ?? '');
+                  onChange({ postIds: ids, postNames: names });
+                }}
+                multiple
+                filter
+                style={{ width: '100%' }}
+                placeholder="请选择岗位"
+                optionList={positions.map(p => ({ value: p.id, label: p.name }))}
+                emptyContent={positions.length === 0 ? '请先在"岗位管理"中配置岗位' : '无匹配项'}
+              />
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+                所选岗位下的所有成员都会作为审批人候选
+              </Typography.Text>
+            </Form.Slot>
+          )}
+
+          {/* 部门成员 */}
+          {assigneeType === 'deptMember' && (
+            <>
+              <Form.Slot label="选择部门">
+                <Select
+                  value={deptMemberDeptIds}
+                  onChange={(v) => {
+                    const ids = v as number[];
+                    const names = ids.map(id => departments.find(d => d.id === id)?.name ?? '');
+                    onChange({ deptMemberDeptIds: ids, deptMemberDeptNames: names });
+                  }}
+                  multiple
+                  filter
+                  style={{ width: '100%' }}
+                  placeholder="请选择部门"
+                  optionList={departments.map(d => ({ value: d.id, label: d.name }))}
+                />
+              </Form.Slot>
+              <div style={{ marginTop: 8 }}>
+                <Checkbox
+                  checked={deptMemberIncludeChildren}
+                  onChange={(e) => onChange({ deptMemberIncludeChildren: !!e.target.checked })}
+                >
+                  包含子部门成员
+                </Checkbox>
+              </div>
+            </>
+          )}
+
+          {/* 发起人部门分管领导 */}
+          {assigneeType === 'startUserDeptResponsible' && (
+            <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+              取发起人所在部门的「分管领导」（需先在部门管理中配置分管领导）
+            </Typography.Text>
+          )}
+
+          {/* 发起人自选(指定范围) */}
+          {assigneeType === 'initiatorSelectScope' && (
+            <>
+              <Form.Slot label="可选范围类型">
+                <RadioGroup
+                  type="button"
+                  value={selectScopeType}
+                  onChange={(e) => onChange({ selectScopeType: e.target.value, selectScopeIds: [] })}
+                  style={{ width: '100%' }}
+                >
+                  <Radio value="user">成员</Radio>
+                  <Radio value="role">角色</Radio>
+                  <Radio value="department">部门</Radio>
+                  <Radio value="userGroup">用户组</Radio>
+                </RadioGroup>
+              </Form.Slot>
+              <Form.Slot label="可选范围">
+                <Select
+                  value={selectScopeIds}
+                  onChange={(v) => onChange({ selectScopeIds: v })}
+                  multiple
+                  filter
+                  style={{ width: '100%' }}
+                  placeholder="请选择可供发起人挑选的范围"
+                  optionList={selectScopeOptions}
+                />
+              </Form.Slot>
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+                发起人在发起申请时，需在上述范围内挑选具体审批人
+              </Typography.Text>
+            </>
+          )}
+
+          {/* 审批人自选（上一节点选下一节点审批人） */}
+          {assigneeType === 'approverSelect' && (
+            <>
+              <Form.Slot label="可选范围类型">
+                <RadioGroup
+                  type="button"
+                  value={selectScopeType}
+                  onChange={(e) => onChange({ selectScopeType: e.target.value, selectScopeIds: [] })}
+                  style={{ width: '100%' }}
+                >
+                  <Radio value="user">成员</Radio>
+                  <Radio value="role">角色</Radio>
+                  <Radio value="department">部门</Radio>
+                  <Radio value="userGroup">用户组</Radio>
+                </RadioGroup>
+              </Form.Slot>
+              <Form.Slot label="可选范围（留空=无范围限制）">
+                <Select
+                  value={selectScopeIds}
+                  onChange={(v) => onChange({ selectScopeIds: v })}
+                  multiple
+                  filter
+                  style={{ width: '100%' }}
+                  placeholder="可选范围，留空则上一审批人可任选"
+                  optionList={selectScopeOptions}
+                />
+              </Form.Slot>
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+                上一节点审批人在审批通过时，需为本节点选择具体审批人
+              </Typography.Text>
+            </>
+          )}
+
+          {/* 流程表达式 */}
+          {assigneeType === 'expression' && (
+            <Form.Slot label="表达式">
+              <TextArea
+                value={assigneeExpression}
+                onChange={(v) => onChange({ assigneeExpression: v })}
+                rows={4}
+                placeholder={'返回用户 ID 数组或单个用户 ID，可引用 {{form.fieldKey}} / {{starter.id}} 等变量'}
+              />
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+                运行时由后端解析；表达式应返回数字（单一用户 ID）或数字数组（多用户 ID）
+              </Typography.Text>
+            </Form.Slot>
           )}
 
           {/* 审批方式（仅审批人节点） */}

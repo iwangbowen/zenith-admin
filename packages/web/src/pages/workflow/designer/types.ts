@@ -24,18 +24,24 @@ export type FlowNodeType =
 
 /** 审批人指定策略 */
 export type AssigneeType =
-  | 'user'                    // 指定成员
-  | 'role'                    // 指定角色
-  | 'department'              // 部门负责人
-  | 'initiator'               // 发起人自己
-  | 'manager'                 // 直属主管（支持多层级）
-  | 'formUser'                // 表单内联系人字段
-  | 'initiatorSelect'         // 发起人自选
-  | 'multiLevelManager'       // 连续多级上级
-  | 'multiLevelDeptHead'      // 连续多级部门负责人
-  | 'nodeApprover'            // 节点审批人（关联前序节点）
-  | 'userGroup'               // 用户组
-  | 'formDepartment';         // 表单内部门
+  | 'user'                       // 指定成员
+  | 'role'                       // 指定角色
+  | 'department'                 // 部门负责人
+  | 'post'                       // 指定岗位
+  | 'deptMember'                 // 指定部门成员
+  | 'initiator'                  // 发起人自己
+  | 'startUserDeptResponsible'   // 发起人部门分管领导
+  | 'manager'                    // 直属主管（支持多层级）
+  | 'formUser'                   // 表单内联系人字段
+  | 'initiatorSelect'            // 发起人自选
+  | 'initiatorSelectScope'       // 发起人自选指定范围
+  | 'approverSelect'             // 上一节点审批人自选
+  | 'multiLevelManager'          // 连续多级上级
+  | 'multiLevelDeptHead'         // 连续多级部门负责人
+  | 'nodeApprover'               // 节点审批人（关联前序节点）
+  | 'userGroup'                  // 用户组
+  | 'formDepartment'             // 表单内部门
+  | 'expression';                // 流程表达式
 
 /** 审批类型（节点级总开关） */
 export type ApprovalType =
@@ -137,6 +143,14 @@ export interface ApproverNodeProps {
   nodeApproverNodeId?: string;            // 节点审批人：关联的前序节点ID
   userGroupIds?: number[];                // 用户组ID
   userGroupNames?: string[];              // 用户组名称
+  postIds?: number[];                     // 岗位ID（post 策略）
+  postNames?: string[];
+  deptMemberDeptIds?: number[];           // 指定部门成员的部门 IDs（deptMember 策略）
+  deptMemberDeptNames?: string[];
+  deptMemberIncludeChildren?: boolean;    // deptMember: 是否包含子部门
+  selectScopeType?: 'user' | 'role' | 'department' | 'userGroup'; // approverSelect / initiatorSelectScope 的范围类型
+  selectScopeIds?: number[];              // 对应的范围 IDs
+  assigneeExpression?: string;            // 流程表达式（expression 策略）
   formDeptField?: string;                 // 表单内部门字段
   formDeptHeadLevel?: number;             // 表单内部门负责人层级
   approveMethod: ApproveMethod;

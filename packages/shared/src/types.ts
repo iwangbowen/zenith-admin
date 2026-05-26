@@ -565,20 +565,26 @@ export interface WorkflowConditionGroup {
 
 /** 审批人来源类型 */
 export type WorkflowAssigneeType =
-  | 'user'              // 指定成员
-  | 'role'              // 指定角色
-  | 'department'        // 部门负责人
-  | 'userGroup'         // 用户组
-  | 'initiator'         // 发起人本人
-  | 'initiatorLeader'   // 发起人上级（兼容旧字段）
-  | 'initiatorDept'     // 发起人部门主管（兼容旧字段）
-  | 'manager'           // 直属主管（支持多层级 managerLevel）
-  | 'multiLevelManager' // 连续多级上级
-  | 'multiLevelDeptHead'// 连续多级部门负责人
-  | 'formUser'          // 表单内联系人字段
-  | 'formDepartment'    // 表单内部门字段
-  | 'nodeApprover'      // 节点审批人（关联前序节点）
-  | 'initiatorSelect';  // 发起人自选（在发起时已经填到 userIds 中）
+  | 'user'                       // 指定成员
+  | 'role'                       // 指定角色
+  | 'department'                 // 部门负责人
+  | 'userGroup'                  // 用户组
+  | 'post'                       // 指定岗位
+  | 'deptMember'                 // 指定部门成员（可选包含子部门）
+  | 'initiator'                  // 发起人本人
+  | 'initiatorLeader'            // 发起人上级（兼容旧字段）
+  | 'initiatorDept'              // 发起人部门主管（兼容旧字段）
+  | 'startUserDeptResponsible'   // 发起人部门分管领导
+  | 'manager'                    // 直属主管（支持多层级 managerLevel）
+  | 'multiLevelManager'          // 连续多级上级
+  | 'multiLevelDeptHead'         // 连续多级部门负责人
+  | 'formUser'                   // 表单内联系人字段
+  | 'formDepartment'             // 表单内部门字段
+  | 'nodeApprover'               // 节点审批人（关联前序节点）
+  | 'initiatorSelect'            // 发起人自选（在发起时已经填到 userIds 中）
+  | 'initiatorSelectScope'       // 发起人自选指定范围
+  | 'approverSelect'             // 上一节点审批人自选
+  | 'expression';                // 流程表达式
 
 /** 审批方式 */
 export type WorkflowApproveMethod =
@@ -661,6 +667,20 @@ export interface WorkflowNodeConfig {
   deptIds?: number[] | null;
   /** 当 assigneeType = 'userGroup' 时指定的用户组 IDs */
   userGroupIds?: number[] | null;
+  /** 当 assigneeType = 'post' 时指定的岗位 IDs */
+  postIds?: number[] | null;
+  postNames?: string[] | null;
+  /** 当 assigneeType = 'deptMember' 时指定的部门 IDs（成员为这些部门下的所有用户） */
+  deptMemberDeptIds?: number[] | null;
+  deptMemberDeptNames?: string[] | null;
+  /** deptMember：是否包含子部门成员（默认 false） */
+  deptMemberIncludeChildren?: boolean;
+  /** 自选范围类型（approverSelect / initiatorSelectScope 时生效） */
+  selectScopeType?: 'user' | 'role' | 'department' | 'userGroup';
+  /** 自选范围 IDs（与 selectScopeType 对应） */
+  selectScopeIds?: number[] | null;
+  /** 流程表达式（assigneeType = 'expression' 时生效，返回用户 ID 数组或单值） */
+  assigneeExpression?: string;
   /** 审批方式（人工节点，多人时生效） */
   approveMethod?: WorkflowApproveMethod;
   emptyStrategy?: WorkflowEmptyAssigneeStrategy;

@@ -64,6 +64,7 @@ export default function WorkflowDesignerPage() {
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [userGroups, setUserGroups] = useState<Array<{ id: number; name: string }>>([]);
+  const [positions, setPositions] = useState<Array<{ id: number; name: string }>>([]);
   const [subProcessOptions, setSubProcessOptions] = useState<Array<{ value: number; label: string }>>([]);
 
   // 节点编辑抽屉
@@ -163,6 +164,11 @@ export default function WorkflowDesignerPage() {
     request.get<Array<{ id: number; name: string }>>('/api/user-groups/all').then(res => {
       if (res.code === 0 && res.data) {
         setUserGroups(res.data.map(g => ({ id: g.id, name: g.name })));
+      }
+    });
+    request.get<Array<{ id: number; name: string }>>('/api/positions/all').then(res => {
+      if (res.code === 0 && res.data) {
+        setPositions(res.data.map(p => ({ id: p.id, name: p.name })));
       }
     });
     request.get<WorkflowDefinition[]>('/api/workflows/definitions/published').then((res) => {
@@ -679,6 +685,8 @@ export default function WorkflowDesignerPage() {
         users={users}
         roles={roles}
         userGroups={userGroups}
+        positions={positions}
+        departments={departments}
         formFields={formFields}
         allNodes={collectAllNodes(process.initiator)}
         rejectableAncestorNodes={editingNode ? findAncestorApproverNodes(process.initiator, editingNode.id) : []}

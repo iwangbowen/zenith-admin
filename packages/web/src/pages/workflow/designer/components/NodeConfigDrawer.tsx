@@ -21,6 +21,8 @@ import AdvancedSettingsTab from './tabs/AdvancedSettingsTab';
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
 interface UserGroupOption { id: number; name: string; }
+interface PositionOption { id: number; name: string; }
+interface DepartmentOption { id: number; name: string; parentId?: number | null; }
 interface FormField { key: string; label: string; type?: string }
 interface SubProcessOption { value: number; label: string }
 
@@ -46,6 +48,8 @@ interface NodeConfigDrawerProps {
   users: UserOption[];
   roles: RoleOption[];
   userGroups?: UserGroupOption[];
+  positions?: PositionOption[];
+  departments?: DepartmentOption[];
   formFields: FormField[];
   allNodes?: Array<{ id: string; key?: string; name: string; type: FlowNodeType }>;
   /** 可选为“驳回到指定节点”的候选节点（当前节点之前同一执行路径上的审批/办理节点） */
@@ -62,6 +66,8 @@ export default function NodeConfigDrawer({
   users,
   roles,
   userGroups = [],
+  positions = [],
+  departments = [],
   formFields,
   allNodes = [],
   rejectableAncestorNodes = [],
@@ -205,9 +211,17 @@ export default function NodeConfigDrawer({
                   userGroupIds={(props.userGroupIds as number[]) ?? []}
                   formDeptField={(props.formDeptField as string) ?? undefined}
                   formDeptHeadLevel={(props.formDeptHeadLevel as number) ?? 1}
+                  postIds={(props.postIds as number[]) ?? []}
+                  deptMemberDeptIds={(props.deptMemberDeptIds as number[]) ?? []}
+                  deptMemberIncludeChildren={(props.deptMemberIncludeChildren as boolean) ?? false}
+                  selectScopeType={(props.selectScopeType as 'user' | 'role' | 'department' | 'userGroup') ?? 'user'}
+                  selectScopeIds={(props.selectScopeIds as number[]) ?? []}
+                  assigneeExpression={(props.assigneeExpression as string) ?? ''}
                   users={users}
                   roles={roles}
                   userGroups={userGroups}
+                  positions={positions}
+                  departments={departments}
                   formFields={formFields}
                   allNodes={allNodes}
                   onChange={handlePropsChange}

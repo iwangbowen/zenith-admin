@@ -519,10 +519,12 @@ export const workflowNodeTypeSchema = z.enum([
 ]);
 
 export const workflowAssigneeTypeSchema = z.enum([
-  'user', 'role', 'department', 'userGroup',
-  'initiator', 'initiatorLeader', 'initiatorDept',
+  'user', 'role', 'department', 'userGroup', 'post', 'deptMember',
+  'initiator', 'initiatorLeader', 'initiatorDept', 'startUserDeptResponsible',
   'manager', 'multiLevelManager', 'multiLevelDeptHead',
-  'formUser', 'formDepartment', 'nodeApprover', 'initiatorSelect',
+  'formUser', 'formDepartment', 'nodeApprover',
+  'initiatorSelect', 'initiatorSelectScope', 'approverSelect',
+  'expression',
 ]);
 
 export const workflowApproveMethodSchema = z.enum(['and', 'or', 'sequential', 'auto']);
@@ -567,6 +569,14 @@ export const workflowNodeConfigSchema = z.looseObject({
   roleIds: z.array(z.number().int()).nullable().optional(),
   deptIds: z.array(z.number().int()).nullable().optional(),
   userGroupIds: z.array(z.number().int()).nullable().optional(),
+  postIds: z.array(z.number().int()).nullable().optional(),
+  postNames: z.array(z.string()).nullable().optional(),
+  deptMemberDeptIds: z.array(z.number().int()).nullable().optional(),
+  deptMemberDeptNames: z.array(z.string()).nullable().optional(),
+  deptMemberIncludeChildren: z.boolean().optional(),
+  selectScopeType: z.enum(['user', 'role', 'department', 'userGroup']).optional(),
+  selectScopeIds: z.array(z.number().int()).nullable().optional(),
+  assigneeExpression: z.string().max(2000).optional(),
   approveMethod: workflowApproveMethodSchema.optional(),
   emptyStrategy: workflowEmptyAssigneeStrategySchema.optional(),
   emptyAssignTo: z.number().int().optional(),

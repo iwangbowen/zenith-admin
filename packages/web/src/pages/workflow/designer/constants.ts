@@ -131,18 +131,24 @@ export const OPERATOR_LABELS: Record<string, string> = {
 // ─── 审批人策略选项 ──────────────────────────────────────────────────
 
 export const ASSIGNEE_TYPE_OPTIONS: Array<{ value: AssigneeType; label: string; description: string }> = [
-  { value: 'user',                label: '指定成员',        description: '选择一个或多个具体人员' },
-  { value: 'role',                label: '指定角色',        description: '角色对应的所有成员' },
-  { value: 'department',          label: '部门负责人',    description: '发起人所在部门的负责人' },
-  { value: 'initiator',           label: '发起人自己',    description: '流程发起人自行处理' },
-  { value: 'manager',             label: '直属主管',        description: '发起人的直属上级（支持多层级）' },
-  { value: 'formUser',            label: '表单联系人',    description: '表单中联系人字段对应的人员' },
-  { value: 'initiatorSelect',     label: '发起人自选',    description: '发起时由发起人选择审批人' },
-  { value: 'multiLevelManager',   label: '连续多级上级',  description: '从直属上级开始逐级向上审批' },
-  { value: 'multiLevelDeptHead',  label: '连续多级部门负责人', description: '从直属部门负责人逐级向上' },
-  { value: 'nodeApprover',        label: '节点审批人',    description: '关联前序节点的实际审批人' },
-  { value: 'userGroup',           label: '用户组',          description: '指定用户组的成员' },
-  { value: 'formDepartment',      label: '表单内部门',    description: '关联表单中部门字段的负责人' },
+  { value: 'user',                     label: '指定成员',           description: '选择一个或多个具体人员' },
+  { value: 'role',                     label: '指定角色',           description: '角色对应的所有成员' },
+  { value: 'department',               label: '部门负责人',         description: '发起人所在部门的负责人' },
+  { value: 'post',                     label: '指定岗位',           description: '所选岗位下的所有成员' },
+  { value: 'deptMember',               label: '部门成员',           description: '指定部门下的全部成员（可含子部门）' },
+  { value: 'initiator',                label: '发起人自己',         description: '流程发起人自行处理' },
+  { value: 'startUserDeptResponsible', label: '发起人部门分管领导', description: '发起人所在部门的分管领导' },
+  { value: 'manager',                  label: '直属主管',           description: '发起人的直属上级（支持多层级）' },
+  { value: 'formUser',                 label: '表单联系人',         description: '表单中联系人字段对应的人员' },
+  { value: 'initiatorSelect',          label: '发起人自选',         description: '发起时由发起人自由选择审批人' },
+  { value: 'initiatorSelectScope',     label: '发起人自选(指定范围)', description: '发起时由发起人在指定范围内选择' },
+  { value: 'approverSelect',           label: '审批人自选',         description: '由上一节点审批人在审批时选择本节点审批人' },
+  { value: 'multiLevelManager',        label: '连续多级上级',       description: '从直属上级开始逐级向上审批' },
+  { value: 'multiLevelDeptHead',       label: '连续多级部门负责人', description: '从直属部门负责人逐级向上' },
+  { value: 'nodeApprover',             label: '节点审批人',         description: '关联前序节点的实际审批人' },
+  { value: 'userGroup',                label: '用户组',             description: '指定用户组的成员' },
+  { value: 'formDepartment',           label: '表单内部门',         description: '关联表单中部门字段的负责人' },
+  { value: 'expression',               label: '流程表达式',         description: '通过表达式动态计算审批人 ID' },
 ];
 
 export const APPROVE_METHOD_OPTIONS: Array<{ value: ApproveMethod; label: string; description: string }> = [
