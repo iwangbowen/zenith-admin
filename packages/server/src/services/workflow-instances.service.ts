@@ -470,6 +470,29 @@ async function expandTasksToRows(
       continue;
     }
 
+    if (t.nodeType === 'ccNode') {
+      // 解析抄送接收人：支持 assigneeType（user/role/dept/formUser 等）+ 变量插值；
+      // resolver 内部使用 Set 完成去重，并在未声明 assigneeType 时自动回退 assigneeIds + assigneeId
+      const ccUserIds = await resolveAssigneeIds(t.nodeConfig, {
+        initiatorId: ctx.initiatorId,
+        executor: ctx.executor,
+        formData: ctx.formData,
+        instanceId: ctx.instanceId,
+      });
+      for (const uid of ccUserIds) {
+        rows.push({
+          instanceId: ctx.instanceId,
+          nodeKey: t.nodeKey,
+          nodeName: t.nodeName,
+          nodeType: 'ccNode' as const,
+          assigneeId: uid,
+          status: 'skipped' as const,
+          actionAt: null,
+        });
+      }
+      continue;
+    }
+
     if (t.nodeType !== 'approve' && t.nodeType !== 'handler') {
       rows.push({
         instanceId: ctx.instanceId,
@@ -1771,6 +1794,60 @@ export async function urgeInstance(instanceId: number, message?: string) {
     message: skipped > 0
       ? `已催办 ${created.length} 人，${skipped} 人催办过于频繁已跳过`
       : `已催办 ${created.length} 人`,
+  };
+}
+
+/** 动态补加抄送：运行中实例为指定 ccNode 节点补加抄送人（去重 + 校验节点类型） */
+export async function addInstanceCc(instanceId: number, nodeKey: string, userIds: number[]) {
+  const user = currentUser();
+  const [inst] = await db.select().from(workflowInstances)
+    .where(eq(workflowInstances.id, instanceId)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程不存在' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无法补加抄送' });
+  const isInitiator = inst.initiatorId === user.userId;
+  const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');
+  if (!isInitiator && !isAdmin) throw new HTTPException(403, { message: '仅发起人或管理员可补加抄送' });
+
+  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
+  const node = flowData.nodes.find((n) => n.data.key === nodeKey);
+  if (!node) throw new HTTPException(400, { message: '抄送节点不存在' });
+  if (node.data.type !== 'ccNode') throw new HTTPException(400, { message: '仅 ccNode 节点支持补加抄送' });
+
+  // 去重：过滤掉已经在该节点抄送过的用户
+  const existing = await db.select({ assigneeId: workflowTasks.assigneeId }).from(workflowTasks)
+    .where(and(
+      eq(workflowTasks.instanceId, instanceId),
+      eq(workflowTasks.nodeKey, nodeKey),
+      eq(workflowTasks.nodeType, 'ccNode'),
+    ));
+  const existingSet = new Set(existing.map((r) => r.assigneeId).filter((v): v is number => typeof v === 'number'));
+  const toAdd = Array.from(new Set(userIds)).filter((uid) => !existingSet.has(uid));
+  if (toAdd.length === 0) {
+    return { list: [] as ReturnType<typeof mapTask>[], message: '所选用户均已抄送，无需重复添加' };
+  }
+
+  const rows = toAdd.map((uid) => ({
+    instanceId,
+    nodeKey,
+    nodeName: node.data.label,
+    nodeType: 'ccNode' as const,
+    assigneeId: uid,
+    status: 'skipped' as const,
+    actionAt: null,
+  }));
+  const inserted = await db.insert(workflowTasks).values(rows).returning();
+  const actor = { userId: user.userId, name: user.username };
+  for (const t of inserted) {
+    emitTaskEvent('task.created', mapTask(t), {
+      definitionId: inst.definitionId,
+      tenantId: inst.tenantId,
+      actor,
+    });
+  }
+  return {
+    list: inserted.map((t) => mapTask(t)),
+    message: `已补加 ${inserted.length} 人抄送`,
   };
 }
 

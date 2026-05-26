@@ -402,16 +402,15 @@ export function advanceFlow(
         }
         shouldCreate = foundApprovedUpstream;
       }
-      if (shouldCreate && node.data.assigneeIds?.length) {
-        for (const ccId of node.data.assigneeIds) {
-          tasksToCreate.push({
-            nodeKey: node.data.key,
-            nodeName: node.data.label,
-            nodeType: 'ccNode',
-            assigneeId: ccId,
-            nodeConfig: node.data,
-          });
-        }
+      if (shouldCreate) {
+        // 仅生成单个 TaskAction，实际的接收人解析（含变量插值、去重）由 expandTasksToRows 通过 resolveAssigneeIds 完成
+        tasksToCreate.push({
+          nodeKey: node.data.key,
+          nodeName: node.data.label,
+          nodeType: 'ccNode',
+          assigneeId: null,
+          nodeConfig: node.data,
+        });
       }
       for (const { target } of outs) enqueueNext(target, queue);
     } else if (nodeType === 'delay') {

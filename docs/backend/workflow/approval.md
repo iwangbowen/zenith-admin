@@ -244,3 +244,45 @@
 前端 Demo 模式（MSW）已同步实现：
 - 转办 / 委派接口校验 `transferChain` 防折返；
 - `approve` / `reject` 接口对带 `delegatedFromId` 的任务自动生成回执任务，并返回 `已提交委派回执，等待原审批人确认`。
+
+## 抄送规则（ccNode）
+
+### 接收人解析与去重
+
+抄送节点（`ccNode`）的接收人不再由引擎直接展开，而是在 `expandTasksToRows` 阶段统一通过 `resolveAssigneeIds` 解析：
+
+- 引擎层只为每个抄送节点生成一个 `TaskAction`（`assigneeId = null`，携带 `nodeConfig`）；
+- 服务层根据 `nodeConfig.assigneeType` 解析最终接收人，结果由内部 `Set` 自动去重；
+- 未声明 `assigneeType` 时自动回退到 `assigneeIds` + `assigneeId`，兼容旧定义。
+
+### 变量插值
+
+得益于复用 `resolveAssigneeIds`，抄送节点支持与审批/办理节点一致的变量化接收人策略：
+
+- `assigneeType=formUser` / `formDepartment`：从表单字段动态取人；
+- `assigneeType=initiator` / `initiatorLeader` / `initiatorDept` / `manager`：基于发起人上下文；
+- `assigneeType=expression`：JSON 表达式按表单/上下文计算接收人；
+- 所有策略都受 `resolveAssigneeIds` 的统一去重保护，不会重复抄送给同一人。
+
+### 动态补加抄送
+
+提供运行时补加抄送的接口：
+
+```
+POST /api/workflows/instances/{id}/cc/add
+Body: { "nodeKey": string, "userIds": number[] }
+```
+
+- 仅对 `running` 状态的实例生效；
+- 仅发起人或 `super_admin` / `tenant_admin` 可调用；
+- 校验目标节点必须存在且 `type === 'ccNode'`；
+- 与该实例 + 该节点已抄送过的 `assigneeId` 自动去重；
+- 新插入的任务 `status = 'skipped'`、`actionAt = null`，并触发 `task.created` 事件，供消息/订阅链路二次分发。
+
+### 前端入口
+
+「我的申请」详情抽屉中，当实例为「审批中」且定义包含至少一个 `ccNode` 时，提供「添加抄送人」按钮，弹窗中可选择目标抄送节点与抄送人列表，提交后调用上述接口。
+
+### MSW 行为
+
+Demo 模式（MSW）已同步实现 `/api/workflows/instances/:id/cc/add`，行为与后端保持一致（去重 + 节点校验 + 运行中校验）。

@@ -1,14 +1,14 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema, urgeWorkflowTaskSchema } from '@zenith/shared';
+import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema, urgeWorkflowTaskSchema, addInstanceCcSchema } from '@zenith/shared';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody } from '../lib/openapi-schemas';
 import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowTaskDTO, WorkflowTaskUrgeDTO } from '../lib/openapi-dtos';
 import {
   listMyInstances, listPendingMine, listAllInstances, getInstanceDetail,
   createInstance, withdrawInstance, approveTask, rejectTask, getWorkflowInstanceBeforeAudit, getWorkflowTaskBeforeAudit,
   transferTask, delegateTask, addSignTask, reduceSignTask, returnTask,
-  urgeTask, listTaskUrges, listInstanceUrges, urgeInstance,
+  urgeTask, listTaskUrges, listInstanceUrges, urgeInstance, addInstanceCc,
 } from '../services/workflow-instances.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -342,6 +342,28 @@ const urgeInstanceRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, pendingMineRoute, allRoute, detailRoute, createInstanceRoute, withdrawRoute, approveRoute, rejectRoute, transferRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute] as const);
+const addInstanceCcRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/instances/{id}/cc/add', tags: ['WorkflowInstances'], summary: '运行中动态补加抄送',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:create', audit: { description: '动态补加抄送', module: '工作流管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(addInstanceCcSchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.array(WorkflowTaskDTO), '已补加抄送'),
+      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
+      403: { content: jsonContent(ErrorResponse), description: '无权操作' },
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { nodeKey, userIds } = c.req.valid('json');
+    const r = await addInstanceCc(id, nodeKey, userIds);
+    return c.json(okBody(r.list, r.message), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, pendingMineRoute, allRoute, detailRoute, createInstanceRoute, withdrawRoute, approveRoute, rejectRoute, transferRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute, addInstanceCcRoute] as const);
 
 export default router;

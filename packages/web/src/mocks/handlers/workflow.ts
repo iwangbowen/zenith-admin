@@ -654,6 +654,48 @@ export const workflowHandlers = [
     return HttpResponse.json({ code: 0, message: msg, data: created });
   }),
 
+  // 动态补加抄送
+  http.post('/api/workflows/instances/:id/cc/add', async ({ params, request }) => {
+    const body = await request.json().catch(() => ({})) as { nodeKey?: string; userIds?: number[] };
+    const instId = Number(params.id);
+    const inst = mockWorkflowInstances.find(i => i.id === instId);
+    if (!inst) return err('流程不存在', 404);
+    if (inst.status !== 'running') return err('流程已结束，无法补加抄送');
+    if (!body.nodeKey) return err('请选择抄送节点');
+    if (!Array.isArray(body.userIds) || body.userIds.length === 0) return err('请选择抄送人');
+
+    // 去重：过滤掉当前实例 + 节点已经抄送过的用户
+    const existingSet = new Set(
+      mockWorkflowTasks
+        .filter(t => t.instanceId === instId && t.nodeKey === body.nodeKey && t.nodeType === 'ccNode')
+        .map(t => t.assigneeId)
+        .filter((v): v is number => typeof v === 'number'),
+    );
+    const toAdd = Array.from(new Set(body.userIds)).filter(uid => !existingSet.has(uid));
+    if (toAdd.length === 0) {
+      return HttpResponse.json({ code: 0, message: '所选用户均已抄送，无需重复添加', data: [] });
+    }
+    const now = mockDateTime();
+    const sample = mockWorkflowTasks.find(t => t.instanceId === instId && t.nodeKey === body.nodeKey);
+    const inserted = toAdd.map((uid) => {
+      const task = {
+        id: getNextTaskId(),
+        instanceId: instId,
+        nodeKey: body.nodeKey!,
+        nodeName: sample?.nodeName ?? '抄送',
+        nodeType: 'ccNode' as const,
+        assigneeId: uid,
+        status: 'skipped' as const,
+        comment: null,
+        actionAt: null,
+        createdAt: now,
+      };
+      mockWorkflowTasks.push(task);
+      return task;
+    });
+    return HttpResponse.json({ code: 0, message: `已补加 ${inserted.length} 人抄送`, data: inserted });
+  }),
+
   // 退回
   http.post('/api/workflows/tasks/:taskId/return', async ({ params, request }) => {
     const body = await request.json() as { targetNodeKeys: string[]; comment: string };

@@ -103,6 +103,46 @@ function InstanceDetailDrawer({
     }
   };
 
+  // 动态补加抄送
+  const ccNodeOptions = (definition?.flowData?.nodes ?? [])
+    .filter((n) => n.data.type === 'ccNode')
+    .map((n) => ({ label: n.data.label, value: n.data.key }));
+  const [ccVisible, setCcVisible] = useState(false);
+  const [ccNodeKey, setCcNodeKey] = useState<string | undefined>(undefined);
+  const [ccUserIds, setCcUserIds] = useState<number[]>([]);
+  const [ccUserOptions, setCcUserOptions] = useState<Array<{ label: string; value: number }>>([]);
+  const [ccLoading, setCcLoading] = useState(false);
+  const openCcModal = async () => {
+    setCcNodeKey(ccNodeOptions[0]?.value);
+    setCcUserIds([]);
+    setCcVisible(true);
+    if (ccUserOptions.length === 0) {
+      try {
+        const res = await request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all');
+        if (res.code === 0) {
+          setCcUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
+        }
+      } catch { /* ignore */ }
+    }
+  };
+  const handleAddCc = async () => {
+    if (!instanceId || !ccNodeKey || ccUserIds.length === 0) {
+      Toast.warning('请选择抄送节点与抄送人');
+      return;
+    }
+    setCcLoading(true);
+    try {
+      const res = await request.post<unknown>(`/api/workflows/instances/${instanceId}/cc/add`, { nodeKey: ccNodeKey, userIds: ccUserIds });
+      if (res.code === 0) {
+        Toast.success(res.message || '已补加抄送');
+        setCcVisible(false);
+        onRefresh();
+      }
+    } finally {
+      setCcLoading(false);
+    }
+  };
+
   return (
     <SideSheet
       title="申请详情"
@@ -114,6 +154,9 @@ function InstanceDetailDrawer({
         data?.status === 'running' ? (
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => { setUrgeMessage(''); setUrgeVisible(true); }}>催办</Button>
+            {ccNodeOptions.length > 0 && (
+              <Button onClick={() => void openCcModal()}>添加抄送人</Button>
+            )}
             <Popconfirm title="确定要撤回吗？" onConfirm={() => void handleWithdraw()}>
               <Button type="danger">撤回申请</Button>
             </Popconfirm>
@@ -143,6 +186,38 @@ function InstanceDetailDrawer({
           rows={3}
           style={{ marginTop: 8 }}
         />
+      </Modal>
+      <Modal
+        title="添加抄送人"
+        visible={ccVisible}
+        onCancel={() => setCcVisible(false)}
+        onOk={() => void handleAddCc()}
+        confirmLoading={ccLoading}
+        okText="提交"
+      >
+        <Typography.Text type="tertiary" size="small">为运行中的流程实例的抄送节点动态补加抄送人（自动去重，不会重复抄送）。</Typography.Text>
+        <div style={{ marginTop: 12 }}>
+          <Typography.Text strong>抄送节点</Typography.Text>
+          <Select
+            style={{ width: '100%', marginTop: 4 }}
+            value={ccNodeKey}
+            onChange={(v) => setCcNodeKey(v as string)}
+            optionList={ccNodeOptions}
+            placeholder="请选择抄送节点"
+          />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <Typography.Text strong>抄送人</Typography.Text>
+          <Select
+            style={{ width: '100%', marginTop: 4 }}
+            multiple
+            filter
+            value={ccUserIds}
+            onChange={(v) => setCcUserIds(v as number[])}
+            optionList={ccUserOptions}
+            placeholder="请选择抄送人"
+          />
+        </div>
       </Modal>
     </SideSheet>
   );

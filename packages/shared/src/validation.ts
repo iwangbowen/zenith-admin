@@ -772,6 +772,11 @@ export const urgeWorkflowTaskSchema = z.object({
   message: z.string().max(256).optional(),
 });
 
+export const addInstanceCcSchema = z.object({
+  nodeKey: z.string().min(1, '请选择抄送节点'),
+  userIds: z.array(z.number().int().positive()).min(1, '请选择抄送人'),
+});
+
 export type CreateWorkflowDefinitionInput = z.infer<typeof createWorkflowDefinitionSchema>;
 export type UpdateWorkflowDefinitionInput = z.infer<typeof updateWorkflowDefinitionSchema>;
 export type CreateWorkflowInstanceInput = z.infer<typeof createWorkflowInstanceSchema>;
@@ -783,6 +788,7 @@ export type AddSignWorkflowTaskInput = z.infer<typeof addSignWorkflowTaskSchema>
 export type ReduceSignWorkflowTaskInput = z.infer<typeof reduceSignWorkflowTaskSchema>;
 export type ReturnWorkflowTaskInput = z.infer<typeof returnWorkflowTaskSchema>;
 export type UrgeWorkflowTaskInput = z.infer<typeof urgeWorkflowTaskSchema>;
+export type AddInstanceCcInput = z.infer<typeof addInstanceCcSchema>;
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export const chatLinkPreviewSchema = z.object({

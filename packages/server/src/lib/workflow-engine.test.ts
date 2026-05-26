@@ -240,14 +240,14 @@ describe('advanceFlow - parallel gateway', () => {
 // ─── 测试抄送节点 ────────────────────────────────────────────────────────────
 
 describe('advanceFlow - cc node', () => {
-  it('creates cc tasks and continues to end', () => {
+  it('creates a single cc task action and continues to end', () => {
     const flow = makeCcFlow();
     const result = advanceFlow(flow, 'a1', {}, new Set(['start', 'a1']));
-    // Should create 2 CC tasks + finish
+    // 引擎只生成一个 ccNode 任务动作，由 expandTasksToRows 负责按 assigneeIds 解析展开
     const ccTasks = result.tasksToCreate.filter(t => t.nodeType === 'ccNode');
-    expect(ccTasks).toHaveLength(2);
-    expect(ccTasks[0].assigneeId).toBe(50);
-    expect(ccTasks[1].assigneeId).toBe(51);
+    expect(ccTasks).toHaveLength(1);
+    expect(ccTasks[0].assigneeId).toBeNull();
+    expect(ccTasks[0].nodeConfig.assigneeIds).toEqual([50, 51]);
     expect(result.finished).toBe(true);
   });
 });
