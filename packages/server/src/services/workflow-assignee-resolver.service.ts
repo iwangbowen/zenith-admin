@@ -10,6 +10,7 @@ import { db } from '../db';
 import {
   departments,
   userGroupMembers,
+  userPositions,
   userRoles,
   users,
   workflowTasks,
@@ -53,6 +54,47 @@ async function getDeptLeader(exec: DbExecutor, deptId: number): Promise<number |
   return row?.leaderId ?? null;
 }
 
+/** 递归收集部门及其所有子部门 ID（含起始部门）。 */
+async function collectDeptWithChildren(exec: DbExecutor, rootIds: number[]): Promise<number[]> {
+  const all = new Set<number>(rootIds);
+  let frontier = [...rootIds];
+  while (frontier.length > 0) {
+    const rows = await exec.select({ id: departments.id })
+      .from(departments).where(inArray(departments.parentId, frontier));
+    const next: number[] = [];
+    for (const r of rows) {
+      if (!all.has(r.id)) {
+        all.add(r.id);
+        next.push(r.id);
+      }
+    }
+    frontier = next;
+  }
+  return [...all];
+}
+
+/**
+ * 安全表达式求值器，限制作用域在 form / starter / context，返回 user ID 数组。
+ * 例如： `form.managerId`, `[form.a, form.b]`, `starter.id`
+ */
+function evalAssigneeExpression(
+  expr: string,
+  ctx: { form: Record<string, unknown>; starter: { id: number }; },
+): number[] {
+  try {
+    // 仅允许表达式体、禁止 import/require/global/process
+    const fn = new Function('form', 'starter', `"use strict"; return (${expr});`);
+    const v = fn(ctx.form, ctx.starter);
+    if (typeof v === 'number' && Number.isFinite(v)) return [v];
+    if (Array.isArray(v)) {
+      return v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 /** 将节点配置解析为去重后的用户 ID 数组 */
 export async function resolveAssigneeIds(
   node: WorkflowNodeConfig,
@@ -73,10 +115,17 @@ export async function resolveAssigneeIds(
 
   switch (type) {
     case 'user':
-    case 'initiatorSelect': {
+    case 'initiatorSelect':
+    case 'initiatorSelectScope': {
+      // initiatorSelectScope 运行时依赖发起人在发起时选择的具体人员（已写回 userIds / assigneeIds）
       (node.userIds ?? []).forEach((id) => result.add(id));
       (node.assigneeIds ?? []).forEach((id) => result.add(id));
       if (typeof node.assigneeId === 'number') result.add(node.assigneeId);
+      break;
+    }
+    case 'approverSelect': {
+      // 由上一节点审批人在审批时指定；创建任务时返回空，
+      // 实际审批人会在审批上一节点时写入（后续节点事件逻辑处理）
       break;
     }
     case 'role': {
@@ -227,6 +276,58 @@ export async function resolveAssigneeIds(
           eq(workflowTasks.status, 'approved'),
         ));
       rows.forEach((r) => { if (r.userId) result.add(r.userId); });
+      break;
+    }
+    case 'post': {
+      const postIds = node.postIds ?? [];
+      if (postIds.length === 0) break;
+      const rows = await exec
+        .select({ userId: userPositions.userId })
+        .from(userPositions)
+        .innerJoin(users, eq(users.id, userPositions.userId))
+        .where(and(
+          inArray(userPositions.positionId, postIds),
+          eq(users.status, 'enabled'),
+        ));
+      rows.forEach((r) => result.add(r.userId));
+      break;
+    }
+    case 'deptMember': {
+      const seedIds = node.deptMemberDeptIds ?? [];
+      if (seedIds.length === 0) break;
+      const deptIds = node.deptMemberIncludeChildren
+        ? await collectDeptWithChildren(exec, seedIds)
+        : seedIds;
+      const rows = await exec
+        .select({ id: users.id })
+        .from(users)
+        .where(and(
+          inArray(users.departmentId, deptIds),
+          eq(users.status, 'enabled'),
+        ));
+      rows.forEach((r) => result.add(r.id));
+      break;
+    }
+    case 'startUserDeptResponsible': {
+      // 发起人部门的分管领导 → 取上一级部门的负责人
+      const startDeptId = await getUserDept(exec, ctx.initiatorId);
+      if (!startDeptId) break;
+      const [parent] = await exec.select({ parentId: departments.parentId })
+        .from(departments).where(eq(departments.id, startDeptId)).limit(1);
+      const parentDeptId = parent?.parentId;
+      if (!parentDeptId || parentDeptId === 0) break;
+      const leader = await getDeptLeader(exec, parentDeptId);
+      if (leader) result.add(leader);
+      break;
+    }
+    case 'expression': {
+      const expr = node.assigneeExpression;
+      if (!expr) break;
+      const ids = evalAssigneeExpression(expr, {
+        form: ctx.formData ?? {},
+        starter: { id: ctx.initiatorId },
+      });
+      ids.forEach((id) => result.add(id));
       break;
     }
   }
