@@ -352,8 +352,35 @@ export const workflowHandlers = [
     const attachSuffix = body.attachments && body.attachments.length > 0
       ? `\n[附件]${body.attachments.map(a => a.name).join(', ')}`
       : '';
+    const current = mockWorkflowTasks[taskIdx];
+
+    // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不推进流程
+    if (current.delegatedFromId) {
+      const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议同意：${body.comment ?? ''}${attachSuffix}`;
+      mockWorkflowTasks[taskIdx] = { ...current, status: 'approved', comment: receiptComment, actionAt: now };
+      const newTask: WorkflowTask = {
+        id: getNextTaskId(),
+        instanceId: current.instanceId,
+        nodeKey: current.nodeKey,
+        nodeName: current.nodeName,
+        nodeType: current.nodeType,
+        assigneeId: current.delegatedFromId,
+        assigneeName: `用户${current.delegatedFromId}`,
+        status: 'pending',
+        comment: receiptComment,
+        actionAt: null,
+        originalAssigneeId: current.delegatedFromId,
+        transferChain: [],
+        delegatedFromId: null,
+        actionButtons: current.actionButtons,
+        createdAt: now,
+      };
+      mockWorkflowTasks.push(newTask);
+      return HttpResponse.json({ code: 0, message: '已提交委派回执，等待原审批人确认', data: newTask });
+    }
+
     mockWorkflowTasks[taskIdx] = {
-      ...mockWorkflowTasks[taskIdx],
+      ...current,
       status: 'approved',
       comment: (body.comment ?? '') + attachSuffix || null,
       actionAt: now,
@@ -391,6 +418,33 @@ export const workflowHandlers = [
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
 
     const now = mockDateTime();
+    const current = mockWorkflowTasks[taskIdx];
+
+    // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不驳回流程
+    if (current.delegatedFromId) {
+      const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议拒绝：${body.comment ?? ''}`;
+      mockWorkflowTasks[taskIdx] = { ...current, status: 'rejected', comment: receiptComment, actionAt: now };
+      const newTask: WorkflowTask = {
+        id: getNextTaskId(),
+        instanceId: current.instanceId,
+        nodeKey: current.nodeKey,
+        nodeName: current.nodeName,
+        nodeType: current.nodeType,
+        assigneeId: current.delegatedFromId,
+        assigneeName: `用户${current.delegatedFromId}`,
+        status: 'pending',
+        comment: receiptComment,
+        actionAt: null,
+        originalAssigneeId: current.delegatedFromId,
+        transferChain: [],
+        delegatedFromId: null,
+        actionButtons: current.actionButtons,
+        createdAt: now,
+      };
+      mockWorkflowTasks.push(newTask);
+      return HttpResponse.json({ code: 0, message: '已提交委派回执，等待原审批人确认', data: newTask });
+    }
+
     mockWorkflowTasks[taskIdx] = {
       ...mockWorkflowTasks[taskIdx],
       status: 'rejected',
@@ -424,12 +478,21 @@ export const workflowHandlers = [
     const body = await request.json() as { targetUserId: number; comment?: string };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
-    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
+    const current = mockWorkflowTasks[taskIdx];
+    if (current.status !== 'pending') return err('该任务已处理');
+    if (body.targetUserId === current.assigneeId) return err('转办人不能是当前处理人');
+    const chain = current.transferChain ?? [];
+    const original = current.originalAssigneeId ?? current.assigneeId;
+    if (chain.includes(body.targetUserId) || body.targetUserId === original) {
+      return err('禁止将任务转回曾经经手的处理人');
+    }
     mockWorkflowTasks[taskIdx] = {
-      ...mockWorkflowTasks[taskIdx],
+      ...current,
       assigneeId: body.targetUserId,
       assigneeName: `用户${body.targetUserId}`,
       comment: `[转办] ${body.comment ?? ''}`,
+      originalAssigneeId: current.originalAssigneeId ?? current.assigneeId,
+      transferChain: current.assigneeId ? [...chain, current.assigneeId] : chain,
     };
     return ok(mockWorkflowTasks[taskIdx]);
   }),
@@ -439,12 +502,22 @@ export const workflowHandlers = [
     const body = await request.json() as { targetUserId: number; comment?: string };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
-    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
+    const current = mockWorkflowTasks[taskIdx];
+    if (current.status !== 'pending') return err('该任务已处理');
+    if (body.targetUserId === current.assigneeId) return err('委派人不能是当前处理人');
+    const chain = current.transferChain ?? [];
+    const original = current.originalAssigneeId ?? current.assigneeId;
+    if (chain.includes(body.targetUserId) || body.targetUserId === original) {
+      return err('禁止将任务委派给曾经经手的处理人');
+    }
     mockWorkflowTasks[taskIdx] = {
-      ...mockWorkflowTasks[taskIdx],
+      ...current,
       assigneeId: body.targetUserId,
       assigneeName: `用户${body.targetUserId}`,
       comment: `[委派] ${body.comment ?? ''}`,
+      originalAssigneeId: current.originalAssigneeId ?? current.assigneeId,
+      transferChain: current.assigneeId ? [...chain, current.assigneeId] : chain,
+      delegatedFromId: current.delegatedFromId ?? current.assigneeId,
     };
     return ok(mockWorkflowTasks[taskIdx]);
   }),

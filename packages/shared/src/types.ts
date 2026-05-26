@@ -1006,6 +1006,12 @@ export interface WorkflowTask {
   status: WorkflowTaskStatus;
   comment: string | null;
   actionAt: string | null;
+  /** 任务原始处理人（创建时快照，转办/委派不会修改） */
+  originalAssigneeId?: number | null;
+  /** 转办/委派经手过的处理人 ID 链（含原始创建人之后的所有 assignee） */
+  transferChain?: number[];
+  /** 委派来源（仅委派期间设置；回执任务为 null） */
+  delegatedFromId?: number | null;
   /** 外部审批回调 ID（task.status='waiting' + externalApproval 启用时生效） */
   externalCallbackId?: string | null;
   externalDispatchStatus?: WorkflowTaskExternalDispatchStatus | null;

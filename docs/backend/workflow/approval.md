@@ -203,3 +203,44 @@
 ### 前端入口
 
 「我的申请」详情抽屉内为「审批中」的实例提供「催办」按钮，可选填留言；提交后调用实例级批量催办接口。
+
+## 转办 / 委派 增强
+
+### 任务的处理人轨迹
+
+`workflow_tasks` 新增三个字段维护处理人轨迹：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `original_assignee_id` | int | 任务最初的处理人；转办/委派均不会修改 |
+| `transfer_chain` | jsonb（int[]） | 转办/委派经手过的处理人 ID 链（最早 → 最近，不含当前 assignee） |
+| `delegated_from_id` | int | 仅委派期间设置，指向「最早一次委派的发起人」；委派回执时清空 |
+
+### 禁止折返转办 / 委派
+
+转办、委派接口都会检查目标用户是否出现在 `transfer_chain` 中或等于 `original_assignee_id`；命中即返回 `400`：
+
+```json
+{ "code": 400, "message": "禁止将任务转回曾经经手的处理人" }
+```
+
+这样可以避免出现 A → B → A 之类的死循环，强制流转链路单向延伸。
+
+### 委派反馈后原人接手
+
+当任务带有 `delegated_from_id` 时，委派人对该任务做 **同意 / 拒绝** 操作不会推进流程，而是：
+
+1. 当前任务状态置为 `approved` / `rejected`，留言写入 `[委派回执] {委派人} 建议同意/拒绝：{意见}`；
+2. 自动为最早一次委派的发起人（`delegated_from_id`）生成一条新的 `pending` 任务，同节点 / 同类型，留言为上一步的回执内容；
+3. 新任务 `delegated_from_id = null`、`transfer_chain = []`、`original_assignee_id = 原委派人`；
+4. 由原委派人对新任务进行最终的同意 / 拒绝，正常推进流程。
+
+> 多次委派（A → B → C）也只生成一次回执：C 反馈后任务回到 A（最早的委派人）。
+
+外部审批回调入口（`approveTaskByCallback` / `rejectTaskByCallback`）不会触发委派回执逻辑。
+
+### MSW 行为
+
+前端 Demo 模式（MSW）已同步实现：
+- 转办 / 委派接口校验 `transferChain` 防折返；
+- `approve` / `reject` 接口对带 `delegatedFromId` 的任务自动生成回执任务，并返回 `已提交委派回执，等待原审批人确认`。

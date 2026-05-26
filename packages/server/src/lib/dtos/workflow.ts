@@ -72,6 +72,9 @@ export const WorkflowTaskDTO = z
     status: z.enum(['pending', 'approved', 'rejected', 'skipped', 'waiting']),
     comment: z.string().nullable(),
     actionAt: z.string().nullable(),
+    originalAssigneeId: z.number().int().nullable().optional(),
+    transferChain: z.array(z.number().int()).optional(),
+    delegatedFromId: z.number().int().nullable().optional(),
     actionButtons: z.record(z.string(), z.object({
       enabled: z.boolean(),
       displayName: z.string().optional(),

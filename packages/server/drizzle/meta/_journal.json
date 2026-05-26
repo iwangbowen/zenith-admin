@@ -498,6 +498,13 @@
       "when": 1779788908060,
       "tag": "0070_futuristic_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1779790081783,
+      "tag": "0071_jazzy_gabe_jones",
+      "breakpoints": true
     }
   ]
 }

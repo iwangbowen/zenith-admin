@@ -19,6 +19,9 @@ export function mapTask(
     status: row.status,
     comment: row.comment,
     actionAt: formatNullableDateTime(row.actionAt),
+    originalAssigneeId: row.originalAssigneeId ?? null,
+    transferChain: Array.isArray(row.transferChain) ? row.transferChain : [],
+    delegatedFromId: row.delegatedFromId ?? null,
     actionButtons: actionButtons ?? null,
     externalCallbackId: row.externalCallbackId ?? null,
     externalDispatchStatus: row.externalDispatchStatus ?? null,
@@ -1047,6 +1050,10 @@ export async function approveTask(taskId: number, comment?: string, attachments?
   const enrichedComment = attachments && attachments.length > 0
     ? `${comment ?? ''}\n[附件]${attachments.map((a) => a.name).join(', ')}`.trim()
     : comment;
+  // 委派回执：若由委派人操作，不推进流程，仅生成回执任务给原委派人
+  if (task.delegatedFromId && task.delegatedFromId !== user.userId) {
+    return processDelegatedReceipt(task, inst, 'approved', enrichedComment, { userId: user.userId, name: user.username });
+  }
   return approveTaskCore(task, inst, enrichedComment, { userId: user.userId, name: user.username }, { selectedNextApprovers });
 }
 
@@ -1193,6 +1200,9 @@ export async function rejectTask(taskId: number, comment: string) {
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
   if (!comment.trim()) throw new HTTPException(400, { message: '请填写拒绝原因' });
+  if (task.delegatedFromId && task.delegatedFromId !== user.userId) {
+    return processDelegatedReceipt(task, inst, 'rejected', comment, { userId: user.userId, name: user.username });
+  }
   return rejectTaskCore(task, inst, comment, { userId: user.userId, name: user.username });
 }
 
@@ -1422,19 +1432,84 @@ async function getOwnPendingTask(taskId: number) {
   return { task, inst, actor: { userId: user.userId, name: user.username } };
 }
 
+/** 委派回执：当委派人对任务做出反馈（同意/拒绝）时，原委派人接手并继续审批 */
+async function processDelegatedReceipt(
+  task: typeof workflowTasks.$inferSelect,
+  inst: typeof workflowInstances.$inferSelect,
+  action: 'approved' | 'rejected',
+  comment: string | undefined,
+  actor: WorkflowEventActor,
+): Promise<ApproveResult> {
+  const delegatorId = task.delegatedFromId;
+  if (!delegatorId) throw new HTTPException(500, { message: '委派回执缺失原始审批人' });
+  const verb = action === 'approved' ? '同意' : '拒绝';
+  const tail = comment ? `：${comment}` : '';
+  const receiptComment = `[委派回执] ${actor.name ?? '系统'} 建议${verb}${tail}`;
+
+  const result = await db.transaction(async (tx) => {
+    const [closedTask] = await tx.update(workflowTasks).set({
+      status: action,
+      comment: receiptComment,
+      actionAt: new Date(),
+    }).where(eq(workflowTasks.id, task.id)).returning();
+    const [newTask] = await tx.insert(workflowTasks).values({
+      instanceId: task.instanceId,
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
+      nodeType: task.nodeType,
+      assigneeId: delegatorId,
+      status: 'pending',
+      taskOrder: task.taskOrder,
+      approveMethod: task.approveMethod,
+      approveRatio: task.approveRatio,
+      originalAssigneeId: delegatorId,
+      transferChain: [],
+      delegatedFromId: null,
+      comment: receiptComment,
+    }).returning();
+    return { closedTask, newTask };
+  });
+
+  const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
+  if (action === 'approved') {
+    emitTaskEvent('task.approved', mapTask(result.closedTask), { ...meta, comment });
+  } else {
+    emitTaskEvent('task.rejected', mapTask(result.closedTask), { ...meta, comment });
+  }
+  emitTaskEvent('task.created', mapTask(result.newTask), meta);
+  emitTaskEvent('task.assigned', mapTask(result.newTask), meta);
+
+  return {
+    instance: mapInstance(inst),
+    message: '已提交委派回执，等待原审批人确认',
+  };
+}
+
 /** 转办：将当前任务的处理人改为目标用户 */
 export async function transferTask(taskId: number, targetUserId: number, comment?: string) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
   if (targetUserId === task.assigneeId) {
     throw new HTTPException(400, { message: '转办人不能是当前处理人' });
   }
+  const chain: number[] = Array.isArray(task.transferChain) ? task.transferChain : [];
+  const original = task.originalAssigneeId ?? task.assigneeId;
+  // 禁止折返：转给链路上曾经出现过的人（含原始 assignee）
+  if (chain.includes(targetUserId) || targetUserId === original) {
+    throw new HTTPException(400, { message: '禁止将任务转回曾经经手的处理人' });
+  }
   const [target] = await db.select({ id: users.id, nickname: users.nickname })
     .from(users).where(eq(users.id, targetUserId)).limit(1);
   if (!target) throw new HTTPException(400, { message: '转办人不存在' });
   const transferSuffix = comment ? `：${comment}` : '';
   const transferComment = `[转办] 由 ${actor.name ?? '系统'} 转办${transferSuffix}`;
+  const nextChain = task.assigneeId ? [...chain, task.assigneeId] : chain;
   const [updated] = await db.update(workflowTasks)
-    .set({ assigneeId: targetUserId, comment: transferComment })
+    .set({
+      assigneeId: targetUserId,
+      comment: transferComment,
+      transferChain: nextChain,
+      originalAssigneeId: task.originalAssigneeId ?? task.assigneeId ?? null,
+    })
     .where(eq(workflowTasks.id, task.id))
     .returning();
   emitTaskEvent('task.transferred', mapTask(updated, target.nickname),
@@ -1442,19 +1517,33 @@ export async function transferTask(taskId: number, targetUserId: number, comment
   return mapTask(updated, target.nickname);
 }
 
-/** 委派：与转办类似，但语义为"临时代办"，意见名加上委派标记 */
+/** 委派：与转办类似，但语义为"临时代办"，反馈后原 assignee 会接到回执确认任务 */
 export async function delegateTask(taskId: number, targetUserId: number, comment?: string) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
   if (targetUserId === task.assigneeId) {
     throw new HTTPException(400, { message: '委派人不能是当前处理人' });
+  }
+  const chain: number[] = Array.isArray(task.transferChain) ? task.transferChain : [];
+  const original = task.originalAssigneeId ?? task.assigneeId;
+  if (chain.includes(targetUserId) || targetUserId === original) {
+    throw new HTTPException(400, { message: '禁止将任务委派给曾经经手的处理人' });
   }
   const [target] = await db.select({ id: users.id, nickname: users.nickname })
     .from(users).where(eq(users.id, targetUserId)).limit(1);
   if (!target) throw new HTTPException(400, { message: '委派人不存在' });
   const delegateSuffix = comment ? `：${comment}` : '';
   const delegateComment = `[委派] 由 ${actor.name ?? '系统'} 委派${delegateSuffix}`;
+  const nextChain = task.assigneeId ? [...chain, task.assigneeId] : chain;
+  // delegatedFromId 仅在首次委派时设置（保留最原始的委派人，以便回执时返还）
+  const delegatedFromId = task.delegatedFromId ?? task.assigneeId ?? null;
   const [updated] = await db.update(workflowTasks)
-    .set({ assigneeId: targetUserId, comment: delegateComment })
+    .set({
+      assigneeId: targetUserId,
+      comment: delegateComment,
+      transferChain: nextChain,
+      originalAssigneeId: task.originalAssigneeId ?? task.assigneeId ?? null,
+      delegatedFromId,
+    })
     .where(eq(workflowTasks.id, task.id))
     .returning();
   emitTaskEvent('task.transferred', mapTask(updated, target.nickname),

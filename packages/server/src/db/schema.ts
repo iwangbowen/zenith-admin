@@ -936,6 +936,12 @@ export const workflowTasks = pgTable('workflow_tasks', {
   timeoutAt: timestamp('timeout_at', { withTimezone: true }),
   /** 已发送的超时提醒次数（用于 action='remind' 时限制提醒上限） */
   timeoutRemindCount: integer('timeout_remind_count').default(0).notNull(),
+  /** 任务最初的处理人（创建时快照，转办/委派不会修改） */
+  originalAssigneeId: integer('original_assignee_id').references(() => users.id, { onDelete: 'set null' }),
+  /** 转办/委派链路上经手过的处理人 ID（含原始创建人） */
+  transferChain: jsonb('transfer_chain').$type<number[]>().default([]).notNull(),
+  /** 委派来源（仅委派时设置，原 assignee 接手时清空） */
+  delegatedFromId: integer('delegated_from_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
