@@ -1,7 +1,8 @@
 import { eq, and, like, or, gte, lte } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
-import { roles, roleMenus, userRoles } from '../db/schema';
+import type { DbTransaction } from '../db/types';
+import { roles, roleMenus, roleDeptScopes, userRoles } from '../db/schema';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
@@ -10,12 +11,13 @@ import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
-export function mapRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
+export function mapRole(row: typeof roles.$inferSelect, menuIds?: number[], deptScopeIds?: number[]) {
   return {
     ...row,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
     ...(menuIds === undefined ? {} : { menuIds }),
+    ...(deptScopeIds === undefined ? {} : { deptScopeIds }),
   };
 }
 
@@ -59,11 +61,15 @@ export async function getRole(id: number) {
   const user = currentUser();
   const role = await db.query.roles.findFirst({
     where: and(eq(roles.id, id), tenantCondition(roles, user)),
-    with: { roleMenus: { columns: { menuId: true } } },
+    with: {
+      roleMenus: { columns: { menuId: true } },
+      deptScopes: { columns: { deptId: true } },
+    },
   });
   if (!role) throw new HTTPException(404, { message: '角色不存在' });
   const menuIds = role.roleMenus.map(({ menuId }) => menuId);
-  return mapRole(role, menuIds);
+  const deptScopeIds = role.deptScopes.map(({ deptId }) => deptId);
+  return mapRole(role, menuIds, deptScopeIds);
 }
 
 export interface CreateRoleInput {
@@ -74,13 +80,27 @@ export interface CreateRoleInput {
   sort?: number;
   dataScope?: 'all' | 'dept' | 'self';
   deptIds?: number[] | null;
+  deptScopeIds?: number[] | null;
+}
+
+async function syncRoleDeptScopes(tx: DbTransaction, roleId: number, deptScopeIds: number[]) {
+  await tx.delete(roleDeptScopes).where(eq(roleDeptScopes.roleId, roleId));
+  if (deptScopeIds.length > 0) {
+    await tx.insert(roleDeptScopes).values(deptScopeIds.map((deptId) => ({ roleId, deptId })));
+  }
 }
 
 export async function createRole(data: CreateRoleInput) {
   const user = currentUser();
+  const { deptScopeIds, ...rest } = data;
   try {
-    const [role] = await db.insert(roles).values({ ...data, tenantId: getCreateTenantId(user) }).returning();
-    return mapRole(role);
+    return await db.transaction(async (tx) => {
+      const [role] = await tx.insert(roles).values({ ...rest, tenantId: getCreateTenantId(user) }).returning();
+      if (deptScopeIds !== undefined && deptScopeIds !== null) {
+        await syncRoleDeptScopes(tx, role.id, deptScopeIds);
+      }
+      return mapRole(role, undefined, deptScopeIds ?? undefined);
+    });
   } catch (err: unknown) {
     rethrowPgUniqueViolation(err, '角色编码已存在');
   }
@@ -88,9 +108,15 @@ export async function createRole(data: CreateRoleInput) {
 
 export async function updateRole(id: number, data: Partial<CreateRoleInput>) {
   const user = currentUser();
-  const [role] = await db.update(roles).set({ ...data }).where(and(eq(roles.id, id), tenantCondition(roles, user))).returning();
-  if (!role) throw new HTTPException(404, { message: '角色不存在' });
-  return mapRole(role);
+  const { deptScopeIds, ...rest } = data;
+  return await db.transaction(async (tx) => {
+    const [role] = await tx.update(roles).set({ ...rest }).where(and(eq(roles.id, id), tenantCondition(roles, user))).returning();
+    if (!role) throw new HTTPException(404, { message: '角色不存在' });
+    if (deptScopeIds !== undefined && deptScopeIds !== null) {
+      await syncRoleDeptScopes(tx, id, deptScopeIds);
+    }
+    return mapRole(role, undefined, deptScopeIds ?? undefined);
+  });
 }
 
 export async function deleteRole(id: number) {
@@ -166,12 +192,13 @@ export async function getRoleBeforeAudit(id: number) {
     where: and(eq(roles.id, id), tenantCondition(roles, user)),
     with: {
       roleMenus: { columns: { menuId: true } },
+      deptScopes: { columns: { deptId: true } },
       userRoles: { columns: { userId: true } },
     },
   });
   if (!role) return null;
   return {
-    ...mapRole(role, role.roleMenus.map(({ menuId }) => menuId)),
+    ...mapRole(role, role.roleMenus.map(({ menuId }) => menuId), role.deptScopes.map(({ deptId }) => deptId)),
     userIds: role.userRoles.map(({ userId }) => userId),
   };
 }

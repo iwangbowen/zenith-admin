@@ -107,6 +107,7 @@ export interface Role {
   createdAt: string;
   updatedAt: string;
   menuIds?: number[];
+  deptScopeIds?: number[];
 }
 
 // ─── 部门 ─────────────────────────────────────────────────────────────────────

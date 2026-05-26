@@ -17,7 +17,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, MoreHorizontal } from 'lucide-react';
-import type { Role, Menu, User, PaginatedResponse } from '@zenith/shared';
+import type { Role, Menu, User, Department, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -61,6 +61,7 @@ export default function RolesPage() {
   const [dataScopeModalVisible, setDataScopeModalVisible] = useState(false);
   const [dataScopeRole, setDataScopeRole] = useState<Role | null>(null);
   const [selectedDataScope, setSelectedDataScope] = useState<string>('all');
+  const [deptTree, setDeptTree] = useState<Department[]>([]);
 
   const fetchRoles = useCallback(async (params = searchParams, p = page, ps = pageSize) => {
     setLoading(true);
@@ -89,6 +90,23 @@ export default function RolesPage() {
   }, [searchParams, page, pageSize]);
 
   useEffect(() => { void fetchRoles(); }, [fetchRoles]);
+
+  // 加载部门树（用于管理范围选择）
+  useEffect(() => {
+    void (async () => {
+      const res = await request.get<Department[]>('/api/departments');
+      if (res.code === 0) setDeptTree(res.data);
+    })();
+  }, []);
+
+  function deptsToTreeData(items: Department[]): object[] {
+    return items.map((d) => ({
+      label: d.name,
+      key: String(d.id),
+      value: d.id,
+      children: d.children ? deptsToTreeData(d.children) : undefined,
+    }));
+  }
 
   function handleSearch() {
     setPage(1);
@@ -207,6 +225,13 @@ export default function RolesPage() {
     }
   };
 
+  const openEditRoleModal = async (role: Role) => {
+    // 拉取含 deptScopeIds 的详情
+    const res = await request.get<Role>(`/api/roles/${role.id}`);
+    setEditingRole(res.code === 0 ? res.data : role);
+    setModalVisible(true);
+  };
+
   const handleDelete = async (id: number) => {
     const res = await request.delete(`/api/roles/${id}`);
     if (res.code === 0) {
@@ -253,7 +278,7 @@ export default function RolesPage() {
           {hasPermission('system:role:update') && <Button
             theme="borderless"
             size="small"
-            onClick={() => { setEditingRole(row); setModalVisible(true); }}
+            onClick={() => { void openEditRoleModal(row); }}
           >
             编辑
           </Button>}
@@ -369,6 +394,15 @@ export default function RolesPage() {
           <Form.Input field="name" label="角色名称" placeholder="请输入角色名称" rules={[{ required: true, message: '请输入角色名称' }]} />
           <Form.Input field="code" label="角色编码" placeholder="请输入角色编码" rules={[{ required: true, message: '请输入角色编码' }]} />
           <Form.Input field="description" label="描述" placeholder="请输入描述" />
+          <Form.TreeSelect
+            field="deptScopeIds"
+            label="管理范围"
+            placeholder="默认全员（用于工作流「角色」审批人按部门过滤）"
+            multiple
+            filterTreeNode
+            treeData={deptsToTreeData(deptTree)}
+            style={{ width: '100%' }}
+          />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
             placeholder="请选择状态"

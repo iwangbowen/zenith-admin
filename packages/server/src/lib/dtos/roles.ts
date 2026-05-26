@@ -17,5 +17,6 @@ export const RoleDTO = z
     createdAt: z.string().openapi({ example: '2026-01-01 00:00:00' }),
     updatedAt: z.string().openapi({ example: '2026-01-01 00:00:00' }),
     menuIds: z.array(z.number().int()).optional(),
+    deptScopeIds: z.array(z.number().int()).optional().openapi({ description: '角色管理范围（部门 id 列表），空表示全员' }),
   })
   .openapi('Role');

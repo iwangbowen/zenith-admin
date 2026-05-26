@@ -38,7 +38,7 @@ export function createNode(type: FlowNode['type'], name?: string): FlowNode {
   if (type === 'conditionBranch' || type === 'parallelBranch' || type === 'inclusiveBranch' || type === 'routeBranch') {
     const count = DEFAULT_BRANCH_COUNT[type];
     node.branches = [];
-    const hasDefault = type === 'conditionBranch' || type === 'routeBranch';
+    const hasDefault = type === 'conditionBranch' || type === 'routeBranch' || type === 'inclusiveBranch';
     for (let i = 0; i < count; i++) {
       if (hasDefault && i === count - 1) {
         node.branches.push({
@@ -265,8 +265,8 @@ export function addBranch(process: FlowProcess, branchNodeId: string, newBranch:
   const cloned = deepClone(process);
   const node = findNodeById(cloned.initiator, branchNodeId);
   if (node?.branches) {
-    // 条件分支：在"其它情况"之前插入
-    if (node.type === 'conditionBranch') {
+    // 条件分支 / 包容分支：在"其它情况"之前插入
+    if (node.type === 'conditionBranch' || node.type === 'inclusiveBranch') {
       const defaultIdx = node.branches.findIndex(b => b.isDefault);
       if (defaultIdx >= 0) {
         node.branches.splice(defaultIdx, 0, newBranch);

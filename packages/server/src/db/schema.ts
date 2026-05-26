@@ -180,6 +180,14 @@ export const roleMenus = pgTable('role_menus', {
   menuId: integer('menu_id').notNull().references(() => menus.id, { onDelete: 'cascade' }),
 }, (t) => [primaryKey({ columns: [t.roleId, t.menuId] })]);
 
+// ─── 角色管理范围（部门）关联表 ───────────────────────────────────────────────
+// 用于工作流"角色作为审批人"时，按提交人所在部门 ∩ 角色管理范围过滤实际成员。
+// 若一个角色无任何 role_dept_scopes 记录，视为"全员"（向后兼容）。
+export const roleDeptScopes = pgTable('role_dept_scopes', {
+  roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  deptId: integer('dept_id').notNull().references((): AnyPgColumn => departments.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.roleId, t.deptId] })]);
+
 // ─── 字典表 ───────────────────────────────────────────────────────────────────
 export const dicts = pgTable('dicts', {
   id: serial('id').primaryKey(),
@@ -1092,6 +1100,7 @@ export const rolesRelations = relations(roles, ({ one, many }) => ({
   tenant: one(tenants, { fields: [roles.tenantId], references: [tenants.id] }),
   roleMenus: many(roleMenus),
   userRoles: many(userRoles),
+  deptScopes: many(roleDeptScopes),
 }));
 
 export const menusRelations = relations(menus, ({ many }) => ({
@@ -1111,6 +1120,11 @@ export const userPositionsRelations = relations(userPositions, ({ one }) => ({
 export const roleMenusRelations = relations(roleMenus, ({ one }) => ({
   role: one(roles, { fields: [roleMenus.roleId], references: [roles.id] }),
   menu: one(menus, { fields: [roleMenus.menuId], references: [menus.id] }),
+}));
+
+export const roleDeptScopesRelations = relations(roleDeptScopes, ({ one }) => ({
+  role: one(roles, { fields: [roleDeptScopes.roleId], references: [roles.id] }),
+  department: one(departments, { fields: [roleDeptScopes.deptId], references: [departments.id] }),
 }));
 
 export const dictsRelations = relations(dicts, ({ one, many }) => ({

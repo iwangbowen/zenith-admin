@@ -9,6 +9,7 @@ import type { WorkflowAssigneeType, WorkflowNodeConfig } from '@zenith/shared';
 import { db } from '../db';
 import {
   departments,
+  roleDeptScopes,
   userGroupMembers,
   userPositions,
   userRoles,
@@ -143,11 +144,52 @@ export async function resolveAssigneeIds(
     case 'role': {
       const roleIds = node.roleIds ?? [];
       if (roleIds.length > 0) {
-        const rows = await exec
-          .select({ userId: userRoles.userId })
+        // 1) 查角色管理范围（按角色聚合部门）
+        const scopeRows = await exec
+          .select({ roleId: roleDeptScopes.roleId, deptId: roleDeptScopes.deptId })
+          .from(roleDeptScopes)
+          .where(inArray(roleDeptScopes.roleId, roleIds));
+        const scopeByRole = new Map<number, number[]>();
+        for (const r of scopeRows) {
+          const arr = scopeByRole.get(r.roleId) ?? [];
+          arr.push(r.deptId);
+          scopeByRole.set(r.roleId, arr);
+        }
+        // 2) 查角色成员
+        const memberRows = await exec
+          .select({ userId: userRoles.userId, roleId: userRoles.roleId })
           .from(userRoles)
           .where(inArray(userRoles.roleId, roleIds));
-        rows.forEach((r) => result.add(r.userId));
+        const hasScoped = scopeByRole.size > 0;
+        // 3) 若存在管理范围，预取所有相关用户的部门信息
+        const userDeptMap = new Map<number, number | null>();
+        if (hasScoped) {
+          const userIds = [...new Set(memberRows.map((r) => r.userId))];
+          if (userIds.length > 0) {
+            const rows = await exec.select({ id: users.id, deptId: users.departmentId })
+              .from(users).where(inArray(users.id, userIds));
+            rows.forEach((r) => userDeptMap.set(r.id, r.deptId));
+          }
+        }
+        // 4) 展开每个角色的范围部门（含子部门），缓存
+        const expandedScopeByRole = new Map<number, Set<number>>();
+        for (const [roleId, deptIds] of scopeByRole) {
+          const all = await collectDeptWithChildren(exec, deptIds);
+          expandedScopeByRole.set(roleId, new Set(all));
+        }
+        // 5) 按角色判定成员
+        for (const m of memberRows) {
+          const scopeSet = expandedScopeByRole.get(m.roleId);
+          if (!scopeSet) {
+            // 该角色无管理范围 → 全员
+            result.add(m.userId);
+            continue;
+          }
+          const dept = userDeptMap.get(m.userId);
+          if (dept !== null && dept !== undefined && scopeSet.has(dept)) {
+            result.add(m.userId);
+          }
+        }
       }
       break;
     }

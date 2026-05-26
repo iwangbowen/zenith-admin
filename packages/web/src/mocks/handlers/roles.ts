@@ -46,6 +46,7 @@ export const rolesHandlers = [
       dataScope: body.dataScope ?? 'all',
       status: body.status ?? 'enabled',
       menuIds: body.menuIds ?? [],
+      deptScopeIds: body.deptScopeIds ?? [],
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };

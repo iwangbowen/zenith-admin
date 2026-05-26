@@ -86,6 +86,7 @@ export const createRoleSchema = z.object({
   description: z.string().max(256).optional(),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   dataScope: z.enum(['all', 'dept', 'self']).default('all'),
+  deptScopeIds: z.array(z.number().int().positive()).optional().nullable(),
 });
 
 export const updateRoleSchema = createRoleSchema.partial();
