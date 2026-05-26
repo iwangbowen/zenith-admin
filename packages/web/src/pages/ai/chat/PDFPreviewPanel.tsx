@@ -166,7 +166,8 @@ export function PDFPreviewPanel({ file, onClose }: PDFPreviewPanelProps) {
           {file.name}
         </Text>
         <Select
-          value={zoomMode}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          value={zoomMode as any}
           onChange={(v) => handleZoomChange(v as ZoomLevel)}
           size="small"
           style={{ width: 96, flexShrink: 0 }}

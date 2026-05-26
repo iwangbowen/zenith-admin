@@ -356,7 +356,7 @@ export default function AIChatPage() {
 
   // AIChatInput 内置上传按鈕的拦截处理：选择 PDF 后直接开启预览，不实际上传
   const handleBeforeUpload = useCallback(
-    (fileInfo: { file: { fileInstance?: File; name: string; size?: number } }) => {
+    (fileInfo: { file: { fileInstance?: File; name: string; size?: string } }) => {
       const rawFile = fileInfo.file?.fileInstance;
       if (rawFile) {
         setPdfFile(rawFile);
@@ -390,10 +390,11 @@ export default function AIChatPage() {
   const messages = activeConv?.messages ?? [];
 
   // eslint-disable-next-line react/no-unstable-nested-components
-  const dialogueRenderConfig = useMemo(() => ({
-    renderDialogueContentItem: {
-      // eslint-disable-next-line react/no-unstable-nested-components
-      pdf_card: (item: Record<string, unknown>) => (
+  const dialogueRenderConfig = useMemo(() => ({}), []);
+
+  const renderDialogueContentItem = useMemo(() => ({
+    // eslint-disable-next-line react/no-unstable-nested-components
+    pdf_card: (item: Record<string, unknown>) => (
         <PdfFileCard
           filename={item.filename as string}
           size={item.size as string}
@@ -403,7 +404,6 @@ export default function AIChatPage() {
           }}
         />
       ),
-    },
   }), [setPdfFile]);
 
   const roleConfig = {
@@ -671,11 +671,12 @@ export default function AIChatPage() {
                 onMessageBadFeedback={() => Toast.info('感谢您的反馈，我们会持续改进')}
                 onMessageReset={() => Toast.info('重新生成需接入真实 AI 服务')}
                 onHintClick={handleHintClick}
-                onFileClick={(fileItem: Record<string, unknown>) => {
+                onFileClick={(fileItem) => {
                   const fi = fileItem?.fileInstance;
                   if (fi instanceof File) setPdfFile(fi);
                 }}
                 dialogueRenderConfig={dialogueRenderConfig}
+                renderDialogueContentItem={renderDialogueContentItem}
                 onChatsChange={(chats) => {
                   updateMessages(() => chats as Message[]);
                 }}
