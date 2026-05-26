@@ -24,6 +24,7 @@ import { apiTokensHandlers } from './api-tokens';
 import { tenantsHandlers } from './tenants';
 import { cacheHandlers } from './cache';
 import { workflowHandlers } from './workflow';
+import { workflowAutomationsHandlers } from './workflow-automations';
 import { chatHandlers } from './chat';
 import { tagsHandlers } from './tags';
 import { rateLimitHandlers } from './rate-limit';
@@ -63,6 +64,7 @@ export const handlers = [
   ...tenantsHandlers,
   ...cacheHandlers,
   ...workflowHandlers,
+  ...workflowAutomationsHandlers,
   ...chatHandlers,
   ...tagsHandlers,
   ...rateLimitHandlers,

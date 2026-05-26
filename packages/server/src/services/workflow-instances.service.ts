@@ -881,15 +881,18 @@ export async function getWorkflowTaskBeforeAudit(taskId: number) {
   return getWorkflowInstanceBeforeAudit(task.instanceId);
 }
 
-export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null }) {
-  const user = currentUser();
+export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null }, actor?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
+  const user = actor
+    ? { userId: actor.userId, username: actor.username, roles: actor.roles ?? [], tenantId: actor.tenantId }
+    : currentUser();
+  const skipScopeCheck = !!actor;
   const [def] = await db.select().from(workflowDefinitions).where(and(eq(workflowDefinitions.id, data.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);
   if (!def) throw new HTTPException(404, { message: '流程定义不存在或未发布' });
   const scopeType = (def.initiatorScopeType ?? 'all') as 'all' | 'users' | 'departments' | 'roles';
   const scopeIds = Array.isArray(def.initiatorScopeIds)
     ? def.initiatorScopeIds.map(Number).filter((v) => Number.isInteger(v) && v > 0)
     : [];
-  if (scopeType !== 'all') {
+  if (!skipScopeCheck && scopeType !== 'all') {
     let allowed = false;
     if (scopeType === 'users') {
       allowed = scopeIds.includes(user.userId);

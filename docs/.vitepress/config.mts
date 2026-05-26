@@ -113,6 +113,7 @@ export default defineConfig({
               { text: '事件总线', link: '/backend/workflow/event-bus' },
               { text: '事件订阅', link: '/backend/workflow/event-subscriptions' },
               { text: '触发器节点', link: '/backend/workflow/trigger-nodes' },
+              { text: '流程自动化', link: '/backend/workflow/automations' },
               { text: '外部审批', link: '/backend/workflow/external-approval' },
             ],
           },

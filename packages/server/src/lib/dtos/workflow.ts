@@ -119,3 +119,20 @@ export const WorkflowInstanceAllDTO = z
     pageSize: z.number().int(),
   })
   .openapi('WorkflowInstanceAll');
+
+export const WorkflowAutomationDTO = z
+  .object({
+    id: z.number().int(),
+    definitionId: z.number().int(),
+    definitionName: z.string().nullable().optional(),
+    name: z.string(),
+    trigger: z.enum(['approved', 'rejected', 'withdrawn']),
+    actions: z.array(z.unknown()),
+    status: z.enum(['enabled', 'disabled']),
+    sort: z.number().int(),
+    tenantId: z.number().int().nullable(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('WorkflowAutomation');

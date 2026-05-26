@@ -678,6 +678,49 @@ export const createWorkflowDefinitionSchema = z.object({
 
 export const updateWorkflowDefinitionSchema = createWorkflowDefinitionSchema.partial();
 
+// 流程级自动化规则
+const workflowAutomationActionStartWorkflowSchema = z.object({
+  type: z.literal('startWorkflow'),
+  definitionId: z.number().int().positive('请选择目标流程'),
+  titleTemplate: z.string().max(128).optional(),
+  formMapping: z.record(z.string(), z.string()).optional(),
+});
+
+const workflowAutomationActionSendMessageSchema = z.object({
+  type: z.literal('sendMessage'),
+  title: z.string().min(1, '消息标题不能为空').max(128),
+  content: z.string().min(1, '消息内容不能为空').max(2000),
+  messageType: z.enum(['info', 'success', 'warning', 'error']).optional(),
+  recipients: z
+    .union([z.literal('initiator'), z.object({ userIds: z.array(z.number().int().positive()).min(1) })])
+    .optional(),
+  buttons: z
+    .array(z.object({ text: z.string().min(1).max(32), url: z.string().min(1).max(512) }))
+    .max(3, '按钮最多 3 个')
+    .optional(),
+});
+
+export const workflowAutomationActionSchema = z.discriminatedUnion('type', [
+  workflowAutomationActionStartWorkflowSchema,
+  workflowAutomationActionSendMessageSchema,
+]);
+
+export const createWorkflowAutomationSchema = z.object({
+  definitionId: z.number().int().positive('请选择流程'),
+  name: z.string().min(1, '规则名称不能为空').max(128),
+  trigger: z.enum(['approved', 'rejected', 'withdrawn']),
+  actions: z.array(workflowAutomationActionSchema).min(1, '至少配置 1 个动作').max(10),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  sort: z.number().int().nonnegative().default(0),
+});
+
+export const updateWorkflowAutomationSchema = createWorkflowAutomationSchema.partial();
+
+export type WorkflowAutomationActionInput = z.infer<typeof workflowAutomationActionSchema>;
+export type CreateWorkflowAutomationInput = z.infer<typeof createWorkflowAutomationSchema>;
+export type UpdateWorkflowAutomationInput = z.infer<typeof updateWorkflowAutomationSchema>;
+
+
 export const createWorkflowInstanceSchema = z.object({
   definitionId: z.number().int().positive('请选择流程'),
   title: z.string().min(1, '申请标题不能为空').max(128),

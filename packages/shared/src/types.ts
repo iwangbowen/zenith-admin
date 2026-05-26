@@ -958,6 +958,42 @@ export interface WorkflowDefinitionVersion {
   tenantId: number | null;
 }
 
+export type WorkflowAutomationTrigger = 'approved' | 'rejected' | 'withdrawn';
+
+export interface WorkflowAutomationActionStartWorkflow {
+  type: 'startWorkflow';
+  definitionId: number;
+  titleTemplate?: string;
+  formMapping?: Record<string, string>;
+}
+
+export interface WorkflowAutomationActionSendMessage {
+  type: 'sendMessage';
+  title: string;
+  content: string;
+  messageType?: 'info' | 'success' | 'warning' | 'error';
+  recipients?: 'initiator' | { userIds: number[] };
+  buttons?: Array<{ text: string; url: string }>;
+}
+
+export type WorkflowAutomationAction =
+  | WorkflowAutomationActionStartWorkflow
+  | WorkflowAutomationActionSendMessage;
+
+export interface WorkflowAutomation {
+  id: number;
+  definitionId: number;
+  definitionName?: string | null;
+  name: string;
+  trigger: WorkflowAutomationTrigger;
+  actions: WorkflowAutomationAction[];
+  status: 'enabled' | 'disabled';
+  sort: number;
+  tenantId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WorkflowTask {
   id: number;
   instanceId: number;

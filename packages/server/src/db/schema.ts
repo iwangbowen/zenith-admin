@@ -848,6 +848,44 @@ export const workflowDefinitionVersions = pgTable('workflow_definition_versions'
 export type WorkflowDefinitionVersionRow = typeof workflowDefinitionVersions.$inferSelect;
 export type NewWorkflowDefinitionVersion = typeof workflowDefinitionVersions.$inferInsert;
 
+// 流程级自动化规则：当实例终结（通过/拒绝/撤回）时执行的动作
+export const workflowAutomationTriggerEnum = pgEnum('workflow_automation_trigger', ['approved', 'rejected', 'withdrawn']);
+
+export interface WorkflowAutomationActionStartWorkflow {
+  type: 'startWorkflow';
+  definitionId: number;
+  titleTemplate?: string;
+  formMapping?: Record<string, string>;
+}
+export interface WorkflowAutomationActionSendMessage {
+  type: 'sendMessage';
+  title: string;
+  content: string;
+  messageType?: 'info' | 'success' | 'warning' | 'error';
+  recipients?: 'initiator' | { userIds: number[] };
+  buttons?: Array<{ text: string; url: string }>;
+}
+export type WorkflowAutomationActionConfig =
+  | WorkflowAutomationActionStartWorkflow
+  | WorkflowAutomationActionSendMessage;
+
+export const workflowAutomations = pgTable('workflow_automations', {
+  id: serial('id').primaryKey(),
+  definitionId: integer('definition_id').notNull().references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 128 }).notNull(),
+  trigger: workflowAutomationTriggerEnum('trigger').notNull(),
+  actions: jsonb('actions').$type<WorkflowAutomationActionConfig[]>().notNull().default([]),
+  status: statusEnum('status').notNull().default('enabled'),
+  sort: integer('sort').notNull().default(0),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type WorkflowAutomationRow = typeof workflowAutomations.$inferSelect;
+export type NewWorkflowAutomation = typeof workflowAutomations.$inferInsert;
+
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {
   id: serial('id').primaryKey(),
@@ -1195,6 +1233,12 @@ export const workflowDefinitionsRelations = relations(workflowDefinitions, ({ on
   category: one(workflowCategories, { fields: [workflowDefinitions.categoryId], references: [workflowCategories.id] }),
   instances: many(workflowInstances),
   versions: many(workflowDefinitionVersions),
+  automations: many(workflowAutomations),
+}));
+
+export const workflowAutomationsRelations = relations(workflowAutomations, ({ one }) => ({
+  definition: one(workflowDefinitions, { fields: [workflowAutomations.definitionId], references: [workflowDefinitions.id] }),
+  tenant: one(tenants, { fields: [workflowAutomations.tenantId], references: [tenants.id] }),
 }));
 
 export const workflowDefinitionVersionsRelations = relations(workflowDefinitionVersions, ({ one }) => ({
