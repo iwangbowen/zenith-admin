@@ -446,7 +446,7 @@ export const workflowHandlers = [
 
   // 加签
   http.post('/api/workflows/tasks/:taskId/add-sign', async ({ params, request }) => {
-    const body = await request.json() as { targetUserIds: number[]; position: 'before' | 'after'; comment?: string };
+    const body = await request.json() as { targetUserIds: number[]; position: 'before' | 'after' | 'parallel'; comment?: string };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     const current = mockWorkflowTasks[taskIdx];

@@ -1444,7 +1444,7 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
 export async function addSignTask(
   taskId: number,
   targetUserIds: number[],
-  position: 'before' | 'after',
+  position: 'before' | 'after' | 'parallel',
   comment?: string,
 ) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
@@ -1454,13 +1454,14 @@ export async function addSignTask(
     .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, task.nodeKey)))
     .limit(1);
   const approveMethod = sibling?.approveMethod ?? 'and';
-  const posLabel = position === 'before' ? '前' : '后';
+  const posLabelMap = { before: '前', after: '后', parallel: '并' } as const;
+  const posLabel = posLabelMap[position];
   const addSignSuffix = comment ? `：${comment}` : '';
   const addSignComment = `[加签-${posLabel}] 由 ${actor.name ?? '系统'} 发起${addSignSuffix}`;
 
   const created = await db.transaction(async (tx) => {
-    // before：原任务先转为 waiting，加签任务为 pending；后续由 sequential 逻辑或单独完成回调推进
-    // after：原任务保持 pending，加签任务以 pending 一起并行
+    // before：原任务先转为 waiting，加签任务为 pending；待加签人审批通过后由完成回调推进
+    // after / parallel：原任务保持 pending，加签任务以 pending 与之并行（共享 approveMethod 判定完成）
     if (position === 'before') {
       await tx.update(workflowTasks).set({ status: 'waiting' }).where(eq(workflowTasks.id, task.id));
     }

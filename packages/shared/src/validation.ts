@@ -710,7 +710,7 @@ export const delegateWorkflowTaskSchema = z.object({
 
 export const addSignWorkflowTaskSchema = z.object({
   targetUserIds: z.array(z.number().int().positive()).min(1, '请选择加签人'),
-  position: z.enum(['before', 'after']).default('after'),
+  position: z.enum(['before', 'after', 'parallel']).default('parallel'),
   comment: z.string().max(500).optional(),
 });
 

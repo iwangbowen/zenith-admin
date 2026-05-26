@@ -296,7 +296,7 @@ export default function PendingApprovalsPage() {
 
   const handleAddSign = async () => {
     try {
-      const values = await addSignFormApi.current?.validate() as { targetUserIds: number[]; position: 'before' | 'after'; comment?: string };
+      const values = await addSignFormApi.current?.validate() as { targetUserIds: number[]; position: 'before' | 'after' | 'parallel'; comment?: string };
       await submitSimpleAction('add-sign', values, '已加签', () => setAddSignVisible(false));
     } catch { /* validation */ }
   };
@@ -607,8 +607,9 @@ export default function PendingApprovalsPage() {
             style={{ width: '100%' }}
           />
           <Form.RadioGroup field="position" label="位置">
-            <Form.Radio value="before">前加签（自己之前先签）</Form.Radio>
-            <Form.Radio value="after">后加签（自己之后并签）</Form.Radio>
+            <Form.Radio value="before">前加签（加签人先审批）</Form.Radio>
+            <Form.Radio value="parallel">并加签（与自己同时审批）</Form.Radio>
+            <Form.Radio value="after">后加签（自己之后再审批）</Form.Radio>
           </Form.RadioGroup>
           <Form.TextArea field="comment" label={btnAddSign.opinionName ?? '加签说明'} rows={3} />
         </Form>
