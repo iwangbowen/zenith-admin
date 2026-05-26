@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
-import { PDFViewer } from '@embedpdf/react-pdf-viewer';
+import { PDFViewer, ZoomMode } from '@embedpdf/react-pdf-viewer';
 import type { PDFViewerRef } from '@embedpdf/react-pdf-viewer';
 import { Button, Typography } from '@douyinfe/semi-ui';
 import { FileText, X } from 'lucide-react';
@@ -150,6 +150,7 @@ export function PDFPreviewPanel({ file, onClose }: PDFPreviewPanelProps) {
           ref={viewerRef}
           config={{
             theme: themeConfig,
+            zoom: { defaultZoomLevel: ZoomMode.FitWidth },
             tabBar: 'never',
             disabledCategories: ['annotation', 'form', 'redaction', 'insert', 'signature'],
           }}
