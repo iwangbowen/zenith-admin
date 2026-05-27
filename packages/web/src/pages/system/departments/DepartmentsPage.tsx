@@ -361,6 +361,7 @@ export default function DepartmentsPage() {
         <Form
           key={editingDepartment?.id ?? 'new-department'}
           getFormApi={(api) => { formApi.current = api; }}
+          allowEmpty
           initValues={formInitValues}
           labelPosition="left"
           labelWidth={90}

@@ -247,6 +247,7 @@ export default function TenantsPage() {
       >
         <Form
           getFormApi={(api) => (formApi.current = api)}
+          allowEmpty
           initValues={editingTenant ?? { status: 'enabled' }}
           labelPosition="left"
           labelWidth={90}

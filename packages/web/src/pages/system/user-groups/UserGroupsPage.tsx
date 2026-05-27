@@ -342,6 +342,7 @@ export default function UserGroupsPage() {
         <Form
           key={editing?.id ?? 'new-group'}
           getFormApi={(api) => { formApi.current = api; }}
+          allowEmpty
           initValues={formInitValues}
           labelPosition="left"
           labelWidth={90}

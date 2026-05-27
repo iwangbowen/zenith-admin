@@ -401,6 +401,7 @@ export default function TagsPage() {
           getFormApi={(api) => {
             (formRef as { current: FormApi }).current = api;
           }}
+          allowEmpty
           labelPosition="left"
           labelWidth={90}
           initValues={

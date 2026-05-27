@@ -281,6 +281,7 @@ export default function PositionsPage() {
         <Form
           key={editingPosition?.id ?? 'new-position'}
           getFormApi={(api) => { formApi.current = api; }}
+          allowEmpty
           initValues={formInitValues}
           labelPosition="left"
           labelWidth={90}

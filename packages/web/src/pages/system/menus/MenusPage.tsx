@@ -162,11 +162,6 @@ export default function MenusPage() {
       parentId: parentId ?? 0,
       icon: iconValue || undefined,
       visible: values.visible === undefined ? true : values.visible === 'show',
-      // 显式处理可选字段，避免 Semi UI 清空后字段被省略导致后端不更新
-      path: values.path === undefined ? '' : values.path,
-      component: values.component === undefined ? '' : values.component,
-      name: values.name === undefined ? '' : values.name,
-      permission: values.permission === undefined ? '' : values.permission,
     };
     const res = editingMenu
       ? await request.put(`/api/menus/${editingMenu.id}`, payload)
@@ -345,6 +340,7 @@ export default function MenusPage() {
       >
         <Form
           getFormApi={(api) => formApi.current = api}
+          allowEmpty
           key={editingMenu ? `edit-${editingMenu.id}` : 'create'}
           initValues={
             editingMenu

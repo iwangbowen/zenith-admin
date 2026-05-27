@@ -649,6 +649,7 @@ export default function UsersPage() {
         <Form
           key={editingUser?.id ?? 'new-user'}
           getFormApi={(api) => { formApi.current = api; }}
+          allowEmpty
           initValues={formInitValues}
           labelPosition="left"
           labelWidth={72}

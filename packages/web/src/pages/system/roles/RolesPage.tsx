@@ -387,6 +387,7 @@ export default function RolesPage() {
       >
         <Form
           getFormApi={(api) => formApi.current = api}
+          allowEmpty
           initValues={editingRole ?? { status: 'enabled' }}
           labelPosition="left"
           labelWidth={90}
