@@ -276,7 +276,16 @@
 
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-header {
   padding: 0;
+  display: flex;
   justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-header .semi-navigation-header-logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .admin-sidebar__nav.semi-navigation-collapsed .admin-sidebar__logo {
