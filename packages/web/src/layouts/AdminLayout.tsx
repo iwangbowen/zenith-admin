@@ -17,6 +17,7 @@ import { renderLucideIcon } from '@/utils/icons';
 import NProgress from '@/components/NProgress';
 import Watermark from '@/components/Watermark';
 import QuickChatButton from '@/components/QuickChatButton';
+import AppLogo from '@/components/AppLogo';
 import './AdminLayout.css';
 
 // 主题图标
@@ -824,7 +825,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             onClick={navigateHome}
             onKeyDown={handleNavigateHomeKey}
           >
-            <div className="admin-sidebar__logo">Z</div>
+            <AppLogo size={28} />
             <span className="admin-sidebar__title">Zenith Admin</span>
           </button>
           <Nav
@@ -859,11 +860,10 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 logo: (
                   <button
                     type="button"
-                    className="admin-sidebar__logo"
-                    style={{ cursor: 'pointer', border: 0, padding: 0, font: 'inherit' }}
+                    style={{ cursor: 'pointer', border: 0, padding: 0, background: 'transparent', display: 'flex' }}
                     onClick={navigateHome}
                     onKeyDown={handleNavigateHomeKey}
-                  >Z</button>
+                  ><AppLogo size={28} /></button>
                 ),
                 text: (
                   <button

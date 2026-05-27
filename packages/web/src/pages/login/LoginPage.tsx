@@ -6,6 +6,7 @@ import { Icon } from '@iconify/react';
 import type { RegisterInput, OAuthProviderType } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
+import AppLogo from '@/components/AppLogo';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import './LoginPage.css';
 
@@ -258,7 +259,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
         <div className="login-ring" />
         <div className="login-brand">
           <div className="login-logo-wrap">
-            <div className="login-logo">Z</div>
+            <AppLogo size={40} variant="glass" />
             <span className="login-brand-name">Zenith Admin</span>
           </div>
           <div className="login-eyebrow">企业级后台管理</div>
@@ -282,7 +283,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
       <div className="login-right">
         <div className="login-form-wrapper">
           <div className="login-mobile-brand">
-            <div className="login-logo">Z</div>
+            <AppLogo size={40} />
             <span className="login-brand-name">Zenith Admin</span>
           </div>
           <div className="login-form-header">
