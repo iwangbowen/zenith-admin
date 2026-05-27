@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Button, Form, Modal, Popconfirm, Space, Switch, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Modal, Popconfirm, Row, Space, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -254,49 +254,106 @@ export default function AIProvidersPage() {
         onCancel={() => setModalVisible(false)}
         onOk={() => void handleSubmit()}
         okButtonProps={{ loading: submitLoading }}
-        width={600}
+        width={720}
       >
-        <Form labelPosition="left" labelWidth={100}>
-          <Form.Input
-            field="name"
-            label="名称"
-            rules={[{ required: true, message: '请输入名称' }]}
-            value={form.name}
-            onChange={(v) => setForm((f) => ({ ...f, name: String(v ?? '') }))}
-          />
-          <Form.Select
-            field="provider"
-            label="供应商类型"
-            value={form.provider}
-            onChange={(v) => setForm((f) => ({ ...f, provider: v as AiProvider }))}
-            optionList={PROVIDER_OPTIONS}
-            style={{ width: '100%' }}
-          />
-          <Form.Input
-            field="baseUrl"
-            label="API 地址"
-            rules={[{ required: true, message: '请输入 API 地址' }]}
-            value={form.baseUrl}
-            onChange={(v) => setForm((f) => ({ ...f, baseUrl: String(v ?? '') }))}
-            placeholder="https://api.openai.com/v1"
-          />
-          <Form.Input
-            field="apiKey"
-            label="API Key"
-            rules={[{ required: !editTarget, message: '请输入 API Key' }]}
-            value={form.apiKey}
-            onChange={(v) => setForm((f) => ({ ...f, apiKey: String(v ?? '') }))}
-            mode="password"
-            placeholder={editTarget ? '不修改请留空（留空将保留原值）' : ''}
-          />
-          <Form.Input
-            field="model"
-            label="模型"
-            rules={[{ required: true, message: '请输入模型名称' }]}
-            value={form.model}
-            onChange={(v) => setForm((f) => ({ ...f, model: String(v ?? '') }))}
-            placeholder="gpt-4o"
-          />
+        <Form labelPosition="left" labelWidth={90}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input
+                field="name"
+                label="名称"
+                rules={[{ required: true, message: '请输入名称' }]}
+                value={form.name}
+                onChange={(v) => setForm((f) => ({ ...f, name: String(v ?? '') }))}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="provider"
+                label="供应商类型"
+                value={form.provider}
+                onChange={(v) => setForm((f) => ({ ...f, provider: v as AiProvider }))}
+                optionList={PROVIDER_OPTIONS}
+                style={{ width: '100%' }}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input
+                field="baseUrl"
+                label="API 地址"
+                rules={[{ required: true, message: '请输入 API 地址' }]}
+                value={form.baseUrl}
+                onChange={(v) => setForm((f) => ({ ...f, baseUrl: String(v ?? '') }))}
+                placeholder="https://api.openai.com/v1"
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Input
+                field="apiKey"
+                label="API Key"
+                rules={[{ required: !editTarget, message: '请输入 API Key' }]}
+                value={form.apiKey}
+                onChange={(v) => setForm((f) => ({ ...f, apiKey: String(v ?? '') }))}
+                mode="password"
+                placeholder={editTarget ? '留空保留原值' : ''}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input
+                field="model"
+                label="模型"
+                rules={[{ required: true, message: '请输入模型名称' }]}
+                value={form.model}
+                onChange={(v) => setForm((f) => ({ ...f, model: String(v ?? '') }))}
+                placeholder="gpt-4o"
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Input
+                field="temperature"
+                label="温度"
+                value={form.temperature}
+                onChange={(v) => setForm((f) => ({ ...f, temperature: String(v ?? '0.7') }))}
+                placeholder="0.7"
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.InputNumber
+                field="maxTokens"
+                label="最大 Token"
+                value={form.maxTokens}
+                onChange={(v) => setForm((f) => ({ ...f, maxTokens: Number(v ?? 4096) }))}
+                min={1}
+                max={128000}
+              />
+            </Col>
+            <Col span={12}>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Slot label="默认">
+                    <Switch
+                      checked={form.isDefault}
+                      onChange={(v) => setForm((f) => ({ ...f, isDefault: Boolean(v) }))}
+                    />
+                  </Form.Slot>
+                </Col>
+                <Col span={12}>
+                  <Form.Slot label="启用">
+                    <Switch
+                      checked={form.isEnabled}
+                      onChange={(v) => setForm((f) => ({ ...f, isEnabled: Boolean(v) }))}
+                    />
+                  </Form.Slot>
+                </Col>
+              </Row>
+            </Col>
+          </Row>
           <Form.TextArea
             field="systemPrompt"
             label="系统提示词"
@@ -305,33 +362,6 @@ export default function AIProvidersPage() {
             rows={3}
             placeholder="可选，为空则使用默认提示词"
           />
-          <Form.InputNumber
-            field="maxTokens"
-            label="最大 Token"
-            value={form.maxTokens}
-            onChange={(v) => setForm((f) => ({ ...f, maxTokens: Number(v ?? 4096) }))}
-            min={1}
-            max={128000}
-          />
-          <Form.Input
-            field="temperature"
-            label="温度"
-            value={form.temperature}
-            onChange={(v) => setForm((f) => ({ ...f, temperature: String(v ?? '0.7') }))}
-            placeholder="0.7"
-          />
-          <Form.Slot label="默认">
-            <Switch
-              checked={form.isDefault}
-              onChange={(v) => setForm((f) => ({ ...f, isDefault: Boolean(v) }))}
-            />
-          </Form.Slot>
-          <Form.Slot label="启用">
-            <Switch
-              checked={form.isEnabled}
-              onChange={(v) => setForm((f) => ({ ...f, isEnabled: Boolean(v) }))}
-            />
-          </Form.Slot>
         </Form>
       </Modal>
 
