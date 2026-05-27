@@ -105,7 +105,7 @@ export default function SmsTemplatesPage() {
       title: '服务商', dataIndex: 'provider', width: 100,
       render: (v: string) => PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
     },
-    { title: '内容', dataIndex: 'content', render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: '内容', dataIndex: 'content', render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
     { title: '创建时间', dataIndex: 'createdAt', width: 180 },
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,

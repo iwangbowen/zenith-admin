@@ -110,7 +110,7 @@ export default function SmsConfigsPage() {
       title: '服务商', dataIndex: 'provider', width: 100,
       render: (v: string) => PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
     },
-    { title: 'AccessKeyId', dataIndex: 'accessKeyId', width: 180, render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: 'AccessKeyId', dataIndex: 'accessKeyId', width: 180, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
     { title: '签名', dataIndex: 'signName', width: 120 },
     { title: '地域', dataIndex: 'region', width: 140, render: (v: string | null) => v || '—' },
     {

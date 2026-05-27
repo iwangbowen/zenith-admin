@@ -356,6 +356,31 @@ export default function UsersPage() {
     }
   };
 
+  const renderDeleteBtn = (record: User) => {
+    const isAdmin = isAdminUser(record);
+    const deleteBtn = (
+      <Button
+        theme="borderless"
+        type="danger"
+        size="small"
+        disabled={isAdmin}
+        onClick={() => {
+          Modal.confirm({
+            title: '确定要删除该用户吗？',
+            okButtonProps: { type: 'danger', theme: 'solid' },
+            onOk: () => handleDelete(record.id),
+          });
+        }}
+      >删除</Button>
+    );
+    if (!isAdmin) return deleteBtn;
+    return (
+      <Tooltip content="admin 账号不允许删除">
+        <span>{deleteBtn}</span>
+      </Tooltip>
+    );
+  };
+
   const columns: ColumnProps<User>[] = [
     {
       title: '用户',
@@ -445,34 +470,7 @@ export default function UsersPage() {
               setModalVisible(true);
             }}
           >编辑</Button>}
-          {hasPermission('system:user:delete') && (() => {
-            const isAdmin = isAdminUser(record);
-            const deleteBtn = (
-              <Button
-                theme="borderless"
-                type="danger"
-                size="small"
-                disabled={isAdmin}
-                onClick={() => {
-                  Modal.confirm({
-                    title: '确定要删除该用户吗？',
-                    okButtonProps: { type: 'danger', theme: 'solid' },
-                    onOk: () => handleDelete(record.id),
-                  });
-                }}
-              >删除</Button>
-            );
-
-            if (!isAdmin) {
-              return deleteBtn;
-            }
-
-            return (
-              <Tooltip content="admin 账号不允许删除">
-                <span>{deleteBtn}</span>
-              </Tooltip>
-            );
-          })()}
+          {hasPermission('system:user:delete') && renderDeleteBtn(record)}
           {hasPermission('system:user:update') && (
             <Dropdown
               trigger="click"
