@@ -32,12 +32,7 @@ const HINTS = [
   '如何设置定时任务？',
 ];
 
-const DEFAULT_MODEL_OPTIONS = [
-  { value: 'gpt-4o', label: 'GPT-4o' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o-mini' },
-  { value: 'qwen-plus', label: '通义千问 Plus' },
-  { value: 'deepseek-chat', label: 'DeepSeek Chat' },
-];
+const DEFAULT_MODEL_OPTIONS: { value: string; label: string }[] = [];
 
 const THINK_MODE_OPTIONS = [
   { label: '极速', value: 'fast' },
@@ -578,6 +573,7 @@ export default function AIChatPage() {
                 renderConfigureArea={() => (
                   <Configure>
                     <Configure.Select
+                      key={modelOptions[0]?.value ?? 'default'}
                       field="model"
                       initValue={modelOptions[0]?.value ?? ''}
                       optionList={modelOptions}
