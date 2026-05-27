@@ -892,7 +892,7 @@ export const aiProviderEnum = z.enum(['openai_compatible', 'anthropic', 'gemini'
 export const createAiProviderConfigSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100),
   provider: aiProviderEnum.default('openai_compatible'),
-  baseUrl: z.string().url('请输入有效的 URL').max(500),
+  baseUrl: z.url('请输入有效的 URL').max(500),
   apiKey: z.string().min(1, 'API Key 不能为空').max(1000),
   model: z.string().min(1, '模型名称不能为空').max(100),
   systemPrompt: z.string().max(4096).nullable().optional(),
@@ -919,7 +919,7 @@ export type SendAiMessageInput = z.infer<typeof sendAiMessageSchema>;
 
 export const saveUserAiConfigSchema = z.object({
   provider: aiProviderEnum.optional(),
-  baseUrl: z.string().url('请输入有效的 URL').max(500).nullable().optional(),
+  baseUrl: z.url('请输入有效的 URL').max(500).nullable().optional(),
   apiKey: z.string().max(1000).nullable().optional(),
   model: z.string().max(100).nullable().optional(),
   isEnabled: z.boolean().optional(),
