@@ -64,11 +64,6 @@ npm run dev:server
 npm run dev:web
 ```
 
-默认地址：
-
-- 后端：`http://localhost:3300`
-- 前端：`http://localhost:5373`
-
 ## 启动文档站
 
 ```bash

@@ -185,8 +185,8 @@ npm run db:seed      # 填充初始数据（创建默认 admin 账号）
 ```bash
 npm run dev            # 同时启动前端 + 后端（推荐）
 
-npm run dev:server     # 仅启动后端，地址：http://localhost:3300
-npm run dev:web        # 仅启动前端，地址：http://localhost:5373
+npm run dev:server     # 仅启动后端
+npm run dev:web        # 仅启动前端
 ```
 
 默认账号：`admin` / 密码：`123456`
