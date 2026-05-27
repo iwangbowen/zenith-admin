@@ -1,14 +1,15 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Toast, List as SemiList, Tooltip, Spin } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
-import { MessageSquarePlus, Trash2, Globe, AlignLeft, AlignJustify, Bot, Wrench, FileText } from 'lucide-react';
+import { MessageSquarePlus, Trash2, Globe, AlignLeft, AlignJustify, Bot, Wrench, FileText, Settings } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { PDFPreviewPanel } from './PDFPreviewPanel';
+import UserAiConfigModal from '../components/UserAiConfigModal';
 import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
-import type { AiConversation, AiMessage, AiProviderConfig } from '@zenith/shared';
+import type { AiConversation, AiMessage, AiProviderConfig, UserAiConfig } from '@zenith/shared';
 
 const { Configure } = AIChatInput;
 const { Title, Text } = Typography;
@@ -140,6 +141,8 @@ export default function AIChatPage() {
   const [convsLoading, setConvsLoading] = useState(false);
   const [msgsLoading, setMsgsLoading] = useState(false);
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>(DEFAULT_MODEL_OPTIONS);
+  const userConfigRef = useRef<UserAiConfig | null>(null);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const [align, setAlign] = useState<'leftRight' | 'leftAlign'>('leftRight');
   const [mode, setMode] = useState<'bubble' | 'noBubble' | 'userBubble'>('bubble');
   const configureValuesRef = React.useRef<Record<string, unknown>>({
@@ -152,16 +155,29 @@ export default function AIChatPage() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Load AI provider configs as model options
+  // Load AI provider configs + user config as model options
+  const loadModelOptions = useCallback((providers: AiProviderConfig[], uc: UserAiConfig | null) => {
+    const sysOptions = providers.map((p) => ({ value: String(p.id), label: `${p.name} (${p.model})` }));
+    const userOption =
+      uc?.isEnabled && uc.model
+        ? [{ value: 'user', label: `我的配置 (${uc.model})` }]
+        : [];
+    const options = [...userOption, ...sysOptions];
+    setModelOptions(options);
+    if (options.length > 0) {
+      setConfigureValues((prev) => ({ ...prev, model: options[0].value }));
+    }
+  }, [setConfigureValues]);
+
   useEffect(() => {
-    void request.get<{ list: AiProviderConfig[] }>('/api/ai/providers').then((res) => {
-      const list = res.data?.list ?? [];
-      if (list.length > 0) {
-        setModelOptions(list.map((p) => ({ value: String(p.id), label: `${p.name} (${p.model})` })));
-        setConfigureValues((prev) => ({ ...prev, model: String(list[0].id) }));
-      }
+    void Promise.all([
+      request.get<{ list: AiProviderConfig[] }>('/api/ai/providers').then((r) => r.data?.list ?? []),
+      request.get<UserAiConfig | null>('/api/ai/user-config').then((r) => r.data ?? null).catch(() => null),
+    ]).then(([providers, uc]) => {
+      userConfigRef.current = uc;
+      loadModelOptions(providers, uc);
     }).catch(() => {});
-  }, []);
+  }, [loadModelOptions]);
 
   // Load conversations on mount
   useEffect(() => {
@@ -276,7 +292,11 @@ export default function AIChatPage() {
               'Content-Type': 'application/json',
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-            body: JSON.stringify({ message: text }),
+            body: JSON.stringify(
+              configureValuesRef.current.model === 'user'
+                ? { message: text, configSource: 'user' }
+                : { message: text, configSource: 'system', configId: Number(configureValuesRef.current.model) || undefined }
+            ),
             signal: abortController.signal,
           }
         );
@@ -396,6 +416,7 @@ export default function AIChatPage() {
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
   return (
+    <>
     <MasterDetailLayout
       defaultSize={220}
       minSize={180}
@@ -521,6 +542,14 @@ export default function AIChatPage() {
                   <Radio value="leftRight"><AlignJustify size={12} /></Radio>
                   <Radio value="leftAlign"><AlignLeft size={12} /></Radio>
                 </RadioGroup>
+                <Tooltip content="我的 AI 配置">
+                  <Button
+                    theme="borderless"
+                    size="small"
+                    icon={<Settings size={14} />}
+                    onClick={() => setSettingsVisible(true)}
+                  />
+                </Tooltip>
               </div>
             </div>
 
@@ -618,5 +647,17 @@ export default function AIChatPage() {
         </div>
       )}
     />
+
+    <UserAiConfigModal
+      visible={settingsVisible}
+      onClose={() => setSettingsVisible(false)}
+      onSaved={(savedCfg) => {
+        userConfigRef.current = savedCfg;
+        void request.get<{ list: AiProviderConfig[] }>('/api/ai/providers').then((r) => {
+          loadModelOptions(r.data?.list ?? [], savedCfg);
+        }).catch(() => {});
+      }}
+    />
+    </>
   );
 }

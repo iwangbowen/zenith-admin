@@ -35,6 +35,7 @@ import { smsTemplatesHandlers } from './sms-templates';
 import { smsSendLogsHandlers } from './sms-send-logs';
 import { aiProvidersHandlers } from './ai-providers';
 import { aiConversationsHandlers } from './ai-conversations';
+import { userAiConfigHandlers } from './user-ai-config';
 import { inAppTemplatesHandlers } from './in-app-templates';
 import { inAppMessagesHandlers } from './in-app-messages';
 import { ipAccessLogsHandlers } from './ip-access-logs';
@@ -80,4 +81,5 @@ export const handlers = [
   ...ipAccessLogsHandlers,
   ...aiProvidersHandlers,
   ...aiConversationsHandlers,
+  ...userAiConfigHandlers,
 ];

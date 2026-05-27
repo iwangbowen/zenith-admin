@@ -7,18 +7,21 @@ import { getRawDefaultProviderConfig, getRawProviderConfig } from './ai-provider
 import { getRawUserAiConfig } from './user-ai-config.service';
 import { streamChat } from '../lib/ai/factory';
 import type { StreamChatConfig, ChatMessage, StreamChunk } from '../lib/ai/factory';
+import type { AiProvider } from '@zenith/shared';
 
 export type { StreamChunk };
+
+type ResolvedStreamConfig = {
+  config: StreamChatConfig;
+  provider: AiProvider;
+  snapshot: { provider: string; model: string; configId?: number };
+};
 
 /**
  * 解析当前请求应使用的 AI 配置
  * 优先级：用户自定义 Key（若系统允许 && 用户已启用 && 有效） > 系统默认配置
  */
-async function resolveStreamConfig(): Promise<{
-  config: StreamChatConfig;
-  provider: 'openai_compatible' | 'anthropic' | 'gemini' | 'baidu';
-  snapshot: { provider: string; model: string; configId?: number };
-}> {
+async function resolveStreamConfig(): Promise<ResolvedStreamConfig> {
   const user = currentUser();
 
   // 检查系统是否允许用户自定义 Key
@@ -64,11 +67,7 @@ async function resolveStreamConfig(): Promise<{
 /**
  * 指定 configId 使用系统中的某个 AI 配置（管理员用）
  */
-async function resolveStreamConfigById(configId: number): Promise<{
-  config: StreamChatConfig;
-  provider: 'openai_compatible' | 'anthropic' | 'gemini' | 'baidu';
-  snapshot: { provider: string; model: string; configId?: number };
-}> {
+async function resolveStreamConfigById(configId: number): Promise<ResolvedStreamConfig> {
   const sysCfg = await getRawProviderConfig(configId);
   return {
     provider: sysCfg.provider,
@@ -84,13 +83,38 @@ async function resolveStreamConfigById(configId: number): Promise<{
   };
 }
 
+async function resolveStreamConfigForUser(): Promise<ResolvedStreamConfig> {
+  const user = currentUser();
+  const userCfg = await getRawUserAiConfig(user.userId);
+  if (!userCfg || !userCfg.isEnabled || !userCfg.apiKey || !userCfg.baseUrl || !userCfg.model) {
+    throw new HTTPException(400, { message: '用户 AI 配置不完整，请先在设置中填写 API 地址、API Key 和模型名称' });
+  }
+  return {
+    provider: userCfg.provider,
+    config: {
+      baseUrl: userCfg.baseUrl,
+      apiKey: userCfg.apiKey,
+      model: userCfg.model,
+      maxTokens: 4096,
+      temperature: '0.7',
+      systemPrompt: null,
+    },
+    snapshot: { provider: userCfg.provider, model: userCfg.model },
+  };
+}
+
 export async function* streamAiChat(
   messages: ChatMessage[],
-  configId?: number,
+  configId?: number | 'user',
 ): AsyncGenerator<StreamChunk & { snapshot?: { provider: string; model: string; configId?: number } }> {
-  const resolved = configId
-    ? await resolveStreamConfigById(configId)
-    : await resolveStreamConfig();
+  let resolved: ResolvedStreamConfig;
+  if (configId === 'user') {
+    resolved = await resolveStreamConfigForUser();
+  } else if (configId) {
+    resolved = await resolveStreamConfigById(configId);
+  } else {
+    resolved = await resolveStreamConfig();
+  }
 
   let isFirst = true;
   for await (const chunk of streamChat(resolved.provider, resolved.config, messages)) {
@@ -102,6 +126,5 @@ export async function* streamAiChat(
     } else {
       yield chunk;
     }
-    isFirst = false;
   }
 }

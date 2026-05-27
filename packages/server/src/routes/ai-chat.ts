@@ -10,6 +10,8 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const SendMessageBody = z.object({
   message: z.string().min(1).max(8192),
+  configSource: z.enum(['system', 'user']).optional(),
+  configId: z.number().int().positive().optional(),
 });
 
 /**
@@ -22,7 +24,7 @@ router.post('/:id/chat', authMiddleware, async (c) => {
     return c.json({ code: 400, message: '无效的对话 ID', data: null }, 400);
   }
 
-  let body: { message?: string };
+  let body: unknown;
   try {
     body = await c.req.json();
   } catch {
@@ -34,7 +36,7 @@ router.post('/:id/chat', authMiddleware, async (c) => {
     return c.json({ code: 400, message: '消息不能为空', data: null }, 400);
   }
 
-  const { message } = parsed.data;
+  const { message, configSource, configId } = parsed.data;
 
   // 验证对话归属
   try {
@@ -56,7 +58,10 @@ router.post('/:id/chat', authMiddleware, async (c) => {
       const history = await getHistoryMessages(id, 20);
       const messages = [...history, { role: 'user' as const, content: message }];
 
-      for await (const chunk of streamAiChat(messages)) {
+      const resolvedConfigId: number | 'user' | undefined =
+        configSource === 'user' ? 'user' : (configId ?? undefined);
+
+      for await (const chunk of streamAiChat(messages, resolvedConfigId)) {
         if (chunk.type === 'delta') {
           assistantContent += chunk.content;
           if ('snapshot' in chunk && chunk.snapshot) {
@@ -96,7 +101,7 @@ router.post('/:id/chat', authMiddleware, async (c) => {
 
       // 如果对话还没有自定义标题，用第一条消息的前 30 个字作为标题
       const conversation = await ensureConversationOwner(id).catch(() => null);
-      if (conversation && conversation.title === '新对话') {
+      if (conversation?.title === '新对话') {
         await updateConversationTitle(id, message.slice(0, 30));
       }
     }
