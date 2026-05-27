@@ -29,3 +29,5 @@ export * from './in-app';
 export * from './chat';
 export * from './tags';
 export * from './rate-limit';
+
+export * from './ai';

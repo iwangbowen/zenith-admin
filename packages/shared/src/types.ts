@@ -1483,3 +1483,57 @@ export interface Tag {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── AI 对话模块 ──────────────────────────────────────────────────────────────
+
+export type AiProvider = 'openai_compatible' | 'anthropic' | 'gemini' | 'baidu';
+export type AiMessageRole = 'system' | 'user' | 'assistant';
+
+export interface AiProviderConfig {
+  id: number;
+  name: string;
+  provider: AiProvider;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  systemPrompt: string | null;
+  maxTokens: number;
+  temperature: string;
+  isDefault: boolean;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiConversation {
+  id: number;
+  userId: number;
+  tenantId: number | null;
+  title: string;
+  providerSnapshot: { provider: string; model: string; configId?: number } | null;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiMessage {
+  id: number;
+  conversationId: number;
+  role: AiMessageRole;
+  content: string;
+  tokensInput: number;
+  tokensOutput: number;
+  createdAt: string;
+}
+
+export interface UserAiConfig {
+  id: number;
+  userId: number;
+  provider: AiProvider;
+  baseUrl: string | null;
+  apiKey: string | null;
+  model: string | null;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

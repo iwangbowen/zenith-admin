@@ -67,6 +67,10 @@ import smsTemplatesRoutes from './routes/sms-templates';
 import smsSendLogsRoutes from './routes/sms-send-logs';
 import inAppTemplatesRoutes from './routes/in-app-templates';
 import inAppMessagesRoutes from './routes/in-app-messages';
+import aiProvidersRoutes from './routes/ai-providers';
+import aiConversationsRoutes from './routes/ai-conversations';
+import aiChatRoutes from './routes/ai-chat';
+import userAiConfigRoutes from './routes/user-ai-config';
 import { createWsRoute } from './routes/ws';
 import stripAnsi from 'strip-ansi';
 import { initCronScheduler, stopAllJobs } from './lib/cron-scheduler';
@@ -115,7 +119,7 @@ app.use('*', secureHeaders({
   xFrameOptions: false,                       // API 无 UI，不需要
 }));
 // 流式/二进制路由排除压缩：SSE 实时推送 + 文件下载不能被缓冲压缩
-const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/monitor/stream'];
+const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/monitor/stream', '/api/ai/conversations'];
 app.use('*', except(
   (c) => COMPRESS_EXCLUDE_PREFIXES.some((p) => c.req.path.startsWith(p)),
   compress(),
@@ -155,7 +159,7 @@ if (config.requestBodyLimit > 0) {
 if (config.requestTimeoutMs > 0) {
   const timeoutMs = config.requestTimeoutMs;
   // 天生长耗时的路径前缀：WebSocket、文件上传/下载、数据库备份
-  const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/monitor/stream'];
+  const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/db-admin', '/api/log-files', '/api/monitor/stream', '/api/ai/conversations'];
 
   const timeoutMiddleware = timeout(
     timeoutMs,
@@ -232,6 +236,10 @@ app.route('/api/sms-templates', smsTemplatesRoutes);
 app.route('/api/sms-send-logs', smsSendLogsRoutes);
 app.route('/api/in-app-templates', inAppTemplatesRoutes);
 app.route('/api/in-app-messages', inAppMessagesRoutes);
+app.route('/api/ai/providers', aiProvidersRoutes);
+app.route('/api/ai/conversations', aiConversationsRoutes);
+app.route('/api/ai/conversations', aiChatRoutes);
+app.route('/api/ai/user-config', userAiConfigRoutes);
 app.route('/api/rate-limit', rateLimitRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 app.route('/api/health', healthRoutes);

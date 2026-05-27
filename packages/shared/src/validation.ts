@@ -884,3 +884,45 @@ export const forwardMessagesSchema = z.object({
 
 export type SendChatMessageInput = z.infer<typeof sendChatMessageSchema>;
 export type ForwardMessagesInput = z.infer<typeof forwardMessagesSchema>;
+
+// ─── AI 对话模块 ──────────────────────────────────────────────────────────────
+
+export const aiProviderEnum = z.enum(['openai_compatible', 'anthropic', 'gemini', 'baidu']);
+
+export const createAiProviderConfigSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(100),
+  provider: aiProviderEnum.default('openai_compatible'),
+  baseUrl: z.string().url('请输入有效的 URL').max(500),
+  apiKey: z.string().min(1, 'API Key 不能为空').max(1000),
+  model: z.string().min(1, '模型名称不能为空').max(100),
+  systemPrompt: z.string().max(4096).nullable().optional(),
+  maxTokens: z.number().int().min(1).max(128000).default(4096),
+  temperature: z.string().regex(/^\d+(\.\d+)?$/, '温度须为数字字符串').default('0.7'),
+  isDefault: z.boolean().default(false),
+  isEnabled: z.boolean().default(true),
+});
+
+export const updateAiProviderConfigSchema = createAiProviderConfigSchema.partial();
+
+export type CreateAiProviderConfigInput = z.infer<typeof createAiProviderConfigSchema>;
+export type UpdateAiProviderConfigInput = z.infer<typeof updateAiProviderConfigSchema>;
+
+export const createAiConversationSchema = z.object({
+  title: z.string().max(200).optional(),
+});
+
+export const sendAiMessageSchema = z.object({
+  message: z.string().min(1, '消息不能为空').max(8192),
+});
+
+export type SendAiMessageInput = z.infer<typeof sendAiMessageSchema>;
+
+export const saveUserAiConfigSchema = z.object({
+  provider: aiProviderEnum.optional(),
+  baseUrl: z.string().url('请输入有效的 URL').max(500).nullable().optional(),
+  apiKey: z.string().max(1000).nullable().optional(),
+  model: z.string().max(100).nullable().optional(),
+  isEnabled: z.boolean().optional(),
+});
+
+export type SaveUserAiConfigInput = z.infer<typeof saveUserAiConfigSchema>;

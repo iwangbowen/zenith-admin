@@ -1349,3 +1349,88 @@ export const inAppMessagesRelations = relations(inAppMessages, ({ one }) => ({
   sender: one(users, { fields: [inAppMessages.senderId], references: [users.id], relationName: 'inAppMessageSender' }),
   tenant: one(tenants, { fields: [inAppMessages.tenantId], references: [tenants.id] }),
 }));
+
+// ─── AI 对话模块 ──────────────────────────────────────────────────────────────
+
+export const aiProviderEnum = pgEnum('ai_provider', ['openai_compatible', 'anthropic', 'gemini', 'baidu']);
+export const aiMessageRoleEnum = pgEnum('ai_message_role', ['system', 'user', 'assistant']);
+
+export const aiProviderConfigs = pgTable('ai_provider_configs', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  provider: aiProviderEnum('provider').notNull().default('openai_compatible'),
+  baseUrl: varchar('base_url', { length: 500 }).notNull(),
+  apiKey: varchar('api_key', { length: 1000 }).notNull(),
+  model: varchar('model', { length: 100 }).notNull(),
+  systemPrompt: text('system_prompt'),
+  maxTokens: integer('max_tokens').notNull().default(4096),
+  temperature: varchar('temperature', { length: 10 }).notNull().default('0.7'),
+  isDefault: boolean('is_default').notNull().default(false),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type AiProviderConfigRow = typeof aiProviderConfigs.$inferSelect;
+export type NewAiProviderConfig = typeof aiProviderConfigs.$inferInsert;
+
+export const aiConversations = pgTable('ai_conversations', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 200 }).notNull().default('新对话'),
+  providerSnapshot: jsonb('provider_snapshot').$type<{ provider: string; model: string; configId?: number }>(),
+  isArchived: boolean('is_archived').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type AiConversationRow = typeof aiConversations.$inferSelect;
+export type NewAiConversation = typeof aiConversations.$inferInsert;
+
+export const aiMessages = pgTable('ai_messages', {
+  id: serial('id').primaryKey(),
+  conversationId: integer('conversation_id').notNull().references(() => aiConversations.id, { onDelete: 'cascade' }),
+  role: aiMessageRoleEnum('role').notNull(),
+  content: text('content').notNull(),
+  tokensInput: integer('tokens_input').notNull().default(0),
+  tokensOutput: integer('tokens_output').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type AiMessageRow = typeof aiMessages.$inferSelect;
+export type NewAiMessage = typeof aiMessages.$inferInsert;
+
+export const userAiConfigs = pgTable('user_ai_configs', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
+  provider: aiProviderEnum('provider').notNull().default('openai_compatible'),
+  baseUrl: varchar('base_url', { length: 500 }),
+  apiKey: varchar('api_key', { length: 1000 }),
+  model: varchar('model', { length: 100 }),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type UserAiConfigRow = typeof userAiConfigs.$inferSelect;
+export type NewUserAiConfig = typeof userAiConfigs.$inferInsert;
+
+export const aiProviderConfigsRelations = relations(aiProviderConfigs, ({ one }) => ({
+  createdByUser: one(users, { fields: [aiProviderConfigs.createdBy], references: [users.id] }),
+}));
+
+export const aiConversationsRelations = relations(aiConversations, ({ one, many }) => ({
+  user: one(users, { fields: [aiConversations.userId], references: [users.id] }),
+  tenant: one(tenants, { fields: [aiConversations.tenantId], references: [tenants.id] }),
+  messages: many(aiMessages),
+}));
+
+export const aiMessagesRelations = relations(aiMessages, ({ one }) => ({
+  conversation: one(aiConversations, { fields: [aiMessages.conversationId], references: [aiConversations.id] }),
+}));
+
+export const userAiConfigsRelations = relations(userAiConfigs, ({ one }) => ({
+  user: one(users, { fields: [userAiConfigs.userId], references: [users.id] }),
+}));
