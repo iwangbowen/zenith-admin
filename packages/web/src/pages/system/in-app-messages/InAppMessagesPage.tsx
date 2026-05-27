@@ -213,7 +213,7 @@ export default function InAppMessagesPage() {
       <Modal title="发送站内信" visible={sendVisible} onOk={handleSend}
         onCancel={() => setSendVisible(false)} confirmLoading={submitting} width={720} bodyStyle={{ paddingBottom: 24 }}>
         <Form key="send" getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
-          labelPosition="left" labelWidth={120} initValues={{ type: 'info' }}>
+          allowEmpty labelPosition="left" labelWidth={120} initValues={{ type: 'info' }}>
           <Row gutter={16}>
             <Col span={24}>
               <Form.Select field="userIds" label="收件人" multiple filter style={{ width: '100%' }}

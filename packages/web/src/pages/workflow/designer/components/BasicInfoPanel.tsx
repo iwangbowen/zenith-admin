@@ -91,6 +91,7 @@ export default function BasicInfoPanel({
       <div className="fd-basic-info__inner">
         <Form
           key={`basic-${definition?.id ?? 'new'}-${categoryId ?? 'none'}`}
+          allowEmpty
           initValues={{
             name: definition?.name ?? '',
             description: definition?.description ?? '',

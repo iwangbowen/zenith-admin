@@ -290,6 +290,7 @@ export default function RateLimitPage() {
         {editing && (
           <Form<UpdateForm>
             getFormApi={setFormApi}
+            allowEmpty
             initValues={{
               windowMs: editing.windowMs,
               limit: editing.limit,

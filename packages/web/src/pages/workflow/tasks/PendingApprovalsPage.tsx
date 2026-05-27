@@ -484,7 +484,7 @@ export default function PendingApprovalsPage() {
         okText="确认"
         style={{ width: 480 }}
       >
-        <Form getFormApi={api => { approveFormApi.current = api; }}>
+        <Form allowEmpty getFormApi={api => { approveFormApi.current = api; }}>
           <Form.TextArea
             field="comment"
             label={btnApprove.opinionName ?? '审批意见'}
@@ -574,7 +574,7 @@ export default function PendingApprovalsPage() {
         okText="确认"
         style={{ width: 480 }}
       >
-        <Form getFormApi={api => { transferFormApi.current = api; }}>
+        <Form allowEmpty getFormApi={api => { transferFormApi.current = api; }}>
           <Form.Select
             field="targetUserId"
             label="转办人"
@@ -598,7 +598,7 @@ export default function PendingApprovalsPage() {
         okText="确认"
         style={{ width: 480 }}
       >
-        <Form getFormApi={api => { delegateFormApi.current = api; }}>
+        <Form allowEmpty getFormApi={api => { delegateFormApi.current = api; }}>
           <Form.Select
             field="targetUserId"
             label="委派人"

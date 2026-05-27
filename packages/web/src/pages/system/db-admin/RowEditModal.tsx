@@ -216,6 +216,7 @@ export function RowEditModal(props: Readonly<Props>): JSX.Element {
       )}
       <Form
         labelPosition="top"
+        allowEmpty
         initValues={initialValues}
         getFormApi={(api) => { formRef.current = api; }}
         style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 16 }}

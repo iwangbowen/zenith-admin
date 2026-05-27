@@ -95,6 +95,7 @@ export default function EmailConfigPage() {
         getFormApi={(api) => {
           formApi.current = api;
         }}
+        allowEmpty
         labelPosition="left"
         labelWidth={120}
         style={{ width: '100%' }}

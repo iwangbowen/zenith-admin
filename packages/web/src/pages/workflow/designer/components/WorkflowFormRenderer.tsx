@@ -142,6 +142,7 @@ export default function WorkflowFormRenderer({
     <ValuesContext.Provider value={valuesState}>
       <Form
         labelPosition="top"
+        allowEmpty
         style={style}
         initValues={initValues}
         getFormApi={(api) => { formApiRef.current = api; getFormApi?.(api); }}

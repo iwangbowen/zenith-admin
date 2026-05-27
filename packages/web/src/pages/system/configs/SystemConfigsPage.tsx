@@ -213,6 +213,7 @@ export default function SystemConfigsPage() {
         <Form
           key={editingConfig?.id ?? 'new-config'}
           getFormApi={(api) => { formApi.current = api; }}
+          allowEmpty
           initValues={formInitValues}
           labelPosition="left"
           labelWidth={90}
