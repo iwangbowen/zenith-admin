@@ -6,6 +6,7 @@ export type TabAnimation = 'none' | 'fade' | 'slide' | 'scale';
 
 export interface UserPreferences {
   enableTabs: boolean;
+  keepTabs: boolean;
   tabsMaxCount: number;
   showTabIcon: boolean;
   navLayout: NavLayout;
@@ -23,6 +24,7 @@ export interface UserPreferences {
 
 export const defaultPreferences: UserPreferences = {
   enableTabs: true,
+  keepTabs: true,
   tabsMaxCount: 20,
   showTabIcon: true,
   navLayout: 'vertical',

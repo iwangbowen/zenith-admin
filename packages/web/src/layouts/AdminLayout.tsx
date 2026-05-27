@@ -192,6 +192,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         duration: 3,
       });
     },
+    preferences.enableTabs && (preferences.keepTabs ?? true),
   );
   const [prefsVisible, setPrefsVisible] = useState(false);
   const dragSrcKey = useRef<string | null>(null);
@@ -1217,6 +1218,10 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               </div>
               {preferences.enableTabs && (
                 <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>保存标签页</span>
+                    <Switch checked={preferences.keepTabs ?? true} onChange={(v) => setPreferences({ keepTabs: v })} />
+                  </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>标签页显示图标</span>
                     <Switch checked={preferences.showTabIcon} onChange={(v) => setPreferences({ showTabIcon: v })} />

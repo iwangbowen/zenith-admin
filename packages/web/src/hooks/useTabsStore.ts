@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { TABS_STORAGE_KEY } from '@zenith/shared';
 
 export interface TabItem {
   key: string;
@@ -8,9 +9,30 @@ export interface TabItem {
 
 const HOME_TAB: TabItem = { key: '/', title: '首页', closable: false };
 
-export function useTabsStore(maxCount: number = 20, onEvict?: (evicted: TabItem[]) => void) {
-  const [tabs, setTabs] = useState<TabItem[]>([HOME_TAB]);
-  const [activeKey, setActiveKey] = useState('/');
+function readPersistedTabs(): { tabs: TabItem[]; activeKey: string } | null {
+  try {
+    const raw = localStorage.getItem(TABS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { tabs: TabItem[]; activeKey: string };
+    if (!Array.isArray(parsed.tabs) || !parsed.tabs.length) return null;
+    const hasHome = parsed.tabs.some((t) => t.key === '/');
+    const tabs = hasHome ? parsed.tabs : [HOME_TAB, ...parsed.tabs];
+    const activeKey = typeof parsed.activeKey === 'string' ? parsed.activeKey : '/';
+    return { tabs, activeKey };
+  } catch {
+    return null;
+  }
+}
+
+export function useTabsStore(maxCount: number = 20, onEvict?: (evicted: TabItem[]) => void, keepTabs: boolean = false) {
+  const [tabs, setTabs] = useState<TabItem[]>(() => {
+    if (!keepTabs) return [HOME_TAB];
+    return readPersistedTabs()?.tabs ?? [HOME_TAB];
+  });
+  const [activeKey, setActiveKey] = useState<string>(() => {
+    if (!keepTabs) return '/';
+    return readPersistedTabs()?.activeKey ?? '/';
+  });
 
   // 我们使用一个 ref 来在回调中获取最新的状态，以决定要返回的 nextActive
   const stateRef = useRef({ tabs, activeKey });
@@ -21,6 +43,15 @@ export function useTabsStore(maxCount: number = 20, onEvict?: (evicted: TabItem[
   // 用 ref 存 onEvict，避免将其加入 useCallback 依赖
   const onEvictRef = useRef(onEvict);
   useEffect(() => { onEvictRef.current = onEvict; }, [onEvict]);
+
+  // 持久化标签页到 localStorage
+  useEffect(() => {
+    if (keepTabs) {
+      localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({ tabs, activeKey }));
+    } else {
+      localStorage.removeItem(TABS_STORAGE_KEY);
+    }
+  }, [tabs, activeKey, keepTabs]);
 
   const addTab = useCallback((key: string, title: string) => {
     // 使用 stateRef 读取最新状态，以便在超限时调用 onEvict 回调
