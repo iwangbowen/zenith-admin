@@ -12,6 +12,7 @@ import {
   TreeSelect,
   Row,
   Col,
+  Spin,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
@@ -34,6 +35,7 @@ export default function MenusPage() {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [parentId, setParentId] = useState<number | null>(null);
   const [iconValue, setIconValue] = useState('');
   const [menuType, setMenuType] = useState<string>('menu');
@@ -142,12 +144,23 @@ export default function MenusPage() {
     setModalVisible(true);
   };
 
-  const openEdit = (menu: Menu) => {
+  const openEdit = async (menu: Menu) => {
     setEditingMenu(menu);
     setParentId(menu.parentId ?? 0);
     setIconValue(menu.icon ?? '');
     setMenuType(menu.type);
     setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<Menu>(`/api/menus/${menu.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingMenu(res.data);
+      setParentId(res.data.parentId ?? 0);
+      setIconValue(res.data.icon ?? '');
+      setMenuType(res.data.type);
+    } else {
+      Toast.error(res.message || '获取菜单信息失败');
+    }
   };
 
   const handleMenuModalOk = async () => {
@@ -333,11 +346,13 @@ export default function MenusPage() {
       <Modal
         title={editingMenu ? '编辑菜单' : '新增菜单'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { setModalVisible(false); setEditingMenu(null); setModalDetailLoading(false); }}
         onOk={handleMenuModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={680}
         bodyStyle={{ paddingBottom: 24 }}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           getFormApi={(api) => formApi.current = api}
           allowEmpty
@@ -433,6 +448,7 @@ export default function MenusPage() {
             )}
           </Row>
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

@@ -13,6 +13,7 @@ import {
   Select,
   Space,
   SideSheet,
+  Spin,
   Switch,
   Tag,
   Toast,
@@ -86,6 +87,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowEventSubscription | null>(null);
   const [saving, setSaving] = useState(false);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   // 投递抽屉
   const [deliveryVisible, setDeliveryVisible] = useState(false);
@@ -139,7 +141,7 @@ export default function WorkflowEventSubscriptionsPage() {
     }), 0);
   };
 
-  const openEdit = (row: WorkflowEventSubscription) => {
+  const openEdit = async (row: WorkflowEventSubscription) => {
     setEditing(row);
     setModalVisible(true);
     setTimeout(() => formApi.current?.setValues({
@@ -153,6 +155,25 @@ export default function WorkflowEventSubscriptionsPage() {
       headers: row.headers ? JSON.stringify(row.headers, null, 2) : '',
       enabled: row.enabled,
     }), 0);
+    setModalDetailLoading(true);
+    const res = await request.get<WorkflowEventSubscription>(`/api/workflows/event-subscriptions/${row.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditing(res.data);
+      setTimeout(() => formApi.current?.setValues({
+        name: res.data.name,
+        description: res.data.description ?? '',
+        definitionId: res.data.definitionId,
+        events: res.data.events,
+        url: res.data.url,
+        secret: '',
+        signMode: res.data.signMode,
+        headers: res.data.headers ? JSON.stringify(res.data.headers, null, 2) : '',
+        enabled: res.data.enabled,
+      }), 0);
+    } else {
+      Toast.error(res.message || '获取订阅信息失败');
+    }
   };
 
   const handleSubmit = async (vals: FormValues) => {
@@ -348,12 +369,14 @@ export default function WorkflowEventSubscriptionsPage() {
       <Modal
         title={editing ? '编辑订阅' : '新增订阅'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
         onOk={() => formApi.current?.submitForm()}
         confirmLoading={saving}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={680}
         maskClosable={false}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} allowEmpty labelPosition="top">
           <Form.Input field="name" label="名称" maxLength={64} rules={[{ required: true, message: '请输入名称' }]} />
           <Form.TextArea field="description" label="描述" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
@@ -377,6 +400,7 @@ export default function WorkflowEventSubscriptionsPage() {
             placeholder={'{\n  "X-Source": "zenith"\n}'} />
           <Form.Switch field="enabled" label="启用" />
         </Form>
+        </Spin>
       </Modal>
 
       <SideSheet

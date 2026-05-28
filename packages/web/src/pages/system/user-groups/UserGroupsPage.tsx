@@ -14,6 +14,7 @@ import {
   Tag,
   Row,
   Col,
+  Spin,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
@@ -56,6 +57,7 @@ export default function UserGroupsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<UserGroup | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
   // 选项数据
@@ -247,7 +249,18 @@ export default function UserGroupsPage() {
             <Button theme="borderless" size="small" onClick={() => openMembers(record)}>成员</Button>
           )}
           {hasPermission('system:user-groups:update') && (
-            <Button theme="borderless" size="small" onClick={() => { setEditing(record); setModalVisible(true); }}>编辑</Button>
+            <Button theme="borderless" size="small" onClick={async () => {
+              setEditing(record);
+              setModalVisible(true);
+              setModalDetailLoading(true);
+              const res = await request.get<UserGroup>(`/api/user-groups/${record.id}`);
+              setModalDetailLoading(false);
+              if (res.code === 0 && res.data) {
+                setEditing(res.data);
+              } else {
+                Toast.error(res.message || '获取用户组信息失败');
+              }
+            }}>编辑</Button>
           )}
           {hasPermission('system:user-groups:delete') && (
             <Button theme="borderless" type="danger" size="small" onClick={() => {
@@ -334,11 +347,13 @@ export default function UserGroupsPage() {
       <Modal
         title={editing ? '编辑用户组' : '新增用户组'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditing(null); }}
+        onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
         onOk={handleModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={660}
         bodyStyle={{ paddingBottom: 24 }}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editing?.id ?? 'new-group'}
           getFormApi={(api) => { formApi.current = api; }}
@@ -387,6 +402,7 @@ export default function UserGroupsPage() {
           </Row>
           <Form.TextArea field="description" label="描述" placeholder="请输入描述（可选）" maxCount={256} />
         </Form>
+        </Spin>
       </Modal>
 
       <SideSheet

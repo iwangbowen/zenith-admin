@@ -14,6 +14,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Spin,
   Tag,
   TextArea,
   Toast,
@@ -143,6 +144,7 @@ export default function WorkflowAutomationsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowAutomation | null>(null);
   const [saving, setSaving] = useState(false);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [actions, setActions] = useState<Array<ActionDraft & { buttonsJson?: string }>>([]);
 
   const fetchData = useCallback(async (p = page, ps = pageSize) => {
@@ -187,7 +189,7 @@ export default function WorkflowAutomationsPage() {
     }), 0);
   };
 
-  const openEdit = (row: WorkflowAutomation) => {
+  const openEdit = async (row: WorkflowAutomation) => {
     setEditing(row);
     const drafts = row.actions.map(actionToDraft);
     setActions(drafts);
@@ -200,6 +202,24 @@ export default function WorkflowAutomationsPage() {
       sort: row.sort,
       actions: [],
     }), 0);
+    setModalDetailLoading(true);
+    const res = await request.get<WorkflowAutomation>(`/api/workflows/automations/${row.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditing(res.data);
+      const newDrafts = res.data.actions.map(actionToDraft);
+      setActions(newDrafts);
+      setTimeout(() => formApi.current?.setValues({
+        definitionId: res.data.definitionId,
+        name: res.data.name,
+        trigger: res.data.trigger,
+        status: res.data.status,
+        sort: res.data.sort,
+        actions: [],
+      }), 0);
+    } else {
+      Toast.error(res.message || '获取自动化规则信息失败');
+    }
   };
 
   const addAction = (type: ActionDraft['type']) => {
@@ -338,12 +358,14 @@ export default function WorkflowAutomationsPage() {
       <Modal
         title={editing ? '编辑自动化规则' : '新增自动化规则'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
         onOk={() => formApi.current?.submitForm()}
         confirmLoading={saving}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={780}
         maskClosable={false}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} labelPosition="top">
           <Form.Select
             field="definitionId" label="所属流程" filter
@@ -451,6 +473,7 @@ export default function WorkflowAutomationsPage() {
           <Button icon={<Plus size={14} />} onClick={() => addAction('startWorkflow')}>添加「发起流程」</Button>
           <Button icon={<Plus size={14} />} onClick={() => addAction('sendMessage')}>添加「站内信」</Button>
         </Space>
+        </Spin>
       </Modal>
     </div>
   );

@@ -11,6 +11,7 @@ import {
   Tag,
   Row,
   Col,
+  Spin,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download } from 'lucide-react';
@@ -41,6 +42,7 @@ export default function TenantsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
@@ -146,7 +148,18 @@ export default function TenantsPage() {
             <Button
               theme="borderless"
               size="small"
-              onClick={() => { setEditingTenant(row); setModalVisible(true); }}
+              onClick={async () => {
+                setEditingTenant(row);
+                setModalVisible(true);
+                setModalDetailLoading(true);
+                const res = await request.get<Tenant>(`/api/tenants/${row.id}`);
+                setModalDetailLoading(false);
+                if (res.code === 0 && res.data) {
+                  setEditingTenant(res.data);
+                } else {
+                  Toast.error(res.message || '获取租户信息失败');
+                }
+              }}
             >
               编辑
             </Button>
@@ -240,11 +253,13 @@ export default function TenantsPage() {
       <Modal
         title={editingTenant ? '编辑租户' : '新增租户'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { setModalVisible(false); setEditingTenant(null); setModalDetailLoading(false); }}
         onOk={handleModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={660}
         bodyStyle={{ paddingBottom: 24 }}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           getFormApi={(api) => (formApi.current = api)}
           allowEmpty
@@ -296,6 +311,7 @@ export default function TenantsPage() {
             </Col>
           </Row>
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

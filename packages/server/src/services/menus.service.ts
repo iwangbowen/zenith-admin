@@ -148,6 +148,12 @@ export async function deleteMenu(id: number): Promise<void> {
   });
 }
 
+export async function getMenu(id: number) {
+  const [row] = await db.select().from(menus).where(eq(menus.id, id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '菜单不存在' });
+  return mapMenu(row);
+}
+
 export async function getMenuBeforeAudit(id: number) {
   const [row] = await db.select().from(menus).where(eq(menus.id, id)).limit(1);
   if (!row) return null;

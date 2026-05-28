@@ -44,6 +44,7 @@ export default function AIProvidersPage() {
   const [editTarget, setEditTarget] = useState<AiProviderConfig | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [formInitValues, setFormInitValues] = useState<FormValues>({
     name: '',
@@ -91,7 +92,7 @@ export default function AIProvidersPage() {
     setModalVisible(true);
   };
 
-  const openEdit = (record: AiProviderConfig) => {
+  const openEdit = async (record: AiProviderConfig) => {
     setEditTarget(record);
     setFormInitValues({
       name: record.name,
@@ -107,6 +108,27 @@ export default function AIProvidersPage() {
     });
     setFormKey((k) => k + 1);
     setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<AiProviderConfig>(`/api/ai/providers/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditTarget(res.data);
+      setFormInitValues({
+        name: res.data.name,
+        provider: res.data.provider,
+        baseUrl: res.data.baseUrl,
+        apiKey: res.data.apiKey,
+        model: res.data.model,
+        systemPrompt: res.data.systemPrompt,
+        maxTokens: res.data.maxTokens,
+        temperature: res.data.temperature,
+        isDefault: res.data.isDefault,
+        isEnabled: res.data.isEnabled,
+      });
+      setFormKey((k) => k + 1);
+    } else {
+      Toast.error(res.message || '获取服务商信息失败');
+    }
   };
 
   const handleSubmit = async () => {
@@ -255,9 +277,9 @@ export default function AIProvidersPage() {
       <Modal
         title={editTarget ? '编辑服务商' : '新增服务商'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { setModalVisible(false); setEditTarget(null); setModalDetailLoading(false); }}
         onOk={() => void handleSubmit()}
-        okButtonProps={{ loading: submitLoading }}
+        okButtonProps={{ loading: submitLoading, disabled: modalDetailLoading }}
         width={720}
       >
         <Form

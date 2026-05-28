@@ -7,6 +7,7 @@ import {
   listUserMenuTree,
   listMenuTree,
   listMenusFlat,
+  getMenu,
   createMenu,
   updateMenu,
   deleteMenu,
@@ -88,6 +89,21 @@ const flatRoute = defineOpenAPIRoute({
   },
 });
 
+const getOneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['Menus'], summary: '获取菜单详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:menu:list' })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(MenuDTO, '菜单详情'),
+      404: { content: jsonContent(z.object({ message: z.string() })), description: '菜单不存在' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await getMenu(c.req.valid('param').id)), 200),
+});
+
 const createMenuRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post',
@@ -159,6 +175,6 @@ const deleteMenuRoute = defineOpenAPIRoute({
   },
 });
 
-menusRouter.openapiRoutes([userMenuRoute, listRoute, flatRoute, createMenuRoute, updateMenuRoute, deleteMenuRoute] as const);
+menusRouter.openapiRoutes([userMenuRoute, listRoute, flatRoute, getOneRoute, createMenuRoute, updateMenuRoute, deleteMenuRoute] as const);
 
 export default menusRouter;
