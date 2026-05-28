@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, Input, Popconfirm, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import type { AiProvider, AiProviderConfig } from '@zenith/shared';
 import AiProviderFormModal from '../components/AiProviderFormModal';
@@ -16,6 +15,21 @@ const PROVIDER_LABELS: Record<AiProvider, string> = {
   gemini: 'Google Gemini',
   baidu: '百度千帆',
 };
+
+const PROVIDER_ORDER: AiProvider[] = ['openai_compatible', 'anthropic', 'gemini', 'baidu'];
+
+type AiProviderConfigWithKey = AiProviderConfig & { key: string };
+
+interface ProviderGroupRow {
+  _isGroup: true;
+  key: string;
+  provider: AiProvider;
+  name: string;
+  count: number;
+  children: AiProviderConfigWithKey[];
+}
+
+type TableRow = ProviderGroupRow | AiProviderConfigWithKey;
 
 export default function AIProvidersPage() {
   const { hasPermission } = usePermission();
@@ -61,81 +75,104 @@ export default function AIProvidersPage() {
     void loadData();
   };
 
-  const filtered = list.filter(
-    (item) =>
-      !search ||
-      item.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.model.toLowerCase().includes(search.toLowerCase())
-  );
+  // 按供应商类型聚合为树形数据
+  const treeData = useMemo<ProviderGroupRow[]>(() => {
+    const filtered = list.filter(
+      (item) =>
+        !search ||
+        item.name.toLowerCase().includes(search.toLowerCase()) ||
+        item.model.toLowerCase().includes(search.toLowerCase()),
+    );
 
-  const columns: ColumnProps<AiProviderConfig>[] = [
+    const grouped = new Map<AiProvider, AiProviderConfig[]>();
+    for (const item of filtered) {
+      const existing = grouped.get(item.provider) ?? [];
+      existing.push(item);
+      grouped.set(item.provider, existing);
+    }
+
+    return PROVIDER_ORDER.filter((provider) => grouped.has(provider)).map((provider) => {
+      const children = grouped.get(provider)!;
+      return {
+        _isGroup: true as const,
+        key: `group_${provider}`,
+        provider,
+        name: PROVIDER_LABELS[provider] ?? provider,
+        count: children.length,
+        children: children.map((c) => ({ ...c, key: `config_${c.id}` })),
+      };
+    });
+  }, [list, search]);
+
+  const columns: ColumnProps<TableRow>[] = [
     {
-      title: '名称',
+      title: '名称 / 供应商',
       dataIndex: 'name',
-      width: 160,
-    },
-    {
-      title: '供应商类型',
-      dataIndex: 'provider',
-      width: 160,
-      render: (val: AiProvider) => PROVIDER_LABELS[val] ?? val,
-    },
-    {
-      title: 'API 地址',
-      dataIndex: 'baseUrl',
-      ellipsis: true,
+      render: (_: unknown, record: TableRow) => {
+        if ('_isGroup' in record) {
+          return <strong>{record.name}</strong>;
+        }
+        return record.name;
+      },
     },
     {
       title: '模型',
       dataIndex: 'model',
-      width: 160,
+      width: 180,
+      render: (_: unknown, record: TableRow) => {
+        if ('_isGroup' in record) return null;
+        return record.model;
+      },
     },
     {
       title: '默认',
       dataIndex: 'isDefault',
       width: 80,
-      render: (val: boolean) =>
-        val ? <Tag color="blue" size="small">默认</Tag> : null,
+      render: (_: unknown, record: TableRow) => {
+        if ('_isGroup' in record) return null;
+        return record.isDefault ? <Tag color="blue" size="small">默认</Tag> : null;
+      },
     },
     {
       title: '状态',
       dataIndex: 'isEnabled',
       width: 80,
-      render: (val: boolean) =>
-        val ? <Tag color="green" size="small">启用</Tag> : <Tag color="grey" size="small">禁用</Tag>,
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 170,
-      render: (val: string) => formatDateTime(val),
+      render: (_: unknown, record: TableRow) => {
+        if ('_isGroup' in record) return null;
+        return record.isEnabled
+          ? <Tag color="green" size="small">启用</Tag>
+          : <Tag color="grey" size="small">禁用</Tag>;
+      },
     },
     {
       title: '操作',
       dataIndex: 'id',
-      width: 210,
+      width: 250,
       fixed: 'right',
-      render: (_: unknown, record: AiProviderConfig) => (
-        <Space>
-          {hasPermission('ai:provider:edit') && (
-            <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
-              编辑
-            </Button>
-          )}
-          {hasPermission('ai:provider:edit') && !record.isDefault && (
-            <Button theme="borderless" size="small" onClick={() => void handleSetDefault(record.id)}>
-              设为默认
-            </Button>
-          )}
-          {hasPermission('ai:provider:delete') && (
-            <Popconfirm title="确定要删除该服务商配置吗？" onConfirm={() => void handleDelete(record.id)}>
-              <Button theme="borderless" type="danger" size="small">
-                删除
+      render: (_: unknown, record: TableRow) => {
+        if ('_isGroup' in record) return null;
+        return (
+          <Space>
+            {hasPermission('ai:provider:edit') && (
+              <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
+                编辑
               </Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
+            )}
+            {hasPermission('ai:provider:edit') && !record.isDefault && (
+              <Button theme="borderless" size="small" onClick={() => void handleSetDefault(record.id)}>
+                设为默认
+              </Button>
+            )}
+            {hasPermission('ai:provider:delete') && (
+              <Popconfirm title="确定要删除该服务商配置吗？" onConfirm={() => void handleDelete(record.id)}>
+                <Button theme="borderless" type="danger" size="small">
+                  删除
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -165,10 +202,12 @@ export default function AIProvidersPage() {
       <ConfigurableTable
         bordered
         columns={columns}
-        dataSource={filtered}
+        dataSource={treeData}
         loading={loading}
-        rowKey="id"
+        rowKey="key"
         pagination={false}
+        defaultExpandAllRows
+        expandRowByClick
       />
 
       <AiProviderFormModal
