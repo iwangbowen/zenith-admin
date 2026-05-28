@@ -169,12 +169,9 @@ async function seedRest() {
 
   // ─── 6. 字典数据（数据来源：@zenith/shared SEED_DICTS）────────────────────
   const dictRows = SEED_DICTS.map(({ id, name, code, description, status }) => ({ id, name, code, description, status }));
-  await db.insert(dicts).values(dictRows).onConflictDoUpdate({
-    target: dicts.id,
-    set: { name: sql`excluded.name`, code: sql`excluded.code`, description: sql`excluded.description`, status: sql`excluded.status` },
-  });
+  await db.insert(dicts).values(dictRows).onConflictDoNothing({ target: dicts.id });
   await db.execute(sql`SELECT setval('dicts_id_seq', GREATEST((SELECT MAX(id) FROM dicts), 1))`);
-  logger.info('  ✔ Dicts seeded (onConflictDoUpdate)');
+  logger.info('  ✔ Dicts seeded (onConflictDoNothing)');
 
   // ─── 6. 文件服务配置 ──────────────────────────────────────────────────────
   await db.insert(fileStorageConfigs).values({
