@@ -168,7 +168,7 @@ export default function AIProvidersPage() {
         dataSource={filtered}
         loading={loading}
         rowKey="id"
-        pagination={{ pageSize: 20 }}
+        pagination={false}
       />
 
       <AiProviderFormModal
