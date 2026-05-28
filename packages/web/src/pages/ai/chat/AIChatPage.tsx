@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, List as SemiList, Tooltip, Spin } from '@douyinfe/semi-ui';
+import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, List as SemiList, Tooltip, Spin, Popconfirm } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -485,17 +485,23 @@ export default function AIChatPage() {
                         </Text>
                       )}
                       extra={(
-                        <Button
-                          theme="borderless"
-                          size="small"
-                          icon={<Trash2 size={12} />}
-                          type="danger"
-                          style={{ flexShrink: 0, marginLeft: 4, opacity: 0.6 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
+                        <Popconfirm
+                          title="确定要删除这个会话吗？"
+                          onConfirm={(e) => {
+                            e?.stopPropagation();
                             void handleDeleteConversation(conv.id);
                           }}
-                        />
+                          position="right"
+                        >
+                          <Button
+                            theme="borderless"
+                            size="small"
+                            icon={<Trash2 size={12} />}
+                            type="danger"
+                            style={{ flexShrink: 0, marginLeft: 4, opacity: 0.6 }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </Popconfirm>
                       )}
                     />
                   );
