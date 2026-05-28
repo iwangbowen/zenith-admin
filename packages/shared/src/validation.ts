@@ -918,6 +918,7 @@ export const sendAiMessageSchema = z.object({
 export type SendAiMessageInput = z.infer<typeof sendAiMessageSchema>;
 
 export const saveUserAiConfigSchema = z.object({
+  name: z.string().max(100).nullable().optional(),
   provider: aiProviderEnum.optional(),
   baseUrl: z.url('请输入有效的 URL').max(500).nullable().optional(),
   apiKey: z.string().max(1000).nullable().optional(),

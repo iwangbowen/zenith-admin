@@ -11,6 +11,7 @@ function mapRow(row: typeof userAiConfigs.$inferSelect) {
   return {
     id: row.id,
     userId: row.userId,
+    name: row.name ?? null,
     provider: row.provider,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey ? `${row.apiKey.slice(0, 4)}...${row.apiKey.slice(-4)}` : null,
@@ -45,6 +46,7 @@ export async function saveUserAiConfig(input: SaveUserAiConfigInput) {
     const [row] = await db
       .update(userAiConfigs)
       .set({
+        ...(input.name !== undefined && { name: input.name }),
         ...(input.provider !== undefined && { provider: input.provider }),
         ...(input.baseUrl !== undefined && { baseUrl: input.baseUrl }),
         apiKey,
@@ -62,6 +64,7 @@ export async function saveUserAiConfig(input: SaveUserAiConfigInput) {
       .insert(userAiConfigs)
       .values({
         userId: user.userId,
+        name: input.name ?? null,
         provider: input.provider ?? 'openai_compatible',
         baseUrl: input.baseUrl ?? null,
         apiKey,

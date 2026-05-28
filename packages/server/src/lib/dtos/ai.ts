@@ -54,6 +54,7 @@ export const UserAiConfigDTO = z
   .object({
     id: z.number().openapi({ description: 'ID' }),
     userId: z.number().openapi({ description: '用户 ID' }),
+    name: z.string().nullable().openapi({ description: '配置名称' }),
     provider: z.string().openapi({ description: 'AI 供应商类型' }),
     baseUrl: z.string().nullable().openapi({ description: 'API 地址' }),
     apiKey: z.string().nullable().openapi({ description: 'API Key（脱敏）' }),

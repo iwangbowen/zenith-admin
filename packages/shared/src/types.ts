@@ -1530,6 +1530,7 @@ export interface AiMessage {
 export interface UserAiConfig {
   id: number;
   userId: number;
+  name: string | null;
   provider: AiProvider;
   baseUrl: string | null;
   apiKey: string | null;

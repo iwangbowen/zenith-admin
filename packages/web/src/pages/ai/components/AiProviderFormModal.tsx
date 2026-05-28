@@ -72,6 +72,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
         uc
           ? {
               ...SYSTEM_DEFAULTS,
+              name: uc.name ?? '',
               provider: uc.provider ?? 'openai_compatible',
               baseUrl: uc.baseUrl ?? '',
               apiKey: uc.apiKey ?? '',
@@ -145,6 +146,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
     try {
       if (props.mode === 'user') {
         const res = await request.put<UserAiConfig>('/api/ai/user-config', {
+          name: values.name || null,
           provider: values.provider,
           baseUrl: values.baseUrl || null,
           apiKey: values.apiKey || null,
@@ -210,34 +212,26 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
             formApiRef.current = api;
           }}
         >
-          {/* 系统模式：名称 + 供应商类型 */}
-          {isUser ? (
-            <Form.Select
-              field="provider"
-              label="供应商类型"
-              optionList={PROVIDER_OPTIONS}
-              style={{ width: '100%' }}
-              rules={[{ required: true, message: '请选择供应商类型' }]}
-            />
-          ) : (
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Input
-                  field="name"
-                  label="名称"
-                  rules={[{ required: true, message: '请输入名称' }]}
-                />
-              </Col>
-              <Col span={12}>
-                <Form.Select
-                  field="provider"
-                  label="供应商类型"
-                  optionList={PROVIDER_OPTIONS}
-                  style={{ width: '100%' }}
-                />
-              </Col>
-            </Row>
-          )}
+          {/* 行1：名称 + 供应商类型 */}
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input
+                field="name"
+                label="名称"
+                rules={isUser ? undefined : [{ required: true, message: '请输入名称' }]}
+                placeholder={isUser ? '可选' : ''}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="provider"
+                label="供应商类型"
+                optionList={PROVIDER_OPTIONS}
+                style={{ width: '100%' }}
+              />
+            </Col>
+          </Row>
+          {/* 行2：API地址 + API Key */}
           <Row gutter={16}>
             <Col span={12}>
               <Form.Input
@@ -257,6 +251,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               />
             </Col>
           </Row>
+          {/* 行3：模型 + 温度 */}
           <Row gutter={16}>
             <Col span={12}>
               <Form.Input
@@ -270,6 +265,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               <Form.Input field="temperature" label="温度" placeholder="0.7" />
             </Col>
           </Row>
+          {/* 行4：最大 Token + 启用开关 */}
           <Row gutter={16}>
             <Col span={12}>
               <Form.InputNumber field="maxTokens" label="最大 Token" min={1} max={128000} />
