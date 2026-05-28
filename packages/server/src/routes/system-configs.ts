@@ -66,6 +66,8 @@ const getOneRoute = defineOpenAPIRoute({
 });
 
 const createConfigRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/', tags: ['SystemConfigs'], summary: '新增配置',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:config:create', audit: { module: '系统配置', description: '新增配置' } })] as const,
     request: { body: { content: jsonContent(createSystemConfigSchema), required: true } },

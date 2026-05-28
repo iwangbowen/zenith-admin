@@ -69,6 +69,8 @@ const getOneRoute = defineOpenAPIRoute({
 });
 
 const createPositionRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/', tags: ['Positions'], summary: '创建岗位',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:position:create', audit: { description: '创建岗位', module: '岗位管理' } })] as const,
     request: { body: { content: jsonContent(createPositionSchema), required: true } },

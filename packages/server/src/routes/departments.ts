@@ -67,6 +67,11 @@ const getOneRoute = defineOpenAPIRoute({
 });
 
 const createRouteDef = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/',
+    tags: ['Departments'],
+    summary: '创建部门',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:department:create', audit: { description: '创建部门', module: '部门管理' } })] as const,
     request: { body: { content: jsonContent(createDepartmentSchema), required: true } },

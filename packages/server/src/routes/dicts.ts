@@ -52,6 +52,8 @@ const getDictRoute = defineOpenAPIRoute({
 });
 
 const createDictRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/', tags: ['Dicts'], summary: '创建字典',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:dict:create', audit: { description: '创建字典', module: '字典管理' } })] as const,
     request: { body: { content: jsonContent(createDictSchema), required: true } },
