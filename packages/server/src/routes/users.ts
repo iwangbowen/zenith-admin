@@ -10,6 +10,7 @@ import {
   listAllUsers, listUsers, createUser, batchDeleteUsers, batchUpdateUserStatus,
   updateUser, deleteUser, updateUserPassword, unlockUserById,
   exportUsers, getUserImportTemplate, importUsersFromFormData, getUserBeforeAudit, getUsersBeforeAudit,
+  getUser,
 } from '../services/users.service';
 
 const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -211,6 +212,21 @@ const unlockUserRoute = defineOpenAPIRoute({
   },
 });
 
+const getOneUserRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['Users'], summary: '获取用户详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:user:list' })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(UserDTO, '用户详情'),
+      404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await getUser(c.req.valid('param').id)), 200),
+});
+
 const updateUserRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}', tags: ['Users'], summary: '更新用户',
@@ -257,7 +273,7 @@ const deleteUserRoute = defineOpenAPIRoute({
 usersRouter.openapiRoutes([
   getAllUsersRoute, listUsersRoute, createUserRoute, batchDeleteUsersRoute, batchStatusUsersRoute,
   importTemplateRoute, importUsersRoute, exportUsersRoute, updateUserPasswordRoute, unlockUserRoute,
-  updateUserRoute, deleteUserRoute,
+  getOneUserRoute, updateUserRoute, deleteUserRoute,
 ] as const);
 
 export default usersRouter;

@@ -286,6 +286,14 @@ export async function getUsersBeforeAudit(ids: number[]) {
   return mapUsers(rawList);
 }
 
+export async function getUser(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(users, user);
+  const full = await findUserWithRelations({ where: tc ? and(eq(users.id, id), tc) : eq(users.id, id) });
+  if (!full) throw new HTTPException(404, { message: '用户不存在' });
+  return mapUser(full);
+}
+
 export async function getUserBeforeAudit(id: number) {
   const user = currentUser();
   const tc = tenantCondition(users, user);

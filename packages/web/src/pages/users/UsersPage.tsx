@@ -465,9 +465,14 @@ export default function UsersPage() {
           {hasPermission('system:user:update') && <Button
             theme="borderless"
             size="small"
-            onClick={() => {
-              setEditingUser(record);
-              setModalVisible(true);
+            onClick={async () => {
+              const res = await request.get<User>(`/api/users/${record.id}`);
+              if (res.code === 0) {
+                setEditingUser(res.data);
+                setModalVisible(true);
+              } else {
+                Toast.error(res.message || '获取用户信息失败');
+              }
             }}
           >编辑</Button>}
           {hasPermission('system:user:delete') && renderDeleteBtn(record)}
