@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Col, Form, Modal, Row, Spin, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Modal, Row, Spin, Toast } from '@douyinfe/semi-ui';
 import type { AiProvider, AiProviderConfig, UserAiConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -60,6 +60,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
 
   const [submitLoading, setSubmitLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [initValues, setInitValues] = useState<FormValues>(SYSTEM_DEFAULTS);
   const formApiRef = useRef<{ getValues: () => FormValues; validate: () => Promise<FormValues> } | null>(null);
@@ -188,13 +189,58 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
   if (isUser) title = '我的 AI 配置';
   else if (editTarget) title = '编辑服务商';
 
+  const handleTestConnection = async () => {
+    if (!formApiRef.current) return;
+    const values = formApiRef.current.getValues();
+    if (!values.baseUrl || !values.model) {
+      Toast.warning('请先填写 API 地址和模型名称');
+      return;
+    }
+    setTestLoading(true);
+    try {
+      const body: Record<string, unknown> = {
+        provider: values.provider ?? 'openai_compatible',
+        baseUrl: values.baseUrl,
+        model: values.model,
+      };
+      // 有 id 时（编辑模式），若 apiKey 为空或含脱敏标记，传 id 让后端取真实密钥
+      const id = editTarget?.id;
+      const apiKey = values.apiKey ?? '';
+      if (id && (!apiKey || apiKey.includes('...') || apiKey === '******')) {
+        body.id = id;
+      } else if (apiKey) {
+        body.apiKey = apiKey;
+      }
+
+      const res = await request.post<{ success: boolean; message: string }>('/api/ai/providers/test-connection', body);
+      if (res.data?.success) {
+        Toast.success('连接测试成功');
+      } else {
+        Toast.error(`连接测试失败：${res.data?.message ?? '未知错误'}`);
+      }
+    } catch {
+      // handled by request interceptor
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
   return (
     <Modal
       title={title}
       visible={visible}
       onCancel={onClose}
-      onOk={() => void handleOk()}
-      okButtonProps={{ loading: submitLoading, disabled: detailLoading }}
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          {!isUser && (
+            <Button loading={testLoading} disabled={detailLoading} onClick={() => void handleTestConnection()}>
+              测试连接
+            </Button>
+          )}
+          <Button disabled={submitLoading || testLoading} onClick={onClose}>取消</Button>
+          <Button type="primary" loading={submitLoading} disabled={detailLoading || testLoading} onClick={() => void handleOk()}>确定</Button>
+        </div>
+      }
       width={720}
       destroyOnClose
     >

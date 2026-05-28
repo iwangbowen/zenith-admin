@@ -907,6 +907,17 @@ export const updateAiProviderConfigSchema = createAiProviderConfigSchema.partial
 export type CreateAiProviderConfigInput = z.infer<typeof createAiProviderConfigSchema>;
 export type UpdateAiProviderConfigInput = z.infer<typeof updateAiProviderConfigSchema>;
 
+export const testAiConnectionSchema = z.object({
+  /** 已有配置的 id；提供时若 apiKey 为空则从 DB 取真实密钥 */
+  id: z.number().int().positive().optional(),
+  provider: aiProviderEnum.default('openai_compatible'),
+  baseUrl: z.url('请输入有效的 URL').max(500),
+  apiKey: z.string().max(1000).optional(),
+  model: z.string().min(1, '模型名称不能为空').max(100),
+});
+
+export type TestAiConnectionInput = z.infer<typeof testAiConnectionSchema>;
+
 export const createAiConversationSchema = z.object({
   title: z.string().max(200).optional(),
 });

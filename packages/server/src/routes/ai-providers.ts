@@ -19,8 +19,9 @@ import {
   updateAiProviderConfig,
   deleteAiProviderConfig,
   setDefaultAiProviderConfig,
+  testAiProviderConnection,
 } from '../services/ai-providers.service';
-import { createAiProviderConfigSchema, updateAiProviderConfigSchema } from '@zenith/shared';
+import { createAiProviderConfigSchema, updateAiProviderConfigSchema, testAiConnectionSchema } from '@zenith/shared';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -120,6 +121,25 @@ const setDefault = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, getOne, create, update, remove, setDefault] as const);
+const TestConnectionResultDTO = z.object({ success: z.boolean(), message: z.string() }).openapi('TestAiConnectionResult');
+
+const testConnection = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/test-connection',
+    tags: ['AI'],
+    summary: '测试 AI 服务商连接',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { body: { content: jsonContent(testAiConnectionSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(TestConnectionResultDTO, '测试结果') },
+  }),
+  handler: async (c) => {
+    const result = await testAiProviderConnection(c.req.valid('json'));
+    return c.json(okBody(result), 200);
+  },
+});
+
+router.openapiRoutes([list, getOne, create, update, remove, setDefault, testConnection] as const);
 
 export default router;

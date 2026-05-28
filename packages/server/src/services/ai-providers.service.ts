@@ -5,7 +5,8 @@ import { currentUser } from '../lib/context';
 import { formatDateTime } from '../lib/datetime';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { HTTPException } from 'hono/http-exception';
-import type { CreateAiProviderConfigInput, UpdateAiProviderConfigInput } from '@zenith/shared';
+import type { CreateAiProviderConfigInput, UpdateAiProviderConfigInput, TestAiConnectionInput } from '@zenith/shared';
+import { httpRequest } from '../lib/http-client';
 
 const MASKED_KEY = '******';
 
@@ -143,4 +144,50 @@ export async function getRawProviderConfig(id: number) {
 export async function getRawDefaultProviderConfig() {
   const [row] = await db.select().from(aiProviderConfigs).where(and(eq(aiProviderConfigs.isDefault, true), eq(aiProviderConfigs.isEnabled, true)));
   return row ?? null;
+}
+
+/** 测试连接：发送一条简单消息验证配置可用性 */
+export async function testAiProviderConnection(input: TestAiConnectionInput): Promise<{ success: boolean; message: string }> {
+  let apiKey = input.apiKey ?? '';
+
+  // 若 apiKey 为空或含脱敏标记，且提供了 id，则从 DB 取真实密钥
+  if ((!apiKey || apiKey.includes('...') || apiKey === '******') && input.id) {
+    const [row] = await db.select({ apiKey: aiProviderConfigs.apiKey }).from(aiProviderConfigs).where(eq(aiProviderConfigs.id, input.id));
+    if (!row) throw new HTTPException(404, { message: 'AI 服务商配置不存在' });
+    apiKey = row.apiKey;
+  }
+
+  if (!apiKey) throw new HTTPException(400, { message: 'API Key 不能为空' });
+
+  const url = `${input.baseUrl.replace(/\/$/, '')}/chat/completions`;
+  try {
+    const res = await httpRequest(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: input.model,
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 10,
+        stream: false,
+      }),
+      timeout: 15000,
+    });
+
+    if (res.ok) {
+      return { success: true, message: '连接成功' };
+    }
+    const body = await res.text().catch(() => '');
+    let errMsg = `HTTP ${res.status}`;
+    try {
+      const parsed = JSON.parse(body) as { error?: { message?: string } };
+      if (parsed?.error?.message) errMsg = parsed.error.message;
+    } catch { /* ignore */ }
+    return { success: false, message: errMsg };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, message };
+  }
 }

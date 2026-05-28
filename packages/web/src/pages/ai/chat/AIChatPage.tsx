@@ -160,7 +160,7 @@ export default function AIChatPage() {
     const sysOptions = providers.map((p) => ({ value: String(p.id), label: `${p.name} (${p.model})`, source: 'system' as const }));
     const userOption =
       uc?.isEnabled && uc.model
-        ? [{ value: 'user', label: `我的配置 (${uc.model})`, source: 'user' as const }]
+        ? [{ value: 'user', label: `${uc.name ?? '我的配置'} (${uc.model})`, source: 'user' as const }]
         : [];
     const options = [...userOption, ...sysOptions];
     setModelOptions(options);

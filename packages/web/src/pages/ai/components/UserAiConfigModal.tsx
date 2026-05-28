@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Collapse, SideSheet, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Collapse, List, SideSheet, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Edit2, Plus } from 'lucide-react';
 import type { AiProvider, AiProviderConfig, UserAiConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -112,22 +112,44 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
                     }
                     itemKey={pType}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {grouped[pType].map(({ type, config }) =>
-                        type === 'system' ? (
-                          <SystemConfigCard
-                            key={`sys-${(config as AiProviderConfig).id}`}
-                            config={config as AiProviderConfig}
+                    <List
+                      size="small"
+                      split
+                      dataSource={grouped[pType]}
+                      renderItem={({ type, config }) => {
+                        const isUser = type === 'user';
+                        const name = isUser
+                          ? ((config as UserAiConfig).name ?? '我的配置')
+                          : (config as AiProviderConfig).name;
+                        const model = config.model;
+                        const isEnabled = config.isEnabled;
+                        return (
+                          <List.Item
+                            key={isUser ? 'user' : `sys-${(config as AiProviderConfig).id}`}
+                            main={
+                              <Space align="center" style={{ gap: 6 }}>
+                                <Tag color={isUser ? 'violet' : 'blue'} size="small">
+                                  {isUser ? '我的' : '系统'}
+                                </Tag>
+                                <Text style={{ fontSize: 13, fontWeight: 600 }}>{name}</Text>
+                                {!isUser && (config as AiProviderConfig).isDefault && (
+                                  <Tag color="cyan" size="small">默认</Tag>
+                                )}
+                                <Tag color={isEnabled ? 'green' : 'grey'} size="small">
+                                  {isEnabled ? '启用' : '禁用'}
+                                </Tag>
+                                {model && (
+                                  <Text type="tertiary" style={{ fontSize: 12 }}>{model}</Text>
+                                )}
+                              </Space>
+                            }
+                            extra={isUser ? (
+                              <Button theme="borderless" size="small" onClick={openUserForm}>编辑</Button>
+                            ) : null}
                           />
-                        ) : (
-                          <UserConfigCard
-                            key="user-config"
-                            config={config as UserAiConfig}
-                            onEdit={openUserForm}
-                          />
-                        ),
-                      )}
-                    </div>
+                        );
+                      }}
+                    />
                   </Collapse.Panel>
                 ))}
               </Collapse>
@@ -149,72 +171,5 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
         }}
       />
     </>
-  );
-}
-
-// ── 子组件 ──────────────────────────────────────────────────────────────────
-
-interface SystemConfigCardProps {
-  readonly config: AiProviderConfig;
-}
-
-function SystemConfigCard({ config }: SystemConfigCardProps) {
-  return (
-    <div
-      style={{
-        border: '1px solid var(--semi-color-border)',
-        borderRadius: 6,
-        padding: '10px 12px',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-        <Tag color="blue" size="small">系统</Tag>
-        <Text strong style={{ fontSize: 13 }}>{config.name}</Text>
-        {config.isDefault && <Tag color="cyan" size="small">默认</Tag>}
-        <Tag color={config.isEnabled ? 'green' : 'grey'} size="small">
-          {config.isEnabled ? '启用' : '禁用'}
-        </Tag>
-      </div>
-      <Text type="tertiary" style={{ fontSize: 12 }}>
-        {config.model} · {config.baseUrl}
-      </Text>
-    </div>
-  );
-}
-
-interface UserConfigCardProps {
-  readonly config: UserAiConfig;
-  readonly onEdit: () => void;
-}
-
-function UserConfigCard({ config, onEdit }: UserConfigCardProps) {
-  return (
-    <div
-      style={{
-        border: '1px solid var(--semi-color-border)',
-        borderRadius: 6,
-        padding: '10px 12px',
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-        gap: 8,
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-          <Tag color="purple" size="small">用户</Tag>
-          <Text strong style={{ fontSize: 13 }}>我的配置</Text>
-          <Tag color={config.isEnabled ? 'green' : 'grey'} size="small">
-            {config.isEnabled ? '启用' : '禁用'}
-          </Tag>
-        </div>
-        <Text type="tertiary" style={{ fontSize: 12 }}>
-          {config.model ?? '未设置模型'}{config.baseUrl ? ` · ${config.baseUrl}` : ''}
-        </Text>
-      </div>
-      <Button theme="borderless" size="small" onClick={onEdit}>
-        编辑
-      </Button>
-    </div>
   );
 }
