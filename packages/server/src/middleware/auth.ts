@@ -7,6 +7,7 @@ import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { config } from '../config';
 import { errBody } from '../lib/openapi-schemas';
+import logger from '../lib/logger';
 
 export interface JwtPayload {
   userId: number;
@@ -42,42 +43,51 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
     await jwtMiddleware(c, async () => {});
     const payload = c.get('jwtPayload') as JwtPayload;
 
-    // Check if this token has been force-logged-out
+    // Check if this token has been force-logged-out (best-effort, don't block on Redis errors)
     if (payload.jti) {
-      const blacklisted = await isTokenBlacklisted(payload.jti);
-      if (blacklisted) {
-        return c.json(errBody('会话已被强制下线', 401), 401);
+      try {
+        const blacklisted = await isTokenBlacklisted(payload.jti);
+        if (blacklisted) {
+          return c.json(errBody('会话已被强制下线', 401), 401);
+        }
+      } catch (redisErr) {
+        logger.warn('[Auth] Redis blacklist check failed, allowing request:', redisErr);
       }
     }
 
-    // Refresh session activity
+    // Refresh session activity (best-effort, don't block on Redis errors)
     if (payload.jti) {
-      const existed = await touchSession(payload.jti);
-      // Session missing (e.g. Redis restarted) — lazily re-register to keep online-users list accurate
-      if (!existed) {
-        const ip = getClientIp(c);
-        const ua = c.req.header('user-agent') ?? '';
-        const { browser, os } = parseUserAgent(ua);
-        const [u] = await db.select({ nickname: users.nickname }).from(users).where(eq(users.id, payload.userId)).limit(1);
-        if (u) {
-          registerSession({
-            tokenId: payload.jti,
-            userId: payload.userId,
-            username: payload.username,
-            nickname: u.nickname,
-            tenantId: payload.tenantId ?? null,
-            ip,
-            browser,
-            os,
-            loginAt: new Date(),
-          }).catch(() => { /* best-effort, ignore errors */ });
+      try {
+        const existed = await touchSession(payload.jti);
+        // Session missing (e.g. Redis restarted) — lazily re-register to keep online-users list accurate
+        if (!existed) {
+          const ip = getClientIp(c);
+          const ua = c.req.header('user-agent') ?? '';
+          const { browser, os } = parseUserAgent(ua);
+          const [u] = await db.select({ nickname: users.nickname }).from(users).where(eq(users.id, payload.userId)).limit(1);
+          if (u) {
+            registerSession({
+              tokenId: payload.jti,
+              userId: payload.userId,
+              username: payload.username,
+              nickname: u.nickname,
+              tenantId: payload.tenantId ?? null,
+              ip,
+              browser,
+              os,
+              loginAt: new Date(),
+            }).catch(() => { /* best-effort, ignore errors */ });
+          }
         }
+      } catch (redisErr) {
+        logger.warn('[Auth] Redis session touch failed, allowing request:', redisErr);
       }
     }
 
     c.set('user', payload);
     await next();
-  } catch {
+  } catch (err) {
+    logger.warn('[Auth] JWT verification failed:', err);
     return c.json(errBody('登录已过期', 401), 401);
   }
 });
