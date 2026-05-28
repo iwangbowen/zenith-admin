@@ -30,6 +30,13 @@ export const tagsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: getTagGroups() });
   }),
 
+  // 获取单个标签
+  http.get('/api/tags/:id', ({ params }) => {
+    const tag = mockTags.find((t) => t.id === Number(params.id));
+    if (!tag) return HttpResponse.json({ code: 404, message: '标签不存在', data: null }, { status: 404 });
+    return HttpResponse.json({ code: 0, message: 'ok', data: tag });
+  }),
+
   // 新增标签
   http.post('/api/tags', async ({ request }) => {
     const body = await request.json() as Partial<Tag>;

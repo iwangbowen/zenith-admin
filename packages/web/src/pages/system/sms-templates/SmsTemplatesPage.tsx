@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Typography,
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Typography,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -31,6 +31,7 @@ export default function SmsTemplatesPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<SmsTemplate | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
@@ -63,7 +64,18 @@ export default function SmsTemplatesPage() {
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
-  const openEdit = (record: SmsTemplate) => { setEditingRecord(record); setModalVisible(true); };
+  const openEdit = async (record: SmsTemplate) => {
+    setEditingRecord(record);
+    setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<SmsTemplate>(`/api/sms-templates/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0) {
+      setEditingRecord(res.data);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
+  };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
@@ -151,8 +163,9 @@ export default function SmsTemplatesPage() {
         scroll={{ x: 1300 }} />
 
       <Modal title={editingRecord ? '编辑短信模板' : '新增短信模板'} visible={modalVisible}
-        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={720} bodyStyle={{ paddingBottom: 24 }}>
+        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); setModalDetailLoading(false); }}
+        confirmLoading={submitting} okButtonProps={{ disabled: modalDetailLoading }} width={720} bodyStyle={{ paddingBottom: 24 }}>
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editingRecord?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
@@ -206,6 +219,7 @@ export default function SmsTemplatesPage() {
             </Col>
           </Row>
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

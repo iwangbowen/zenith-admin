@@ -6,6 +6,7 @@ import {
   Modal,
   Select,
   Space,
+  Spin,
   Typography,
   Toast,
 } from '@douyinfe/semi-ui';
@@ -41,6 +42,7 @@ export default function SystemConfigsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SystemConfig | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
@@ -96,6 +98,19 @@ export default function SystemConfigsPage() {
     }
   };
 
+  const openEdit = async (record: SystemConfig) => {
+    setEditingConfig(record);
+    setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<SystemConfig>(`/api/system-configs/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingConfig(res.data);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
+  };
+
   const handleDelete = async (id: number) => {
     const res = await request.delete(`/api/system-configs/${id}`);
     if (res.code === 0) {
@@ -141,7 +156,7 @@ export default function SystemConfigsPage() {
       render: (_: unknown, record: SystemConfig) => (
         <Space>
           {hasPermission('system:config:update') && (
-            <Button theme="borderless" size="small" onClick={() => { setEditingConfig(record); setModalVisible(true); }}>
+            <Button theme="borderless" size="small" onClick={() => { void openEdit(record); }}>
               编辑
             </Button>
           )}
@@ -206,10 +221,12 @@ export default function SystemConfigsPage() {
       <Modal
         title={editingConfig ? '编辑配置' : '新增配置'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingConfig(null); }}
+        onCancel={() => { setModalVisible(false); setEditingConfig(null); setModalDetailLoading(false); }}
         onOk={handleModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={520}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editingConfig?.id ?? 'new-config'}
           getFormApi={(api) => { formApi.current = api; }}
@@ -235,6 +252,7 @@ export default function SystemConfigsPage() {
           />
           <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} />
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

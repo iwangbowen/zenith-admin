@@ -67,6 +67,12 @@ export async function deleteCronJob(id: number) {
   if (!row) throw new HTTPException(404, { message: '任务不存在' });
 }
 
+export async function getCronJob(id: number) {
+  const [row] = await db.select().from(cronJobs).where(eq(cronJobs.id, id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '任务不存在' });
+  return mapCronJob(row);
+}
+
 export async function getCronJobBeforeAudit(id: number) {
   const [row] = await db.select().from(cronJobs).where(eq(cronJobs.id, id)).limit(1);
   if (!row) return null;

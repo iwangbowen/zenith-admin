@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Tag, Typography,
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag, Typography,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -33,6 +33,7 @@ export default function InAppTemplatesPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<InAppTemplate | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
 
@@ -65,7 +66,18 @@ export default function InAppTemplatesPage() {
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
-  const openEdit = (record: InAppTemplate) => { setEditingRecord(record); setModalVisible(true); };
+  const openEdit = async (record: InAppTemplate) => {
+    setEditingRecord(record);
+    setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<InAppTemplate>(`/api/in-app-templates/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0) {
+      setEditingRecord(res.data);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
+  };
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
@@ -154,8 +166,9 @@ export default function InAppTemplatesPage() {
         scroll={{ x: 1100 }} />
 
       <Modal title={editingRecord ? '编辑站内信模板' : '新增站内信模板'} visible={modalVisible}
-        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={720} bodyStyle={{ paddingBottom: 24 }}>
+        onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); setModalDetailLoading(false); }}
+        confirmLoading={submitting} okButtonProps={{ disabled: modalDetailLoading }} width={720} bodyStyle={{ paddingBottom: 24 }}>
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editingRecord?.id ?? 'new'}
           getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
@@ -207,6 +220,7 @@ export default function InAppTemplatesPage() {
             </Col>
           </Row>
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

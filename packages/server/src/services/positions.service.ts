@@ -140,6 +140,13 @@ export async function getPositionsBeforeAudit(ids: number[]) {
   return rows.map(mapPosition);
 }
 
+export async function getPosition(id: number) {
+  const tc = tenantCondition(positions, currentUser());
+  const [row] = await db.select().from(positions).where(and(eq(positions.id, id), tc)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '岗位不存在' });
+  return mapPosition(row);
+}
+
 export async function getPositionBeforeAudit(id: number) {
   const tc = tenantCondition(positions, currentUser());
   const [row] = await db.select().from(positions).where(and(eq(positions.id, id), tc)).limit(1);

@@ -128,6 +128,14 @@ export async function deleteDictItem(itemId: number) {
   await db.delete(dictItems).where(eq(dictItems.id, itemId));
 }
 
+export async function getDict(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(dicts, user);
+  const [row] = await db.select().from(dicts).where(and(eq(dicts.id, id), tc)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '字典不存在' });
+  return mapDict(row);
+}
+
 export async function getDictBeforeAudit(id: number) {
   const user = currentUser();
   const tc = tenantCondition(dicts, user);

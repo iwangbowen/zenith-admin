@@ -23,6 +23,7 @@ import {
   batchDeleteTags,
   listTagGroups,
   ensureTagExists,
+  getTag,
 } from '../services/tags.service';
 
 const tagsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -54,6 +55,18 @@ const listGroupsRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(z.string()), '标签分组列表') },
   }),
   handler: async (c) => c.json(okBody(await listTagGroups()), 200),
+});
+
+// ─── 标签详情 ─────────────────────────────────────────────────────────────────
+const getOneTagRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['Tags'], summary: '标签详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:tag:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(TagDTO, '标签详情') },
+  }),
+  handler: async (c) => c.json(okBody(await getTag(c.req.valid('param').id)), 200),
 });
 
 // ─── 创建标签 ─────────────────────────────────────────────────────────────────
@@ -125,6 +138,7 @@ const batchDeleteTagsRoute = defineOpenAPIRoute({
 tagsRouter.openapiRoutes([
   listTagsRoute,
   listGroupsRoute,
+  getOneTagRoute,
   createTagRoute,
   updateTagRoute,
   batchDeleteTagsRoute,

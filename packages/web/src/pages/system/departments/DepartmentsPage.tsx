@@ -8,6 +8,7 @@ import {
   Row,
   Select,
   Space,
+  Spin,
   Typography,
   Toast,
 } from '@douyinfe/semi-ui';
@@ -109,6 +110,7 @@ export default function DepartmentsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const { items: statusItems } = useDictItems('common_status');
 
   const [leaderOptions, setLeaderOptions] = useState<Array<{ value: number; label: string }>>([]);
@@ -207,6 +209,20 @@ export default function DepartmentsPage() {
         status: 'enabled',
       };
 
+  const openEdit = async (record: Department) => {
+    setEditingDepartment(record);
+    setModalVisible(true);
+    void fetchLeaderOptions();
+    setModalDetailLoading(true);
+    const res = await request.get<Department>(`/api/departments/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingDepartment(res.data);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
+  };
+
   const handleReset = () => {
     setSearchParams(defaultSearchParams);
     void fetchDepartments(defaultSearchParams);
@@ -271,11 +287,7 @@ export default function DepartmentsPage() {
           {hasPermission('system:department:update') && <Button
             theme="borderless"
             size="small"
-            onClick={() => {
-              setEditingDepartment(record);
-              setModalVisible(true);
-              void fetchLeaderOptions();
-            }}
+            onClick={() => { void openEdit(record); }}
           >编辑</Button>}
           {hasPermission('system:department:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
             Modal.confirm({
@@ -353,11 +365,14 @@ export default function DepartmentsPage() {
         onCancel={() => {
           setModalVisible(false);
           setEditingDepartment(null);
+          setModalDetailLoading(false);
         }}
         onOk={handleModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={660}
         bodyStyle={{ paddingBottom: 24 }}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editingDepartment?.id ?? 'new-department'}
           getFormApi={(api) => { formApi.current = api; }}
@@ -421,6 +436,7 @@ export default function DepartmentsPage() {
             </Col>
           </Row>
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

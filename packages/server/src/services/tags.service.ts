@@ -32,6 +32,10 @@ export async function ensureTagExists(id: number) {
   return row;
 }
 
+export async function getTag(id: number) {
+  return mapTag(await ensureTagExists(id));
+}
+
 // ─── 列表查询 ─────────────────────────────────────────────────────────────────
 
 export interface ListTagsQuery {

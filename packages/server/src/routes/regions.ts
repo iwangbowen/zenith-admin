@@ -11,6 +11,7 @@ import {
   deleteRegion,
   getRegionBeforeAudit,
   exportRegions,
+  getRegion,
 } from '../services/regions.service';
 
 const regionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -50,6 +51,17 @@ const flatRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(RegionDTO), '平铺地区列表') },
   }),
   handler: async (c) => c.json(okBody(await listRegionsFlat()), 200),
+});
+
+const getOneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['Regions'], summary: '地区详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:region:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(RegionDTO, '地区详情') },
+  }),
+  handler: async (c) => c.json(okBody(await getRegion(c.req.valid('param').id)), 200),
 });
 
 const createRegionRoute = defineOpenAPIRoute({
@@ -109,6 +121,6 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-regionsRouter.openapiRoutes([listRoute, flatRoute, createRegionRoute, updateRegionRoute, deleteRoute, exportRoute] as const);
+regionsRouter.openapiRoutes([listRoute, flatRoute, getOneRoute, createRegionRoute, updateRegionRoute, deleteRoute, exportRoute] as const);
 
 export default regionsRouter;

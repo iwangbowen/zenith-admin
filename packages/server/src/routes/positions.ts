@@ -13,6 +13,7 @@ import {
   exportPositions,
   getPositionsBeforeAudit,
   getPositionBeforeAudit,
+  getPosition,
 } from '../services/positions.service';
 
 const positionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -56,9 +57,18 @@ const listRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listPositions(c.req.valid('query'))), 200),
 });
 
-const createPositionRoute = defineOpenAPIRoute({
+const getOneRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post', path: '/', tags: ['Positions'], summary: '新增岗位',
+    method: 'get', path: '/{id}', tags: ['Positions'], summary: '岗位详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:position:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...ok(PositionDTO, '岗位详情'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await getPosition(c.req.valid('param').id)), 200),
+});
+
+const createPositionRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:position:create', audit: { description: '创建岗位', module: '岗位管理' } })] as const,
     request: { body: { content: jsonContent(createPositionSchema), required: true } },
@@ -130,6 +140,6 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-positionsRouter.openapiRoutes([allRoute, listRoute, createPositionRoute, updatePositionRoute, batchDeleteRoute, deleteRoute, exportRoute] as const);
+positionsRouter.openapiRoutes([allRoute, listRoute, getOneRoute, createPositionRoute, updatePositionRoute, batchDeleteRoute, deleteRoute, exportRoute] as const);
 
 export default positionsRouter;

@@ -6,6 +6,7 @@ import {
   Modal,
   Select,
   Space,
+  Spin,
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
@@ -126,6 +127,7 @@ export default function TagsPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editRecord, setEditRecord] = useState<Tag | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
   const [colorValue, setColorValue] = useState('');
@@ -183,10 +185,19 @@ export default function TagsPage() {
     setModalVisible(true);
   };
 
-  const openEdit = (record: Tag) => {
+  const openEdit = async (record: Tag) => {
     setEditRecord(record);
     setColorValue(record.color ?? '');
     setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<Tag>(`/api/tags/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditRecord(res.data);
+      setColorValue(res.data.color ?? '');
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
   };
 
   const handleSubmit = async () => {
@@ -390,12 +401,14 @@ export default function TagsPage() {
         title={editRecord ? '编辑标签' : '新增标签'}
         visible={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => { setModalVisible(false); setEditRecord(null); }}
+        onCancel={() => { setModalVisible(false); setEditRecord(null); setModalDetailLoading(false); }}
         confirmLoading={submitting}
+        okButtonProps={{ disabled: modalDetailLoading }}
         afterClose={() => { setColorValue(''); }}
         width={520}
         bodyStyle={{ paddingBottom: 24 }}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editRecord?.id ?? 'new'}
           getFormApi={(api) => {
@@ -452,6 +465,7 @@ export default function TagsPage() {
             style={{ width: '100%' }}
           />
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

@@ -9,6 +9,7 @@ import {
   Space,
   Modal,
   Form,
+  Spin,
   Toast,
   Typography,
   SideSheet,
@@ -44,6 +45,7 @@ export default function DictsPage() {
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);  const [dictModalVisible, setDictModalVisible] = useState(false);
   const [editingDict, setEditingDict] = useState<Dict | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   // ─── 字典项列表 ────────────────────────────────────────────────────────────
   const [selectedDict, setSelectedDict] = useState<Dict | null>(null);
@@ -146,6 +148,19 @@ export default function DictsPage() {
     }
   };
 
+  const openEditDict = async (row: Dict) => {
+    setEditingDict(row);
+    setDictModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<Dict>(`/api/dicts/${row.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingDict(res.data);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
+  };
+
   const handleDictDelete = async (id: number) => {
     const res = await request.delete(`/api/dicts/${id}`);
     if (res.code === 0) {
@@ -234,7 +249,7 @@ export default function DictsPage() {
           {hasPermission('system:dict:update') && <Button
             theme="borderless"
             size="small"
-            onClick={(e) => { e.stopPropagation(); setEditingDict(row); setDictModalVisible(true); }}
+            onClick={(e) => { e.stopPropagation(); void openEditDict(row); }}
           >
             编辑
           </Button>}
@@ -413,11 +428,13 @@ export default function DictsPage() {
       <Modal
         title={editingDict ? '编辑字典' : '新增字典'}
         visible={dictModalVisible}
-        onCancel={() => setDictModalVisible(false)}
+        onCancel={() => { setDictModalVisible(false); setModalDetailLoading(false); }}
         onOk={handleDictModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={480}
         bodyStyle={{ paddingBottom: 24 }}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           getFormApi={(api) => dictFormApi.current = api}
           key={editingDict?.id ?? 'new-dict'}
@@ -434,6 +451,7 @@ export default function DictsPage() {
             placeholder="请选择状态"
           />
         </Form>
+        </Spin>
       </Modal>
 
       {/* 字典项创建/编辑 Modal */}

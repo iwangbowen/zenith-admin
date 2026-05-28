@@ -16,6 +16,7 @@ import {
   listAllCronJobLogs,
   listCronJobLogs,
   getCronJobBeforeAudit,
+  getCronJob,
 } from '../services/cron-jobs.service';
 
 const cronJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -53,6 +54,17 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(CronJobDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listCronJobs(c.req.valid('query'))), 200),
+});
+
+const getOneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['CronJobs'], summary: '任务详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:cronjob:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(CronJobDTO, '任务详情') },
+  }),
+  handler: async (c) => c.json(okBody(await getCronJob(c.req.valid('param').id)), 200),
 });
 
 const createRouteDef = defineOpenAPIRoute({
@@ -170,6 +182,6 @@ const idLogsRoute = defineOpenAPIRoute({
   },
 });
 
-cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, createRouteDef, updateRouteDef, deleteRouteDef, runRoute, statusRoute, exportRouteDef, logsRoute, idLogsRoute] as const);
+cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, getOneRoute, createRouteDef, updateRouteDef, deleteRouteDef, runRoute, statusRoute, exportRouteDef, logsRoute, idLogsRoute] as const);
 
 export default cronJobsRoute;

@@ -8,6 +8,7 @@ import {
   Row,
   Select,
   Space,
+  Spin,
   Switch,
   Tag,
   Toast,
@@ -125,6 +126,7 @@ export default function FileStorageConfigsPage() {
   const [total, setTotal] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<FileStorageConfig | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
   const [formIsDefault, setFormIsDefault] = useState(false);
 
@@ -175,11 +177,21 @@ export default function FileStorageConfigsPage() {
     setModalVisible(true);
   };
 
-  const openEdit = (config: FileStorageConfig) => {
+  const openEdit = async (config: FileStorageConfig) => {
     setEditingConfig(config);
     setFormProvider(config.provider);
     setFormIsDefault(config.isDefault);
     setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<FileStorageConfig>(`/api/file-storage-configs/${config.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingConfig(res.data);
+      setFormProvider(res.data.provider);
+      setFormIsDefault(res.data.isDefault);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
   };
 
   const handleModalOk = async () => {
@@ -404,11 +416,14 @@ export default function FileStorageConfigsPage() {
         onCancel={() => {
           setModalVisible(false);
           setEditingConfig(null);
+          setModalDetailLoading(false);
         }}
         onOk={handleModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={720}
         bodyStyle={{ paddingBottom: 24 }}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           getFormApi={(api) => formApi.current = api}
           key={editingConfig?.id ?? 'new-file-storage-config'}
@@ -572,6 +587,7 @@ export default function FileStorageConfigsPage() {
             </Col>
           </Row>
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

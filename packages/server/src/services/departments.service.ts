@@ -170,6 +170,14 @@ export async function deleteDepartment(id: number): Promise<void> {
   await db.delete(departments).where(and(eq(departments.id, id), tc));
 }
 
+export async function getDepartment(id: number) {
+  const tc = tenantCondition(departments, currentUser());
+  const [row] = await db.select().from(departments).where(and(eq(departments.id, id), tc)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '部门不存在' });
+  const leaderMap = await buildLeaderMap(row.leaderId ? [row.leaderId] : []);
+  return mapDepartment(row, row.leaderId ? leaderMap.get(row.leaderId) ?? null : null);
+}
+
 export async function getDepartmentBeforeAudit(id: number) {
   const tc = tenantCondition(departments, currentUser());
   const [row] = await db.select().from(departments).where(and(eq(departments.id, id), tc)).limit(1);

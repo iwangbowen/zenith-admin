@@ -165,6 +165,12 @@ export async function deleteFileStorageConfig(id: number) {
   await db.delete(fileStorageConfigs).where(eq(fileStorageConfigs.id, id));
 }
 
+export async function getFileStorageConfig(id: number) {
+  const [row] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '存储配置不存在' });
+  return mapFileStorageConfig(row);
+}
+
 export async function getFileStorageConfigBeforeAudit(id: number) {
   const [row] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   if (!row) return null;

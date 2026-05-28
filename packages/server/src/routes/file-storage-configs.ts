@@ -12,6 +12,7 @@ import {
   setDefaultFileStorageConfig,
   deleteFileStorageConfig,
   getFileStorageConfigBeforeAudit,
+  getFileStorageConfig,
 } from '../services/file-storage-configs.service';
 
 const fileStorageConfigsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -35,6 +36,17 @@ const defaultRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(FileStorageConfigDTO.nullable(), 'ok') },
   }),
   handler: async (c) => c.json(okBody(await getDefaultFileStorageConfig()), 200),
+});
+
+const getOneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['FileStorageConfigs'], summary: '存储配置详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:file:config' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(FileStorageConfigDTO, '存储配置详情') },
+  }),
+  handler: async (c) => c.json(okBody(await getFileStorageConfig(c.req.valid('param').id)), 200),
 });
 
 const createRouteDef = defineOpenAPIRoute({
@@ -97,6 +109,6 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
-fileStorageConfigsRouter.openapiRoutes([listRoute, defaultRoute, createRouteDef, updateRouteDef, setDefaultRoute, deleteRouteDef] as const);
+fileStorageConfigsRouter.openapiRoutes([listRoute, defaultRoute, getOneRoute, createRouteDef, updateRouteDef, setDefaultRoute, deleteRouteDef] as const);
 
 export default fileStorageConfigsRouter;

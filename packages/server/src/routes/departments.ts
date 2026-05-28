@@ -12,6 +12,7 @@ import {
   deleteDepartment,
   exportDepartments,
   getDepartmentBeforeAudit,
+  getDepartment,
 } from '../services/departments.service';
 
 const departmentsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -54,12 +55,18 @@ const flatRoute = defineOpenAPIRoute({
   },
 });
 
-const createRouteDef = defineOpenAPIRoute({
+const getOneRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post',
-    path: '/',
-    tags: ['Departments'],
-    summary: '创建部门',
+    method: 'get', path: '/{id}', tags: ['Departments'], summary: '部门详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:department:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(DepartmentDTO, '部门详情') },
+  }),
+  handler: async (c) => c.json(okBody(await getDepartment(c.req.valid('param').id)), 200),
+});
+
+const createRouteDef = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:department:create', audit: { description: '创建部门', module: '部门管理' } })] as const,
     request: { body: { content: jsonContent(createDepartmentSchema), required: true } },
@@ -141,6 +148,6 @@ const exportRouteDef = defineOpenAPIRoute({
   },
 });
 
-departmentsRouter.openapiRoutes([listRoute, flatRoute, createRouteDef, updateRouteDef, deleteRouteDef, exportRouteDef] as const);
+departmentsRouter.openapiRoutes([listRoute, flatRoute, getOneRoute, createRouteDef, updateRouteDef, deleteRouteDef, exportRouteDef] as const);
 
 export default departmentsRouter;

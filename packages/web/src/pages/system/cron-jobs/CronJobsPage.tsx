@@ -10,6 +10,7 @@ import {
   Modal,
   Select,
   Space,
+  Spin,
   Switch,
   Table,
   Tag,
@@ -59,6 +60,7 @@ export default function CronJobsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [cronExprValue, setCronExprValue] = useState('');
   const [handlers, setHandlers] = useState<string[]>([]);
   const [logsDrawerVisible, setLogsDrawerVisible] = useState(false);
@@ -154,6 +156,21 @@ export default function CronJobsPage() {
     if (res.code === 0) {
       Toast.success('删除成功');
       void fetchData();
+    }
+  };
+
+  const openEdit = async (record: CronJob) => {
+    setEditingJob(record);
+    setCronExprValue(record.cronExpression ?? '');
+    setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<CronJob>(`/api/cron-jobs/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingJob(res.data);
+      setCronExprValue(res.data.cronExpression ?? '');
+    } else {
+      Toast.error(res.message || '获取信息失败');
     }
   };
 
@@ -296,7 +313,7 @@ export default function CronJobsPage() {
             </Button>
           )}
           {hasPermission('system:cronjob:update') && (
-            <Button theme="borderless" size="small" onClick={() => { setEditingJob(record); setCronExprValue(record.cronExpression ?? ''); setModalVisible(true); }}>
+            <Button theme="borderless" size="small" onClick={() => { void openEdit(record); }}>
               编辑
             </Button>
           )}
@@ -392,10 +409,12 @@ export default function CronJobsPage() {
       <Modal
         title={editingJob ? '编辑定时任务' : '新增定时任务'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingJob(null); setCronExprValue(''); }}
+        onCancel={() => { setModalVisible(false); setEditingJob(null); setCronExprValue(''); setModalDetailLoading(false); }}
         onOk={handleModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={720}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editingJob?.id ?? 'new-job'}
           getFormApi={(api) => { formApi.current = api; }}
@@ -482,6 +501,7 @@ export default function CronJobsPage() {
           <Form.TextArea field="params" label="参数 JSON" placeholder='可选，如 {"key":"value"}' rows={2} />
           <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} rows={2} />
         </Form>
+        </Spin>
       </Modal>
 
       {/* 全量执行日志抽屉 */}

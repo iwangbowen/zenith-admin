@@ -118,6 +118,12 @@ export async function deleteRegion(id: number) {
   await db.delete(regions).where(eq(regions.id, id));
 }
 
+export async function getRegion(id: number) {
+  const [row] = await db.select().from(regions).where(eq(regions.id, id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '地区不存在' });
+  return mapRegion(row);
+}
+
 export async function getRegionBeforeAudit(id: number) {
   const [row] = await db.select().from(regions).where(eq(regions.id, id)).limit(1);
   if (!row) return null;

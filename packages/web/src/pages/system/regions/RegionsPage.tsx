@@ -6,6 +6,7 @@ import {
   Modal,
   Select,
   Space,
+  Spin,
   Toast,
   Popconfirm,
 } from '@douyinfe/semi-ui';
@@ -55,6 +56,7 @@ export default function RegionsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRegion, setEditingRegion] = useState<Region | null>(null);
   const [editingLevel, setEditingLevel] = useState<string>('province');
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
   const [tableHeight, setTableHeight] = useState(500);
   const [tableWidth, setTableWidth] = useState(0);
@@ -148,12 +150,22 @@ export default function RegionsPage() {
     setEditingLevel(record.level);
     setModalVisible(true);
     void fetchFlatData();
+    setModalDetailLoading(true);
+    const res = await request.get<Region>(`/api/regions/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingRegion(res.data);
+      setEditingLevel(res.data.level);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
   }
 
   function closeModal() {
     setModalVisible(false);
     setEditingRegion(null);
     setEditingLevel('province');
+    setModalDetailLoading(false);
   }
 
   // 构建 Cascader 树数据：省→市 两级
@@ -394,9 +406,11 @@ export default function RegionsPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={520}
         maskClosable={false}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editingRegion?.id ?? 'new'}
           getFormApi={(api) => { formApi.current = api; }}
@@ -455,6 +469,7 @@ export default function RegionsPage() {
             style={{ width: '100%' }}
           />
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

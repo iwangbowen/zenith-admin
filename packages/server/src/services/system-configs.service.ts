@@ -96,6 +96,14 @@ export async function deleteSystemConfig(id: number) {
   if (!row) throw new HTTPException(404, { message: '配置不存在' });
 }
 
+export async function getSystemConfig(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(systemConfigs, user);
+  const [row] = await db.select().from(systemConfigs).where(tc ? and(eq(systemConfigs.id, id), tc) : eq(systemConfigs.id, id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '配置不存在' });
+  return mapConfig(row);
+}
+
 export async function getSystemConfigBeforeAudit(id: number) {
   const user = currentUser();
   const tc = tenantCondition(systemConfigs, user);

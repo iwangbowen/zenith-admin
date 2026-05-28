@@ -7,6 +7,7 @@ import {
   Modal,
   Select,
   Space,
+  Spin,
   Typography,
   Toast,
 } from '@douyinfe/semi-ui';
@@ -46,6 +47,7 @@ export default function PositionsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems } = useDictItems('common_status');
 
@@ -124,6 +126,19 @@ export default function PositionsPage() {
     }
   };
 
+  const openEdit = async (record: Position) => {
+    setEditingPosition(record);
+    setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<Position>(`/api/positions/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingPosition(res.data);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
+  };
+
   const handleDelete = async (id: number) => {
     const res = await request.delete(`/api/positions/${id}`);
     if (res.code === 0) {
@@ -179,10 +194,7 @@ export default function PositionsPage() {
           {hasPermission('system:position:update') && <Button
             theme="borderless"
             size="small"
-            onClick={() => {
-              setEditingPosition(record);
-              setModalVisible(true);
-            }}
+            onClick={() => { void openEdit(record); }}
           >编辑</Button>}
           {hasPermission('system:position:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
             Modal.confirm({
@@ -273,11 +285,14 @@ export default function PositionsPage() {
         onCancel={() => {
           setModalVisible(false);
           setEditingPosition(null);
+          setModalDetailLoading(false);
         }}
         onOk={handleModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={520}
         bodyStyle={{ paddingBottom: 24 }}
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
           key={editingPosition?.id ?? 'new-position'}
           getFormApi={(api) => { formApi.current = api; }}
@@ -298,6 +313,7 @@ export default function PositionsPage() {
           />
           <Form.TextArea field="remark" label="备注" placeholder="请输入备注" maxCount={256} />
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

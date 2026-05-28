@@ -34,6 +34,13 @@ export const regionsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: mockRegions });
   }),
 
+  // GET /:id — 地区详情
+  http.get('/api/regions/:id', ({ params }) => {
+    const region = mockRegions.find((r) => r.id === Number(params.id));
+    if (!region) return HttpResponse.json({ code: 404, message: '地区不存在', data: null }, { status: 404 });
+    return HttpResponse.json({ code: 0, message: 'ok', data: region });
+  }),
+
   // POST / — 创建
   http.post('/api/regions', async ({ request }) => {
     const body = (await request.json()) as Partial<Region>;

@@ -12,6 +12,7 @@ import {
   deleteSystemConfig,
   exportSystemConfigs,
   getSystemConfigBeforeAudit,
+  getSystemConfig,
 } from '../services/system-configs.service';
 
 const systemConfigsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -53,9 +54,18 @@ const listRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listSystemConfigs(c.req.valid('query'))), 200),
 });
 
-const createConfigRoute = defineOpenAPIRoute({
+const getOneRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post', path: '/', tags: ['SystemConfigs'], summary: '新增配置',
+    method: 'get', path: '/{id}', tags: ['SystemConfigs'], summary: '配置详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:config:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(SystemConfigDTO, '配置详情') },
+  }),
+  handler: async (c) => c.json(okBody(await getSystemConfig(c.req.valid('param').id)), 200),
+});
+
+const createConfigRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:config:create', audit: { module: '系统配置', description: '新增配置' } })] as const,
     request: { body: { content: jsonContent(createSystemConfigSchema), required: true } },
@@ -110,6 +120,6 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-systemConfigsRoute.openapiRoutes([publicGetRoute, passwordPolicyRoute, listRoute, createConfigRoute, updateConfigRoute, deleteRouteDef, exportRoute] as const);
+systemConfigsRoute.openapiRoutes([publicGetRoute, passwordPolicyRoute, listRoute, getOneRoute, createConfigRoute, updateConfigRoute, deleteRouteDef, exportRoute] as const);
 
 export default systemConfigsRoute;
