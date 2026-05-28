@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, Input, Popconfirm, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Plus, RotateCcw, Search } from 'lucide-react';
+import { Plus, RotateCcw, Search, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { request } from '@/utils/request';
@@ -36,6 +36,7 @@ export default function AIProvidersPage() {
   const [list, setList] = useState<AiProviderConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
   const [editTarget, setEditTarget] = useState<AiProviderConfig | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -103,6 +104,19 @@ export default function AIProvidersPage() {
       };
     });
   }, [list, search]);
+
+  const allGroupKeys = useMemo(() => treeData.map((g) => g.key), [treeData]);
+
+  const isAllExpanded = expandedRowKeys.length > 0 && expandedRowKeys.length >= allGroupKeys.length;
+
+  function toggleExpandAll() {
+    setExpandedRowKeys(isAllExpanded ? [] : allGroupKeys);
+  }
+
+  useEffect(() => {
+    setExpandedRowKeys(allGroupKeys);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allGroupKeys.join(',')]);
 
   const columns: ColumnProps<TableRow>[] = [
     {
@@ -193,6 +207,13 @@ export default function AIProvidersPage() {
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearch(''); void loadData(); }}>
           重置
         </Button>
+        <Button
+          type="primary"
+          icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+          onClick={toggleExpandAll}
+        >
+          {isAllExpanded ? '全部折叠' : '全部展开'}
+        </Button>
         {hasPermission('ai:provider:create') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
             新增
@@ -206,7 +227,10 @@ export default function AIProvidersPage() {
         loading={loading}
         rowKey="key"
         pagination={false}
-        defaultExpandAllRows
+        expandedRowKeys={expandedRowKeys}
+        onExpandedRowsChange={(rows) =>
+          setExpandedRowKeys((rows ?? []).filter((r): r is ProviderGroupRow => '_isGroup' in r).map((r) => r.key))
+        }
         expandRowByClick
       />
 
