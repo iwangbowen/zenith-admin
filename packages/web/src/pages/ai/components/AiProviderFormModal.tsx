@@ -155,15 +155,17 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
         }
       } else {
         const et = props.editTarget;
+        let res;
         if (et) {
-          await request.put(`/api/ai/providers/${et.id}`, values);
-          Toast.success('修改成功');
+          res = await request.put(`/api/ai/providers/${et.id}`, values);
         } else {
-          await request.post('/api/ai/providers', values);
-          Toast.success('创建成功');
+          res = await request.post('/api/ai/providers', values);
         }
-        props.onSaved();
-        onClose();
+        if (res.code === 0) {
+          Toast.success(et ? '修改成功' : '创建成功');
+          props.onSaved();
+          onClose();
+        }
       }
     } catch {
       // handled by request interceptor
