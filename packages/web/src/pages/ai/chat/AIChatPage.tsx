@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, List as SemiList, Tooltip, Spin } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
-import { MessageSquarePlus, Trash2, Globe, AlignLeft, AlignJustify, Bot, Wrench, FileText, Settings } from 'lucide-react';
+import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { PDFPreviewPanel } from './PDFPreviewPanel';
@@ -35,12 +35,6 @@ const HINTS = [
 
 const DEFAULT_MODEL_OPTIONS: { value: string; label: string; source: 'system' | 'user' }[] = [];
 
-const THINK_MODE_OPTIONS = [
-  { label: '极速', value: 'fast' },
-  { label: '思考', value: 'think' },
-  { label: '超能', value: 'super' },
-];
-
 let msgIdCounter = 1000;
 function nextMsgId() {
   return `msg-${++msgIdCounter}`;
@@ -70,9 +64,19 @@ interface PdfFileCardProps {
   readonly filename: string;
   readonly size: string;
   readonly onClick?: () => void;
+  readonly url?: string | null;
+  readonly uploading?: boolean;
 }
 
-function PdfFileCard({ filename, size, onClick }: PdfFileCardProps) {
+function PdfFileCard({ filename, size, onClick, url, uploading }: PdfFileCardProps) {
+  let sizeLabel = `PDF · ${size}`;
+  let sizeColor = 'var(--semi-color-text-2)';
+  if (uploading) {
+    sizeLabel = '上传中…';
+  } else if (url) {
+    sizeLabel = `PDF · ${size} · 已上传`;
+    sizeColor = 'var(--semi-color-success)';
+  }
   const inner = (
     <>
       <div
@@ -104,8 +108,8 @@ function PdfFileCard({ filename, size, onClick }: PdfFileCardProps) {
         >
           {filename}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 2 }}>
-          PDF · {size}
+        <div style={{ fontSize: 12, color: sizeColor, marginTop: 2 }}>
+          {sizeLabel}
         </div>
       </div>
     </>
@@ -145,14 +149,11 @@ export default function AIChatPage() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [align, setAlign] = useState<'leftRight' | 'leftAlign'>('leftRight');
   const [mode, setMode] = useState<'bubble' | 'noBubble' | 'userBubble'>('bubble');
-  const configureValuesRef = React.useRef<Record<string, unknown>>({
-    model: '',
-    webSearch: false,
-    thinkMode: 'fast',
-  });
+  const configureValuesRef = React.useRef<Record<string, unknown>>({ model: '' });
   const setConfigureValues = useCallback((v: Record<string, unknown>) => { configureValuesRef.current = v; }, []);
   const dialogueRef = useRef<AIChatDialogueInstance | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Load AI provider configs + user configs as model options
@@ -200,14 +201,15 @@ export default function AIChatPage() {
     }).catch(() => {}).finally(() => setMsgsLoading(false));
   }, [activeConvId]);
 
-  // AIChatInput 内置上传按钮的拦截处理：选择 PDF 后直接开启预览，不实际上传
+  // AIChatInput 内置上传按钮的拦截处理：选择 PDF 后上传到系统文件服务
   const handleBeforeUpload = useCallback(
     (fileInfo: { file: { fileInstance?: File; name: string; size?: string } }) => {
       const rawFile = fileInfo.file?.fileInstance;
       if (rawFile) {
-        setPdfFile(rawFile);
+        setPdfFileUrl(null);
+        const msgId = nextMsgId();
         const fileMsg: Message = {
-          id: nextMsgId(),
+          id: msgId,
           role: 'user',
           content: [
             {
@@ -215,27 +217,38 @@ export default function AIChatPage() {
               filename: rawFile.name,
               size: formatFileSize(rawFile.size),
               fileInstance: rawFile,
+              uploading: true,
             },
           ] as NonNullable<AIChatMessage['content']>,
           createdAt: Date.now(),
           status: 'completed',
         };
         setMessages((prev) => [...prev, fileMsg]);
+        const formData = new FormData();
+        formData.append('file', rawFile);
+        void request.post<{ url: string }>('/api/files/upload-one', formData).then((res) => {
+          const url = res.data?.url ?? null;
+          setPdfFileUrl(url);
+          const updatedContent = [
+            { type: 'pdf_card', filename: rawFile.name, size: formatFileSize(rawFile.size), fileInstance: rawFile, uploading: false, url },
+          ] as NonNullable<AIChatMessage['content']>;
+          setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, content: updatedContent } : m)));
+        });
       }
       return false as const;
     },
     []
   );
 
-  // eslint-disable-next-line react/no-unstable-nested-components
   const dialogueRenderConfig = useMemo(() => ({}), []);
 
   const renderDialogueContentItem = useMemo(() => ({
-    // eslint-disable-next-line react/no-unstable-nested-components
     pdf_card: (item: Record<string, unknown>) => (
       <PdfFileCard
         filename={item.filename as string}
         size={item.size as string}
+        url={item.url as string | null | undefined}
+        uploading={item.uploading as boolean | undefined}
         onClick={() => {
           const fi = item.fileInstance;
           if (fi instanceof File) setPdfFile(fi);
@@ -513,13 +526,13 @@ export default function AIChatPage() {
               </Title>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {pdfFile && (
-                  <Tooltip content="点击关闭预览">
+                  <Tooltip content={pdfFileUrl ? '点击关闭预览（已上传）' : '点击关闭预览（上传中…）'}>
                     <Button
                       theme="solid"
                       type="primary"
                       size="small"
                       icon={<FileText size={13} />}
-                      onClick={() => setPdfFile(null)}
+                      onClick={() => { setPdfFile(null); setPdfFileUrl(null); }}
                     >
                       {truncateName(pdfFile.name)}
                     </Button>
@@ -593,7 +606,7 @@ export default function AIChatPage() {
             {/* 输入框 */}
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)', flexShrink: 0 }}>
               <AIChatInput
-                placeholder="向 AI 提问，或点击下方回形针上传 PDF 预览..."
+                placeholder="向 AI 提问，或点击下方回形针上传 PDF..."
                 generating={generating}
                 onMessageSend={(c) => void handleMessageSend(c)}
                 onStopGenerate={handleStopGenerate}
@@ -638,27 +651,6 @@ export default function AIChatPage() {
                           </div>
                         );
                       }}
-                    />
-                    <Configure.Button
-                      field="webSearch"
-                      initValue={false}
-                      icon={<Globe size={14} />}
-                    >
-                      联网搜索
-                    </Configure.Button>
-                    <Configure.RadioButton
-                      field="thinkMode"
-                      initValue="fast"
-                      options={THINK_MODE_OPTIONS}
-                    />
-                    <Configure.Mcp
-                      showConfigure={false}
-                      onConfigureButtonClick={() => Toast.info('MCP 配置面板')}
-                      options={[
-                        { icon: <Bot size={14} />, label: 'Semi MCP', value: 'semi-mcp', active: true },
-                        { icon: <Wrench size={14} />, label: 'Code Exec', value: 'code-exec', active: false },
-                        { icon: <Globe size={14} />, label: 'Web Search', value: 'web-search', active: true },
-                      ]}
                     />
                   </Configure>
                 )}
