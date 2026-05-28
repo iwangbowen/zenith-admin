@@ -28,8 +28,8 @@ export default function AIProvidersPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await request.get<{ list: AiProviderConfig[] }>('/api/ai/providers');
-      setList(res.data?.list ?? []);
+      const res = await request.get<AiProviderConfig[]>('/api/ai/providers');
+      setList(res.data ?? []);
     } finally {
       setLoading(false);
     }

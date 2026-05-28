@@ -37,10 +37,10 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
     setLoading(true);
     try {
       const [sysRes, userRes] = await Promise.all([
-        request.get<{ list: AiProviderConfig[] }>('/api/ai/providers'),
+        request.get<AiProviderConfig[]>('/api/ai/providers'),
         request.get<UserAiConfig | null>('/api/ai/user-config').catch(() => ({ data: null, code: 0, message: '' })),
       ]);
-      setSystemConfigs(sysRes.data?.list ?? []);
+      setSystemConfigs(sysRes.data ?? []);
       setUserConfig(userRes.data ?? null);
     } finally {
       setLoading(false);
