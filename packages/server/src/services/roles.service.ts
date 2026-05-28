@@ -78,7 +78,7 @@ export interface CreateRoleInput {
   description?: string;
   status?: 'enabled' | 'disabled';
   sort?: number;
-  dataScope?: 'all' | 'dept' | 'self';
+  dataScope?: 'all' | 'custom' | 'dept_only' | 'dept' | 'self';
   deptIds?: number[] | null;
   deptScopeIds?: number[] | null;
 }
