@@ -32,7 +32,7 @@
 
 - **分页格式**：列表接口返回 `{ list, total, page, pageSize }`
 
-- **数据权限**：业务数据模块在 Step 0 必须询问是否需要 dataScope 过滤；配置数据（角色/菜单/字典）无需过滤
+- **数据权限**：业务数据模块在 Step 0 必须询问是否需要 dataScope 过滤；配置数据（角色/菜单/字典）无需过滤。**`department_id` 字段只添加到需要按部门隔离查看的业务数据表**（如员工、订单、客户等）；配置类表（菜单/角色/字典/系统配置）、日志表、公共数据表（公告/地区）均不需要。当前系统中 `users` 和 `user_groups` 已有该字段，无需补加
 
 - **多租户隔离**：业务数据表添加 `tenantId` 字段，查询用 `tenantCondition(table, user)`，创建用 `getCreateTenantId(user)`；关闭多租户时两者均返回 `null`/`undefined`，无需额外判断
 
