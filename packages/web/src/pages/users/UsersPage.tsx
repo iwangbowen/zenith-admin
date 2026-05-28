@@ -18,6 +18,7 @@ import {
   Tree,
   Tooltip,
   Dropdown,
+  Spin,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, MoreHorizontal } from 'lucide-react';
@@ -83,6 +84,7 @@ export default function UsersPage() {
 
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importFileRef = useRef<File | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   const selectedDeletableCount = useMemo(() => {
     if (!data?.list?.length) return 0;
@@ -466,10 +468,13 @@ export default function UsersPage() {
             theme="borderless"
             size="small"
             onClick={async () => {
+              setEditingUser(record);
+              setModalVisible(true);
+              setModalDetailLoading(true);
               const res = await request.get<User>(`/api/users/${record.id}`);
+              setModalDetailLoading(false);
               if (res.code === 0) {
                 setEditingUser(res.data);
-                setModalVisible(true);
               } else {
                 Toast.error(res.message || '获取用户信息失败');
               }
@@ -643,8 +648,10 @@ export default function UsersPage() {
         onCancel={() => {
           setModalVisible(false);
           setEditingUser(null);
+          setModalDetailLoading(false);
         }}
         onOk={handleModalOk}
+        okButtonProps={{ disabled: modalDetailLoading }}
         width={660}
         closeOnEsc
         bodyStyle={{ paddingBottom: 24 }}
@@ -657,6 +664,7 @@ export default function UsersPage() {
           labelPosition="left"
           labelWidth={72}
         >
+          <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
           {editingUser ? (
             <Row gutter={16}>
               <Col span={12}>
@@ -754,6 +762,7 @@ export default function UsersPage() {
               />
             </Col>
           </Row>
+          </Spin>
         </Form>
       </Modal>
 
