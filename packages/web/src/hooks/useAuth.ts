@@ -23,15 +23,18 @@ export function useAuth() {
       if (res.code === 0) {
         const { permissions, ...userData } = res.data;
         setState({ user: userData, permissions: permissions ?? [], loading: false });
+      } else if (res.code === -1) {
+        // 网络错误（如后端未启动完成），不清除 token，只重置 loading
+        setState((prev) => ({ ...prev, loading: false }));
       } else {
+        // 认证失败（如 token 过期），清除 token
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         setState({ user: null, permissions: [], loading: false });
       }
     } catch {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
-      setState({ user: null, permissions: [], loading: false });
+      // 网络异常，不清除 token，只重置 loading
+      setState((prev) => ({ ...prev, loading: false }));
     }
   }, []);
 
