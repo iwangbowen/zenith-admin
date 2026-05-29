@@ -540,6 +540,13 @@
       "when": 1779984175779,
       "tag": "0076_last_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1780053641930,
+      "tag": "0077_brief_morph",
+      "breakpoints": true
     }
   ]
 }

@@ -31,3 +31,4 @@ export * from './tags';
 export * from './rate-limit';
 
 export * from './ai';
+export * from './data-mask';

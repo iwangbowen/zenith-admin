@@ -1,0 +1,311 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Button,
+  Input,
+  Tag,
+  Space,
+  Modal,
+  Form,
+  Toast,
+  Typography,
+  Popconfirm,
+} from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
+import { Plus, RotateCcw, EyeOff } from 'lucide-react';
+import type { DataMaskConfig, MaskType, Role } from '@zenith/shared';
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePermission } from '@/hooks/usePermission';
+
+const { Text } = Typography;
+
+const MASK_TYPE_LABELS: Record<MaskType, string> = {
+  phone:     '手机号',
+  email:     '邮箱',
+  id_card:   '身份证',
+  name:      '姓名',
+  bank_card: '银行卡',
+  custom:    '自定义',
+};
+
+const MASK_TYPE_PREVIEWS: Record<MaskType, string> = {
+  phone:     '138****1234',
+  email:     'adm***@example.com',
+  id_card:   '110101********1234',
+  name:      '张*丰',
+  bank_card: '************7890',
+  custom:    '—',
+};
+
+const MASK_TYPE_OPTIONS = Object.entries(MASK_TYPE_LABELS).map(([v, l]) => ({ value: v as MaskType, label: l }));
+
+type FormValues = {
+  entity: string;
+  field: string;
+  label: string;
+  maskType: MaskType;
+  exemptRoleCodes: string[];
+  enabled: boolean;
+  remark?: string;
+  prefixKeep?: number;
+  suffixKeep?: number;
+  maskChar?: string;
+};
+
+export default function DataMaskPage() {
+  const { hasPermission } = usePermission();
+  const [data, setData] = useState<DataMaskConfig[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [keyword, setKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editing, setEditing] = useState<DataMaskConfig | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [roleOptions, setRoleOptions] = useState<{ value: string; label: string }[]>([]);
+  const [maskTypePreview, setMaskTypePreview] = useState<MaskType>('phone');
+  const formRef = useRef<FormApi>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await request.get<DataMaskConfig[]>('/api/data-mask-configs');
+      setData(res.data ?? []);
+    } catch {
+      Toast.error('加载脱敏规则失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    request.get<Role[]>('/api/roles/all').then((res) => {
+      setRoleOptions((res.data ?? []).map((r) => ({ value: r.code, label: r.name })));
+    }).catch(() => {});
+  }, []);
+
+  const filtered = data.filter((r) => {
+    if (!submittedKeyword) return true;
+    const kw = submittedKeyword.toLowerCase();
+    return r.entity.toLowerCase().includes(kw) || r.field.toLowerCase().includes(kw) || r.label.includes(kw);
+  });
+
+  const handleSearch = () => setSubmittedKeyword(keyword);
+  const handleReset = () => { setKeyword(''); setSubmittedKeyword(''); };
+
+  const openCreate = () => {
+    setEditing(null);
+    setMaskTypePreview('phone');
+    setModalVisible(true);
+  };
+
+  const openEdit = (row: DataMaskConfig) => {
+    setEditing(row);
+    setMaskTypePreview(row.maskType);
+    setModalVisible(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await request.delete(`/api/data-mask-configs/${id}`);
+      Toast.success('删除成功');
+      fetchData();
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message;
+      Toast.error(msg || '删除失败');
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      let values: FormValues;
+      try { values = (await formRef.current?.validate())!; } catch { return; }
+      setSubmitting(true);
+      const body = {
+        entity:          values.entity.trim(),
+        field:           values.field.trim(),
+        label:           values.label.trim(),
+        maskType:        values.maskType,
+        exemptRoleCodes: values.exemptRoleCodes ?? [],
+        enabled:         values.enabled,
+        remark:          values.remark?.trim() || undefined,
+        customRule: values.maskType === 'custom'
+          ? { prefixKeep: values.prefixKeep ?? 3, suffixKeep: values.suffixKeep ?? 4, maskChar: values.maskChar || '*' }
+          : undefined,
+      };
+      if (editing) {
+        await request.put(`/api/data-mask-configs/${editing.id}`, body);
+        Toast.success('更新成功');
+      } else {
+        await request.post('/api/data-mask-configs', body);
+        Toast.success('创建成功');
+      }
+      setModalVisible(false);
+      fetchData();
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message;
+      if (msg && !msg.includes('validate')) Toast.error(msg || '保存失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getInitValues = (): Partial<FormValues> => {
+    if (!editing) return { enabled: true, exemptRoleCodes: [], maskType: 'phone', prefixKeep: 3, suffixKeep: 4, maskChar: '*' };
+    return {
+      entity:          editing.entity,
+      field:           editing.field,
+      label:           editing.label,
+      maskType:        editing.maskType,
+      exemptRoleCodes: editing.exemptRoleCodes,
+      enabled:         editing.enabled,
+      remark:          editing.remark ?? undefined,
+      prefixKeep:      editing.customRule?.prefixKeep ?? 3,
+      suffixKeep:      editing.customRule?.suffixKeep ?? 4,
+      maskChar:        editing.customRule?.maskChar ?? '*',
+    };
+  };
+
+  const columns: ColumnProps<DataMaskConfig>[] = [
+    { title: '实体', dataIndex: 'entity', width: 100 },
+    { title: '字段名', dataIndex: 'field', width: 110 },
+    { title: '字段标签', dataIndex: 'label', width: 100 },
+    {
+      title: '脱敏类型', dataIndex: 'maskType', width: 120,
+      render: (v: MaskType) => (
+        <Space>
+          <Text>{MASK_TYPE_LABELS[v]}</Text>
+          <Text type="quaternary" size="small">{MASK_TYPE_PREVIEWS[v]}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: '豁免角色', dataIndex: 'exemptRoleCodes', width: 160,
+      render: (codes: string[]) => codes.length === 0
+        ? <Text type="quaternary">—</Text>
+        : <Space wrap>{codes.map((c) => <Tag key={c} size="small" color="blue">{roleOptions.find((r) => r.value === c)?.label ?? c}</Tag>)}</Space>,
+    },
+    {
+      title: '启用状态', dataIndex: 'enabled', width: 90,
+      render: (v: boolean) => <Tag color={v ? 'green' : 'grey'} size="small">{v ? '启用' : '停用'}</Tag>,
+    },
+    { title: '备注', dataIndex: 'remark', ellipsis: true },
+    {
+      title: '操作', fixed: 'right', width: 120,
+      render: (_: unknown, record: DataMaskConfig) => (
+        <Space>
+          {hasPermission('system:data-mask:update') && (
+            <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>
+          )}
+          {hasPermission('system:data-mask:delete') && (
+            <Popconfirm title="确定要删除该规则吗？" onConfirm={() => handleDelete(record.id)}>
+              <Button theme="borderless" type="danger" size="small">删除</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <SearchToolbar>
+        <Input
+          prefix={<EyeOff size={14} />}
+          placeholder="搜索实体 / 字段"
+          value={keyword}
+          onChange={setKeyword}
+          onEnterPress={handleSearch}
+          showClear
+        />
+        <Button type="primary" icon={<EyeOff size={14} />} onClick={handleSearch}>查询</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        {hasPermission('system:data-mask:create') && (
+          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>
+        )}
+      </SearchToolbar>
+
+      <ConfigurableTable
+        bordered
+        columns={columns}
+        dataSource={filtered}
+        loading={loading}
+        rowKey="id"
+        pagination={false}
+      />
+
+      <Modal
+        title={editing ? '编辑脱敏规则' : '新增脱敏规则'}
+        visible={modalVisible}
+        onCancel={() => setModalVisible(false)}
+        onOk={handleSubmit}
+        okText={editing ? '保存' : '创建'}
+        okButtonProps={{ loading: submitting }}
+        width={520}
+        destroyOnClose
+      >
+        <Form<FormValues>
+          getFormApi={(api) => { formRef.current = api; }}
+          initValues={getInitValues()}
+          labelPosition="left"
+          labelWidth={80}
+          onValueChange={(vals) => {
+            if (vals.maskType) setMaskTypePreview(vals.maskType as unknown as MaskType);
+          }}
+        >
+          <Form.Input field="entity" label="实体" placeholder="如 user" rules={[{ required: true, message: '请填写实体名称' }]} />
+          <Form.Input field="field" label="字段名" placeholder="如 phone" rules={[{ required: true, message: '请填写字段名' }]} />
+          <Form.Input field="label" label="字段标签" placeholder="如 手机号" rules={[{ required: true, message: '请填写字段标签' }]} />
+          <Form.Select
+            field="maskType"
+            label="脱敏类型"
+            style={{ width: '100%' }}
+            rules={[{ required: true }]}
+            optionList={MASK_TYPE_OPTIONS}
+            renderOptionItem={(item) => (
+              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                <span>{item.label}</span>
+                <span style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>
+                  {MASK_TYPE_PREVIEWS[item.value as MaskType]}
+                </span>
+              </div>
+            )}
+          />
+
+          {/* 脱敏效果预览 */}
+          <Form.Slot label="效果预览">
+            <Tag color="orange" size="large" style={{ fontFamily: 'monospace' }}>
+              {MASK_TYPE_PREVIEWS[maskTypePreview]}
+            </Tag>
+          </Form.Slot>
+
+          {/* 自定义规则字段 */}
+          <Form.Slot label=" " noLabel>
+            <Typography.Text type="secondary" size="small">自定义规则</Typography.Text>
+          </Form.Slot>
+          {maskTypePreview === 'custom' && (
+            <>
+              <Form.InputNumber field="prefixKeep" label="保留前N位" min={0} max={20} style={{ width: '100%' }} />
+              <Form.InputNumber field="suffixKeep" label="保留后N位" min={0} max={20} style={{ width: '100%' }} />
+              <Form.Input field="maskChar" label="掩码字符" maxLength={1} placeholder="默认 *" />
+            </>
+          )}
+
+          <Form.Select
+            field="exemptRoleCodes"
+            label="豁免角色"
+            multiple
+            style={{ width: '100%' }}
+            optionList={roleOptions}
+            placeholder="拥有此角色的用户将看到原始数据"
+          />
+          <Form.Switch field="enabled" label="启用" />
+          <Form.TextArea field="remark" label="备注" maxCount={256} />
+        </Form>
+      </Modal>
+    </div>
+  );
+}

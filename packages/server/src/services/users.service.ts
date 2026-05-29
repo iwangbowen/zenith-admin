@@ -18,6 +18,7 @@ import type { User } from '@zenith/shared';
 import { currentUser } from '../lib/context';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
+import { applyEntityMasking } from './data-mask.service';
 
 // ─── 关联查询配置 ─────────────────────────────────────────────────────────────
 
@@ -108,6 +109,20 @@ export function mapUsers(rows: UserWithRelations[]): User[] {
   return rows.map(mapUser);
 }
 
+/**
+ * 带数据脱敏的用户映射。
+ * viewerRoleCodes 传空数组时，所有字段均脱敏（最严格）。
+ * 超管角色 ('super_admin') 通常配置在豁免列表中，无需特殊处理。
+ */
+export async function mapUserWithMask(row: UserWithRelations, viewerRoleCodes: string[]): Promise<User> {
+  const base = mapUser(row);
+  return applyEntityMasking('user', base as unknown as Record<string, unknown>, viewerRoleCodes) as unknown as User;
+}
+
+export async function mapUsersWithMask(rows: UserWithRelations[], viewerRoleCodes: string[]): Promise<User[]> {
+  return Promise.all(rows.map((r) => mapUserWithMask(r, viewerRoleCodes)));
+}
+
 // ─── 关联关系设置 ─────────────────────────────────────────────────────────────
 
 export async function setUserRoles(executor: DbExecutor, userId: number, roleIds: number[]) {
@@ -163,11 +178,15 @@ export async function ensurePositionIdsExist(positionIds: number[], user?: JwtPa
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 
+function viewerRoleCodes(): string[] {
+  try { return currentUser().roles?.map((r: { code: string }) => r.code) ?? []; } catch { return []; }
+}
+
 export async function listAllUsers() {
   const user = currentUser();
   const tc = tenantCondition(users, user);
   const rawList = await findUsersWithRelations({ where: tc, orderBy: users.id });
-  return mapUsers(rawList);
+  return mapUsersWithMask(rawList, viewerRoleCodes());
 }
 
 export interface ListUsersQuery {
@@ -200,7 +219,8 @@ export async function listUsers(q: ListUsersQuery) {
     findUsersWithRelations({ where, limit: pageSize, offset: pageOffset(page, pageSize), orderBy: users.id }),
   ]);
   const lockMap = await batchCheckLoginLock(rawList.map((u) => u.username));
-  const list = mapUsers(rawList).map((u) => ({ ...u, isLocked: (lockMap.get(u.username) ?? 0) > 0 }));
+  const mapped = await mapUsersWithMask(rawList, viewerRoleCodes());
+  const list = mapped.map((u) => ({ ...u, isLocked: (lockMap.get(u.username) ?? 0) > 0 }));
   return { list, total: Number(total), page, pageSize };
 }
 
@@ -293,7 +313,7 @@ export async function getUser(id: number) {
   const tc = tenantCondition(users, user);
   const full = await findUserWithRelations({ where: tc ? and(eq(users.id, id), tc) : eq(users.id, id) });
   if (!full) throw new HTTPException(404, { message: '用户不存在' });
-  return mapUser(full);
+  return mapUserWithMask(full, viewerRoleCodes());
 }
 
 export async function getUserBeforeAudit(id: number) {

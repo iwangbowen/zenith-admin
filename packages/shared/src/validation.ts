@@ -941,3 +941,29 @@ export const saveUserAiConfigSchema = z.object({
 });
 
 export type SaveUserAiConfigInput = z.infer<typeof saveUserAiConfigSchema>;
+
+// ─── 数据脱敏配置 Schema ──────────────────────────────────────────────────────
+
+export const maskTypeValues = ['phone', 'email', 'id_card', 'name', 'bank_card', 'custom'] as const;
+
+export const customMaskRuleSchema = z.object({
+  prefixKeep: z.number().int().min(0).max(20),
+  suffixKeep: z.number().int().min(0).max(20),
+  maskChar:   z.string().max(2).optional(),
+});
+
+export const createDataMaskConfigSchema = z.object({
+  entity:          z.string().min(1, '实体名称不能为空').max(64),
+  field:           z.string().min(1, '字段名称不能为空').max(64),
+  label:           z.string().min(1, '字段标签不能为空').max(64),
+  maskType:        z.enum(maskTypeValues),
+  customRule:      customMaskRuleSchema.nullable().optional(),
+  exemptRoleCodes: z.array(z.string().max(64)).default([]),
+  enabled:         z.boolean().default(true),
+  remark:          z.string().max(256).optional(),
+});
+
+export const updateDataMaskConfigSchema = createDataMaskConfigSchema.partial();
+
+export type CreateDataMaskConfigInput = z.infer<typeof createDataMaskConfigSchema>;
+export type UpdateDataMaskConfigInput = z.infer<typeof updateDataMaskConfigSchema>;

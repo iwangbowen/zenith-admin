@@ -1,5 +1,5 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs } from './schema';
 import bcrypt from 'bcryptjs';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
@@ -372,6 +372,23 @@ async function seedRest() {
     { name: '已完成', color: '#10b981', groupName: '状态标签', description: '已完成的事项', status: 'enabled', sortOrder: 2 },
   ]).onConflictDoNothing({ target: tags.name });
   logger.info('  ✔ Tags seeded (onConflictDoNothing)');
+
+  // ── 数据脱敏规则 ──────────────────────────────────────────────────────────────
+  await db.insert(dataMaskConfigs).values([
+    {
+      entity: 'user', field: 'phone', label: '手机号', maskType: 'phone',
+      exemptRoleCodes: ['super_admin'], enabled: true, remark: '手机号脱敏，超管豁免',
+    },
+    {
+      entity: 'user', field: 'email', label: '邮箱', maskType: 'email',
+      exemptRoleCodes: ['super_admin'], enabled: true, remark: '邮箱脱敏，超管豁免',
+    },
+    {
+      entity: 'user', field: 'idCard', label: '身份证号', maskType: 'id_card',
+      exemptRoleCodes: ['super_admin'], enabled: false, remark: '身份证脱敏规则（示例，默认禁用）',
+    },
+  ]).onConflictDoNothing();
+  logger.info('  ✔ Data mask configs seeded (onConflictDoNothing)');
 }
 
 try {

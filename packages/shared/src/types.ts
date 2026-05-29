@@ -1542,3 +1542,27 @@ export interface UserAiConfig {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── 数据脱敏配置 ─────────────────────────────────────────────────────────────
+
+export type MaskType = 'phone' | 'email' | 'id_card' | 'name' | 'bank_card' | 'custom';
+
+export interface CustomMaskRule {
+  prefixKeep: number;
+  suffixKeep: number;
+  maskChar?: string;
+}
+
+export interface DataMaskConfig {
+  id: number;
+  entity: string;
+  field: string;
+  label: string;
+  maskType: MaskType;
+  customRule?: CustomMaskRule | null;
+  exemptRoleCodes: string[];
+  enabled: boolean;
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -39,6 +39,7 @@ import { userAiConfigHandlers } from './user-ai-config';
 import { inAppTemplatesHandlers } from './in-app-templates';
 import { inAppMessagesHandlers } from './in-app-messages';
 import { ipAccessLogsHandlers } from './ip-access-logs';
+import { dataMaskHandlers } from './data-mask';
 
 export const handlers = [
   ...authHandlers,
@@ -79,6 +80,7 @@ export const handlers = [
   ...inAppTemplatesHandlers,
   ...inAppMessagesHandlers,
   ...ipAccessLogsHandlers,
+  ...dataMaskHandlers,
   ...aiProvidersHandlers,
   ...aiConversationsHandlers,
   ...userAiConfigHandlers,
