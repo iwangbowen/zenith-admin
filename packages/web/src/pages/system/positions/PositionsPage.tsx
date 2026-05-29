@@ -17,11 +17,11 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
-import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
+import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -172,12 +172,7 @@ export default function PositionsPage() {
       dataIndex: 'remark',
       render: renderEllipsis,
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 180,
-      render: (value: string) => formatDateTime(value),
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',
@@ -289,7 +284,7 @@ export default function PositionsPage() {
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={520}
-       
+
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form

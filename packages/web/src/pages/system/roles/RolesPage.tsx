@@ -21,12 +21,12 @@ import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
+import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
@@ -269,12 +269,7 @@ export default function RolesPage() {
         return map[v] ?? v;
       },
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 180,
-      render: (v) => formatDateTime(v),
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',

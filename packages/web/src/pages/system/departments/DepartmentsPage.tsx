@@ -19,11 +19,10 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -265,12 +264,7 @@ export default function DepartmentsPage() {
     { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || '—' },
     { title: '邮箱', dataIndex: 'email', width: 200, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 90 },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 180,
-      render: (value: string) => formatDateTime(value),
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',

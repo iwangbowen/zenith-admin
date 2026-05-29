@@ -18,7 +18,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
+import { createdAtColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -279,12 +279,7 @@ export default function RegionsPage() {
       width: 70,
       align: 'center',
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 180,
-      render: (val: string) => formatDateTime(val),
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',
