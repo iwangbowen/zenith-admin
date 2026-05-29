@@ -178,6 +178,8 @@ export default function LogFilesPage() {
       minSize={200}
       maxSize={480}
       persistKey="log-files"
+      showDetail={selected !== null}
+      onBack={() => setSelected(null)}
       master={(
         <>
           <MasterDetailLayout.Header

@@ -24,9 +24,24 @@ interface MasterDetailLayoutProps {
   divider?: boolean;
   /** 受控折叠状态：为 true 时主侧隐藏 */
   collapsed?: boolean;
-  /** 容器宽度小于此值时切换到单栏模式（移动端样式） */
+  /**
+   * 容器宽度小于此值时切换到单栏模式（移动端样式），默认 560。
+   * 传 0 或 undefined 可禁用响应式，传极大值（如 99999）可强制单栏。
+   */
   responsiveBreakpoint?: number;
-  /** 单栏模式下当前激活的面板（'master' | 'detail'），默认 'master'；选中条目后调用者切到 'detail' */
+  /**
+   * 响应式单栏模式下是否显示 detail 侧（优先级高于 responsiveActive）。
+   * 通常与 onBack 配合：有选中项时传 true，onBack 重置选中项。
+   */
+  showDetail?: boolean;
+  /**
+   * 响应式返回回调：提供后，在响应式 detail 模式下自动显示返回按钮。
+   * 点击时调用此回调，组件本身不管理状态。
+   */
+  onBack?: () => void;
+  /**
+   * 建议改用 showDetail。单栏模式下当前激活的面板（'master' | 'detail'），默认 'master'。
+   */
   responsiveActive?: 'master' | 'detail';
   className?: string;
   style?: CSSProperties;
@@ -73,8 +88,10 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
     bordered = false,
     divider = true,
     collapsed = false,
-    responsiveBreakpoint,
-    responsiveActive = 'master',
+    responsiveBreakpoint = 560,
+    showDetail,
+    onBack,
+    responsiveActive,
     className,
     style,
   } = props;
@@ -147,7 +164,7 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
   }, [persistKey, size]);
 
   const isResponsive =
-    responsiveBreakpoint !== undefined && containerWidth > 0 && containerWidth < responsiveBreakpoint;
+    responsiveBreakpoint > 0 && containerWidth > 0 && containerWidth < responsiveBreakpoint;
 
   const rootStyle: CSSProperties = {
     display: 'flex',
@@ -193,13 +210,46 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
 
   // 响应式：单栏模式
   if (isResponsive) {
-    const showMaster = responsiveActive === 'master';
+    // showDetail 优先；否则降级到旧的 responsiveActive
+    const detailVisible = showDetail ?? (responsiveActive === 'detail');
     return (
       <div ref={rootRef} className={className} style={rootStyle}>
-        <div style={{ ...masterBaseStyle, width: '100%', display: showMaster ? 'flex' : 'none' }}>
+        <div style={{ ...masterBaseStyle, width: '100%', display: detailVisible ? 'none' : 'flex' }}>
           {master}
         </div>
-        <div style={{ ...detailBaseStyle, display: showMaster ? 'none' : 'flex' }}>{detail}</div>
+        <div style={{ ...detailBaseStyle, display: detailVisible ? 'flex' : 'none' }}>
+          {detailVisible && onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              style={{
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 12px',
+                borderBottom: '1px solid var(--semi-color-border)',
+                background: 'transparent',
+                border: 0,
+                borderBottomColor: 'var(--semi-color-border)',
+                borderBottomStyle: 'solid',
+                borderBottomWidth: 1,
+                cursor: 'pointer',
+                color: 'var(--semi-color-text-2)',
+                fontSize: 13,
+                minHeight: 40,
+                boxSizing: 'border-box',
+                width: '100%',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              返回
+            </button>
+          )}
+          {detail}
+        </div>
       </div>
     );
   }

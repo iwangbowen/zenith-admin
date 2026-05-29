@@ -964,6 +964,8 @@ export default function DbAdminPage() {
               minSize={240}
               maxSize={520}
               persistKey="db-admin-browse"
+              showDetail={selected !== null}
+              onBack={() => setSelected(null)}
               master={(
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <div style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', flexShrink: 0 }}>

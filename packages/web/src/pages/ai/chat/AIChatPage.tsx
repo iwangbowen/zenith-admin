@@ -439,6 +439,8 @@ export default function AIChatPage() {
       minSize={180}
       maxSize={400}
       persistKey="ai-chat"
+      showDetail={activeConvId !== null}
+      onBack={() => setActiveConvId(null)}
       master={(
         <>
           <div style={{ padding: '16px 12px 8px' }}>

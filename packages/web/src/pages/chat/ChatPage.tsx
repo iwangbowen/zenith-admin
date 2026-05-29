@@ -1529,7 +1529,8 @@ export default function ChatPage({
         divider
         persistKey={isQuick ? undefined : 'messages'}
         responsiveBreakpoint={isQuick ? 99999 : undefined}
-        responsiveActive={activeConv ? 'detail' : 'master'}
+        showDetail={!!activeConv}
+        onBack={!isQuick ? () => setActiveConvId(null) : undefined}
         master={(
           <>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
