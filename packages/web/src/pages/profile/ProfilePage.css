@@ -10,7 +10,6 @@
 
 .profile-tabs > .semi-tabs-bar {
   padding: 0 20px;
-  border-bottom: 1px solid var(--semi-color-border);
 }
 
 .profile-tabs > .semi-tabs-bar .semi-tabs-tab {
