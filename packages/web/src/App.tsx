@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Spin } from '@douyinfe/semi-ui';
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useGlobalErrorHandler } from '@/hooks/useGlobalErrorHandler';
 import { PermissionContext } from '@/hooks/usePermission';
 import { PreferencesProvider } from '@/hooks/PreferencesProvider';
 import { ThemeProvider } from '@/providers/ThemeProvider';
@@ -130,6 +131,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
 }
 
 export default function App() {
+  useGlobalErrorHandler();
   const { user, permissions, loading, login, register, logout, updateUser } = useAuth();
 
   if (loading) {
@@ -151,12 +153,14 @@ export default function App() {
         </PreferencesProvider>
       ) : (
         <ThemeProvider>
-          <Routes>
-            <Route path="/login" element={<Suspense fallback={routeFallback}><LoginPage onLogin={login} onRegister={register} /></Suspense>} />
-            <Route path="/reset-password" element={<Suspense fallback={routeFallback}><ResetPasswordPage /></Suspense>} />
-            <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
-            <Route path="*" element={<RedirectToLogin />} />
-          </Routes>
+          <PageErrorBoundary>
+            <Routes>
+              <Route path="/login" element={<Suspense fallback={routeFallback}><LoginPage onLogin={login} onRegister={register} /></Suspense>} />
+              <Route path="/reset-password" element={<Suspense fallback={routeFallback}><ResetPasswordPage /></Suspense>} />
+              <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
+              <Route path="*" element={<RedirectToLogin />} />
+            </Routes>
+          </PageErrorBoundary>
         </ThemeProvider>
       )}
     </BrowserRouter>
