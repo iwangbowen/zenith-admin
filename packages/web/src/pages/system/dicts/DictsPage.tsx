@@ -19,13 +19,13 @@ import type { Dict, DictItem, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { formatDateForApi, formatDateTime } from '@/utils/date';
+import { formatDateForApi } from '@/utils/date';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
 import './DictsPage.css';
-import { renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 export default function DictsPage() {
   const { hasPermission } = usePermission();
@@ -223,7 +223,7 @@ export default function DictsPage() {
     },
     { title: '字典编码', dataIndex: 'code', width: 160, render: renderEllipsis },
     { title: '描述', dataIndex: 'description', render: renderEllipsis },
-    { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v) => formatDateTime(v) },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',
@@ -264,7 +264,7 @@ export default function DictsPage() {
     { title: '键値', dataIndex: 'value', width: 160, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 70, align: 'center' },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
-    { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v) => formatDateTime(v) },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',
@@ -430,7 +430,7 @@ export default function DictsPage() {
         onOk={handleDictModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={480}
-       
+
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form
@@ -459,7 +459,7 @@ export default function DictsPage() {
         onCancel={() => setItemModalVisible(false)}
         onOk={handleItemModalOk}
         width={480}
-       
+
       >
         <Form
           getFormApi={(api) => itemFormApi.current = api}

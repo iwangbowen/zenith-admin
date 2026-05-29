@@ -26,7 +26,7 @@ import { usePermission } from '@/hooks/usePermission';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 export default function MenusPage() {
   const { hasPermission } = usePermission();
@@ -249,11 +249,7 @@ export default function MenusPage() {
       width: 70,
       align: 'center',
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 160,
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',

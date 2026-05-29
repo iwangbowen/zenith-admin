@@ -24,7 +24,7 @@ import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, Chev
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
-import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
+import { formatDateTimeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -35,7 +35,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import './UsersPage.css';
-import { renderEllipsis } from '../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -449,12 +449,7 @@ export default function UsersPage() {
         </Space>
       ),
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 170,
-      render: (t: string) => formatDateTime(t),
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',

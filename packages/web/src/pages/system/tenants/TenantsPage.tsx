@@ -21,7 +21,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 export default function TenantsPage() {
   const { hasPermission } = usePermission();
@@ -119,12 +119,7 @@ export default function TenantsPage() {
       width: 180,
       render: (v) => renderEllipsis(v ? formatDateTime(v) : '永不过期'),
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 180,
-      render: (v) => renderEllipsis(formatDateTime(v)),
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',

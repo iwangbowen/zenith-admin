@@ -21,7 +21,7 @@ import { OAUTH2_GRANT_TYPES, OAUTH2_SCOPES } from '@zenith/shared';
 import type { OAuth2Client, OAuth2ClientCreated, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
+import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePermission } from '@/hooks/usePermission';
@@ -255,12 +255,7 @@ export default function OAuth2AppsPage() {
         </Space>
       ),
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 170,
-      render: (t: string) => formatDateTime(t),
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',

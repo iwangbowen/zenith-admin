@@ -16,6 +16,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
+import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import type {
@@ -155,12 +156,7 @@ export default function WorkflowTriggerExecutionsPage() {
       render: (v: string | null) =>
         v ? <Typography.Text type="danger" ellipsis={{ rows: 1, showTooltip: true }}>{v}</Typography.Text> : '-',
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 170,
-      render: (v: string) => formatDateTime(v),
-    },
+    createdAtColumn,
     {
       title: '操作',
       dataIndex: '__ops',

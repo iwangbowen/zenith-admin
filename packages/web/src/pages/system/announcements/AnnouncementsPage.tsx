@@ -31,7 +31,7 @@ import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
 import { usePermission } from '@/hooks/usePermission';
-import { renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
 const editorLoadingFallback = (
@@ -521,12 +521,7 @@ export default function AnnouncementsPage() {
       width: 170,
       render: (v: string | null) => (v ? formatDateTime(v) : '-'),
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 170,
-      render: (v: string) => formatDateTime(v),
-    },
+    createdAtColumn,
     {
       title: '操作',
       dataIndex: 'op',

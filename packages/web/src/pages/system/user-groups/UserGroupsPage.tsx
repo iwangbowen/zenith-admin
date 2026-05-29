@@ -21,11 +21,10 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import type { UserGroup, PaginatedResponse, User, Department } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -230,10 +229,7 @@ export default function UserGroupsPage() {
       title: '成员数', dataIndex: 'memberCount', width: 90,
       render: (v: number) => <Tag color="blue">{v ?? 0}</Tag>,
     },
-    {
-      title: '创建时间', dataIndex: 'createdAt', width: 180,
-      render: (v: string) => renderEllipsis(formatDateTime(v)),
-    },
+    createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 100, fixed: 'right',
       render: (v: string) =>
