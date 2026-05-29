@@ -624,12 +624,12 @@ export default function MonitorPage() {
                       <Text type="tertiary" size="small">{core.usage}%</Text>
                     </div>
                     <div className={getProgressClass(core.usage)}>
-                      <Progress percent={core.usage} showInfo={false} stroke="#1677ff" />
+                      <Progress percent={core.usage} showInfo={false} stroke="var(--semi-color-primary)" />
                     </div>
                     <div className="monitor-percore-item__legend">
-                      <span><i style={{ background: '#1677ff' }} />user {core.user}%</span>
-                      <span><i style={{ background: '#fa8c16' }} />sys {core.system}%</span>
-                      <span><i style={{ background: '#d9d9d9' }} />idle {core.idle}%</span>
+                      <span><i style={{ background: 'var(--semi-color-primary)' }} />user {core.user}%</span>
+                      <span><i style={{ background: 'var(--semi-color-warning)' }} />sys {core.system}%</span>
+                      <span><i style={{ background: 'var(--semi-color-text-3)' }} />idle {core.idle}%</span>
                     </div>
                   </div>
                 ))}

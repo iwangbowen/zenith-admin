@@ -84,7 +84,7 @@ function PdfFileCard({ filename, size, onClick, url, uploading }: PdfFileCardPro
           width: 36,
           height: 36,
           borderRadius: 6,
-          background: '#ff4d4f22',
+          background: 'var(--semi-color-danger-light-default)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
