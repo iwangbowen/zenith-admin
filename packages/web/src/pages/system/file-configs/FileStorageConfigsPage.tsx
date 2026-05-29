@@ -28,6 +28,7 @@ import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { renderEllipsis } from '@/utils/table-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import './FileStorageConfigsPage.css';
 
@@ -237,7 +238,7 @@ export default function FileStorageConfigsPage() {
       title: '配置名称',
       dataIndex: 'name',
       width: 180,
-      render: (v: string) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v || '—'}</Text>,
+      render: renderEllipsis,
     },
     {
       title: '存储类型',
@@ -275,20 +276,20 @@ export default function FileStorageConfigsPage() {
         };
         const label = labelMap[record.provider] ?? 'Bucket';
         const summary = getStorageSummary(record);
-        return <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{`${label}: ${summary}`}</Text>;
+        return renderEllipsis(`${label}: ${summary}`);
       },
     },
     {
       title: '基础路径',
       dataIndex: 'basePath',
       width: 160,
-      render: (value?: string) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{value || '—'}</Text>,
+      render: (value?: string) => renderEllipsis(value),
     },
     {
       title: '更新时间',
       dataIndex: 'updatedAt',
       width: 180,
-      render: (value: string) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{formatDateTime(value)}</Text>,
+      render: (value: string) => renderEllipsis(formatDateTime(value)),
     },
     {
       title: '状态',
@@ -420,7 +421,7 @@ export default function FileStorageConfigsPage() {
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={720}
-       
+
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form

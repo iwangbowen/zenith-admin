@@ -10,7 +10,6 @@ import {
   SideSheet,
   Transfer,
   Empty,
-  Typography,
   Tag,
   Row,
   Col,
@@ -233,7 +232,7 @@ export default function UserGroupsPage() {
     },
     {
       title: '创建时间', dataIndex: 'createdAt', width: 180,
-      render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{formatDateTime(v)}</Typography.Text>,
+      render: (v: string) => renderEllipsis(formatDateTime(v)),
     },
     {
       title: '状态', dataIndex: 'status', width: 100, fixed: 'right',
@@ -351,7 +350,7 @@ export default function UserGroupsPage() {
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={660}
-       
+
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form

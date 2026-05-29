@@ -28,6 +28,7 @@ import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, ca
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
+import { renderEllipsis } from '@/utils/table-columns';
 import { usePreferences } from '@/hooks/usePreferences';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -590,9 +591,7 @@ export default function FilesPage() {
       dataIndex: 'storageName',
       width: 120,
       ellipsis: true,
-      render: (_: string, record: ManagedFile) => (
-          <Text ellipsis={{ showTooltip: true }}>{record.storageName}</Text>
-        ),
+      render: (_: string, record: ManagedFile) => renderEllipsis(record.storageName),
     },
     {
       title: '大小',
@@ -605,7 +604,7 @@ export default function FilesPage() {
       title: '上传时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (value: string) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{formatDateTime(value)}</Text>,
+      render: (value: string) => renderEllipsis(formatDateTime(value)),
     },
     {
       title: '操作',
