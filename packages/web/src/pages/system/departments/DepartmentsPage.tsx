@@ -9,7 +9,6 @@ import {
   Select,
   Space,
   Spin,
-  Typography,
   Toast,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -370,7 +369,7 @@ export default function DepartmentsPage() {
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={660}
-       
+
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form

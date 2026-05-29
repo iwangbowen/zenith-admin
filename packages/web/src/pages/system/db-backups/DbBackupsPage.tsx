@@ -3,7 +3,6 @@ import { Button, Space, Tag, Select, Popconfirm, Toast, Modal, Form } from '@dou
 import { Search, RotateCcw, Plus } from 'lucide-react';
 import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
