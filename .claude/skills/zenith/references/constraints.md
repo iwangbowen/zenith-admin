@@ -14,6 +14,8 @@
 
 - **状态列固定**：状态列必须紧靠操作列左侧，并同样设置 `fixed: 'right'`
 
+- **弹窗表单布局**：`Form` 必须加 `labelPosition="left"`；`labelWidth` 按标签字数选取（≤3字→ 72，4-5字→ 90，♥6字→ 110+）；有 3 对以上可并排的普通字段（Input / Select / InputNumber）时用双列布局（`Row gutter={16}` + `Col span={12}`， `Modal width={660}`），否则单列（`width` 480-520 酷情）； TreeSelect / TextArea 等宽字段不包 `Col` 直接全宽占一行；所有 `Modal` 必须加 `bodyStyle={{ paddingBottom: 24 }}` 和 `closeOnEsc`
+
 - **树形表格展开控制**：使用 `children` 字段渲染树形表格时，必须在搜索栏添加「全部展开/全部折叠」按钮，使用受控 `expandedRowKeys` + `onExpandedRowsChange`；图标：已展开用 `ChevronsDownUp`，未展开用 `ChevronsUpDown`
 
 - **时间格式**：API 响应、入参、前端显示、MSW Mock 统一使用 `YYYY-MM-DD HH:mm:ss`；前端用 `formatDateTime()` / `formatDateTimeForApi()`，后端用 `packages/server/src/lib/datetime.ts`，Mock 用 `mockDateTime()`；禁止 `toISOString()` / 原生 `toLocaleString()` 等
@@ -61,6 +63,5 @@
 - **LIKE 查询转义**：所有使用 `like()` / `ilike()` 的模糊查询，**必须**通过 `escapeLike(keyword)` 转义用户输入中的 `%`、`_`、`\\`，防止 LIKE 通配符注入；`escapeLike` 来自 `'../lib/where-helpers'`
 
 - **外呼 HTTP 调用**：服务端任何对外 HTTP 请求（OAuth、第三方 API、链接抓取等）**必须**通过 `packages/server/src/lib/http-client.ts` 的 `httpRequest` / `httpGet` / `httpPost` / `httpPut` / `httpPatch` / `httpDelete` 发出；**禁止**直接使用全局 `fetch()`。失败统一抛 `HttpClientError`；需要超时/重试/代理时通过参数 `{ timeout, retries, proxy }` 在代码中显式声明，代理**不从环境变量读取**；详见 [docs/backend/http-client.md](../../../docs/backend/http-client.md)
-
 
 - **左右分栏布局**：需要「左侧列表 + 右侧详情」结构时，统一使用 `packages/web/src/components/MasterDetailLayout.tsx`，**禁止**手写 flex 两栏布局。master 内部必须用 `display:flex; flexDirection:column; height:100%; overflow:hidden` 的 div 包裹（**禁止**用 Fragment），顶部固定区域 `flexShrink:0`，列表区域 `flex:1; overflow:auto; minHeight:0`。嵌套在 Semi Design Tabs 中时，必须加 `className="tabs-fill-height"`（`global.css` 已定义）并给 Tabs/TabPane 设置正确的 height/flex 属性，否则高度链断裂导致列表无法滚动。详见 [crud-frontend.md 左右分栏布局](./crud-frontend.md#左右分栏布局masterdetaillayout)

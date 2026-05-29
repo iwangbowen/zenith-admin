@@ -346,7 +346,7 @@ export default function XxxPage() {
             allowEmpty
             initValues={formInitValues}
             labelPosition="left"
-            labelWidth={90}  {/* 短标签（≤3字）用 72，长标签（4字+）用 90 */}
+            labelWidth={90}  {/* 3字标签→ 72，4-5字→ 90，6字+→ 110+ */}
           >
             {/* 全宽字段（跨两列，如树形选择、长文本）：直接写，不包裹 Col */}
             <Form.TreeSelect

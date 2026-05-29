@@ -99,29 +99,43 @@ const columns = [
 
 ## 弹窗表单
 
-使用 Semi Design `Modal` + `Form` 组合处理新增/编辑弹窗。
+使用 Semi Design `Modal` + `Form` 组合处理新增/编辑弹窗。所有 `Modal` 必须加 `bodyStyle={{ paddingBottom: 24 }}` 和 `closeOnEsc`。
+
+### 布局选择原则
+
+| 场景 | Modal 宽度 | Form 布局 |
+| ---- | ---------- | --------- |
+| 简单配置（字段少，包含 TextArea 等宿字段） | 480–520 | 单列 |
+| 标准业务表单（有 3+ 对可并排的普通字段） | 660 | **双列** |
+| 复杂表单（多字段含特殊控件） | 720+ | 混合 |
+
+### 表单必备属性
+
+- `labelPosition="left"`：实现 label 与输入框同行
+- `labelWidth`：按标签字数选取（≤3字→ 72，4-5字→ 90，♥6字→ 110+），同一 Form 内保持统一
+- `key={editingXxx?.id ?? 'new'}`：切换新增/编辑时强制重置 Form 内部状态
+
+### 双列布局写法
 
 ```tsx
-const [formApi, setFormApi] = useState<FormApi>();
-const [visible, setVisible] = useState(false);
-const [editing, setEditing] = useState<UserRecord | null>(null);
+<Row gutter={16}>
+  <Col span={12}>
+    <Form.Input field="name" label="名称" ... />
+  </Col>
+  <Col span={12}>
+    <Form.Input field="code" label="编码" ... />
+  </Col>
+</Row>
 
-const handleOk = async () => {
-  const values = await formApi?.validate();
-  if (!values) return;
-  // 提交逻辑...
-};
+{/* 全宽字段（TreeSelect / TextArea 等）不包 Col，直接占满一行 */}
+<Form.TreeSelect field="parentId" label="上级" style={{ width: '100%' }} ... />
 
-<Modal
-  title={editing ? '编辑用户' : '新增用户'}
-  visible={visible}
-  onOk={handleOk}
-  onCancel={() => setVisible(false)}
->
-  <Form getFormApi={setFormApi} initValues={editing ?? undefined}>
-    <Form.Input field="username" label="用户名" rules={[{ required: true }]} />
-  </Form>
-</Modal>
+{/* 奇数个字段时最后一个单独占左半列 */}
+<Row gutter={16}>
+  <Col span={12}>
+    <Form.Select field="status" label="状态" style={{ width: '100%' }} ... />
+  </Col>
+</Row>
 ```
 
 - `getFormApi` 回调获取 `FormApi`，**禁止用 `any` 类型**
