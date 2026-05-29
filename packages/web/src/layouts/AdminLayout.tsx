@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
-import { Bell, Building2, Check, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette, Pin } from 'lucide-react';
+import { Bell, Building2, Check, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -1058,18 +1058,18 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     clickToHide
                     render={
                       <Dropdown.Menu>
-                        <Dropdown.Item onClick={() => handleTabRefresh(tab.key)}>刷新页面</Dropdown.Item>
+                        <Dropdown.Item icon={<RotateCcw size={14} />} onClick={() => handleTabRefresh(tab.key)}>刷新页面</Dropdown.Item>
                         {tab.key !== '/' && (
                           tab.pinned
-                            ? <Dropdown.Item onClick={() => unpinTab(tab.key)}>取消固定</Dropdown.Item>
-                            : <Dropdown.Item onClick={() => pinTab(tab.key)}>固定标签页</Dropdown.Item>
+                            ? <Dropdown.Item icon={<PinOff size={14} />} onClick={() => unpinTab(tab.key)}>取消固定</Dropdown.Item>
+                            : <Dropdown.Item icon={<Pin size={14} />} onClick={() => pinTab(tab.key)}>固定标签页</Dropdown.Item>
                         )}
                         <Dropdown.Divider />
-                        <Dropdown.Item disabled={!tab.closable} onClick={() => handleTabClose(tab.key)}>关闭当前</Dropdown.Item>
-                        <Dropdown.Item disabled={!hasClosableOthers} onClick={() => { const nextKey = closeOthers(tab.key); navigate(nextKey); }}>关闭其他</Dropdown.Item>
-                        <Dropdown.Item disabled={!hasClosableLeft} onClick={() => { const nextKey = closeLeft(tab.key); navigate(nextKey); }}>关闭左侧</Dropdown.Item>
-                        <Dropdown.Item disabled={!hasClosableRight} onClick={() => { const nextKey = closeRight(tab.key); navigate(nextKey); }}>关闭右侧</Dropdown.Item>
-                        <Dropdown.Item disabled={!hasAnyClosable} onClick={() => { closeAll(); navigate('/'); }}>关闭全部</Dropdown.Item>
+                        <Dropdown.Item icon={<X size={14} />} disabled={!tab.closable} onClick={() => handleTabClose(tab.key)}>关闭当前</Dropdown.Item>
+                        <Dropdown.Item icon={<XCircle size={14} />} disabled={!hasClosableOthers} onClick={() => { const nextKey = closeOthers(tab.key); navigate(nextKey); }}>关闭其他</Dropdown.Item>
+                        <Dropdown.Item icon={<ChevronLeft size={14} />} disabled={!hasClosableLeft} onClick={() => { const nextKey = closeLeft(tab.key); navigate(nextKey); }}>关闭左侧</Dropdown.Item>
+                        <Dropdown.Item icon={<ChevronRight size={14} />} disabled={!hasClosableRight} onClick={() => { const nextKey = closeRight(tab.key); navigate(nextKey); }}>关闭右侧</Dropdown.Item>
+                        <Dropdown.Item icon={<Trash2 size={14} />} disabled={!hasAnyClosable} onClick={() => { closeAll(); navigate('/'); }}>关闭全部</Dropdown.Item>
                       </Dropdown.Menu>
                     }
                   >
