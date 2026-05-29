@@ -33,6 +33,13 @@ export function useGlobalErrorHandler() {
       // 忽略跨域脚本错误（message 为 "Script error."，无法获取详情）
       if (!event.message || event.message === 'Script error.') return;
 
+      // 忽略来自浏览器扩展的错误（React DevTools、广告拦截器等），不属于应用代码
+      const filename = event.filename ?? '';
+      if (filename.startsWith('chrome-extension://') || filename.startsWith('moz-extension://')) return;
+
+      // 忽略 ResizeObserver 良性警告：由浏览器渲染引擎触发，不影响功能，无需提示用户
+      if (event.message.includes('ResizeObserver loop')) return;
+
       console.error('[GlobalErrorHandler] 未捕获的运行时错误:', event.error ?? event.message);
 
       Toast.error({
