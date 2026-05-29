@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
   Input,
@@ -10,7 +10,7 @@ import {
   Typography,
   Popconfirm,
   Checkbox,
-  TagInput,
+  Spin,
   Banner,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -19,6 +19,7 @@ import { OAUTH2_GRANT_TYPES, OAUTH2_SCOPES } from '@zenith/shared';
 import type { OAuth2Client, OAuth2ClientCreated, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePermission } from '@/hooks/usePermission';
@@ -53,125 +54,157 @@ type FormValues = {
 export default function OAuth2AppsPage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:oauth2-apps:manage');
+  const formApi = useRef<FormApi | null>(null);
 
-  const [data, setData] = useState<OAuth2Client[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
+  // ─── 状态 ──────────────────────────────────────────────────────────────
+  const [data, setData] = useState<PaginatedResponse<OAuth2Client> | null>(null);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [keyword, setKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+
+  // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<OAuth2Client | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const formRef = useRef<FormApi>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   // 一次性 Secret 展示
   const [secretModal, setSecretModal] = useState(false);
   const [oneTimeSecret, setOneTimeSecret] = useState('');
   const [oneTimeClientId, setOneTimeClientId] = useState('');
 
-  const fetchData = useCallback(async (pg = page, kw = submittedKeyword) => {
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({
-        page: String(pg),
-        pageSize: String(pageSize),
-        ...(kw ? { keyword: kw } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<OAuth2Client>>(`/api/oauth2/clients?${qs}`);
-      setData(res.data?.list ?? []);
-      setTotal(res.data?.total ?? 0);
-    } catch {
-      // handled by interceptor
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, submittedKeyword]);
+  // ─── 数据加载 ──────────────────────────────────────────────────────────
+  const fetchData = useCallback(
+    async (p = page, ps = pageSize, kw = keyword) => {
+      setLoading(true);
+      try {
+        const queryObj: Record<string, string> = { page: String(p), pageSize: String(ps) };
+        if (kw) queryObj.keyword = kw;
+        const qs = new URLSearchParams(queryObj).toString();
+        const res = await request.get<PaginatedResponse<OAuth2Client>>(`/api/oauth2/clients?${qs}`);
+        if (res.code === 0) {
+          setData(res.data);
+          setPage(res.data.page);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [page, pageSize, keyword],
+  );
 
-  const handleSearch = () => {
+  useEffect(() => {
+    void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── 搜索 / 重置 ────────────────────────────────────────────────────────
+  function handleSearch() {
     setPage(1);
-    setSubmittedKeyword(keyword);
-    fetchData(1, keyword);
-  };
+    void fetchData(1, pageSize, keyword);
+  }
 
-  const handleReset = () => {
+  function handleReset() {
     setKeyword('');
-    setSubmittedKeyword('');
     setPage(1);
-    fetchData(1, '');
-  };
+    void fetchData(1, pageSize, '');
+  }
 
-  const openCreate = () => {
+  // ─── 新增 ──────────────────────────────────────────────────────────────
+  function openCreate() {
     setEditing(null);
-    formRef.current?.reset?.();
     setModalVisible(true);
-  };
+  }
 
-  const openEdit = (row: OAuth2Client) => {
-    setEditing(row);
+  // ─── 编辑：先弹窗再异步回填 ──────────────────────────────────────────────
+  async function openEdit(record: OAuth2Client) {
+    setEditing(record);
     setModalVisible(true);
-    setTimeout(() => {
-      formRef.current?.setValues({
-        name: row.name,
-        description: row.description ?? '',
-        logoUrl: row.logoUrl ?? '',
-        redirectUris: row.redirectUris,
-        allowedScopes: row.allowedScopes,
-        grantTypes: row.grantTypes,
-        isPublic: row.isPublic,
-        status: row.status,
-      });
-    }, 0);
-  };
+    setModalDetailLoading(true);
+    const res = await request.get<OAuth2Client>(`/api/oauth2/clients/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditing(res.data);
+    } else {
+      Toast.error(res.message || '获取应用信息失败');
+    }
+  }
 
-  const handleSubmit = async (values: FormValues) => {
+  function closeModal() {
+    setModalVisible(false);
+    setEditing(null);
+    setModalDetailLoading(false);
+  }
+
+  const formInitValues: Partial<FormValues> = editing
+    ? {
+        name: editing.name,
+        description: editing.description ?? '',
+        logoUrl: editing.logoUrl ?? '',
+        redirectUris: editing.redirectUris,
+        allowedScopes: editing.allowedScopes,
+        grantTypes: editing.grantTypes,
+        isPublic: editing.isPublic,
+        status: editing.status as 'enabled' | 'disabled',
+      }
+    : { isPublic: false, allowedScopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'] };
+
+  async function handleModalOk() {
+    let values: FormValues;
+    try {
+      values = await formApi.current!.validate();
+    } catch {
+      throw new Error('validation');
+    }
     setSubmitting(true);
     try {
       if (editing) {
-        await request.put(`/api/oauth2/clients/${editing.id}`, values);
-        Toast.success('更新成功');
-        setModalVisible(false);
-        fetchData();
+        const res = await request.put(`/api/oauth2/clients/${editing.id}`, values);
+        if (res.code === 0) {
+          Toast.success('更新成功');
+          closeModal();
+          void fetchData();
+        } else {
+          throw new Error(res.message);
+        }
       } else {
         const res = await request.post<OAuth2ClientCreated>('/api/oauth2/clients', values);
-        setModalVisible(false);
-        fetchData();
-        if (res.data?.clientSecret) {
-          setOneTimeClientId(res.data.clientId);
-          setOneTimeSecret(res.data.clientSecret);
-          setSecretModal(true);
+        if (res.code === 0) {
+          closeModal();
+          void fetchData();
+          if (res.data?.clientSecret) {
+            setOneTimeClientId(res.data.clientId);
+            setOneTimeSecret(res.data.clientSecret);
+            setSecretModal(true);
+          }
+        } else {
+          throw new Error(res.message);
         }
       }
-    } catch {
-      // handled
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  const handleDelete = async (id: number) => {
-    try {
-      await request.delete(`/api/oauth2/clients/${id}`);
+  // ─── 删除 ──────────────────────────────────────────────────────────────
+  async function handleDelete(id: number) {
+    const res = await request.delete(`/api/oauth2/clients/${id}`);
+    if (res.code === 0) {
       Toast.success('删除成功');
-      fetchData();
-    } catch {
-      // handled
+      void fetchData();
     }
-  };
+  }
 
-  const handleRegenerate = async (row: OAuth2Client) => {
-    try {
-      const res = await request.post<{ clientId: string; clientSecret: string }>(`/api/oauth2/clients/${row.id}/regenerate-secret`);
-      if (res.data?.clientSecret) {
-        setOneTimeClientId(res.data.clientId);
-        setOneTimeSecret(res.data.clientSecret);
-        setSecretModal(true);
-      }
-    } catch {
-      // handled
+  // ─── 重置 Secret ────────────────────────────────────────────────────────
+  async function handleRegenerate(row: OAuth2Client) {
+    const res = await request.post<{ clientId: string; clientSecret: string }>(`/api/oauth2/clients/${row.id}/regenerate-secret`);
+    if (res.code === 0 && res.data?.clientSecret) {
+      setOneTimeClientId(res.data.clientId);
+      setOneTimeSecret(res.data.clientSecret);
+      setSecretModal(true);
     }
-  };
+  }
 
   const columns: ColumnProps<OAuth2Client>[] = [
     { title: 'ID', dataIndex: 'id', width: 60 },
@@ -212,13 +245,19 @@ export default function OAuth2AppsPage() {
       title: '状态',
       dataIndex: 'status',
       width: 80,
+      fixed: 'right' as const,
       render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'}>{v === 'enabled' ? '启用' : '禁用'}</Tag>,
     },
-    { title: '创建时间', dataIndex: 'createdAt', width: 160 },
+    {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      width: 170,
+      render: (t: string) => formatDateTime(t),
+    },
     {
       title: '操作',
       fixed: 'right' as const,
-      width: 180,
+      width: 200,
       render: (_: unknown, record: OAuth2Client) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>
@@ -228,7 +267,7 @@ export default function OAuth2AppsPage() {
             </Popconfirm>
           )}
           {canManage && (
-            <Popconfirm title="确定要删除此应用吗？" onConfirm={() => handleDelete(record.id)}>
+            <Popconfirm title="确定要删除此应用吗？" content="删除后不可恢复" onConfirm={() => handleDelete(record.id)}>
               <Button theme="borderless" type="danger" size="small">删除</Button>
             </Popconfirm>
           )}
@@ -238,15 +277,16 @@ export default function OAuth2AppsPage() {
   ];
 
   return (
-    <div>
+    <div className="page-container">
       <SearchToolbar>
         <Input
           prefix={<Search size={14} />}
           placeholder="搜索应用名称"
           value={keyword}
-          onChange={setKeyword}
+          onChange={(v) => setKeyword(v)}
           onEnterPress={handleSearch}
           showClear
+          style={{ width: 220 }}
         />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -258,73 +298,97 @@ export default function OAuth2AppsPage() {
       <ConfigurableTable
         bordered
         columns={columns}
-        dataSource={data}
+        dataSource={data?.list ?? []}
         loading={loading}
         rowKey="id"
+        size="small"
+        empty="暂无数据"
         pagination={{
           currentPage: page,
           pageSize,
-          total,
-          onChange: (p) => { setPage(p); fetchData(p); },
+          total: data?.total ?? 0,
+          onPageChange: (p: number) => {
+            setPage(p);
+            void fetchData(p, pageSize);
+          },
+          onPageSizeChange: (s: number) => {
+            setPageSize(s);
+            void fetchData(1, s);
+          },
+          showTotal: true,
+          showSizeChanger: true,
         }}
       />
 
-      {/* 新建 / 编辑弹窗 */}
+      {/* 新增 / 编辑弹窗 */}
       <Modal
-        title={editing ? '编辑 OAuth2 应用' : '新建 OAuth2 应用'}
+        title={editing ? '编辑 OAuth2 应用' : '新增 OAuth2 应用'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        footer={null}
+        onOk={handleModalOk}
+        onCancel={closeModal}
+        okButtonProps={{ loading: submitting, disabled: modalDetailLoading }}
         width={600}
+        maskClosable={false}
       >
-        <Form<FormValues> getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }} onSubmit={handleSubmit}>
-          <Form.Input field="name" label="应用名称" rules={[{ required: true, message: '必填' }]} />
-          <Form.TextArea field="description" label="应用描述" />
-          <Form.Input field="logoUrl" label="Logo URL" />
-          <Form.TagInput
-            field="redirectUris"
-            label="回调 URL 列表（回车添加）"
-            placeholder="https://yourapp.com/callback"
-            rules={[{ required: true, message: '至少填写一个回调 URL' }]}
-          />
-          <Form.CheckboxGroup
-            field="allowedScopes"
-            label="允许的 scope"
-            rules={[{ required: true, message: '至少选择一个' }]}
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
+          <Form
+            key={editing?.id ?? 'new'}
+            getFormApi={(api) => { formApi.current = api; }}
+            allowEmpty
+            initValues={formInitValues}
+            labelPosition="left"
+            labelWidth={120}
           >
-            {OAUTH2_SCOPES.map((s) => (
-              <Checkbox key={s} value={s}>{SCOPE_LABELS[s] ?? s}</Checkbox>
-            ))}
-          </Form.CheckboxGroup>
-          <Form.CheckboxGroup
-            field="grantTypes"
-            label="授权类型"
-            rules={[{ required: true, message: '至少选择一个' }]}
-          >
-            {OAUTH2_GRANT_TYPES.map((t) => (
-              <Checkbox key={t} value={t}>{GRANT_TYPE_LABELS[t] ?? t}</Checkbox>
-            ))}
-          </Form.CheckboxGroup>
-          <Form.Switch field="isPublic" label="公开客户端（不使用 client_secret）" />
-          {editing && (
-            <Form.Select
-              field="status"
-              label="状态"
-              optionList={[
-                { value: 'enabled', label: '启用' },
-                { value: 'disabled', label: '禁用' },
-              ]}
+            <Form.Input
+              field="name"
+              label="应用名称"
+              placeholder="请输入应用名称"
+              rules={[{ required: true, message: '应用名称不能为空' }]}
             />
-          )}
-          <div style={{ textAlign: 'right', marginTop: 16 }}>
-            <Space>
-              <Button onClick={() => setModalVisible(false)}>取消</Button>
-              <Button type="primary" htmlType="submit" loading={submitting}>
-                {editing ? '保存' : '创建'}
-              </Button>
-            </Space>
-          </div>
-        </Form>
+            <Form.TextArea field="description" label="应用描述" placeholder="请输入描述（可选）" />
+            <Form.Input field="logoUrl" label="Logo URL" placeholder="https://example.com/logo.png" />
+            <Form.TagInput
+              field="redirectUris"
+              label="回调 URL"
+              placeholder="输入后回车添加"
+              rules={[{ required: true, message: '至少填写一个回调 URL' }]}
+            />
+            <Form.CheckboxGroup
+              field="allowedScopes"
+              label="允许的 scope"
+              rules={[{ required: true, message: '至少选择一个' }]}
+            >
+              {OAUTH2_SCOPES.map((s) => (
+                <Checkbox key={s} value={s}>{SCOPE_LABELS[s] ?? s}</Checkbox>
+              ))}
+            </Form.CheckboxGroup>
+            <Form.CheckboxGroup
+              field="grantTypes"
+              label="授权类型"
+              rules={[{ required: true, message: '至少选择一种' }]}
+            >
+              {OAUTH2_GRANT_TYPES.map((t) => (
+                <Checkbox key={t} value={t}>{GRANT_TYPE_LABELS[t] ?? t}</Checkbox>
+              ))}
+            </Form.CheckboxGroup>
+            <Form.Switch
+              field="isPublic"
+              label="公开客户端"
+              extraText="公开客户端不使用 client_secret（适用于原生应用，需配合 PKCE）"
+            />
+            {editing && (
+              <Form.Select
+                field="status"
+                label="状态"
+                optionList={[
+                  { value: 'enabled', label: '启用' },
+                  { value: 'disabled', label: '禁用' },
+                ]}
+                rules={[{ required: true, message: '请选择状态' }]}
+              />
+            )}
+          </Form>
+        </Spin>
       </Modal>
 
       {/* 一次性 Secret 展示弹窗 */}
@@ -344,13 +408,13 @@ export default function OAuth2AppsPage() {
         <div style={{ marginBottom: 8 }}>
           <Text strong>Client ID：</Text>
         </div>
-        <Paragraph copyable style={{ wordBreak: 'break-all', background: '#f5f5f5', padding: 8, borderRadius: 4 }}>
+        <Paragraph copyable style={{ wordBreak: 'break-all', background: 'var(--semi-color-fill-0)', padding: 8, borderRadius: 4 }}>
           {oneTimeClientId}
         </Paragraph>
         <div style={{ marginTop: 12, marginBottom: 8 }}>
           <Text strong>Client Secret：</Text>
         </div>
-        <Paragraph copyable style={{ wordBreak: 'break-all', background: '#f5f5f5', padding: 8, borderRadius: 4 }}>
+        <Paragraph copyable style={{ wordBreak: 'break-all', background: 'var(--semi-color-fill-0)', padding: 8, borderRadius: 4 }}>
           {oneTimeSecret}
         </Paragraph>
       </Modal>
