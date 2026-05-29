@@ -34,7 +34,7 @@ export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
   onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji,
-  currentUserId, onEdit, onVote, isHighlighted,
+  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -60,6 +60,7 @@ export function MessageBubble({
   onEdit?: (msg: ChatMessage) => void;
   onVote?: (msg: ChatMessage, optionIds: string[]) => void;
   isHighlighted?: boolean;
+  onOpenFilePreview?: (msg: ChatMessage) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -401,6 +402,7 @@ export function MessageBubble({
                   onOpenForwardView={onOpenForwardView}
                   currentUserId={currentUserId}
                   onVote={onVote}
+                  onOpenFilePreview={onOpenFilePreview}
                 />
               )}
             </div>

@@ -64,6 +64,17 @@ export function getFileTypeIcon(mimeType?: string | null, iconSize = 15) {
   return <File size={size} color={color} />;
 }
 
+/** 判断文件是否支持预览 */
+export function canPreviewFile(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  return (
+    mimeType.startsWith('image/') ||
+    mimeType.startsWith('audio/') ||
+    mimeType.startsWith('video/') ||
+    mimeType === 'application/pdf'
+  );
+}
+
 /** 使用当前登录 token 获取受保护的文件内容，返回 Blob */
 export async function fetchProtectedFile(url: string): Promise<Blob> {
   const token = localStorage.getItem(TOKEN_KEY);

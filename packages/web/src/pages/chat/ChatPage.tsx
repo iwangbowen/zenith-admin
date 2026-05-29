@@ -20,7 +20,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
-import { formatFileSize, getFileTypeIcon, fetchProtectedFile } from '@/utils/file-utils';
+import { formatFileSize, getFileTypeIcon, fetchProtectedFile, canPreviewFile } from '@/utils/file-utils';
+import FilePreviewModal from '@/components/FilePreviewModal';
 import type {
   ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
   ChatGroupMember, ChatMessageSearchItem, ChatMessageSearchResult, ChatMessageContext, ChatVoteData,
@@ -197,6 +198,7 @@ export default function ChatPage({
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
+  const [filePreview, setFilePreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
   const previewSessionRef = useRef(0);
   const previewBlobUrlsRef = useRef<string[]>([]);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -2369,6 +2371,15 @@ export default function ChatPage({
                           onEdit={handleEditMessage}
                           onVote={handleVoteMessage}
                           isHighlighted={highlightedMessageId === msg.id}
+                          onOpenFilePreview={(fileMsg) => {
+                            const asset = fileMsg.extra?.asset;
+                            if (!asset || !canPreviewFile(asset.mimeType)) return;
+                            setFilePreview({
+                              url: fileMsg.content,
+                              name: asset.name ?? '文件',
+                              mimeType: asset.mimeType ?? 'application/octet-stream',
+                            });
+                          }}
                         />
                       </div>
                     );
@@ -2629,6 +2640,14 @@ export default function ChatPage({
               }
             }}
             infinite
+          />
+
+          <FilePreviewModal
+            fileUrl={filePreview?.url ?? ''}
+            fileName={filePreview?.name}
+            mimeType={filePreview?.mimeType}
+            visible={!!filePreview}
+            onClose={() => setFilePreview(null)}
           />
 
           <Modal

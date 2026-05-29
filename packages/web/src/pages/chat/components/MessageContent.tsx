@@ -1,5 +1,5 @@
-import { Typography, List } from '@douyinfe/semi-ui';
-import { getFileTypeIcon, formatFileSize } from '@/utils/file-utils';
+import { Typography, List, Button } from '@douyinfe/semi-ui';
+import { getFileTypeIcon, formatFileSize, canPreviewFile } from '@/utils/file-utils';
 import { getMessageExtra, renderTextWithMentions } from '../utils';
 import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
 
@@ -18,7 +18,7 @@ function getForwardedItemPreview(item: ForwardedMessageItem): string {
 }
 
 export function MessageContent({
-  msg, isSelf, onOpenImage, onOpenForwardView, currentUserId, onVote,
+  msg, isSelf, onOpenImage, onOpenForwardView, currentUserId, onVote, onOpenFilePreview,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -26,6 +26,7 @@ export function MessageContent({
   onOpenForwardView?: (items: NonNullable<ChatMessageExtra['forwardedMessages']>, title: string) => void;
   currentUserId?: number | null;
   onVote?: (msg: ChatMessage, optionIds: string[]) => void;
+  onOpenFilePreview?: (msg: ChatMessage) => void;
 }>) {
   const extra = getMessageExtra(msg);
   const asset = extra?.asset ?? null;
@@ -108,6 +109,7 @@ export function MessageContent({
   }
 
   if (msg.type === 'file') {
+    const isPreviewable = canPreviewFile(asset?.mimeType);
     return (
       <div
         style={{
@@ -161,6 +163,20 @@ export function MessageContent({
             </Text>
           )}
         </div>
+        {isPreviewable && (
+          <Button
+            size="small"
+            theme="borderless"
+            style={{
+              flexShrink: 0,
+              color: isSelf ? 'rgba(255,255,255,0.85)' : 'var(--semi-color-primary)',
+              padding: '2px 6px',
+            }}
+            onClick={() => onOpenFilePreview?.(msg)}
+          >
+            预览
+          </Button>
+        )}
       </div>
     );
   }

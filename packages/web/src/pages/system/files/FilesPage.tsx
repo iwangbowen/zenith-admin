@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
 import {
-  AudioPlayer,
   Button,
   Checkbox,
   DatePicker,
@@ -19,16 +17,15 @@ import {
   Toast,
   Tooltip,
   Typography,
-  VideoPlayer,
 } from '@douyinfe/semi-ui';
-import { useThemeController } from '@/providers/theme-controller';
 import { Plus, Search, RotateCcw, Trash2, FolderDown, MoreHorizontal, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, Eye, Download } from 'lucide-react';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl } from '@/utils/file-utils';
+import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
+import FilePreviewModal from '@/components/FilePreviewModal';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { usePreferences } from '@/hooks/usePreferences';
@@ -229,11 +226,8 @@ export default function FilesPage() {
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
-  const [pdfPreviewFile, setPdfPreviewFile] = useState<File | null>(null);
-  const [audioPreview, setAudioPreview] = useState<{ url: string; title: string } | null>(null);
-  const [videoPreview, setVideoPreview] = useState<{ url: string; title: string } | null>(null);
+  const [filePreview, setFilePreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
   const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
-  const { isDark } = useThemeController();
   // previewBlobUrlsRef: index-aligned with image list, tracks created blob URLs for cleanup
   const previewBlobUrlsRef = useRef<string[]>([]);
   // previewSessionRef: increments each time a new preview session starts, used to cancel stale bg loads
@@ -393,55 +387,11 @@ export default function FilesPage() {
     previewBlobUrlsRef.current = [];
   };
 
-  const handleCloseAudioPreview = () => {
-    if (audioPreview) globalThis.URL.revokeObjectURL(audioPreview.url);
-    setAudioPreview(null);
-  };
-
-  const handleCloseVideoPreview = () => {
-    if (videoPreview) globalThis.URL.revokeObjectURL(videoPreview.url);
-    setVideoPreview(null);
-  };
-
   const handlePreview = async (file: ManagedFile) => {
     const isImage = file.mimeType?.startsWith('image/');
-    const isPdf = file.mimeType === 'application/pdf';
-    const isAudio = file.mimeType?.startsWith('audio/');
-    const isVideo = file.mimeType?.startsWith('video/');
+    const isPreviewable = canPreviewFile(file.mimeType);
 
-    if (isPdf) {
-      setPreviewLoadingId(file.id);
-      try {
-        const blob = await fetchProtectedFile(file.url);
-        const browserFile = new File([blob], file.originalName, { type: 'application/pdf' });
-        setPdfPreviewFile(browserFile);
-      } catch (error) {
-        Toast.error(error instanceof Error ? error.message : '预览文件失败');
-      } finally {
-        setPreviewLoadingId(null);
-      }
-      return;
-    }
-
-    if (isAudio || isVideo) {
-      setPreviewLoadingId(file.id);
-      try {
-        const blob = await fetchProtectedFile(file.url);
-        const objectUrl = globalThis.URL.createObjectURL(blob);
-        if (isAudio) {
-          setAudioPreview({ url: objectUrl, title: file.originalName });
-        } else {
-          setVideoPreview({ url: objectUrl, title: file.originalName });
-        }
-      } catch (error) {
-        Toast.error(error instanceof Error ? error.message : '预览文件失败');
-      } finally {
-        setPreviewLoadingId(null);
-      }
-      return;
-    }
-
-    if (!isImage) {
+    if (!isPreviewable && !isImage) {
       try {
         const blob = await fetchProtectedFile(file.url);
         const objectUrl = globalThis.URL.createObjectURL(blob);
@@ -449,6 +399,22 @@ export default function FilesPage() {
         globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(objectUrl), 60_000);
       } catch (error) {
         Toast.error(error instanceof Error ? error.message : '预览文件失败');
+      }
+      return;
+    }
+
+    if (!isImage) {
+      setPreviewLoadingId(file.id);
+      try {
+        setFilePreview({
+          url: file.url,
+          name: file.originalName,
+          mimeType: file.mimeType ?? 'application/octet-stream',
+        });
+      } catch (error) {
+        Toast.error(error instanceof Error ? error.message : '预览文件失败');
+      } finally {
+        setPreviewLoadingId(null);
       }
       return;
     }
@@ -890,70 +856,13 @@ export default function FilesPage() {
         )}
       </Modal>
 
-      <Modal
-        visible={!!pdfPreviewFile}
-        onCancel={() => setPdfPreviewFile(null)}
-        title={null}
-        footer={null}
-        width="min(1100px, 92vw)"
-        style={{ top: '4vh' }}
-        bodyStyle={{ padding: 0, height: '88vh', display: 'flex', overflow: 'hidden' }}
-        closable={false}
-        keepDOM={false}
-      >
-        {pdfPreviewFile && (
-          <PDFPreviewPanel
-            file={pdfPreviewFile}
-            onClose={() => setPdfPreviewFile(null)}
-            style={{ width: '100%', borderLeft: 'none' }}
-          />
-        )}
-      </Modal>
-
-      <Modal
-        visible={!!audioPreview}
-        onCancel={handleCloseAudioPreview}
-        title={null}
-        footer={null}
-        width={600}
-        style={{ top: '25vh' }}
-        bodyStyle={{ padding: 0, overflow: 'hidden', borderRadius: 8 }}
-        closable={false}
-        keepDOM={false}
-      >
-        {audioPreview && (
-          <AudioPlayer
-            audioUrl={{ src: audioPreview.url, title: audioPreview.title }}
-            theme={isDark ? 'dark' : 'light'}
-            style={{ borderRadius: 8 }}
-          />
-        )}
-      </Modal>
-
-      <Modal
-        visible={!!videoPreview}
-        onCancel={handleCloseVideoPreview}
-        title={null}
-        footer={null}
-        width="min(960px, 92vw)"
-        style={{ top: '4vh' }}
-        bodyStyle={{ padding: 0, overflow: 'hidden', borderRadius: 8 }}
-        closable={false}
-        keepDOM={false}
-      >
-        {videoPreview && (
-          <VideoPlayer
-            src={videoPreview.url}
-            theme={isDark ? 'dark' : 'light'}
-            width="100%"
-            autoPlay={false}
-            muted={false}
-            volume={100}
-            clickToPlay={true}
-            style={{ borderRadius: 8 }}
-          />
-        )}
-      </Modal>
+      <FilePreviewModal
+        fileUrl={filePreview?.url ?? ''}
+        fileName={filePreview?.name}
+        mimeType={filePreview?.mimeType}
+        visible={!!filePreview}
+        onClose={() => setFilePreview(null)}
+      />
 
       {viewMode === 'list' ? (
         <ConfigurableTable
