@@ -45,7 +45,6 @@ body[theme-mode='dark'] {
   --color-border: #2e3340;
   --topbar-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
   --tabsbar-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  color-scheme: dark;
 }
 
 
@@ -74,8 +73,8 @@ body,
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
-  color: var(--color-text);
-  background: var(--color-bg);
+  color: var(--semi-color-text-0);
+  background-color: var(--semi-color-bg-0);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
