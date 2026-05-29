@@ -1,6 +1,3 @@
-// UserAvatar 已提升为全局公共组件，从这里 re-export 保持聊天页导入路径不变
-export { UserAvatar } from '@/components/UserAvatar';
-
 import { getAvatarColor } from '../utils';
 
 export function GroupGridAvatar({

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, Modal, Toast, Tooltip, TextArea, Input, Tag, Typography, List as SemiList } from '@douyinfe/semi-ui';
 import { UserPlus, UserMinus, Crown, Pencil } from 'lucide-react';
 import { request } from '@/utils/request';
-import { UserAvatar } from './ChatAvatar';
+import { UserAvatar } from '@/components/UserAvatar';
 import { UserSearchList } from './UserSearchList';
 import type { ChatConversation, ChatGroupMember } from '@zenith/shared';
 import type { ChatUser } from '../types';

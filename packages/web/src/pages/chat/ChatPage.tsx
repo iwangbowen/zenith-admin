@@ -32,7 +32,8 @@ import {
 import './ChatPage.css';
 import type { ChatUser, PendingImage, PendingFile, SearchDatePreset, FailedMessage } from './types';
 import { CHAT_MESSAGE_TYPE_OPTIONS } from './types';
-import { UserAvatar, GroupGridAvatar } from './components/ChatAvatar';
+import { UserAvatar } from '@/components/UserAvatar';
+import { GroupGridAvatar } from './components/GroupGridAvatar';
 import { NewChatPanel } from './components/NewChatPanel';
 import { GroupMembersPanel } from './components/GroupMembersPanel';
 import { ForwardModal } from './components/ForwardModal';

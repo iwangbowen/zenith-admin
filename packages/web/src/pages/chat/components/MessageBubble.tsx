@@ -6,7 +6,7 @@ import {
 import { formatDateTime } from '@/utils/date';
 import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
 import { getAssetMeta } from '../utils';
-import { UserAvatar } from './ChatAvatar';
+import { UserAvatar } from '@/components/UserAvatar';
 import { MessageContent } from './MessageContent';
 
 const { Text } = Typography;
