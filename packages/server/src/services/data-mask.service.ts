@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { dataMaskConfigs } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
@@ -46,6 +47,12 @@ export function mapDataMaskConfig(row: DataMaskConfigRow): DataMaskConfig {
 export async function listDataMaskConfigs(): Promise<DataMaskConfig[]> {
   const rows = await db.select().from(dataMaskConfigs).orderBy(dataMaskConfigs.entity, dataMaskConfigs.field);
   return rows.map(mapDataMaskConfig);
+}
+
+export async function getDataMaskConfig(id: number): Promise<DataMaskConfig> {
+  const [row] = await db.select().from(dataMaskConfigs).where(eq(dataMaskConfigs.id, id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '脱敏规则不存在' });
+  return mapDataMaskConfig(row);
 }
 
 export async function createDataMaskConfig(input: CreateDataMaskConfigInput): Promise<DataMaskConfig> {

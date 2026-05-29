@@ -11,6 +11,7 @@ import {
   Popconfirm,
   Row,
   Col,
+  Spin,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -68,6 +69,7 @@ export default function DataMaskPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<DataMaskConfig | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [roleOptions, setRoleOptions] = useState<{ value: string; label: string }[]>([]);
   const [maskTypePreview, setMaskTypePreview] = useState<MaskType>('phone');
   const formRef = useRef<FormApi>(null);
@@ -101,16 +103,31 @@ export default function DataMaskPage() {
   const handleSearch = () => setSubmittedKeyword(keyword);
   const handleReset = () => { setKeyword(''); setSubmittedKeyword(''); };
 
+  const closeModal = () => {
+    setModalVisible(false);
+    setEditing(null);
+    setModalDetailLoading(false);
+  };
+
   const openCreate = () => {
     setEditing(null);
     setMaskTypePreview('phone');
     setModalVisible(true);
   };
 
-  const openEdit = (row: DataMaskConfig) => {
+  const openEdit = async (row: DataMaskConfig) => {
     setEditing(row);
     setMaskTypePreview(row.maskType);
     setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<DataMaskConfig>(`/api/data-mask-configs/${row.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditing(res.data);
+      setMaskTypePreview(res.data.maskType);
+    } else {
+      Toast.error(res.message || '获取规则详情失败');
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -148,7 +165,7 @@ export default function DataMaskPage() {
         await request.post('/api/data-mask-configs', body);
         Toast.success('创建成功');
       }
-      setModalVisible(false);
+      closeModal();
       fetchData();
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
@@ -247,14 +264,16 @@ export default function DataMaskPage() {
       <Modal
         title={editing ? '编辑脱敏规则' : '新增脱敏规则'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={closeModal}
         onOk={handleSubmit}
         okText={editing ? '保存' : '创建'}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: submitting, disabled: modalDetailLoading }}
         width={660}
         destroyOnClose
       >
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form<FormValues>
+          key={editing?.id ?? 'new'}
           getFormApi={(api) => { formRef.current = api; }}
           initValues={getInitValues()}
           labelPosition="left"
@@ -351,6 +370,7 @@ export default function DataMaskPage() {
             </Col>
           </Row>
         </Form>
+        </Spin>
       </Modal>
     </div>
   );

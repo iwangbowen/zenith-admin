@@ -6,6 +6,7 @@ import { DataMaskConfigDTO } from '../lib/openapi-dtos';
 import { maskTypeValues } from '@zenith/shared';
 import {
   listDataMaskConfigs,
+  getDataMaskConfig,
   createDataMaskConfig,
   updateDataMaskConfig,
   deleteDataMaskConfig,
@@ -41,6 +42,20 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(DataMaskConfigDTO), '脱敏规则列表') },
   }),
   handler: async (c) => c.json(okBody(await listDataMaskConfigs()), 200),
+});
+
+const getOneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['DataMaskConfigs'], summary: '获取脱敏规则详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:data-mask:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(DataMaskConfigDTO, '脱敏规则详情') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await getDataMaskConfig(id)), 200);
+  },
 });
 
 const createRoute_ = defineOpenAPIRoute({
@@ -87,6 +102,6 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-dataMaskConfigsRouter.openapiRoutes([listRoute, createRoute_, updateRoute, deleteRoute] as const);
+dataMaskConfigsRouter.openapiRoutes([listRoute, getOneRoute, createRoute_, updateRoute, deleteRoute] as const);
 
 export default dataMaskConfigsRouter;
