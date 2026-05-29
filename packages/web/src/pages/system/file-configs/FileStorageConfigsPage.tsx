@@ -394,7 +394,6 @@ export default function FileStorageConfigsPage() {
 
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={columns}
         dataSource={configs}
         rowKey="id"

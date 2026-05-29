@@ -202,7 +202,6 @@ export default function SystemConfigsPage() {
 
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={columns}
         dataSource={data}
         loading={loading}

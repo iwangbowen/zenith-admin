@@ -342,7 +342,6 @@ export default function DictsPage() {
       </SearchToolbar>
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={dictColumns}
         dataSource={dicts}
         rowKey="id"
@@ -414,7 +413,6 @@ export default function DictsPage() {
         </Space>
         <Table
           bordered
-          className="admin-table-nowrap"
           columns={itemColumns}
           dataSource={filteredItems}
           rowKey="id"

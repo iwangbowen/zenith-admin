@@ -102,10 +102,12 @@ body {
 /* Semi override for compact feel */
 .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
   padding: 8px 12px;
+  vertical-align: middle;
 }
 .semi-table-thead > .semi-table-row > .semi-table-row-head {
   padding: 8px 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .semi-card {
   border-radius: var(--semi-border-radius-medium);
@@ -155,14 +157,6 @@ body {
 }
 .semi-ai-chat-dialogue-hint-item {
   background: var(--semi-color-bg-2) !important;
-}
-
-.admin-table-nowrap .semi-table-thead > .semi-table-row > .semi-table-row-head {
-  white-space: nowrap;
-}
-
-.admin-table-nowrap .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
-  vertical-align: middle;
 }
 
 .table-cell-ellipsis {

@@ -333,7 +333,6 @@ export default function MenusPage() {
 
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={columns}
         dataSource={filteredData}
         rowKey="id"

@@ -297,7 +297,6 @@ export default function XxxPage() {
       {/* 数据表格 */}
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={columns}
         dataSource={data?.list ?? []}
         loading={loading}

@@ -631,7 +631,6 @@ export default function UsersPage() {
       </SearchToolbar>
 
       <ConfigurableTable
-        className="admin-table-nowrap"
         bordered
         columns={columns}
         dataSource={data?.list || []}

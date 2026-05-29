@@ -259,7 +259,6 @@ export default function PositionsPage() {
 
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={columns}
         dataSource={data}
         loading={loading}

@@ -235,7 +235,6 @@ export default function TenantsPage() {
 
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={columns}
         dataSource={data}
         rowKey="id"

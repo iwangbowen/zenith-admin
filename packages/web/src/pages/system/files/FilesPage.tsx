@@ -867,7 +867,6 @@ export default function FilesPage() {
       {viewMode === 'list' ? (
         <ConfigurableTable
           bordered
-          className="admin-table-nowrap"
           columns={columns}
           dataSource={data?.list || []}
           rowKey="id"

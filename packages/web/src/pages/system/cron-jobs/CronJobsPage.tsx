@@ -390,7 +390,6 @@ export default function CronJobsPage() {
 
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={columns}
         dataSource={data}
         loading={loading}

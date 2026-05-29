@@ -376,7 +376,6 @@ export default function RolesPage() {
 
       <ConfigurableTable
         bordered
-        className="admin-table-nowrap"
         columns={columns}
         dataSource={data}
         rowKey="id"
