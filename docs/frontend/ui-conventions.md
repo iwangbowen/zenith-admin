@@ -42,8 +42,6 @@ const columns = [
 ];
 ```
 
-禁止内联写 `<Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>`。
-
 ### 操作列按钮
 
 - 使用纯文字无图标按钮
