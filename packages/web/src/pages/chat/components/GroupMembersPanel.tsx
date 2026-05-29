@@ -111,7 +111,7 @@ export function GroupMembersPanel({
     if ((res as { code: number }).code === 0) {
       Toast.success('已更新');
       setShowInfoEdit(false);
-      onConvUpdate({ name: body.name ?? conv.name, announcement: body.announcement !== undefined ? body.announcement : conv.announcement });
+      onConvUpdate({ name: body.name ?? conv.name, announcement: body.announcement === undefined ? conv.announcement : body.announcement });
     } else {
       Toast.error((res as { message?: string }).message ?? '更新失败');
     }
