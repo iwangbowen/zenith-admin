@@ -18,6 +18,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import './ProfilePage.css';
+import { createdAtColumn } from '../../utils/table-columns';
 
 const { Title, Text } = Typography;
 
@@ -639,7 +640,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                         { title: 'Token 前缀', dataIndex: 'tokenPrefix', width: 160, render: (v: string) => <code style={{ fontSize: 12 }}>{v}</code> },
                         { title: '最后使用', dataIndex: 'lastUsedAt', render: (v: string | null) => v ? formatDateTime(v) : '未使用', width: 180 },
                         { title: '过期时间', dataIndex: 'expiresAt', render: (v: string | null) => v ? formatDateTime(v) : '永久有效', width: 180 },
-                        { title: '创建时间', dataIndex: 'createdAt', render: (v: string) => formatDateTime(v), width: 180 },
+                        createdAtColumn,
                         {
                           title: '操作', dataIndex: 'id', width: 80, fixed: 'right',
                           render: (id: number) => (

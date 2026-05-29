@@ -26,6 +26,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -212,11 +213,11 @@ export default function UserGroupsPage() {
   };
 
   const columns: ColumnProps<UserGroup>[] = [
-    { title: '用户组名称', dataIndex: 'name', width: 200, render: (v: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v || '—'}</Typography.Text> },
-    { title: '编码', dataIndex: 'code', width: 180, render: (v: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v || '—'}</Typography.Text> },
+    { title: '用户组名称', dataIndex: 'name', width: 200, render: renderEllipsis },
+    { title: '编码', dataIndex: 'code', width: 180, render: renderEllipsis },
     {
       title: '描述', dataIndex: 'description',
-      render: (v: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v || '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '负责人', dataIndex: 'ownerName', width: 120,

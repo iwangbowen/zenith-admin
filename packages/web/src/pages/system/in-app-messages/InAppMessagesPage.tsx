@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Tag, Typography,
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Tag,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { CheckCheck, Plus, RotateCcw, Search } from 'lucide-react';
@@ -8,6 +8,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 const TYPE_OPTIONS: { label: string; value: InAppMessageType; color: 'blue' | 'green' | 'orange' | 'red' }[] = [
   { label: '通知', value: 'info', color: 'blue' },
@@ -151,8 +152,8 @@ export default function InAppMessagesPage() {
   };
 
   const columns = [
-    { title: '标题', dataIndex: 'title', render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
-    { title: '内容', dataIndex: 'content', render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: '标题', dataIndex: 'title', render: renderEllipsis },
+    { title: '内容', dataIndex: 'content', render: renderEllipsis },
     {
       title: '类型', dataIndex: 'type', width: 90,
       render: (v: InAppMessageType) => {
@@ -163,7 +164,7 @@ export default function InAppMessagesPage() {
     { title: '收件人', dataIndex: 'username', width: 120, render: (v: string | null) => v || '—' },
     { title: '发送人', dataIndex: 'senderName', width: 120, render: (v: string | null) => v || '系统' },
     { title: '阅读时间', dataIndex: 'readAt', width: 180, render: (v: string | null) => v || '—' },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180 },
+    createdAtColumn,
     {
       title: '状态', dataIndex: 'isRead', width: 90, fixed: 'right' as const,
       render: (v: boolean) => v ? <Tag color="green" type="light">已读</Tag> : <Tag color="orange" type="light">未读</Tag>,

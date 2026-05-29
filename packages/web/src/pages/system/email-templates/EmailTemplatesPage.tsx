@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Typography,
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -10,6 +10,7 @@ import { request } from '@/utils/request';
 import DictTag from '@/components/DictTag';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 export default function EmailTemplatesPage() {
   const { hasPermission: can } = usePermission();
@@ -107,10 +108,10 @@ export default function EmailTemplatesPage() {
   const columns = [
     { title: '模板名称', dataIndex: 'name', width: 160 },
     { title: '模板编码', dataIndex: 'code', width: 180 },
-    { title: '邮件主题', dataIndex: 'subject', render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
-    { title: '变量', dataIndex: 'variables', width: 200, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{}</Typography.Text> },
-    { title: '备注', dataIndex: 'remark', render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{}</Typography.Text> },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180 },
+    { title: '邮件主题', dataIndex: 'subject', render: renderEllipsis },
+    { title: '变量', dataIndex: 'variables', width: 200, render: renderEllipsis },
+    { title: '备注', dataIndex: 'remark', render: renderEllipsis },
+    createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
       render: (v: string) => <DictTag dictCode="common_status" value={v} />,

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag, Typography,
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -10,6 +10,7 @@ import { request } from '@/utils/request';
 import DictTag from '@/components/DictTag';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 const TYPE_OPTIONS: { label: string; value: InAppMessageType; color: 'blue' | 'green' | 'orange' | 'red' }[] = [
   { label: '通知', value: 'info', color: 'blue' },
@@ -113,7 +114,7 @@ export default function InAppTemplatesPage() {
   const columns = [
     { title: '模板名称', dataIndex: 'name', width: 160 },
     { title: '模板编码', dataIndex: 'code', width: 180 },
-    { title: '标题', dataIndex: 'title', render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: '标题', dataIndex: 'title', render: renderEllipsis },
     {
       title: '类型', dataIndex: 'type', width: 90,
       render: (v: InAppMessageType) => {
@@ -121,7 +122,7 @@ export default function InAppTemplatesPage() {
         return <Tag color={it?.color ?? 'grey'} type="light">{it?.label ?? v}</Tag>;
       },
     },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180 },
+    createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
       render: (v: string) => <DictTag dictCode="common_status" value={v} />,

@@ -10,6 +10,7 @@ import { request } from '@/utils/request';
 import DictTag from '@/components/DictTag';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 const PROVIDER_OPTIONS = [
   { label: '阿里云', value: 'aliyun' },
@@ -122,14 +123,14 @@ export default function SmsConfigsPage() {
       title: '服务商', dataIndex: 'provider', width: 100,
       render: (v: string) => PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
     },
-    { title: 'AccessKeyId', dataIndex: 'accessKeyId', width: 180, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
+    { title: 'AccessKeyId', dataIndex: 'accessKeyId', width: 180, render: renderEllipsis },
     { title: '签名', dataIndex: 'signName', width: 120 },
     { title: '地域', dataIndex: 'region', width: 140, render: (v: string | null) => v || '—' },
     {
       title: '默认', dataIndex: 'isDefault', width: 80,
       render: (v: boolean) => (v ? <Tag color="blue" type="light">默认</Tag> : '—'),
     },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180 },
+    createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
       render: (v: string) => <DictTag dictCode="common_status" value={v} />,

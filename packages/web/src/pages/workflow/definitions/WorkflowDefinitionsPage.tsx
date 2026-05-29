@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Dropdown, Input, Modal, Select, Space, Tag, Typography,
+import { Button, Dropdown, Input, Modal, Select, Space, Tag,
   Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { MoreHorizontal, Plus, RotateCcw, Search } from 'lucide-react';
@@ -13,6 +13,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
 import CategorySidebar from './components/CategorySidebar';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -110,7 +111,7 @@ export default function WorkflowDefinitionsPage() {
       title: '流程名称',
       dataIndex: 'name',
       width: 260,
-      render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '分类',
@@ -130,7 +131,7 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '描述',
       dataIndex: 'description',
-      render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '版本',
@@ -142,7 +143,7 @@ export default function WorkflowDefinitionsPage() {
       title: '创建人',
       dataIndex: 'createdByName',
       width: 90,
-      render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '更新时间',

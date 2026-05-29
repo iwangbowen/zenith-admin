@@ -7,6 +7,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createdAtColumn } from '../../../utils/table-columns';
 
 export default function DbBackupsPage() {
   const [list, setList] = useState<DbBackup[]>([]);
@@ -102,7 +103,7 @@ export default function DbBackupsPage() {
       render: (v: number | null) => v ? `${(v / 1000).toFixed(1)}s` : '-',
     },
     { title: '创建者', dataIndex: 'createdByName', width: 100, render: (v: string | null) => v || '-' },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',

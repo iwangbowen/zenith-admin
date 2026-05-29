@@ -10,6 +10,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { Search, RotateCcw } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 const { Title, Text } = Typography;
 
@@ -91,9 +92,9 @@ function IpAccessLogsTab() {
         </Tag>
       ),
     },
-    { title: '请求路径', dataIndex: 'path', render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: '请求路径', dataIndex: 'path', render: renderEllipsis },
     { title: '请求方法', dataIndex: 'method', width: 100 },
-    { title: 'User-Agent', dataIndex: 'userAgent', render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: 'User-Agent', dataIndex: 'userAgent', render: renderEllipsis },
     {
       title: '拦截时间', dataIndex: 'createdAt', width: 180,
       render: (v: string) => formatDateTime(v),

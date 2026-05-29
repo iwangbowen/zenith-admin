@@ -10,6 +10,7 @@ import { request } from '@/utils/request';
 import DictTag from '@/components/DictTag';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 const PROVIDER_OPTIONS = [
   { label: '阿里云', value: 'aliyun' },
@@ -117,8 +118,8 @@ export default function SmsTemplatesPage() {
       title: '服务商', dataIndex: 'provider', width: 100,
       render: (v: string) => PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,
     },
-    { title: '内容', dataIndex: 'content', render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
-    { title: '创建时间', dataIndex: 'createdAt', width: 180 },
+    { title: '内容', dataIndex: 'content', render: renderEllipsis },
+    createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
       render: (v: string) => <DictTag dictCode="common_status" value={v} />,

@@ -8,7 +8,6 @@ import {
   Form,
   Radio,
   Toast,
-  Typography,
   TreeSelect,
   Row,
   Col,
@@ -27,6 +26,7 @@ import { usePermission } from '@/hooks/usePermission';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 export default function MenusPage() {
   const { hasPermission } = usePermission();
@@ -229,19 +229,19 @@ export default function MenusPage() {
       title: '路由路径',
       dataIndex: 'path',
       width: 180,
-      render: (val: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{val || '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '组件路径',
       dataIndex: 'component',
       width: 250,
-      render: (val: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{val || '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '权限标识',
       dataIndex: 'permission',
       width: 200,
-      render: (val: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{val || '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '排序',
@@ -349,7 +349,7 @@ export default function MenusPage() {
         onOk={handleMenuModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={680}
-       
+
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form

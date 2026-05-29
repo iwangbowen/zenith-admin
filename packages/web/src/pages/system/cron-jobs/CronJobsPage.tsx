@@ -14,7 +14,6 @@ import {
   Switch,
   Table,
   Tag,
-  Typography,
   Toast,
   Tooltip,
 } from '@douyinfe/semi-ui';
@@ -28,6 +27,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -256,7 +256,7 @@ export default function CronJobsPage() {
   const lastRunStatusLabel: Record<string, string> = { success: '成功', fail: '失败', running: '运行中' };
 
   const columns: ColumnProps<CronJob>[] = [
-    { title: '任务名称', dataIndex: 'name', width: 180, render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: '任务名称', dataIndex: 'name', width: 180, render: renderEllipsis },
     {
       title: 'Cron 表达式', dataIndex: 'cronExpression', width: 150,
       render: (v: string) => (
@@ -265,7 +265,7 @@ export default function CronJobsPage() {
         </Tooltip>
       ),
     },
-    { title: '处理器', dataIndex: 'handler', width: 180, render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: '处理器', dataIndex: 'handler', width: 180, render: renderEllipsis },
     {
       title: '上次执行',
       width: 175,
@@ -285,7 +285,7 @@ export default function CronJobsPage() {
         );
       },
     },
-    { title: '描述', dataIndex: 'description', width: 200, render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: '描述', dataIndex: 'description', width: 200, render: renderEllipsis },
     {
       title: '启用',
       dataIndex: 'status',
@@ -538,7 +538,7 @@ export default function CronJobsPage() {
               title: '任务名称',
               dataIndex: 'jobName',
               width: 160,
-              render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v || '—'}</Typography.Text>,
+              render: renderEllipsis,
             },
             {
               title: '第几次执行',
@@ -577,7 +577,7 @@ export default function CronJobsPage() {
               title: '输出',
               dataIndex: 'output',
               width: 260,
-              render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v || '—'}</Typography.Text>,
+              render: renderEllipsis,
             },
           ]}
           pagination={{
@@ -643,7 +643,7 @@ export default function CronJobsPage() {
               title: '输出',
               dataIndex: 'output',
               width: 270,
-              render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v || '—'}</Typography.Text>,
+              render: renderEllipsis,
             },
           ]}
           pagination={{

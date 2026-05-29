@@ -11,7 +11,6 @@ import {
   Toast,
   Tree,
   TreeSelect,
-  Typography,
   Spin,
   DatePicker,
 } from '@douyinfe/semi-ui';
@@ -27,6 +26,7 @@ import { usePermission } from '@/hooks/usePermission';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
@@ -256,9 +256,9 @@ export default function RolesPage() {
   };
 
   const columns: ColumnProps<Role>[] = [
-    { title: '角色名称', dataIndex: 'name', width: 160, render: (v: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
-    { title: '角色编码', dataIndex: 'code', width: 160, render: (v: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
-    { title: '描述', dataIndex: 'description', width: 200, render: (_v, record) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{record.description}</Typography.Text> },
+    { title: '角色名称', dataIndex: 'name', width: 160, render: renderEllipsis },
+    { title: '角色编码', dataIndex: 'code', width: 160, render: renderEllipsis },
+    { title: '描述', dataIndex: 'description', width: 200, render: (_v, record) => renderEllipsis(record.description) },
     {
       title: '数据权限',
       dataIndex: 'dataScope',
@@ -397,7 +397,7 @@ export default function RolesPage() {
         onCancel={() => setModalVisible(false)}
         onOk={handleRoleModalOk}
         width={480}
-       
+
       >
         <Form
           getFormApi={(api) => formApi.current = api}
@@ -432,7 +432,7 @@ export default function RolesPage() {
         onCancel={() => setMenuModalVisible(false)}
         onOk={handleAssignMenus}
         width={480}
-       
+
       >
         {menuLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
@@ -471,7 +471,7 @@ export default function RolesPage() {
         onCancel={() => setDataScopeModalVisible(false)}
         onOk={handleSaveDataScope}
         width={400}
-       
+
       >
         {dataScopeLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><Spin /></div>
@@ -538,7 +538,7 @@ export default function RolesPage() {
                   </Space>
                 ),
               },
-              { title: '邮箱', dataIndex: 'email', render: (v: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
+              { title: '邮箱', dataIndex: 'email', render: renderEllipsis },
             ]}
           />
         )}

@@ -22,6 +22,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 export default function TenantsPage() {
   const { hasPermission } = usePermission();
@@ -108,10 +109,10 @@ export default function TenantsPage() {
   };
 
   const columns: ColumnProps<Tenant>[] = [
-    { title: '租户名称', dataIndex: 'name', width: 160, render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
-    { title: '租户编码', dataIndex: 'code', width: 140, render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
-    { title: '联系人', dataIndex: 'contactName', width: 120, render: (v) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
-    { title: '联系电话', dataIndex: 'contactPhone', width: 140, render: (v) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
+    { title: '租户名称', dataIndex: 'name', width: 160, render: renderEllipsis },
+    { title: '租户编码', dataIndex: 'code', width: 140, render: renderEllipsis },
+    { title: '联系人', dataIndex: 'contactName', width: 120, render: renderEllipsis },
+    { title: '联系电话', dataIndex: 'contactPhone', width: 140, render: renderEllipsis },
     { title: '最大用户数', dataIndex: 'maxUsers', width: 120, align: 'center', render: (v) => v ?? '不限' },
     {
       title: '到期时间',

@@ -27,6 +27,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
+import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import type { Xxx, PaginatedResponse } from '@zenith/shared';
@@ -451,12 +452,17 @@ import { Row, Col } from '@douyinfe/semi-ui';
 - 使用 `useDictItems('common_status')` 获取字典选项
 - 表格中用 `<DictTag dictCode="common_status" value={status} />` 或手动 `find` 映射
 
-### 时间格式化
+### 时间格式化与省略文本
 
 ```ts
-// ✅ 正确
+// ✅ 正确：使用预置列（自动格式化+省略 tooltip）
+import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+// 使用：columns = [..., createdAtColumn];
+// 省略列：render: renderEllipsis
+
+// ✅ 仍可直接调用（非列 render 场景）
 import { formatDateTime } from '../../utils/date';
-render: (t) => formatDateTime(t)
+formatDateTime(someDate)
 
 // ❌ 禁止：不要在组件中使用原生 locale 或 ISO 时间格式化 API
 ```

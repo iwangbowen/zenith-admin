@@ -30,6 +30,7 @@ import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceD
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -323,17 +324,13 @@ export default function MyApplicationsPage() {
       title: '申请标题',
       dataIndex: 'title',
       width: 200,
-      render: (v: string) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>
-      ),
+      render: renderEllipsis,
     },
     {
       title: '流程名称',
       dataIndex: 'definitionName',
       width: 160,
-      render: (v: string | null) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>
-      ),
+      render: renderEllipsis,
     },
     {
       title: '提交时间',

@@ -19,6 +19,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 export default function OnlineSessionsPage() {
   const { hasPermission } = usePermission();
@@ -107,8 +108,8 @@ export default function OnlineSessionsPage() {
     },
     { title: '昵称', dataIndex: 'nickname', width: 140 },
     { title: 'IP', dataIndex: 'ip', width: 150 },
-    { title: '浏览器', dataIndex: 'browser', width: 160, render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
-    { title: '操作系统', dataIndex: 'os', width: 160, render: (v: unknown) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v != null ? String(v) : '—'}</Typography.Text> },
+    { title: '浏览器', dataIndex: 'browser', width: 160, render: renderEllipsis },
+    { title: '操作系统', dataIndex: 'os', width: 160, render: renderEllipsis },
     {
       title: '登录时间',
       dataIndex: 'loginAt',

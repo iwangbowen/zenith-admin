@@ -35,6 +35,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import './UsersPage.css';
+import { renderEllipsis } from '../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -407,19 +408,19 @@ export default function UsersPage() {
       title: '邮箱',
       dataIndex: 'email',
       width: 220,
-      render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '手机号码',
       dataIndex: 'phone',
       width: 150,
-      render: (value: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{value || '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '部门',
       dataIndex: 'departmentName',
       width: 160,
-      render: (value: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{value || '—'}</Typography.Text>,
+      render: renderEllipsis,
     },
     {
       title: '岗位',

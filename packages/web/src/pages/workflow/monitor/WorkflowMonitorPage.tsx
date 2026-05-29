@@ -20,6 +20,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -176,17 +177,13 @@ export default function WorkflowMonitorPage() {
       title: '申请标题',
       dataIndex: 'title',
       width: 220,
-      render: (v: string) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>
-      ),
+      render: renderEllipsis,
     },
     {
       title: '流程名称',
       dataIndex: 'definitionName',
       width: 160,
-      render: (v: string | null) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>
-      ),
+      render: renderEllipsis,
     },
     {
       title: '分类',

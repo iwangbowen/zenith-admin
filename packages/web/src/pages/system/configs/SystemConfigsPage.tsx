@@ -7,7 +7,6 @@ import {
   Select,
   Space,
   Spin,
-  Typography,
   Toast,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -21,6 +20,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -136,15 +136,15 @@ export default function SystemConfigsPage() {
   const configTypeOptions = configTypeItems.map((item) => ({ value: item.value, label: item.label }));
 
   const columns: ColumnProps<SystemConfig>[] = [
-    { title: '配置键', dataIndex: 'configKey', width: 220, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
-    { title: '配置値', dataIndex: 'configValue', width: 260, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
+    { title: '配置键', dataIndex: 'configKey', width: 220, render: renderEllipsis },
+    { title: '配置値', dataIndex: 'configValue', width: 260, render: renderEllipsis },
     {
       title: '类型',
       dataIndex: 'configType',
       width: 110,
       render: (v: string) => <DictTag dictCode="system_config_type" value={v} />,
     },
-    { title: '描述', dataIndex: 'description', render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
+    { title: '描述', dataIndex: 'description', render: renderEllipsis },
     {
       title: '更新时间', dataIndex: 'updatedAt', width: 180,
       render: (v: string) => formatDateTime(v),

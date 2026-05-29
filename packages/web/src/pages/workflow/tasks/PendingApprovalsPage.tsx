@@ -23,6 +23,7 @@ import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 type PendingItem = WorkflowInstance & { pendingTaskId: number };
 
@@ -340,17 +341,13 @@ export default function PendingApprovalsPage() {
       title: '申请标题',
       dataIndex: 'title',
       width: 200,
-      render: (v: string) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>
-      ),
+      render: renderEllipsis,
     },
     {
       title: '流程名称',
       dataIndex: 'definitionName',
       width: 160,
-      render: (v: string | null) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text>
-      ),
+      render: renderEllipsis,
     },
     {
       title: '申请人',

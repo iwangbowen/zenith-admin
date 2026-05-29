@@ -11,7 +11,6 @@ import {
   Form,
   Spin,
   Toast,
-  Typography,
   SideSheet,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -26,6 +25,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
 import './DictsPage.css';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 export default function DictsPage() {
   const { hasPermission } = usePermission();
@@ -221,8 +221,8 @@ export default function DictsPage() {
         </button>
       ),
     },
-    { title: '字典编码', dataIndex: 'code', width: 160, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
-    { title: '描述', dataIndex: 'description', render: (v) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{}</Typography.Text> },
+    { title: '字典编码', dataIndex: 'code', width: 160, render: renderEllipsis },
+    { title: '描述', dataIndex: 'description', render: renderEllipsis },
     { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v) => formatDateTime(v) },
     {
       title: '状态',
@@ -260,10 +260,10 @@ export default function DictsPage() {
   ];
 
   const itemColumns: ColumnProps<DictItem>[] = [
-    { title: '标签', dataIndex: 'label', width: 160, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
-    { title: '键値', dataIndex: 'value', width: 160, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
+    { title: '标签', dataIndex: 'label', width: 160, render: renderEllipsis },
+    { title: '键値', dataIndex: 'value', width: 160, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 70, align: 'center' },
-    { title: '备注', dataIndex: 'remark', width: 200, render: (v) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{}</Typography.Text> },
+    { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
     { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v) => formatDateTime(v) },
     {
       title: '状态',

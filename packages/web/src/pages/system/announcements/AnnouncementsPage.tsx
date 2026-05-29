@@ -31,6 +31,7 @@ import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
 import { usePermission } from '@/hooks/usePermission';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
 const editorLoadingFallback = (
@@ -460,7 +461,7 @@ export default function AnnouncementsPage() {
 
   const columns: ColumnProps<Announcement>[] = [
     { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '标题', dataIndex: 'title', width: 220, render: (v: string | null | undefined) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
+    { title: '标题', dataIndex: 'title', width: 220, render: renderEllipsis },
     {
       title: '类型',
       dataIndex: 'type',

@@ -19,6 +19,7 @@ import { request } from '@/utils/request';
 import DictTag from '@/components/DictTag';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createdAtColumn } from '../../../utils/table-columns';
 
 const { Text } = Typography;
 
@@ -283,11 +284,7 @@ export default function TagsPage() {
       dataIndex: 'sortOrder',
       width: 80,
     },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 180,
-    },
+    createdAtColumn,
     {
       title: '状态',
       dataIndex: 'status',

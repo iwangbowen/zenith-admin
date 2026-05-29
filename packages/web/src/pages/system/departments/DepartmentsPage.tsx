@@ -24,6 +24,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -260,10 +261,10 @@ export default function DepartmentsPage() {
 
   const columns: ColumnProps<Department>[] = [
     { title: '部门名称', dataIndex: 'name', width: 220 },
-    { title: '部门编码', dataIndex: 'code', width: 180, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v ?? '—'}</Typography.Text> },
+    { title: '部门编码', dataIndex: 'code', width: 180, render: renderEllipsis },
     { title: '负责人', dataIndex: 'leaderName', width: 120, render: (value) => value || '—' },
     { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || '—' },
-    { title: '邮箱', dataIndex: 'email', width: 200, render: (value: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{value || '—'}</Typography.Text> },
+    { title: '邮箱', dataIndex: 'email', width: 200, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 90 },
     {
       title: '创建时间',
