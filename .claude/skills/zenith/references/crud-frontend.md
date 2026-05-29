@@ -408,10 +408,10 @@ export default function XxxPage() {
 
 **必须在 Form 中加 `labelPosition="left"` 以实现 label 与输入框同行。**
 
-| 场景 | Modal width | Form labelWidth |
-|------|-------------|----------------|
-| 字段较多（≥4 个，双列） | `660` | `72`（短标签）或 `90`（长标签） |
-| 字段较少（≤3 个，单列） | `420` | `72` 或 `90` |
+**Modal 宽度与表单列数：**
+
+- 有 **3 对及以上可并排的普通字段**（Input / Select / InputNumber 等）→ 使用双列布局，`width={660}`
+- 字段较少，或主要是 TreeSelect / TextArea 等不适合并排的字段 → 使用单列布局，`width` 在 420–520 之间酌情选取
 
 所有 Modal 必须加 `bodyStyle={{ paddingBottom: 24 }}`（防止末尾表单项截断）和 `closeOnEsc`。
 
