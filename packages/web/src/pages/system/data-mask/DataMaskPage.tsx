@@ -275,7 +275,7 @@ export default function DataMaskPage() {
         <Form<FormValues>
           key={editing?.id ?? 'new'}
           getFormApi={(api) => { formRef.current = api; }}
-          initValues={getInitValues()}
+          initValues={getInitValues() as FormValues}
           labelPosition="left"
           labelWidth={90}
           onValueChange={(vals) => {
@@ -358,7 +358,7 @@ export default function DataMaskPage() {
                 optionList={[
                   { value: true, label: '启用' },
                   { value: false, label: '禁用' },
-                ]}
+                ] as unknown as Array<{ value: string | number; label: string }>}
               />
             </Col>
           </Row>

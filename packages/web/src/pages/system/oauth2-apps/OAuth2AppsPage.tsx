@@ -166,7 +166,7 @@ export default function OAuth2AppsPage() {
   async function handleModalOk() {
     let values: FormValues;
     try {
-      values = await formApi.current?.validate();
+      values = (await formApi.current?.validate()) as FormValues;
     } catch {
       throw new Error('validation');
     }
@@ -344,7 +344,7 @@ export default function OAuth2AppsPage() {
         width={660}
         closeOnEsc
         maskClosable={false}
-       
+
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
           <Form
