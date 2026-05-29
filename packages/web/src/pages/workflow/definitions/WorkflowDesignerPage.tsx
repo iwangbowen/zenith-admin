@@ -44,12 +44,12 @@ interface WorkflowNodeData extends WorkflowNodeConfig {
 type WorkflowNode = Node<WorkflowNodeData>;
 
 const NODE_STYLE_MAP: Record<string, React.CSSProperties> = {
-  start: { background: '#fff', color: '#333', border: '1px solid #d9d9d9', borderRadius: 24 },
-  approve: { background: '#fff', color: '#333', border: '1px solid #d9d9d9' },
-  end: { background: '#fff', color: '#333', border: '1px solid #d9d9d9', borderRadius: 24 },
-  exclusiveGateway: { background: '#fff', color: '#333', border: '1px solid #d9d9d9', transform: 'rotate(45deg)', width: 48, height: 48 },
-  parallelGateway: { background: '#fff', color: '#333', border: '1px solid #d9d9d9', transform: 'rotate(45deg)', width: 48, height: 48 },
-  ccNode: { background: '#fff', color: '#333', border: '1px solid #d9d9d9' },
+  start: { background: 'var(--semi-color-bg-2)', color: 'var(--semi-color-text-0)', border: '1px solid var(--semi-color-border)', borderRadius: 24 },
+  approve: { background: 'var(--semi-color-bg-2)', color: 'var(--semi-color-text-0)', border: '1px solid var(--semi-color-border)' },
+  end: { background: 'var(--semi-color-bg-2)', color: 'var(--semi-color-text-0)', border: '1px solid var(--semi-color-border)', borderRadius: 24 },
+  exclusiveGateway: { background: 'var(--semi-color-bg-2)', color: 'var(--semi-color-text-0)', border: '1px solid var(--semi-color-border)', transform: 'rotate(45deg)', width: 48, height: 48 },
+  parallelGateway: { background: 'var(--semi-color-bg-2)', color: 'var(--semi-color-text-0)', border: '1px solid var(--semi-color-border)', transform: 'rotate(45deg)', width: 48, height: 48 },
+  ccNode: { background: 'var(--semi-color-bg-2)', color: 'var(--semi-color-text-0)', border: '1px solid var(--semi-color-border)' },
 };
 
 const NODE_ACCENT_MAP: Record<string, string> = {
@@ -138,12 +138,12 @@ function ConditionEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
             style={{
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              background: 'rgba(255,255,255,0.9)',
+              background: 'var(--semi-color-bg-2)',
               padding: '2px 6px',
               borderRadius: 4,
               fontSize: 11,
-              color: '#555',
-              border: '1px solid #ddd',
+              color: 'var(--semi-color-text-1)',
+              border: '1px solid var(--semi-color-border)',
               pointerEvents: 'none',
             }}
           >
