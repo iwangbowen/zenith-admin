@@ -868,24 +868,23 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </Badge>
         </div>
       </Popover>
-      <Tooltip content={<span>颜色模式：{themeLabelMap[mode].label}</span>} position="bottom">
-        <Dropdown
-          position="bottomRight"
-          render={
-            <Dropdown.Menu>
-              {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
-                <Dropdown.Item key={m} icon={themeLabelMap[m].icon} active={mode === m} onClick={() => handleThemeModeChange(m)}>
-                  {themeLabelMap[m].label}
-                </Dropdown.Item>
-              ))}
-            </Dropdown.Menu>
-          }
-        >
-          <button className="admin-theme-btn" title="切换主题">
-            {themeLabelMap[mode].icon}
-          </button>
-        </Dropdown>
-      </Tooltip>
+      <Dropdown
+        position="bottomRight"
+        render={
+          <Dropdown.Menu>
+            <Dropdown.Title>颜色模式：{themeLabelMap[mode].label}</Dropdown.Title>
+            {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
+              <Dropdown.Item key={m} icon={themeLabelMap[m].icon} active={mode === m} onClick={() => handleThemeModeChange(m)}>
+                {themeLabelMap[m].label}
+              </Dropdown.Item>
+            ))}
+          </Dropdown.Menu>
+        }
+      >
+        <button className="admin-theme-btn" title="切换主题">
+          {themeLabelMap[mode].icon}
+        </button>
+      </Dropdown>
       {(preferences.showFullscreen ?? true) && (
         <Tooltip content={isFullscreen ? '退出全屏' : '全屏显示'} position="bottom">
           <button className="admin-theme-btn" title={isFullscreen ? '退出全屏' : '全屏显示'} onClick={toggleFullscreen}>
