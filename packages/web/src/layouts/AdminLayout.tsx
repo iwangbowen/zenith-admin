@@ -247,22 +247,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const prevTabsLengthRef = useRef(0);
   const [manualTopKey, setManualTopKey] = useState<string | null>(null);
   const [tabRefreshVersion, setTabRefreshVersion] = useState<Record<string, number>>({});
-  const tabContextMenuRef = useRef<HTMLDivElement | null>(null);
-  const tabContextMenuCleanupRef = useRef<(() => void) | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-
-  const closeTabContextMenu = useCallback(() => {
-    tabContextMenuCleanupRef.current?.();
-    tabContextMenuCleanupRef.current = null;
-    tabContextMenuRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      closeTabContextMenu();
-    };
-  }, [closeTabContextMenu]);
 
   // ─── Tabs 拖拽排序 ──────────────────────────────────────────────────────────
   const handleDragStart = useCallback((key: string) => {
@@ -1052,7 +1038,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           {/* Tabs bar — shown above breadcrumb for all layouts */}
           {preferences.enableTabs && tabs.length > 0 && (
             <div ref={tabsBarRef} className={`admin-tabs-bar${preferences.showBreadcrumb ? ' admin-tabs-bar--with-breadcrumb' : ''}`} data-tab-animation={preferences.tabAnimation}>
-              {tabs.map((tab) => {
+              {tabs.map((tab, tabIndex) => {
                   const isEntering = enteringTabKeys.has(tab.key);
                   const isExiting = exitingTabKeys.has(tab.key);
                   const tabClass = [
@@ -1063,149 +1049,66 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     dragSrcKey.current === tab.key ? 'admin-tab-item--dragging' : '',
                     dragOverKey === tab.key ? 'admin-tab-item--drag-over' : '',
                   ].filter(Boolean).join(' ');
+                  const hasClosableLeft = tabIndex > 0 && tabs.slice(0, tabIndex).some((t) => t.closable);
+                  const hasClosableRight = tabs.slice(tabIndex + 1).some((t) => t.closable);
+                  const hasClosableOthers = tabs.some((t) => t.closable && t.key !== tab.key);
+                  const hasAnyClosable = tabs.some((t) => t.closable);
                   return (
-                  <div
+                  <Dropdown
                     key={tab.key}
-                    ref={tab.key === activeKey ? activeTabRef : null}
-                    role="tab"
-                    tabIndex={0}
-                    className={tabClass}
-                    draggable
-                    onDragStart={() => handleDragStart(tab.key)}
-                    onDragOver={(e) => handleDragOver(e, tab.key)}
-                    onDrop={() => handleDrop(tab.key)}
-                    onDragEnd={handleDragEnd}
-                    onDragLeave={() => setDragOverKey(null)}
-                    onClick={() => handleTabChange(tab.key)}
-                    onMouseDown={(e) => { if (e.button === 1 && tab.closable) { e.preventDefault(); handleTabClose(tab.key); } }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleTabChange(tab.key); }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      closeTabContextMenu();
-
-                      const menu = document.createElement('div');
-                      menu.className = 'admin-tab-ctx';
-
-                      const tabIndex = tabs.findIndex((t) => t.key === tab.key);
-                      const hasClosableLeft = tabIndex > 0 && tabs.slice(0, tabIndex).some((t) => t.closable);
-                      const hasClosableRight = tabIndex >= 0 && tabs.slice(tabIndex + 1).some((t) => t.closable);
-                      const hasClosableOthers = tabs.some((t) => t.closable && t.key !== tab.key);
-                      const hasAnyClosable = tabs.some((t) => t.closable);
-
-                      const buildItem = (action: string, label: string, disabled = false) => (
-                        `<div class="admin-tab-ctx-item${disabled ? ' admin-tab-ctx-item--disabled' : ''}" data-action="${action}" data-disabled="${disabled ? 'true' : 'false'}">${label}</div>`
-                      );
-
-                      let menuHtml = '';
-                      menuHtml += buildItem('refresh', '刷新页面');
-                      if (tab.key !== '/') {
-                        menuHtml += tab.pinned
-                          ? buildItem('unpin', '取消固定')
-                          : buildItem('pin', '固定标签页');
-                      }
-                      menuHtml += `<div class="admin-tab-ctx-divider"></div>`;
-                      menuHtml += buildItem('close', '关闭当前', !tab.closable);
-                      menuHtml += buildItem('close-others', '关闭其他', !hasClosableOthers);
-                      menuHtml += buildItem('close-left', '关闭左侧', !hasClosableLeft);
-                      menuHtml += buildItem('close-right', '关闭右侧', !hasClosableRight);
-                      menuHtml += buildItem('close-all', '关闭全部', !hasAnyClosable);
-
-                      menu.innerHTML = menuHtml;
-                      menu.style.left = `${e.clientX}px`;
-                      menu.style.top = `${e.clientY}px`;
-                      document.body.appendChild(menu);
-                      // 防止菜单超出视口
-                      const menuRect = menu.getBoundingClientRect();
-                      if (menuRect.right > window.innerWidth) {
-                        menu.style.left = `${e.clientX - menuRect.width}px`;
-                      }
-                      if (menuRect.bottom > window.innerHeight) {
-                        menu.style.top = `${e.clientY - menuRect.height}px`;
-                      }
-                      tabContextMenuRef.current = menu;
-                      let clickHandler: ((ev: MouseEvent) => void) | null = null;
-
-                      const closeMenu = () => {
-                        if (tabContextMenuRef.current === menu) {
-                          tabContextMenuRef.current = null;
-                        }
-                        menu.remove();
-                        if (clickHandler) {
-                          document.removeEventListener('click', clickHandler);
-                        }
-                        document.removeEventListener('mousedown', handleMouseDown);
-                        document.removeEventListener('keydown', handleKeyDown);
-                        tabContextMenuCleanupRef.current = null;
-                      };
-
-                      const handleMouseDown = (ev: MouseEvent) => {
-                        const target = ev.target as Node | null;
-                        if (!target || !menu.contains(target)) {
-                          closeMenu();
-                        }
-                      };
-
-                      const handleKeyDown = (ev: KeyboardEvent) => {
-                        if (ev.key === 'Escape') {
-                          closeMenu();
-                        }
-                      };
-
-                      tabContextMenuCleanupRef.current = closeMenu;
-                      document.addEventListener('mousedown', handleMouseDown);
-                      document.addEventListener('keydown', handleKeyDown);
-
-                      clickHandler = (ev: MouseEvent) => {
-                        const target = ev.target as HTMLElement;
-                        const item = target.closest('.admin-tab-ctx-item') as HTMLElement | null;
-                        const action = item?.dataset.action;
-                        const disabled = item?.dataset.disabled === 'true';
-                        if (disabled) {
-                          return;
-                        }
-                        if (action === 'refresh') {
-                          handleTabRefresh(tab.key);
-                        } else if (action === 'pin') {
-                          pinTab(tab.key);
-                        } else if (action === 'unpin') {
-                          unpinTab(tab.key);
-                        } else if (action === 'close') {
-                          handleTabClose(tab.key);
-                        } else if (action === 'close-others') {
-                          const nextKey = closeOthers(tab.key);
-                          navigate(nextKey);
-                        } else if (action === 'close-left') {
-                          const nextKey = closeLeft(tab.key);
-                          navigate(nextKey);
-                        } else if (action === 'close-right') {
-                          const nextKey = closeRight(tab.key);
-                          navigate(nextKey);
-                        } else if (action === 'close-all') {
-                          closeAll();
-                          navigate('/');
-                        }
-                        closeMenu();
-                      };
-                      document.addEventListener('click', clickHandler);
-                    }}
+                    trigger="contextMenu"
+                    position="bottomLeft"
+                    clickToHide
+                    render={
+                      <Dropdown.Menu>
+                        <Dropdown.Item onClick={() => handleTabRefresh(tab.key)}>刷新页面</Dropdown.Item>
+                        {tab.key !== '/' && (
+                          tab.pinned
+                            ? <Dropdown.Item onClick={() => unpinTab(tab.key)}>取消固定</Dropdown.Item>
+                            : <Dropdown.Item onClick={() => pinTab(tab.key)}>固定标签页</Dropdown.Item>
+                        )}
+                        <Dropdown.Divider />
+                        <Dropdown.Item disabled={!tab.closable} onClick={() => handleTabClose(tab.key)}>关闭当前</Dropdown.Item>
+                        <Dropdown.Item disabled={!hasClosableOthers} onClick={() => { const nextKey = closeOthers(tab.key); navigate(nextKey); }}>关闭其他</Dropdown.Item>
+                        <Dropdown.Item disabled={!hasClosableLeft} onClick={() => { const nextKey = closeLeft(tab.key); navigate(nextKey); }}>关闭左侧</Dropdown.Item>
+                        <Dropdown.Item disabled={!hasClosableRight} onClick={() => { const nextKey = closeRight(tab.key); navigate(nextKey); }}>关闭右侧</Dropdown.Item>
+                        <Dropdown.Item disabled={!hasAnyClosable} onClick={() => { closeAll(); navigate('/'); }}>关闭全部</Dropdown.Item>
+                      </Dropdown.Menu>
+                    }
                   >
-                    {preferences.showTabIcon && pathIconMap[tab.key] && (
-                      <span className="admin-tab-item__icon">{renderLucideIcon(pathIconMap[tab.key], 14)}</span>
-                    )}
-                    <span className="admin-tab-item__text">{tab.title}</span>
-                    {tab.pinned && (
-                      <span className="admin-tab-item__pin"><Pin size={10} /></span>
-                    )}
-                    {tab.closable && (
-                      <button
-                        type="button"
-                        className="admin-tab-item__close"
-                        onClick={(e) => { e.stopPropagation(); handleTabClose(tab.key); }}
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
+                    <div
+                      ref={tab.key === activeKey ? activeTabRef : null}
+                      role="tab"
+                      tabIndex={0}
+                      className={tabClass}
+                      draggable
+                      onDragStart={() => handleDragStart(tab.key)}
+                      onDragOver={(e) => handleDragOver(e, tab.key)}
+                      onDrop={() => handleDrop(tab.key)}
+                      onDragEnd={handleDragEnd}
+                      onDragLeave={() => setDragOverKey(null)}
+                      onClick={() => handleTabChange(tab.key)}
+                      onMouseDown={(e) => { if (e.button === 1 && tab.closable) { e.preventDefault(); handleTabClose(tab.key); } }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleTabChange(tab.key); }}
+                    >
+                      {preferences.showTabIcon && pathIconMap[tab.key] && (
+                        <span className="admin-tab-item__icon">{renderLucideIcon(pathIconMap[tab.key], 14)}</span>
+                      )}
+                      <span className="admin-tab-item__text">{tab.title}</span>
+                      {tab.pinned && (
+                        <span className="admin-tab-item__pin"><Pin size={10} /></span>
+                      )}
+                      {tab.closable && (
+                        <button
+                          type="button"
+                          className="admin-tab-item__close"
+                          onClick={(e) => { e.stopPropagation(); handleTabClose(tab.key); }}
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </Dropdown>
                   );
               })}
             </div>
