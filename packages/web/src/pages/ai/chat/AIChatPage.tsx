@@ -60,6 +60,25 @@ function convertApiMessage(m: AiMessage): Message {
   };
 }
 
+function makePdfUploadUpdater(msgId: string, updatedContent: NonNullable<AIChatMessage['content']>) {
+  return (prev: Message[]) => prev.map((m) => (m.id === msgId ? { ...m, content: updatedContent } : m));
+}
+
+function renderPdfCardItem(item: Record<string, unknown>, onOpen: (file: File) => void) {
+  return (
+    <PdfFileCard
+      filename={item.filename as string}
+      size={item.size as string}
+      url={item.url as string | null | undefined}
+      uploading={item.uploading as boolean | undefined}
+      onClick={() => {
+        const fi = item.fileInstance;
+        if (fi instanceof File) onOpen(fi);
+      }}
+    />
+  );
+}
+
 interface PdfFileCardProps {
   readonly filename: string;
   readonly size: string;
@@ -226,14 +245,15 @@ export default function AIChatPage() {
         setMessages((prev) => [...prev, fileMsg]);
         const formData = new FormData();
         formData.append('file', rawFile);
-        void request.post<{ url: string }>('/api/files/upload-one', formData).then((res) => {
+        void (async () => {
+          const res = await request.post<{ url: string }>('/api/files/upload-one', formData);
           const url = res.data?.url ?? null;
           setPdfFileUrl(url);
           const updatedContent = [
             { type: 'pdf_card', filename: rawFile.name, size: formatFileSize(rawFile.size), fileInstance: rawFile, uploading: false, url },
           ] as NonNullable<AIChatMessage['content']>;
-          setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, content: updatedContent } : m)));
-        });
+          setMessages(makePdfUploadUpdater(msgId, updatedContent));
+        })();
       }
       return false as const;
     },
@@ -243,18 +263,7 @@ export default function AIChatPage() {
   const dialogueRenderConfig = useMemo(() => ({}), []);
 
   const renderDialogueContentItem = useMemo(() => ({
-    pdf_card: (item: Record<string, unknown>) => (
-      <PdfFileCard
-        filename={item.filename as string}
-        size={item.size as string}
-        url={item.url as string | null | undefined}
-        uploading={item.uploading as boolean | undefined}
-        onClick={() => {
-          const fi = item.fileInstance;
-          if (fi instanceof File) setPdfFile(fi);
-        }}
-      />
-    ),
+    pdf_card: (item: Record<string, unknown>) => renderPdfCardItem(item, setPdfFile),
   }), [setPdfFile]);
 
   const roleConfig = {

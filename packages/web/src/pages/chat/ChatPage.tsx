@@ -1531,7 +1531,7 @@ export default function ChatPage({
         persistKey={isQuick ? undefined : 'messages'}
         responsiveBreakpoint={isQuick ? 99999 : undefined}
         showDetail={!!activeConv}
-        onBack={!isQuick ? () => setActiveConvId(null) : undefined}
+        onBack={isQuick ? undefined : () => setActiveConvId(null)}
         master={(
           <>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2494,10 +2494,9 @@ export default function ChatPage({
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
                   <Spin spinning={mediaLoading && mediaItems.length === 0}>
-                    {mediaItems.length === 0 && !mediaLoading && (() => {
-                      const emptyDescMap: Record<typeof mediaType, string> = { image: '暂无图片消息', file: '暂无文件消息', link: '暂无链接消息' };
-                      return <Empty description={emptyDescMap[mediaType]} imageStyle={{ width: 64 }} style={{ paddingTop: 40 }} />;
-                    })()}
+                    {mediaItems.length === 0 && !mediaLoading && (
+                      <Empty description={{ image: '暂无图片消息', file: '暂无文件消息', link: '暂无链接消息' }[mediaType]} imageStyle={{ width: 64 }} style={{ paddingTop: 40 }} />
+                    )}
                     {mediaType === 'image' && (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
                         {mediaItems.map((item) => (
@@ -2924,30 +2923,26 @@ export default function ChatPage({
                   ))}
                 </div>
               )}
-              {Object.values(typingUsers).length > 0 && (() => {
-                const names = Object.values(typingUsers).map((u) => u.nickname);
-                const label = names.length > 2
-                  ? `${names[0]}等${names.length}人正在输入...`
-                  : `${names.join('、')}正在输入...`;
-                return (
-                  <div style={{ fontSize: 11, color: 'var(--semi-color-text-3)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
-                      {[0, 1, 2].map((i) => (
-                        <span
-                          key={i}
-                          style={{
-                            width: 4, height: 4, borderRadius: '50%',
-                            background: 'var(--semi-color-text-3)',
-                            display: 'inline-block',
-                            animation: `chat-typing-bounce 1.2s ${i * 0.2}s ease-in-out infinite`,
-                          }}
-                        />
-                      ))}
-                    </span>
-                    {label}
-                  </div>
-                );
-              })()}
+              {Object.values(typingUsers).length > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--semi-color-text-3)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        style={{
+                          width: 4, height: 4, borderRadius: '50%',
+                          background: 'var(--semi-color-text-3)',
+                          display: 'inline-block',
+                          animation: `chat-typing-bounce 1.2s ${i * 0.2}s ease-in-out infinite`,
+                        }}
+                      />
+                    ))}
+                  </span>
+                  {Object.values(typingUsers).length > 2
+                    ? `${Object.values(typingUsers)[0].nickname}等${Object.values(typingUsers).length}人正在输入...`
+                    : `${Object.values(typingUsers).map((u) => u.nickname).join('、')}正在输入...`}
+                </div>
+              )}
               <textarea
                 ref={inputRef}
                 value={input}
