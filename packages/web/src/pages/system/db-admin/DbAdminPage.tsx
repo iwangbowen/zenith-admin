@@ -987,66 +987,63 @@ export default function DbAdminPage() {
                 </div>
               </div>
               <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-              {(() => {
-                if (tablesLoading && tables.length === 0) {
-                  return <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>;
-                }
-                if (filteredTables.length === 0) {
-                  return <Empty title="无匹配的表" style={{ padding: 32 }} />;
-                }
-                const renderTableItem = (t: TableItem) => {
-                  const isActive = selected?.schema === t.schema && selected?.name === t.name;
-                  return (
-                    <List.Item
-                      key={`${t.schema}.${t.name}`}
-                      onClick={() => handleSelectTable(t)}
-                      style={{
-                        cursor: 'pointer',
-                        padding: '6px 12px',
-                        background: isActive ? 'var(--semi-color-primary-light-default)' : undefined,
-                        borderBottom: '1px solid var(--semi-color-fill-0)',
-                      }}
-                      main={
-                        <div style={{ minWidth: 0, width: '100%' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                            <Text strong={isActive} ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>
-                              {t.name}
-                            </Text>
-                            <Text type="tertiary" size="small">{t.sizeText}</Text>
-                          </div>
-                        </div>
+              {tablesLoading && tables.length === 0 && (
+                <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>
+              )}
+              {!tablesLoading && filteredTables.length === 0 && (
+                <Empty title="无匹配的表" style={{ padding: 32 }} />
+              )}
+              {filteredTables.length > 0 && (
+                <Collapse
+                  expandIconPosition="left"
+                  defaultActiveKey={groupedTables.map(([s]) => s)}
+                  keepDOM={false}
+                >
+                  {groupedTables.map(([schema, list]) => (
+                    <Collapse.Panel
+                      key={schema}
+                      itemKey={schema}
+                      header={
+                        <Space>
+                          <Text strong>{schema}</Text>
+                          <Text type="tertiary" size="small">{list.length} 张表</Text>
+                        </Space>
                       }
-                    />
-                  );
-                };
-                return (
-                  <Collapse
-                    expandIconPosition="left"
-                    defaultActiveKey={groupedTables.map(([s]) => s)}
-                    keepDOM={false}
-                  >
-                    {groupedTables.map(([schema, list]) => (
-                      <Collapse.Panel
-                        key={schema}
-                        itemKey={schema}
-                        header={
-                          <Space>
-                            <Text strong>{schema}</Text>
-                            <Text type="tertiary" size="small">{list.length} 张表</Text>
-                          </Space>
-                        }
-                      >
-                        <List
-                          dataSource={list}
-                          split={false}
-                          size="small"
-                          renderItem={renderTableItem}
-                        />
-                      </Collapse.Panel>
-                    ))}
-                  </Collapse>
-                );
-              })()}
+                    >
+                      <List
+                        dataSource={list}
+                        split={false}
+                        size="small"
+                        renderItem={(t: TableItem) => {
+                          const isActive = selected?.schema === t.schema && selected?.name === t.name;
+                          return (
+                            <List.Item
+                              key={`${t.schema}.${t.name}`}
+                              onClick={() => handleSelectTable(t)}
+                              style={{
+                                cursor: 'pointer',
+                                padding: '6px 12px',
+                                background: isActive ? 'var(--semi-color-primary-light-default)' : undefined,
+                                borderBottom: '1px solid var(--semi-color-fill-0)',
+                              }}
+                              main={
+                                <div style={{ minWidth: 0, width: '100%' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                    <Text strong={isActive} ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>
+                                      {t.name}
+                                    </Text>
+                                    <Text type="tertiary" size="small">{t.sizeText}</Text>
+                                  </div>
+                                </div>
+                              }
+                            />
+                          );
+                        }}
+                      />
+                    </Collapse.Panel>
+                  ))}
+                </Collapse>
+              )}
               </div>
                 </div>
               )}
