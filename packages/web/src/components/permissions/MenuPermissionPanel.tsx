@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { Button, Space, Spin, Tree } from '@douyinfe/semi-ui';
 import type { Menu } from '@zenith/shared';
 
-interface MenuPermissionPanelProps {
+type MenuPermissionPanelProps = Readonly<{
   allMenus: Menu[];
   checkedMenuIds: number[];
   onChange?: (ids: number[]) => void;
@@ -21,7 +21,7 @@ interface MenuPermissionPanelProps {
   readonly?: boolean;
   /** key(menuId 字符串) -> 额外渲染的 ReactNode（如来源 Tag）*/
   labelSuffix?: Record<string, React.ReactNode>;
-}
+}>;
 
 function menusToTreeData(items: Menu[], labelSuffix?: Record<string, React.ReactNode>): object[] {
   return items.map((m) => ({

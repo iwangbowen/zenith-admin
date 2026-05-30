@@ -1805,7 +1805,7 @@ export default function DbAdminPage() {
         width={480}
       >
         <Form
-          onSubmit={(values) => void handleSaveFavorite(values as { name: string; description?: string; tags?: string })}
+          onSubmit={(values) => void handleSaveFavorite(values)}
           layout="vertical"
           initValues={editFav ? { name: editFav.name, description: editFav.description ?? '', tags: editFav.tags.join(', ') } : {
             name: formatDateTime(new Date()),

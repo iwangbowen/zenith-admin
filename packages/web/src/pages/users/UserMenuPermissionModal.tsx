@@ -20,12 +20,12 @@ interface UserEffectivePermissions extends UserMenuPermissions {
   effectiveMenuIds: number[];
 }
 
-interface Props {
+type Props = Readonly<{
   userId: number;
   userName: string;
   visible: boolean;
   onClose: () => void;
-}
+}>;
 
 export function UserMenuPermissionModal({ userId, userName, visible, onClose }: Props) {
   const [loading, setLoading] = useState(false);

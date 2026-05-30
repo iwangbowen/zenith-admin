@@ -695,20 +695,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     [externalNavKeys],
   );
 
-  const mixedTopRenderWrapper = useCallback(
-    (args: { itemElement: React.ReactNode; props: { itemKey?: string | number } }) => {
-      const { itemElement, props: itemProps } = args;
-      const key = String(itemProps.itemKey ?? '');
-      const topItem = navItems.find((i) => i.itemKey === key);
-      if (topItem?.items?.length) return <>{itemElement}</>;
-      if (key.startsWith('/')) {
-        return <NavLink to={key} className="admin-nav-link-wrapper">{itemElement}</NavLink>;
-      }
-      return itemElement;
-    },
-    [navItems],
-  );
-
   const handleMixedTopSelect = useCallback(
     ({ itemKey: key }: { itemKey: string | number }) => {
       const k = String(key);
