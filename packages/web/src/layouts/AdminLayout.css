@@ -1076,35 +1076,3 @@ body[theme-mode='dark'] .admin-notify-badge .semi-badge-dot {
 
 /* ===== 响应式：小屏幕自动折叠 (< 992px) ===== */
 /* 由 JS matchMedia 控制 collapsed 状态，此处无需额外 CSS */
-
-/* ===== 响应式：移动端 overlay 抽屉模式 (< 768px) ===== */
-.admin-sidebar--mobile {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  z-index: 200;
-  width: var(--sidebar-width) !important;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
-  transform: translateX(0);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.admin-sidebar--mobile.admin-sidebar--collapsed {
-  transform: translateX(-100%);
-  width: var(--sidebar-width) !important;
-}
-
-/* 移动端遮罩层 */
-.admin-sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 199;
-  animation: sidebar-backdrop-in 0.2s ease;
-}
-
-@keyframes sidebar-backdrop-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
