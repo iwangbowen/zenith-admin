@@ -1142,10 +1142,10 @@ export async function updateQueryFavorite(
   const [updated] = await db
     .update(dbQueryFavorites)
     .set({
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.sql !== undefined ? { sql: input.sql } : {}),
-      ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.tags !== undefined ? { tags: input.tags } : {}),
+      ...(input.name === undefined ? {} : { name: input.name }),
+      ...(input.sql === undefined ? {} : { sql: input.sql }),
+      ...(input.description === undefined ? {} : { description: input.description }),
+      ...(input.tags === undefined ? {} : { tags: input.tags }),
     })
     .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)))
     .returning();

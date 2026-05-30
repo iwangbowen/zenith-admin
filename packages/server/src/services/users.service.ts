@@ -617,7 +617,7 @@ const SCOPE_PRIORITY: Record<string, number> = { all: 5, dept: 4, dept_only: 3, 
 function getMostPermissiveScope(scopes: Array<string | null>): string | null {
   const valid = scopes.filter((s): s is string => s !== null);
   if (valid.length === 0) return null;
-  return valid.reduce((best, curr) => (SCOPE_PRIORITY[curr] ?? 0) > (SCOPE_PRIORITY[best] ?? 0) ? curr : best);
+  return valid.reduce((best, curr) => (SCOPE_PRIORITY[curr] ?? 0) > (SCOPE_PRIORITY[best] ?? 0) ? curr : best, valid[0]);
 }
 
 export async function getUserDataPermission(userId: number) {
