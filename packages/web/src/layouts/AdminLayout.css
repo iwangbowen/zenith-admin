@@ -38,44 +38,99 @@
   height: 100%;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
-/* Override Semi Nav styles inside the topbar */
-.admin-topbar__nav.semi-navigation {
-  background: transparent;
-  border-right: none;
-  height: 100%;
-  width: auto;
-}
+/* ===== TopNavWithOverflow 组件样式 ===== */
 
-.admin-topbar__nav .semi-navigation-list-wrapper {
-  height: 100%;
-  padding: 0;
-}
-
-.admin-topbar__nav .semi-navigation-list {
+/* 探测容器：不可见，仅用于宽度测量 */
+.topnav-overflow__probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  top: 0;
+  left: 0;
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   padding: 0 4px;
-}
-
-.admin-topbar__nav .semi-navigation-item,
-.admin-topbar__nav .semi-navigation-sub-title {
-  height: 36px !important;
-  display: flex;
-  align-items: center;
-  padding: 0 12px !important;
-  border-radius: 6px;
-  margin-bottom: 0 !important;
-  font-size: 13px;
   white-space: nowrap;
 }
 
-.admin-topbar__nav .semi-navigation-item-selected,
-.admin-topbar__nav .semi-navigation-sub-selected {
+/* 实际渲染的菜单项容器 */
+.topnav-overflow__items {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  height: 100%;
+}
+
+/* 单个顶部菜单按钮 / NavLink */
+.topnav-item {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+  color: var(--color-sidebar-text);
+  text-decoration: none;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.topnav-item:hover {
+  background: var(--color-sidebar-hover);
+  color: var(--color-sidebar-text);
+  text-decoration: none;
+}
+
+.topnav-item--active,
+.topnav-item.active {
   background: var(--color-sidebar-active);
+}
+
+.topnav-item__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.topnav-item__arrow {
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+/* Dropdown 内的菜单项内容布局 */
+.topnav-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.topnav-dd-item__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.topnav-dd-item__text {
+  flex: 1;
+}
+
+.topnav-dd-item__arrow {
+  opacity: 0.4;
+  flex-shrink: 0;
 }
 
 /* ===== Body (sidebar + main side by side) ===== */

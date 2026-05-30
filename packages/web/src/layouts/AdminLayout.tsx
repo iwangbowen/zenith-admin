@@ -21,6 +21,7 @@ import Watermark from '@/components/Watermark';
 import QuickChatButton from '@/components/QuickChatButton';
 import AppLogo from '@/components/AppLogo';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
+import { TopNavWithOverflow } from './TopNavWithOverflow';
 import './AdminLayout.css';
 
 // 主题图标
@@ -957,14 +958,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             <AppLogo size={28} />
             <span className="admin-sidebar__title">{config.appTitle}</span>
           </button>
-          <Nav
+          <TopNavWithOverflow
             className="admin-topbar__nav"
-            mode="horizontal"
             items={navLayout === 'mixed' ? mixedTopNavItems : navItems}
             selectedKeys={topNavSelectedKeys}
-            onSelect={navLayout === 'mixed' ? handleMixedTopSelect : undefined}
-            renderWrapper={navLayout === 'mixed' ? mixedTopRenderWrapper : renderWrapper}
-            style={{ height: '100%', background: 'transparent' }}
+            onItemClick={navLayout === 'mixed' ? (key) => handleMixedTopSelect({ itemKey: key }) : undefined}
           />
           {headerActions}
         </header>
