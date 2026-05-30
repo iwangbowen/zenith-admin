@@ -126,7 +126,7 @@ function textFormat(entry: HttpLogEntry): string {
     }
   } else {
     const status = entry.statusCode ?? '-';
-    const ms = entry.durationMs !== undefined ? ` (${entry.durationMs}ms)` : '';
+    const ms = entry.durationMs === undefined ? '' : ` (${entry.durationMs}ms)`;
     lines.push(`<< [${dirLabel}] ${entry.method} ${entry.url} → ${status}${ms}`);
     if (entry.responseHeaders) {
       for (const [k, v] of Object.entries(entry.responseHeaders)) {
@@ -147,6 +147,10 @@ function textFormat(entry: HttpLogEntry): string {
   return lines.join('\n');
 }
 
+/** curl 格式中单引号的转义替换字符串 */
+// eslint-disable-next-line no-useless-escape
+const ESCAPE_SINGLE_QUOTE = String.raw`\'`;
+
 function curlFormat(entry: HttpLogEntry): string {
   // 响应阶段使用 text 格式（curl 命令只能表达请求）
   if (entry.phase === 'response') return textFormat(entry);
@@ -154,14 +158,14 @@ function curlFormat(entry: HttpLogEntry): string {
   const parts: string[] = [`curl -X ${entry.method} '${entry.url}'`];
   if (entry.requestHeaders) {
     for (const [k, v] of Object.entries(entry.requestHeaders)) {
-      parts.push(`  -H '${k}: ${v.replace(/'/g, "\\'")}'`);
+      parts.push(`  -H '${k}: ${v.replaceAll("'", ESCAPE_SINGLE_QUOTE)}'`);
     }
   }
   if (entry.requestBody !== undefined) {
     const body = typeof entry.requestBody === 'string'
       ? entry.requestBody
       : JSON.stringify(entry.requestBody);
-    parts.push(`  -d '${body.replace(/'/g, "\\'")}'`);
+    parts.push(`  -d '${body.replaceAll("'", ESCAPE_SINGLE_QUOTE)}'`);
   }
   return parts.join(' \\\n');
 }
@@ -188,7 +192,7 @@ function getHttpTrafficLogger(): winston.Logger {
 
   const { combine, timestamp, printf } = winston.format;
   // 独立文件使用原始格式：每行只写时间戳 + 消息体，不添加 level 标签
-  const rawLine = printf(({ message, timestamp: ts }) => `${String(ts)} ${String(message)}`);
+  const rawLine = printf(({ message, timestamp: ts }) => `${ts as string} ${message as string}`);
 
   _httpTrafficLogger = winston.createLogger({
     level: 'info',
@@ -248,6 +252,45 @@ export function safeRedactBody(body: unknown): unknown {
     }
   }
   return redactBody(body);
+}
+
+/**
+ * 将出站请求 body 转换为可安全记录的日志表示。
+ *
+ * 对二进制、流式、表单等非 JSON 类型**不记录内容**，仅记录类型和大小占位符，
+ * 避免将文件内容或二进制数据写入日志。
+ *
+ * @param body      原始请求 body（来自 HttpRequestOptions.body）
+ * @param maxBytes  body 截断阈值
+ */
+export function safeRedactBodyForLog(body: unknown, maxBytes: number): unknown {
+  if (body === null || body === undefined) return undefined;
+  // FormData（文件上传）：只记录字段名，不记录内容
+  if (body instanceof FormData) {
+    const keys = [...body.keys()].join(',');
+    return `[FormData fields: ${keys || '(empty)'}]`;
+  }
+  // Blob（二进制数据）：只记录大小和 MIME 类型
+  if (body instanceof Blob) {
+    return `[Blob: ${body.size} bytes, type=${body.type || 'unknown'}]`;
+  }
+  // ArrayBuffer / TypedArray（原始二进制）
+  if (body instanceof ArrayBuffer) {
+    return `[ArrayBuffer: ${body.byteLength} bytes]`;
+  }
+  if (ArrayBuffer.isView(body)) {
+    return `[Binary: ${body.byteLength} bytes]`;
+  }
+  // ReadableStream（流式上传）
+  if (body instanceof ReadableStream) {
+    return '[ReadableStream]';
+  }
+  // URLSearchParams：安全的键值对，直接记录字符串
+  if (body instanceof URLSearchParams) {
+    return body.toString();
+  }
+  // 普通 JSON 对象 / 字符串：使用现有脱敏逻辑
+  return truncateBody(safeRedactBody(body), maxBytes);
 }
 
 // ─── Write ────────────────────────────────────────────────────────────────────

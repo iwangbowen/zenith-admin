@@ -8,7 +8,7 @@ import {
   headersToRecord,
   truncateBody,
   tryParseJson,
-  safeRedactBody,
+  safeRedactBodyForLog,
   writeHttpLogEntry,
   type HttpLogEntry,
 } from './http-logger';import type { HttpLogLevel, HttpLogFormat } from '../config';
@@ -266,7 +266,7 @@ export async function httpRequest(
           ? redactHeaders(logCtx.headers)
           : undefined,
         requestBody: (outLevel === 'body' || outLevel === 'full') && body !== undefined && body !== null
-          ? truncateBody(safeRedactBody(body), outCfg.maxBodyBytes)
+          ? safeRedactBodyForLog(body, outCfg.maxBodyBytes)
           : undefined,
         attempt: attempt > 1 ? attempt : undefined,
         timestamp: formatDateTime(new Date()),
