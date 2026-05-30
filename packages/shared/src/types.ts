@@ -1652,3 +1652,14 @@ export interface OAuth2AuthorizeInfo {
   requestedScopes: string[];
   alreadyGranted: boolean;
 }
+
+// ─── SQL 收藏夹 ──────────────────────────────────────────────────────────────
+export interface DbQueryFavorite {
+  id: number;
+  name: string;
+  sql: string;
+  description: string | null;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}

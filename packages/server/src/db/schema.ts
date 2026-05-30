@@ -557,6 +557,21 @@ export const dbAdminQueryHistory = pgTable('db_admin_query_history', {
 export type DbAdminQueryHistoryRow = typeof dbAdminQueryHistory.$inferSelect;
 export type NewDbAdminQueryHistory = typeof dbAdminQueryHistory.$inferInsert;
 
+// ─── 数据库管理 SQL 查询收藏夹 ───────────────────────────────────────────────────
+export const dbQueryFavorites = pgTable('db_query_favorites', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  sql: text('sql').notNull(),
+  description: text('description'),
+  tags: text('tags').array().notNull().default([]),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type DbQueryFavoriteRow = typeof dbQueryFavorites.$inferSelect;
+export type NewDbQueryFavorite = typeof dbQueryFavorites.$inferInsert;
+
 // ─── 个人 API Token 表 ─────────────────────────────────────────────────────────
 export const userApiTokens = pgTable('user_api_tokens', {
   id: serial('id').primaryKey(),

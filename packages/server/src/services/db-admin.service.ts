@@ -13,7 +13,7 @@ import { sql, desc, eq, and } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, pgClient } from '../db';
 import type { DbExecutor } from '../db/types';
-import { dbAdminQueryHistory } from '../db/schema';
+import { dbAdminQueryHistory, dbQueryFavorites } from '../db/schema';
 import { currentUserId } from '../lib/context';
 import { formatDateTime } from '../lib/datetime';
 import logger from '../lib/logger';
@@ -1079,4 +1079,82 @@ async function recordHistory(params: {
   } catch (err) {
     logger.warn('记录 SQL 历史失败', { err: err instanceof Error ? err.message : err });
   }
+}
+
+// ─── SQL 收藏夹 ────────────────────────────────────────────────────────────────────
+
+import type { DbQueryFavoriteRow } from '../db/schema';
+
+export function mapDbQueryFavorite(row: DbQueryFavoriteRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    sql: row.sql,
+    description: row.description ?? null,
+    tags: row.tags ?? [],
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
+  };
+}
+
+export async function listQueryFavorites() {
+  const userId = currentUserId();
+  const rows = await db
+    .select()
+    .from(dbQueryFavorites)
+    .where(eq(dbQueryFavorites.userId, userId))
+    .orderBy(desc(dbQueryFavorites.updatedAt));
+  return rows.map(mapDbQueryFavorite);
+}
+
+export async function createQueryFavorite(input: {
+  name: string;
+  sql: string;
+  description?: string;
+  tags?: string[];
+}) {
+  const userId = currentUserId();
+  const [row] = await db
+    .insert(dbQueryFavorites)
+    .values({
+      userId,
+      name: input.name,
+      sql: input.sql,
+      description: input.description ?? null,
+      tags: input.tags ?? [],
+    })
+    .returning();
+  return mapDbQueryFavorite(row);
+}
+
+export async function updateQueryFavorite(
+  id: number,
+  input: Partial<{ name: string; sql: string; description: string; tags: string[] }>,
+) {
+  const userId = currentUserId();
+  const existing = await db
+    .select()
+    .from(dbQueryFavorites)
+    .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)))
+    .limit(1);
+  if (!existing[0]) throw new HTTPException(404, { message: '收藏记录不存在' });
+
+  const [updated] = await db
+    .update(dbQueryFavorites)
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.sql !== undefined ? { sql: input.sql } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.tags !== undefined ? { tags: input.tags } : {}),
+    })
+    .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)))
+    .returning();
+  return mapDbQueryFavorite(updated);
+}
+
+export async function deleteQueryFavorite(id: number): Promise<void> {
+  const userId = currentUserId();
+  await db
+    .delete(dbQueryFavorites)
+    .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)));
 }

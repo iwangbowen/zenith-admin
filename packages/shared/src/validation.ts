@@ -967,3 +967,16 @@ export const updateDataMaskConfigSchema = createDataMaskConfigSchema.partial();
 
 export type CreateDataMaskConfigInput = z.infer<typeof createDataMaskConfigSchema>;
 export type UpdateDataMaskConfigInput = z.infer<typeof updateDataMaskConfigSchema>;
+
+// ─── SQL 收藏夹 ─────────────────────────────────────────────────────────────────
+export const createDbQueryFavoriteSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(100),
+  sql: z.string().min(1, 'SQL 不能为空'),
+  description: z.string().max(500).optional(),
+  tags: z.array(z.string().max(50)).max(10).default([]),
+});
+
+export const updateDbQueryFavoriteSchema = createDbQueryFavoriteSchema.partial();
+
+export type CreateDbQueryFavoriteInput = z.infer<typeof createDbQueryFavoriteSchema>;
+export type UpdateDbQueryFavoriteInput = z.infer<typeof updateDbQueryFavoriteSchema>;

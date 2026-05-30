@@ -554,6 +554,13 @@
       "when": 1780060832627,
       "tag": "0078_old_mojo",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1780132303099,
+      "tag": "0079_ancient_norman_osborn",
+      "breakpoints": true
     }
   ]
 }

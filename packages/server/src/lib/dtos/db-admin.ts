@@ -126,3 +126,15 @@ export const DbAdminErSchemaDTO = z
     foreignKeys: z.array(DbAdminErDiagramFkDTO),
   })
   .openapi('DbAdminErSchema');
+
+export const DbQueryFavoriteDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    sql: z.string(),
+    description: z.string().nullable(),
+    tags: z.array(z.string()),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('DbQueryFavorite');

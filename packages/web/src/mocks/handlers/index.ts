@@ -42,6 +42,7 @@ import { inAppTemplatesHandlers } from './in-app-templates';
 import { inAppMessagesHandlers } from './in-app-messages';
 import { ipAccessLogsHandlers } from './ip-access-logs';
 import { dataMaskHandlers } from './data-mask';
+import { dbQueryFavoritesHandlers } from './db-query-favorites';
 
 export const handlers = [
   ...authHandlers,
@@ -83,6 +84,7 @@ export const handlers = [
   ...inAppMessagesHandlers,
   ...ipAccessLogsHandlers,
   ...dataMaskHandlers,
+  ...dbQueryFavoritesHandlers,
   ...aiProvidersHandlers,
   ...aiConversationsHandlers,
   ...userAiConfigHandlers,
