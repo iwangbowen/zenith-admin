@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition} from 'react';
 import {
   Button,
   Form,
@@ -48,7 +48,7 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 export default function UserGroupsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [data, setData] = useState<UserGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -98,9 +98,8 @@ export default function UserGroupsPage() {
     return rootNodes;
   }, [departments]);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
-    setLoading(true);
-    try {
+  const fetchList = useCallback((p = page, ps = pageSize, params = searchParams) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
@@ -112,12 +111,10 @@ export default function UserGroupsPage() {
         setData(res.data.list);
         setTotal(res.data.total);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [page, pageSize, searchParams]);
 
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  useEffect(() => { fetchList(); }, [fetchList]);
 
   useEffect(() => {
     void (async () => {
@@ -135,11 +132,11 @@ export default function UserGroupsPage() {
     })();
   }, []);
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
+  const handleSearch = () => { setPage(1); fetchList(1, pageSize); };
   const handleReset = () => {
     setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    fetchList(1, pageSize, defaultSearchParams);
   };
 
   const handleModalOk = async () => {
@@ -156,7 +153,7 @@ export default function UserGroupsPage() {
       Toast.success(editing ? '更新成功' : '创建成功');
       setModalVisible(false);
       setEditing(null);
-      void fetchList();
+      fetchList();
     } else {
       throw new Error(res.message);
     }
@@ -166,7 +163,7 @@ export default function UserGroupsPage() {
     const res = await request.delete(`/api/user-groups/${id}`);
     if (res.code === 0) {
       Toast.success('删除成功');
-      void fetchList();
+      fetchList();
     }
   };
 
@@ -180,7 +177,7 @@ export default function UserGroupsPage() {
         if (res.code === 0) {
           Toast.success(res.message ?? '删除成功');
           setSelectedRowKeys([]);
-          void fetchList();
+          fetchList();
         }
       },
     });
@@ -203,7 +200,7 @@ export default function UserGroupsPage() {
       if (res.code === 0) {
         Toast.success('保存成功');
         setMemberSheetVisible(false);
-        void fetchList();
+        fetchList();
       }
     } finally {
       setMemberSaving(false);
@@ -322,14 +319,14 @@ export default function UserGroupsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
+        pending={isPending}
         rowKey="id"
         pagination={{
           currentPage: page,
           pageSize,
           total,
-          onPageChange: (p) => { setPage(p); void fetchList(p, pageSize); },
-          onPageSizeChange: (size) => { setPageSize(size); void fetchList(1, size); },
+          onPageChange: (p) => { setPage(p); fetchList(p, pageSize); },
+          onPageSizeChange: (size) => { setPageSize(size); fetchList(1, size); },
           showSizeChanger: true,
         }}
         empty="暂无数据"

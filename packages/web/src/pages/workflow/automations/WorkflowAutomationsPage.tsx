@@ -5,7 +5,7 @@
  *   - 自动发起另一个流程
  *   - 自动发送站内信
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition} from 'react';
 import {
   Button,
   Form,
@@ -129,7 +129,7 @@ function draftToAction(d: ActionDraft & { buttonsJson?: string }): WorkflowAutom
 
 export default function WorkflowAutomationsPage() {
   const formApi = useRef<FormApi<FormValues> | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [list, setList] = useState<WorkflowAutomation[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -147,9 +147,8 @@ export default function WorkflowAutomationsPage() {
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [actions, setActions] = useState<Array<ActionDraft & { buttonsJson?: string }>>([]);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize) => {
-    setLoading(true);
-    try {
+  const fetchData = useCallback((p = page, ps = pageSize) => {
+    startTransition(async () => {
       const q = new URLSearchParams({ page: String(p), pageSize: String(ps) });
       if (definitionId !== '') q.set('definitionId', String(definitionId));
       if (triggerFilter) q.set('trigger', triggerFilter);
@@ -161,12 +160,10 @@ export default function WorkflowAutomationsPage() {
         setList(res.data.list);
         setTotal(res.data.total);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [page, pageSize, definitionId, triggerFilter, statusFilter]);
 
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
     request
@@ -175,7 +172,7 @@ export default function WorkflowAutomationsPage() {
       .catch(() => { /* ignore */ });
   }, []);
 
-  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
+  const handleSearch = () => { setPage(1); fetchData(1, pageSize); };
   const handleReset = () => {
     setDefinitionId(''); setTriggerFilter(''); setStatusFilter(''); setPage(1);
   };
@@ -342,7 +339,7 @@ export default function WorkflowAutomationsPage() {
 
       <ConfigurableTable<WorkflowAutomation>
         bordered
-        loading={loading}
+        pending={isPending}
         rowKey="id"
         dataSource={list}
         columns={columns}

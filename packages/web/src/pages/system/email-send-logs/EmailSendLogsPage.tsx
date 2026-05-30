@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useTransition} from 'react';
 import { Button, Form, Input, Modal, Select, Tag,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -31,7 +31,7 @@ function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
 export default function EmailSendLogsPage() {
   const { hasPermission: can } = usePermission();
 
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [list, setList] = useState<EmailSendLog[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -49,8 +49,7 @@ export default function EmailSendLogsPage() {
 
   const fetchList = useCallback(
     async (p: number, kw: string, te: string, st: SendStatus | undefined, src: string | undefined, ps = 10) => {
-      setLoading(true);
-      try {
+      startTransition(async () => {
         const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
         if (kw) params.set('keyword', kw);
         if (te) params.set('toEmail', te);
@@ -61,19 +60,17 @@ export default function EmailSendLogsPage() {
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
         setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
+      });
     },
     [],
   );
 
-  useEffect(() => { void fetchList(1, '', '', undefined, undefined, 10); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { fetchList(1, '', '', undefined, undefined, 10); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, toEmail, filterStatus, filterSource, pageSize); };
+  const handleSearch = () => { fetchList(1, keyword, toEmail, filterStatus, filterSource, pageSize); };
   const handleReset = () => {
     setKeyword(''); setToEmail(''); setFilterStatus(undefined); setFilterSource(undefined);
-    void fetchList(1, '', '', undefined, undefined, pageSize);
+    fetchList(1, '', '', undefined, undefined, pageSize);
   };
 
   const handleExport = async () => {
@@ -101,7 +98,7 @@ export default function EmailSendLogsPage() {
       await request.post('/api/email-send-logs/test', values);
       Toast.success('测试邮件已发送');
       setTestVisible(false);
-      void fetchList(1, keyword, toEmail, filterStatus, filterSource, pageSize);
+      fetchList(1, keyword, toEmail, filterStatus, filterSource, pageSize);
     } finally {
       setSubmitting(false);
     }
@@ -114,7 +111,7 @@ export default function EmailSendLogsPage() {
       onOk: async () => {
         await request.delete(`/api/email-send-logs/${id}`);
         Toast.success('删除成功');
-        void fetchList(page, keyword, toEmail, filterStatus, filterSource, pageSize);
+        fetchList(page, keyword, toEmail, filterStatus, filterSource, pageSize);
       },
     });
   };
@@ -162,11 +159,11 @@ export default function EmailSendLogsPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} columns={columns} dataSource={list} rowKey="id"
+      <ConfigurableTable bordered pending={isPending} columns={columns} dataSource={list} rowKey="id"
         pagination={{
           total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, toEmail, filterStatus, filterSource, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, toEmail, filterStatus, filterSource, s); },
+          onPageChange: (p: number) => { fetchList(p, keyword, toEmail, filterStatus, filterSource, pageSize); },
+          onPageSizeChange: (s: number) => { fetchList(1, keyword, toEmail, filterStatus, filterSource, s); },
         }}
         scroll={{ x: 1400 }} />
 

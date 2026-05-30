@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition} from 'react';
 import {
   Button,
   Col,
@@ -102,7 +102,7 @@ function buildDepartmentTreeData(items: Department[], excludedIds: Set<number>):
 export default function DepartmentsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<Department[]>([]);
   const [allDepartments, setAllDepartments] = useState<Department[]>([]);
@@ -154,9 +154,8 @@ export default function DepartmentsPage() {
     setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
   }
 
-  const fetchDepartments = useCallback(async (params = searchParams) => {
-    setLoading(true);
-    try {
+  const fetchDepartments = useCallback((params = searchParams) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         ...(params.keyword ? { keyword: params.keyword } : {}),
         ...(params.status ? { status: params.status } : {}),
@@ -167,13 +166,11 @@ export default function DepartmentsPage() {
       ]);
       if (treeRes.code === 0) setData(treeRes.data);
       if (flatRes.code === 0) setAllDepartments(flatRes.data);
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [searchParams]);
 
   useEffect(() => {
-    void fetchDepartments();
+    fetchDepartments();
   }, [fetchDepartments]);
 
   const parentTreeData = useMemo(() => {
@@ -211,7 +208,7 @@ export default function DepartmentsPage() {
   const openEdit = async (record: Department) => {
     setEditingDepartment(record);
     setModalVisible(true);
-    void fetchLeaderOptions();
+    fetchLeaderOptions();
     setModalDetailLoading(true);
     const res = await request.get<Department>(`/api/departments/${record.id}`);
     setModalDetailLoading(false);
@@ -224,7 +221,7 @@ export default function DepartmentsPage() {
 
   const handleReset = () => {
     setSearchParams(defaultSearchParams);
-    void fetchDepartments(defaultSearchParams);
+    fetchDepartments(defaultSearchParams);
   };
 
   const handleModalOk = async () => {
@@ -243,7 +240,7 @@ export default function DepartmentsPage() {
       Toast.success(editingDepartment ? '更新成功' : '创建成功');
       setModalVisible(false);
       setEditingDepartment(null);
-      void fetchDepartments();
+      fetchDepartments();
     } else {
       throw new Error(res.message);
     }
@@ -253,7 +250,7 @@ export default function DepartmentsPage() {
     const res = await request.delete(`/api/departments/${id}`);
     if (res.code === 0) {
       Toast.success('删除成功');
-      void fetchDepartments();
+      fetchDepartments();
     }
   };
 
@@ -303,7 +300,7 @@ export default function DepartmentsPage() {
             placeholder="搜索部门名称/编码"
             value={searchParams.keyword}
             onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-            onEnterPress={() => void fetchDepartments()}
+            onEnterPress={() => fetchDepartments()}
             style={{ width: 240 }}
             showClear
           />
@@ -317,7 +314,7 @@ export default function DepartmentsPage() {
               ...statusItems.map((item) => ({ value: item.value, label: item.label })),
             ]}
           />
-          <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchDepartments()}>查询</Button>
+          <Button type="primary" icon={<Search size={14} />} onClick={() => fetchDepartments()}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           <Button
             type="primary"
@@ -333,7 +330,7 @@ export default function DepartmentsPage() {
             onClick={() => {
               setEditingDepartment(null);
               setModalVisible(true);
-              void fetchLeaderOptions();
+              fetchLeaderOptions();
             }}
           >
             新增
@@ -344,7 +341,7 @@ export default function DepartmentsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
+        pending={isPending}
         rowKey="id"
         pagination={false}
         empty="暂无数据"
@@ -401,7 +398,7 @@ export default function DepartmentsPage() {
                 remote
                 loading={leaderSearchLoading}
                 optionList={leaderOptions}
-                onSearch={(keyword) => void fetchLeaderOptions(keyword)}
+                onSearch={(keyword) => fetchLeaderOptions(keyword)}
                 style={{ width: '100%' }}
               />
             </Col>

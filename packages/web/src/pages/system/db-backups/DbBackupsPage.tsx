@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useTransition } from 'react';
 import { Button, Space, Tag, Select, Popconfirm, Toast, Modal, Form } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Plus } from 'lucide-react';
 import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared';
@@ -10,7 +10,7 @@ import { createdAtColumn } from '../../../utils/table-columns';
 
 export default function DbBackupsPage() {
   const [list, setList] = useState<DbBackup[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -20,18 +20,18 @@ export default function DbBackupsPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const { hasPermission } = usePermission();
 
-  const fetchList = useCallback(async (p = page, ps = pageSize) => {
-    setLoading(true);
-    const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-    if (filterStatus) params.set('status', filterStatus);
-    if (filterType) params.set('type', filterType);
-    const res = await request.get<{ list: DbBackup[]; total: number }>(`/api/db-backups?${params}`);
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setList(res.data.list);
-      setTotal(res.data.total);
-      setPage(p);
-    }
+  const fetchList = useCallback((p = page, ps = pageSize) => {
+    startTransition(async () => {
+      const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+      if (filterStatus) params.set('status', filterStatus);
+      if (filterType) params.set('type', filterType);
+      const res = await request.get<{ list: DbBackup[]; total: number }>(`/api/db-backups?${params}`);
+      if (res.code === 0 && res.data) {
+        setList(res.data.list);
+        setTotal(res.data.total);
+        setPage(p);
+      }
+    });
   }, [page, pageSize, filterStatus, filterType]);
 
   useEffect(() => { fetchList(1); }, [filterStatus, filterType, fetchList]);
@@ -167,7 +167,7 @@ export default function DbBackupsPage() {
 
       <ConfigurableTable
         bordered
-        loading={loading}
+        pending={isPending}
         dataSource={list}
         columns={columns}
         rowKey="id"

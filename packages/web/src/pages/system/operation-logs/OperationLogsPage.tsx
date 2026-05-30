@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useTransition} from 'react';
 import { Input, Button, DatePicker, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
@@ -24,17 +24,17 @@ const defaultParams: SearchParams = { username: '', module: '', description: '',
 export default function OperationLogsPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
   const [data, setData] = useState<OperationLog[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
+  const fetchData = useCallback((p = page, ps = pageSize, params = searchParams) => {
+    startTransition(async () => {
+      try {
+        const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
         ...(params.username ? { username: params.username } : {}),
@@ -53,9 +53,8 @@ export default function OperationLogsPage() {
       setPageSize(res.data.pageSize);
     } catch (error) {
       console.error(error);
-    } finally {
-      setLoading(false);
     }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -174,14 +173,14 @@ export default function OperationLogsPage() {
 
           <OperationLogsTable
             dataSource={data}
-            loading={loading}
+            loading={isPending}
             scroll={{ x: 1600 }}
             pagination={{
               currentPage: page,
               pageSize,
               total,
-              onPageChange: (c) => { void fetchData(c, pageSize); },
-              onPageSizeChange: (s) => { void fetchData(1, s); },
+              onPageChange: (c) => { fetchData(c, pageSize); },
+              onPageSizeChange: (s) => { fetchData(1, s); },
               showSizeChanger: true,
             }}
           />

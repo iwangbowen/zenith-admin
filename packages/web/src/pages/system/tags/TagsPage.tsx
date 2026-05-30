@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useTransition} from 'react';
 import {
   Button,
   Form,
@@ -113,7 +113,7 @@ export default function TagsPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
 
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [list, setList] = useState<Tag[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -144,8 +144,7 @@ export default function TagsPage() {
 
   const fetchList = useCallback(
     async (p: number, kw: string, st: string | undefined, gn: string | undefined, ps = 10) => {
-      setLoading(true);
-      try {
+      startTransition(async () => {
         const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
         if (kw) params.set('keyword', kw);
         if (st) params.set('status', st);
@@ -155,29 +154,27 @@ export default function TagsPage() {
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
         setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
+      });
     },
     [],
   );
 
   useEffect(() => {
-    void fetchList(1, '', undefined, undefined, 10);
+    fetchList(1, '', undefined, undefined, 10);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { void fetchGroups(); }, [fetchGroups]);
+  useEffect(() => { fetchGroups(); }, [fetchGroups]);
 
   const handleSearch = () => {
-    void fetchList(1, keyword, filterStatus, filterGroup, pageSize);
+    fetchList(1, keyword, filterStatus, filterGroup, pageSize);
   };
 
   const handleReset = () => {
     setKeyword('');
     setFilterStatus(undefined);
     setFilterGroup(undefined);
-    void fetchList(1, '', undefined, undefined, pageSize);
+    fetchList(1, '', undefined, undefined, pageSize);
   };
 
   const openCreate = () => {
@@ -219,8 +216,8 @@ export default function TagsPage() {
         Toast.success('创建成功');
       }
       setModalVisible(false);
-      void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
-      void fetchGroups();
+      fetchList(page, keyword, filterStatus, filterGroup, pageSize);
+      fetchGroups();
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
       if (msg) Toast.error(msg);
@@ -237,7 +234,7 @@ export default function TagsPage() {
         await request.delete(`/api/tags/${id}`);
         Toast.success('删除成功');
         setSelectedRowKeys(selectedRowKeys.filter((k) => k !== id));
-        void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
+        fetchList(page, keyword, filterStatus, filterGroup, pageSize);
       },
     });
   };
@@ -252,7 +249,7 @@ export default function TagsPage() {
         await request.delete('/api/tags/batch', { ids: selectedRowKeys });
         Toast.success(`已删除 ${selectedRowKeys.length} 条标签`);
         setSelectedRowKeys([]);
-        void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
+        fetchList(page, keyword, filterStatus, filterGroup, pageSize);
       },
     });
   };
@@ -369,7 +366,7 @@ export default function TagsPage() {
 
       <ConfigurableTable
         bordered
-        loading={loading}
+        pending={isPending}
         columns={columns}
         dataSource={list}
         rowKey="id"
@@ -388,8 +385,8 @@ export default function TagsPage() {
           pageSize,
           showTotal: true,
           showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, filterStatus, filterGroup, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, filterStatus, filterGroup, s); },
+          onPageChange: (p: number) => { fetchList(p, keyword, filterStatus, filterGroup, pageSize); },
+          onPageSizeChange: (s: number) => { fetchList(1, keyword, filterStatus, filterGroup, s); },
         }}
         scroll={{ x: 900 }}
       />

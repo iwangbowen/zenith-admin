@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useTransition} from 'react';
 import {
   Table,
   Button,
@@ -41,7 +41,7 @@ export default function RolesPage() {
   const formApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<Role[]>([]);
   const { items: statusItems } = useDictItems('common_status');
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [page, setPage] = useState(1);
@@ -66,9 +66,8 @@ export default function RolesPage() {
   const [dataScopeLoading, setDataScopeLoading] = useState(false);
   const [deptTree, setDeptTree] = useState<Department[]>([]);
 
-  const fetchRoles = useCallback(async (params = searchParams, p = page, ps = pageSize) => {
-    setLoading(true);
-    try {
+  const fetchRoles = useCallback((params = searchParams, p = page, ps = pageSize) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         ...(params.keyword ? { keyword: params.keyword } : {}),
         ...(params.status ? { status: params.status } : {}),
@@ -87,12 +86,10 @@ export default function RolesPage() {
         setData(res.data.list);
         setTotal(res.data.total);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [searchParams, page, pageSize]);
 
-  useEffect(() => { void fetchRoles(); }, [fetchRoles]);
+  useEffect(() => { fetchRoles(); }, [fetchRoles]);
 
   // 加载部门树（用于管理范围选择）
   useEffect(() => {
@@ -113,13 +110,13 @@ export default function RolesPage() {
 
   function handleSearch() {
     setPage(1);
-    void fetchRoles(searchParams, 1, pageSize);
+    fetchRoles(searchParams, 1, pageSize);
   }
 
   function handleReset() {
     setPage(1);
     setSearchParams(defaultSearchParams);
-    void fetchRoles(defaultSearchParams, 1, pageSize);
+    fetchRoles(defaultSearchParams, 1, pageSize);
   }
 
   // 拉取菜单树（用于分配权限）
@@ -207,7 +204,7 @@ export default function RolesPage() {
     if (res.code === 0) {
       Toast.success('数据权限已更新');
       setDataScopeModalVisible(false);
-      void fetchRoles();
+      fetchRoles();
     }
   };
 
@@ -364,13 +361,13 @@ export default function RolesPage() {
         columns={columns}
         dataSource={data}
         rowKey="id"
-        loading={loading}
+        pending={isPending}
         pagination={{
           currentPage: page,
           pageSize,
           total,
-          onPageChange: (p) => { setPage(p); void fetchRoles(searchParams, p, pageSize); },
-          onPageSizeChange: (s) => { setPage(1); setPageSize(s); void fetchRoles(searchParams, 1, s); },
+          onPageChange: (p) => { setPage(p); fetchRoles(searchParams, p, pageSize); },
+          onPageSizeChange: (s) => { setPage(1); setPageSize(s); fetchRoles(searchParams, 1, s); },
           showSizeChanger: true,
         }}
       />

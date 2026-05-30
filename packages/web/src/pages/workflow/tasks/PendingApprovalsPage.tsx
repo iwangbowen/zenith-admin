@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition} from 'react';
 import {
   Banner,
   Button,
@@ -56,7 +56,7 @@ export default function PendingApprovalsPage() {
   const addSignFormApi = useRef<FormApi | null>(null);
   const reduceSignFormApi = useRef<FormApi | null>(null);
   const returnFormApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [data, setData] = useState<PaginatedResponse<PendingItem> | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -147,9 +147,8 @@ export default function PendingApprovalsPage() {
     }
   }, [userOptions.length]);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize) => {
-    setLoading(true);
-    try {
+  const fetchList = useCallback((p = page, ps = pageSize) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
@@ -159,18 +158,16 @@ export default function PendingApprovalsPage() {
         setData(res.data);
         setPage(res.data.page);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [page, pageSize]);
 
   useEffect(() => {
-    void fetchList();
+    fetchList();
   }, [fetchList]);
 
   // 当审批弹窗打开且下游存在 approverSelect 节点，预加载用户列表
   useEffect(() => {
-    if (approveVisible && hasApproverSelectDownstream) void loadUserOptions();
+    if (approveVisible && hasApproverSelectDownstream) loadUserOptions();
   }, [approveVisible, hasApproverSelectDownstream, loadUserOptions]);
 
   const openDetail = (item: PendingItem) => {
@@ -216,7 +213,7 @@ export default function PendingApprovalsPage() {
         setApproveVisible(false);
         setApproveAttachments([]);
         setSelectedNextApprovers([]);
-        void fetchList();
+        fetchList();
       }
     } catch {
       // validation failed
@@ -266,7 +263,7 @@ export default function PendingApprovalsPage() {
       if (res.code === 0) {
         Toast.success('已驳回');
         setRejectVisible(false);
-        void fetchList();
+        fetchList();
       }
     } catch {
       // validation failed
@@ -288,7 +285,7 @@ export default function PendingApprovalsPage() {
       if (res.code === 0) {
         Toast.success(successMsg);
         closer();
-        void fetchList();
+        fetchList();
         setDetailVisible(false);
       }
     } finally {
@@ -332,7 +329,7 @@ export default function PendingApprovalsPage() {
   };
 
   const openUserPickerModal = (opener: () => void) => {
-    void loadUserOptions();
+    loadUserOptions();
     opener();
   };
 
@@ -395,20 +392,20 @@ export default function PendingApprovalsPage() {
   return (
     <div className="page-container">
       <SearchToolbar>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchList(1)}>刷新</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => fetchList(1)}>刷新</Button>
       </SearchToolbar>
       <ConfigurableTable
         bordered
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
+        pending={isPending}
         pagination={{
           currentPage: page,
           pageSize,
           total: data?.total ?? 0,
-          onPageChange: (p) => { void fetchList(p); },
-          onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, ps); },
+          onPageChange: (p) => { fetchList(p); },
+          onPageSizeChange: (ps) => { setPageSize(ps); fetchList(1, ps); },
           showSizeChanger: true,
         }}
       />

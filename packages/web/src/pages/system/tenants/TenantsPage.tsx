@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useTransition} from 'react';
 import {
   Button,
   Input,
@@ -37,16 +37,15 @@ export default function TenantsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
-    setLoading(true);
-    try {
+  const fetchData = useCallback((p = page, ps = pageSize, params = searchParams) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
@@ -58,22 +57,20 @@ export default function TenantsPage() {
         setData(res.data.list);
         setTotal(res.data.total);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [page, pageSize, searchParams]);
 
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize);
+    fetchData(1, pageSize);
   }
 
   function handleReset() {
     setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    fetchData(1, pageSize, defaultSearchParams);
   }
 
   const handleModalOk = async () => {
@@ -233,14 +230,14 @@ export default function TenantsPage() {
         columns={columns}
         dataSource={data}
         rowKey="id"
-        loading={loading}
+        pending={isPending}
         pagination={{
           currentPage: page,
           pageSize,
           total,
           showSizeChanger: true,
-          onPageChange: (p) => { setPage(p); void fetchData(p, pageSize); },
-          onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); void fetchData(1, ps); },
+          onPageChange: (p) => { setPage(p); fetchData(p, pageSize); },
+          onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); fetchData(1, ps); },
         }}
       />
 

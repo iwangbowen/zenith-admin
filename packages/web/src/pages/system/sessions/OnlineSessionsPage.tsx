@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition} from 'react';
 import {
   Button,
   Input,
@@ -23,7 +23,7 @@ import { renderEllipsis } from '../../../utils/table-columns';
 
 export default function OnlineSessionsPage() {
   const { hasPermission } = usePermission();
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [data, setData] = useState<OnlineUser[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -42,9 +42,8 @@ export default function OnlineSessionsPage() {
     }
   }, []);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, kw = keyword) => {
-    setLoading(true);
-    try {
+  const fetchData = useCallback((p = page, ps = pageSize, kw = keyword) => {
+    startTransition(async () => {
       const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
       if (kw) query.set('keyword', kw);
       const res = await request.get<PaginatedResponse<OnlineUser>>(`/api/sessions?${query}`);
@@ -52,13 +51,11 @@ export default function OnlineSessionsPage() {
         setData(res.data.list);
         setTotal(res.data.total);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [page, pageSize, keyword]);
 
   useEffect(() => {
-    void fetchData();
+    fetchData();
   }, [fetchData]);
 
   const handleForceLogout = (record: OnlineUser) => {
@@ -86,7 +83,7 @@ export default function OnlineSessionsPage() {
           : await request.delete(`/api/sessions/${record.tokenId}`);
         if (res.code === 0) {
           Toast.success(logoutMode === 'all' ? '已强制下线全部会话' : '已强制下线');
-          void fetchData(page, pageSize, keyword);
+          fetchData(page, pageSize, keyword);
         }
       },
     });
@@ -145,26 +142,26 @@ export default function OnlineSessionsPage() {
             placeholder="搜索用户名/昵称/IP"
             value={keyword}
             onChange={(v) => setKeyword(v)}
-            onEnterPress={() => { setPage(1); void fetchData(1, pageSize, keyword); }}
+            onEnterPress={() => { setPage(1); fetchData(1, pageSize, keyword); }}
             style={{ width: 240 }}
             showClear
           />
-          <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize, keyword); }}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); setPage(1); void fetchData(1, pageSize, ''); }}>重置</Button>
+          <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); fetchData(1, pageSize, keyword); }}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); setPage(1); fetchData(1, pageSize, ''); }}>重置</Button>
       </SearchToolbar>
 
       <ConfigurableTable
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
+        pending={isPending}
         rowKey="tokenId"
         pagination={{
           currentPage: page,
           pageSize,
           total,
-          onPageChange: (p) => { setPage(p); void fetchData(p, pageSize, keyword); },
-          onPageSizeChange: (size) => { setPageSize(size); void fetchData(1, size, keyword); },
+          onPageChange: (p) => { setPage(p); fetchData(p, pageSize, keyword); },
+          onPageSizeChange: (size) => { setPageSize(size); fetchData(1, size, keyword); },
           showSizeChanger: true,
         }}
         empty="暂无在线用户"

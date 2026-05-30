@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useTransition} from 'react';
 import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -21,7 +21,7 @@ export default function SmsConfigsPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
 
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [list, setList] = useState<SmsConfig[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -38,8 +38,7 @@ export default function SmsConfigsPage() {
 
   const fetchList = useCallback(
     async (p: number, kw: string, pr: SmsProvider | undefined, st: string | undefined, ps = 10) => {
-      setLoading(true);
-      try {
+      startTransition(async () => {
         const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
         if (kw) params.set('keyword', kw);
         if (pr) params.set('provider', pr);
@@ -49,19 +48,17 @@ export default function SmsConfigsPage() {
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
         setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
+      });
     },
     [],
   );
 
-  useEffect(() => { void fetchList(1, '', undefined, undefined, 10); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { fetchList(1, '', undefined, undefined, 10); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, filterProvider, filterStatus, pageSize); };
+  const handleSearch = () => { fetchList(1, keyword, filterProvider, filterStatus, pageSize); };
   const handleReset = () => {
     setKeyword(''); setFilterProvider(undefined); setFilterStatus(undefined);
-    void fetchList(1, '', undefined, undefined, pageSize);
+    fetchList(1, '', undefined, undefined, pageSize);
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
@@ -93,7 +90,7 @@ export default function SmsConfigsPage() {
         Toast.success('创建成功');
       }
       setModalVisible(false);
-      void fetchList(page, keyword, filterProvider, filterStatus, pageSize);
+      fetchList(page, keyword, filterProvider, filterStatus, pageSize);
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +99,7 @@ export default function SmsConfigsPage() {
   const handleSetDefault = async (record: SmsConfig) => {
     await request.post(`/api/sms-configs/${record.id}/default`);
     Toast.success('已设为默认');
-    void fetchList(page, keyword, filterProvider, filterStatus, pageSize);
+    fetchList(page, keyword, filterProvider, filterStatus, pageSize);
   };
 
   const handleDelete = (id: number) => {
@@ -112,7 +109,7 @@ export default function SmsConfigsPage() {
       onOk: async () => {
         await request.delete(`/api/sms-configs/${id}`);
         Toast.success('删除成功');
-        void fetchList(page, keyword, filterProvider, filterStatus, pageSize);
+        fetchList(page, keyword, filterProvider, filterStatus, pageSize);
       },
     });
   };
@@ -169,11 +166,11 @@ export default function SmsConfigsPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} columns={columns} dataSource={list} rowKey="id"
+      <ConfigurableTable bordered pending={isPending} columns={columns} dataSource={list} rowKey="id"
         pagination={{
           total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, filterProvider, filterStatus, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, filterProvider, filterStatus, s); },
+          onPageChange: (p: number) => { fetchList(p, keyword, filterProvider, filterStatus, pageSize); },
+          onPageSizeChange: (s: number) => { fetchList(1, keyword, filterProvider, filterStatus, s); },
         }}
         scroll={{ x: 1300 }} />
 

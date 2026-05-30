@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import {
   Button,
   Form,
@@ -228,7 +228,7 @@ export default function MyApplicationsPage() {
   const { user } = useAuth();
   const formApi = useRef<FormApi | null>(null);
   const dynamicFormApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -243,9 +243,8 @@ export default function MyApplicationsPage() {
   const [applyCategoryId, setApplyCategoryId] = useState<number | null>(null);
   const { categories } = useWorkflowCategories();
 
-  const fetchList = useCallback(async (p = page, st = searchStatus, ps = pageSize) => {
-    setLoading(true);
-    try {
+  const fetchList = useCallback((p = page, st = searchStatus, ps = pageSize) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
@@ -256,13 +255,11 @@ export default function MyApplicationsPage() {
         setData(res.data);
         setPage(res.data.page);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [page, pageSize, searchStatus]);
 
   useEffect(() => {
-    void fetchList();
+    fetchList();
   }, [fetchList]);
 
   const loadDefinitions = async () => {
@@ -272,13 +269,13 @@ export default function MyApplicationsPage() {
 
   const handleSearch = () => {
     setSearchStatus(statusFilter);
-    void fetchList(1, statusFilter);
+    fetchList(1, statusFilter);
   };
 
   const handleReset = () => {
     setStatusFilter('');
     setSearchStatus('');
-    void fetchList(1, '');
+    fetchList(1, '');
   };
 
   const openDetail = (id: number) => {
@@ -310,7 +307,7 @@ export default function MyApplicationsPage() {
         Toast.success('申请已提交');
         setApplyVisible(false);
         setSelectedDef(null);
-        void fetchList();
+        fetchList();
       }
     } catch {
       // validation failed
@@ -388,13 +385,13 @@ export default function MyApplicationsPage() {
         columns={columns}
         dataSource={data?.list ?? []}
         rowKey="id"
-        loading={loading}
+        pending={isPending}
         pagination={{
           currentPage: page,
           pageSize,
           total: data?.total ?? 0,
-          onPageChange: (p) => { void fetchList(p); },
-          onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, searchStatus, ps); },
+          onPageChange: (p) => { fetchList(p); },
+          onPageSizeChange: (ps) => { setPageSize(ps); fetchList(1, searchStatus, ps); },
           showSizeChanger: true,
         }}
       />
@@ -404,7 +401,7 @@ export default function MyApplicationsPage() {
         instanceId={selectedId}
         visible={detailVisible}
         onClose={() => setDetailVisible(false)}
-        onRefresh={() => void fetchList()}
+        onRefresh={() => fetchList()}
       />
 
       {/* 发起申请抽屉 */}

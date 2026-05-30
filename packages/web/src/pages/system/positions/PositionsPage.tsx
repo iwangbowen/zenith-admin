@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition} from 'react';
 import {
   Button,
   DatePicker,
@@ -38,7 +38,7 @@ const defaultSearchParams: SearchParams = {
 export default function PositionsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<Position[]>([]);
   const [total, setTotal] = useState(0);
@@ -51,9 +51,8 @@ export default function PositionsPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems } = useDictItems('common_status');
 
-  const fetchPositions = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
-    setLoading(true);
-    try {
+  const fetchPositions = useCallback((p = page, ps = pageSize, params = searchParams) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
@@ -71,13 +70,11 @@ export default function PositionsPage() {
         setData(res.data.list);
         setTotal(res.data.total);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [page, pageSize, searchParams]);
 
   useEffect(() => {
-    void fetchPositions();
+    fetchPositions();
   }, [fetchPositions]);
 
   const formInitValues = editingPosition
@@ -95,13 +92,13 @@ export default function PositionsPage() {
 
   const handleSearch = () => {
     setPage(1);
-    void fetchPositions(1, pageSize);
+    fetchPositions(1, pageSize);
   };
 
   const handleReset = () => {
     setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchPositions(1, pageSize, defaultSearchParams);
+    fetchPositions(1, pageSize, defaultSearchParams);
   };
 
   const handleModalOk = async () => {
@@ -120,7 +117,7 @@ export default function PositionsPage() {
       Toast.success(editingPosition ? '更新成功' : '创建成功');
       setModalVisible(false);
       setEditingPosition(null);
-      void fetchPositions();
+      fetchPositions();
     } else {
       throw new Error(res.message);
     }
@@ -143,7 +140,7 @@ export default function PositionsPage() {
     const res = await request.delete(`/api/positions/${id}`);
     if (res.code === 0) {
       Toast.success('删除成功');
-      void fetchPositions();
+      fetchPositions();
     }
   };
 
@@ -157,7 +154,7 @@ export default function PositionsPage() {
         if (res.code === 0) {
           Toast.success(res.message ?? '删除成功');
           setSelectedRowKeys([]);
-          void fetchPositions();
+          fetchPositions();
         }
       },
     });
@@ -256,14 +253,14 @@ export default function PositionsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
+        pending={isPending}
         rowKey="id"
         pagination={{
           currentPage: page,
           pageSize,
           total,
-          onPageChange: (p) => { setPage(p); void fetchPositions(p, pageSize); },
-          onPageSizeChange: (size) => { setPageSize(size); void fetchPositions(1, size); },
+          onPageChange: (p) => { setPage(p); fetchPositions(p, pageSize); },
+          onPageSizeChange: (size) => { setPageSize(size); fetchPositions(1, size); },
           showSizeChanger: true,
         }}
         empty="暂无数据"

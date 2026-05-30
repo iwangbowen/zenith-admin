@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useTransition} from 'react';
 import {
   Button,
   Input,
@@ -33,7 +33,7 @@ export default function MenusPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<Menu[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
@@ -52,14 +52,11 @@ export default function MenusPage() {
   const { items: statusItems } = useDictItems('common_status');
   const { items: menuVisibleItems } = useDictItems('menu_visible');
 
-  const fetchMenus = useCallback(async () => {
-    setLoading(true);
-    try {
+  const fetchMenus = useCallback(() => {
+    startTransition(async () => {
       const res = await request.get<Menu[]>('/api/menus');
       if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
+    });
   }, []);
 
   useEffect(() => { fetchMenus(); }, [fetchMenus]);
@@ -337,7 +334,7 @@ export default function MenusPage() {
         columns={columns}
         dataSource={filteredData}
         rowKey="id"
-        loading={loading}
+        pending={isPending}
         pagination={false}
         expandedRowKeys={expandedRowKeys}
         onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Menu => 'id' in r).map((r) => r.id) ?? [])}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useTransition} from 'react';
 import {
   Button,
   Card,
@@ -96,22 +96,19 @@ export default function RateLimitPage() {
   const canManage = hasPermission('system:rate-limit:manage');
   const [rules, setRules] = useState<RateLimitRule[]>([]);
   const [stats, setStats] = useState<RateLimitStats>({ items: [] });
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [editing, setEditing] = useState<RateLimitRule | null>(null);
   const [formApi, setFormApi] = useState<FormApi<UpdateForm> | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
+  const fetchData = useCallback(() => {
+    startTransition(async () => {
       const [rulesRes, statsRes] = await Promise.all([
         request.get<RateLimitRule[]>('/api/rate-limit/rules'),
         request.get<RateLimitStats>('/api/rate-limit/stats'),
       ]);
       if (rulesRes.code === 0) setRules(rulesRes.data);
       if (statsRes.code === 0) setStats(statsRes.data);
-    } finally {
-      setLoading(false);
-    }
+    });
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -153,7 +150,7 @@ export default function RateLimitPage() {
         <Text type="tertiary" style={{ fontSize: 13 }}>
           管理 API 接口限流规则，保存后立即热更新到运行中的服务，无需重启。
         </Text>
-        <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} loading={loading}>
+        <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} pending={isPending}>
           刷新
         </Button>
       </SearchToolbar>
@@ -245,7 +242,7 @@ export default function RateLimitPage() {
       <ConfigurableTable
         bordered
         rowKey="_rowId"
-        loading={loading}
+        pending={isPending}
         dataSource={stats.items.flatMap((s) =>
           s.recentBlocks.map((b, idx) => ({
             _rowId: `${s.name}-${b.at}-${b.key}-${idx}`,

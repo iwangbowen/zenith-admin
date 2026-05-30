@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition} from 'react';
 import {
   Button,
   Form,
@@ -47,7 +47,7 @@ export default function RegionsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
 
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<Region[]>([]);
   const [flatData, setFlatData] = useState<Region[]>([]);
@@ -79,9 +79,8 @@ export default function RegionsPage() {
     return () => observer.disconnect();
   }, []);
 
-  const fetchRegions = useCallback(async (params = searchParams) => {
-    setLoading(true);
-    try {
+  const fetchRegions = useCallback((params = searchParams) => {
+    startTransition(async () => {
       const queryObj: Record<string, string> = {};
       if (params.keyword) queryObj.keyword = params.keyword;
       if (params.status) queryObj.status = params.status;
@@ -90,9 +89,7 @@ export default function RegionsPage() {
       const query = new URLSearchParams(queryObj).toString();
       const res = await request.get<Region[]>(query ? `/api/regions?${query}` : '/api/regions');
       if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [searchParams]);
 
   const fetchFlatData = useCallback(async () => {
@@ -106,17 +103,17 @@ export default function RegionsPage() {
   }, []);
 
   useEffect(() => {
-    void fetchRegions();
+    fetchRegions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleSearch() {
-    void fetchRegions(searchParams);
+    fetchRegions(searchParams);
   }
 
   function handleReset() {
     setSearchParams(defaultSearchParams);
-    void fetchRegions(defaultSearchParams);
+    fetchRegions(defaultSearchParams);
   }
 
   // 递归收集所有节点 ID
@@ -142,14 +139,14 @@ export default function RegionsPage() {
     setEditingRegion(null);
     setEditingLevel('province');
     setModalVisible(true);
-    void fetchFlatData();
+    fetchFlatData();
   }
 
   async function openEdit(record: Region) {
     setEditingRegion(record);
     setEditingLevel(record.level);
     setModalVisible(true);
-    void fetchFlatData();
+    fetchFlatData();
     setModalDetailLoading(true);
     const res = await request.get<Region>(`/api/regions/${record.id}`);
     setModalDetailLoading(false);
@@ -232,7 +229,7 @@ export default function RegionsPage() {
     if (res.code === 0) {
       Toast.success(editingRegion ? '更新成功' : '创建成功');
       closeModal();
-      void fetchRegions();
+      fetchRegions();
     } else {
       throw new Error(res.message);
     }
@@ -242,7 +239,7 @@ export default function RegionsPage() {
     const res = await request.delete(`/api/regions/${id}`);
     if (res.code === 0) {
       Toast.success('删除成功');
-      void fetchRegions();
+      fetchRegions();
     }
   }
 
@@ -384,7 +381,7 @@ export default function RegionsPage() {
           bordered
           columns={columns}
           dataSource={data}
-          loading={loading}
+          pending={isPending}
           rowKey="id"
           size="small"
         expandedRowKeys={expandedRowKeys}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef, useTransition} from 'react';
 import {
   Button,
   Col,
@@ -119,7 +119,7 @@ export default function FileStorageConfigsPage() {
   const defaultSearchParams: SearchParams = { status: '', timeRange: null };
   const formApi = useRef<FormApi | null>(null);
   const [configs, setConfigs] = useState<FileStorageConfig[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [page, setPage] = useState(1);
@@ -131,9 +131,8 @@ export default function FileStorageConfigsPage() {
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
   const [formIsDefault, setFormIsDefault] = useState(false);
 
-  const fetchConfigs = useCallback(async (params = searchParams, p = page, ps = pageSize) => {
-    setLoading(true);
-    try {
+  const fetchConfigs = useCallback((params = searchParams, p = page, ps = pageSize) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange
@@ -151,24 +150,22 @@ export default function FileStorageConfigsPage() {
         setConfigs(res.data.list);
         setTotal(res.data.total);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [searchParams, page, pageSize]);
 
   useEffect(() => {
-    void fetchConfigs();
+    fetchConfigs();
   }, [fetchConfigs]);
 
   const handleSearch = () => {
     setPage(1);
-    void fetchConfigs(searchParams, 1, pageSize);
+    fetchConfigs(searchParams, 1, pageSize);
   };
 
   const handleReset = () => {
     setPage(1);
     setSearchParams(defaultSearchParams);
-    void fetchConfigs(defaultSearchParams, 1, pageSize);
+    fetchConfigs(defaultSearchParams, 1, pageSize);
   };
 
   const openCreate = () => {
@@ -398,13 +395,13 @@ export default function FileStorageConfigsPage() {
         columns={columns}
         dataSource={configs}
         rowKey="id"
-        loading={loading}
+        pending={isPending}
         pagination={{
           currentPage: page,
           pageSize,
           total,
-          onPageChange: (p) => { setPage(p); void fetchConfigs(searchParams, p, pageSize); },
-          onPageSizeChange: (s) => { setPage(1); setPageSize(s); void fetchConfigs(searchParams, 1, s); },
+          onPageChange: (p) => { setPage(p); fetchConfigs(searchParams, p, pageSize); },
+          onPageSizeChange: (s) => { setPage(1); setPageSize(s); fetchConfigs(searchParams, 1, s); },
           showSizeChanger: true,
         }}
         size="small"

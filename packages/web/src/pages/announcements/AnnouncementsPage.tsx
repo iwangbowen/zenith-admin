@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useTransition } from 'react';
 import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge,
 } from '@douyinfe/semi-ui';
@@ -32,7 +32,7 @@ const PRIORITY_LABEL: Record<string, string> = {
 
 export default function AnnouncementsPage() {
   const [list, setList] = useState<AnnouncementWithRead[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read'>('all');
@@ -42,31 +42,31 @@ export default function AnnouncementsPage() {
   const [selected, setSelected] = useState<AnnouncementWithRead | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
-  const fetchList = useCallback(async (p = 1, tab = activeTab) => {
-    setLoading(true);
-    let isRead: string | undefined;
-    if (tab === 'unread') isRead = 'false';
-    else if (tab === 'read') isRead = 'true';
-    const qs = new URLSearchParams({ page: String(p), pageSize: '10' });
-    if (isRead !== undefined) qs.set('isRead', isRead);
-    const res = await request.get<{ list: AnnouncementWithRead[]; total: number }>(
-      `/api/announcements/inbox?${qs.toString()}`,
-    );
-    setLoading(false);
-    if (res.code === 0 && res.data) {
-      setList(res.data.list);
-      setTotal(res.data.total);
-      setPage(p);
-    }
+  const fetchList = useCallback((p = 1, tab = activeTab) => {
+    startTransition(async () => {
+      let isRead: string | undefined;
+      if (tab === 'unread') isRead = 'false';
+      else if (tab === 'read') isRead = 'true';
+      const qs = new URLSearchParams({ page: String(p), pageSize: '10' });
+      if (isRead !== undefined) qs.set('isRead', isRead);
+      const res = await request.get<{ list: AnnouncementWithRead[]; total: number }>(
+        `/api/announcements/inbox?${qs.toString()}`,
+      );
+      if (res.code === 0 && res.data) {
+        setList(res.data.list);
+        setTotal(res.data.total);
+        setPage(p);
+      }
+    });
   }, [activeTab]);
 
   useEffect(() => {
-    void fetchList(1, activeTab);
+    fetchList(1, activeTab);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   useEffect(() => {
-    const handler = () => { void fetchList(page, activeTab); };
+    const handler = () => { fetchList(page, activeTab); };
     globalThis.addEventListener('announcement:refresh', handler);
     return () => globalThis.removeEventListener('announcement:refresh', handler);
   }, [fetchList, page, activeTab]);
@@ -96,7 +96,7 @@ export default function AnnouncementsPage() {
     setMarkAllLoading(false);
     if (res.code === 0) {
       Toast.success('已全部标记为已读');
-      void fetchList(1, activeTab);
+      fetchList(1, activeTab);
     }
   };
 
@@ -202,7 +202,7 @@ export default function AnnouncementsPage() {
           </Button>
         </div>
 
-      {list.length === 0 && !loading ? (
+      {list.length === 0 && !isPending ? (
         <Empty
           image={<Bell size={48} strokeWidth={1} style={{ opacity: 0.3 }} />}
           description={(() => {
@@ -215,7 +215,7 @@ export default function AnnouncementsPage() {
       ) : (
         <ConfigurableTable
           bordered
-          loading={loading}
+          pending={isPending}
           dataSource={list}
           rowKey="id"
           columns={columns}
@@ -224,7 +224,7 @@ export default function AnnouncementsPage() {
             currentPage: page,
             pageSize: 10,
             showSizeChanger: false,
-            onPageChange: (p) => void fetchList(p),
+            onPageChange: (p) => fetchList(p),
           }}
           onRow={(record) => ({
             style: { opacity: (record as AnnouncementWithRead).isRead ? 0.7 : 1 },

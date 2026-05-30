@@ -20,6 +20,8 @@ interface ConfigurableTableProps<RecordType extends TableRecord = TableRecord> e
   columnSettingsKey?: string;
   alwaysVisibleColumnKeys?: string[];
   columnSettingsLabel?: string;
+  /** 当使用 useTransition 搜索时，传入 isPending 以显示半透明加载效果（旧数据保持可见） */
+  pending?: boolean;
 }
 
 const DEFAULT_ALWAYS_VISIBLE_KEYS = ['action', 'actions', 'operation', 'operations', 'operate'];
@@ -149,6 +151,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   columnSettingsKey,
   alwaysVisibleColumnKeys = [],
   columnSettingsLabel = '列设置',
+  pending,
   ...tableProps
 }: ConfigurableTableProps<RecordType>) {
   const { preferences } = usePreferences();
@@ -225,7 +228,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   );
 
   return (
-    <div className="configurable-table">
+    <div className="configurable-table" style={pending ? { opacity: 0.6, transition: 'opacity 0.2s' } : undefined}>
       {effectiveColumnSettings && configurableOptions.length > 0 && (
         <div className="configurable-table-actions">
           <Dropdown trigger="click" render={settingsPanel}>

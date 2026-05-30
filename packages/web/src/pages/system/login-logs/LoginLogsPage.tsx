@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useTransition} from 'react';
 import { Input, Button, Select, DatePicker } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
@@ -16,7 +16,7 @@ export default function LoginLogsPage() {
 
   const defaultParams: SearchParams = { username: '', status: '', timeRange: null };
   const [data, setData] = useState<LoginLog[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -24,10 +24,10 @@ export default function LoginLogsPage() {
 
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
+  const fetchData = useCallback((p = page, ps = pageSize, params = searchParams) => {
+    startTransition(async () => {
+      try {
+        const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
         ...(params.username ? { username: params.username } : {}),
@@ -44,9 +44,8 @@ export default function LoginLogsPage() {
       setPageSize(res.data.pageSize);
     } catch (error) {
       console.error(error);
-    } finally {
-      setLoading(false);
     }
+    });
   }, [page, pageSize, searchParams]);
 
   useEffect(() => {
@@ -104,13 +103,13 @@ export default function LoginLogsPage() {
 
       <LoginLogsTable
         dataSource={data}
-        loading={loading}
+        pending={isPending}
         pagination={{
           currentPage: page,
           pageSize,
           total,
-          onPageChange: (c) => { void fetchData(c, pageSize); },
-          onPageSizeChange: (s) => { void fetchData(1, s); },
+          onPageChange: (c) => { fetchData(c, pageSize); },
+          onPageSizeChange: (s) => { fetchData(1, s); },
           showSizeChanger: true,
         }}
       />

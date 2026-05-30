@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useTransition} from 'react';
 import { Button, Input, Popconfirm, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
@@ -34,24 +34,21 @@ type TableRow = ProviderGroupRow | AiProviderConfigWithKey;
 export default function AIProvidersPage() {
   const { hasPermission } = usePermission();
   const [list, setList] = useState<AiProviderConfig[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState('');
   const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
   const [editTarget, setEditTarget] = useState<AiProviderConfig | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
+  const loadData = useCallback(() => {
+    startTransition(async () => {
       const res = await request.get<AiProviderConfig[]>('/api/ai/providers');
       setList(res.data ?? []);
-    } finally {
-      setLoading(false);
-    }
+    });
   }, []);
 
   useEffect(() => {
-    void loadData();
+    loadData();
   }, [loadData]);
 
   const openCreate = () => {
@@ -67,13 +64,13 @@ export default function AIProvidersPage() {
   const handleDelete = async (id: number) => {
     await request.delete(`/api/ai/providers/${id}`);
     Toast.success('删除成功');
-    void loadData();
+    loadData();
   };
 
   const handleSetDefault = async (id: number) => {
     await request.post(`/api/ai/providers/${id}/set-default`, {});
     Toast.success('已设为默认');
-    void loadData();
+    loadData();
   };
 
   // 按供应商类型聚合为树形数据
@@ -201,10 +198,10 @@ export default function AIProvidersPage() {
           onChange={(v) => setSearch(String(v ?? ''))}
           style={{ width: 220 }}
         />
-        <Button type="primary" icon={<Search size={14} />} onClick={() => void loadData()}>
+        <Button type="primary" icon={<Search size={14} />} onClick={() => loadData()}>
           查询
         </Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearch(''); void loadData(); }}>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearch(''); loadData(); }}>
           重置
         </Button>
         <Button
@@ -224,7 +221,7 @@ export default function AIProvidersPage() {
         bordered
         columns={columns}
         dataSource={treeData}
-        loading={loading}
+        pending={isPending}
         rowKey="key"
         pagination={false}
         expandedRowKeys={expandedRowKeys}
@@ -238,7 +235,7 @@ export default function AIProvidersPage() {
         visible={modalVisible}
         editTarget={editTarget}
         onClose={() => { setModalVisible(false); setEditTarget(null); }}
-        onSaved={() => { setModalVisible(false); setEditTarget(null); void loadData(); }}
+        onSaved={() => { setModalVisible(false); setEditTarget(null); loadData(); }}
       />
     </div>
   );

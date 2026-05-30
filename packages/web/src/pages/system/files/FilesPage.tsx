@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition} from 'react';
 import {
   Button,
   Checkbox,
@@ -215,7 +215,7 @@ export default function FilesPage() {
   /** 区分"页面内点击切换"与"偏好面板外部修改"，防止双重请求 */
   const isInternalToggleRef = useRef(false);
   const [data, setData] = useState<PaginatedResponse<ManagedFile> | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [uploadProgressVisible, setUploadProgressVisible] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
@@ -246,7 +246,7 @@ export default function FilesPage() {
     setPreferences({ filesViewMode: mode });
     const newPageSize = mode === 'grid' ? 24 : 10;
     setPage(1);
-    void fetchFiles(1, newPageSize);
+    fetchFiles(1, newPageSize);
   };
 
   const handleGridSelect = (id: number, checked: boolean) => {
@@ -287,9 +287,8 @@ export default function FilesPage() {
     }
   }, []);
 
-  const fetchFiles = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
-    setLoading(true);
-    try {
+  const fetchFiles = useCallback((p = page, ps = pageSize, params = searchParams) => {
+    startTransition(async () => {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
@@ -309,9 +308,7 @@ export default function FilesPage() {
         setPage(res.data.page);
         setPageSize(res.data.pageSize);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   }, [page, pageSize, searchParams]);
 
   const fetchFilesRef = useRef(fetchFiles);
@@ -325,7 +322,7 @@ export default function FilesPage() {
   }, [fetchDefaultConfig]);
 
   useEffect(() => {
-    void fetchFiles();
+    fetchFiles();
   }, [fetchFiles]);
 
   // 偏好面板修改视图模式时同步 pageSize 并重新拉取数据
@@ -347,8 +344,8 @@ export default function FilesPage() {
         setUploadProgressVisible(false);
         if (successCount > 0) {
           Toast.success(successCount > 1 ? `成功上传 ${successCount} 个文件` : '文件上传成功');
-          void fetchDefaultConfig();
-          void fetchFiles(1);
+          fetchDefaultConfig();
+          fetchFiles(1);
         }
       }, 1000);
       return () => clearTimeout(timer);
@@ -357,13 +354,13 @@ export default function FilesPage() {
 
   function handleSearch() {
     setPage(1);
-    void fetchFiles(1, pageSize);
+    fetchFiles(1, pageSize);
   }
 
   function handleReset() {
     setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchFiles(1, pageSize, defaultSearchParams);
+    fetchFiles(1, pageSize, defaultSearchParams);
   }
 
   const handlePickFile = () => {
@@ -503,7 +500,7 @@ export default function FilesPage() {
           if (res.code === 0) {
             Toast.success(res.message || '批量删除成功');
             setSelectedRowKeys([]);
-            void fetchFiles();
+            fetchFiles();
           }
         } finally {
           setBatchDeleteLoading(false);
@@ -873,16 +870,15 @@ export default function FilesPage() {
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys((keys as (string | number)[]).map(Number)),
           } : undefined}
-          loading={loading}
-          size="small"
+          pending={isPending}
           empty="暂无文件记录"
           pagination={{
             currentPage: page,
             pageSize: pageSize,
             total: data?.total || 0,
-            onPageChange: (currentPage) => { void fetchFiles(currentPage, pageSize); },
+            onPageChange: (currentPage) => { fetchFiles(currentPage, pageSize); },
             onPageSizeChange: (size) => {
-              void fetchFiles(1, size);
+              fetchFiles(1, size);
             },
             showTotal: true,
             showSizeChanger: true,
@@ -923,7 +919,7 @@ export default function FilesPage() {
               xxl: 3,
             }}
             dataSource={data?.list ?? []}
-            loading={loading}
+            loading={isPending}
             split={false}
             emptyContent={<div className="files-grid-empty">暂无文件记录</div>}
             renderItem={(file) => (
@@ -951,8 +947,8 @@ export default function FilesPage() {
                 currentPage={page}
                 pageSize={pageSize}
                 total={data?.total ?? 0}
-                onPageChange={(p) => { void fetchFiles(p, pageSize); }}
-                onPageSizeChange={(size) => { void fetchFiles(1, size); }}
+                onPageChange={(p) => { fetchFiles(p, pageSize); }}
+                onPageSizeChange={(size) => { fetchFiles(1, size); }}
                 showSizeChanger
                 showTotal
               />

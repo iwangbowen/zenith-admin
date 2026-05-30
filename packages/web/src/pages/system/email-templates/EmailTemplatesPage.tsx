@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useTransition} from 'react';
 import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -16,7 +16,7 @@ export default function EmailTemplatesPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
 
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [list, setList] = useState<EmailTemplate[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -32,8 +32,7 @@ export default function EmailTemplatesPage() {
 
   const fetchList = useCallback(
     async (p: number, kw: string, st: string | undefined, ps = 10) => {
-      setLoading(true);
-      try {
+      startTransition(async () => {
         const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
         if (kw) params.set('keyword', kw);
         if (st) params.set('status', st);
@@ -42,22 +41,20 @@ export default function EmailTemplatesPage() {
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
         setPageSize(res.data?.pageSize ?? ps);
-      } finally {
-        setLoading(false);
-      }
+      });
     },
     [],
   );
 
   useEffect(() => {
-    void fetchList(1, '', undefined, 10);
+    fetchList(1, '', undefined, 10);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, filterStatus, pageSize); };
+  const handleSearch = () => { fetchList(1, keyword, filterStatus, pageSize); };
   const handleReset = () => {
     setKeyword(''); setFilterStatus(undefined);
-    void fetchList(1, '', undefined, pageSize);
+    fetchList(1, '', undefined, pageSize);
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
@@ -87,7 +84,7 @@ export default function EmailTemplatesPage() {
         Toast.success('创建成功');
       }
       setModalVisible(false);
-      void fetchList(page, keyword, filterStatus, pageSize);
+      fetchList(page, keyword, filterStatus, pageSize);
     } finally {
       setSubmitting(false);
     }
@@ -100,7 +97,7 @@ export default function EmailTemplatesPage() {
       onOk: async () => {
         await request.delete(`/api/email-templates/${id}`);
         Toast.success('删除成功');
-        void fetchList(page, keyword, filterStatus, pageSize);
+        fetchList(page, keyword, filterStatus, pageSize);
       },
     });
   };
@@ -145,11 +142,11 @@ export default function EmailTemplatesPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} columns={columns} dataSource={list} rowKey="id"
+      <ConfigurableTable bordered pending={isPending} columns={columns} dataSource={list} rowKey="id"
         pagination={{
           total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, filterStatus, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, filterStatus, s); },
+          onPageChange: (p: number) => { fetchList(p, keyword, filterStatus, pageSize); },
+          onPageSizeChange: (s: number) => { fetchList(1, keyword, filterStatus, s); },
         }}
         scroll={{ x: 1200 }} />
 
