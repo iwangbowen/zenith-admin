@@ -253,6 +253,7 @@ export async function httpRequest(
     const outLevel = callHttpLog?.level ?? resolveLevel(method, outCfg.level, outCfg.methods);
     const outFormat = callHttpLog?.format ?? outCfg.format;
     const outLogResponseBody = callHttpLog?.logResponseBody ?? outCfg.logResponseBody;
+    const outSeparateFile = outCfg.separateFile;
     const shouldLogOut = outCfg.enabled && outLevel !== 'off';
 
     if (shouldLogOut && outLevel !== 'access') {
@@ -271,7 +272,7 @@ export async function httpRequest(
         attempt: attempt > 1 ? attempt : undefined,
         timestamp: formatDateTime(new Date()),
       };
-      writeHttpLogEntry(reqEntry, outFormat, false);
+      writeHttpLogEntry(reqEntry, outFormat, outSeparateFile);
     }
 
     try {
@@ -325,7 +326,7 @@ export async function httpRequest(
           attempt: attempt > 1 ? attempt : undefined,
           timestamp: formatDateTime(new Date()),
         };
-        writeHttpLogEntry(resEntry, outFormat, false);
+        writeHttpLogEntry(resEntry, outFormat, outSeparateFile);
       }
 
       return wrapResponse(resp, finalUrl);
@@ -346,7 +347,7 @@ export async function httpRequest(
           error: (err as Error).message,
           timestamp: formatDateTime(new Date()),
         };
-        writeHttpLogEntry(errEntry, outFormat, false);
+        writeHttpLogEntry(errEntry, outFormat, outSeparateFile);
       }
       breakerOnFailure(host);
       const aborted = (err as Error).name === 'AbortError' || callerSignal?.aborted;

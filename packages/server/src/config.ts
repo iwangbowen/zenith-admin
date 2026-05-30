@@ -136,6 +136,11 @@ export const config = {
        * 出站接口关注响应，默认开启（可通过 HTTP_LOG_OUTGOING_RESPONSE_BODY=false 关闭）。
        */
       logResponseBody: process.env.HTTP_LOG_OUTGOING_RESPONSE_BODY !== 'false',
+      /**
+       * 是否将出站日志写入独立的 http-traffic-*.log 文件（而非合并进 app-*.log）。
+       * 默认 false（合并写入），设为 true 可避免与应用日志混淆。
+       */
+      separateFile: process.env.HTTP_LOG_OUTGOING_FILE === 'true',
     },
   },
   otel: {
