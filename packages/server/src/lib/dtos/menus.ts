@@ -15,6 +15,8 @@ export const MenuDTO: z.ZodType = z
     icon: z.string().optional(),
     type: z.enum(['directory', 'menu', 'button']).openapi({ example: 'menu' }),
     permission: z.string().optional(),
+    query: z.string().nullable().optional(),
+    isExternal: z.boolean().optional(),
     sort: z.number().int().openapi({ example: 1 }),
     status: z.enum(['enabled', 'disabled']),
     visible: z.boolean().openapi({ example: true }),

@@ -12,6 +12,7 @@ import {
   Row,
   Col,
   Spin,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
@@ -354,8 +355,8 @@ export default function MenusPage() {
           key={editingMenu ? `edit-${editingMenu.id}` : 'create'}
           initValues={
             editingMenu
-              ? { ...editingMenu, visible: editingMenu.visible ? 'show' : 'hidden' }
-                : { type: 'menu', status: 'enabled', visible: 'show', sort: 0, parentId: parentId ?? 0 }
+              ? { ...editingMenu, visible: editingMenu.visible ? 'show' : 'hidden', isExternal: editingMenu.isExternal ?? false }
+                : { type: 'menu', status: 'enabled', visible: 'show', sort: 0, parentId: parentId ?? 0, isExternal: false }
           }
           labelPosition="left"
           labelWidth={90}
@@ -405,6 +406,28 @@ export default function MenusPage() {
             {menuType === 'menu' && (
               <Col span={12}>
                 <Form.Input field="name" label="组件名" placeholder="前端组件Name" />
+              </Col>
+            )}
+            {(menuType === 'menu' || menuType === 'directory') && (
+              <Col span={12}>
+                <Form.Input
+                  field="query"
+                  label={<Tooltip content='访问路由的默认传递参数，如：{"id": 1, "name": "ry"}'>路由参数</Tooltip>}
+                  placeholder='如：{"id": 1, "name": "ry"}'
+                />
+              </Col>
+            )}
+            {(menuType === 'menu' || menuType === 'directory') && (
+              <Col span={12}>
+                <Form.RadioGroup
+                  field="isExternal"
+                  label={<Tooltip content="选择是外链则路由地址需要以 http(s):// 开头">是否外链</Tooltip>}
+                  type="button"
+                  initValue={false}
+                >
+                  <Radio value={true}>是</Radio>
+                  <Radio value={false}>否</Radio>
+                </Form.RadioGroup>
               </Col>
             )}
             {menuType === 'button' && (

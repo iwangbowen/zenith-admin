@@ -39,6 +39,8 @@ export const menusHandlers = [
       icon: body.icon,
       type: body.type ?? 'menu',
       permission: body.permission,
+      query: body.query ?? null,
+      isExternal: body.isExternal ?? false,
       sort: body.sort ?? 0,
       status: body.status ?? 'enabled',
       visible: body.visible ?? true,

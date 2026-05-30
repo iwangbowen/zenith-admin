@@ -86,6 +86,8 @@ export interface Menu {
   icon?: string;
   type: MenuType;
   permission?: string;
+  query?: string | null;
+  isExternal?: boolean;
   sort: number;
   status: EntityStatus;
   visible: boolean;

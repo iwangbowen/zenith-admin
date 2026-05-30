@@ -111,6 +111,8 @@ export const menus = pgTable('menus', {
   icon: varchar('icon', { length: 64 }),
   type: menuTypeEnum('type').notNull().default('menu'),
   permission: varchar('permission', { length: 128 }),
+  query: varchar('query', { length: 512 }),
+  isExternal: boolean('is_external').notNull().default(false),
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   visible: boolean('visible').notNull().default(true),

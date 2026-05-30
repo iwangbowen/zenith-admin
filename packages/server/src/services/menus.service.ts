@@ -20,6 +20,8 @@ export function mapMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> 
     icon: row.icon ?? undefined,
     type: row.type,
     permission: row.permission ?? undefined,
+    query: row.query ?? null,
+    isExternal: row.isExternal,
     sort: row.sort,
     status: row.status,
     visible: row.visible,

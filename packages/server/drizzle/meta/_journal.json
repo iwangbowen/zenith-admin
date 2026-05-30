@@ -568,6 +568,13 @@
       "when": 1780138038603,
       "tag": "0080_slippery_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1780140764518,
+      "tag": "0081_blue_stone_men",
+      "breakpoints": true
     }
   ]
 }

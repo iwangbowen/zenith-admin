@@ -27,6 +27,8 @@ const createMenuSchema = z.object({
   icon: z.string().max(64).optional(),
   type: z.enum(['directory', 'menu', 'button']).default('menu'),
   permission: z.string().max(128).optional(),
+  query: z.string().max(512).optional(),
+  isExternal: z.boolean().default(false),
   sort: z.coerce.number().int().default(0),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   visible: z.boolean().default(true),
