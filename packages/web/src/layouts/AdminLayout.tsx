@@ -1168,12 +1168,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               {/* ── 导航布局 ── */}
               <div>
-                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  导航布局
-                  <Tooltip content="选择菜单导航的显示方式：左侧为垂直侧边栏，顶部为水平菜单栏，混合为顶部主分类 + 左侧子菜单" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help', flexShrink: 0 }} />
-                  </Tooltip>
-                </div>
+                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>导航布局</div>
                 <div style={{ display: 'flex', gap: 12 }}>
                   {([
                     { value: 'vertical' as NavLayout, label: '左侧菜单' },
@@ -1195,12 +1190,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               {/* ── 颜色模式 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  颜色模式
-                  <Tooltip content="切换界面明暗主题，系统模式跟随设备偏好自动切换" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
+                <span>颜色模式</span>
                 <RadioGroup
                   type="button"
                   value={mode}
@@ -1217,12 +1207,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               {/* ── 主题色 ── */}
               <div>
-                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  主题颜色
-                  <Tooltip content="自定义系统主色调，影响按钮、链接等主要 UI 颜色" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help', flexShrink: 0 }} />
-                  </Tooltip>
-                </div>
+                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>主题颜色</div>
                 <div className="theme-color-picker">
                   {THEME_COLOR_PRESETS.map((preset) => {
                     const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
@@ -1282,23 +1267,13 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               {/* ── 菜单搜索 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  显示菜单搜索框
-                  <Tooltip content="在侧边栏顶部显示搜索框，可快速定位并跳转到任意菜单项" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
+                <span>显示菜单搜索框</span>
                 <Switch checked={preferences.showMenuSearch ?? true} onChange={(v) => setPreferences({ showMenuSearch: v })} />
               </div>
 
               {/* ── 全屏按钮 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  显示全屏按钮
-                  <Tooltip content="在顶部操作栏显示全屏切换按钮，点击后页面进入浏览器全屏模式" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
+                <span>显示全屏按钮</span>
                 <Switch checked={preferences.showFullscreen ?? true} onChange={(v) => setPreferences({ showFullscreen: v })} />
               </div>
 
@@ -1317,12 +1292,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               {/* ── 文件默认视图 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  文件列表默认视图
-                  <Tooltip content="打开文件管理页面时，默认使用列表行显示或网格卡片显示" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
+                <span>文件列表默认视图</span>
                 <RadioGroup
                   type="button"
                   value={preferences.filesViewMode ?? 'list'}
@@ -1346,12 +1316,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               {/* ── 表格列设置 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  显示表格列设置按钮
-                  <Tooltip content="在数据表格右上角显示列设置按钮，可自定义隐藏或显示指定列" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
+                <span>显示表格列设置按钮</span>
                 <Switch checked={preferences.showTableColumnSettings ?? true} onChange={(v) => setPreferences({ showTableColumnSettings: v })} />
               </div>
 
@@ -1359,12 +1324,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               {/* ── 多标签页 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  启用多标签页
-                  <Tooltip content="开启后顶部显示标签栏，可同时打开多个页面并快速切换，关闭后每次只显示当前页面" position="right">
-                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                  </Tooltip>
-                </span>
+                <span>启用多标签页</span>
                 <Switch checked={preferences.enableTabs} onChange={(v) => setPreferences({ enableTabs: v })} />
               </div>
               {preferences.enableTabs && (
@@ -1379,21 +1339,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     <Switch checked={preferences.keepTabs ?? true} onChange={(v) => setPreferences({ keepTabs: v })} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      标签页显示图标
-                      <Tooltip content="在标签页标题前显示对应菜单图标，方便快速识别" position="right">
-                        <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                      </Tooltip>
-                    </span>
+                    <span>标签页显示图标</span>
                     <Switch checked={preferences.showTabIcon} onChange={(v) => setPreferences({ showTabIcon: v })} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      最大标签数
-                      <Tooltip content="限制同时开启的标签页数量（5 ~ 50），超出后自动关闭最早的标签页" position="right">
-                        <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                      </Tooltip>
-                    </span>
+                    <span>最大标签数</span>
                     <InputNumber
                       min={5}
                       max={50}
@@ -1405,12 +1355,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
                   {/* ── 标签页动画 ── */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      标签页动画
-                      <Tooltip content="切换标签页时的过渡动画效果，悬停选项可预览效果" position="right">
-                        <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                      </Tooltip>
-                    </span>
+                    <span>标签页动画</span>
                     <RadioGroup
                       type="button"
                       value={preferences.tabAnimation ?? 'none'}
