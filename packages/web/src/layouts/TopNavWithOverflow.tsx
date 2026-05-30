@@ -12,14 +12,14 @@ export type TopNavItem = {
   isExternal?: boolean;
 };
 
-interface Props {
+type Props = Readonly<{
   items: TopNavItem[];
   selectedKeys: string[];
   className?: string;
   style?: React.CSSProperties;
   /** 覆盖默认导航行为（用于 mixed 模式） */
   onItemClick?: (key: string) => void;
-}
+}>;
 
 function isPath(key: string) {
   return key.startsWith('/');
@@ -36,11 +36,11 @@ function DropdownMenuItems({
   items,
   selectedKeys,
   onNavigate,
-}: {
+}: Readonly<{
   items: TopNavItem[];
   selectedKeys: string[];
   onNavigate: (key: string) => void;
-}) {
+}>) {
   return (
     <>
       {items.map((item) => {
@@ -251,7 +251,7 @@ export function TopNavWithOverflow({ items, selectedKeys, className, style, onIt
   return (
     <div
       ref={containerRef}
-      className={`topnav-overflow${className ? ` ${className}` : ''}`}
+      className={`topnav-overflow${className ? ' ' + className : ''}`}
       style={style}
     >
       {/* 隐藏探测容器：仅用于测量各项宽度 */}
