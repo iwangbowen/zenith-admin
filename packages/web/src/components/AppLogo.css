@@ -9,8 +9,8 @@
 }
 
 .app-logo--solid {
-  background-image: linear-gradient(135deg, #4d8aff 0%, #3370ff 100%);
-  box-shadow: 0 2px 6px rgba(51, 112, 255, 0.25);
+  background-image: linear-gradient(135deg, var(--semi-color-primary-hover) 0%, var(--semi-color-primary) 100%);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--semi-color-primary) 30%, transparent);
 }
 
 .app-logo--glass {
