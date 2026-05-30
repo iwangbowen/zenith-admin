@@ -1076,3 +1076,42 @@ body[theme-mode='dark'] .admin-notify-badge .semi-badge-dot {
 
 /* ===== 响应式：小屏幕自动折叠 (< 992px) ===== */
 /* 由 JS matchMedia 控制 collapsed 状态，此处无需额外 CSS */
+
+/* ===== 响应式：Header 右侧操作区窄屏优化 ===== */
+
+/* < 992px：隐藏用户名，只保留头像 */
+@media (max-width: 991px) {
+  .admin-header__username {
+    display: none;
+  }
+}
+
+/* < 768px：顶部品牌区只显示 Logo，隐藏系统名称；菜单搜索框压缩宽度；隐藏公告/消息/主题切换按钮 */
+@media (max-width: 767px) {
+  .admin-topbar__brand .admin-sidebar__title {
+    display: none;
+  }
+
+  .admin-menu-search .semi-input-wrapper,
+  .admin-menu-search .semi-autocomplete {
+    width: 120px !important;
+  }
+
+  .admin-header-action--announce,
+  .admin-header-action--message,
+  .admin-theme-btn--theme {
+    display: none !important;
+  }
+}
+
+/* < 540px：进一步压缩搜索框，隐藏全屏按钮 */
+@media (max-width: 539px) {
+  .admin-menu-search .semi-input-wrapper,
+  .admin-menu-search .semi-autocomplete {
+    width: 90px !important;
+  }
+
+  .admin-theme-btn--fullscreen {
+    display: none;
+  }
+}

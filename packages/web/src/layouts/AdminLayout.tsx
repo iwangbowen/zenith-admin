@@ -712,7 +712,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   // ─── Header actions (reused in both topbar and vertical header) ────────────
   const headerActions = (
     <div className="admin-header__actions">
-      {(preferences.showMenuSearch ?? true) && <MenuSearchInput menus={flatMenus} />}
+      {(preferences.showMenuSearch ?? true) && <div className="admin-menu-search"><MenuSearchInput menus={flatMenus} /></div>}
       {isPlatformAdmin && tenantList.length > 0 && (
         <>
           <Select
@@ -781,7 +781,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </div>
         }
       >
-        <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
+        <div className="admin-header-action admin-header-action--announce" style={{ display: 'inline-flex', cursor: 'pointer' }}>
           <Badge dot={announcementUnreadCount > 0} className="admin-notify-badge" style={{ zIndex: 1 }}>
             <button className="admin-theme-btn" title="公告中心">
               <Megaphone size={16} strokeWidth={1.5} />
@@ -857,7 +857,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </div>
         }
       >
-        <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
+        <div className="admin-header-action admin-header-action--message" style={{ display: 'inline-flex', cursor: 'pointer' }}>
           <Badge dot={unreadCount > 0} className="admin-notify-badge" style={{ zIndex: 1 }}>
             <button className="admin-theme-btn" title="我的消息">
               <Bell size={16} strokeWidth={1.5} />
@@ -878,12 +878,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </Dropdown.Menu>
         }
       >
-        <button className="admin-theme-btn" title="切换主题">
+        <button className="admin-theme-btn admin-theme-btn--theme" title="切换主题">
           {themeLabelMap[mode].icon}
         </button>
       </Dropdown>
       {(preferences.showFullscreen ?? true) && (
-        <button className="admin-theme-btn" title={isFullscreen ? '退出全屏' : '全屏显示'} onClick={toggleFullscreen}>
+        <button className="admin-theme-btn admin-theme-btn--fullscreen" title={isFullscreen ? '退出全屏' : '全屏显示'} onClick={toggleFullscreen}>
           {isFullscreen ? <Minimize2 size={16} strokeWidth={1.5} /> : <Maximize2 size={16} strokeWidth={1.5} />}
         </button>
       )}
