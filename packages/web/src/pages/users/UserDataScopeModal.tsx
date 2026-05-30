@@ -38,7 +38,7 @@ const SCOPE_PRIORITY: Record<string, number> = { all: 5, dept: 4, dept_only: 3, 
 
 function getMostPermissive(a: string | null, b: string | null): string {
   if (!a && !b) return 'self';
-  if (!a) return b;
+  if (!a) return b ?? 'self';
   if (!b) return a;
   return (SCOPE_PRIORITY[a] ?? 0) >= (SCOPE_PRIORITY[b] ?? 0) ? a : b;
 }
