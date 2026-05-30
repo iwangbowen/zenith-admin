@@ -110,6 +110,7 @@ HTTP_LOG_INCOMING_FILE=true              # 写独立文件，不污染 app.log
 HTTP_LOG_OUTGOING_ENABLED=true
 HTTP_LOG_OUTGOING_LEVEL=full
 HTTP_LOG_OUTGOING_FORMAT=curl            # 请求阶段生成可重放命令
+HTTP_LOG_OUTGOING_FILE=true             # 出站日志写独立文件
 ```
 
 #### 场景 3：开发环境全量调试
@@ -119,9 +120,11 @@ HTTP_LOG_INCOMING_ENABLED=true
 HTTP_LOG_INCOMING_LEVEL=full
 HTTP_LOG_INCOMING_FORMAT=text
 HTTP_LOG_INCOMING_RESPONSE_BODY=true
+HTTP_LOG_INCOMING_FILE=true             # 入站写独立文件
 HTTP_LOG_OUTGOING_ENABLED=true
 HTTP_LOG_OUTGOING_LEVEL=full
 HTTP_LOG_OUTGOING_FORMAT=text
+HTTP_LOG_OUTGOING_FILE=true             # 出站写独立文件（与入站共用 http-traffic-*.log）
 ```
 
 #### 场景 4：精细控制——GET 降级，写接口全量
@@ -141,7 +144,7 @@ HTTP_LOG_INCOMING_METHOD_DELETE=headers
 | 文件 | 说明 |
 |---|---|
 | `logs/app-YYYY-MM-DD.log` | 主应用日志（默认，HTTP 日志条目带 `[http-in]` / `[http-out]` 前缀）|
-| `logs/http-traffic-YYYY-MM-DD.log` | 独立 HTTP 流量日志（`HTTP_LOG_INCOMING_FILE=true` 时生成）|
+| `logs/http-traffic-YYYY-MM-DD.log` | 独立 HTTP 流量日志（`HTTP_LOG_INCOMING_FILE=true` 或 `HTTP_LOG_OUTGOING_FILE=true` 时生成）|
 
 日志文件每日滚动，默认保留 30 天，超过自动压缩归档（由 `LOG_MAX_FILES` 控制）。
 
