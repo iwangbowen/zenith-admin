@@ -100,8 +100,8 @@ export default function DataMaskPage() {
     return r.entity.toLowerCase().includes(kw) || r.field.toLowerCase().includes(kw) || r.label.includes(kw);
   });
 
-  const handleSearch = () => setSubmittedKeyword(keyword);
-  const handleReset = () => { setKeyword(''); setSubmittedKeyword(''); };
+  const handleSearch = () => { setSubmittedKeyword(keyword); fetchData(); };
+  const handleReset = () => { setKeyword(''); setSubmittedKeyword(''); fetchData(); };
 
   const closeModal = () => {
     setModalVisible(false);
