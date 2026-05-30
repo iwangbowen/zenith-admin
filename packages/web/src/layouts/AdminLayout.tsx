@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
-import { Bell, Building2, Check, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Bell, Building2, Check, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -882,6 +882,39 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           {themeLabelMap[mode].icon}
         </button>
       </Dropdown>
+      {/* 溢出菜单：窄屏时收纳公告/消息/主题切换 */}
+      <div className="admin-header-action admin-header-action--more">
+        <Dropdown
+          position="bottomRight"
+          render={
+            <Dropdown.Menu>
+              <Dropdown.Item
+                icon={<Megaphone size={14} strokeWidth={1.5} />}
+                onClick={() => navigate('/announcements')}
+              >
+                公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
+              </Dropdown.Item>
+              <Dropdown.Item
+                icon={<Bell size={14} strokeWidth={1.5} />}
+                onClick={() => navigate('/inbox')}
+              >
+                我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
+              </Dropdown.Item>
+              <Dropdown.Divider />
+              <Dropdown.Title>颜色模式</Dropdown.Title>
+              {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
+                <Dropdown.Item key={m} icon={themeLabelMap[m].icon} active={mode === m} onClick={() => handleThemeModeChange(m)}>
+                  {themeLabelMap[m].label}
+                </Dropdown.Item>
+              ))}
+            </Dropdown.Menu>
+          }
+        >
+          <button className="admin-theme-btn" title="更多">
+            <MoreHorizontal size={16} strokeWidth={1.5} />
+          </button>
+        </Dropdown>
+      </div>
       {(preferences.showFullscreen ?? true) && (
         <button className="admin-theme-btn admin-theme-btn--fullscreen" title={isFullscreen ? '退出全屏' : '全屏显示'} onClick={toggleFullscreen}>
           {isFullscreen ? <Minimize2 size={16} strokeWidth={1.5} /> : <Maximize2 size={16} strokeWidth={1.5} />}

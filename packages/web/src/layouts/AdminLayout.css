@@ -1079,6 +1079,11 @@ body[theme-mode='dark'] .admin-notify-badge .semi-badge-dot {
 
 /* ===== 响应式：Header 右侧操作区窄屏优化 ===== */
 
+/* 溢出菜单默认隐藏，仅窄屏显示 */
+.admin-header-action--more {
+  display: none;
+}
+
 /* < 992px：隐藏用户名，只保留头像 */
 @media (max-width: 991px) {
   .admin-header__username {
@@ -1086,7 +1091,7 @@ body[theme-mode='dark'] .admin-notify-badge .semi-badge-dot {
   }
 }
 
-/* < 768px：顶部品牌区只显示 Logo，隐藏系统名称；菜单搜索框压缩宽度；隐藏公告/消息/主题切换按钮 */
+/* < 768px：顶部品牌区只显示 Logo，隐藏系统名称；菜单搜索框压缩宽度；隐藏公告/消息/主题按钮，显示溢出菜单 */
 @media (max-width: 767px) {
   .admin-topbar__brand .admin-sidebar__title {
     display: none;
@@ -1101,6 +1106,10 @@ body[theme-mode='dark'] .admin-notify-badge .semi-badge-dot {
   .admin-header-action--message,
   .admin-theme-btn--theme {
     display: none !important;
+  }
+
+  .admin-header-action--more {
+    display: inline-flex;
   }
 }
 
