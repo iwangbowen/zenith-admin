@@ -66,6 +66,7 @@ type NavItem = {
   icon?: React.ReactNode;
   items?: NavItem[];
   badge?: { count: number; overflowCount?: number };
+  isExternal?: boolean;
 };
 
 function menuToNavItem(menu: Menu): NavItem | null {
@@ -77,7 +78,7 @@ function menuToNavItem(menu: Menu): NavItem | null {
       .filter((item): item is NavItem => item !== null);
     return { itemKey: menu.name ?? `dir-${menu.id}`, text: menu.title, icon, items: children };
   }
-  return { itemKey: menu.path ?? `menu-${menu.id}`, text: menu.title, icon };
+  return { itemKey: menu.path ?? `menu-${menu.id}`, text: menu.title, icon, isExternal: menu.isExternal ?? false };
 }
 
 function findAncestorKeys(menuTree: Menu[], targetPath: string): string[] {
@@ -664,6 +665,18 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       const { itemElement, props: itemProps } = args;
       const itemKey = String(itemProps.itemKey ?? '');
       if (!itemKey.startsWith('/')) return itemElement;
+      // 查找该 key 对应的导航项，判断是否为外链
+      const flatNavItems = (function flat(items: NavItem[]): NavItem[] {
+        return items.flatMap((i) => [i, ...(i.items ? flat(i.items) : [])]);
+      })(navItems);
+      const navItem = flatNavItems.find((i) => i.itemKey === itemKey);
+      if (navItem?.isExternal) {
+        return (
+          <a href={itemKey} target="_blank" rel="noopener noreferrer" className="admin-nav-link-wrapper">
+            {itemElement}
+          </a>
+        );
+      }
       return (
         <NavLink to={itemKey} className="admin-nav-link-wrapper">
           {itemElement}
