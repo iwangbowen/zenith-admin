@@ -103,9 +103,30 @@ export default function MenusPage() {
     [data, keyword, statusFilter, filterTree]
   );
 
+  const collectKeys = useCallback((items: Menu[]): (string | number)[] => {
+    const keys: (string | number)[] = [];
+    function walk(list: Menu[]) {
+      for (const item of list) {
+        keys.push(item.id);
+        if (item.children?.length) walk(item.children);
+      }
+    }
+    walk(items);
+    return keys;
+  }, []);
+
+  // 有过滤条件时，数据变化后自动展开匹配节点
+  useEffect(() => {
+    if (keyword || statusFilter) {
+      const filtered = filterTree(data, keyword, statusFilter);
+      setExpandedRowKeys(collectKeys(filtered));
+    }
+  }, [data, keyword, statusFilter, filterTree, collectKeys]);
+
   const handleSearch = () => {
     setKeyword(pendingKeyword);
     setStatusFilter(pendingStatus);
+    fetchMenus();
   };
 
   const handleReset = () => {
@@ -113,6 +134,8 @@ export default function MenusPage() {
     setPendingStatus('');
     setKeyword('');
     setStatusFilter('');
+    setExpandedRowKeys([]);
+    fetchMenus();
   };
 
   function toggleExpandAll() {
