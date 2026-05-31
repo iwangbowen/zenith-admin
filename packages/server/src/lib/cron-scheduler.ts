@@ -52,6 +52,12 @@ handlerRegistry.set('processWorkflowTaskTimeouts', async () => {
   return `扫描 ${r.processed} 个超时任务：提醒 ${r.reminded}，自动通过 ${r.approved}，自动拒绝 ${r.rejected}`;
 });
 
+handlerRegistry.set('publishScheduledAnnouncements', async () => {
+  const { publishScheduledAnnouncements } = await import('../services/announcements.service');
+  const count = await publishScheduledAnnouncements();
+  return `自动发布了 ${count} 条定时公告`;
+});
+
 // ─── Public API ────────────────────────────────────────────────
 
 /** Get list of registered handler names */

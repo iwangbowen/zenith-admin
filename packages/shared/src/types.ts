@@ -298,7 +298,7 @@ export interface OperationLogStats {
 }
 
 // ─── 公告 ──────────────────────────────────────────────────
-export type AnnouncementPublishStatus = 'draft' | 'published' | 'recalled';
+export type AnnouncementPublishStatus = 'draft' | 'published' | 'recalled' | 'scheduled';
 export type AnnouncementType = 'notice' | 'announcement' | 'warning';
 export type AnnouncementPriority = 'low' | 'medium' | 'high';
 export type AnnouncementTargetType = 'all' | 'specific';

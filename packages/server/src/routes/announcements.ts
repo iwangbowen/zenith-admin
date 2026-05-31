@@ -25,7 +25,7 @@ const createAnnouncementSchema = z.object({
   title: z.string().min(1).max(128),
   content: z.string().min(1).max(4096),
   type: z.string().min(1).max(32).default('notice'),
-  publishStatus: z.enum(['draft', 'published', 'recalled']).default('draft'),
+  publishStatus: z.enum(['draft', 'published', 'recalled', 'scheduled']).default('draft'),
   priority: z.string().min(1).max(32).default('medium'),
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(announcementRecipientSchema).optional().default([]),

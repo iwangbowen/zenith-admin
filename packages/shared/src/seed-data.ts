@@ -276,6 +276,8 @@ export const SEED_DICT_ITEMS: DictItem[] = [
   { id: 21, dictId: 9, label: '数字',   value: 'number',       color: 'green',  sort: 2, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 22, dictId: 9, label: '布尔值', value: 'boolean',      color: 'orange', sort: 3, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 23, dictId: 9, label: 'JSON',   value: 'json',         color: 'cyan',   sort: 4, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // 公告发布状态扩展 (dictId: 7)
+  { id: 24, dictId: 7, label: '定时发布', value: 'scheduled',   color: 'blue',   sort: 4, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 系统配置 ─────────────────────────────────────────────────────────────────
@@ -336,6 +338,24 @@ export const SEED_CRON_JOBS: CronJob[] = [
     lastRunAt: '2024-01-01 01:00:00',
     nextRunAt: '2024-01-01 02:00:00',
     lastRunStatus: 'success',
+    lastRunMessage: null,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+  {
+    id: 4,
+    name: '定时公告自动发布',
+    cronExpression: '* * * * *',
+    handler: 'publishScheduledAnnouncements',
+    params: null,
+    status: 'enabled',
+    description: '每分钟检查并自动发布到期的定时公告',
+    retryCount: 0,
+    retryInterval: 0,
+    monitorTimeout: null,
+    lastRunAt: null,
+    nextRunAt: null,
+    lastRunStatus: null,
     lastRunMessage: null,
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,

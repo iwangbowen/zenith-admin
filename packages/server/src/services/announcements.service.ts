@@ -323,7 +323,7 @@ export async function getAnnouncementDetail(id: number) {
 
 export interface CreateAnnouncementInput {
   title: string; content: string; type: string;
-  publishStatus: 'draft' | 'published' | 'recalled';
+  publishStatus: 'draft' | 'published' | 'recalled' | 'scheduled';
   priority: string;
   targetType: 'all' | 'specific';
   recipients?: Array<{ recipientType: 'user' | 'role' | 'dept'; recipientId: number }>;
@@ -360,6 +360,24 @@ export async function createAnnouncement(data: CreateAnnouncementInput) {
   return announcement;
 }
 
+export async function publishScheduledAnnouncements(): Promise<number> {
+  const now = new Date();
+  const pendingList = await db.select().from(announcements)
+    .where(and(
+      eq(announcements.publishStatus, 'scheduled'),
+      lte(announcements.publishTime, now),
+    ));
+  if (pendingList.length === 0) return 0;
+  for (const row of pendingList) {
+    await db.update(announcements)
+      .set({ publishStatus: 'published' })
+      .where(eq(announcements.id, row.id));
+    const updated = mapAnnouncement({ ...row, publishStatus: 'published' });
+    await broadcastAnnouncement(updated, row.id);
+  }
+  return pendingList.length;
+}
+
 export async function updateAnnouncement(id: number, data: Partial<CreateAnnouncementInput>) {
   const user = currentUser();
   const now = new Date();
@@ -388,7 +406,7 @@ export async function updateAnnouncement(id: number, data: Partial<CreateAnnounc
   const announcement = mapAnnouncement(row);
   if (data.publishStatus === 'published') {
     await broadcastAnnouncement(announcement, row.id);
-  } else {
+  } else if (data.publishStatus !== 'scheduled') {
     const audience = await resolveAnnouncementAudience(row.id, announcement.targetType, announcement.tenantId);
     dispatchToAudience(audience, { type: 'announcement:updated', payload: announcement });
   }

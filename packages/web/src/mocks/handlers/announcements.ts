@@ -75,14 +75,18 @@ export const announcementsHandlers = [
   // 新增公告
   http.post('/api/announcements', async ({ request }) => {
     const body = await request.json() as Partial<Announcement>;
+    const isScheduled = body.publishStatus === 'scheduled' && body.publishTime;
+    let publishTime: string | null = null;
+    if (isScheduled) publishTime = body.publishTime ?? null;
+    else if (body.publishStatus === 'published') publishTime = mockDateTime();
     const newNotice: Announcement = {
       id: getNextAnnouncementId(),
       title: body.title ?? '',
       content: body.content ?? '',
       type: body.type ?? 'notice',
-      publishStatus: 'draft',
+      publishStatus: body.publishStatus ?? 'draft',
       priority: body.priority ?? 'low',
-      publishTime: null,
+      publishTime,
       createById: 1,
       createByName: '管理员',
       targetType: body.targetType ?? 'all',

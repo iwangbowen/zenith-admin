@@ -289,6 +289,14 @@ export default function AnnouncementsPage() {
     }
   };
 
+  const handleCancelSchedule = async (id: number) => {
+    const res = await request.put<Announcement>(`/api/announcements/${id}`, { publishStatus: 'draft', publishTime: null });
+    if (res.code === 0) {
+      Toast.success('已取消定时发布');
+      fetchData(page, pageSize, submittedParams);
+    }
+  };
+
   const handleBatchDelete = () => {
     Modal.confirm({
       title: `确认删除选中的 ${selectedRowKeys.length} 条公告？`,
@@ -329,14 +337,27 @@ export default function AnnouncementsPage() {
               ...selectedDeptIds.map((id) => ({ recipientType: 'dept' as const, recipientId: id })),
             ]
           : [];
+      const scheduledDate = values.scheduledPublishTime as Date | undefined | null;
+      let finalPublishStatus = (values.publishStatus as string) || 'draft';
+      let finalPublishTime: string | null = null;
+      if (scheduledDate) {
+        if (scheduledDate <= new Date()) {
+          Toast.warning('定时发布时间必须是未来时间');
+          setSubmitting(false);
+          return;
+        }
+        finalPublishStatus = 'scheduled';
+        finalPublishTime = formatDateTimeForApi(scheduledDate);
+      }
       const payload = {
         title: values.title,
         content: contentHtml,
         type: values.type || 'notice',
-        publishStatus: values.publishStatus || 'draft',
+        publishStatus: finalPublishStatus,
         priority: values.priority || 'medium',
         targetType,
         recipients,
+        publishTime: finalPublishTime,
       };
       let res;
       if (editingNotice) {
@@ -457,6 +478,7 @@ export default function AnnouncementsPage() {
     draft: 'grey',
     published: 'green',
     recalled: 'orange',
+    scheduled: 'blue',
   };
 
   const columns: ColumnProps<Announcement>[] = [
@@ -474,7 +496,7 @@ export default function AnnouncementsPage() {
       width: 110,
       render: (v: string) => {
         const item = statusItems.find((i) => i.value === v);
-        return <Tag color={publishStatusColorMap[v] as 'grey' | 'green' | 'orange'}>{item?.label ?? v}</Tag>;
+        return <Tag color={publishStatusColorMap[v] as 'grey' | 'green' | 'orange' | 'blue'}>{item?.label ?? v}</Tag>;
       },
     },
     {
@@ -525,7 +547,7 @@ export default function AnnouncementsPage() {
     {
       title: '操作',
       dataIndex: 'op',
-      width: 200,
+      width: 230,
       fixed: 'right' as const,
       render: (_: unknown, record: Announcement) => (
         <Space>
@@ -581,6 +603,42 @@ export default function AnnouncementsPage() {
                 });
               }}
             >重新发布</Button>}
+            {hasPermission('system:announcement:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
+              Modal.confirm({
+                title: '确定要删除该公告吗？',
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => handleDelete(record.id),
+              });
+            }}>删除</Button>}
+          </>}
+          {record.publishStatus === 'scheduled' && <>
+            {hasPermission('system:announcement:update') && <Button
+              theme="borderless"
+              size="small"
+              onClick={() => openEditModal(record)}
+            >编辑</Button>}
+            {hasPermission('system:announcement:update') && <Button
+              theme="borderless"
+              size="small"
+              type="primary"
+              onClick={() => {
+                Modal.confirm({
+                  title: '确定要立即发布该公告吗？',
+                  onOk: () => handlePublish(record.id),
+                });
+              }}
+            >立即发布</Button>}
+            {hasPermission('system:announcement:update') && <Button
+              theme="borderless"
+              size="small"
+              onClick={() => {
+                Modal.confirm({
+                  title: '确定要取消定时发布吗？',
+                  content: '取消后公告将回到草稿状态',
+                  onOk: () => handleCancelSchedule(record.id),
+                });
+              }}
+            >取消定时</Button>}
             {hasPermission('system:announcement:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
               Modal.confirm({
                 title: '确定要删除该公告吗？',
@@ -692,8 +750,11 @@ export default function AnnouncementsPage() {
               ? {
                 title: editingNotice.title,
                 type: editingNotice.type,
-                publishStatus: editingNotice.publishStatus,
+                publishStatus: editingNotice.publishStatus === 'scheduled' ? 'draft' : editingNotice.publishStatus,
                 priority: editingNotice.priority,
+                scheduledPublishTime: editingNotice.publishStatus === 'scheduled' && editingNotice.publishTime
+                  ? new Date(editingNotice.publishTime.replace(' ', 'T'))
+                  : undefined,
               }
               : { type: 'notice', publishStatus: 'draft', priority: 'medium' }
           }
@@ -715,7 +776,7 @@ export default function AnnouncementsPage() {
             <Form.Select
               field="publishStatus"
               label="发布状态"
-              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
+              optionList={statusItems.filter(i => i.value !== 'scheduled').map((i) => ({ label: i.label, value: i.value }))}
               placeholder="请选择状态"
               style={{ width: '100%' }}
             />
@@ -727,6 +788,15 @@ export default function AnnouncementsPage() {
               style={{ width: '100%' }}
             />
           </div>
+          <Form.DatePicker
+            field="scheduledPublishTime"
+            label="定时发布时间"
+            type="dateTime"
+            placeholder="留空则不定时发布，填入未来时间后保存将自动设为「定时发布」状态"
+            disabledDate={(date: Date | undefined) => !!date && date < new Date()}
+            style={{ width: '100%' }}
+            extraText="提示：填入未来时间后保存将自动切换为「定时发布」状态"
+          />
           <div style={{ marginBottom: 16 }}>
             <div style={{ marginBottom: 8, fontSize: 14, fontWeight: 500 }}>收件对象</div>
             <RadioGroup

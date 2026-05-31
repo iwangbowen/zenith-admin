@@ -589,6 +589,13 @@
       "when": 1780217373354,
       "tag": "0083_solid_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1780300000000,
+      "tag": "0084_scheduled_announcement",
+      "breakpoints": true
     }
   ]
 }
