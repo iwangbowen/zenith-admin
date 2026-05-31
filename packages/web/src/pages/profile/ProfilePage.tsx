@@ -16,6 +16,7 @@ import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useDictItems } from '@/hooks/useDictItems';
+import DictTag from '@/components/DictTag';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import './ProfilePage.css';
@@ -449,6 +450,12 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                             <div className="profile-meta-item">
                               <Text type="tertiary" size="small">手机号</Text>
                               <Text size="small">{user.phone}</Text>
+                            </div>
+                          )}
+                          {user.gender && (
+                            <div className="profile-meta-item">
+                              <Text type="tertiary" size="small">性别</Text>
+                              <DictTag dictCode="user_gender" value={user.gender} />
                             </div>
                           )}
                           {user.departmentName && (
