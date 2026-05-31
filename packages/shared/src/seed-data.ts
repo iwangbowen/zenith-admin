@@ -345,11 +345,11 @@ export const SEED_CRON_JOBS: CronJob[] = [
   {
     id: 4,
     name: '定时公告自动发布',
-    cronExpression: '* * * * *',
+    cronExpression: '*/5 * * * *',
     handler: 'publishScheduledAnnouncements',
     params: null,
     status: 'enabled',
-    description: '每分钟检查并自动发布到期的定时公告',
+    description: '每 5 分钟检查并自动发布到期的定时公告',
     retryCount: 0,
     retryInterval: 0,
     monitorTimeout: null,

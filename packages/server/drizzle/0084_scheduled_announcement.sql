@@ -5,5 +5,5 @@ ON CONFLICT DO NOTHING;
 
 -- 添加「定时公告自动发布」cron job
 INSERT INTO "cron_jobs" ("name", "cron_expression", "handler", "status", "description", "retry_count", "retry_interval", "created_at", "updated_at")
-VALUES ('定时公告自动发布', '* * * * *', 'publishScheduledAnnouncements', 'enabled', '每分钟检查并自动发布到期的定时公告', 0, 0, NOW(), NOW())
+VALUES ('定时公告自动发布', '*/5 * * * *', 'publishScheduledAnnouncements', 'enabled', '每 5 分钟检查并自动发布到期的定时公告', 0, 0, NOW(), NOW())
 ON CONFLICT ("name") DO NOTHING;
