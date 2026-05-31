@@ -3,7 +3,7 @@ import {
   Form, Button, Typography, Toast, Tag, Space, Spin,
   Modal, Cropper, Input, Tabs, DatePicker, List as SemiList,
 } from '@douyinfe/semi-ui';
-import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle } from 'lucide-react';
+import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle, RotateCcw, RotateCw } from 'lucide-react';
 import { Icon } from '@iconify/react';
 
 import type {
@@ -21,6 +21,35 @@ import './ProfilePage.css';
 import { createdAtColumn } from '../../utils/table-columns';
 
 const { Title, Text } = Typography;
+
+/** 将图片文件旋转指定角度后返回 data URL（用于规避 Semi Cropper rotate prop 的 bug） */
+function createRotatedImage(file: File, angleDeg: number): Promise<string> {
+  return new Promise((resolve) => {
+    if (angleDeg % 360 === 0) {
+      resolve(URL.createObjectURL(file));
+      return;
+    }
+    const img = new Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objUrl);
+      const rad = (angleDeg * Math.PI) / 180;
+      const sin = Math.abs(Math.sin(rad));
+      const cos = Math.abs(Math.cos(rad));
+      const w = img.naturalWidth * cos + img.naturalHeight * sin;
+      const h = img.naturalWidth * sin + img.naturalHeight * cos;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(w);
+      canvas.height = Math.round(h);
+      const ctx = canvas.getContext('2d')!;
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(rad);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      resolve(canvas.toDataURL('image/jpeg', 0.95));
+    };
+    img.src = objUrl;
+  });
+}
 
 type SectionKey = 'profile' | 'security' | 'devices' | 'logs' | 'api-tokens';
 
@@ -100,8 +129,10 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   // ─── 头像裁剪 ────────────────────────────────────────────────────────────────
   const cropperRef = useRef<Cropper>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const originalFileRef = useRef<File | null>(null);
   const [cropperVisible, setCropperVisible] = useState(false);
   const [cropperSrc, setCropperSrc] = useState('');
+  const [cropRotate, setCropRotate] = useState(0);
   const [avatarLoading, setAvatarLoading] = useState(false);
 
   // ─── 账号安全 ────────────────────────────────────────────────────────────────
@@ -235,14 +266,30 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    originalFileRef.current = file;
     setCropperSrc(URL.createObjectURL(file));
+    setCropRotate(0);
     setCropperVisible(true);
     e.target.value = '';
   }
 
   function closeCropper() {
     setCropperVisible(false);
-    if (cropperSrc) { URL.revokeObjectURL(cropperSrc); setCropperSrc(''); }
+    setCropRotate(0);
+    originalFileRef.current = null;
+    if (cropperSrc) {
+      if (cropperSrc.startsWith('blob:')) URL.revokeObjectURL(cropperSrc);
+      setCropperSrc('');
+    }
+  }
+
+  async function handleCropRotate(delta: number) {
+    if (!originalFileRef.current) return;
+    const newAngle = ((cropRotate + delta) % 360 + 360) % 360;
+    setCropRotate(newAngle);
+    const rotated = await createRotatedImage(originalFileRef.current, newAngle);
+    if (cropperSrc.startsWith('blob:')) URL.revokeObjectURL(cropperSrc);
+    setCropperSrc(rotated);
   }
 
   async function handleCropConfirm() {
@@ -706,6 +753,20 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
               style={{ width: '100%', height: '100%' }}
             />
           )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 12 }}>
+          <Button
+            icon={<RotateCcw size={14} />}
+            size="small"
+            theme="borderless"
+            onClick={() => void handleCropRotate(-90)}
+          >向左旋转</Button>
+          <Button
+            icon={<RotateCw size={14} />}
+            size="small"
+            theme="borderless"
+            onClick={() => void handleCropRotate(90)}
+          >向右旋转</Button>
         </div>
       </Modal>
 
