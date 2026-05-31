@@ -24,6 +24,13 @@ interface MasterDetailLayoutProps {
   divider?: boolean;
   /** 受控折叠状态：为 true 时主侧隐藏 */
   collapsed?: boolean;
+  /** 折叠状态变化回调，提供后分隔线上会显示折叠/展开图标按钮 */
+  onCollapseChange?: (collapsed: boolean) => void;
+  /**
+   * 启用内置折叠功能，分隔线上展示折叠按鈕。
+   * 无需外部传入 collapsed/onCollapseChange，组件自管内部状态。
+   */
+  collapsible?: boolean;
   /**
    * 容器宽度小于此值时切换到单栏模式（移动端样式），默认 560。
    * 传 0 或 undefined 可禁用响应式，传极大值（如 99999）可强制单栏。
@@ -92,7 +99,9 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
     gap = 0,
     bordered = false,
     divider = true,
-    collapsed = false,
+    collapsed: collapsedProp,
+    onCollapseChange,
+    collapsible = true,
     responsiveBreakpoint = 560,
     showDetail,
     onBack,
@@ -106,6 +115,19 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
     return clamp(persisted ?? defaultSize, minSize, maxSize);
   });
   const [containerWidth, setContainerWidth] = useState<number>(0);
+  // 内部折叠状态（collapsible 模式下使用）
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  // 最终折叠状态：collapsedProp 优先（受控），否则用内部状态
+  const collapsed = collapsedProp ?? internalCollapsed;
+  // 切换折叠状态
+  const handleCollapseToggle = useCallback((next: boolean) => {
+    if (onCollapseChange) {
+      onCollapseChange(next);
+    } else {
+      setInternalCollapsed(next);
+    }
+  }, [onCollapseChange]);
+  const showCollapseToggle = (collapsible || !!onCollapseChange) && divider;
 
   useLayoutEffect(() => {
     const el = rootRef.current;
@@ -270,7 +292,46 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
 
   // divider 样式（无 resize 时画一条 1px 边线；resize 时用一个可拖拽的把手）
   const showDivider = divider && !collapsed;
-  const showResizeHandle = resizable && !collapsed && !bordered; // bordered 模式下两侧都各自有边框，分隔条不画
+  const showResizeHandle = resizable && !collapsed && !bordered;
+  // chevron 方向：side=left 展开时朝左（点击收起），collapsed 时朝右（点击展开）；side=right 相反
+  const showLeftChevron = side === 'left' ? !collapsed : collapsed;
+  const collapseToggleBtn = showCollapseToggle ? (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); handleCollapseToggle(!collapsed); }}
+      onPointerDown={(e) => e.stopPropagation()}
+      title={collapsed ? '展开左侧面板' : '收起左侧面板'}
+      style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: 16,
+        height: 24,
+        borderRadius: 8,
+        border: '1px solid var(--semi-color-border)',
+        background: 'var(--semi-color-bg-2)',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 0,
+        zIndex: 10,
+        color: 'var(--semi-color-text-2)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+        flexShrink: 0,
+        transition: 'background 0.15s, color 0.15s',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--semi-color-primary-light-default)'; e.currentTarget.style.color = 'var(--semi-color-primary)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--semi-color-bg-2)'; e.currentTarget.style.color = 'var(--semi-color-text-2)'; }}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {showLeftChevron
+          ? <polyline points="15 18 9 12 15 6" />
+          : <polyline points="9 18 15 12 9 6" />}
+      </svg>
+    </button>
+  ) : null;
   const dividerBorderProp = side === 'left' ? 'borderRight' : 'borderLeft';
 
   const masterStyle: CSSProperties = {
@@ -280,45 +341,79 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
     ...(showDivider && !showResizeHandle && !bordered ? { [dividerBorderProp]: '1px solid var(--semi-color-border)' } : null),
   };
 
-  const handleEl = showResizeHandle && showDivider ? (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <div
-      aria-orientation="vertical"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      style={{
-        flex: '0 0 auto',
-        width: 5,
-        cursor: 'col-resize',
-        background: 'transparent',
-        position: 'relative',
-        zIndex: 1,
-        touchAction: 'none',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'var(--semi-color-primary-light-default)';
-      }}
-      onMouseLeave={(e) => {
-        if (!draggingRef.current) e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      {/* 中央 1px 视觉分隔线 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          left: '50%',
-          width: 1,
-          background: 'var(--semi-color-border)',
-          transform: 'translateX(-50%)',
-          pointerEvents: 'none',
-        }}
-      />
-    </div>
-  ) : null;
+  const handleEl = (() => {
+    if (showResizeHandle && showDivider) {
+      return (
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div
+          aria-orientation="vertical"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          style={{
+            flex: '0 0 auto',
+            width: 5,
+            cursor: 'col-resize',
+            background: 'transparent',
+            position: 'relative',
+            zIndex: 1,
+            touchAction: 'none',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--semi-color-primary-light-default)';
+          }}
+          onMouseLeave={(e) => {
+            if (!draggingRef.current) e.currentTarget.style.background = 'transparent';
+          }}
+        >
+          {/* 中央 1px 视觉分隔线 */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: '50%',
+              width: 1,
+              background: 'var(--semi-color-border)',
+              transform: 'translateX(-50%)',
+              pointerEvents: 'none',
+            }}
+          />
+          {collapseToggleBtn}
+        </div>
+      );
+    }
+    if (showCollapseToggle && !collapsed && !bordered) {
+      // 无拖拽但有折叠按钮时：画一条分隔线
+      return (
+        <div style={{ flex: '0 0 auto', width: 5, position: 'relative', cursor: 'default' }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: '50%',
+              width: 1,
+              background: 'var(--semi-color-border)',
+              transform: 'translateX(-50%)',
+              pointerEvents: 'none',
+            }}
+          />
+          {collapseToggleBtn}
+        </div>
+      );
+    }
+    if (showCollapseToggle && collapsed) {
+      // 折叠时：显示展开按钮条
+      return (
+        <div style={{ flex: '0 0 auto', width: 5, position: 'relative', cursor: 'default' }}>
+          {collapseToggleBtn}
+        </div>
+      );
+    }
+    return null;
+  })();
 
   // bordered 模式仍提供 resize：在两个 bordered 容器之间放把手（无中央线，因为容器各自有边框）
   const handleElBordered = resizable && !collapsed && bordered && showDivider ? (
