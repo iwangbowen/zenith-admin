@@ -358,7 +358,7 @@ export async function getMyProfile() {
   };
 }
 
-export async function updateMyProfile(data: { nickname?: string; email?: string; phone?: string | null; avatar?: string }) {
+export async function updateMyProfile(data: { nickname?: string; email?: string; phone?: string | null; avatar?: string | null }) {
   const userId = currentUser().userId;
   if (data.email) {
     const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, data.email)).limit(1);

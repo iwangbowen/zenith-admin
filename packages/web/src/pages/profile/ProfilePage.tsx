@@ -306,6 +306,21 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     });
   }
 
+  async function handleRemoveAvatar() {
+    Modal.confirm({
+      title: '确定要移除头像吗？',
+      content: '移除后将使用昵称缩写作为默认头像。',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        setAvatarLoading(true);
+        const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: null });
+        setAvatarLoading(false);
+        if (res.code === 0) { onUserUpdate(res.data); Toast.success('头像已移除'); }
+        else Toast.error(res.message ?? '移除失败');
+      },
+    });
+  }
+
   function openAvatarPicker() {
     avatarInputRef.current?.click();
   }
@@ -358,6 +373,9 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                           )}
                         </button>
                         <Button size="small" theme="light" loading={avatarLoading} onClick={openAvatarPicker} style={{ width: '100%' }}>更换头像</Button>
+                        {user.avatar && (
+                          <Button size="small" theme="borderless" type="danger" loading={avatarLoading} onClick={handleRemoveAvatar} style={{ width: '100%' }}>移除头像</Button>
+                        )}
                         <input
                           ref={avatarInputRef}
                           id="avatar-file-input"
