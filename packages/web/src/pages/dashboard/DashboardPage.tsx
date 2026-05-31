@@ -249,17 +249,8 @@ export default function DashboardPage() {
     );
   }
 
-  const [shouldThrowForTest, setShouldThrowForTest] = useState(false);
-  if (shouldThrowForTest) throw new Error('这是一个测试运行时错误，用于预览 Error Boundary 效果');
-
   return (
     <div className="page-container dashboard-page">
-      {/* ===== 临时测试按钮：触发 Error Boundary（测试完请删除） ===== */}
-      <div style={{ marginBottom: 12 }}>
-        <Button type="danger" size="small" onClick={() => setShouldThrowForTest(true)}>
-          触发测试错误（预览 Error Boundary）
-        </Button>
-      </div>
       {/* ===== 欢迎横幅 ===== */}
       <Card bodyStyle={{ padding: '16px 20px' }} className="dashboard-welcome-card">
         <Skeleton active loading={!user} placeholder={
