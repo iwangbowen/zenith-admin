@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Calendar, Typography, Tag, Space, Skeleton, Empty, List, Avatar } from '@douyinfe/semi-ui';
+import { Button, Card, Calendar, Typography, Tag, Space, Skeleton, Empty, List, Avatar, Descriptions } from '@douyinfe/semi-ui';
 import {
   LineChart, Line,
   AreaChart, Area,
@@ -484,16 +484,10 @@ export default function DashboardPage() {
             style={{ marginTop: 16 }}
             bodyStyle={{ padding: '4px 0 8px' }}
           >
-            <List
-              dataSource={architectureItems}
-              size="small"
-              renderItem={(item) => (
-                <List.Item
-                  style={{ padding: '6px 16px' }}
-                  main={<Text type="tertiary" size="small">{item.key}</Text>}
-                  extra={<Text strong size="small">{item.value}</Text>}
-                />
-              )}
+            <Descriptions
+              data={architectureItems}
+              align="plain"
+              style={{ padding: '4px 16px 4px' }}
             />
             <div className="architecture-tags">
               <Space wrap spacing={6}>
