@@ -1105,15 +1105,10 @@
   }
 }
 
-/* < 768px：顶部品牌区只显示 Logo，隐藏系统名称；菜单搜索框压缩宽度；隐藏公告/消息/主题按钮，显示溢出菜单 */
+/* < 768px：顶部品牌区只显示 Logo，隐藏系统名称；隐藏公告/消息/主题按钮，显示溢出菜单 */
 @media (max-width: 767px) {
   .admin-topbar__brand .admin-sidebar__title {
     display: none;
-  }
-
-  .admin-menu-search .semi-input-wrapper,
-  .admin-menu-search .semi-autocomplete {
-    width: 120px !important;
   }
 
   .admin-header-action--announce,
@@ -1127,13 +1122,8 @@
   }
 }
 
-/* < 540px：进一步压缩搜索框，隐藏全屏按钮 */
+/* < 540px：隐藏全屏按钮 */
 @media (max-width: 539px) {
-  .admin-menu-search .semi-input-wrapper,
-  .admin-menu-search .semi-autocomplete {
-    width: 90px !important;
-  }
-
   .admin-theme-btn--fullscreen {
     display: none;
   }

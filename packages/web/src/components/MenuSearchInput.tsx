@@ -117,7 +117,7 @@ export default function MenuSearchInput({ menus }: MenuSearchInputProps) {
       <AutoComplete
         value={value}
         data={data.map((m) => ({ value: String(m.id), label: m.title, _id: m.id }))}
-        style={{ width: 200 }}
+        style={{ width: 'min(200px, calc(100vw - 140px))' }}
         size="small"
         prefix={<Search size={13} style={{ color: 'var(--semi-color-text-3)' }} />}
         placeholder="搜索菜单..."
