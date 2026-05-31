@@ -108,6 +108,7 @@ export function OperationLogsTable({
     { title: '请求方法', dataIndex: 'method', width: 90, render: (v: string) => <Tag color="blue">{v}</Tag> },
     { title: '请求路径', dataIndex: 'path', width: 180, ellipsis: true },
     { title: 'IP 地址', dataIndex: 'ip', width: 130, render: (v: string | null) => v ?? '-' },
+    { title: '操作地点', dataIndex: 'location', width: 160, render: (v: string | null) => v ?? '-' },
     { title: '操作系统', dataIndex: 'os', width: 130, render: (v: string | null) => v ?? '-' },
     { title: '浏览器', dataIndex: 'browser', width: 150, render: (v: string | null) => v ?? '-' },
     {
@@ -216,6 +217,10 @@ export function OperationLogsTable({
                   <div style={detailItemStyle}>
                     <div style={detailLabelStyle}>IP 地址</div>
                     <div style={detailValueStyle}>{detailLog.ip ?? '-'}</div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>操作地点</div>
+                    <div style={detailValueStyle}>{detailLog.location ?? '-'}</div>
                   </div>
                   <div style={detailItemStyle}>
                     <div style={detailLabelStyle}>操作系统</div>

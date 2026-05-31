@@ -43,6 +43,7 @@
     "ioredis": "^5.10.1",
     "ip-range-check": "^0.2.0",
     "node-cron": "^4.2.1",
+    "node-ip2region": "^1.0.2",
     "nodemailer": "^8.0.5",
     "postgres": "^3.4.8",
     "prom-client": "^15.1.3",

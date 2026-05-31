@@ -36,6 +36,7 @@ export interface User {
   isLocked?: boolean;
   lastLoginAt?: string | null;
   lastLoginIp?: string | null;
+  lastLoginLocation?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -237,6 +238,7 @@ export interface LoginLog {
   userId: number | null;
   username: string;
   ip: string | null;
+  location: string | null;
   browser: string | null;
   os: string | null;
   userAgent: string | null;
@@ -272,6 +274,7 @@ export interface OperationLog {
   responseBody: string | null;
   durationMs: number | null;
   ip: string | null;
+  location?: string | null;
   userAgent: string | null;
   os: string | null;
   browser: string | null;

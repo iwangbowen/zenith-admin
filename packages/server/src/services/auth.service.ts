@@ -7,6 +7,7 @@ import type { JwtPayload } from '../middleware/auth';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 import { parseUserAgent } from '../lib/request-helpers';
 import { escapeLike, withPagination } from '../lib/where-helpers';
+import { lookupIpLocation } from '../lib/ip-location';
 
 // ─── 获取用户角色列表 ─────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ export async function recordLoginLog(params: LoginLogParams) {
     username,
     userId,
     ip,
+    location: ip ? lookupIpLocation(ip) : null,
     browser,
     os,
     userAgent: ua || null,
@@ -339,6 +341,7 @@ export async function getMyProfile() {
     ...userInfo,
     lastLoginAt: prevLogin ? formatDateTime(prevLogin.createdAt) : null,
     lastLoginIp: prevLogin?.ip ?? null,
+    lastLoginLocation: prevLogin?.ip ? lookupIpLocation(prevLogin.ip) : null,
     departmentId: user.departmentId,
     departmentName: department?.name ?? null,
     positions: user.userPositions.map(({ position: p }) => ({

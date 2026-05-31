@@ -55,6 +55,7 @@ export const authHandlers = [
         permissions,
         lastLoginAt: prevLogin?.createdAt ?? null,
         lastLoginIp: prevLogin?.ip ?? null,
+        lastLoginLocation: prevLogin ? '广东省 深圳市 电信（Mock）' : null,
       },
     });
   }),

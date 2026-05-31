@@ -8,6 +8,7 @@ import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { errBody } from '../lib/openapi-schemas';
 import { getClientIp, parseUserAgent } from '../lib/request-helpers';
+import { lookupIpLocation } from '../lib/ip-location';
 
 export interface AuditLogOptions {
   description: string;
@@ -64,6 +65,7 @@ async function writeOperationLog(
       responseBody: responseBody ?? null,
       durationMs,
       ip,
+      location: ip ? lookupIpLocation(ip) : null,
       userAgent: ua.slice(0, 512) || null,
       os: osName === 'Unknown' ? null : osName,
       browser: browserName === 'Unknown' ? null : browserName,

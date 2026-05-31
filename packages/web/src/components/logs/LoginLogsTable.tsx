@@ -35,6 +35,7 @@ export function LoginLogsTable({
     { title: '用户名', dataIndex: 'username', width: 120 },
     { title: '登录信息', dataIndex: 'message', width: 150, render: (v: string | null) => v ?? '-' },
     { title: 'IP 地址', dataIndex: 'ip', width: 150, render: (v: string | null) => v ?? '-' },
+    { title: '登录地点', dataIndex: 'location', width: 180, render: (v: string | null) => v ?? '-' },
     { title: '浏览器', dataIndex: 'browser', width: 150, render: (v: string | null) => v ?? '-' },
     { title: '操作系统', dataIndex: 'os', width: 150, render: (v: string | null) => v ?? '-' },
     {
@@ -97,6 +98,7 @@ export function LoginLogsTable({
                 ['状态', null],
                 ['登录信息', detailLog.message ?? '-'],
                 ['IP 地址', detailLog.ip ?? '-'],
+                ['登录地点', detailLog.location ?? '-'],
                 ['浏览器', detailLog.browser ?? '-'],
                 ['操作系统', detailLog.os ?? '-'],
                 ['登录时间', formatDateTime(detailLog.createdAt)],

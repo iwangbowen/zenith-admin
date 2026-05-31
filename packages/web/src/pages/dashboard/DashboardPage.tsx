@@ -294,7 +294,7 @@ export default function DashboardPage() {
                       {user.lastLoginIp && (
                         <span className="dashboard-welcome__meta-item">
                           <MapPin size={12} />
-                          IP：{user.lastLoginIp}
+                          {user.lastLoginLocation ? `${user.lastLoginLocation}（${user.lastLoginIp}）` : `IP：${user.lastLoginIp}`}
                         </span>
                       )}
                     </>
