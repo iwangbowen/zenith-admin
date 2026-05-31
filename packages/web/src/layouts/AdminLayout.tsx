@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
+import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { Bell, Building2, Check, Info, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
@@ -746,7 +747,10 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               最新公告
             </div>
             {recentAnnouncements.length === 0 ? (
-              <Empty description="暂无公告" style={{ padding: '24px 0' }} />
+              <Empty
+                image={<IllustrationNoContent style={{ width: 80, height: 80 }} />}
+                darkModeImage={<IllustrationNoContentDark style={{ width: 80, height: 80 }} />}
+                description="暂无公告" style={{ padding: '24px 0' }} />
             ) : (
               <List
                 style={{ overflow: 'auto', maxHeight: 340 }}
@@ -806,7 +810,10 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               最新消息
             </div>
             {inAppMessages.length === 0 ? (
-              <Empty description="暂无消息" style={{ padding: '24px 0' }} />
+              <Empty
+                image={<IllustrationNoContent style={{ width: 80, height: 80 }} />}
+                darkModeImage={<IllustrationNoContentDark style={{ width: 80, height: 80 }} />}
+                description="暂无消息" style={{ padding: '24px 0' }} />
             ) : (
               <List
                 style={{ overflow: 'auto', maxHeight: 340 }}

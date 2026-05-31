@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Modal, Popconfirm,
 } from '@douyinfe/semi-ui';
+import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
-import { CheckCheck, Bell } from 'lucide-react';
+import { CheckCheck } from 'lucide-react';
 import type { InAppMessage } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -181,7 +182,8 @@ export default function InboxPage() {
 
       {list.length === 0 && !loading ? (
         <Empty
-          image={<Bell size={48} strokeWidth={1} style={{ opacity: 0.3 }} />}
+          image={<IllustrationNoContent style={{ width: 120, height: 120 }} />}
+          darkModeImage={<IllustrationNoContentDark style={{ width: 120, height: 120 }} />}
           description={(() => {
             if (activeTab === 'unread') return '暂无未读站内信';
             if (activeTab === 'read') return '暂无已读站内信';
