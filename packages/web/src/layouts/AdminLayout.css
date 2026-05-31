@@ -380,6 +380,11 @@
   align-items: center;
 }
 
+/* 折叠状态下，选中的叶子菜单项去掉背景，与目录项保持一致 */
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-selected {
+  background: transparent !important;
+}
+
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-info,
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-icon-info {
   margin-left: auto;
