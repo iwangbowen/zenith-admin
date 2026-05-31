@@ -25,7 +25,7 @@ export const authHandlers = [
   http.post('/api/auth/login', async ({ request }) => {
     const body = await request.json() as { username: string; password: string };
     const user = mockUsers.find((u) => u.username === body.username);
-    if (!user || body.password !== user.password) {
+    if (!user || body.password !== user?.password) {
       return HttpResponse.json({ code: 401, message: '用户名或密码错误', data: null });
     }
     const { password: _, ...userWithoutPassword } = user;
@@ -44,10 +44,18 @@ export const authHandlers = [
     const { password: _, ...userWithoutPassword } = mockUsers[0];
     const role = mockRoles.find((r) => r.code === 'super_admin');
     const permissions = role ? getAllPermissions() : [];
+    // 取最近第 2 条成功登录记录模拟上次登录
+    const myLogs = mockLoginLogs.filter((l) => l.userId === mockUsers[0].id && l.status === 'success');
+    const prevLogin = myLogs[1] ?? null;
     return HttpResponse.json({
       code: 0,
       message: 'ok',
-      data: { ...userWithoutPassword, permissions },
+      data: {
+        ...userWithoutPassword,
+        permissions,
+        lastLoginAt: prevLogin?.createdAt ?? null,
+        lastLoginIp: prevLogin?.ip ?? null,
+      },
     });
   }),
 
@@ -172,7 +180,7 @@ const mockMySessionStore: import('@zenith/shared').UserSession[] = [
   },
   {
     tokenId: 'other-session-001',
-    ip: '192.168.1.42',
+    ip: 'mock-ip-other-1',
     browser: 'Safari 17',
     os: 'macOS Sonoma',
     loginAt: mockDateTimeOffset(-86400 * 1000),
@@ -181,7 +189,7 @@ const mockMySessionStore: import('@zenith/shared').UserSession[] = [
   },
   {
     tokenId: 'other-session-002',
-    ip: '10.0.0.5',
+    ip: 'mock-ip-other-2',
     browser: 'Firefox 125',
     os: 'Ubuntu 22.04',
     loginAt: mockDateTimeOffset(-3 * 86400 * 1000),

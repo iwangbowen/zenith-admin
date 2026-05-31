@@ -2,6 +2,56 @@
   gap: 16px;
 }
 
+/* ── 欢迎横幅 ── */
+.dashboard-welcome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--semi-color-bg-2);
+  border-radius: 8px;
+  border: 1px solid var(--semi-color-border);
+}
+
+.dashboard-welcome__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dashboard-welcome__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboard-welcome__greeting {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--semi-color-text-0);
+  line-height: 1.4;
+}
+
+.dashboard-welcome__name {
+  color: var(--semi-color-primary);
+  font-weight: 600;
+}
+
+.dashboard-welcome__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dashboard-welcome__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
 .dashboard-stats-row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

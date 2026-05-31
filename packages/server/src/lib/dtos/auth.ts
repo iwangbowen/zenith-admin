@@ -32,6 +32,8 @@ export const RefreshTokenResultDTO = z
 
 export const UserProfileDTO = UserDTO.extend({
   permissions: z.array(z.string()).optional(),
+  lastLoginAt: z.string().nullable().optional().openapi({ example: '2026-01-01 09:00:00', description: '上次登录时间' }),
+  lastLoginIp: z.string().nullable().optional().openapi({ description: '上次登录 IP' }),
 }).openapi('UserProfile');
 
 export const TenantItemDTO = z

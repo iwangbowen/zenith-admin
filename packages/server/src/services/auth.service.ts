@@ -325,8 +325,20 @@ export async function getMyProfile() {
   const permissions = isSuperAdmin(userRoleList.map((r) => r.code)) ? ['*'] : await getUserPermissions(user.id);
   const tenantName = tenantRows[0]?.name ?? null;
   const { password: _pw, preferences: _prefs, department, userPositions: _up, userRoles: _ur, ...userInfo } = user;
+
+  // 查询上次登录记录（最近 2 条成功登录，取第 2 条作为"上次"）
+  const recentLogins = await db
+    .select({ createdAt: loginLogs.createdAt, ip: loginLogs.ip })
+    .from(loginLogs)
+    .where(and(eq(loginLogs.userId, userId), eq(loginLogs.status, 'success')))
+    .orderBy(desc(loginLogs.createdAt))
+    .limit(2);
+  const prevLogin = recentLogins[1] ?? null;
+
   return {
     ...userInfo,
+    lastLoginAt: prevLogin ? formatDateTime(prevLogin.createdAt) : null,
+    lastLoginIp: prevLogin?.ip ?? null,
     departmentId: user.departmentId,
     departmentName: department?.name ?? null,
     positions: user.userPositions.map(({ position: p }) => ({

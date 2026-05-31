@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Calendar, Typography, Tag, Space, Skeleton, Empty, List } from '@douyinfe/semi-ui';
+import { Button, Card, Calendar, Typography, Tag, Space, Skeleton, Empty, List, Avatar } from '@douyinfe/semi-ui';
 import {
   LineChart, Line,
   AreaChart, Area,
@@ -9,7 +9,8 @@ import {
   Tooltip, Legend, ResponsiveContainer,
   type PieLabelRenderProps,
 } from 'recharts';
-import { Bell, BookOpen, MonitorPlay, Users, UserCheck, Wifi, LogIn, Activity } from 'lucide-react';
+import { Bell, BookOpen, MonitorPlay, Users, UserCheck, Wifi, LogIn, Activity, MapPin, Clock } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 const GithubIcon = ({ size = 18 }: { size?: number }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor">
@@ -92,6 +93,7 @@ function stripHtml(html: string): string {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { permissions } = usePermission();
+  const { user } = useAuth();
   const isAdmin = permissions.includes('*');
   const [notices, setNotices] = useState<AnnouncementWithRead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -249,6 +251,42 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container dashboard-page">
+      {/* ===== 欢迎横幅 ===== */}
+      <div className="dashboard-welcome">
+        <div className="dashboard-welcome__left">
+          <Avatar
+            src={user?.avatar || undefined}
+            color="blue"
+            size="large"
+            style={{ width: 52, height: 52, fontSize: 20, flexShrink: 0 }}
+          >
+            {user?.nickname?.charAt(0).toUpperCase() ?? 'U'}
+          </Avatar>
+          <div className="dashboard-welcome__info">
+            <div className="dashboard-welcome__greeting">
+              欢迎回来，<span className="dashboard-welcome__name">{user?.nickname ?? user?.username ?? '用户'}</span>
+            </div>
+            <div className="dashboard-welcome__meta">
+              {user?.lastLoginAt ? (
+                <>
+                  <span className="dashboard-welcome__meta-item">
+                    <Clock size={12} />
+                    上次登录：{user.lastLoginAt}
+                  </span>
+                  {user.lastLoginIp && (
+                    <span className="dashboard-welcome__meta-item">
+                      <MapPin size={12} />
+                      IP：{user.lastLoginIp}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="dashboard-welcome__meta-item">首次登录，欢迎！</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
       {isAdmin && (
         <div className="dashboard-stats-row">
           {statsLoading
