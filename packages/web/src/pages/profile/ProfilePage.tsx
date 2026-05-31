@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Form, Button, Typography, Toast, Tag, Space, Spin,
-  Modal, Cropper, Input, Tabs, DatePicker, List as SemiList,
+  Modal, Cropper, Input, Tabs, DatePicker, List as SemiList, Descriptions,
 } from '@douyinfe/semi-ui';
 import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle, RotateCcw, RotateCw } from 'lucide-react';
 import { Icon } from '@iconify/react';
@@ -441,50 +441,40 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                           <Title heading={5} style={{ margin: 0 }}>{user.nickname}</Title>
                           <Text type="tertiary" size="small">@{user.username}</Text>
                         </div>
-                        <div className="profile-meta">
-                          <div className="profile-meta-item">
-                            <Text type="tertiary" size="small">邮箱</Text>
-                            <Text size="small">{user.email}</Text>
-                          </div>
-                          {user.phone && (
-                            <div className="profile-meta-item">
-                              <Text type="tertiary" size="small">手机号</Text>
-                              <Text size="small">{user.phone}</Text>
-                            </div>
-                          )}
-                          {user.gender && (
-                            <div className="profile-meta-item">
-                              <Text type="tertiary" size="small">性别</Text>
-                              <DictTag dictCode="user_gender" value={user.gender} />
-                            </div>
-                          )}
-                          {user.departmentName && (
-                            <div className="profile-meta-item">
-                              <Text type="tertiary" size="small">部门</Text>
-                              <Text size="small">{user.departmentName}</Text>
-                            </div>
-                          )}
-                          {user.positions && user.positions.length > 0 && (
-                            <div className="profile-meta-item">
-                              <Text type="tertiary" size="small">岗位</Text>
-                              <Space spacing={4} style={{ display: 'inline-flex', flexWrap: 'wrap' }}>
-                                {user.positions.map((p) => <Tag key={p.id} size="small" color="teal">{p.name}</Tag>)}
-                              </Space>
-                            </div>
-                          )}
-                          <div className="profile-meta-item">
-                            <Text type="tertiary" size="small">角色</Text>
-                            {user.roles?.length ? (
-                              <Space spacing={4} style={{ display: 'inline-flex', flexWrap: 'wrap' }}>
-                                {user.roles.map((r) => <Tag key={r.id} size="small" color="blue">{r.name}</Tag>)}
-                              </Space>
-                            ) : <Text size="small">无角色</Text>}
-                          </div>
-                          <div className="profile-meta-item">
-                            <Text type="tertiary" size="small">注册时间</Text>
-                            <Text size="small">{formatDateTime(user.createdAt)}</Text>
-                          </div>
-                        </div>
+                        <Descriptions
+                          align="plain"
+                          layout="horizontal"
+                          column={2}
+                          style={{ width: '100%' }}
+                          data={[
+                            { key: '邮箱', value: user.email },
+                            { key: '手机号', value: user.phone, hidden: !user.phone },
+                            {
+                              key: '性别',
+                              value: <DictTag dictCode="user_gender" value={user.gender} />,
+                              hidden: !user.gender,
+                            },
+                            { key: '部门', value: user.departmentName, hidden: !user.departmentName },
+                            {
+                              key: '岗位',
+                              value: user.positions?.length ? (
+                                <Space spacing={4} style={{ display: 'inline-flex', flexWrap: 'wrap' }}>
+                                  {user.positions.map((p) => <Tag key={p.id} size="small" color="teal">{p.name}</Tag>)}
+                                </Space>
+                              ) : undefined,
+                              hidden: !user.positions?.length,
+                            },
+                            {
+                              key: '角色',
+                              value: user.roles?.length ? (
+                                <Space spacing={4} style={{ display: 'inline-flex', flexWrap: 'wrap' }}>
+                                  {user.roles.map((r) => <Tag key={r.id} size="small" color="blue">{r.name}</Tag>)}
+                                </Space>
+                              ) : '无角色',
+                            },
+                            { key: '注册时间', value: formatDateTime(user.createdAt) },
+                          ]}
+                        />
                       </div>
                     </div>
 
