@@ -17,6 +17,7 @@ export interface UserPreferences {
   showMenuSearch: boolean;
   showFullscreen: boolean;
   showQuickChat: boolean;
+  showLogo: boolean;
   filesViewMode: 'list' | 'grid';
   sidebarStickyScroll: boolean;
   showTableColumnSettings: boolean;
@@ -35,6 +36,7 @@ export const defaultPreferences: UserPreferences = {
   showMenuSearch: true,
   showFullscreen: true,
   showQuickChat: true,
+  showLogo: true,
   filesViewMode: 'list',
   sidebarStickyScroll: true,
   showTableColumnSettings: true,

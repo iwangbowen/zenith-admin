@@ -977,16 +977,18 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && (
         <header className="admin-topbar">
-          <button
-            type="button"
-            className="admin-topbar__brand"
-            style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
-            onClick={navigateHome}
-            onKeyDown={handleNavigateHomeKey}
-          >
-            <AppLogo size={28} />
-            <span className="admin-sidebar__title">{config.appTitle}</span>
-          </button>
+          {(preferences.showLogo ?? true) && (
+            <button
+              type="button"
+              className="admin-topbar__brand"
+              style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
+              onClick={navigateHome}
+              onKeyDown={handleNavigateHomeKey}
+            >
+              <AppLogo size={28} />
+              <span className="admin-sidebar__title">{config.appTitle}</span>
+            </button>
+          )}
           <TopNavWithOverflow
             className="admin-topbar__nav"
             items={navLayout === 'mixed' ? mixedTopNavItems : navItems}
@@ -1013,25 +1015,29 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               openKeys={collapsed ? [] : openKeys}
               onOpenChange={({ openKeys: nextOpenKeys }) => setOpenKeys((nextOpenKeys ?? []).map(String))}
               onCollapseChange={handleCollapseChange}
-              header={navLayout === 'vertical' ? {
-                logo: (
-                  <button
-                    type="button"
-                    style={{ cursor: 'pointer', border: 0, padding: 0, background: 'transparent', display: 'flex' }}
-                    onClick={navigateHome}
-                    onKeyDown={handleNavigateHomeKey}
-                  ><AppLogo size={28} /></button>
-                ),
-                text: (
-                  <button
-                    type="button"
-                    className="admin-sidebar__title"
-                    style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
-                    onClick={navigateHome}
-                    onKeyDown={handleNavigateHomeKey}
-                  >{config.appTitle}</button>
-                ),
-              } : undefined}
+              header={
+                navLayout === 'vertical' && (preferences.showLogo ?? true)
+                  ? {
+                      logo: (
+                        <button
+                          type="button"
+                          style={{ cursor: 'pointer', border: 0, padding: 0, background: 'transparent', display: 'flex' }}
+                          onClick={navigateHome}
+                          onKeyDown={handleNavigateHomeKey}
+                        ><AppLogo size={28} /></button>
+                      ),
+                      text: (
+                        <button
+                          type="button"
+                          className="admin-sidebar__title"
+                          style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
+                          onClick={navigateHome}
+                          onKeyDown={handleNavigateHomeKey}
+                        >{config.appTitle}</button>
+                      ),
+                    }
+                  : undefined
+              }
               footer={{
                 collapseButton: true,
                 collapseText: (isCollapsed) => (isCollapsed ? '展开侧边栏' : '收起侧边栏'),
@@ -1252,6 +1258,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     </button>
                   </ColorPicker>
                 </div>
+              </div>
+
+              {/* ── Logo 图标 ── */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>显示 Logo 图标</span>
+                <Switch checked={preferences.showLogo ?? true} onChange={(v) => setPreferences({ showLogo: v })} />
               </div>
 
               {/* ── 面包屑 ── */}
