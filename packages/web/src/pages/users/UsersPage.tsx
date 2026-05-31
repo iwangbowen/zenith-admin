@@ -271,6 +271,7 @@ export default function UsersPage() {
     const payload = {
       ...values,
       departmentId: values.departmentId ?? null,
+      gender: (values as { gender?: string }).gender ?? null,
       positionIds: values.positionIds ?? [],
       roleIds: values.roleIds ?? [],
     };

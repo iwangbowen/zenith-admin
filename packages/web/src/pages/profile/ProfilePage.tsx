@@ -239,7 +239,8 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   async function handleUpdateProfile(values: { nickname: string; email: string; phone?: string; gender?: string | null }) {
     setProfileLoading(true);
-    const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', values);
+    const payload = { ...values, gender: values.gender ?? null };
+    const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', payload);
     setProfileLoading(false);
     if (res.code === 0) { Toast.success('资料已更新'); onUserUpdate(res.data); }
   }
