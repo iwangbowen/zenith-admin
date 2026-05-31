@@ -36,6 +36,7 @@ interface SimpleUser {
   username: string;
   nickname: string;
   email?: string | null;
+  departmentId?: number | null;
   departmentName?: string | null;
 }
 
@@ -98,6 +99,25 @@ export default function UserGroupsPage() {
     return rootNodes;
   }, [departments]);
 
+  // 部门完整路径缓存：deptId → "父级 / 子级 / 本级"
+  const deptFullPathMap = useMemo(() => {
+    const deptById = new Map(departments.map(d => [d.id, d]));
+    const cache = new Map<number, string>();
+    const getPath = (id: number): string => {
+      if (cache.has(id)) return cache.get(id)!;
+      const dept = deptById.get(id);
+      if (!dept) return '';
+      const path = dept.parentId && deptById.has(dept.parentId)
+        ? `${getPath(dept.parentId)} / ${dept.name}`
+        : dept.name;
+      cache.set(id, path);
+      return path;
+    };
+    departments.forEach(d => getPath(d.id));
+    return cache;
+  }, [departments]);
+
+
   const fetchList = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
     try {
@@ -128,7 +148,7 @@ export default function UserGroupsPage() {
       if (uRes.code === 0) {
         setAllUsers(uRes.data.map(u => ({
           id: u.id, username: u.username, nickname: u.nickname,
-          email: u.email, departmentName: (u as User & { departmentName?: string }).departmentName,
+          email: u.email, departmentId: u.departmentId, departmentName: u.departmentName,
         })));
       }
       if (dRes.code === 0) setDepartments(Array.isArray(dRes.data) ? dRes.data : []);
@@ -422,15 +442,20 @@ export default function UserGroupsPage() {
         ) : (
           <Transfer
             style={{ width: '100%' }}
-            dataSource={allUsers.map(u => ({
-              key: String(u.id),
-              value: u.id,
-              label: `${u.nickname} (${u.username})`,
-              disabled: false,
-            }))}
+            dataSource={allUsers.map(u => {
+              const deptPath = u.departmentId ? deptFullPathMap.get(u.departmentId) : undefined;
+              return {
+                key: String(u.id),
+                value: u.id,
+                label: deptPath
+                  ? `${u.nickname}（${u.username}） · ${deptPath}`
+                  : `${u.nickname}（${u.username}）`,
+                disabled: false,
+              };
+            })}
             value={memberIds}
             onChange={(values) => setMemberIds((values as number[]) || [])}
-            inputProps={{ placeholder: '搜索用户' }}
+            inputProps={{ placeholder: '搜索用户名、账号、部门' }}
             emptyContent={{ left: '暂无可选', right: '暂无成员', search: '无匹配' }}
           />
         )}
