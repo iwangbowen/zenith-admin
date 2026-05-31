@@ -148,7 +148,7 @@
   width: var(--sidebar-width);
   background: var(--color-sidebar-bg);
   flex-shrink: 0;
-  transition: width 0.2s ease;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   border-right: 1px solid var(--color-border);
 }
@@ -179,6 +179,13 @@
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.15s ease 0.18s;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-header .admin-sidebar__title {
+  opacity: 0;
+  transition: opacity 0.08s ease;
 }
 
 .admin-sidebar__nav {
@@ -371,6 +378,12 @@
   margin-bottom: 0;
 }
 
+/* 防止 Semi transition:all 导致图标位移速度不一 */
+.admin-sidebar__nav .semi-navigation-item-icon,
+.admin-sidebar__nav .semi-navigation-sub-icon {
+  transition: none !important;
+}
+
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon,
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-icon {
   margin-right: 0;
@@ -380,6 +393,19 @@
   align-items: center;
 }
 
+/* 子菜单项图标通过 .semi-navigation-item-inner 容器来居中
+   （叶子项图标直接在 li 上，已由 justify-content: center 覆盖） */
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-inner {
+  justify-content: center;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-title {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
 /* 折叠状态下，选中的叶子菜单项去掉背景，与目录项保持一致 */
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-selected {
   background: transparent !important;
@@ -387,8 +413,7 @@
 
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-info,
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-icon-info {
-  margin-left: auto;
-  margin-right: auto;
+  margin: 0 !important;
 }
 
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon .semi-icon,
@@ -404,17 +429,24 @@
   margin: 0 auto;
 }
 
-.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-toggle-right,
-.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-toggle-left,
-.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-toggle-icon {
-  display: none;
-}
-
+/* 折叠状态：移除文字/箭头占位（Semi 自带 opacity:0 过渡处理淡出效果） */
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-text,
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-text,
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-title-text {
-  display: none;
+  max-width: 0 !important;
+  overflow: hidden;
+  white-space: nowrap;
 }
+
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-toggle-right,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-item-icon-toggle-left,
+.admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-sub-toggle-icon {
+  max-width: 0 !important;
+  overflow: hidden;
+  margin: 0 !important;
+}
+
+
 
 .admin-sidebar__nav.semi-navigation-collapsed .semi-navigation-footer .semi-button {
   justify-content: center;
