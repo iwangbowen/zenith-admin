@@ -18,6 +18,7 @@ export interface UserPreferences {
   showFullscreen: boolean;
   showQuickChat: boolean;
   showLogo: boolean;
+  dynamicTitle: boolean;
   filesViewMode: 'list' | 'grid';
   sidebarStickyScroll: boolean;
   showTableColumnSettings: boolean;
@@ -37,6 +38,7 @@ export const defaultPreferences: UserPreferences = {
   showFullscreen: true,
   showQuickChat: true,
   showLogo: true,
+  dynamicTitle: true,
   filesViewMode: 'list',
   sidebarStickyScroll: true,
   showTableColumnSettings: true,

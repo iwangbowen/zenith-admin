@@ -576,8 +576,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   useEffect(() => {
     const pageTitle = resolveTitle(location.pathname);
-    document.title = pageTitle === location.pathname ? config.appTitle : `${pageTitle} - ${config.appTitle}`;
-  }, [location.pathname, resolveTitle]);
+    const isDynamic = preferences.dynamicTitle ?? true;
+    document.title = isDynamic && pageTitle !== location.pathname
+      ? `${pageTitle} - ${config.appTitle}`
+      : config.appTitle;
+  }, [location.pathname, resolveTitle, preferences.dynamicTitle]);
 
   // Sync current route to tabs
   useEffect(() => {
@@ -1264,6 +1267,17 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>显示 Logo 图标</span>
                 <Switch checked={preferences.showLogo ?? true} onChange={(v) => setPreferences({ showLogo: v })} />
+              </div>
+
+              {/* ── 动态标题 ── */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  动态浏览器标题
+                  <Tooltip content="开启后浏览器标签页标题会随当前页面变化，如「用户管理 - Zenith Admin」；关闭后固定显示应用名称" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={preferences.dynamicTitle ?? true} onChange={(v) => setPreferences({ dynamicTitle: v })} />
               </div>
 
               {/* ── 面包屑 ── */}
