@@ -54,7 +54,7 @@ export const defaultPreferences: UserPreferences = {
   showTableColumnSettings: true,
   tableBordered: true,
   tableStriped: false,
-  tableSize: 'default',
+  tableSize: 'small',
 };
 
 export interface PreferencesContextValue {
