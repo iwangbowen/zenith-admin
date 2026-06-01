@@ -90,13 +90,13 @@ class Request {
         if (res.status === 401) {
           localStorage.removeItem(TOKEN_KEY);
           localStorage.removeItem(REFRESH_TOKEN_KEY);
-          globalThis.location.href = '/login';
+          globalThis.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '') || ''}/login`;
           throw new Error('Unauthorized');
         }
       } else {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
-        globalThis.location.href = '/login';
+        globalThis.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '') || ''}/login`;
         throw new Error('Unauthorized');
       }
     }
@@ -168,13 +168,13 @@ class Request {
         if (res.status === 401) {
           localStorage.removeItem(TOKEN_KEY);
           localStorage.removeItem(REFRESH_TOKEN_KEY);
-          globalThis.location.href = '/login';
+          globalThis.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '') || ''}/login`;
           return;
         }
       } else {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
-        globalThis.location.href = '/login';
+        globalThis.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '') || ''}/login`;
         return;
       }
     }

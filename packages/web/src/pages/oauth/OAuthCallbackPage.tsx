@@ -31,7 +31,7 @@ export default function OAuthCallbackPage() {
           Toast.success('登录成功');
           navigate('/', { replace: true });
           // 强制刷新以重新获取用户信息
-          globalThis.location.href = '/';
+          globalThis.location.href = import.meta.env.BASE_URL;
         } else if (res.data?.needBind) {
           Toast.warning('未找到匹配账号，请先登录后在个人中心绑定');
           navigate('/login', { replace: true });

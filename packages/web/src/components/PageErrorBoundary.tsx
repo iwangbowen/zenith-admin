@@ -122,7 +122,7 @@ export class PageErrorBoundary extends React.Component<Props, State> {
             <Button
               icon={<Home size={14} />}
               theme="light"
-              onClick={() => { globalThis.location.href = '/'; }}
+              onClick={() => { globalThis.location.href = import.meta.env.BASE_URL; }}
             >
               返回首页
             </Button>
