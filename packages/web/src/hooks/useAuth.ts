@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { request } from '@/utils/request';
-import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
+import { TOKEN_KEY, REFRESH_TOKEN_KEY, PREFERENCES_KEY, TABS_STORAGE_KEY } from '@zenith/shared';
 import type { User, LoginResponse } from '@zenith/shared';
 
 interface AuthState {
@@ -27,9 +27,11 @@ export function useAuth() {
         // 网络错误（如后端未启动完成），不清除 token，只重置 loading
         setState((prev) => ({ ...prev, loading: false }));
       } else {
-        // 认证失败（如 token 过期），清除 token
+        // 认证失败（如 token 过期），清除所有用户相关数据
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
+        localStorage.removeItem(PREFERENCES_KEY);
+        localStorage.removeItem(TABS_STORAGE_KEY);
         setState({ user: null, permissions: [], loading: false });
       }
     } catch {
@@ -66,6 +68,8 @@ export function useAuth() {
     // Immediately clear local state first
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(PREFERENCES_KEY);
+    localStorage.removeItem(TABS_STORAGE_KEY);
     setState({ user: null, permissions: [], loading: false });
     // Best-effort: notify server to remove session from Redis (fire-and-forget)
     request.post('/api/auth/logout', {}, { silent: true }).catch(() => {});
