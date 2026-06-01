@@ -1471,8 +1471,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       onChange={(e) => setPreferences({ tableSize: e.target.value as TableSizePreference })}
                     >
                       <Radio value="small">紧凑</Radio>
-                      <Radio value="default">默认</Radio>
-                      <Radio value="middle">宽松</Radio>
+                      <Radio value="middle">适中</Radio>
+                      <Radio value="default">宽松</Radio>
                     </RadioGroup>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
