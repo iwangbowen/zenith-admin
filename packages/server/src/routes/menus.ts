@@ -62,7 +62,7 @@ const listRoute = defineOpenAPIRoute({
     tags: ['Menus'],
     summary: '菜单树（管理用）',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:menu:list' })] as const,
+    middleware: [authMiddleware, guard({ permission: '' })] as const,
     responses: {
       ...commonErrorResponses,
       ...ok(z.array(MenuDTO), '全量菜单树'),

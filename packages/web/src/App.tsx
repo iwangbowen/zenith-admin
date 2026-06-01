@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Spin } from '@douyinfe/semi-ui';
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -39,6 +39,34 @@ function RedirectToLogin() {
   return <Navigate to={loginUrl} replace />;
 }
 
+/**
+ * Catch-all 路由守卫：区分 403（页面存在但无权限）和 404（页面不存在）。
+ * 通过 allMenuPaths 判断当前路径是否对应一个已存在的页面组件。
+ */
+function NotFoundOrForbidden({ allMenuPaths }: Readonly<{ allMenuPaths: Map<string, string> }>) {
+  const location = useLocation();
+  const path = location.pathname;
+
+  // 精确匹配或前缀匹配（如 /system/users/123 匹配 /system/users）
+  const segments = path.split('/').filter(Boolean);
+  let matched = false;
+  for (let i = segments.length; i > 0; i--) {
+    const partialPath = '/' + segments.slice(0, i).join('/');
+    if (allMenuPaths.has(partialPath)) {
+      matched = true;
+      break;
+    }
+  }
+
+  // 固定路由也不属于 403
+  const normalizedPath = path.startsWith('/') ? path : '/' + path;
+  if (FIXED_ROUTES.has(normalizedPath) || normalizedPath === '/') {
+    matched = false;
+  }
+
+return matched ? <ForbiddenPage /> : <NotFoundPage />;
+}
+
 /** 扁平化菜单以便注册路由 */
 function flattenMenus(menus: Menu[]): Menu[] {
   const routes: Menu[] = [];
@@ -53,6 +81,24 @@ function flattenMenus(menus: Menu[]): Menu[] {
   return routes;
 }
 
+/**
+ * 从所有菜单中提取「path → component」映射，用于判断某个路径是否对应一个已存在的页面组件。
+ * 这样可以在 catch-all 路由中区分 403（页面存在但无权限）和 404（页面不存在）。
+ */
+function buildAllMenuPaths(menus: Menu[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const m of menus) {
+    if (m.path && m.component && !FIXED_ROUTES.has(m.path)) {
+      map.set(m.path, m.component);
+    }
+    if (m.children?.length) {
+      const childPaths = buildAllMenuPaths(m.children);
+      childPaths.forEach((v, k) => map.set(k, v));
+    }
+  }
+  return map;
+}
+
 interface AdminRouteLoaderProps {
   user: Omit<User, 'password'>;
   permissions: string[];
@@ -62,12 +108,19 @@ interface AdminRouteLoaderProps {
 
 function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<AdminRouteLoaderProps>) {
   const [menus, setMenus] = useState<Menu[]>([]);
+  const [allMenuPaths, setAllMenuPaths] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    request.get<Menu[]>('/api/menus/user').then((res) => {
-      if (res.code === 0 && res.data) {
-        setMenus(res.data);
+    Promise.all([
+      request.get<Menu[]>('/api/menus/user'),
+      request.get<Menu[]>('/api/menus', { silent: true }),
+    ]).then(([userRes, allRes]) => {
+      if (userRes.code === 0 && userRes.data) {
+        setMenus(userRes.data);
+      }
+      if (allRes.code === 0 && allRes.data) {
+        setAllMenuPaths(buildAllMenuPaths(allRes.data));
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -125,9 +178,9 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
           );
         })}
 
-        <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundPage /></Suspense>} />
+        <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden allMenuPaths={allMenuPaths} /></Suspense>} />
       </Route>
-      <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundPage /></Suspense>} />
+      <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundOrForbidden allMenuPaths={allMenuPaths} /></Suspense>} />
     </Routes>
     </PermissionContext.Provider>
   );
