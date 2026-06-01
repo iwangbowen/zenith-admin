@@ -10,6 +10,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
 import CategorySidebar from './components/CategorySidebar';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
@@ -227,70 +228,78 @@ export default function WorkflowDefinitionsPage() {
   ];
 
   return (
-    <div className="page-container" style={{ display: 'flex', flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
-      <CategorySidebar
-        categories={categories}
-        selectedId={selectedCategoryId}
-        onSelect={handleSelectCategory}
-        onChanged={() => { refetchCategories(); void fetchList(); }}
-        canManage={hasPermission('workflow:definition:create')}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索流程名称"
-            value={keyword}
-            onChange={setKeyword}
-            showClear
-            style={{ width: 200 }}
-          />
-          <Select
-            placeholder="状态"
-            value={status || undefined}
-            onChange={v => setStatus(typeof v === 'string' ? v : '')}
-            showClear
-            style={{ width: 120 }}
-          >
-            <Select.Option value="draft">草稿</Select.Option>
-            <Select.Option value="published">已发布</Select.Option>
-            <Select.Option value="disabled">已禁用</Select.Option>
-          </Select>
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          {hasPermission('workflow:definition:create') && (
-            <Button type="primary" icon={<Plus size={14} />} onClick={() => {
-              const qs = selectedCategoryId === null ? '' : `?categoryId=${selectedCategoryId}`;
-              navigate(`/workflow/designer/new${qs}`);
-            }}>
-              新建流程
-            </Button>
-          )}
-      </SearchToolbar>
-      <ConfigurableTable
-        bordered
-        columns={columns}
-        dataSource={data?.list ?? []}
-        rowKey="id"
-        loading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data?.total ?? 0,
-          onPageChange: (p) => { void fetchList(p); },
-        }}
-      />
-      {historyTarget && (
-        <WorkflowVersionsModal
-          visible={!!historyTarget}
-          definitionId={historyTarget.id}
-          currentVersion={historyTarget.version}
-          currentStatus={historyTarget.status}
-          onCancel={() => setHistoryTarget(null)}
-          onRestored={() => { void fetchList(); }}
+    <MasterDetailLayout
+      defaultSize={220}
+      minSize={180}
+      maxSize={360}
+      persistKey="workflow-definitions"
+      master={
+        <CategorySidebar
+          categories={categories}
+          selectedId={selectedCategoryId}
+          onSelect={handleSelectCategory}
+          onChanged={() => { refetchCategories(); void fetchList(); }}
+          canManage={hasPermission('workflow:definition:create')}
         />
-      )}
-      </div>
-    </div>
+      }
+      detail={
+        <div>
+          <SearchToolbar>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索流程名称"
+              value={keyword}
+              onChange={setKeyword}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="状态"
+              value={status || undefined}
+              onChange={v => setStatus(typeof v === 'string' ? v : '')}
+              showClear
+              style={{ width: 120 }}
+            >
+              <Select.Option value="draft">草稿</Select.Option>
+              <Select.Option value="published">已发布</Select.Option>
+              <Select.Option value="disabled">已禁用</Select.Option>
+            </Select>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {hasPermission('workflow:definition:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={() => {
+                const qs = selectedCategoryId === null ? '' : `?categoryId=${selectedCategoryId}`;
+                navigate(`/workflow/designer/new${qs}`);
+              }}>
+                新建流程
+              </Button>
+            )}
+          </SearchToolbar>
+          <ConfigurableTable
+            bordered
+            columns={columns}
+            dataSource={data?.list ?? []}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              currentPage: page,
+              pageSize,
+              total: data?.total ?? 0,
+              onPageChange: (p) => { void fetchList(p); },
+            }}
+          />
+          {historyTarget && (
+            <WorkflowVersionsModal
+              visible={!!historyTarget}
+              definitionId={historyTarget.id}
+              currentVersion={historyTarget.version}
+              currentStatus={historyTarget.status}
+              onCancel={() => setHistoryTarget(null)}
+              onRestored={() => { void fetchList(); }}
+            />
+          )}
+        </div>
+      }
+    />
   );
 }
