@@ -21,6 +21,7 @@ export const DictItemDTO = z
   .object({
     id: z.number().int(),
     dictId: z.number().int(),
+    parentId: z.number().int().nullable().optional(),
     label: z.string().openapi({ example: '启用' }),
     value: z.string().openapi({ example: 'enabled' }),
     color: z.string().nullable().optional(),

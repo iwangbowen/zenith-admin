@@ -99,6 +99,15 @@ export async function createDictItem(dictId: number, data: Omit<typeof dictItems
   const user = currentUser();
   const [dict] = await db.select({ id: dicts.id }).from(dicts).where(and(eq(dicts.id, dictId), tenantCondition(dicts, user))).limit(1);
   if (!dict) throw new HTTPException(404, { message: '字典不存在' });
+  if (data.parentId) {
+    const [parentItem] = await db
+      .select({ id: dictItems.id, parentId: dictItems.parentId })
+      .from(dictItems)
+      .where(and(eq(dictItems.id, data.parentId), eq(dictItems.dictId, dictId)))
+      .limit(1);
+    if (!parentItem) throw new HTTPException(400, { message: '父级字典项不存在或不属于当前字典' });
+    if (parentItem.parentId) throw new HTTPException(400, { message: '只支持两级结构，不能嵌套三级及以上' });
+  }
   const [row] = await db.insert(dictItems).values({ ...data, dictId }).returning();
   return mapDictItem(row);
 }
@@ -106,12 +115,23 @@ export async function createDictItem(dictId: number, data: Omit<typeof dictItems
 export async function updateDictItem(itemId: number, data: Partial<typeof dictItems.$inferInsert>) {
   const user = currentUser();
   const [item] = await db
-    .select({ id: dictItems.id })
+    .select({ id: dictItems.id, parentId: dictItems.parentId })
     .from(dictItems)
     .innerJoin(dicts, and(eq(dicts.id, dictItems.dictId), tenantCondition(dicts, user)))
     .where(eq(dictItems.id, itemId))
     .limit(1);
   if (!item) throw new HTTPException(404, { message: '字典项不存在' });
+  if (data.parentId !== undefined && data.parentId !== null) {
+    const [parentItem] = await db
+      .select({ id: dictItems.id, parentId: dictItems.parentId })
+      .from(dictItems)
+      .where(eq(dictItems.id, data.parentId))
+      .limit(1);
+    if (!parentItem) throw new HTTPException(400, { message: '父级字典项不存在' });
+    if (parentItem.parentId) throw new HTTPException(400, { message: '只支持两级结构，不能嵌套三级及以上' });
+    const childCount = await db.$count(dictItems, eq(dictItems.parentId, itemId));
+    if (childCount > 0) throw new HTTPException(400, { message: '该字典项已有子项，不能设置为子项' });
+  }
   const [row] = await db.update(dictItems).set({ ...data }).where(eq(dictItems.id, itemId)).returning();
   return mapDictItem(row);
 }

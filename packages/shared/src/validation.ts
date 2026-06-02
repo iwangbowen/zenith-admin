@@ -160,6 +160,7 @@ export const createDictItemSchema = z.object({
   sort: z.number().int().default(0),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   remark: z.string().max(256).optional(),
+  parentId: z.number().int().nullable().optional(),
 });
 
 export const updateDictItemSchema = createDictItemSchema.partial();

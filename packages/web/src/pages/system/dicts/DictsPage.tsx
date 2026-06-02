@@ -152,11 +152,35 @@ export default function DictsPage() {
     setSubmittedKeyword(keyword);
   }
 
-  const filteredItems = useMemo(() => items.filter((item) => {
-    if (itemKeyword && !item.label.includes(itemKeyword) && !item.value.includes(itemKeyword)) return false;
-    if (itemStatusFilter && item.status !== itemStatusFilter) return false;
-    return true;
-  }), [items, itemKeyword, itemStatusFilter]);
+  const filteredItems = useMemo(() => {
+    const flat = items.filter((item) => {
+      if (itemKeyword && !item.label.includes(itemKeyword) && !item.value.includes(itemKeyword)) return false;
+      if (itemStatusFilter && item.status !== itemStatusFilter) return false;
+      return true;
+    });
+    return flat;
+  }, [items, itemKeyword, itemStatusFilter]);
+
+  // 将扁平列表转为两级树结构，用于表格展示
+  const treeItems = useMemo(() => {
+    const filteredIds = new Set(filteredItems.map((i) => i.id));
+    const roots = filteredItems.filter((i) => !i.parentId || !filteredIds.has(i.parentId));
+    const childMap = new Map<number, DictItem[]>();
+    filteredItems
+      .filter((i) => i.parentId && filteredIds.has(i.parentId))
+      .forEach((i) => {
+        const arr = childMap.get(i.parentId!) ?? [];
+        arr.push(i);
+        childMap.set(i.parentId!, arr);
+      });
+    return roots.map((root) => {
+      const children = childMap.get(root.id);
+      return children ? { ...root, children } : root;
+    });
+  }, [filteredItems]);
+
+  // 当前字典下的根项目，用作父级选择器的选项
+  const rootItems = useMemo(() => items.filter((i) => !i.parentId), [items]);
 
   // ─── 字典 CRUD ─────────────────────────────────────────────────────────────
   const handleDictModalOk = async () => {
@@ -352,6 +376,16 @@ export default function DictsPage() {
   const itemColumns: ColumnProps<DictItem>[] = [
     { title: '标签', dataIndex: 'label', width: 160, render: renderEllipsis },
     { title: '键值', dataIndex: 'value', width: 160, render: renderEllipsis },
+    {
+      title: '父级',
+      dataIndex: 'parentId',
+      width: 120,
+      render: (v: number | null) => {
+        if (!v) return null;
+        const parent = items.find((i) => i.id === v);
+        return parent ? <span style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>{parent.label}</span> : null;
+      },
+    },
     { title: '排序', dataIndex: 'sort', width: 70, align: 'center' },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
     createdAtColumn,
@@ -444,12 +478,13 @@ export default function DictsPage() {
       <ConfigurableTable
         bordered
         columns={itemColumns}
-        dataSource={filteredItems}
+        dataSource={treeItems}
         rowKey="id"
         loading={itemsLoading}
         pagination={{ pageSize: 10, showSizeChanger: true }}
         size="small"
         empty={selectedDict ? '暂无数据' : '请选择字典'}
+        childrenRecordName="children"
       />
     </div>
   );
@@ -517,6 +552,17 @@ export default function DictsPage() {
         >
           <Form.Input field="label" label="标签" placeholder="请输入标签" style={{ width: '100%' }} rules={[{ required: true, message: '请输入标签' }]} />
           <Form.Input field="value" label="键值" placeholder="请输入键值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入键值' }]} />
+          <Form.Select
+            field="parentId"
+            label="父级"
+            style={{ width: '100%' }}
+            showClear
+            placeholder="无（作为根项目）"
+            disabled={!!(editingItem && items.some((i) => i.parentId === editingItem.id))}
+            optionList={rootItems
+              .filter((i) => i.id !== editingItem?.id)
+              .map((i) => ({ value: i.id, label: i.label }))}
+          />
           <Form.InputNumber field="sort" label="排序" placeholder="请输入排序" min={0} style={{ width: '100%' }} />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}

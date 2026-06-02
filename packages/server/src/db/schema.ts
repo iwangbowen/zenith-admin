@@ -225,6 +225,7 @@ export type NewDict = typeof dicts.$inferInsert;
 export const dictItems = pgTable('dict_items', {
   id: serial('id').primaryKey(),
   dictId: integer('dict_id').notNull().references(() => dicts.id, { onDelete: 'cascade' }),
+  parentId: integer('parent_id').references((): AnyPgColumn => dictItems.id, { onDelete: 'cascade' }),
   label: varchar('label', { length: 64 }).notNull(),
   value: varchar('value', { length: 64 }).notNull(),
   color: varchar('color', { length: 32 }),
@@ -1237,8 +1238,10 @@ export const dictsRelations = relations(dicts, ({ one, many }) => ({
   items: many(dictItems),
 }));
 
-export const dictItemsRelations = relations(dictItems, ({ one }) => ({
+export const dictItemsRelations = relations(dictItems, ({ one, many }) => ({
   dict: one(dicts, { fields: [dictItems.dictId], references: [dicts.id] }),
+  parent: one(dictItems, { fields: [dictItems.parentId], references: [dictItems.id], relationName: 'parent_child' }),
+  children: many(dictItems, { relationName: 'parent_child' }),
 }));
 
 export const fileStorageConfigsRelations = relations(fileStorageConfigs, ({ many }) => ({

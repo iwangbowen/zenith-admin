@@ -174,6 +174,7 @@ export interface Dict {
 export interface DictItem {
   id: number;
   dictId: number;
+  parentId?: number | null;
   label: string;
   value: string;
   color?: string;
@@ -182,6 +183,7 @@ export interface DictItem {
   remark?: string;
   createdAt: string;
   updatedAt: string;
+  children?: DictItem[];
 }
 
 // ─── 文件管理 ─────────────────────────────────────────────────────────────────
