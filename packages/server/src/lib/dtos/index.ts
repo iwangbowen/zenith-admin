@@ -9,6 +9,7 @@ export * from './api-tokens';
 export * from './auth';
 export * from './dict';
 export * from './files';
+export * from './business-files';
 export * from './logs';
 export * from './announcements';
 export * from './system-configs';

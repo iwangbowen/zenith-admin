@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex, jsonb, smallint, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const statusEnum = pgEnum('status', ['enabled', 'disabled']);
@@ -397,6 +397,26 @@ export const announcementRecipients = pgTable('announcement_recipients', {
 }, (t) => [unique('uniq_announcement_recipient').on(t.announcementId, t.recipientType, t.recipientId)]);
 
 export type AnnouncementRecipientRow = typeof announcementRecipients.$inferSelect;
+
+// ─── 业务文件关联表（通用，多态关联）─────────────────────────────────────────
+export const businessTypeEnum = pgEnum('business_type', ['announcement']);
+
+export const businessFiles = pgTable('business_files', {
+  id: serial('id').primaryKey(),
+  businessType: businessTypeEnum('business_type').notNull(),
+  businessId: integer('business_id').notNull(),
+  fileId: integer('file_id').notNull().references(() => managedFiles.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 256 }),
+  category: varchar('category', { length: 64 }),
+  sortOrder: smallint('sort_order').default(0),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  unique('uniq_business_file').on(t.businessType, t.businessId, t.fileId),
+]);
+
+export type BusinessFileRow = typeof businessFiles.$inferSelect;
+export type NewBusinessFile = typeof businessFiles.$inferInsert;
 
 // ─── 系统参数配置表 ──────────────────────────────────────────────────────────
 export const configTypeEnum = pgEnum('config_type', ['string', 'number', 'boolean', 'json']);
@@ -1265,6 +1285,7 @@ export const announcementsRelations = relations(announcements, ({ one, many }) =
   tenant: one(tenants, { fields: [announcements.tenantId], references: [tenants.id] }),
   reads: many(announcementReads),
   recipients: many(announcementRecipients),
+  attachments: many(businessFiles),
 }));
 
 export const announcementReadsRelations = relations(announcementReads, ({ one }) => ({
@@ -1273,6 +1294,11 @@ export const announcementReadsRelations = relations(announcementReads, ({ one })
 
 export const announcementRecipientsRelations = relations(announcementRecipients, ({ one }) => ({
   announcement: one(announcements, { fields: [announcementRecipients.announcementId], references: [announcements.id] }),
+}));
+
+export const businessFilesRelations = relations(businessFiles, ({ one }) => ({
+  file: one(managedFiles, { fields: [businessFiles.fileId], references: [managedFiles.id] }),
+  tenant: one(tenants, { fields: [businessFiles.tenantId], references: [tenants.id] }),
 }));
 
 export const userOauthAccountsRelations = relations(userOauthAccounts, ({ one }) => ({

@@ -11,7 +11,7 @@ import {
   listPublishedForUser, markAnnouncementRead, markAllAnnouncementsRead, getInbox, listAnnouncements,
   exportAnnouncements, batchDeleteAnnouncements, getAnnouncementReadStats, getAnnouncementDetail,
   createAnnouncement, updateAnnouncement, deleteAnnouncement, getAnnouncementBeforeAudit, getAnnouncementsBeforeAudit,
-  getUnreadAnnouncementCount,
+  getUnreadAnnouncementCount, getAnnouncementAttachments,
 } from '../services/announcements.service';
 
 const announcementsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -30,6 +30,7 @@ const createAnnouncementSchema = z.object({
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(announcementRecipientSchema).optional().default([]),
   publishTime: dateTimeStringSchema.optional().nullable(),
+  fileIds: z.array(z.number().int()).optional().default([]),
 });
 const updateAnnouncementSchema = createAnnouncementSchema.partial();
 
@@ -225,9 +226,39 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
+const AttachmentDTO = z.object({
+  id: z.number().int(),
+  fileId: z.number().int(),
+  file: z.object({
+    id: z.number().int(),
+    originalName: z.string(),
+    size: z.number().int(),
+    mimeType: z.string().nullable(),
+    extension: z.string().nullable(),
+    url: z.string(),
+  }),
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+});
+
+const attachmentsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/attachments', tags: ['Announcements'], summary: '公告附件列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(AttachmentDTO), '附件列表') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await getAnnouncementAttachments(id)), 200);
+  },
+});
+
 announcementsRouter.openapiRoutes([
   publishedRoute, unreadCountRoute, readRoute, readAllRoute, inboxRoute, listRoute, exportRouteDef,
   batchDeleteRoute, readStatsRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
+  attachmentsRoute,
 ] as const);
 
 export default announcementsRouter;

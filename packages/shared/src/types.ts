@@ -348,6 +348,23 @@ export interface AnnouncementReadStats {
   pageSize: number;
 }
 
+// ─── 公告附件 ──────────────────────────────────────────────
+
+export interface AnnouncementAttachment {
+  id: number;
+  fileId: number;
+  file: {
+    id: number;
+    originalName: string;
+    size: number;
+    mimeType: string | null;
+    extension: string | null;
+    url: string;
+  };
+  sortOrder: number;
+  createdAt: string;
+}
+
 // ─── 系统参数配置 ──────────────────────────────────────────
 export type ConfigType = 'string' | 'number' | 'boolean' | 'json';
 

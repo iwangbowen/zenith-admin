@@ -268,6 +268,7 @@ export const createAnnouncementSchema = z.object({
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(announcementRecipientSchema).optional().default([]),
   publishTime: dateTimeStringSchema.optional().nullable(),
+  fileIds: z.array(z.number().int()).optional().default([]),
 });
 
 export const updateAnnouncementSchema = createAnnouncementSchema.partial();

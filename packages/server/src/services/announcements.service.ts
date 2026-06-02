@@ -1,14 +1,16 @@
-import { count, desc, eq, like, and, gte, lte, inArray, isNull, isNotNull, sql, or, getTableColumns, type SQL } from 'drizzle-orm';
+import { count, desc, eq, like, and, gte, lte, inArray, isNull, isNotNull, sql, or, getTableColumns, asc, type SQL } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import type { DbExecutor } from '../db/types';
-import { announcements, announcementRecipients, announcementReads, users, userRoles, roles, departments } from '../db/schema';
+import { announcements, announcementRecipients, announcementReads, users, userRoles, roles, departments, businessFiles } from '../db/schema';
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
+import { buildManagedFileUrl } from '../lib/file-storage';
+import { managedFiles } from '../db/schema';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -57,6 +59,97 @@ export async function saveRecipients(
       .values(recipientList.map((r) => ({ announcementId, recipientType: r.recipientType, recipientId: r.recipientId })))
       .onConflictDoNothing();
   }
+}
+
+// ─── 附件管理 ─────────────────────────────────────────────────────────────────
+
+export interface AnnouncementAttachment {
+  id: number;
+  fileId: number;
+  file: {
+    id: number;
+    originalName: string;
+    size: number;
+    mimeType: string | null;
+    extension: string | null;
+    url: string;
+  };
+  sortOrder: number;
+  createdAt: string;
+}
+
+async function saveAnnouncementAttachments(
+  executor: DbExecutor,
+  announcementId: number,
+  fileIds: number[],
+) {
+  const user = currentUser();
+  // 删除旧关联
+  await executor.delete(businessFiles).where(
+    and(
+      eq(businessFiles.businessType, 'announcement'),
+      eq(businessFiles.businessId, announcementId),
+      tenantCondition(businessFiles, user),
+    ),
+  );
+
+  if (fileIds.length === 0) return;
+
+  // 校验文件存在
+  const files = await executor.select().from(managedFiles).where(
+    and(
+      inArray(managedFiles.id, fileIds),
+      tenantCondition(managedFiles, user),
+    ),
+  );
+  if (files.length !== fileIds.length) {
+    throw new HTTPException(400, { message: '部分文件不存在或无权关联' });
+  }
+
+  await executor.insert(businessFiles).values(
+    fileIds.map((fileId, index) => ({
+      businessType: 'announcement' as const,
+      businessId: announcementId,
+      fileId,
+      sortOrder: index,
+      tenantId: getCreateTenantId(user),
+    })),
+  );
+}
+
+export async function getAnnouncementAttachments(announcementId: number): Promise<AnnouncementAttachment[]> {
+  const user = currentUser();
+  const rows = await db
+    .select()
+    .from(businessFiles)
+    .leftJoin(managedFiles, eq(businessFiles.fileId, managedFiles.id))
+    .where(
+      and(
+        eq(businessFiles.businessType, 'announcement'),
+        eq(businessFiles.businessId, announcementId),
+        tenantCondition(businessFiles, user),
+      ),
+    )
+    .orderBy(asc(businessFiles.sortOrder));
+
+  const validRows = rows.filter((r): r is typeof r & { managed_files: NonNullable<typeof r.managed_files> } => r.managed_files !== null);
+  return validRows.map((r) => {
+      const file = r.managed_files;
+      return {
+        id: r.business_files.id,
+        fileId: r.business_files.fileId,
+        file: {
+          id: file.id,
+          originalName: file.originalName,
+          size: file.size,
+          mimeType: file.mimeType ?? null,
+          extension: file.extension ?? null,
+          url: buildManagedFileUrl(file.id),
+        },
+        sortOrder: r.business_files.sortOrder ?? 0,
+        createdAt: formatDateTime(r.business_files.createdAt),
+      };
+    });
 }
 
 // ─── WebSocket 广播 ───────────────────────────────────────────────────────────
@@ -328,6 +421,7 @@ export interface CreateAnnouncementInput {
   targetType: 'all' | 'specific';
   recipients?: Array<{ recipientType: 'user' | 'role' | 'dept'; recipientId: number }>;
   publishTime?: string | null;
+  fileIds?: number[];
 }
 
 export async function createAnnouncement(data: CreateAnnouncementInput) {
@@ -357,6 +451,10 @@ export async function createAnnouncement(data: CreateAnnouncementInput) {
     }).returning();
     const recipientList = data.targetType === 'specific' ? (data.recipients ?? []) : [];
     await saveRecipients(tx, inserted.id, recipientList);
+    // 保存附件关联
+    if (data.fileIds && data.fileIds.length > 0) {
+      await saveAnnouncementAttachments(tx, inserted.id, data.fileIds);
+    }
     return inserted;
   });
 
@@ -408,6 +506,7 @@ export async function updateAnnouncement(id: number, data: Partial<CreateAnnounc
   }
   const updateData: Record<string, unknown> = { ...data };
   delete updateData.recipients;
+  delete updateData.fileIds;
   if (publishTime !== undefined) updateData.publishTime = publishTime;
 
   const row = await db.transaction(async (tx) => {
@@ -417,6 +516,10 @@ export async function updateAnnouncement(id: number, data: Partial<CreateAnnounc
       const newTargetType = data.targetType ?? updated.targetType;
       const recipientList = newTargetType === 'specific' ? (data.recipients ?? []) : [];
       await saveRecipients(tx, id, recipientList);
+    }
+    // 更新附件关联
+    if (data.fileIds !== undefined) {
+      await saveAnnouncementAttachments(tx, id, data.fileIds);
     }
     return updated;
   });
