@@ -10,7 +10,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { CSSProperties } from 'react';
 import type { FileItem, RenderFileItemProps } from '@douyinfe/semi-ui/lib/es/upload';
-import { Plus, Download, X, Eye } from 'lucide-react';
+import { Plus, Download, X, Eye, RotateCcw } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
@@ -23,6 +23,7 @@ import {
 import FilePreviewModal from '@/components/FilePreviewModal';
 
 const { Text } = Typography;
+const UPLOAD_PENDING_STATUSES = new Set(['wait', 'validating', 'uploading']);
 
 // ─── 类型定义 ────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,15 @@ function toManagedFileResponse(res: unknown): ManagedFileResponse | null {
   return r?.code === 0 && r.data ? r.data : null;
 }
 
+function isFailedApiResponse(res: unknown): boolean {
+  const r = res as { code?: number } | undefined;
+  return typeof r?.code === 'number' && r.code !== 0;
+}
+
+function isUploadPending(item: FileItem): boolean {
+  return UPLOAD_PENDING_STATUSES.has(item.status);
+}
+
 // ─── 组件实现 ────────────────────────────────────────────────────────────────
 
 export default function FileAttachment({
@@ -165,6 +175,8 @@ export default function FileAttachment({
   );
   const [fileList, setFileList] = useState<FileItem[]>(uploadFileList);
   const attachmentsRef = useRef<AttachmentItem[]>(value);
+  const pendingUploadUidsRef = useRef<Set<string>>(new Set());
+  const failedUploadCountRef = useRef(0);
 
   useEffect(() => {
     attachmentsRef.current = value;
@@ -175,6 +187,24 @@ export default function FileAttachment({
       return [...uploadFileList, ...activeUploadingFiles];
     });
   }, [value, uploadFileList, isEditMode]);
+
+  /** 本轮上传全部结束后统一提示一次，避免多选时连续弹 Toast */
+  const finishUpload = useCallback((file: File, failed: boolean, nextFileList: FileItem[]) => {
+    const uid = (file as File & { uid?: string }).uid;
+    if (failed) failedUploadCountRef.current += 1;
+    if (uid) pendingUploadUidsRef.current.delete(uid);
+
+    if (pendingUploadUidsRef.current.size > 0 || nextFileList.some(isUploadPending)) return;
+
+    const failedCount = failedUploadCountRef.current;
+    failedUploadCountRef.current = 0;
+    pendingUploadUidsRef.current.clear();
+    if (failedCount > 0) {
+      Toast.error(failedCount === 1 ? '1 个文件上传失败' : `${failedCount} 个文件上传失败`);
+    } else {
+      Toast.success('上传成功');
+    }
+  }, []);
 
   /** 从 FileItem 恢复 AttachmentItem */
   const toAttachmentItem = useCallback((fileItem: FileItem): AttachmentItem => {
@@ -288,6 +318,19 @@ export default function FileAttachment({
               </div>
             </div>
             <Space>
+              {isEditMode && isFailed && (
+                <Button
+                  theme="borderless"
+                  type="primary"
+                  icon={<RotateCcw size={12} />}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    pendingUploadUidsRef.current.add(props.uid);
+                    props.onRetry();
+                  }}
+                />
+              )}
               {isEditMode && (
                 <Button
                   theme="borderless"
@@ -387,7 +430,12 @@ export default function FileAttachment({
         data?: ManagedFileResponse;
       };
       if (r?.code !== 0 || !r.data) {
-        Toast.error(r?.message || '上传失败');
+        const uid = (_file as File & { uid?: string }).uid;
+        const failedFileList = nextFileList.map((item) =>
+          item.uid === uid ? { ...item, status: 'uploadFail' as const, response: res } : item,
+        );
+        setFileList(failedFileList);
+        finishUpload(_file, true, failedFileList);
         return;
       }
 
@@ -399,15 +447,14 @@ export default function FileAttachment({
       ];
 
       attachmentsRef.current = nextAttachments;
-      setFileList(
-        nextFileList.map((item) =>
-          item.response === res || item.uid === (_file as File & { uid?: string }).uid ? uploadedFileItem : item,
-        ),
+      const updatedFileList = nextFileList.map((item) =>
+        item.response === res || item.uid === (_file as File & { uid?: string }).uid ? uploadedFileItem : item,
       );
+      setFileList(updatedFileList);
       onChange?.(nextAttachments);
-      Toast.success('上传成功');
+      finishUpload(_file, false, updatedFileList);
     },
-    [onChange],
+    [finishUpload, onChange],
   );
 
   /** onChange（文件列表变化时同步到父组件） */
@@ -418,6 +465,9 @@ export default function FileAttachment({
         newFileList.map((item) => {
           if (isAttachmentFileItem(item)) return item;
           const uploadedFile = toManagedFileResponse(item.response);
+          if (!uploadedFile && isFailedApiResponse(item.response)) {
+            return { ...item, status: 'uploadFail' as const };
+          }
           if (!uploadedFile) return item;
           const existingAttachment = attachmentsRef.current.find((attachment) => attachment.fileId === uploadedFile.id);
           const attachment = existingAttachment ?? toAttachmentFromManagedFile(uploadedFile, nextSortOrder++);
@@ -430,8 +480,8 @@ export default function FileAttachment({
 
   /** 上传前校验 */
   const handleBeforeUpload = useCallback(
-    ({ file }: { file: { name: string; size?: string | number } }) => {
-      const fileSize = typeof file.size === 'number' ? file.size : Number(file.size);
+    ({ file }: { file: FileItem }) => {
+      const fileSize = file.fileInstance?.size ?? Number(file.size);
       if (fileSize > maxSizeMB * 1024 * 1024) {
         Toast.warning(`${file.name} 超过 ${maxSizeMB}MB，已跳过`);
         return false;
@@ -440,6 +490,7 @@ export default function FileAttachment({
         Toast.warning(`最多上传 ${limit} 个文件`);
         return false;
       }
+      pendingUploadUidsRef.current.add(file.uid);
       return true;
     },
     [maxSizeMB, limit, fileList.length],
@@ -457,9 +508,9 @@ export default function FileAttachment({
   const handleError = useCallback(
     (_error: unknown, _file: File, nextFileList: FileItem[]) => {
       setFileList(nextFileList);
-      Toast.error('上传失败，请重试');
+      finishUpload(_file, true, nextFileList);
     },
-    [],
+    [finishUpload],
   );
 
   /** 超出上传数量限制 */
