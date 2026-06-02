@@ -19,6 +19,8 @@ export interface UserPreferences {
   tabAnimation: TabAnimation;
   colorMode: ThemeMode;
   themeColor: string;
+  sidebarDarkMode: boolean;
+  headerDarkMode: boolean;
   showMenuSearch: boolean;
   showFullscreen: boolean;
   showQuickChat: boolean;
@@ -44,6 +46,8 @@ export const defaultPreferences: UserPreferences = {
   tabAnimation: 'fade',
   colorMode: 'light',
   themeColor: 'blue',
+  sidebarDarkMode: false,
+  headerDarkMode: false,
   showMenuSearch: true,
   showFullscreen: true,
   showQuickChat: true,

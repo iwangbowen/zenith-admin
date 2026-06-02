@@ -1340,6 +1340,105 @@
 }
 
 /* ===== 分区深色模式（浅色主题下单独启用的深色区域） ===== */
+.admin-layout--sidebar-dark .admin-sidebar,
+.admin-layout--sidebar-dark .double-sidebar__rail,
+.admin-layout--sidebar-dark .double-sidebar__sub {
+  --color-sidebar-bg: #232429;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-text: rgba(255, 255, 255, 0.65);
+  --color-sidebar-title: #ffffff;
+  --color-sidebar-text-active: #ffffff;
+  --color-primary: var(--admin-section-dark-primary);
+  --color-sidebar-active: var(--admin-section-dark-sidebar-active);
+  --color-border: #2e3340;
+  --color-text-secondary: #8f96a3;
+  --semi-color-primary: var(--admin-section-dark-primary);
+  --semi-color-primary-hover: var(--admin-section-dark-primary-hover);
+  --semi-color-primary-active: var(--admin-section-dark-primary-active);
+  --semi-color-primary-light-default: var(--admin-section-dark-primary-light-default);
+  --semi-color-primary-light-hover: var(--admin-section-dark-primary-light-hover);
+  --semi-color-primary-light-active: var(--admin-section-dark-primary-light-active);
+  --semi-color-text-0: #e8eaed;
+  --semi-color-text-1: rgba(255, 255, 255, 0.8);
+  --semi-color-text-2: rgba(255, 255, 255, 0.65);
+  --semi-color-fill-0: rgba(255, 255, 255, 0.08);
+  --semi-color-fill-1: rgba(255, 255, 255, 0.12);
+  --semi-color-border: #2e3340;
+  color-scheme: dark;
+}
+
+.admin-layout--header-dark .admin-topbar,
+.admin-layout--header-dark .admin-header {
+  --color-layout-bg: #232429;
+  --color-sidebar-bg: #232429;
+  --color-layout-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-text: rgba(255, 255, 255, 0.65);
+  --color-sidebar-title: #ffffff;
+  --color-sidebar-text-active: #ffffff;
+  --color-primary: var(--admin-section-dark-primary);
+  --color-sidebar-active: var(--admin-section-dark-sidebar-active);
+  --color-text: #e8eaed;
+  --color-text-secondary: #8f96a3;
+  --color-border: #2e3340;
+  --topbar-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
+  --semi-color-primary: var(--admin-section-dark-primary);
+  --semi-color-primary-hover: var(--admin-section-dark-primary-hover);
+  --semi-color-primary-active: var(--admin-section-dark-primary-active);
+  --semi-color-primary-light-default: var(--admin-section-dark-primary-light-default);
+  --semi-color-primary-light-hover: var(--admin-section-dark-primary-light-hover);
+  --semi-color-primary-light-active: var(--admin-section-dark-primary-light-active);
+  --semi-color-text-0: #e8eaed;
+  --semi-color-text-1: rgba(255, 255, 255, 0.8);
+  --semi-color-text-2: rgba(255, 255, 255, 0.65);
+  --semi-color-fill-0: rgba(255, 255, 255, 0.08);
+  --semi-color-fill-1: rgba(255, 255, 255, 0.12);
+  --semi-color-border: #2e3340;
+  color-scheme: dark;
+}
+
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-item,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-sub-title,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-item-icon,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-sub-icon,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-item-text,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-sub-text,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-sub-title-text {
+  color: var(--color-sidebar-text) !important;
+}
+
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-item-selected,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-sub-selected,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-item-selected .semi-navigation-item-icon,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-sub-selected .semi-navigation-sub-icon,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-item-selected .semi-navigation-item-text,
+.admin-layout--sidebar-dark .admin-sidebar__nav .semi-navigation-sub-selected .semi-navigation-sub-title-text {
+  color: var(--color-sidebar-text-active) !important;
+}
+
+.admin-layout--header-dark .topnav-item {
+  color: var(--color-sidebar-text);
+}
+
+.admin-layout--header-dark .topnav-item:hover,
+.admin-layout--header-dark .topnav-item--active,
+.admin-layout--header-dark .topnav-item.active {
+  color: var(--color-sidebar-text-active);
+}
+
+.admin-layout--header-dark .admin-menu-search .semi-input-wrapper,
+.admin-layout--header-dark .admin-header__actions .semi-select {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-border);
+}
+
+.admin-layout--header-dark .admin-menu-search .semi-input,
+.admin-layout--header-dark .admin-menu-search .semi-input-prefix,
+.admin-layout--header-dark .admin-header__actions .semi-select-selection-text,
+.admin-layout--header-dark .admin-header__actions .semi-select-prefix {
+  color: var(--color-text);
+}
+
 /* ===== 偏好重置按钮 ===== */
 .prefs-reset-btn {
   margin-top: 4px;

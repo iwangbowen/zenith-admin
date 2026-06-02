@@ -4,7 +4,7 @@
  * ThemeColor 为预设 key 或 #rrggbb 格式的自定义颜色
  */
 
-interface ColorVars {
+export interface ColorVars {
   primary: string;
   hover: string;
   active: string;
@@ -455,19 +455,19 @@ function deriveColorVars(hex: string, isDark: boolean): ColorVars {
   }
 }
 
+export function getThemeColorVars(color: string, isDark: boolean): ColorVars {
+  const preset = getPreset(color);
+  if (preset) return isDark ? preset.dark : preset.light;
+  return deriveColorVars(color, isDark);
+}
+
 /**
  * 将主题色应用到文档 CSS 变量
  * @param color 颜色 key
  * @param isDark 当前是否为深色模式
  */
 export function applyThemeColor(color: string, isDark: boolean): void {
-  const preset = getPreset(color);
-  let vars: ColorVars;
-  if (preset) {
-    vars = isDark ? preset.dark : preset.light;
-  } else {
-    vars = deriveColorVars(color, isDark);
-  }
+  const vars = getThemeColorVars(color, isDark);
   const root = document.documentElement;
 
   // 自定义语义变量

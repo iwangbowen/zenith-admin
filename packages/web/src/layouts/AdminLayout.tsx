@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -9,7 +9,7 @@ import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, type NavLayout, type TableSizePreference } from '@/hooks/usePreferences';
-import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
+import { THEME_COLOR_PRESETS, getThemeColorVars } from '@/lib/theme-color';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTabsStore } from '@/hooks/useTabsStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -140,7 +140,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     return result;
   }, [menuTree]);
   const { preferences, setPreferences, resetPreferences } = usePreferences();
-  const { mode, themeColor, setThemeMode, setThemeColor } = useThemeController();
+  const { mode, themeColor, isDark, setThemeMode, setThemeColor } = useThemeController();
 
   const handleThemeModeChange = useCallback((newMode: ThemeMode) => {
     setThemeMode(newMode);
@@ -1008,9 +1008,27 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const topNavSelectedKeys = navLayout === 'mixed' ? mixedTopSelectedKeys : currentSelectedKeys;
   const stickyNavClass = preferences.sidebarStickyScroll === false ? '' : ' admin-sidebar--sticky-nav';
   const sidebarClassName = `admin-sidebar${collapsed ? ' admin-sidebar--collapsed' : ''}${stickyNavClass}`;
+  const layoutClassName = [
+    'admin-layout',
+    preferences.sidebarDarkMode ? 'admin-layout--sidebar-dark' : '',
+    preferences.headerDarkMode ? 'admin-layout--header-dark' : '',
+  ].filter(Boolean).join(' ');
+  const sectionDarkThemeStyle = useMemo<CSSProperties>(() => {
+    if (!preferences.sidebarDarkMode && !preferences.headerDarkMode) return {};
+    const vars = getThemeColorVars(themeColor, true);
+    return {
+      '--admin-section-dark-primary': vars.primary,
+      '--admin-section-dark-primary-hover': vars.hover,
+      '--admin-section-dark-primary-active': vars.active,
+      '--admin-section-dark-primary-light-default': vars.lightDefault,
+      '--admin-section-dark-primary-light-hover': vars.lightHover,
+      '--admin-section-dark-primary-light-active': vars.lightActive,
+      '--admin-section-dark-sidebar-active': vars.sidebarActive,
+    } as CSSProperties;
+  }, [preferences.headerDarkMode, preferences.sidebarDarkMode, themeColor]);
 
   const adminLayoutEl = (
-    <div className="admin-layout">
+    <div className={layoutClassName} style={sectionDarkThemeStyle}>
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && navLayout !== 'double' && (
         <header className="admin-topbar">
@@ -1318,13 +1336,26 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 </RadioGroup>
               </div>
 
+              {!isDark && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>侧边栏深色模式</span>
+                    <Switch checked={preferences.sidebarDarkMode ?? false} onChange={(v) => setPreferences({ sidebarDarkMode: v })} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>顶部栏深色模式</span>
+                    <Switch checked={preferences.headerDarkMode ?? false} onChange={(v) => setPreferences({ headerDarkMode: v })} />
+                  </div>
+                </>
+              )}
+
               {/* ── 主题色 ── */}
               <div>
                 <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>主题颜色</div>
                 <div className="theme-color-picker">
                   {THEME_COLOR_PRESETS.map((preset) => {
-                    const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
-                    const currentColor = isDark ? preset.dark.primary : preset.light.primary;
+                    const colorIsDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
+                    const currentColor = colorIsDark ? preset.dark.primary : preset.light.primary;
                     const isActive = themeColor === preset.key;
                     return (
                       <Tooltip key={preset.key} content={preset.name} position="top">
