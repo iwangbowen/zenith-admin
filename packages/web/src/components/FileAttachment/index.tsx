@@ -1,14 +1,22 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Upload, Button, Space, Typography, ImagePreview, Toast } from '@douyinfe/semi-ui';
+import {
+  Upload,
+  Button,
+  Space,
+  Typography,
+  ImagePreview,
+  Toast,
+} from '@douyinfe/semi-ui';
 import type { CSSProperties } from 'react';
-import { Plus, Download, X } from 'lucide-react';
+import type { FileItem } from '@douyinfe/semi-ui/lib/es/upload';
+import { Plus, Download, X, Eye } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import {
-  formatFileSize,
   getFileTypeIcon,
   canPreviewFile,
   fetchProtectedFile,
+  formatFileSize,
 } from '@/utils/file-utils';
 import FilePreviewModal from '@/components/FilePreviewModal';
 
@@ -60,6 +68,19 @@ interface FileAttachmentProps {
   disabled?: boolean;
 }
 
+/** 将 AttachmentItem 转换为 Semi Upload FileItem */
+function toUploadFileItem(item: AttachmentItem): FileItem {
+  return {
+    uid: `attach-${item.id}`,
+    name: item.file.originalName,
+    size: String(item.file.size),
+    status: 'success' as const,
+    url: item.file.url,
+    // 自定义字段：保留原始附件数据
+    ...(item as unknown as Record<string, unknown>),
+  };
+}
+
 // ─── 组件实现 ────────────────────────────────────────────────────────────────
 
 export default function FileAttachment({
@@ -94,15 +115,16 @@ export default function FileAttachment({
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, []);
 
-  /** 移除附件 */
-  const handleRemove = useCallback(
-    (item: AttachmentItem) => {
-      if (!isEditMode) return;
-      const next = value.filter((a) => a.id !== item.id);
-      onChange?.(next);
-    },
-    [isEditMode, value, onChange],
+  /** Semi Upload fileList */
+  const uploadFileList = useMemo(
+    () => value.map(toUploadFileItem),
+    [value],
   );
+
+  /** 从 FileItem 恢复 AttachmentItem */
+  const toAttachmentItem = useCallback((fileItem: FileItem): AttachmentItem => {
+    return fileItem as unknown as AttachmentItem;
+  }, []);
 
   /** 下载文件 */
   const downloadFile = useCallback(async (item: AttachmentItem) => {
@@ -119,8 +141,8 @@ export default function FileAttachment({
     }
   }, []);
 
-  /** 预览或下载 */
-  const handlePreview = useCallback(
+  /** 预览文件 */
+  const handlePreviewFile = useCallback(
     async (item: AttachmentItem) => {
       const mimeType = item.file.mimeType;
 
@@ -143,7 +165,7 @@ export default function FileAttachment({
       }
 
       if (canPreviewFile(mimeType)) {
-        // PDF/音频/视频：用 FilePreviewModal（内部已处理 fetchProtectedFile）
+        // PDF/音频/视频：用 FilePreviewModal
         setPreviewFile({
           url: item.file.url,
           name: item.file.originalName,
@@ -157,6 +179,83 @@ export default function FileAttachment({
       await downloadFile(item);
     },
     [downloadFile],
+  );
+
+  /** renderFileItem：自定义整行渲染（包含缩略图、文件名、大小、操作区） */
+  const renderFileItem = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (props: any) => {
+      const item = toAttachmentItem(props);
+      const fileSize = item.file.size ? formatFileSize(item.file.size) : '';
+      return (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 0',
+            borderBottom: '1px solid var(--semi-color-border-light)',
+            width: '100%',
+          }}
+        >
+          {/* 文件图标 */}
+          {getFileTypeIcon(item.file.mimeType, 18)}
+          {/* 文件名 + 大小 */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              size="small"
+              style={{
+                display: 'block',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {item.file.originalName}
+            </Text>
+            <Text type="tertiary" size="small">
+              {fileSize}
+            </Text>
+          </div>
+          {/* 操作区 */}
+          <Space>
+            <Button
+              theme="borderless"
+              type="primary"
+              icon={<Eye size={12} />}
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePreviewFile(item);
+              }}
+            />
+            <Button
+              theme="borderless"
+              type="primary"
+              icon={<Download size={12} />}
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadFile(item);
+              }}
+            />
+            {isEditMode && (
+              <Button
+                theme="borderless"
+                type="danger"
+                icon={<X size={12} />}
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onRemove();
+                }}
+              />
+            )}
+          </Space>
+        </div>
+      );
+    },
+    [toAttachmentItem, handlePreviewFile, downloadFile, isEditMode],
   );
 
   /** 上传成功 */
@@ -204,7 +303,6 @@ export default function FileAttachment({
         Toast.warning(`${file.name} 超过 ${maxSizeMB}MB，已跳过`);
         return false;
       }
-      // 数量限制
       if (limit > 0 && value.length >= limit) {
         Toast.warning(`最多上传 ${limit} 个文件`);
         return false;
@@ -212,6 +310,26 @@ export default function FileAttachment({
       return true;
     },
     [maxSizeMB, limit, value.length],
+  );
+
+  /** 移除文件（通过 onChange 受控） */
+  const handleRemove = useCallback(
+    (fileItem: FileItem) => {
+      const item = toAttachmentItem(fileItem);
+      const next = value.filter((a) => a.id !== item.id);
+      onChange?.(next);
+    },
+    [value, onChange, toAttachmentItem],
+  );
+
+  /** onChange（受控 fileList） */
+  const handleFileListChange = useCallback(
+    ({ fileList: newFileList }: { fileList: FileItem[] }) => {
+      // 将 FileItem 转回 AttachmentItem
+      const newItems = newFileList.map(toAttachmentItem);
+      onChange?.(newItems);
+    },
+    [onChange, toAttachmentItem],
   );
 
   return (
@@ -228,124 +346,32 @@ export default function FileAttachment({
         </div>
       )}
 
-      {/* 附件列表 */}
-      {value.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-          {value.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => {
-                handlePreview(item);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  handlePreview(item);
-                }
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px 12px',
-                border: '1px solid var(--semi-color-border)',
-                borderRadius: 6,
-                gap: 10,
-                cursor: 'pointer',
-                transition: 'background-color 0.2s',
-                background: 'transparent',
-                width: '100%',
-                textAlign: 'left',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--semi-color-bg-2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '';
-              }}
-            >
-              {getFileTypeIcon(item.file.mimeType, 18)}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <Text
-                  size="small"
-                  style={{
-                    display: 'block',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {item.file.originalName}
-                </Text>
-                <Text type="tertiary" size="small">
-                  {formatFileSize(item.file.size)}
-                </Text>
-              </div>
-              <Space>
-                <Button
-                  theme="borderless"
-                  type="primary"
-                  icon={<Download size={12} />}
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    downloadFile(item);
-                  }}
-                />
-                {isEditMode && (
-                  <Button
-                    theme="borderless"
-                    type="danger"
-                    icon={<X size={12} />}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemove(item);
-                    }}
-                  />
-                )}
-              </Space>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 上传区域 */}
-      {isEditMode && (limit === 0 || value.length < limit) && (
-        <Upload
-          action={uploadAction}
-          headers={uploadHeaders}
-          name="file"
-          draggable
-          accept={accept}
-          beforeUpload={handleBeforeUpload}
-          onSuccess={handleSuccess}
-          onError={() => {
-            Toast.error('上传失败，请重试');
-          }}
-          showUploadList={false}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              padding: '10px 16px',
-              border: '1px dashed var(--semi-color-border)',
-              borderRadius: 6,
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              color: 'var(--semi-color-text-1)',
-            }}
-          >
-            <Plus size={16} />
-            <Text size="small">
-              {uploadTip || '点击或拖拽上传文件'}
-            </Text>
-          </div>
-        </Upload>
-      )}
+      {/* 使用 Semi Upload 组件，listType="list" */}
+      <Upload
+        action={uploadAction}
+        headers={uploadHeaders}
+        name="file"
+        fileList={uploadFileList}
+        listType="list"
+        accept={accept}
+        limit={limit > 0 ? limit : undefined}
+        beforeUpload={isEditMode ? handleBeforeUpload : undefined}
+        onSuccess={isEditMode ? handleSuccess : undefined}
+        onError={() => {
+          Toast.error('上传失败，请重试');
+        }}
+        onRemove={isEditMode ? (fileItem) => handleRemove(fileItem as unknown as FileItem) : undefined}
+        onChange={isEditMode ? handleFileListChange : undefined}
+        renderFileItem={renderFileItem}
+        disabled={!isEditMode}
+        showClear={false}
+      >
+        {isEditMode && (limit === 0 || value.length < limit) && (
+          <Button theme="light" icon={<Plus size={14} />}>
+            {uploadTip || '上传文件'}
+          </Button>
+        )}
+      </Upload>
 
       {/* 文件预览弹窗（PDF/音频/视频） */}
       {previewFile && (
