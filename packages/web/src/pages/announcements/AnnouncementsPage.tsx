@@ -76,9 +76,17 @@ export default function AnnouncementsPage() {
     if (!item.isRead) {
       await request.post(`/api/announcements/${item.id}/read`, undefined, { silent: true });
     }
-    setSelected({ ...item, isRead: true });
-    setSelectedIndex(index);
-    setModalVisible(true);
+
+    // 获取最新的公告详情（包含附件）
+    const res = await request.get<Announcement>(`/api/announcements/${item.id}`);
+    if (res.code === 0 && res.data) {
+      setSelected({ ...res.data, isRead: true });
+      setSelectedIndex(index);
+      setModalVisible(true);
+    } else {
+      Toast.error(res.message || '获取公告详情失败');
+    }
+
     // optimistic update
     setList((prev) => prev.map((n) => n.id === item.id ? { ...n, isRead: true } : n));
   };

@@ -248,20 +248,20 @@ export default function AnnouncementsPage() {
     setUploadedAttachments([]);
     setModalVisible(true);
 
-    // 异步加载选项、收件人详情和附件
-    const [, detailRes, attachmentsRes] = await Promise.all([
+    // 异步加载选项和详情（详情包含收件人和附件）
+    const [, detailRes] = await Promise.all([
       loadRecipientOptions(),
-      request.get<Announcement & { recipients: AnnouncementRecipient[] }>(`/api/announcements/${record.id}`),
-      request.get<AnnouncementAttachment[]>(`/api/announcements/${record.id}/attachments`),
+      request.get<Announcement & { recipients: AnnouncementRecipient[]; attachments: AnnouncementAttachment[] }>(`/api/announcements/${record.id}`),
     ]);
 
-    if (attachmentsRes.code === 0 && attachmentsRes.data) {
-      setUploadedAttachments(attachmentsRes.data);
-      setAttachmentFileIds(attachmentsRes.data.map(a => a.fileId));
-    }
-
     if (detailRes.code === 0 && detailRes.data) {
-      const { targetType: t, recipients = [] } = detailRes.data;
+      const { targetType: t, recipients = [], attachments = [] } = detailRes.data;
+
+      // 设置附件
+      setUploadedAttachments(attachments);
+      setAttachmentFileIds(attachments.map(a => a.fileId));
+
+      // 设置收件人
       setTargetType(t ?? 'all');
       setSelectedUserIds(recipients.filter((r) => r.recipientType === 'user').map((r) => r.recipientId));
       setSelectedRoleIds(recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId));
