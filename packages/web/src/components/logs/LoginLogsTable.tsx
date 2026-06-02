@@ -103,10 +103,10 @@ export function LoginLogsTable({
               { key: '登录地点', value: detailLog.location ?? '-' },
               { key: '浏览器', value: detailLog.browser ?? '-' },
               { key: '操作系统', value: detailLog.os ?? '-' },
+              { key: 'User-Agent', value: detailLog.userAgent ?? '-', span: 2 },
               { key: '登录时间', value: formatDateTime(detailLog.createdAt) },
-              { key: 'User-Agent', value: detailLog.userAgent ?? '-', span: 3 },
             ]}
-            column={3}
+            column={2}
             layout="horizontal"
             align="left"
           />
