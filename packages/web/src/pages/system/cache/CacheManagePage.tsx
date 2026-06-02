@@ -260,7 +260,7 @@ export default function CacheManagePage() {
     {
       title: '操作',
       fixed: 'right' as const,
-      width: 120,
+      width: 150,
       render: (_: unknown, record: CacheItem) => (
         <Space>
           {record.value != null && (
