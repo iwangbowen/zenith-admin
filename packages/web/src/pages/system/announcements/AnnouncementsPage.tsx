@@ -18,17 +18,16 @@ import {
   TabPane,
   Progress,
   Typography,
-  Upload,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2, Paperclip, FileText, X } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
 import type { Announcement, AnnouncementRecipient, AnnouncementTargetType, PaginatedResponse, User, Role, Department, AnnouncementReadStats, AnnouncementAttachment } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
-import { config } from '@/config';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import FileAttachment from '@/components/FileAttachment';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
@@ -100,11 +99,6 @@ export default function AnnouncementsPage() {
   // 附件相关状态
   const [attachmentFileIds, setAttachmentFileIds] = useState<number[]>([]);
   const [uploadedAttachments, setUploadedAttachments] = useState<AnnouncementAttachment[]>([]);
-
-  const removeAttachment = useCallback((att: AnnouncementAttachment) => {
-    setUploadedAttachments((prev) => prev.filter((a) => a.id !== att.id));
-    setAttachmentFileIds((prev) => prev.filter((id) => id !== att.fileId));
-  }, []);
 
   const { items: typeItems } = useDictItems('announcement_type');
   const { items: statusItems } = useDictItems('announcement_publish_status');
@@ -895,80 +889,16 @@ export default function AnnouncementsPage() {
           </div>
 
           {/* 附件上传 */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 8, fontSize: 14, fontWeight: 500 }}>附件</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* 已上传附件列表 */}
-              {uploadedAttachments.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {uploadedAttachments.map((att) => (
-                    <Tag
-                      key={att.id}
-                      color="blue"
-                      style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4, maxWidth: 280 }}
-                    >
-                      <FileText size={12} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {att.file.originalName}
-                      </span>
-                      <span style={{ color: 'var(--semi-color-text-2)', fontSize: 11 }}>
-                        ({Math.round(att.file.size / 1024)}KB)
-                      </span>
-                      <Button
-                        theme="borderless"
-                        type="danger"
-                        size="small"
-                        icon={<X size={12} />}
-                        autoAlert={false}
-                        style={{ padding: 0, minWidth: 'auto' }}
-                        onClick={() => removeAttachment(att)}
-                      />
-                    </Tag>
-                  ))}
-                </div>
-              )}
-              {/* 上传组件 */}
-              <Upload
-                action={`${config.apiBaseUrl}/api/files/upload-one`}
-                headers={{ Authorization: `Bearer ${localStorage.getItem('zenith_token') ?? ''}` }}
-                name="file"
-                draggable
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv"
-                beforeUpload={({ file }) => {
-                  const fileSize = typeof file.size === 'number' ? file.size : Number(file.size);
-                  if (fileSize > 50 * 1024 * 1024) {
-                    Toast.warning(`${file.name} 超过 50MB，已跳过`);
-                    return false;
-                  }
-                  return true;
-                }}
-                onSuccess={(res: unknown) => {
-                  const r = res as { code?: number; data?: { id: number; url: string; originalName?: string; size?: number; mimeType?: string; extension?: string } };
-                  if (r?.code === 0 && r.data) {
-                    const d = r.data;
-                    const newAtt: AnnouncementAttachment = {
-                      id: 0,
-                      fileId: d.id,
-                      file: {
-                        id: d.id,
-                        originalName: d.originalName ?? '未命名文件',
-                        size: d.size ?? 0,
-                        mimeType: d.mimeType ?? null,
-                        extension: d.extension ?? null,
-                        url: d.url,
-                      },
-                      sortOrder: 0,
-                      createdAt: new Date().toISOString(),
-                    };
-                    setUploadedAttachments((prev) => [...prev, newAtt]);
-                    setAttachmentFileIds((prev) => [...prev, d.id]);
-                    Toast.success('上传成功');
-                  }
-                }}
-                onError={() => { Toast.error('上传失败，请重试'); return ''; }}
-              />
-            </div>
-          </div>
+          <FileAttachment
+            value={uploadedAttachments}
+            mode="edit"
+            onChange={(items) => {
+              setUploadedAttachments(items);
+              setAttachmentFileIds(items.map((a) => a.fileId));
+            }}
+            title="附件"
+            uploadTip="点击或拖拽上传附件"
+          />
         </Form>
       </SideSheet>
 
