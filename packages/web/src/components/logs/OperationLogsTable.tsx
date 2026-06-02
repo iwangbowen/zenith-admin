@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { Button, JsonViewer, Modal, TabPane, Tabs, Tag } from '@douyinfe/semi-ui';
+import { Button, Descriptions, JsonViewer, Modal, TabPane, Tabs, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps, TableProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { OperationLog } from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -181,56 +181,31 @@ export function OperationLogsTable({
           return (
             <Tabs type="line" style={{ padding: '0 4px' }} activeKey={detailActiveTab} onChange={setDetailActiveTab}>
               <TabPane tab="基础信息" itemKey="basic">
-                <div style={{ padding: '4px 0 8px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0 16px' }}>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>ID</div>
-                    <div style={detailValueStyle}>{detailLog.id}</div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>操作人</div>
-                    <div style={detailValueStyle}>{detailLog.username ?? '-'}</div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>功能模块</div>
-                    <div style={detailValueStyle}>{detailLog.module ?? '-'}</div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>操作描述</div>
-                    <div style={detailValueStyle}>{detailLog.description}</div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>请求方法</div>
-                    <div style={detailValueStyle}><Tag color="blue" size="small">{detailLog.method}</Tag></div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>响应状态</div>
-                    <div style={detailValueStyle}><Tag color={resOk ? 'green' : 'red'} size="small">{resCode ?? '-'}</Tag></div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>耗时</div>
-                    <div style={detailValueStyle}>{duration}</div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>操作时间</div>
-                    <div style={detailValueStyle}>{formatDateTime(detailLog.createdAt)}</div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>IP 地址</div>
-                    <div style={detailValueStyle}>{detailLog.ip ?? '-'}</div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>操作地点</div>
-                    <div style={detailValueStyle}>{detailLog.location ?? '-'}</div>
-                  </div>
-                  <div style={detailItemStyle}>
-                    <div style={detailLabelStyle}>操作系统</div>
-                    <div style={detailValueStyle}>{detailLog.os ?? '-'}</div>
-                  </div>
-                  <div style={{ ...detailItemStyle, gridColumn: 'span 2' }}>
-                    <div style={detailLabelStyle}>浏览器</div>
-                    <div style={detailValueStyle}>{detailLog.browser ?? '-'}</div>
-                  </div>
-                </div>
+                <Descriptions
+                  data={[
+                    { key: 'ID', value: detailLog.id },
+                    { key: '操作人', value: detailLog.username ?? '-' },
+                    { key: '功能模块', value: detailLog.module ?? '-' },
+                    { key: '操作描述', value: detailLog.description },
+                    {
+                      key: '请求方法',
+                      value: <Tag color="blue" size="small">{detailLog.method}</Tag>,
+                    },
+                    {
+                      key: '响应状态',
+                      value: <Tag color={resOk ? 'green' : 'red'} size="small">{resCode ?? '-'}</Tag>,
+                    },
+                    { key: '耗时', value: duration },
+                    { key: '操作时间', value: formatDateTime(detailLog.createdAt) },
+                    { key: 'IP 地址', value: detailLog.ip ?? '-' },
+                    { key: '操作地点', value: detailLog.location ?? '-' },
+                    { key: '浏览器', value: detailLog.browser ?? '-', span: 2 },
+                    { key: '操作系统', value: detailLog.os ?? '-' },
+                  ]}
+                  column={2}
+                  layout="horizontal"
+                  align="left"
+                />
               </TabPane>
               <TabPane tab="请求详情" itemKey="request">
                 <div style={{ padding: '4px 0 8px' }}>
