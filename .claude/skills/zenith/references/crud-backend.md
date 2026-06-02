@@ -957,58 +957,69 @@ const payload = {
 await request.post(`/api/notices/${id}`, payload);
 ```
 
-**6.3 附件数据获取方式（两种方案）**
+**6.3 附件数据获取方式**
 
-**方案一：独立附件接口（推荐，当前公告模块采用）**
+**推荐方案：详情接口包含附件（当前标准做法）**
 
-- 详情接口不返回附件，前端单独调用 `GET /api/{module}/{id}/attachments`
-- 优点：详情接口响应快，附件懒加载
-- 缺点：需要两次 API 调用
-
-```tsx
-// 详情弹窗中单独获取附件
-const [attachments, setAttachments] = useState<AnnouncementAttachment[]>([]);
-
-useEffect(() => {
-  if (visible && detail) {
-    request.get(`/api/notices/${detail.id}/attachments`)
-      .then((res) => {
-        if (res.code === 0 && res.data) {
-          setAttachments(res.data);
-        }
-      });
-  }
-}, [visible, detail?.id]);
-```
-
-**方案二：详情接口包含附件**
-
-- 在 `getDetail` service 函数中，使用 RQB 的 `with` 选项关联查询附件
-- 优点：一次 API 调用，前端代码简单
-- 缺点：详情接口响应稍慢（需要 JOIN）
+在 `getDetail` service 函数中，并行查询收件人和附件数据：
 
 ```ts
 // Service 层
 export async function getNoticeDetail(id: number) {
-  const row = await db.query.notices.findFirst({
-    where: eq(notices.id, id),
-    with: {
-      attachments: {
-        with: {
-          file: true,  // 关联查询 managed_files
-        },
-      },
-    },
-  });
+  const user = currentUser();
+  const [row] = await db.select().from(notices).where(eq(notices.id, id));
   if (!row) throw new HTTPException(404, { message: '通知不存在' });
-  return {
-    ...mapNotice(row),
-    attachments: row.attachments.map(mapAttachment),
-  };
+
+  // 并行查询收件人和附件
+  const [recipientRows, attachmentRows] = await Promise.all([
+    db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, id)),
+    db
+      .select()
+      .from(businessFiles)
+      .leftJoin(managedFiles, eq(businessFiles.fileId, managedFiles.id))
+      .where(
+        and(
+          eq(businessFiles.businessType, 'notice'),
+          eq(businessFiles.businessId, id),
+          tenantCondition(businessFiles, user),
+        ),
+      )
+      .orderBy(asc(businessFiles.sortOrder)),
+  ]);
+
+  // 处理附件
+  const validRows = attachmentRows.filter((r) => r.managed_files !== null);
+  const attachments = validRows.map((r) => ({
+    id: r.business_files.id,
+    fileId: r.business_files.fileId,
+    file: {
+      id: r.managed_files!.id,
+      originalName: r.managed_files!.originalName,
+      size: r.managed_files!.size,
+      mimeType: r.managed_files!.mimeType ?? null,
+      extension: r.managed_files!.extension ?? null,
+      url: buildManagedFileUrl(r.managed_files!.id),
+    },
+    sortOrder: r.business_files.sortOrder ?? 0,
+    createdAt: formatDateTime(r.business_files.createdAt),
+  }));
+
+  return { ...mapNotice(row), recipients, attachments };
 }
 ```
 
-> **建议**：如果附件数量少（< 10 个）且用户查看详情时通常需要看到附件，使用方案二；否则使用方案一。
+前端直接使用详情数据的 attachments 字段：
+
+```tsx
+// 详情弹窗
+<FileAttachment
+  mode="view"
+  value={announcement?.attachments}
+  title="附件"
+/>
+```
+
+> **优点**：一次 API 调用，前端代码简单，用户体验好（无二次加载）
 
 ### 前端文件访问注意事项
 
