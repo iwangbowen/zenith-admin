@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Badge,
   Button,
+  Dropdown,
   Input,
   JsonViewer,
   Modal,
@@ -12,7 +13,7 @@ import {
   Typography,
   List as SemiList,
 } from '@douyinfe/semi-ui';
-import { Search, RotateCcw, RefreshCw, Trash2 } from 'lucide-react';
+import { Search, RotateCcw, RefreshCw, Trash2, MoreHorizontal } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
@@ -290,6 +291,29 @@ export default function CacheManagePage() {
     <div className="cache-master">
       <div className="cache-master-header">
         <span className="cache-master-title">缓存分类</span>
+        <Dropdown
+          trigger="click"
+          position="bottomRight"
+          clickToHide
+          render={
+            <Dropdown.Menu>
+              <Dropdown.Item onClick={() => void fetchData()}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <RefreshCw size={14} /> 刷新
+                </span>
+              </Dropdown.Item>
+              {hasPermission('system:cache:delete') && (
+                <Dropdown.Item type="danger" onClick={handleClearAll}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Trash2 size={14} /> 清空全部
+                  </span>
+                </Dropdown.Item>
+              )}
+            </Dropdown.Menu>
+          }
+        >
+          <Button theme="borderless" size="small" icon={<MoreHorizontal size={14} />} />
+        </Dropdown>
       </div>
       <div className="cache-master-list">
         <SemiList<CategoryRow>
@@ -400,28 +424,6 @@ export default function CacheManagePage() {
 
   return (
     <div className="page-container">
-      {/* 顶部工具栏 */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
-        <Button
-          icon={<RefreshCw size={14} />}
-          type="tertiary"
-          loading={loading}
-          onClick={() => void fetchData()}
-        >
-          刷新
-        </Button>
-        {hasPermission('system:cache:delete') && (
-          <Button
-            icon={<Trash2 size={14} />}
-            type="danger"
-            theme="light"
-            onClick={handleClearAll}
-          >
-            清空全部
-          </Button>
-        )}
-      </div>
-
       <MasterDetailLayout
         master={cacheMaster}
         detail={cacheDetail}
