@@ -93,7 +93,8 @@ function toUploadFileItem(item: AttachmentItem): FileItem {
   };
 }
 
-function isAttachmentFileItem(item: FileItem | RenderFileItemProps): item is FileItem & AttachmentItem {
+function isAttachmentFileItem(item: FileItem | RenderFileItemProps | null | undefined): item is FileItem & AttachmentItem {
+  if (!item) return false;
   const maybeAttachment = item as Partial<AttachmentItem>;
   return typeof maybeAttachment.fileId === 'number' && maybeAttachment.file?.originalName != null;
 }
@@ -460,7 +461,8 @@ export default function FileAttachment({
 
   /** 移除文件（通过 onChange 受控） */
   const handleRemove = useCallback(
-    (fileItem: FileItem) => {
+    (fileItem: FileItem | undefined) => {
+      if (!fileItem) return;
       if (!isAttachmentFileItem(fileItem)) {
         setFileList((prev) => prev.filter((file) => file.uid !== fileItem.uid));
         return;
@@ -502,7 +504,7 @@ export default function FileAttachment({
         onSuccess={isEditMode ? handleSuccess : undefined}
         onChange={isEditMode ? handleFileListChange : undefined}
         onError={isEditMode ? handleError : undefined}
-        onRemove={isEditMode ? (fileItem) => handleRemove(fileItem as unknown as FileItem) : undefined}
+        onRemove={isEditMode ? (_file, _fileList, currentFileItem) => handleRemove(currentFileItem) : undefined}
         renderFileItem={renderFileItem}
         disabled={!isEditMode}
         showClear={false}
