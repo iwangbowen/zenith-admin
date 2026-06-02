@@ -2,15 +2,14 @@ import { count, desc, eq, like, and, gte, lte, inArray, isNull, isNotNull, sql, 
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import type { DbExecutor } from '../db/types';
-import { announcements, announcementRecipients, announcementReads, users, userRoles, roles, departments, businessFiles } from '../db/schema';
+import { announcements, announcementRecipients, announcementReads, users, userRoles, roles, departments, businessFiles, managedFiles } from '../db/schema';
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 import { buildManagedFileUrl } from '../lib/file-storage';
-import { managedFiles } from '../db/schema';
+import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -392,7 +391,25 @@ export async function getAnnouncementDetail(id: number) {
   const user = currentUser();
   const [row] = await db.select().from(announcements).where(and(eq(announcements.id, id), tenantCondition(announcements, user)));
   if (!row) throw new HTTPException(404, { message: '公告不存在' });
-  const recipientRows = await db.select().from(announcementRecipients).where(eq(announcementRecipients.announcementId, id));
+
+  // 并行查询收件人和附件
+  const [recipientRows, attachmentRows] = await Promise.all([
+    db.select().from(announcementRecipients).where(eq(announcementRecipients.announcementId, id)),
+    db
+      .select()
+      .from(businessFiles)
+      .leftJoin(managedFiles, eq(businessFiles.fileId, managedFiles.id))
+      .where(
+        and(
+          eq(businessFiles.businessType, 'announcement'),
+          eq(businessFiles.businessId, id),
+          tenantCondition(businessFiles, user),
+        ),
+      )
+      .orderBy(asc(businessFiles.sortOrder)),
+  ]);
+
+  // 处理收件人
   const userIds = recipientRows.filter((r) => r.recipientType === 'user').map((r) => r.recipientId);
   const roleIds = recipientRows.filter((r) => r.recipientType === 'role').map((r) => r.recipientId);
   const deptIds = recipientRows.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId);
@@ -411,7 +428,28 @@ export async function getAnnouncementDetail(id: number) {
     recipientId: r.recipientId,
     recipientLabel: labelMap.get(`${r.recipientType}:${r.recipientId}`) ?? '',
   }));
-  return { ...mapAnnouncement(row), recipients };
+
+  // 处理附件
+  const validRows = attachmentRows.filter((r): r is typeof r & { managed_files: NonNullable<typeof r.managed_files> } => r.managed_files !== null);
+  const attachments = validRows.map((r) => {
+    const file = r.managed_files;
+    return {
+      id: r.business_files.id,
+      fileId: r.business_files.fileId,
+      file: {
+        id: file.id,
+        originalName: file.originalName,
+        size: file.size,
+        mimeType: file.mimeType ?? null,
+        extension: file.extension ?? null,
+        url: buildManagedFileUrl(file.id),
+      },
+      sortOrder: r.business_files.sortOrder ?? 0,
+      createdAt: formatDateTime(r.business_files.createdAt),
+    };
+  });
+
+  return { ...mapAnnouncement(row), recipients, attachments };
 }
 
 export interface CreateAnnouncementInput {

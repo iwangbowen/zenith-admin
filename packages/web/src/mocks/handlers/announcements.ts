@@ -188,12 +188,4 @@ export const announcementsHandlers = [
   http.post('/api/announcements/:id/read', () => {
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
-
-  // 公告附件列表
-  http.get('/api/announcements/:id/attachments', ({ params }) => {
-    const notice = mockAnnouncements.find((n) => n.id === Number(params.id));
-    if (!notice) return HttpResponse.json({ code: 404, message: '公告不存在', data: null });
-    // Demo 模式返回空附件列表
-    return HttpResponse.json({ code: 0, message: 'ok', data: [] });
-  }),
 ];

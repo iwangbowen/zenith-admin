@@ -1,16 +1,14 @@
 import DOMPurify from 'dompurify';
-import { useState, useEffect } from 'react';
 import { Button, Tag, Space, Modal, Typography, Divider } from '@douyinfe/semi-ui';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { BookOpen, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Announcement, AnnouncementAttachment } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import FileAttachment from '@/components/FileAttachment';
 
 const { Text } = Typography;
 
-type AnnouncementWithRead = Announcement & { isRead?: boolean };
+type AnnouncementWithRead = Announcement & { isRead?: boolean; attachments?: AnnouncementAttachment[] };
 
 const TYPE_MAP: Record<string, { label: string; color: TagColor }> = {
   notice: { label: '通知', color: 'blue' },
@@ -49,21 +47,6 @@ export default function AnnouncementDetailModal({
   indexLabel,
 }: Readonly<AnnouncementDetailModalProps>) {
   const hasNav = onPrev !== undefined && onNext !== undefined;
-
-  // 附件列表
-  const [attachments, setAttachments] = useState<AnnouncementAttachment[]>([]);
-
-  useEffect(() => {
-    if (visible && announcement) {
-      setAttachments([]);
-      void request.get<AnnouncementAttachment[]>(`/api/announcements/${announcement.id}/attachments`)
-        .then((res) => {
-          if (res.code === 0 && res.data) {
-            setAttachments(res.data);
-          }
-        });
-    }
-  }, [visible, announcement?.id]);
 
   const typeInfo = announcement
     ? (TYPE_MAP[announcement.type] ?? { label: announcement.type, color: 'blue' })
@@ -153,7 +136,7 @@ export default function AnnouncementDetailModal({
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(announcement.content) }}
           />
           {/* 附件区 */}
-          <FileAttachment value={attachments} mode="view" showTitle={false} />
+          <FileAttachment value={announcement?.attachments} mode="view" showTitle={false} />
         </div>
       )}
     </Modal>

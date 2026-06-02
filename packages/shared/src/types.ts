@@ -326,6 +326,7 @@ export interface Announcement {
   createdAt: string;
   updatedAt: string;
   recipients?: AnnouncementRecipient[];
+  attachments?: AnnouncementAttachment[];
   /** 已读人数（管理列表额外返回） */
   readCount?: number;
 }
