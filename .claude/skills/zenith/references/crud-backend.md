@@ -938,7 +938,7 @@ import type { AttachmentItem } from '@/components/FileAttachment';
 // 查看模式
 <FileAttachment
   mode="view"
-  value={detail.attachments}
+  value={attachments}
   title="附件"
 />
 ```
@@ -956,6 +956,59 @@ const payload = {
 // 调用 API
 await request.post(`/api/notices/${id}`, payload);
 ```
+
+**6.3 附件数据获取方式（两种方案）**
+
+**方案一：独立附件接口（推荐，当前公告模块采用）**
+
+- 详情接口不返回附件，前端单独调用 `GET /api/{module}/{id}/attachments`
+- 优点：详情接口响应快，附件懒加载
+- 缺点：需要两次 API 调用
+
+```tsx
+// 详情弹窗中单独获取附件
+const [attachments, setAttachments] = useState<AnnouncementAttachment[]>([]);
+
+useEffect(() => {
+  if (visible && detail) {
+    request.get(`/api/notices/${detail.id}/attachments`)
+      .then((res) => {
+        if (res.code === 0 && res.data) {
+          setAttachments(res.data);
+        }
+      });
+  }
+}, [visible, detail?.id]);
+```
+
+**方案二：详情接口包含附件**
+
+- 在 `getDetail` service 函数中，使用 RQB 的 `with` 选项关联查询附件
+- 优点：一次 API 调用，前端代码简单
+- 缺点：详情接口响应稍慢（需要 JOIN）
+
+```ts
+// Service 层
+export async function getNoticeDetail(id: number) {
+  const row = await db.query.notices.findFirst({
+    where: eq(notices.id, id),
+    with: {
+      attachments: {
+        with: {
+          file: true,  // 关联查询 managed_files
+        },
+      },
+    },
+  });
+  if (!row) throw new HTTPException(404, { message: '通知不存在' });
+  return {
+    ...mapNotice(row),
+    attachments: row.attachments.map(mapAttachment),
+  };
+}
+```
+
+> **建议**：如果附件数量少（< 10 个）且用户查看详情时通常需要看到附件，使用方案二；否则使用方案一。
 
 ### 前端文件访问注意事项
 
