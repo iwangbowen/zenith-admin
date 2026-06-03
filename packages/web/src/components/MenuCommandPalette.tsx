@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Modal } from '@douyinfe/semi-ui';
 import { Search, Clock, Hash } from 'lucide-react';
 import { renderLucideIcon } from '@/utils/icons';
 import type { FlatMenuItem } from './MenuSearchInput';
@@ -39,10 +40,13 @@ interface Props {
   readonly onClose: () => void;
 }
 
-function getItemIcon(item: FlatMenuItem, isRecent: boolean, isSelected: boolean) {
+function getItemIcon(item: FlatMenuItem, isRecent: boolean) {
   if (isRecent) return <Clock size={13} />;
-  if (item.icon) return renderLucideIcon(item.icon, 13);
-  return <Search size={13} color={isSelected ? '#fff' : undefined} />;
+  if (item.icon) {
+    const icon = renderLucideIcon(item.icon, 13);
+    if (icon) return icon;
+  }
+  return <Hash size={13} />;
 }
 
 export default function MenuCommandPalette({ menus, open, onClose }: Props) {
@@ -99,8 +103,8 @@ export default function MenuCommandPalette({ menus, open, onClose }: Props) {
   const handleSelect = useCallback(
     (item: FlatMenuItem) => {
       saveRecent(item);
-      navigate(item.path);
       onClose();
+      navigate(item.path);
     },
     [navigate, onClose]
   );
@@ -149,46 +153,24 @@ export default function MenuCommandPalette({ menus, open, onClose }: Props) {
     return () => globalThis.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
-  if (!open) return null;
-
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        paddingTop: '15vh',
-        background: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(2px)',
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <Modal
+      visible={open}
+      centered
+      header={null}
+      footer={null}
+      closable={false}
+      onCancel={onClose}
+      closeOnEsc={false}
+      maskClosable
+      width={600}
+      className="cmd-palette-modal"
+      style={{ overflow: 'hidden', borderRadius: 10, padding: 0 }}
+      bodyStyle={{ padding: 0, overflow: 'hidden' }}
+      zIndex={9999}
+      keepDOM={false}
     >
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-      <dialog
-        open
-        aria-label="菜单搜索"
-        onKeyDown={handleKeyDown}
-        style={{
-          width: 'min(600px, calc(100vw - 32px))',
-          maxHeight: '60vh',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--semi-color-bg-2)',
-          borderRadius: 10,
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px var(--semi-color-border)',
-          overflow: 'hidden',
-          border: 'none',
-          padding: 0,
-          margin: 0,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '60vh' }}>
         {/* Search Input */}
         <div
           style={{
@@ -204,6 +186,7 @@ export default function MenuCommandPalette({ menus, open, onClose }: Props) {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="搜索菜单..."
             style={{
               flex: 1,
@@ -364,7 +347,7 @@ export default function MenuCommandPalette({ menus, open, onClose }: Props) {
                       color: isSelected ? '#fff' : 'var(--semi-color-primary)',
                     }}
                   >
-                    {getItemIcon(item, isShowingRecent, isSelected)}
+                    {getItemIcon(item, isShowingRecent)}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div
@@ -437,7 +420,7 @@ export default function MenuCommandPalette({ menus, open, onClose }: Props) {
             <kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 3 }}>Ctrl K</kbd> 快速打开
           </span>
         </div>
-      </dialog>
-    </div>
+      </div>
+    </Modal>
   );
 }

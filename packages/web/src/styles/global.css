@@ -129,6 +129,11 @@ body {
   background: transparent;
 }
 
+/* 命令面板 Modal：去除默认内边距，让内容完全自定义 */
+.cmd-palette-modal .semi-modal-body {
+  padding: 0 !important;
+}
+
 .semi-modal-header {
   border-bottom-color: var(--color-border);
 }
