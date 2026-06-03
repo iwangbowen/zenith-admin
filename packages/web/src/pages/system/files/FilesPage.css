@@ -69,19 +69,21 @@
 .files-grid-card {
   position: relative;
   width: 100%;
-  max-width: 180px;
-  border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--semi-color-bg-1);
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  max-width: 104px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  overflow: visible;
+  background: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  padding: 4px;
 }
 
 .files-grid-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  border-color: var(--semi-color-primary-light-hover);
+  background: var(--semi-color-fill-0);
+  border-color: var(--semi-color-border);
 }
 
 .files-grid-card--selected {
@@ -92,54 +94,45 @@
 .files-grid-card__media-wrap {
   position: relative;
   flex-shrink: 0;
+  display: flex;
+  justify-content: center;
 }
 
 .files-grid-card__media {
-  height: 90px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--semi-color-fill-0);
-  overflow: hidden;
+  background: transparent;
+  overflow: visible;
   cursor: pointer;
   position: relative;
   outline: none;
   border: none;
   padding: 0;
-  width: 100%;
+  border-radius: 6px;
 }
 
 .files-grid-card__media:focus-visible {
   outline: 2px solid var(--semi-color-primary);
-  outline-offset: -2px;
-}
-
-.files-grid-card__media img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.2s ease;
-  pointer-events: none;
-  display: block;
-}
-
-.files-grid-card__media:hover img {
-  transform: scale(1.04);
+  outline-offset: 2px;
 }
 
 .files-grid-card__type-badge {
   position: absolute;
-  bottom: 6px;
-  right: 6px;
-  background: rgba(0, 0, 0, 0.5);
-  color: #fff;
+  bottom: 0;
+  right: -2px;
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  color: var(--semi-color-text-1);
   font-size: 10px;
   font-weight: 600;
-  padding: 1px 5px;
+  padding: 0 4px;
   border-radius: 3px;
   letter-spacing: 0.4px;
   pointer-events: none;
-  max-width: 60px;
+  max-width: 48px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -147,19 +140,20 @@
 
 .files-grid-card__quick-actions {
   position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.42);
+  inset: auto auto 0 50%;
+  transform: translateX(-50%);
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 2px;
+  padding: 2px;
   opacity: 0;
   transition: opacity 0.15s ease;
   pointer-events: none;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
   z-index: 2;
 }
 
@@ -172,24 +166,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
+  background: transparent;
   border: none;
-  color: var(--semi-color-black);
+  color: var(--semi-color-text-1);
   cursor: pointer;
-  transition: background 0.12s ease, transform 0.12s ease;
+  transition: background 0.12s ease;
   padding: 0;
 }
 
 .files-grid-card__quick-btn:hover {
-  background: rgba(255, 255, 255, 1);
-  transform: scale(1.08);
+  background: var(--semi-color-fill-1);
 }
 
 .files-grid-card__quick-btn:active {
-  transform: scale(0.96);
+  background: var(--semi-color-fill-2);
 }
 
 .files-grid-card__quick-btn:disabled {
@@ -201,17 +194,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  background: var(--semi-color-fill-1);
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  background: transparent;
   z-index: 1;
 }
 
 .files-grid-card__checkbox {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 4px;
+  left: 4px;
   z-index: 3;
   line-height: 0;
   opacity: 0;
@@ -280,12 +273,14 @@
 }
 
 .files-grid-card__info {
-  padding: 6px 8px 4px;
+  padding: 4px 0 0;
   flex: 1;
+  text-align: center;
+  min-width: 0;
 }
 
 .files-grid-card__name {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -298,7 +293,7 @@
 .files-grid-card__date {
   font-size: 10px;
   color: var(--semi-color-text-3);
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -307,7 +302,8 @@
 .files-grid-card__meta {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 2px;
   font-size: 11px;
   color: var(--semi-color-text-2);
   flex-wrap: nowrap;

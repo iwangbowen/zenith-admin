@@ -149,7 +149,7 @@ function FileGridCard({
         </Tooltip>
         <div className="files-grid-card__date">{formatDateTime(file.createdAt)}</div>
         <div className="files-grid-card__meta">
-          <span style={{ flex: 1 }}>{formatFileSize(file.size)}</span>
+          <span>{formatFileSize(file.size)}</span>
           <Dropdown
             trigger="click"
             position="bottomRight"
@@ -900,13 +900,13 @@ export default function FilesPage() {
           })()}
           <List
             grid={{
-              gutter: [10, 10],
-              xs: 12,
-              sm: 8,
-              md: 6,
-              lg: 4,
-              xl: 4,
-              xxl: 3,
+              gutter: [6, 8],
+              xs: 8,
+              sm: 6,
+              md: 4,
+              lg: 3,
+              xl: 2,
+              xxl: 2,
             }}
             dataSource={data?.list ?? []}
             loading={loading}
