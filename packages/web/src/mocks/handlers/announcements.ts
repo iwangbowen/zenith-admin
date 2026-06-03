@@ -135,7 +135,7 @@ export const announcementsHandlers = [
     if (body.publishStatus === 'published' && !body.publishTime && !notice.publishTime) {
       notice.publishTime = mockDateTime();
     }
-    if (Object.prototype.hasOwnProperty.call(body, 'fileIds')) {
+    if (Object.hasOwn(body, 'fileIds')) {
       notice.attachments = buildAnnouncementAttachments(fileIds);
     }
     return HttpResponse.json({ code: 0, message: '更新成功', data: notice });
