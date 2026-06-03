@@ -1,0 +1,443 @@
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Clock, Hash } from 'lucide-react';
+import { renderLucideIcon } from '@/utils/icons';
+import type { FlatMenuItem } from './MenuSearchInput';
+
+const RECENT_KEY = 'zenith_menu_search_recent';
+const MAX_RECENT = 8;
+
+function getRecentItems(menus: FlatMenuItem[]): FlatMenuItem[] {
+  try {
+    const ids: number[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as number[];
+    return ids.flatMap((id) => {
+      const found = menus.find((m) => m.id === id);
+      return found ? [found] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function saveRecent(item: FlatMenuItem): void {
+  try {
+    const ids: number[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    const next = [item.id, ...ids.filter((id) => id !== item.id)].slice(0, MAX_RECENT);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+}
+
+function clearRecent(): void {
+  localStorage.removeItem(RECENT_KEY);
+}
+
+interface Props {
+  readonly menus: FlatMenuItem[];
+  readonly open: boolean;
+  readonly onClose: () => void;
+}
+
+function getItemIcon(item: FlatMenuItem, isRecent: boolean, isSelected: boolean) {
+  if (isRecent) return <Clock size={13} />;
+  if (item.icon) return renderLucideIcon(item.icon, 13);
+  return <Search size={13} color={isSelected ? '#fff' : undefined} />;
+}
+
+export default function MenuCommandPalette({ menus, open, onClose }: Props) {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [recentItems, setRecentItems] = useState<FlatMenuItem[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const results = useCallback(
+    (q: string): FlatMenuItem[] => {
+      if (!q.trim()) return [];
+      const lower = q.toLowerCase();
+      return menus
+        .filter(
+          (m) =>
+            m.title.toLowerCase().includes(lower) ||
+            m.breadcrumb.some((b) => b.toLowerCase().includes(lower))
+        )
+        .slice(0, 10);
+    },
+    [menus]
+  )(query);
+
+  const displayItems = query.trim() ? results : recentItems;
+  const isShowingRecent = !query.trim();
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      setSelectedIndex(0);
+      setRecentItems(getRecentItems(menus));
+      setTimeout(() => inputRef.current?.focus(), 30);
+    }
+  }, [open, menus]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    const el = listRef.current?.children[selectedIndex] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex]);
+
+
+  const handleClearRecent = useCallback(() => {
+    clearRecent();
+    setRecentItems([]);
+  }, []);
+
+  const handleSelect = useCallback(
+    (item: FlatMenuItem) => {
+      saveRecent(item);
+      navigate(item.path);
+      onClose();
+    },
+    [navigate, onClose]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.min(i + 1, displayItems.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter') {
+        const item = displayItems[selectedIndex];
+        if (item) handleSelect(item);
+      }
+    },
+    [displayItems, selectedIndex, handleSelect, onClose]
+  );
+
+  // Global keyboard shortcut: Ctrl+K
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        if (open) {
+        onClose();
+      } else {
+        // trigger open via custom event
+        globalThis.dispatchEvent(new CustomEvent('open-menu-palette'));
+      }
+      }
+      if (e.key === 'Escape' && open) {
+        onClose();
+      }
+    };
+    globalThis.addEventListener('keydown', handler);
+    return () => globalThis.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingTop: '15vh',
+        background: 'rgba(0, 0, 0, 0.45)',
+        backdropFilter: 'blur(2px)',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+      <dialog
+        open
+        aria-label="菜单搜索"
+        onKeyDown={handleKeyDown}
+        style={{
+          width: 'min(600px, calc(100vw - 32px))',
+          maxHeight: '60vh',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--semi-color-bg-2)',
+          borderRadius: 10,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px var(--semi-color-border)',
+          overflow: 'hidden',
+          border: 'none',
+          padding: 0,
+          margin: 0,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Search Input */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '12px 16px',
+            borderBottom: '1px solid var(--semi-color-border)',
+          }}
+        >
+          <Search size={17} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索菜单..."
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              fontSize: 15,
+              color: 'var(--semi-color-text-0)',
+              lineHeight: '22px',
+            }}
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 20,
+                height: 20,
+                border: 'none',
+                borderRadius: 4,
+                background: 'var(--semi-color-fill-1)',
+                color: 'var(--semi-color-text-2)',
+                cursor: 'pointer',
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: 12, lineHeight: 1 }}>✕</span>
+            </button>
+          )}
+          <kbd
+            style={{
+              fontSize: 11,
+              color: 'var(--semi-color-text-2)',
+              background: 'var(--semi-color-fill-0)',
+              border: '1px solid var(--semi-color-border)',
+              borderRadius: 4,
+              padding: '1px 5px',
+              fontFamily: 'monospace',
+              flexShrink: 0,
+            }}
+          >
+            ESC
+          </kbd>
+        </div>
+
+        {/* List Area */}
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '6px 0',
+            minHeight: 0,
+          }}
+        >
+          {/* Section header */}
+          {isShowingRecent && recentItems.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '2px 16px 6px',
+                marginBottom: 2,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--semi-color-text-2)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                最近访问
+              </span>
+              <button
+                type="button"
+                onClick={handleClearRecent}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  color: 'var(--semi-color-text-2)',
+                  padding: '0 2px',
+                }}
+              >
+                清除
+              </button>
+            </div>
+          )}
+
+          {isShowingRecent && recentItems.length === 0 && (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '32px 16px',
+                color: 'var(--semi-color-text-2)',
+                fontSize: 13,
+              }}
+            >
+              <Hash size={28} style={{ margin: '0 auto 10px', opacity: 0.35, display: 'block' }} />
+              输入关键词搜索菜单
+            </div>
+          )}
+
+          {!isShowingRecent && displayItems.length === 0 && (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '32px 16px',
+                color: 'var(--semi-color-text-2)',
+                fontSize: 13,
+              }}
+            >
+              未找到匹配的菜单
+            </div>
+          )}
+
+          {/* Items */}
+          <div ref={listRef}>
+            {displayItems.map((item, idx) => {
+              const isSelected = idx === selectedIndex;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSelect(item)}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    width: '100%',
+                    padding: '8px 16px',
+                    border: 'none',
+                    background: isSelected ? 'var(--semi-color-primary-light-default)' : 'transparent',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 28,
+                      height: 28,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      borderRadius: 6,
+                      background: isSelected ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
+                      color: isSelected ? '#fff' : 'var(--semi-color-primary)',
+                    }}
+                  >
+                    {getItemIcon(item, isShowingRecent, isSelected)}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: isSelected ? 'var(--semi-color-primary)' : 'var(--semi-color-text-0)',
+                        lineHeight: 1.4,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {item.title}
+                    </div>
+                    {item.breadcrumb.length > 0 && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--semi-color-text-2)',
+                          lineHeight: 1.3,
+                          marginTop: 1,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {item.breadcrumb.join(' › ')}
+                      </div>
+                    )}
+                  </div>
+                  {isSelected && (
+                    <kbd
+                      style={{
+                        fontSize: 10,
+                        color: 'var(--semi-color-primary)',
+                        background: 'var(--semi-color-primary-light-default)',
+                        border: '1px solid var(--semi-color-primary-light-hover)',
+                        borderRadius: 4,
+                        padding: '1px 5px',
+                        fontFamily: 'monospace',
+                        flexShrink: 0,
+                      }}
+                    >
+                      ↵
+                    </kbd>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '7px 16px',
+            borderTop: '1px solid var(--semi-color-border)',
+            fontSize: 11,
+            color: 'var(--semi-color-text-2)',
+          }}
+        >
+          <span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 3 }}>↑↓</kbd> 导航</span>
+          <span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 3 }}>↵</kbd> 跳转</span>
+          <span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 3 }}>ESC</kbd> 关闭</span>
+          <span style={{ marginLeft: 'auto' }}>
+            <kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 3 }}>Ctrl K</kbd> 快速打开
+          </span>
+        </div>
+      </dialog>
+    </div>
+  );
+}
