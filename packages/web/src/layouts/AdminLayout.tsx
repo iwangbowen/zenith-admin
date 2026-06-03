@@ -99,12 +99,32 @@ function findAncestorKeys(menuTree: Menu[], targetPath: string): string[] {
   return traverse(menuTree, []) ?? [];
 }
 
-function findBreadcrumbs(menuTree: Menu[], targetPath: string): { title: string; path?: string; icon?: string }[] {
-  function traverse(nodes: Menu[], ancestors: { title: string; path?: string; icon?: string }[]): { title: string; path?: string; icon?: string }[] | null {
+interface BreadcrumbData {
+  title: string;
+  path?: string;
+  icon?: string;
+  menuChildren?: Menu[];
+}
+
+function findFirstLeafPath(children: Menu[]): string | null {
+  for (const child of children) {
+    if (!child.visible || child.type === 'button') continue;
+    if (child.type === 'directory') {
+      const leaf = findFirstLeafPath(child.children ?? []);
+      if (leaf) return leaf;
+    } else if (child.path) {
+      return child.path;
+    }
+  }
+  return null;
+}
+
+function findBreadcrumbs(menuTree: Menu[], targetPath: string): BreadcrumbData[] {
+  function traverse(nodes: Menu[], ancestors: BreadcrumbData[]): BreadcrumbData[] | null {
     for (const node of nodes) {
       if (!node.visible || node.type === 'button') continue;
       if (node.type === 'directory') {
-        const found = traverse(node.children ?? [], [...ancestors, { title: node.title, icon: node.icon ?? undefined }]);
+        const found = traverse(node.children ?? [], [...ancestors, { title: node.title, icon: node.icon ?? undefined, menuChildren: node.children ?? [] }]);
         if (found !== null) return found;
       } else if (node.path === targetPath) {
         return [...ancestors, { title: node.title, path: node.path ?? undefined, icon: node.icon ?? undefined }];
@@ -1172,7 +1192,50 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           {/* Vertical mode has its own header bar */}
           {(navLayout === 'vertical' || navLayout === 'double') && (
             <header className="admin-header">
-              <div />
+              {/* Left: breadcrumb (vertical / double layouts only) */}
+              {preferences.showBreadcrumb && breadcrumbs.length > 0 ? (
+                <div className="admin-header__breadcrumb">
+                  <Breadcrumb>
+                    {breadcrumbs.map((crumb, index) => {
+                      const isLast = index === breadcrumbs.length - 1;
+                      const isHome = index === 0 && crumb.path === '/';
+                      const handleClick = () => {
+                        if (isHome) { navigateHome(); return; }
+                        if (crumb.path) { navigate(crumb.path); return; }
+                        if (crumb.menuChildren) {
+                          const leaf = findFirstLeafPath(crumb.menuChildren);
+                          if (leaf) navigate(leaf);
+                        }
+                      };
+                      const handleKey = (e: React.KeyboardEvent) => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(); }
+                      };
+                      return (
+                        <Breadcrumb.Item key={crumb.title}>
+                          {isLast ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              {preferences.breadcrumbIcon && crumb.icon && <span style={{ display: 'flex', alignItems: 'center' }}>{renderLucideIcon(crumb.icon, 13)}</span>}
+                              {isHome ? '首页' : crumb.title}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleClick}
+                              onKeyDown={handleKey}
+                              style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              {preferences.breadcrumbIcon && crumb.icon && <span style={{ display: 'flex', alignItems: 'center' }}>{renderLucideIcon(crumb.icon, 13)}</span>}
+                              {isHome ? '首页' : crumb.title}
+                            </button>
+                          )}
+                        </Breadcrumb.Item>
+                      );
+                    })}
+                  </Breadcrumb>
+                </div>
+              ) : (
+                <div />
+              )}
               {headerActions}
             </header>
           )}
@@ -1255,7 +1318,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             </div>
           )}
           {/* Breadcrumb bar — below tabs for all layouts */}
-          {preferences.showBreadcrumb && breadcrumbs.length > 0 && (
+          {preferences.showBreadcrumb && breadcrumbs.length > 0 && navLayout !== 'vertical' && navLayout !== 'double' && (
             <div className="admin-breadcrumb-bar">
               <Breadcrumb>
                 {breadcrumbs.map((crumb, index) => (

@@ -532,6 +532,25 @@
   flex-shrink: 0;
 }
 
+.admin-header__breadcrumb {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-header__breadcrumb .semi-breadcrumb {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.admin-header__breadcrumb .semi-breadcrumb-item-title {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 639px) {
   .admin-header {
     padding: 0 10px;
