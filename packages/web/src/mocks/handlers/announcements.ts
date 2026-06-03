@@ -1,7 +1,33 @@
 import { http, HttpResponse } from 'msw';
 import { mockAnnouncements, getNextAnnouncementId } from '@/mocks/data/announcements';
+import { mockManagedFiles } from '@/mocks/handlers/files';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { Announcement } from '@zenith/shared';
+import type { Announcement, AnnouncementAttachment } from '@zenith/shared';
+
+type AnnouncementPayload = Partial<Announcement> & { fileIds?: number[] };
+
+function buildAnnouncementAttachments(fileIds: number[] = []): AnnouncementAttachment[] {
+  return fileIds
+    .map((fileId, index) => {
+      const file = mockManagedFiles.find((f) => f.id === fileId);
+      if (!file) return null;
+      return {
+        id: fileId,
+        fileId,
+        file: {
+          id: file.id,
+          originalName: file.originalName,
+          size: file.size,
+          mimeType: file.mimeType ?? null,
+          extension: file.extension ?? null,
+          url: file.url,
+        },
+        sortOrder: index,
+        createdAt: mockDateTime(),
+      };
+    })
+    .filter((item): item is AnnouncementAttachment => item !== null);
+}
 
 export const announcementsHandlers = [
   // 公告列表（分页）
@@ -74,7 +100,7 @@ export const announcementsHandlers = [
 
   // 新增公告
   http.post('/api/announcements', async ({ request }) => {
-    const body = await request.json() as Partial<Announcement>;
+    const body = await request.json() as AnnouncementPayload;
     const isScheduled = body.publishStatus === 'scheduled' && body.publishTime;
     let publishTime: string | null = null;
     if (isScheduled) publishTime = body.publishTime ?? null;
@@ -90,6 +116,8 @@ export const announcementsHandlers = [
       createById: 1,
       createByName: '管理员',
       targetType: body.targetType ?? 'all',
+      recipients: body.recipients ?? [],
+      attachments: buildAnnouncementAttachments(body.fileIds),
       createdAt: mockDateTime(),
       updatedAt: mockDateTime(),
     };
@@ -101,8 +129,15 @@ export const announcementsHandlers = [
   http.put('/api/announcements/:id', async ({ params, request }) => {
     const notice = mockAnnouncements.find((n) => n.id === Number(params.id));
     if (!notice) return HttpResponse.json({ code: 404, message: '公告不存在', data: null });
-    const body = await request.json() as Partial<Announcement>;
-    Object.assign(notice, body, { updatedAt: mockDateTime() });
+    const body = await request.json() as AnnouncementPayload;
+    const { fileIds, ...announcementPatch } = body;
+    Object.assign(notice, announcementPatch, { updatedAt: mockDateTime() });
+    if (body.publishStatus === 'published' && !body.publishTime && !notice.publishTime) {
+      notice.publishTime = mockDateTime();
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'fileIds')) {
+      notice.attachments = buildAnnouncementAttachments(fileIds);
+    }
     return HttpResponse.json({ code: 0, message: '更新成功', data: notice });
   }),
 

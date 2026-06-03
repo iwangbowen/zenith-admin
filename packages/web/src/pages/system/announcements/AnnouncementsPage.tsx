@@ -625,6 +625,11 @@ export default function AnnouncementsPage() {
             {hasPermission('system:announcement:update') && <Button
               theme="borderless"
               size="small"
+              onClick={() => openEditModal(record)}
+            >编辑</Button>}
+            {hasPermission('system:announcement:update') && <Button
+              theme="borderless"
+              size="small"
               type="primary"
               onClick={() => {
                 Modal.confirm({

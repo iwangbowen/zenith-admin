@@ -32,7 +32,17 @@ const createAnnouncementSchema = z.object({
   publishTime: dateTimeStringSchema.optional().nullable(),
   fileIds: z.array(z.number().int()).optional().default([]),
 });
-const updateAnnouncementSchema = createAnnouncementSchema.partial();
+const updateAnnouncementSchema = z.object({
+  title: z.string().min(1).max(128).optional(),
+  content: z.string().min(1).max(4096).optional(),
+  type: z.string().min(1).max(32).optional(),
+  publishStatus: z.enum(['draft', 'published', 'recalled', 'scheduled']).optional(),
+  priority: z.string().min(1).max(32).optional(),
+  targetType: z.enum(['all', 'specific']).optional(),
+  recipients: z.array(announcementRecipientSchema).optional(),
+  publishTime: dateTimeStringSchema.optional().nullable(),
+  fileIds: z.array(z.number().int()).optional(),
+});
 
 const publishedRoute = defineOpenAPIRoute({
   route: createRoute({

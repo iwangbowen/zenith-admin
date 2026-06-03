@@ -271,7 +271,17 @@ export const createAnnouncementSchema = z.object({
   fileIds: z.array(z.number().int()).optional().default([]),
 });
 
-export const updateAnnouncementSchema = createAnnouncementSchema.partial();
+export const updateAnnouncementSchema = z.object({
+  title: z.string().min(1, '标题不能为空').max(128).optional(),
+  content: z.string().min(1, '内容不能为空').max(4096).optional(),
+  type: z.string().min(1).max(32).optional(),
+  publishStatus: z.enum(['draft', 'published', 'recalled', 'scheduled']).optional(),
+  priority: z.string().min(1).max(32).optional(),
+  targetType: z.enum(['all', 'specific']).optional(),
+  recipients: z.array(announcementRecipientSchema).optional(),
+  publishTime: dateTimeStringSchema.optional().nullable(),
+  fileIds: z.array(z.number().int()).optional(),
+});
 
 export type CreateAnnouncementInput = z.infer<typeof createAnnouncementSchema>;
 export type UpdateAnnouncementInput = z.infer<typeof updateAnnouncementSchema>;
