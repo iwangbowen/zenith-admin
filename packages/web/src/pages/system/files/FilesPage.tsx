@@ -566,25 +566,9 @@ export default function FilesPage() {
       width: 220,
       ellipsis: true,
       render: (name: string, record: ManagedFile) => {
-        const isImage = record.mimeType?.startsWith('image/');
-        const icon = isImage ? (
-          <button
-            type="button"
-            style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', flexShrink: 0 }}
-            onClick={() => handlePreview(record)}
-          >
-            <img
-              src={`${config.apiBaseUrl}${record.url}`}
-              alt={name}
-              style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 3, display: 'block' }}
-            />
-          </button>
-        ) : (
-          <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType)}</span>
-        );
         return (
           <Space spacing={6} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
-            {icon}
+            <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType)}</span>
             <Tooltip content={name}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
             </Tooltip>
