@@ -100,7 +100,7 @@
 
 .files-grid-card__media {
   width: 48px;
-  height: 48px;
+  height: 58px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -121,14 +121,16 @@
 
 .files-grid-card__type-badge {
   position: absolute;
+  left: 50%;
   bottom: 0;
-  right: -2px;
+  transform: translateX(-50%);
   background: var(--semi-color-bg-2);
   border: 1px solid var(--semi-color-border);
   color: var(--semi-color-text-1);
   font-size: 10px;
+  line-height: 1.1;
   font-weight: 600;
-  padding: 0 4px;
+  padding: 1px 4px;
   border-radius: 3px;
   letter-spacing: 0.4px;
   pointer-events: none;
@@ -199,6 +201,7 @@
   border-radius: 6px;
   background: transparent;
   z-index: 1;
+  margin-bottom: 12px;
 }
 
 .files-grid-card__checkbox {

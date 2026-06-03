@@ -38,6 +38,11 @@ const { Text } = Typography;
 
 interface UploadItem { uid: string; name: string; size: number; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; errorMsg?: string }
 
+const FILE_LIST_PAGE_SIZE = 20;
+const FILE_GRID_PAGE_SIZE = 60;
+const FILE_LIST_PAGE_SIZE_OPTIONS = [20, 50, 100];
+const FILE_GRID_PAGE_SIZE_OPTIONS = [60, 120, 240];
+
 function getProgressStroke(status: UploadItem['status']): string | undefined {
   if (status === 'success') return 'var(--semi-color-success)';
   if (status === 'error') return 'var(--semi-color-danger)';
@@ -215,7 +220,7 @@ export default function FilesPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(
-    () => (preferences.filesViewMode ?? 'list') === 'grid' ? 24 : 10,
+    () => (preferences.filesViewMode ?? 'list') === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE,
   );
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
@@ -239,7 +244,7 @@ export default function FilesPage() {
   const toggleViewMode = (mode: 'list' | 'grid') => {
     isInternalToggleRef.current = true;
     setPreferences({ filesViewMode: mode });
-    const newPageSize = mode === 'grid' ? 24 : 10;
+    const newPageSize = mode === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE;
     setPage(1);
     void fetchFiles(1, newPageSize);
   };
@@ -334,7 +339,7 @@ export default function FilesPage() {
       isInternalToggleRef.current = false;
       return;
     }
-    const newPageSize = viewMode === 'grid' ? 24 : 10;
+    const newPageSize = viewMode === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE;
     setPage(1);
     void fetchFilesRef.current(1, newPageSize);
   }, [viewMode]);
@@ -872,6 +877,7 @@ export default function FilesPage() {
             },
             showTotal: true,
             showSizeChanger: true,
+            pageSizeOpts: FILE_LIST_PAGE_SIZE_OPTIONS,
           }}
         />
       ) : (
@@ -941,6 +947,7 @@ export default function FilesPage() {
                 onPageSizeChange={(size) => { void fetchFiles(1, size); }}
                 showSizeChanger
                 showTotal
+                pageSizeOpts={FILE_GRID_PAGE_SIZE_OPTIONS}
               />
             </div>
           )}
