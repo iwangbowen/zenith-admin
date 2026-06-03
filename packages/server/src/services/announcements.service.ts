@@ -424,7 +424,7 @@ export async function getAnnouncementDetail(id: number) {
     ...deptRows.map((r) => [`dept:${r.id}`, r.label] as [string, string]),
   ]);
   const recipients = recipientRows.map((r) => ({
-    recipientType: r.recipientType,
+    recipientType: r.recipientType as 'user' | 'role' | 'dept',
     recipientId: r.recipientId,
     recipientLabel: labelMap.get(`${r.recipientType}:${r.recipientId}`) ?? '',
   }));
