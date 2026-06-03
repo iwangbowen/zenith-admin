@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button, Tag, Space, Modal, Toast, Spin, Typography, Input, List as SemiList } from '@douyinfe/semi-ui';
+import { buildSearchMatchMap, findMatchRanges } from './logFilesSearch';
 import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2, Search } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { request } from '@/utils/request';
@@ -21,7 +22,7 @@ export default function LogFilesPage() {
   const [files, setFiles] = useState<LogFile[]>([]);
   const [keyword, setKeyword] = useState('');
   const [contentKeyword, setContentKeyword] = useState('');
-  const [appliedContentKeyword, setAppliedContentKeyword] = useState('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const [listLoading, setListLoading] = useState(false);
   const [selected, setSelected] = useState<LogFile | null>(null);
   const [lines, setLines] = useState<string[]>([]);
@@ -29,6 +30,7 @@ export default function LogFilesPage() {
   const [tailing, setTailing] = useState(false);
   const tailAbortRef = useRef<AbortController | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
+  const lineRefs = useRef<Array<HTMLSpanElement | null>>([]);
 
   const fetchFiles = useCallback(async () => {
     setListLoading(true);
@@ -55,19 +57,17 @@ export default function LogFilesPage() {
     }
   }, [lines]);
 
-  const loadContent = useCallback(async (file: LogFile, searchKeyword = appliedContentKeyword) => {
+  const loadContent = useCallback(async (file: LogFile) => {
     setLines([]);
     setContentLoading(true);
     try {
-      const normalizedKeyword = searchKeyword.trim();
-      const query = new URLSearchParams({ lines: '500' });
-      if (normalizedKeyword) query.set('keyword', normalizedKeyword);
+      const query = new URLSearchParams({ lines: '5000' });
       const res = await request.get<{ lines: string[] }>(`/api/log-files/${encodeURIComponent(file.name)}/content?${query.toString()}`);
       if (res.code === 0) setLines(res.data.lines ?? []);
     } finally {
       setContentLoading(false);
     }
-  }, [appliedContentKeyword]);
+  }, []);
 
   const stopTail = useCallback(() => {
     tailAbortRef.current?.abort();
@@ -79,25 +79,46 @@ export default function LogFilesPage() {
     if (selected?.name === file.name) return;
     stopTail();
     setSelected(file);
+    setContentKeyword('');
+    setActiveMatchIndex(0);
     void loadContent(file);
   };
 
-  const hasContentSearch = appliedContentKeyword.trim().length > 0;
+  const normalizedContentKeyword = contentKeyword.trim();
+  const hasContentSearch = normalizedContentKeyword.length > 0;
+  const searchMatches = useMemo(() => buildSearchMatchMap(lines, normalizedContentKeyword), [lines, normalizedContentKeyword]);
+
+  const jumpToMatch = useCallback((direction: -1 | 1) => {
+    if (searchMatches.length === 0) return;
+
+    setActiveMatchIndex((prev) => (prev + direction + searchMatches.length) % searchMatches.length);
+  }, [searchMatches.length]);
+
+  useEffect(() => {
+    if (searchMatches.length === 0) {
+      setActiveMatchIndex(0);
+      return;
+    }
+
+    const currentMatchIndex = activeMatchIndex >= searchMatches.length ? 0 : activeMatchIndex;
+    const activeMatch = searchMatches[currentMatchIndex];
+    const targetLine = lineRefs.current[activeMatch.lineIndex];
+    if (targetLine) {
+      targetLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeMatchIndex, searchMatches]);
 
   const handleContentSearch = useCallback(() => {
-    if (!selected) return;
-    const nextKeyword = contentKeyword.trim();
-    stopTail();
-    setAppliedContentKeyword(nextKeyword);
-    void loadContent(selected, nextKeyword);
-  }, [contentKeyword, loadContent, selected, stopTail]);
+    if (!searchMatches.length) return;
+    setActiveMatchIndex(0);
+  }, [searchMatches.length]);
 
   const handleContentSearchReset = useCallback(() => {
     setContentKeyword('');
-    setAppliedContentKeyword('');
+    setActiveMatchIndex(0);
     stopTail();
     if (selected) {
-      void loadContent(selected, '');
+      void loadContent(selected);
     }
   }, [loadContent, selected, stopTail]);
 
@@ -150,6 +171,43 @@ export default function LogFilesPage() {
     } catch {
       Toast.error('下载失败');
     }
+  };
+
+  const renderHighlightedLine = (line: string) => {
+    const matches = findMatchRanges(line, normalizedContentKeyword);
+    if (matches.length === 0) return line;
+
+    const parts: React.ReactNode[] = [];
+    let cursor = 0;
+
+    matches.forEach((match, index) => {
+      if (match.start > cursor) {
+        parts.push(line.slice(cursor, match.start));
+      }
+
+      parts.push(
+        <mark
+          key={`${line}-${index}-${match.start}`}
+          style={{
+            backgroundColor: 'var(--semi-color-warning-light-default)',
+            color: 'inherit',
+            borderRadius: 3,
+            padding: '0 1px',
+            fontWeight: 600,
+          }}
+        >
+          {line.slice(match.start, match.end)}
+        </mark>,
+      );
+
+      cursor = match.end;
+    });
+
+    if (cursor < line.length) {
+      parts.push(line.slice(cursor));
+    }
+
+    return parts;
   };
 
   const handleDelete = (file: LogFile) => {
@@ -283,18 +341,24 @@ export default function LogFilesPage() {
                 </Tag>
               )}
               {hasContentSearch && (
-                <Tag color="purple" size="small">内容搜索：{appliedContentKeyword}</Tag>
+                <Tag color="purple" size="small">内容搜索：{normalizedContentKeyword}</Tag>
+              )}
+              {searchMatches.length > 0 && (
+                <Tag color="blue" size="small">{activeMatchIndex + 1}/{searchMatches.length} 匹配</Tag>
               )}
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 <Input
                   prefix={<Search size={14} />}
-                  placeholder="搜索日志内容"
+                  placeholder="实时高亮搜索日志内容"
                   value={contentKeyword}
-                  onChange={(value) => setContentKeyword(value)}
+                  onChange={(value) => {
+                    setContentKeyword(value);
+                    setActiveMatchIndex(0);
+                  }}
                   onEnterPress={handleContentSearch}
                   showClear
                   size="small"
-                  style={{ width: 220 }}
+                  style={{ width: 260 }}
                 />
                 <Space>
                   {!selected.isGzip && hasPermission('system:log:files') && (
@@ -309,8 +373,14 @@ export default function LogFilesPage() {
                       {tailing ? '停止追踪' : '实时追踪'}
                     </Button>
                   )}
-                  <Button size="small" type="primary" theme="solid" icon={<Search size={13} />} onClick={handleContentSearch}>
-                    搜索
+                  <Button size="small" theme="borderless" disabled={!hasContentSearch || searchMatches.length === 0} onClick={() => jumpToMatch(-1)}>
+                    上一个
+                  </Button>
+                  <Button size="small" theme="borderless" disabled={!hasContentSearch || searchMatches.length === 0} onClick={() => jumpToMatch(1)}>
+                    下一个
+                  </Button>
+                  <Button size="small" type="primary" theme="solid" icon={<Search size={13} />} onClick={handleContentSearch} disabled={!hasContentSearch || searchMatches.length === 0}>
+                    定位首个
                   </Button>
                   <Button size="small" theme="borderless" onClick={handleContentSearchReset}>
                     重置
@@ -353,10 +423,33 @@ export default function LogFilesPage() {
                   color: 'var(--semi-color-text-1)',
                 }}
               >
-                {lines.length === 0
-                  ? <Typography.Text type="tertiary" style={{ fontFamily: 'inherit' }}>{hasContentSearch ? '（未找到匹配日志内容）' : '（文件为空）'}</Typography.Text>
-                  : lines.join('\n')
-                }
+                {lines.length === 0 ? (
+                  <Typography.Text type="tertiary" style={{ fontFamily: 'inherit' }}>{hasContentSearch ? '（未找到匹配日志内容）' : '（文件为空）'}</Typography.Text>
+                ) : (
+                  lines.map((line, index) => (
+                    <React.Fragment key={`${selected.name}-${index}`}>
+                      <span
+                        ref={(node) => {
+                          lineRefs.current[index] = node;
+                        }}
+                        style={{
+                          display: 'block',
+                          background: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index
+                            ? 'var(--semi-color-primary-light-default)'
+                            : 'transparent',
+                          borderLeft: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index
+                            ? '3px solid var(--semi-color-primary)'
+                            : '3px solid transparent',
+                          paddingLeft: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index ? 6 : 0,
+                          borderRadius: 4,
+                        }}
+                      >
+                        {renderHighlightedLine(line)}
+                      </span>
+                      {index < lines.length - 1 ? '\n' : null}
+                    </React.Fragment>
+                  ))
+                )}
               </pre>
             )}
             </>
