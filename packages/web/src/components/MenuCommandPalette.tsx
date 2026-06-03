@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '@douyinfe/semi-ui';
+import { match as pinyinMatch } from 'pinyin-pro';
 import { Search, Clock, Hash } from 'lucide-react';
 import { renderLucideIcon } from '@/utils/icons';
 import type { FlatMenuItem } from './MenuSearchInput';
@@ -62,11 +63,16 @@ export default function MenuCommandPalette({ menus, open, onClose }: Props) {
       if (!q.trim()) return [];
       const lower = q.toLowerCase();
       return menus
-        .filter(
-          (m) =>
+        .filter((m) => {
+          const textMatch =
             m.title.toLowerCase().includes(lower) ||
-            m.breadcrumb.some((b) => b.toLowerCase().includes(lower))
-        )
+            m.breadcrumb.some((b) => b.toLowerCase().includes(lower));
+          if (textMatch) return true;
+          return (
+            pinyinMatch(m.title, q, { precision: 'start' }) !== null ||
+            m.breadcrumb.some((b) => pinyinMatch(b, q, { precision: 'start' }) !== null)
+          );
+        })
         .slice(0, 10);
     },
     [menus]

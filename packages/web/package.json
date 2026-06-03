@@ -35,6 +35,7 @@
     "fflate": "^0.8.3",
     "lucide-react": "^1.17.0",
     "monaco-editor": "^0.55.1",
+    "pinyin-pro": "^3.28.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.16.0",
