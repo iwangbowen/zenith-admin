@@ -228,6 +228,53 @@ body {
   border-top: 1px solid var(--semi-color-border);
 }
 
+.table-size-panel {
+  padding: 8px 12px 10px;
+  min-width: 100px;
+}
+
+.table-size-panel-title {
+  margin-bottom: 8px;
+  color: var(--semi-color-text-0);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.table-display-settings-panel {
+  width: 200px;
+  padding: 10px 12px;
+}
+
+.table-display-settings-title {
+  margin-bottom: 10px;
+  color: var(--semi-color-text-0);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.table-display-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.table-display-settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--semi-color-text-1);
+}
+
+.table-display-settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
 .configurable-table .semi-table-tbody > .semi-table-row.configurable-table-row--striped:not(.semi-table-row-selected) > .semi-table-row-cell {
   background-color: var(--semi-color-fill-0);
 }

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePreferences } from '@/hooks/usePreferences';
-import { Button, Checkbox, Dropdown, Space, Table } from '@douyinfe/semi-ui';
-import { RotateCcw, Settings2 } from 'lucide-react';
+import { Button, Checkbox, Dropdown, Radio, RadioGroup, Space, Switch, Table } from '@douyinfe/semi-ui';
+import { RotateCcw, Rows3, Settings, Settings2 } from 'lucide-react';
 import type { ColumnProps, Data, TableProps } from '@douyinfe/semi-ui/lib/es/table';
+import type { TableSizePreference } from '@/hooks/usePreferences';
 
 type TableRecord = Data;
 type ConfigurableColumn<RecordType extends TableRecord> = ColumnProps<RecordType> & {
@@ -13,6 +14,38 @@ interface ColumnOption {
   key: string;
   title: string;
   alwaysVisible: boolean;
+}
+
+interface TableDisplaySettings {
+  bordered?: boolean;
+  striped?: boolean;
+  size?: TableSizePreference;
+}
+
+function readTableDisplaySettings(key: string): TableDisplaySettings {
+  if (typeof globalThis.window === 'undefined') return {};
+  try {
+    const raw = globalThis.localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as TableDisplaySettings;
+  } catch {
+    return {};
+  }
+}
+
+function writeTableDisplaySettings(key: string, settings: TableDisplaySettings) {
+  if (typeof globalThis.window === 'undefined') return;
+  try {
+    if (Object.keys(settings).length === 0) {
+      globalThis.localStorage.removeItem(key);
+      return;
+    }
+    globalThis.localStorage.setItem(key, JSON.stringify(settings));
+  } catch {
+    // localStorage may be unavailable in private mode
+  }
 }
 
 interface ConfigurableTableProps<RecordType extends TableRecord = TableRecord> extends TableProps<RecordType> {
@@ -164,9 +197,6 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   const { preferences } = usePreferences();
   const { bordered, className, onRow, size, ...restTableProps } = tableProps;
   const effectiveColumnSettings = (preferences.showTableColumnSettings ?? true) && columnSettings;
-  const effectiveBordered = preferences.tableBordered ?? bordered;
-  const effectiveStriped = preferences.tableStriped ?? false;
-  const effectiveSize = preferences.tableSize ?? size;
   const rawColumns = useMemo(() => (columns ?? []) as ConfigurableColumn<RecordType>[], [columns]);
   const alwaysVisibleKeys = useMemo(
     () => new Set([...DEFAULT_ALWAYS_VISIBLE_KEYS, ...alwaysVisibleColumnKeys].map((key) => key.toLowerCase())),
@@ -180,11 +210,22 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
     () => columnSettingsKey ?? getDefaultStorageKey(columnOptions.map((option) => option.key)),
     [columnOptions, columnSettingsKey],
   );
+  const tableDisplayKey = useMemo(() => `${storageKey}:display`, [storageKey]);
+
   const [hiddenKeys, setHiddenKeys] = useState<string[]>(() => readHiddenKeys(storageKey));
+  const [tableSettings, setTableSettings] = useState<TableDisplaySettings>(() => readTableDisplaySettings(tableDisplayKey));
 
   useEffect(() => {
     setHiddenKeys(readHiddenKeys(storageKey));
   }, [storageKey]);
+
+  useEffect(() => {
+    setTableSettings(readTableDisplaySettings(tableDisplayKey));
+  }, [tableDisplayKey]);
+
+  const effectiveBordered = tableSettings.bordered ?? preferences.tableBordered ?? bordered;
+  const effectiveStriped = tableSettings.striped ?? preferences.tableStriped ?? false;
+  const effectiveSize = tableSettings.size ?? preferences.tableSize ?? size;
 
   const updateHiddenKeys = useCallback((updater: (prev: string[]) => string[]) => {
     setHiddenKeys((prev) => {
@@ -193,6 +234,14 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
       return next;
     });
   }, [storageKey]);
+
+  const updateTableSettings = useCallback((partial: Partial<TableDisplaySettings>) => {
+    setTableSettings((prev) => {
+      const next = { ...prev, ...partial };
+      writeTableDisplaySettings(tableDisplayKey, next);
+      return next;
+    });
+  }, [tableDisplayKey]);
 
   const configurableOptions = useMemo(
     () => columnOptions.filter((option) => !option.alwaysVisible),
@@ -223,18 +272,26 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
     updateHiddenKeys(() => []);
   }, [updateHiddenKeys]);
 
+  const handleResetDisplaySettings = useCallback(() => {
+    setTableSettings({});
+    writeTableDisplaySettings(tableDisplayKey, {});
+  }, [tableDisplayKey]);
+
+  const stopPropagation = (event: React.MouseEvent | React.KeyboardEvent) => event.stopPropagation();
+  const stopKeyPropagation = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
   const settingsPanel = (
     <div
       className="column-settings-popover"
       role="button"
       tabIndex={0}
-      onClick={(event) => event.stopPropagation()}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
+      onClick={stopPropagation}
+      onKeyDown={stopKeyPropagation}
     >
       <div className="column-settings-title">列表列配置</div>
       <Space vertical align="start" className="column-settings-list">
@@ -264,17 +321,92 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
     </div>
   );
 
+  const sizePanelContent = (
+    <div
+      className="table-size-panel"
+      role="button"
+      tabIndex={0}
+      onClick={stopPropagation}
+      onKeyDown={stopKeyPropagation}
+    >
+      <div className="table-size-panel-title">表格尺寸</div>
+      <RadioGroup
+        direction="vertical"
+        value={effectiveSize ?? 'small'}
+        onChange={(e) => updateTableSettings({ size: e.target.value as TableSizePreference })}
+      >
+        <Radio value="small">紧凑</Radio>
+        <Radio value="middle">适中</Radio>
+        <Radio value="default">宽松</Radio>
+      </RadioGroup>
+    </div>
+  );
+
+  const displaySettingsPanelContent = (
+    <div
+      className="table-display-settings-panel"
+      role="button"
+      tabIndex={0}
+      onClick={stopPropagation}
+      onKeyDown={stopKeyPropagation}
+    >
+      <div className="table-display-settings-title">表格显示</div>
+      <div className="table-display-settings-list">
+        <div className="table-display-settings-item">
+          <span>显示表格边框</span>
+          <Switch size="small" checked={!!effectiveBordered} onChange={(checked) => updateTableSettings({ bordered: checked })} />
+        </div>
+        <div className="table-display-settings-item">
+          <span>启用斑马纹</span>
+          <Switch size="small" checked={!!effectiveStriped} onChange={(checked) => updateTableSettings({ striped: checked })} />
+        </div>
+      </div>
+      <div className="table-display-settings-footer">
+        <Button
+          theme="borderless"
+          size="small"
+          icon={<RotateCcw size={14} />}
+          onClick={handleResetDisplaySettings}
+        >
+          恢复默认
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="configurable-table">
-      {effectiveColumnSettings && configurableOptions.length > 0 && (
-        <div className="configurable-table-actions">
+      <div className="configurable-table-actions">
+        {effectiveColumnSettings && configurableOptions.length > 0 && (
           <Dropdown trigger="click" render={settingsPanel}>
-            <Button type="tertiary" theme="borderless" icon={<Settings2 size={14} />}>
-              {columnSettingsLabel}
-            </Button>
+            <Button
+              type="tertiary"
+              theme="borderless"
+              icon={<Settings2 size={14} />}
+              aria-label={columnSettingsLabel}
+              title={columnSettingsLabel}
+            />
           </Dropdown>
-        </div>
-      )}
+        )}
+        <Dropdown trigger="click" render={sizePanelContent}>
+          <Button
+            type="tertiary"
+            theme="borderless"
+            icon={<Rows3 size={14} />}
+            aria-label="表格尺寸"
+            title="表格尺寸"
+          />
+        </Dropdown>
+        <Dropdown trigger="click" render={displaySettingsPanelContent}>
+          <Button
+            type="tertiary"
+            theme="borderless"
+            icon={<Settings size={14} />}
+            aria-label="表格显示设置"
+            title="表格显示设置"
+          />
+        </Dropdown>
+      </div>
       <Table<RecordType>
         {...restTableProps}
         bordered={effectiveBordered}
