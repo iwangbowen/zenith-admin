@@ -1,4 +1,4 @@
-import { eq, like, and, desc } from 'drizzle-orm';
+import { eq, like, and, desc, lt } from 'drizzle-orm';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { cronJobs, cronJobLogs } from '../db/schema';
@@ -129,4 +129,13 @@ export async function listCronJobLogs(jobId: number, q: { page: number; pageSize
     withPagination(db.select().from(cronJobLogs).where(eq(cronJobLogs.jobId, jobId)).orderBy(desc(cronJobLogs.startedAt)).$dynamic(), page, pageSize),
   ]);
   return { list: rows.map(mapLog), total, page, pageSize };
+}
+
+export async function clearCronJobLogs(months: number, jobId?: number) {
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  const conditions: ReturnType<typeof eq>[] = [lt(cronJobLogs.startedAt, cutoff)];
+  if (jobId) conditions.push(eq(cronJobLogs.jobId, jobId));
+  const result = await db.delete(cronJobLogs).where(and(...conditions));
+  return result.rowCount ?? 0;
 }

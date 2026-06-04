@@ -18,7 +18,7 @@ import {
   Tooltip,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, ScrollText, MoreHorizontal } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, ScrollText, MoreHorizontal, Trash2 } from 'lucide-react';
 import type { CronJob, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -79,6 +79,7 @@ export default function CronJobsPage() {
   const [allLogsJobFilter, setAllLogsJobFilter] = useState<number | null>(null);
   const [switchLoadingIds, setSwitchLoadingIds] = useState<Set<number>>(new Set());
   const [openMoreId, setOpenMoreId] = useState<number | null>(null);
+  const [clearLogsLoading, setClearLogsLoading] = useState(false);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
@@ -231,6 +232,37 @@ export default function CronJobsPage() {
     setLogsPage(1);
     setLogsDrawerVisible(true);
     void fetchJobLogs(record.id, 1);
+  };
+
+  const clearLogsLabels: Record<number, string> = { 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
+
+  const handleClearLogs = (months: number, jobId?: number | null) => {
+    Modal.confirm({
+      title: '确认清除日志',
+      content: `将删除 ${clearLogsLabels[months]} 前的执行日志，此操作不可恢复，确认继续吗？`,
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        setClearLogsLoading(true);
+        try {
+          const url = jobId !== null && jobId !== undefined
+            ? `/api/cron-jobs/${jobId}/logs/clean?months=${months}`
+            : `/api/cron-jobs/logs/clean?months=${months}`;
+          const res = await request.delete(url);
+          if (res.code === 0) {
+            Toast.success(res.message || '清除成功');
+            if (jobId !== null && jobId !== undefined) {
+              setLogsPage(1);
+              void fetchJobLogs(jobId, 1);
+            } else {
+              setAllLogsPage(1);
+              void fetchAllLogs(1, allLogsJobFilter);
+            }
+          }
+        } finally {
+          setClearLogsLoading(false);
+        }
+      },
+    });
   };
 
   const formInitValues = editingJob
@@ -525,6 +557,23 @@ export default function CronJobsPage() {
             showClear
             optionList={data.map((job) => ({ value: job.id, label: job.name }))}
           />
+          {hasPermission('system:cronjob:delete') && (
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              render={
+                <Dropdown.Menu>
+                  {([1, 3, 6, 12] as const).map((m) => (
+                    <Dropdown.Item key={m} onClick={() => handleClearLogs(m, null)}>
+                      清除{clearLogsLabels[m]}前的日志
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              }
+            >
+              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearLogsLoading}>清除日志</Button>
+            </Dropdown>
+          )}
         </div>
         <Table
           bordered
@@ -598,6 +647,25 @@ export default function CronJobsPage() {
         width={900}
         closeOnEsc
       >
+        {hasPermission('system:cronjob:delete') && (
+          <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              render={
+                <Dropdown.Menu>
+                  {([1, 3, 6, 12] as const).map((m) => (
+                    <Dropdown.Item key={m} onClick={() => handleClearLogs(m, logsJobId)}>
+                      清除{clearLogsLabels[m]}前的日志
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              }
+            >
+              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearLogsLoading}>清除日志</Button>
+            </Dropdown>
+          </div>
+        )}
         <Table
           bordered
           size="small"

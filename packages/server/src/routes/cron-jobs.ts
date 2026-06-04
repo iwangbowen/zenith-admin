@@ -15,6 +15,7 @@ import {
   exportCronJobs,
   listAllCronJobLogs,
   listCronJobLogs,
+  clearCronJobLogs,
   getCronJobBeforeAudit,
   getCronJob,
 } from '../services/cron-jobs.service';
@@ -182,6 +183,41 @@ const idLogsRoute = defineOpenAPIRoute({
   },
 });
 
-cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, exportRouteDef, logsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute] as const);
+const clearLogsMonthsQuery = z.object({
+  months: z.coerce.number().int().refine((v) => [1, 3, 6, 12].includes(v), { message: 'months 必须为 1、3、6 或 12' }),
+}).openapi('ClearLogsQuery');
+
+const clearAllLogsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/logs/clean', tags: ['CronJobs'], summary: '清除所有执行日志',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:cronjob:delete', audit: { module: '定时任务', description: '清除所有执行日志' } })] as const,
+    request: { query: clearLogsMonthsQuery },
+    responses: { ...commonErrorResponses, ...okMsg('清除成功') },
+  }),
+  handler: async (c) => {
+    const { months } = c.req.valid('query');
+    const count = await clearCronJobLogs(months);
+    return c.json(okBody(null, `已清除 ${count} 条日志`), 200);
+  },
+});
+
+const clearJobLogsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/{id}/logs/clean', tags: ['CronJobs'], summary: '清除单任务执行日志',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:cronjob:delete', audit: { module: '定时任务', description: '清除单任务执行日志' } })] as const,
+    request: { params: IdParam, query: clearLogsMonthsQuery },
+    responses: { ...commonErrorResponses, ...okMsg('清除成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { months } = c.req.valid('query');
+    const count = await clearCronJobLogs(months, id);
+    return c.json(okBody(null, `已清除 ${count} 条日志`), 200);
+  },
+});
+
+cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, exportRouteDef, logsRoute, clearAllLogsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute, clearJobLogsRoute] as const);
 
 export default cronJobsRoute;

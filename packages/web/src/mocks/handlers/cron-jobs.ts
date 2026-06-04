@@ -118,6 +118,24 @@ export const cronJobsHandlers = [
     return HttpResponse.json({ code: 0, message: '更新成功', data: job });
   }),
 
+  // 清除所有执行日志（必须在 DELETE /:id 之前声明）
+  http.delete('/api/cron-jobs/logs/clean', ({ request }) => {
+    const url = new URL(request.url);
+    const months = Number(url.searchParams.get('months')) || 1;
+    const labels: Record<number, string> = { 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
+    return HttpResponse.json({ code: 0, message: `已清除 ${labels[months] ?? months + '个月'} 前的日志`, data: null });
+  }),
+
+  // 清除单任务执行日志（必须在 DELETE /:id 之前声明）
+  http.delete('/api/cron-jobs/:id/logs/clean', ({ params, request }) => {
+    const url = new URL(request.url);
+    const months = Number(url.searchParams.get('months')) || 1;
+    const job = mockCronJobs.find((j) => j.id === Number(params.id));
+    if (!job) return HttpResponse.json({ code: 404, message: '任务不存在', data: null });
+    const labels: Record<number, string> = { 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
+    return HttpResponse.json({ code: 0, message: `已清除「${job.name}」${labels[months] ?? months + '个月'} 前的日志`, data: null });
+  }),
+
   // 删除任务
   http.delete('/api/cron-jobs/:id', ({ params }) => {
     const index = mockCronJobs.findIndex((j) => j.id === Number(params.id));
