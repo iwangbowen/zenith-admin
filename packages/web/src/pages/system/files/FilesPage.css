@@ -81,6 +81,19 @@
   padding: 4px;
 }
 
+/* 覆盖式预览按钮：透明覆盖整张卡片，z-index 低于复选框/操作按钮 */
+.files-grid-card__preview-btn {
+  position: absolute;
+  inset: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  z-index: 0;
+  border-radius: inherit;
+}
+
 .files-grid-card:hover {
   background: var(--semi-color-fill-0);
   border-color: var(--semi-color-border);

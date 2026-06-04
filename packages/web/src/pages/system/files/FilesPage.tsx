@@ -110,15 +110,20 @@ function FileGridCard({
     <>
       <div
         className={`files-grid-card${selected ? ' files-grid-card--selected' : ''}`}
-        onClick={() => { if (isPreviewable) onPreview(file); }}
-        style={{ cursor: isPreviewable ? 'pointer' : 'default' }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setCtxPos({ x: e.clientX, y: e.clientY });
-        }}
       >
+        <button
+          type="button"
+          className="files-grid-card__preview-btn"
+          aria-label={isPreviewable ? `预览 ${file.originalName}` : file.originalName}
+          style={{ cursor: isPreviewable ? 'pointer' : 'default' }}
+          onClick={() => { if (isPreviewable) onPreview(file); }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setCtxPos({ x: e.clientX, y: e.clientY });
+          }}
+        />
         {canSelect && (
-          <div className="files-grid-card__checkbox" onClick={(e) => e.stopPropagation()}>
+          <div className="files-grid-card__checkbox">
             <Checkbox
               checked={selected}
               onChange={(e) => onSelect(file.id, !!(e.target as EventTarget & { checked?: boolean }).checked)}
