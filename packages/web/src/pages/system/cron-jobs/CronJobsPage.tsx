@@ -590,9 +590,9 @@ export default function CronJobsPage() {
               render: renderEllipsis,
             },
             {
-              title: '第几次执行',
+              title: '执行次数',
               dataIndex: 'executionCount',
-              width: 100,
+              width: 90,
             },
             {
               title: '开始时间',
@@ -607,7 +607,7 @@ export default function CronJobsPage() {
               render: (v: string | null) => v ? formatDateTime(v) : '—',
             },
             {
-              title: '耗时(ms)',
+              title: '耗时 ms',
               dataIndex: 'durationMs',
               width: 90,
               render: (v: number | null) => v ?? '—',
@@ -675,9 +675,9 @@ export default function CronJobsPage() {
           scroll={{ x: 'max-content' }}
           columns={[
             {
-              title: '第几次执行',
+              title: '执行次数',
               dataIndex: 'executionCount',
-              width: 100,
+              width: 90,
             },
             {
               title: '开始时间',
@@ -692,7 +692,7 @@ export default function CronJobsPage() {
               render: (v: string | null) => v ? formatDateTime(v) : '—',
             },
             {
-              title: '耗时(ms)',
+              title: '耗时 ms',
               dataIndex: 'durationMs',
               width: 90,
               render: (v: number | null) => v ?? '—',
