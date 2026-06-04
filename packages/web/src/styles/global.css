@@ -322,6 +322,13 @@ body {
   gap: 12px;
 }
 
+/* Full-height variant: constrains the page to the viewport height so inner panels can scroll independently */
+.page-container--stretch {
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
 @media (max-width: 479px) {
   .page-container {
     padding: 8px;

@@ -556,7 +556,7 @@ export default function DictsPage() {
   );
 
   return (
-    <div className="page-container">
+    <div className="page-container page-container--stretch">
       <MasterDetailLayout
         master={dictMaster}
         detail={dictDetail}
