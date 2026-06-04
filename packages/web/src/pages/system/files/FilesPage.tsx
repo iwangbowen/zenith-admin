@@ -18,7 +18,7 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, Search, RotateCcw, Trash2, FolderDown, MoreHorizontal, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, Eye, Download } from 'lucide-react';
+import { Plus, Search, RotateCcw, Trash2, FolderDown, MoreHorizontal, LayoutGrid, List as ListIcon, CheckCircle2, XCircle } from 'lucide-react';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -95,107 +95,95 @@ interface FileGridCardProps {
   onCopyUrl: (file: ManagedFile) => void;
   canDelete: boolean;
   previewLoading: boolean;
-  downloadLoading: boolean;
 }
 
 function FileGridCard({
   file, selected, canSelect, onSelect,
   onPreview, onDownload, onDelete, onDetail, onCopyUrl,
-  canDelete, previewLoading, downloadLoading,
+  canDelete, previewLoading,
 }: Readonly<FileGridCardProps>) {
+  const [ctxPos, setCtxPos] = useState<{ x: number; y: number } | null>(null);
   const isImage = file.mimeType?.startsWith('image/');
   const isPreviewable = isImage || file.mimeType?.startsWith('audio/') || file.mimeType?.startsWith('video/') || file.mimeType === 'application/pdf';
   const ext = file.originalName.includes('.') ? file.originalName.split('.').pop()?.toUpperCase() : '';
   return (
-    <div className={`files-grid-card${selected ? ' files-grid-card--selected' : ''}`}>
-      {canSelect && (
-        <div className="files-grid-card__checkbox">
-          <Checkbox
-            checked={selected}
-            onChange={(e) => onSelect(file.id, !!(e.target as EventTarget & { checked?: boolean }).checked)}
-          />
-        </div>
-      )}
-      <div className="files-grid-card__media-wrap">
-        <button
-          type="button"
-          aria-label={`预览 ${file.originalName}`}
-          className="files-grid-card__media"
-          onClick={() => onPreview(file)}
-        >
-          <span className="files-grid-card__icon">
-            {getFileTypeIcon(file.mimeType, 28)}
-          </span>
-          {ext && <span className="files-grid-card__type-badge">{ext}</span>}
-          {previewLoading && (
-            <div className="files-grid-card__media-overlay">
-              <Spin />
-            </div>
-          )}
-        </button>
-        <div className="files-grid-card__quick-actions">
-          {isPreviewable && (
-            <Tooltip content="预览" position="top">
-              <button type="button" className="files-grid-card__quick-btn" onClick={(e) => { e.stopPropagation(); onPreview(file); }}>
-                <Eye size={15} />
-              </button>
-            </Tooltip>
-          )}
-          <Tooltip content="下载" position="top">
-            <button type="button" className="files-grid-card__quick-btn" disabled={downloadLoading} onClick={(e) => { e.stopPropagation(); onDownload(file); }}>
-              <Download size={15} />
-            </button>
-          </Tooltip>
-        </div>
-      </div>
-      <div className="files-grid-card__info">
-        <Tooltip content={file.originalName} position="top">
-          <div className="files-grid-card__name">{file.originalName}</div>
-        </Tooltip>
-        <div className="files-grid-card__date">{formatDateTime(file.createdAt)}</div>
-        <div className="files-grid-card__meta">
-          <span>{formatFileSize(file.size)}</span>
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            clickToHide
-            render={
-              <Dropdown.Menu>
-                <Dropdown.Item onClick={() => onDownload(file)}>下载</Dropdown.Item>
-                <Dropdown.Item onClick={() => onDetail(file)}>详情</Dropdown.Item>
-                <Dropdown.Item onClick={() => onCopyUrl(file)}>复制链接</Dropdown.Item>
-                {canDelete && (
-                  <>
-                    <Dropdown.Divider />
-                    <Dropdown.Item
-                      type="danger"
-                      onClick={() => {
-                        Modal.confirm({
-                          title: '确认删除此文件？',
-                          content: '删除文件记录后，将同步尝试删除实际存储对象。',
-                          okButtonProps: { type: 'danger', theme: 'solid' },
-                          onOk: () => onDelete(file),
-                        });
-                      }}
-                    >删除</Dropdown.Item>
-                  </>
-                )}
-              </Dropdown.Menu>
-            }
-          >
-            <span style={{ display: 'inline-block' }}>
-              <Button
-                theme="borderless"
-                size="small"
-                icon={<MoreHorizontal size={14} />}
-                loading={downloadLoading}
-                onClick={(e) => { e.nativeEvent.stopImmediatePropagation(); }}
-              />
+    <>
+      <div
+        className={`files-grid-card${selected ? ' files-grid-card--selected' : ''}`}
+        onClick={() => { if (isPreviewable) onPreview(file); }}
+        style={{ cursor: isPreviewable ? 'pointer' : 'default' }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setCtxPos({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        {canSelect && (
+          <div className="files-grid-card__checkbox" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={selected}
+              onChange={(e) => onSelect(file.id, !!(e.target as EventTarget & { checked?: boolean }).checked)}
+            />
+          </div>
+        )}
+        <div className="files-grid-card__media-wrap">
+          <div className="files-grid-card__media">
+            <span className="files-grid-card__icon">
+              {getFileTypeIcon(file.mimeType, 28)}
             </span>
-          </Dropdown>
+            {ext && <span className="files-grid-card__type-badge">{ext}</span>}
+            {previewLoading && (
+              <div className="files-grid-card__media-overlay">
+                <Spin />
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="files-grid-card__info">
+          <Tooltip content={file.originalName} position="top">
+            <div className="files-grid-card__name">{file.originalName}</div>
+          </Tooltip>
+          <div className="files-grid-card__date">{formatDateTime(file.createdAt)}</div>
+          <div className="files-grid-card__meta">
+            <span>{formatFileSize(file.size)}</span>
+          </div>
         </div>
       </div>
-    </div>
+      {ctxPos && (
+        <Dropdown
+          trigger="click"
+          visible
+          clickToHide
+          position="bottomLeft"
+          onVisibleChange={(v) => { if (!v) setCtxPos(null); }}
+          render={
+            <Dropdown.Menu>
+              {isPreviewable && <Dropdown.Item onClick={() => onPreview(file)}>预览</Dropdown.Item>}
+              <Dropdown.Item onClick={() => onDownload(file)}>下载</Dropdown.Item>
+              <Dropdown.Item onClick={() => onDetail(file)}>详情</Dropdown.Item>
+              <Dropdown.Item onClick={() => onCopyUrl(file)}>复制链接</Dropdown.Item>
+              {canDelete && (
+                <>
+                  <Dropdown.Divider />
+                  <Dropdown.Item
+                    type="danger"
+                    onClick={() => {
+                      Modal.confirm({
+                        title: '确认删除此文件？',
+                        content: '删除文件记录后，将同步尝试删除实际存储对象。',
+                        okButtonProps: { type: 'danger', theme: 'solid' },
+                        onOk: () => onDelete(file),
+                      });
+                    }}
+                  >删除</Dropdown.Item>
+                </>
+              )}
+            </Dropdown.Menu>
+          }
+        >
+          <span style={{ position: 'fixed', left: ctxPos.x, top: ctxPos.y, width: 1, height: 1 }} />
+        </Dropdown>
+      )}
+    </>
   );
 }
 
@@ -888,19 +876,20 @@ export default function FilesPage() {
             const allSelected = selectedOnPage.length === currentPageIds.length;
             const someSelected = selectedOnPage.length > 0 && !allSelected;
             return (
-              <div className="files-grid-select-bar">
+              <div className="files-grid-select-bar" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Checkbox
                   checked={allSelected}
                   indeterminate={someSelected}
                   onChange={(e) => handleGridSelectAll(!!(e.target as EventTarget & { checked?: boolean }).checked)}
-                >
+                />
+                <span style={{ fontSize: 14, color: 'var(--semi-color-text-0)' }}>
                   全选当前页
                   {selectedOnPage.length > 0 && (
                     <span style={{ marginLeft: 4, color: 'var(--semi-color-text-2)', fontWeight: 400 }}>
                       ({selectedOnPage.length}/{currentPageIds.length})
                     </span>
                   )}
-                </Checkbox>
+                </span>
               </div>
             );
           })()}
@@ -932,7 +921,6 @@ export default function FilesPage() {
                   onCopyUrl={handleCopyUrl}
                   canDelete={hasPermission('system:file:delete')}
                   previewLoading={previewLoadingId === file.id}
-                  downloadLoading={downloadLoadingId === file.id}
                 />
               </List.Item>
             )}
