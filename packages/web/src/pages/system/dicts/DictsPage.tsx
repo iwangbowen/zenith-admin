@@ -18,6 +18,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react';
 import type { Dict, DictItem, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -310,6 +311,7 @@ export default function DictsPage() {
           <div className="dict-list-item-main">
             <div className="dict-list-item-title" title={dict.name}>{dict.name}</div>
             <div className="dict-list-item-code" title={dict.code}>{dict.code}</div>
+            <div className="dict-list-item-date">{formatDateTime(dict.createdAt)}</div>
           </div>
         }
         extra={

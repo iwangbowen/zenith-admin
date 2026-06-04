@@ -97,7 +97,8 @@
 }
 
 .dict-list-item-title,
-.dict-list-item-code {
+.dict-list-item-code,
+.dict-list-item-date {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -112,6 +113,11 @@
 .dict-list-item-code {
   font-size: 12px;
   color: var(--semi-color-text-2);
+}
+
+.dict-list-item-date {
+  font-size: 11px;
+  color: var(--semi-color-text-3);
 }
 
 .dict-empty {
