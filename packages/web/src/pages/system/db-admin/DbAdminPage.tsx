@@ -305,7 +305,7 @@ export default function DbAdminPage() {
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tableFilter, setTableFilter] = useState('');
   const [selected, setSelected] = useState<TableItem | null>(null);
-  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+
   const [innerTab, setInnerTab] = useState<string>('structure');
   const [structure, setStructure] = useState<TableStructure | null>(null);
   const [structureLoading, setStructureLoading] = useState(false);
@@ -1247,9 +1247,7 @@ export default function DbAdminPage() {
                                     <Space spacing={2} style={{ flexShrink: 0, alignItems: 'center' }}>
                                       <Text type="tertiary" size="small" className="db-admin-table-size">{t.sizeText}</Text>
                                       <Dropdown
-                                        trigger="custom"
-                                        visible={openMenuKey === `${t.schema}.${t.name}`}
-                                        onVisibleChange={(vis) => { if (!vis) setOpenMenuKey(null); }}
+                                        trigger="click"
                                         position="bottomLeft"
                                         render={renderTableContextMenu(t)}
                                         getPopupContainer={() => document.body}
@@ -1261,7 +1259,7 @@ export default function DbAdminPage() {
                                           size="small"
                                           theme="borderless"
                                           icon={<MoreHorizontal size={14} />}
-                                          onClick={(e) => { e.stopPropagation(); setOpenMenuKey(`${t.schema}.${t.name}`); }}
+                                          onClick={(e) => { e.stopPropagation(); }}
                                           style={{ padding: '0 2px', minWidth: 24, height: 22 }}
                                         />
                                       </Dropdown>
