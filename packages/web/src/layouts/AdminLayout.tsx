@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
-import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
+import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
-import { Bell, Building2, Check, Info, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Bell, Building2, Check, Info, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -23,6 +23,8 @@ import QuickChatButton from '@/components/QuickChatButton';
 import AppLogo from '@/components/AppLogo';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import { TopNavWithOverflow } from './TopNavWithOverflow';
+import { LockScreen } from '@/components/LockScreen';
+import { useLockScreen } from '@/hooks/useLockScreen';
 import './AdminLayout.css';
 
 // 主题图标
@@ -251,6 +253,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     preferences.enableTabs && (preferences.keepTabs ?? true),
   );
   const [prefsVisible, setPrefsVisible] = useState(false);
+  const [lockPasswordModalVisible, setLockPasswordModalVisible] = useState(false);
+  const [lockPasswordModalMode, setLockPasswordModalMode] = useState<'set' | 'change'>('set');
+  const [newLockPassword, setNewLockPassword] = useState('');
+  const [confirmLockPassword, setConfirmLockPassword] = useState('');
+  const { isLocked, lock, unlock, setLockPassword, clearLockPassword, hasPassword } = useLockScreen();
   const dragSrcKey = useRef<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [exitingTabKeys, setExitingTabKeys] = useState<Set<string>>(new Set());
@@ -471,7 +478,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         position: 'topRight',
       });
       // Auto-logout after a brief delay so the user can see the notification
-      setTimeout(() => onLogout(), 2000);
+      setTimeout(() => { clearLockPassword(); onLogout(); }, 2000);
     }
   }, [onLogout, fetchInAppMessages]);
 
@@ -530,6 +537,18 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       setOpenKeys((prev) => Array.from(new Set([...prev, ...currentSectionKeys])));
     }
   }, [collapsed, currentSectionKeys]);
+
+  // ─── 锁屏快捷键 Alt+L ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.key === 'l' && (preferences.enableLockScreen ?? false) && hasPassword()) {
+        e.preventDefault();
+        lock();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [preferences.enableLockScreen, hasPassword, lock]);
 
   const navItems = useMemo(
     () => menuTree.map(menuToNavItem).filter((item): item is NavItem => item !== null).map((item) => {
@@ -1010,6 +1029,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             </Dropdown.Item>
             <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={() => navigate('/announcements')}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}</Dropdown.Item>
             <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>
+            {(preferences.enableLockScreen ?? false) && hasPassword() && (
+              <Dropdown.Item icon={<Lock size={14} strokeWidth={1.5} />} onClick={() => lock()}>锁屏</Dropdown.Item>
+            )}
             <Dropdown.Divider />
             <Dropdown.Item
               icon={<LogOut size={14} strokeWidth={1.5} />}
@@ -1019,7 +1041,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 okText: '退出',
                 cancelText: '取消',
                 okButtonProps: { type: 'danger', theme: 'solid' },
-                onOk: () => { disconnectWs(); onLogout(); },
+                onOk: () => { disconnectWs(); clearLockPassword(); onLogout(); },
               })}
             >
               退出登录
@@ -1538,6 +1560,47 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 <Switch checked={preferences.sidebarStickyScroll ?? true} onChange={(v) => setPreferences({ sidebarStickyScroll: v })} />
               </div>
 
+              {/* ── 锁屏 ── */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  开启屏幕锁
+                  <Tooltip content="开启后可通过 Alt+L 快捷键或用户菜单锁定屏幕，解锁需输入密码" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch
+                  checked={preferences.enableLockScreen ?? false}
+                  onChange={(v) => {
+                    if (v) {
+                      setLockPasswordModalMode('set');
+                      setNewLockPassword('');
+                      setConfirmLockPassword('');
+                      setLockPasswordModalVisible(true);
+                    } else {
+                      clearLockPassword();
+                      setPreferences({ enableLockScreen: false });
+                    }
+                  }}
+                />
+              </div>
+              {(preferences.enableLockScreen ?? false) && hasPassword() && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>锁屏密码</span>
+                  <Button
+                    size="small"
+                    theme="light"
+                    onClick={() => {
+                      setLockPasswordModalMode('change');
+                      setNewLockPassword('');
+                      setConfirmLockPassword('');
+                      setLockPasswordModalVisible(true);
+                    }}
+                  >
+                    修改密码
+                  </Button>
+                </div>
+              )}
+
               <Divider style={{ margin: '0 -24px' }} />
 
               {/* ── 表格设置 ── */}
@@ -1679,8 +1742,71 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
             </div>
           </SideSheet>
+
+          {/* ─── 锁屏密码设置 Modal ─── */}
+          <Modal
+            title={lockPasswordModalMode === 'set' ? '设置锁屏密码' : '修改锁屏密码'}
+            visible={lockPasswordModalVisible}
+            onCancel={() => {
+              setLockPasswordModalVisible(false);
+              setNewLockPassword('');
+              setConfirmLockPassword('');
+            }}
+            onOk={() => {
+              if (!newLockPassword) {
+                Toast.warning('请输入密码');
+                return;
+              }
+              if (newLockPassword.length < 4) {
+                Toast.warning('密码长度不能少于 4 位');
+                return;
+              }
+              if (newLockPassword !== confirmLockPassword) {
+                Toast.warning('两次输入的密码不一致');
+                return;
+              }
+              setLockPassword(newLockPassword);
+              setPreferences({ enableLockScreen: true });
+              setLockPasswordModalVisible(false);
+              setNewLockPassword('');
+              setConfirmLockPassword('');
+              Toast.success(lockPasswordModalMode === 'set' ? '锁屏密码设置成功' : '锁屏密码修改成功');
+            }}
+            okText="确定"
+            cancelText="取消"
+            closeOnEsc
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Input
+                type="password"
+                placeholder="请输入密码（至少 4 位）"
+                value={newLockPassword}
+                onChange={(v) => setNewLockPassword(v)}
+              />
+              <Input
+                type="password"
+                placeholder="请再次输入密码"
+                value={confirmLockPassword}
+                onChange={(v) => setConfirmLockPassword(v)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    (e.currentTarget.closest('.semi-modal')?.querySelector('.semi-button-primary') as HTMLButtonElement | null)?.click();
+                  }
+                }}
+              />
+            </div>
+          </Modal>
         </div>
       </div>
+
+      {/* ===== 锁屏遮罩 ===== */}
+      {isLocked && (
+        <LockScreen
+          user={user}
+          onUnlock={unlock}
+          onReLogin={() => { clearLockPassword(); disconnectWs(); onLogout(); }}
+        />
+      )}
 
       {/* ===== 快捷聊天浮动按钮 ===== */}
       {quickChatEnabled && (preferences.showQuickChat ?? true) && <QuickChatButton onHide={() => setPreferences({ showQuickChat: false })} />}

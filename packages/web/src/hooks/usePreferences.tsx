@@ -34,6 +34,7 @@ export interface UserPreferences {
   tableBordered: boolean;
   tableStriped: boolean;
   tableSize: TableSizePreference;
+  enableLockScreen: boolean;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -62,6 +63,7 @@ export const defaultPreferences: UserPreferences = {
   tableBordered: true,
   tableStriped: false,
   tableSize: 'small',
+  enableLockScreen: false,
 };
 
 export interface PreferencesContextValue {

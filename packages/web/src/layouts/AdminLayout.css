@@ -1503,3 +1503,122 @@
     display: none;
   }
 }
+
+/* =========================================================
+   锁屏遮罩
+   ========================================================= */
+.lock-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0c1a2e 100%);
+  backdrop-filter: blur(10px);
+}
+
+.lock-screen__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 320px;
+}
+
+.lock-screen__time {
+  font-size: 72px;
+  font-weight: 200;
+  letter-spacing: 4px;
+  color: #fff;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.lock-screen__colon {
+  animation: lock-blink 1s step-end infinite;
+}
+
+@keyframes lock-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.lock-screen__date {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.5px;
+}
+
+.lock-screen__user {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.lock-screen__username {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 500;
+}
+
+.lock-screen__form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 8px;
+}
+
+.lock-screen__form--shake {
+  animation: lock-shake 0.45s ease;
+}
+
+@keyframes lock-shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-8px); }
+  30% { transform: translateX(8px); }
+  45% { transform: translateX(-6px); }
+  60% { transform: translateX(6px); }
+  75% { transform: translateX(-3px); }
+  90% { transform: translateX(3px); }
+}
+
+.lock-screen__input-wrap {
+  position: relative;
+}
+
+.lock-screen__input-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.45);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.lock-screen__input .semi-input {
+  padding-left: 34px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+}
+
+.lock-screen__input .semi-input::placeholder {
+  color: rgba(255, 255, 255, 0.35) !important;
+}
+
+.lock-screen__input .semi-input:focus {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.lock-screen__error {
+  font-size: 12px;
+  color: var(--semi-color-danger);
+  margin-top: 4px;
+  text-align: center;
+}
