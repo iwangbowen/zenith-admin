@@ -404,6 +404,8 @@ export default function FileStorageConfigsPage() {
         dataSource={configs}
         rowKey="id"
         loading={loading}
+        onRefresh={fetchConfigs}
+        refreshLoading={loading}
         pagination={{
           currentPage: page,
           pageSize,

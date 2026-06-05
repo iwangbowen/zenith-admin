@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePreferences } from '@/hooks/usePreferences';
 import { Button, Checkbox, Dropdown, Radio, RadioGroup, Space, Switch, Table } from '@douyinfe/semi-ui';
-import { RotateCcw, Rows3, Settings, Settings2, Maximize2, Minimize2 } from 'lucide-react';
+import { RotateCcw, Rows3, Settings, Settings2, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import type { ColumnProps, Data, TableProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TableSizePreference } from '@/hooks/usePreferences';
 
@@ -53,6 +53,8 @@ interface ConfigurableTableProps<RecordType extends TableRecord = TableRecord> e
   columnSettingsKey?: string;
   alwaysVisibleColumnKeys?: string[];
   columnSettingsLabel?: string;
+  onRefresh?: () => void;
+  refreshLoading?: boolean;
 }
 
 const DEFAULT_ALWAYS_VISIBLE_KEYS = ['action', 'actions', 'operation', 'operations', 'operate'];
@@ -192,6 +194,8 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   columnSettingsKey,
   alwaysVisibleColumnKeys = [],
   columnSettingsLabel = '列设置',
+  onRefresh,
+  refreshLoading = false,
   ...tableProps
 }: Readonly<ConfigurableTableProps<RecordType>>) {
   const { preferences } = usePreferences();
@@ -388,6 +392,17 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   return (
     <div className={`configurable-table${isFullscreen ? ' configurable-table--fullscreen' : ''}`}>
       <div className="configurable-table-actions">
+        {onRefresh && (
+          <Button
+            type="tertiary"
+            theme="borderless"
+            icon={<RefreshCw size={14} className={refreshLoading ? 'spin' : ''} />}
+            aria-label="刷新"
+            title="刷新"
+            disabled={refreshLoading}
+            onClick={onRefresh}
+          />
+        )}
         {effectiveColumnSettings && configurableOptions.length > 0 && (
           <Dropdown trigger="click" render={settingsPanel}>
             <Button

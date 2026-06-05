@@ -663,6 +663,8 @@ export default function UsersPage() {
         columns={columns}
         dataSource={data?.list || []}
         loading={loading}
+        onRefresh={fetchUsers}
+        refreshLoading={loading}
         pagination={{
           currentPage: page,
           pageSize,

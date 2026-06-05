@@ -158,6 +158,8 @@ export default function OnlineSessionsPage() {
         columns={columns}
         dataSource={data}
         loading={loading}
+        onRefresh={fetchData}
+        refreshLoading={loading}
         rowKey="tokenId"
         pagination={{
           currentPage: page,

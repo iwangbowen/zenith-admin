@@ -257,6 +257,8 @@ export default function PositionsPage() {
         columns={columns}
         dataSource={data}
         loading={loading}
+        onRefresh={fetchPositions}
+        refreshLoading={loading}
         rowKey="id"
         pagination={{
           currentPage: page,

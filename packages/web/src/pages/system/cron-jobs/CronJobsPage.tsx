@@ -430,6 +430,8 @@ export default function CronJobsPage() {
         columns={columns}
         dataSource={data}
         loading={loading}
+        onRefresh={fetchData}
+        refreshLoading={loading}
         rowKey="id"
         pagination={{
           currentPage: page,

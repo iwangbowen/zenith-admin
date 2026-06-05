@@ -309,6 +309,8 @@ export default function OAuth2AppsPage() {
         columns={columns}
         dataSource={data?.list ?? []}
         loading={loading}
+        onRefresh={fetchData}
+        refreshLoading={loading}
         rowKey="id"
         size="small"
         empty="暂无数据"

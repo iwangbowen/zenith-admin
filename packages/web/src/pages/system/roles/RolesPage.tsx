@@ -365,6 +365,8 @@ export default function RolesPage() {
         dataSource={data}
         rowKey="id"
         loading={loading}
+        onRefresh={fetchRoles}
+        refreshLoading={loading}
         pagination={{
           currentPage: page,
           pageSize,

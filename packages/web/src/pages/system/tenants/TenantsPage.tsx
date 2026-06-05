@@ -234,6 +234,8 @@ export default function TenantsPage() {
         dataSource={data}
         rowKey="id"
         loading={loading}
+        onRefresh={fetchData}
+        refreshLoading={loading}
         pagination={{
           currentPage: page,
           pageSize,

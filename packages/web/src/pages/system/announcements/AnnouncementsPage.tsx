@@ -747,6 +747,8 @@ export default function AnnouncementsPage() {
         columns={columns}
         dataSource={data}
         loading={loading}
+        onRefresh={fetchData}
+        refreshLoading={loading}
         rowKey="id"
         scroll={{ x: 1520 }}
         rowSelection={{

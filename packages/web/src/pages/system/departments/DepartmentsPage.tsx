@@ -345,6 +345,8 @@ export default function DepartmentsPage() {
         columns={columns}
         dataSource={data}
         loading={loading}
+        onRefresh={fetchDepartments}
+        refreshLoading={loading}
         rowKey="id"
         pagination={false}
         empty="暂无数据"

@@ -155,7 +155,7 @@ export default function SmsTemplatesPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} columns={columns} dataSource={list} rowKey="id"
+      <ConfigurableTable bordered loading={loading} onRefresh={fetchList} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
         pagination={{
           total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
           onPageChange: (p: number) => { void fetchList(p, keyword, filterProvider, filterStatus, pageSize); },

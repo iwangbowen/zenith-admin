@@ -361,6 +361,8 @@ export default function MenusPage() {
         dataSource={filteredData}
         rowKey="id"
         loading={loading}
+        onRefresh={fetchMenus}
+        refreshLoading={loading}
         pagination={false}
         expandedRowKeys={expandedRowKeys}
         onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Menu => 'id' in r).map((r) => r.id) ?? [])}

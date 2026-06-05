@@ -256,6 +256,8 @@ export default function DataMaskPage() {
         columns={columns}
         dataSource={filtered}
         loading={loading}
+        onRefresh={fetchData}
+        refreshLoading={loading}
         rowKey="id"
         pagination={false}
         scroll={{ x: 'max-content' }}

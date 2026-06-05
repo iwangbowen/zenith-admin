@@ -370,6 +370,8 @@ export default function TagsPage() {
       <ConfigurableTable
         bordered
         loading={loading}
+        onRefresh={fetchList}
+        refreshLoading={loading}
         columns={columns}
         dataSource={list}
         rowKey="id"
@@ -403,7 +405,7 @@ export default function TagsPage() {
         okButtonProps={{ disabled: modalDetailLoading }}
         afterClose={() => { setColorValue(''); }}
         width={520}
-       
+
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form

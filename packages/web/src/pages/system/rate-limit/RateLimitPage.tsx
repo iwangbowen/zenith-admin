@@ -246,6 +246,8 @@ export default function RateLimitPage() {
         bordered
         rowKey="_rowId"
         loading={loading}
+        onRefresh={fetchData}
+        refreshLoading={loading}
         dataSource={stats.items.flatMap((s) =>
           s.recentBlocks.map((b, idx) => ({
             _rowId: `${s.name}-${b.at}-${b.key}-${idx}`,

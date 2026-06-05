@@ -368,6 +368,8 @@ export default function UserGroupsPage() {
         columns={columns}
         dataSource={data}
         loading={loading}
+        onRefresh={fetchList}
+        refreshLoading={loading}
         rowKey="id"
         scroll={{ x: 'max-content' }}
         pagination={{

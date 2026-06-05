@@ -168,6 +168,8 @@ export default function DbBackupsPage() {
       <ConfigurableTable
         bordered
         loading={loading}
+        onRefresh={fetchList}
+        refreshLoading={loading}
         dataSource={list}
         columns={columns}
         rowKey="id"
