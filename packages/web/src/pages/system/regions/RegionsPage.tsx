@@ -53,6 +53,8 @@ export default function RegionsPage() {
   const [flatData, setFlatData] = useState<Region[]>([]);
   const [flatLoading, setFlatLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRegion, setEditingRegion] = useState<Region | null>(null);
   const [editingLevel, setEditingLevel] = useState<string>('province');
@@ -79,13 +81,14 @@ export default function RegionsPage() {
     return () => observer.disconnect();
   }, []);
 
-  const fetchRegions = useCallback(async (params = searchParams) => {
+  const fetchRegions = useCallback(async (params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const queryObj: Record<string, string> = {};
-      if (params.keyword) queryObj.keyword = params.keyword;
-      if (params.status) queryObj.status = params.status;
-      if (params.level) queryObj.level = params.level;
+      if (activeParams.keyword) queryObj.keyword = activeParams.keyword;
+      if (activeParams.status) queryObj.status = activeParams.status;
+      if (activeParams.level) queryObj.level = activeParams.level;
 
       const query = new URLSearchParams(queryObj).toString();
       const res = await request.get<Region[]>(query ? `/api/regions?${query}` : '/api/regions');
@@ -93,7 +96,8 @@ export default function RegionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchFlatData = useCallback(async () => {
     setFlatLoading(true);
@@ -111,7 +115,7 @@ export default function RegionsPage() {
   }, []);
 
   function handleSearch() {
-    void fetchRegions(searchParams);
+    void fetchRegions(searchParamsRef.current);
   }
 
   function handleReset() {
