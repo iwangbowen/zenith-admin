@@ -21,6 +21,7 @@ import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -40,8 +41,7 @@ export default function DictsPage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize } = usePagination();
   const [total, setTotal] = useState(0);
   const [dictModalVisible, setDictModalVisible] = useState(false);
   const [editingDict, setEditingDict] = useState<Dict | null>(null);
@@ -550,7 +550,7 @@ export default function DictsPage() {
         loading={itemsLoading}
         onRefresh={selectedDict ? () => void fetchItems(selectedDict.id) : undefined}
         refreshLoading={itemsLoading}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        pagination={false}
         size="small"
         empty={selectedDict ? '暂无数据' : '请选择字典'}
         childrenRecordName="children"
