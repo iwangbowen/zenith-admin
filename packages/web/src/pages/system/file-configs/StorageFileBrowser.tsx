@@ -286,7 +286,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     {
       title: '大小',
       key: 'size',
-      width: 90,
+      width: 110,
       align: 'right' as const,
       render: (_: unknown, record: ManagedFile | FolderEntry) => {
         if (!('id' in record)) return <span className="table-cell-placeholder">—</span>;
@@ -296,7 +296,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     {
       title: '上传时间',
       key: 'createdAt',
-      width: 160,
+      width: 180,
       render: (_: unknown, record: ManagedFile | FolderEntry) => {
         if (!('id' in record)) return <span className="table-cell-placeholder">—</span>;
         return renderEllipsis(formatDateTime((record as ManagedFile).createdAt));
@@ -305,7 +305,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     {
       title: '操作',
       fixed: 'right' as const,
-      width: 160,
+      width: 180,
       align: 'center' as const,
       render: (_: unknown, record: ManagedFile | FolderEntry) => {
         if (!('id' in record)) {
