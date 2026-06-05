@@ -469,7 +469,7 @@ interface HeaderProps {
 function Header({ children, extra, className, style }: HeaderProps) {
   return (
     <div
-      className={className}
+      className={className ? `msdl-header ${className}` : 'msdl-header'}
       style={{
         flexShrink: 0,
         display: 'flex',
@@ -504,7 +504,7 @@ function Body({ children, scroll = 'auto', padding, className, style }: BodyProp
   const overflow = SCROLL_MAP[scroll];
   return (
     <div
-      className={className}
+      className={className ? `msdl-body ${className}` : 'msdl-body'}
       style={{
         flex: 1,
         minHeight: 0,

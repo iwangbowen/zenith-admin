@@ -324,6 +324,11 @@ body {
   background: transparent;
 }
 
+/* MasterDetailLayout: Body 紧跟 Header 时自动添加顶部间距 */
+.msdl-header + .msdl-body {
+  padding-top: 8px;
+}
+
 /* utility */
 .page-container {
   padding: 12px;
