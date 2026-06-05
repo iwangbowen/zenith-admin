@@ -15,7 +15,7 @@
     "lint:fix": "eslint src --fix"
   },
   "dependencies": {
-    "@douyinfe/semi-illustrations": "^2.99.2",
+    "@douyinfe/semi-illustrations": "^2.99.3",
     "@douyinfe/semi-ui": "^2.99.2",
     "@embedpdf/react-pdf-viewer": "^2.14.3",
     "@emoji-mart/data": "^1.2.1",
