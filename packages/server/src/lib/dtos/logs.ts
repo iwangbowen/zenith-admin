@@ -95,6 +95,7 @@ export const LoginLogStatsDTO = z
     dailyStats: z.array(z.object({ date: z.string(), count: z.number(), successCount: z.number(), failCount: z.number() })),
     userStats: z.array(z.object({ username: z.string(), count: z.number() })),
     ipStats: z.array(z.object({ ip: z.string(), count: z.number() })),
+    ipFailStats: z.array(z.object({ ip: z.string(), count: z.number() })),
     browserStats: z.array(z.object({ browser: z.string(), count: z.number() })),
     osStats: z.array(z.object({ os: z.string(), count: z.number() })),
     hourlyStats: z.array(z.object({ hour: z.number(), count: z.number() })),

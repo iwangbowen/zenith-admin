@@ -325,6 +325,7 @@ export interface LoginLogStats {
   dailyStats: { date: string; count: number; successCount: number; failCount: number }[];
   userStats: { username: string; count: number }[];
   ipStats: { ip: string; count: number }[];
+  ipFailStats: { ip: string; count: number }[];
   browserStats: { browser: string; count: number }[];
   osStats: { os: string; count: number }[];
   hourlyStats: { hour: number; count: number }[];

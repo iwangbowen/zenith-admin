@@ -52,7 +52,7 @@ export async function loginLogStats(daysRaw?: number) {
   const tc = tenantCondition(loginLogs, user);
   const baseWhere = tc ? and(gte(loginLogs.createdAt, startDate), tc) : gte(loginLogs.createdAt, startDate);
 
-  const [summaryRows, dailyStats, userStats, ipStats, browserStats, osStats, hourlyRaw] = await Promise.all([
+  const [summaryRows, dailyStats, userStats, ipStats, ipFailStats, browserStats, osStats, hourlyRaw] = await Promise.all([
     db.select({
       total: count(),
       successCount: sql<number>`(count(case when ${loginLogs.status} = 'success' then 1 end))::integer`,
@@ -67,6 +67,7 @@ export async function loginLogStats(daysRaw?: number) {
     }).from(loginLogs).where(baseWhere).groupBy(sql`date(${loginLogs.createdAt})`).orderBy(sql`date(${loginLogs.createdAt})`),
     db.select({ username: loginLogs.username, cnt: count() }).from(loginLogs).where(baseWhere).groupBy(loginLogs.username).orderBy(desc(count())).limit(10),
     db.select({ ip: loginLogs.ip, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.ip} is not null`)).groupBy(loginLogs.ip).orderBy(desc(count())).limit(10),
+    db.select({ ip: loginLogs.ip, cnt: count() }).from(loginLogs).where(and(baseWhere, eq(loginLogs.status, 'fail'), sql`${loginLogs.ip} is not null`)).groupBy(loginLogs.ip).orderBy(desc(count())).limit(10),
     db.select({ browser: loginLogs.browser, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.browser} is not null`)).groupBy(loginLogs.browser).orderBy(desc(count())).limit(10),
     db.select({ os: loginLogs.os, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.os} is not null`)).groupBy(loginLogs.os).orderBy(desc(count())).limit(10),
     db.select({
@@ -93,6 +94,7 @@ export async function loginLogStats(daysRaw?: number) {
     })),
     userStats: userStats.map((r) => ({ username: r.username, count: r.cnt })),
     ipStats: ipStats.map((r) => ({ ip: r.ip ?? '未知', count: r.cnt })),
+    ipFailStats: ipFailStats.map((r) => ({ ip: r.ip ?? '未知', count: r.cnt })),
     browserStats: browserStats.map((r) => ({ browser: r.browser ?? '未知', count: r.cnt })),
     osStats: osStats.map((r) => ({ os: r.os ?? '未知', count: r.cnt })),
     hourlyStats: Array.from({ length: 24 }, (_, h) => ({ hour: h, count: hourlyMap.get(h) ?? 0 })),

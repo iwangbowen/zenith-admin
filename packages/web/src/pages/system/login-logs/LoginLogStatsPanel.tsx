@@ -29,7 +29,10 @@ const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周�
 
 const SUCCESS_COLOR = '#10b981';
 const FAIL_COLOR = '#ef4444';
-const STATUS_COLORS = [SUCCESS_COLOR, FAIL_COLOR];
+
+// Pie chart color palettes
+const BROWSER_COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#6b7280'];
+const OS_COLORS = ['#6366f1', '#14b8a6', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#10b981', '#f97316', '#ec4899', '#6b7280'];
 
 function getHeatColor(count: number, max: number): string {
   if (count === 0 || max === 0) return 'var(--semi-color-fill-1)';
@@ -65,11 +68,12 @@ interface StatCardProps {
   readonly title: string;
   readonly value: string | number;
   readonly sub?: string;
+  readonly accent?: string;
 }
 
-function StatCard({ title, value, sub }: StatCardProps) {
+function StatCard({ title, value, sub, accent }: StatCardProps) {
   return (
-    <div style={{ ...sectionStyle, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ ...sectionStyle, display: 'flex', flexDirection: 'column', gap: 4, borderLeft: accent ? `3px solid ${accent}` : undefined }}>
       <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--semi-color-text-0)', lineHeight: 1.2 }}>
         {value}
       </div>
@@ -146,11 +150,21 @@ export default function LoginLogStatsPanel() {
     [stats],
   );
 
+  // Security data
   const userChartData = useMemo(() => [...(stats?.userStats ?? [])].reverse(), [stats]);
-  const ipChartData = useMemo(() => [...(stats?.ipStats ?? [])].reverse(), [stats]);
-  const browserChartData = useMemo(() => [...(stats?.browserStats ?? [])].reverse(), [stats]);
-  const osChartData = useMemo(() => [...(stats?.osStats ?? [])].reverse(), [stats]);
+  const ipFailChartData = useMemo(() => [...(stats?.ipFailStats ?? [])].reverse(), [stats]);
 
+  // Device data with fill colors for PieChart
+  const browserPieData = useMemo(
+    () => (stats?.browserStats ?? []).map((d, i) => ({ ...d, fill: BROWSER_COLORS[i % BROWSER_COLORS.length] })),
+    [stats],
+  );
+  const osPieData = useMemo(
+    () => (stats?.osStats ?? []).map((d, i) => ({ ...d, fill: OS_COLORS[i % OS_COLORS.length] })),
+    [stats],
+  );
+
+  // Success/fail pie
   const summary = stats?.summary;
   const successRate = summary == null || summary.total === 0
     ? null
@@ -158,8 +172,8 @@ export default function LoginLogStatsPanel() {
 
   const statusPieData = summary
     ? [
-        { name: '成功', value: summary.successCount },
-        { name: '失败', value: summary.failCount },
+        { name: '成功', value: summary.successCount, fill: SUCCESS_COLOR },
+        { name: '失败', value: summary.failCount, fill: FAIL_COLOR },
       ]
     : [];
 
@@ -183,116 +197,20 @@ export default function LoginLogStatsPanel() {
       <Spin spinning={loading}>
         {/* ── 汇总指标卡 ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
-          <StatCard title="总登录次数" value={summary ? summary.total.toLocaleString() : '—'} sub={`近 ${days} 天累计`} />
+          <StatCard title="总登录次数" value={summary ? summary.total.toLocaleString() : '—'} sub={`近 ${days} 天累计`} accent="#3b82f6" />
           <StatCard
             title="登录成功率"
             value={successRate == null ? '—' : `${successRate}%`}
             sub={summary ? `成功 ${summary.successCount.toLocaleString()} · 失败 ${summary.failCount.toLocaleString()}` : undefined}
+            accent={SUCCESS_COLOR}
           />
-          <StatCard title="登录失败次数" value={summary ? summary.failCount.toLocaleString() : '—'} sub="包含密码错误、账号锁定等" />
-          <StatCard title="活跃用户数" value={summary ? summary.uniqueUsers.toLocaleString() : '—'} sub="不重复用户账号" />
-        </div>
-
-        {/* ── Top 用户 + Top IP ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-          <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>Top 10 登录用户</div>
-            {userChartData.length === 0 ? <EmptyChart /> : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={userChartData} layout="vertical" margin={{ left: 4, right: 36, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="username" width={88} tick={{ fontSize: 12 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 次`, '登录次数']} />
-                  <Bar dataKey="count" fill="#10b981" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--semi-color-text-2)' }} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>Top 10 登录 IP</div>
-            {ipChartData.length === 0 ? <EmptyChart /> : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={ipChartData} layout="vertical" margin={{ left: 4, right: 36, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="ip" width={120} tick={{ fontSize: 12 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 次`, '登录次数']} />
-                  <Bar dataKey="count" fill="#3b82f6" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--semi-color-text-2)' }} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* ── 成功/失败占比 + 小时分布 ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-          <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>成功 / 失败占比</div>
-            {statusPieData.every((d) => d.value === 0) ? <EmptyChart height={240} /> : (
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={statusPieData} nameKey="name" dataKey="value" cx="50%" cy="50%" innerRadius={60} outerRadius={92} paddingAngle={2}
-                    fill={SUCCESS_COLOR}
-                  >
-                    {statusPieData.map((entry) => (
-                      <Pie key={entry.name} data={[entry]} dataKey="value" fill={entry.name === '成功' ? SUCCESS_COLOR : FAIL_COLOR} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [`${value} 次`, name]} />
-                  <Legend wrapperStyle={{ fontSize: 12, color: 'var(--semi-color-text-1)' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>按小时登录分布</div>
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={stats?.hourlyStats ?? []} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="hour" tick={{ fontSize: 11 }} tickFormatter={(h: number) => `${String(h).padStart(2, '0')}h`} interval={2} />
-                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} width={40} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v) => [`${v} 次`, '登录次数']}
-                  labelFormatter={(l) => `${String(l).padStart(2, '0')}:00 – ${String(l).padStart(2, '0')}:59`}
-                />
-                <Bar dataKey="count" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* ── 浏览器分布 + 操作系统分布 ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-          <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>浏览器分布（Top 10）</div>
-            {browserChartData.length === 0 ? <EmptyChart /> : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={browserChartData} layout="vertical" margin={{ left: 4, right: 36, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="browser" width={108} tick={{ fontSize: 12 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 次`, '登录次数']} />
-                  <Bar dataKey="count" fill="#f59e0b" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--semi-color-text-2)' }} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>操作系统分布（Top 10）</div>
-            {osChartData.length === 0 ? <EmptyChart /> : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={osChartData} layout="vertical" margin={{ left: 4, right: 36, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="os" width={108} tick={{ fontSize: 12 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 次`, '登录次数']} />
-                  <Bar dataKey="count" fill="#6366f1" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--semi-color-text-2)' }} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          <StatCard
+            title="登录失败次数"
+            value={summary ? summary.failCount.toLocaleString() : '—'}
+            sub="密码错误、账号锁定等"
+            accent={summary && summary.failCount > 0 ? FAIL_COLOR : undefined}
+          />
+          <StatCard title="活跃用户数" value={summary ? summary.uniqueUsers.toLocaleString() : '—'} sub="不重复用户账号" accent="#8b5cf6" />
         </div>
 
         {/* ── 每日登录趋势（成功/失败堆叠面积） ── */}
@@ -323,6 +241,113 @@ export default function LoginLogStatsPanel() {
               <Area type="monotone" dataKey="failCount" stackId="a" stroke={FAIL_COLOR} fill="url(#loginAreaFail)" strokeWidth={2} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
+        </div>
+
+        {/* ── 安全监控：Top 用户 + 失败 Top IP ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div style={sectionStyle}>
+            <div style={sectionTitleStyle}>Top 10 登录用户</div>
+            {userChartData.length === 0 ? <EmptyChart /> : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={userChartData} layout="vertical" margin={{ left: 4, right: 36, top: 4, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="username" width={88} tick={{ fontSize: 12 }} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 次`, '登录次数']} />
+                  <Bar dataKey="count" fill="#10b981" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--semi-color-text-2)' }} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          <div style={{ ...sectionStyle, border: `1px solid ${ipFailChartData.length > 0 ? '#fca5a5' : 'var(--semi-color-border)'}` }}>
+            <div style={{ ...sectionTitleStyle, color: ipFailChartData.length > 0 ? FAIL_COLOR : undefined }}>
+              失败登录 Top 10 IP
+              {ipFailChartData.length > 0 && <span style={{ fontSize: 12, fontWeight: 400, marginLeft: 8, color: 'var(--semi-color-text-2)' }}>可能存在安全风险</span>}
+            </div>
+            {ipFailChartData.length === 0
+              ? <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: SUCCESS_COLOR, fontSize: 13 }}>✔️ 该时间段无失败登录</div>
+              : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={ipFailChartData} layout="vertical" margin={{ left: 4, right: 36, top: 4, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="ip" width={120} tick={{ fontSize: 12 }} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 次`, '失败次数']} />
+                  <Bar dataKey="count" fill={FAIL_COLOR} radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 11, fill: FAIL_COLOR }} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* ── 小时分布 + 成功/失败占比 ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div style={sectionStyle}>
+            <div style={sectionTitleStyle}>按小时登录分布</div>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={stats?.hourlyStats ?? []} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="hour" tick={{ fontSize: 11 }} tickFormatter={(h: number) => `${String(h).padStart(2, '0')}h`} interval={2} />
+                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} width={40} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(v) => [`${v} 次`, '登录次数']}
+                  labelFormatter={(l) => `${String(l).padStart(2, '0')}:00 – ${String(l).padStart(2, '0')}:59`}
+                />
+                <Bar dataKey="count" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div style={sectionStyle}>
+            <div style={sectionTitleStyle}>成功 / 失败占比</div>
+            {statusPieData.every((d) => d.value === 0) ? <EmptyChart height={240} /> : (
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie data={statusPieData} nameKey="name" dataKey="value" cx="50%" cy="50%" innerRadius={60} outerRadius={92} paddingAngle={2} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [`${value} 次`, name]} />
+                  <Legend wrapperStyle={{ fontSize: 12, color: 'var(--semi-color-text-1)' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* ── 设备分析：浏览器 + 操作系统（饼图展示占比） ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div style={sectionStyle}>
+            <div style={sectionTitleStyle}>浏览器分布</div>
+            {browserPieData.length === 0 ? <EmptyChart height={260} /> : (
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie data={browserPieData} nameKey="browser" dataKey="count" cx="50%" cy="50%" outerRadius={90} paddingAngle={2}
+                    label={({ browser, percent }: { browser: string; percent: number }) =>
+                      percent > 0.04 ? `${browser} ${(percent * 100).toFixed(0)}%` : ''
+                    }
+                    labelLine
+                  />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [`${value} 次`, name]} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+          <div style={sectionStyle}>
+            <div style={sectionTitleStyle}>操作系统分布</div>
+            {osPieData.length === 0 ? <EmptyChart height={260} /> : (
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie data={osPieData} nameKey="os" dataKey="count" cx="50%" cy="50%" outerRadius={90} paddingAngle={2}
+                    label={({ os, percent }: { os: string; percent: number }) =>
+                      percent > 0.04 ? `${os} ${(percent * 100).toFixed(0)}%` : ''
+                    }
+                    labelLine
+                  />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [`${value} 次`, name]} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </div>
 
         {/* ── 登录热力图 ── */}
