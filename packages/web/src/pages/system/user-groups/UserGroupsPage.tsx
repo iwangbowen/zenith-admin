@@ -57,6 +57,8 @@ export default function UserGroupsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<UserGroup | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
@@ -120,14 +122,15 @@ export default function UserGroupsPage() {
   }, [departments]);
 
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
-        ...(params.keyword ? { keyword: params.keyword } : {}),
-        ...(params.status ? { status: params.status } : {}),
+        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
+        ...(activeParams.status ? { status: activeParams.status } : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<UserGroup>>(`/api/user-groups?${query}`);
       if (res.code === 0) {
@@ -137,7 +140,8 @@ export default function UserGroupsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
 
   useEffect(() => { void fetchList(); }, [fetchList]);
 

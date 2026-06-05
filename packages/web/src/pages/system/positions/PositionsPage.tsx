@@ -45,24 +45,27 @@ export default function PositionsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [modalVisible, setModalVisible] = useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems } = useDictItems('common_status');
 
-  const fetchPositions = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchPositions = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
-        ...(params.keyword ? { keyword: params.keyword } : {}),
-        ...(params.status ? { status: params.status } : {}),
-        ...(params.timeRange
+        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
+        ...(activeParams.status ? { status: activeParams.status } : {}),
+        ...(activeParams.timeRange
           ? {
-              startTime: formatDateTimeForApi(params.timeRange[0]),
-              endTime: formatDateTimeForApi(params.timeRange[1]),
+              startTime: formatDateTimeForApi(activeParams.timeRange[0]),
+              endTime: formatDateTimeForApi(activeParams.timeRange[1]),
             }
           : {}),
       }).toString();
@@ -74,7 +77,8 @@ export default function PositionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
 
   useEffect(() => {
     void fetchPositions();
