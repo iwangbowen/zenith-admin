@@ -786,16 +786,17 @@ export default function FilesPage() {
                 <Checkbox
                   checked={allSelected}
                   indeterminate={someSelected}
-                  onChange={(e) => handleGridSelectAll(!!(e.target as EventTarget & { checked?: boolean }).checked)}
-                />
-                <span style={{ fontSize: 14, color: 'var(--semi-color-text-0)' }}>
-                  全选当前页
-                  {selectedOnPage.length > 0 && (
-                    <span style={{ marginLeft: 4, color: 'var(--semi-color-text-2)', fontWeight: 400 }}>
-                      ({selectedOnPage.length}/{currentPageIds.length})
-                    </span>
-                  )}
-                </span>
+                  onChange={() => handleGridSelectAll(!allSelected)}
+                >
+                  <span style={{ fontSize: 14, color: 'var(--semi-color-text-0)' }}>
+                    全选当前页
+                    {selectedOnPage.length > 0 && (
+                      <span style={{ marginLeft: 4, color: 'var(--semi-color-text-2)', fontWeight: 400 }}>
+                        ({selectedOnPage.length}/{currentPageIds.length})
+                      </span>
+                    )}
+                  </span>
+                </Checkbox>
               </div>
             );
           })()}
