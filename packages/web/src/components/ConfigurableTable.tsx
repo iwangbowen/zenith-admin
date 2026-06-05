@@ -383,7 +383,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
             aria-label="刷新"
             title="刷新"
             disabled={refreshLoading}
-            onClick={onRefresh}
+            onClick={() => onRefresh()}
           />
         )}
         {effectiveColumnSettings && configurableOptions.length > 0 && (
