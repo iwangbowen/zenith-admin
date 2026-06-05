@@ -20,7 +20,7 @@ export function mapManagedFile(row: typeof managedFiles.$inferSelect) {
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { and, desc, eq, inArray, like, or, gte, lte } from 'drizzle-orm';
+import { and, desc, asc, eq, inArray, like, or, gte, lte } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
@@ -257,6 +257,77 @@ export async function batchDownloadFilesAsZip(ids: number[]): Promise<{ stream: 
 
   const webStream = Readable.toWeb(passThrough) as ReadableStream;
   return { stream: webStream, filename: `files_${Date.now()}.zip` };
+}
+
+function normalizePath(value?: string | null): string {
+  return (value ?? '').replace(/^\/+|\/+$/g, '');
+}
+
+export async function browseStorageFiles(query: { storageConfigId: number; path?: string }) {
+  const user = currentUser();
+  const basePath = normalizePath(
+    (await db.select({ basePath: fileStorageConfigs.basePath }).from(fileStorageConfigs).where(eq(fileStorageConfigs.id, query.storageConfigId)).limit(1))[0]?.basePath,
+  );
+
+  // Sanitize browsing path — reject traversal attempts
+  const rawPath = normalizePath(query.path);
+  if (rawPath.split('/').some((seg) => seg === '..' || seg === '.')) {
+    throw new HTTPException(400, { message: '路径不合法' });
+  }
+
+  // The full object-key prefix that scopes this browsing level
+  const fullPrefix = [basePath, rawPath].filter(Boolean).join('/');
+
+  const tc = tenantCondition(managedFiles, user);
+  const conditions = [eq(managedFiles.storageConfigId, query.storageConfigId)];
+  if (fullPrefix) conditions.push(like(managedFiles.objectKey, `${escapeLike(fullPrefix)}/%`));
+  const where = tc ? and(...conditions, tc) : and(...conditions);
+
+  const allFiles = await db.select().from(managedFiles).where(where).orderBy(asc(managedFiles.objectKey));
+
+  const folderSet = new Set<string>();
+  const levelFileRows: (typeof allFiles)[number][] = [];
+
+  const prefixWithSlash = fullPrefix ? `${fullPrefix}/` : '';
+  for (const file of allFiles) {
+    let relKey = file.objectKey;
+    if (prefixWithSlash) {
+      if (!relKey.startsWith(prefixWithSlash)) continue;
+      relKey = relKey.slice(prefixWithSlash.length);
+    }
+    const slashIdx = relKey.indexOf('/');
+    if (slashIdx === -1) {
+      levelFileRows.push(file);
+    } else {
+      const folderName = relKey.slice(0, slashIdx);
+      if (folderName) folderSet.add(folderName);
+    }
+  }
+
+  const uploaderIds = [...new Set(levelFileRows.map((f) => f.createdBy).filter((id): id is number => id != null))];
+  const uploaderMap = new Map<number, string>();
+  if (uploaderIds.length > 0) {
+    const uploaders = await db
+      .select({ id: users.id, nickname: users.nickname, username: users.username })
+      .from(users)
+      .where(inArray(users.id, uploaderIds));
+    for (const u of uploaders) uploaderMap.set(u.id, u.nickname || u.username);
+  }
+
+  const folders = [...folderSet].sort().map((name) => ({
+    name,
+    path: rawPath ? `${rawPath}/${name}` : name,
+  }));
+
+  return {
+    folders,
+    files: levelFileRows.map((f) => ({
+      ...mapManagedFile(f),
+      uploaderName: f.createdBy ? (uploaderMap.get(f.createdBy) ?? null) : null,
+    })),
+    currentPath: rawPath,
+    basePath,
+  };
 }
 
 export async function exportManagedFiles(): Promise<{ stream: ReadableStream; filename: string }> {

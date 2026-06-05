@@ -1,0 +1,151 @@
+.storage-browser__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--semi-color-border);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.storage-browser__breadcrumb {
+  flex: 1;
+  min-width: 0;
+}
+
+.storage-browser__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  min-height: 0;
+}
+
+.storage-browser__spin {
+  min-height: 200px;
+  display: block;
+  width: 100%;
+}
+
+.storage-browser__spin .semi-spin-children {
+  display: block;
+  width: 100%;
+}
+
+.storage-browser__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--semi-color-text-2);
+  font-size: 14px;
+}
+
+.storage-browser__footer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--semi-color-border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ── List view: folder rows ─────────────────────────────── */
+.storage-browser__folder-row-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--semi-color-text-0);
+  font-size: 14px;
+  width: 100%;
+  text-align: left;
+}
+
+.storage-browser__folder-row-btn:hover {
+  color: var(--semi-color-primary);
+}
+
+.storage-browser__folder-icon {
+  color: var(--semi-color-warning);
+  flex-shrink: 0;
+}
+
+.storage-browser__folder-chevron {
+  color: var(--semi-color-text-2);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Grid view: file cards (CSS auto-fill, container-relative) ─ */
+.storage-browser__file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px 8px;
+  justify-items: center;
+  width: 100%;
+}
+
+/* ── Grid view: folder cards ────────────────────────────── */
+.storage-browser__grid-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.storage-browser__grid-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.storage-browser__grid-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.storage-browser__folder-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.storage-browser__folder-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  width: 88px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.storage-browser__folder-card:hover {
+  background: var(--semi-color-fill-0);
+  border-color: var(--semi-color-border);
+}
+
+.storage-browser__folder-card-icon {
+  color: var(--semi-color-warning);
+}
+
+.storage-browser__folder-card-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--semi-color-text-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 80px;
+}

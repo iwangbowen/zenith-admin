@@ -237,6 +237,19 @@ export interface ManagedFile {
   updatedAt: string;
 }
 
+// ─── Storage Browse ──────────────────────────────────────
+export interface FolderEntry {
+  name: string;
+  path: string;
+}
+
+export interface StorageBrowseResult {
+  folders: FolderEntry[];
+  files: ManagedFile[];
+  currentPath: string;
+  basePath: string;
+}
+
 // ─── Login Logs ──────────────────────────────────────────
 export interface LoginLog {
   id: number;

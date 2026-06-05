@@ -53,3 +53,19 @@ export const ManagedFileDTO = z
     updatedAt: z.string(),
   })
   .openapi('ManagedFile');
+
+export const FolderEntryDTO = z
+  .object({
+    name: z.string(),
+    path: z.string(),
+  })
+  .openapi('FolderEntry');
+
+export const StorageBrowseResultDTO = z
+  .object({
+    folders: z.array(FolderEntryDTO),
+    files: z.array(ManagedFileDTO),
+    currentPath: z.string(),
+    basePath: z.string(),
+  })
+  .openapi('StorageBrowseResult');

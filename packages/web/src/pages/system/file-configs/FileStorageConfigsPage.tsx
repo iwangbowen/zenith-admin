@@ -30,6 +30,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { renderEllipsis } from '@/utils/table-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import StorageFileBrowser from './StorageFileBrowser';
 import './FileStorageConfigsPage.css';
 
 const { Text } = Typography;
@@ -130,6 +131,7 @@ export default function FileStorageConfigsPage() {
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
   const [formIsDefault, setFormIsDefault] = useState(false);
+  const [browsingConfig, setBrowsingConfig] = useState<FileStorageConfig | null>(null);
 
   const fetchConfigs = useCallback(async (params = searchParams, p = page, ps = pageSize) => {
     setLoading(true);
@@ -306,10 +308,13 @@ export default function FileStorageConfigsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 300,
+      width: 340,
       align: 'center',
       render: (_: unknown, record: FileStorageConfig) => (
         <Space>
+          {hasPermission('system:file:list') && <Button theme="borderless" size="small" onClick={() => setBrowsingConfig(record)}>
+            浏览
+          </Button>}
           {hasPermission('system:file:config:default') && <Button theme="borderless" size="small" onClick={() => handleSetDefault(record)} disabled={record.isDefault || record.status !== 'enabled'}>
             设为默认
           </Button>}
@@ -589,6 +594,8 @@ export default function FileStorageConfigsPage() {
         </Form>
         </Spin>
       </Modal>
+
+      <StorageFileBrowser config={browsingConfig} onClose={() => setBrowsingConfig(null)} />
     </div>
   );
 }

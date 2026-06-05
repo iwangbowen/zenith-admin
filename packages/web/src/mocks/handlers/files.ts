@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { mockFileStorageConfigs } from '@/mocks/data/system';
 import { mockDateTime } from '@/mocks/utils/date';
-import type { ManagedFile, FileStorageConfig } from '@zenith/shared';
+import type { FolderEntry, ManagedFile, FileStorageConfig, StorageBrowseResult } from '@zenith/shared';
 
 export const mockManagedFiles: ManagedFile[] = [
   {
@@ -10,18 +10,127 @@ export const mockManagedFiles: ManagedFile[] = [
     storageName: '本地磁盘',
     provider: 'local',
     originalName: 'demo-avatar.png',
-    objectKey: 'uploads/demo-avatar.png',
+    objectKey: 'uploads/2026/01/demo-avatar.png',
     size: 102400,
     mimeType: 'image/png',
     extension: 'png',
     url: 'https://avatars.githubusercontent.com/u/583231',
     uploaderName: 'Admin',
-    createdAt: '2024-01-01 00:00:00',
-    updatedAt: '2024-01-01 00:00:00',
+    createdAt: '2026-01-10 10:00:00',
+    updatedAt: '2026-01-10 10:00:00',
+  },
+  {
+    id: 2,
+    storageConfigId: 1,
+    storageName: '本地磁盘',
+    provider: 'local',
+    originalName: 'report-2026.pdf',
+    objectKey: 'uploads/2026/01/report-2026.pdf',
+    size: 512000,
+    mimeType: 'application/pdf',
+    extension: 'pdf',
+    url: '/api/files/2/content',
+    uploaderName: 'Admin',
+    createdAt: '2026-01-15 14:30:00',
+    updatedAt: '2026-01-15 14:30:00',
+  },
+  {
+    id: 3,
+    storageConfigId: 1,
+    storageName: '本地磁盘',
+    provider: 'local',
+    originalName: 'intro.mp4',
+    objectKey: 'uploads/2026/02/intro.mp4',
+    size: 10240000,
+    mimeType: 'video/mp4',
+    extension: 'mp4',
+    url: '/api/files/3/content',
+    uploaderName: 'Admin',
+    createdAt: '2026-02-05 09:00:00',
+    updatedAt: '2026-02-05 09:00:00',
+  },
+  {
+    id: 4,
+    storageConfigId: 1,
+    storageName: '本地磁盘',
+    provider: 'local',
+    originalName: 'banner.jpg',
+    objectKey: 'uploads/2026/02/banner.jpg',
+    size: 204800,
+    mimeType: 'image/jpeg',
+    extension: 'jpg',
+    url: 'https://picsum.photos/800/300',
+    uploaderName: 'Admin',
+    createdAt: '2026-02-10 11:00:00',
+    updatedAt: '2026-02-10 11:00:00',
+  },
+  {
+    id: 5,
+    storageConfigId: 1,
+    storageName: '本地磁盘',
+    provider: 'local',
+    originalName: 'data-export.xlsx',
+    objectKey: 'uploads/2026/03/data-export.xlsx',
+    size: 81920,
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    extension: 'xlsx',
+    url: '/api/files/5/content',
+    uploaderName: 'Admin',
+    createdAt: '2026-03-01 08:00:00',
+    updatedAt: '2026-03-01 08:00:00',
+  },
+  {
+    id: 6,
+    storageConfigId: 1,
+    storageName: '本地磁盘',
+    provider: 'local',
+    originalName: 'logo.png',
+    objectKey: 'uploads/logo.png',
+    size: 30720,
+    mimeType: 'image/png',
+    extension: 'png',
+    url: 'https://avatars.githubusercontent.com/u/9919',
+    uploaderName: 'Admin',
+    createdAt: '2026-01-01 00:00:00',
+    updatedAt: '2026-01-01 00:00:00',
   },
 ];
 
-let nextFileId = 2;
+let nextFileId = mockManagedFiles.length + 1;
+
+function buildBrowseResult(storageConfigId: number, path: string): StorageBrowseResult {
+  const config = mockFileStorageConfigs.find((c) => c.id === storageConfigId);
+  const basePath = (config?.basePath ?? '').replace(/^\/+|\/+$/g, '');
+  const currentPath = path.replace(/^\/+|\/+$/g, '');
+  const fullPrefix = [basePath, currentPath].filter(Boolean).join('/');
+  const prefixWithSlash = fullPrefix ? `${fullPrefix}/` : '';
+
+  const folderSet = new Set<string>();
+  const levelFiles: ManagedFile[] = [];
+
+  for (const file of mockManagedFiles) {
+    if (file.storageConfigId !== storageConfigId) continue;
+    let relKey = file.objectKey;
+    if (prefixWithSlash) {
+      if (!relKey.startsWith(prefixWithSlash)) continue;
+      relKey = relKey.slice(prefixWithSlash.length);
+    }
+    const slashIdx = relKey.indexOf('/');
+    if (slashIdx === -1) {
+      levelFiles.push(file);
+    } else {
+      const folderName = relKey.slice(0, slashIdx);
+      if (folderName) folderSet.add(folderName);
+    }
+  }
+
+  const folders: FolderEntry[] = [...folderSet].sort().map((name) => ({
+    name,
+    path: currentPath ? `${currentPath}/${name}` : name,
+  }));
+
+  return { folders, files: levelFiles, currentPath, basePath };
+}
 
 export const filesHandlers = [
   // 文件列表（分页）
@@ -38,6 +147,15 @@ export const filesHandlers = [
     const total = list.length;
     list = list.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+  }),
+
+  // 按存储配置浏览文件目录（必须放在 /api/files/:id 之前）
+  http.get('/api/files/browse', ({ request }) => {
+    const url = new URL(request.url);
+    const storageConfigId = Number(url.searchParams.get('storageConfigId'));
+    const path = url.searchParams.get('path') ?? '';
+    if (!storageConfigId) return HttpResponse.json({ code: 400, message: '参数错误', data: null });
+    return HttpResponse.json({ code: 0, message: 'ok', data: buildBrowseResult(storageConfigId, path) });
   }),
 
   // 上传文件（demo 模式支持多文件）
