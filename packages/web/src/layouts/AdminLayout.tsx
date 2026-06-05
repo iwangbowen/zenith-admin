@@ -1818,7 +1818,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             visible={shortcutsVisible}
             onCancel={() => setShortcutsVisible(false)}
             footer={null}
-            width={520}
+            width={560}
           >
             {([
               {
@@ -1857,15 +1857,18 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 ],
               },
             ] as { group: string; items: { keys: string[]; desc: string }[] }[]).map(({ group, items }) => (
-              <div key={group} style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--semi-color-text-2)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div key={group} style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--semi-color-text-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 16px' }}>
                   {items.map(({ keys, desc }) => (
-                    <div key={desc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'var(--semi-color-text-1)', fontSize: 13 }}>{desc}</span>
-                      <span style={{ display: 'flex', gap: 4 }}>
-                        {keys.map((k) => (
-                          <kbd key={k} style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', background: 'var(--semi-color-fill-1)', border: '1px solid var(--semi-color-border)', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', color: 'var(--semi-color-text-0)', boxShadow: '0 1px 0 var(--semi-color-border)', whiteSpace: 'nowrap' }}>{k}</kbd>
+                    <div key={desc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
+                      <span style={{ color: 'var(--semi-color-text-1)', fontSize: 12, marginRight: 8 }}>{desc}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                        {keys.map((k, i) => (
+                          <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            {i > 0 && <span style={{ color: 'var(--semi-color-text-3)', fontSize: 10 }}>+</span>}
+                            <kbd style={{ display: 'inline-flex', alignItems: 'center', padding: '1px 5px', background: 'var(--semi-color-bg-1)', border: '1px solid var(--semi-color-border)', borderRadius: 3, fontSize: 11, fontFamily: 'inherit', color: 'var(--semi-color-text-0)', boxShadow: '0 1px 0 var(--semi-color-border)', whiteSpace: 'nowrap' }}>{k}</kbd>
+                          </span>
                         ))}
                       </span>
                     </div>
