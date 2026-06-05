@@ -63,6 +63,8 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [modalVisible, setModalVisible] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -220,20 +222,21 @@ export default function UsersPage() {
         status: 'enabled',
       };
 
-  const fetchUsers = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchUsers = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
-        ...(params.keyword ? { keyword: params.keyword } : {}),
-        ...(params.phone ? { phone: params.phone } : {}),
-        ...(params.departmentId ? { departmentId: String(params.departmentId) } : {}),
-        ...(params.status ? { status: params.status } : {}),
-        ...(params.timeRange
+        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
+        ...(activeParams.phone ? { phone: activeParams.phone } : {}),
+        ...(activeParams.departmentId ? { departmentId: String(activeParams.departmentId) } : {}),
+        ...(activeParams.status ? { status: activeParams.status } : {}),
+        ...(activeParams.timeRange
           ? {
-              startTime: formatDateTimeForApi(params.timeRange[0]),
-              endTime: formatDateTimeForApi(params.timeRange[1]),
+              startTime: formatDateTimeForApi(activeParams.timeRange[0]),
+              endTime: formatDateTimeForApi(activeParams.timeRange[1]),
             }
           : {}),
       }).toString();
@@ -246,7 +249,8 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
 
   useEffect(() => {
     void fetchUsers();
