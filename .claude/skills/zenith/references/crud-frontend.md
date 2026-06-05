@@ -304,6 +304,8 @@ export default function XxxPage() {
         rowKey="id"
         size="small"
         empty="暂无数据"
+        onRefresh={() => void fetchXxxs(page, pageSize)}
+        refreshLoading={loading}
         pagination={{
           currentPage: page,
           pageSize,
@@ -559,6 +561,8 @@ const handleBatchDelete = () => {
     onChange: (keys) => setSelectedRowKeys(keys as number[]),
   }}
   bordered
+  onRefresh={() => void fetchXxxs(page, pageSize)}
+  refreshLoading={loading}
   ...
 />
 ```
@@ -606,6 +610,8 @@ const columns: ColumnProps<Region>[] = [
   dataSource={data}
   rowKey="id"
   pagination={false}
+  onRefresh={fetchData}
+  refreshLoading={loading}
 />
 ```
 
@@ -628,6 +634,31 @@ const columns: ColumnProps<Region>[] = [
 - `scroll.y` 是虚拟化生效的**必要条件**，`calc(100vh - 260px)` 适配大多数管理页面布局（260px ≈ 顶栏 + 工具栏 + 内边距）
 - 菜单管理等数据量小（< 200 条）且有复杂自定义渲染器的树形表格，**不建议**开启 `virtualized`
 - 开启 `virtualized` 后，`expandedRowKeys` 受控展开仍正常工作，无需额外处理
+
+---
+
+## ConfigurableTable 刷新按钮（必须实现）
+
+**所有使用 `ConfigurableTable` 的列表页均必须传入 `onRefresh` 和 `refreshLoading`**，否则表格工具栏不会显示刷新按钮。
+
+```tsx
+<ConfigurableTable
+  bordered
+  columns={columns}
+  dataSource={list}
+  loading={loading}
+  rowKey="id"
+  onRefresh={() => void fetchXxxs(page, pageSize)}   // ← 必须传
+  refreshLoading={loading}                            // ← 必须传
+  pagination={{ ... }}
+/>
+```
+
+规则：
+
+- `onRefresh`：刷新当前页数据，保持分页位置不变；若组件无独立数据加载（如结构/上下文驱动的表格），可不传
+- `refreshLoading`：通常与 `loading` 保持一致，按钮转圈期间防重复点击
+- SideSheet / Modal 内的**次级**表格（投递记录、操作历史等）同样需要传入对应的刷新函数
 
 ---
 
