@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Input, Button, Select, DatePicker } from '@douyinfe/semi-ui';
+import { Input, Button, Select, DatePicker, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -7,6 +7,7 @@ import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeForApi } from '@/utils/date';
 import type { LoginLog, PaginatedResponse } from '@zenith/shared';
+import LoginLogStatsPanel from './LoginLogStatsPanel';
 
 export default function LoginLogsPage() {
   interface SearchParams {
@@ -70,7 +71,10 @@ export default function LoginLogsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
+      <Tabs type="line">
+        <TabPane tab="日志列表" itemKey="list">
+          <div style={{ paddingTop: 12 }}>
+            <SearchToolbar>
           <Input
             prefix={<Search size={14} />}
             placeholder="请输入用户名"
@@ -106,12 +110,20 @@ export default function LoginLogsPage() {
           <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
       </SearchToolbar>
 
-      <LoginLogsTable
-        dataSource={data}
-        loading={loading}
-        onRefresh={() => void fetchData()}
-        pagination={buildPagination(total, fetchData)}
-      />
+          <LoginLogsTable
+            dataSource={data}
+            loading={loading}
+            onRefresh={() => void fetchData()}
+            pagination={buildPagination(total, fetchData)}
+          />
+          </div>
+        </TabPane>
+        <TabPane tab="统计分析" itemKey="stats">
+          <div style={{ paddingTop: 12 }}>
+            <LoginLogStatsPanel />
+          </div>
+        </TabPane>
+      </Tabs>
     </div>
   );
 }

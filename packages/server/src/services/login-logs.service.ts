@@ -1,11 +1,11 @@
-import { desc, eq, like, and, gte, lte } from 'drizzle-orm';
+import { desc, eq, like, and, gte, lte, count, sql } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { loginLogs } from '../db/schema';
 import { streamToExcel, formatDateTimeForExcel, batchIterable } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { currentUser } from '../lib/context';
-import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
+import { formatDateTime, formatDate, parseDateTimeInput } from '../lib/datetime';
 
 export interface ListLoginLogsQuery {
   page?: number;
@@ -39,6 +39,63 @@ export async function listLoginLogs(q: ListLoginLogsQuery) {
     total,
     page,
     pageSize,
+  };
+}
+
+export async function loginLogStats(daysRaw?: number) {
+  const user = currentUser();
+  const days = Math.min(Math.max(Number(daysRaw) || 90, 7), 365);
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days + 1);
+  startDate.setHours(0, 0, 0, 0);
+  const startDateLabel = formatDate(startDate);
+  const tc = tenantCondition(loginLogs, user);
+  const baseWhere = tc ? and(gte(loginLogs.createdAt, startDate), tc) : gte(loginLogs.createdAt, startDate);
+
+  const [summaryRows, dailyStats, userStats, ipStats, browserStats, osStats, hourlyRaw] = await Promise.all([
+    db.select({
+      total: count(),
+      successCount: sql<number>`(count(case when ${loginLogs.status} = 'success' then 1 end))::integer`,
+      failCount: sql<number>`(count(case when ${loginLogs.status} = 'fail' then 1 end))::integer`,
+      uniqueUsers: sql<number>`(count(distinct ${loginLogs.username}))::integer`,
+    }).from(loginLogs).where(baseWhere),
+    db.select({
+      date: sql<string>`to_char(date(${loginLogs.createdAt}), 'YYYY-MM-DD')`,
+      count: count(),
+      successCount: sql<number>`(count(case when ${loginLogs.status} = 'success' then 1 end))::integer`,
+      failCount: sql<number>`(count(case when ${loginLogs.status} = 'fail' then 1 end))::integer`,
+    }).from(loginLogs).where(baseWhere).groupBy(sql`date(${loginLogs.createdAt})`).orderBy(sql`date(${loginLogs.createdAt})`),
+    db.select({ username: loginLogs.username, cnt: count() }).from(loginLogs).where(baseWhere).groupBy(loginLogs.username).orderBy(desc(count())).limit(10),
+    db.select({ ip: loginLogs.ip, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.ip} is not null`)).groupBy(loginLogs.ip).orderBy(desc(count())).limit(10),
+    db.select({ browser: loginLogs.browser, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.browser} is not null`)).groupBy(loginLogs.browser).orderBy(desc(count())).limit(10),
+    db.select({ os: loginLogs.os, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.os} is not null`)).groupBy(loginLogs.os).orderBy(desc(count())).limit(10),
+    db.select({
+      hour: sql<number>`(extract(hour from ${loginLogs.createdAt}))::integer`,
+      cnt: count(),
+    }).from(loginLogs).where(baseWhere).groupBy(sql`extract(hour from ${loginLogs.createdAt})`).orderBy(sql`extract(hour from ${loginLogs.createdAt})`),
+  ]);
+
+  const s = summaryRows[0] ?? { total: 0, successCount: 0, failCount: 0, uniqueUsers: 0 };
+  const hourlyMap = new Map(hourlyRaw.map((r) => [r.hour, r.cnt]));
+
+  return {
+    summary: {
+      total: s.total,
+      successCount: Number(s.successCount),
+      failCount: Number(s.failCount),
+      uniqueUsers: Number(s.uniqueUsers),
+    },
+    dailyStats: dailyStats.map((r) => ({
+      date: r.date || startDateLabel,
+      count: r.count,
+      successCount: Number(r.successCount),
+      failCount: Number(r.failCount),
+    })),
+    userStats: userStats.map((r) => ({ username: r.username, count: r.cnt })),
+    ipStats: ipStats.map((r) => ({ ip: r.ip ?? '未知', count: r.cnt })),
+    browserStats: browserStats.map((r) => ({ browser: r.browser ?? '未知', count: r.cnt })),
+    osStats: osStats.map((r) => ({ os: r.os ?? '未知', count: r.cnt })),
+    hourlyStats: Array.from({ length: 24 }, (_, h) => ({ hour: h, count: hourlyMap.get(h) ?? 0 })),
   };
 }
 

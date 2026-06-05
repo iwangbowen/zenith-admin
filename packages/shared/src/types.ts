@@ -315,6 +315,21 @@ export interface OperationLogStats {
   hourlyStats: { hour: number; count: number }[];
 }
 
+export interface LoginLogStats {
+  summary: {
+    total: number;
+    successCount: number;
+    failCount: number;
+    uniqueUsers: number;
+  };
+  dailyStats: { date: string; count: number; successCount: number; failCount: number }[];
+  userStats: { username: string; count: number }[];
+  ipStats: { ip: string; count: number }[];
+  browserStats: { browser: string; count: number }[];
+  osStats: { os: string; count: number }[];
+  hourlyStats: { hour: number; count: number }[];
+}
+
 // ─── 公告 ──────────────────────────────────────────────────
 export type AnnouncementPublishStatus = 'draft' | 'published' | 'recalled' | 'scheduled';
 export type AnnouncementType = 'notice' | 'announcement' | 'warning';

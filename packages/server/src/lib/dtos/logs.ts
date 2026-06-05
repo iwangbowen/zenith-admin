@@ -84,6 +84,23 @@ export const OperationLogStatsDTO = z
   })
   .openapi('OperationLogStats');
 
+export const LoginLogStatsDTO = z
+  .object({
+    summary: z.object({
+      total: z.number(),
+      successCount: z.number(),
+      failCount: z.number(),
+      uniqueUsers: z.number(),
+    }),
+    dailyStats: z.array(z.object({ date: z.string(), count: z.number(), successCount: z.number(), failCount: z.number() })),
+    userStats: z.array(z.object({ username: z.string(), count: z.number() })),
+    ipStats: z.array(z.object({ ip: z.string(), count: z.number() })),
+    browserStats: z.array(z.object({ browser: z.string(), count: z.number() })),
+    osStats: z.array(z.object({ os: z.string(), count: z.number() })),
+    hourlyStats: z.array(z.object({ hour: z.number(), count: z.number() })),
+  })
+  .openapi('LoginLogStats');
+
 export const LogFileDTO = z
   .object({
     name: z.string(),

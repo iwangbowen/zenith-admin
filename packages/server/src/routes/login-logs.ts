@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { PaginationQuery, validationHook, commonErrorResponses, okPaginated, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
-import { LoginLogDTO } from '../lib/openapi-dtos';
-import { listLoginLogs, exportLoginLogs } from '../services/login-logs.service';
+import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { LoginLogDTO, LoginLogStatsDTO } from '../lib/openapi-dtos';
+import { listLoginLogs, loginLogStats, exportLoginLogs } from '../services/login-logs.service';
 
 const loginLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -25,6 +25,17 @@ const listRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listLoginLogs(c.req.valid('query'))), 200),
 });
 
+const statsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/stats', tags: ['LoginLogs'], summary: '登录日志统计',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:log:login' })] as const,
+    request: { query: z.object({ days: z.coerce.number().optional() }) },
+    responses: { ...ok(LoginLogStatsDTO, '统计结果'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await loginLogStats(c.req.valid('query').days)), 200),
+});
+
 const exportRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/export', tags: ['LoginLogs'], summary: '导出登录日志 Excel',
@@ -38,6 +49,6 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-loginLogsRoute.openapiRoutes([listRoute, exportRoute] as const);
+loginLogsRoute.openapiRoutes([listRoute, statsRoute, exportRoute] as const);
 
 export default loginLogsRoute;
