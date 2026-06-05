@@ -9,7 +9,6 @@ import {
   Modal,
   Form,
   Toast,
-  TreeSelect,
   Spin,
   DatePicker,
 } from '@douyinfe/semi-ui';
@@ -45,7 +44,7 @@ export default function RolesPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [total, setTotal] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -140,14 +139,6 @@ export default function RolesPage() {
       setMenuLoading(false);
     }
   };
-
-  function getAllMenuIds(items: Menu[]): number[] {
-    return items.flatMap((m) => [m.id, ...(m.children ? getAllMenuIds(m.children) : [])]);
-  }
-
-  function getAllMenuKeys(items: Menu[]): string[] {
-    return items.flatMap((m) => [String(m.id), ...(m.children ? getAllMenuKeys(m.children) : [])]);
-  }
 
   const handleAssignMenus = async () => {
     if (!menuRole) return;
