@@ -1130,7 +1130,7 @@ export default function DbAdminPage() {
   };
 
   const historyColumns: ColumnProps<HistoryItem>[] = [
-    { title: '时间', dataIndex: 'executedAt', width: 170, render: (v: string) => formatDateTime(v) },
+    { title: '时间', dataIndex: 'executedAt', width: 180, render: (v: string) => formatDateTime(v) },
     { title: '状态', dataIndex: 'success', width: 80, render: (v: boolean) =>
       v ? <Badge type="success" dot /> : <Badge type="danger" dot />,
     },
@@ -1633,8 +1633,8 @@ export default function DbAdminPage() {
           </Space>
         </TabPane>
 
-        <TabPane tab={<span><History size={14} style={{ verticalAlign: -2, marginRight: 4 }} />查询历史</span>} itemKey="history">
-          <Space vertical align="start" style={{ width: '100%' }}>
+        <TabPane tab={<span><History size={14} style={{ verticalAlign: -2, marginRight: 4 }} />查询历史</span>} itemKey="history" style={{ height: '100%', overflow: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Space>
               <Button icon={<RefreshCw size={14} />} onClick={() => void loadHistory(historyPage, historyPageSize)} loading={historyLoading}>刷新</Button>
               <Popconfirm title="确定清空所有历史？" onConfirm={clearHistory}>
@@ -1647,20 +1647,17 @@ export default function DbAdminPage() {
               dataSource={history}
               rowKey="id"
               loading={historyLoading}
-              pagination={false}
               size="small"
-              style={{ width: '100%' }}
+              scroll={{ x: 1000 }}
+              pagination={{
+                currentPage: historyPage,
+                pageSize: historyPageSize,
+                total: historyTotal,
+                onPageChange: (p) => { setHistoryPage(p); void loadHistory(p, historyPageSize); },
+                onPageSizeChange: (size) => { setHistoryPageSize(size); setHistoryPage(1); void loadHistory(1, size); },
+              }}
             />
-            <Pagination
-              currentPage={historyPage}
-              pageSize={historyPageSize}
-              total={historyTotal}
-              showSizeChanger
-              showQuickJumper
-              pageSizeOpts={[20, 50, 100]}
-              onChange={(p, ps) => { setHistoryPage(p); setHistoryPageSize(ps); }}
-            />
-          </Space>
+          </div>
         </TabPane>
 
         <TabPane tab={<span><Network size={14} style={{ verticalAlign: -2, marginRight: 4 }} />ER 图</span>} itemKey="er">
