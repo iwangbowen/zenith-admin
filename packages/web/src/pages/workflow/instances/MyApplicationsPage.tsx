@@ -397,6 +397,8 @@ export default function MyApplicationsPage() {
           onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, searchStatus, ps); },
           showSizeChanger: true,
         }}
+        onRefresh={() => void fetchList()}
+        refreshLoading={loading}
       />
 
       {/* 申请详情 */}
