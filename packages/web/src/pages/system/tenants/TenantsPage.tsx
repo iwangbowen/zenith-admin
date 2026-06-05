@@ -40,18 +40,21 @@ export default function TenantsPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
-        ...(params.keyword ? { keyword: params.keyword } : {}),
-        ...(params.status ? { status: params.status } : {}),
+        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
+        ...(activeParams.status ? { status: activeParams.status } : {}),
       }).toString();
       const res = await request.get<{ list: Tenant[]; total: number }>(`/api/tenants?${query}`);
       if (res.code === 0) {
@@ -61,7 +64,8 @@ export default function TenantsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 

@@ -40,18 +40,21 @@ export default function SystemConfigsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SystemConfig | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
-        ...(params.keyword ? { keyword: params.keyword } : {}),
-        ...(params.configType ? { configType: params.configType } : {}),
+        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
+        ...(activeParams.configType ? { configType: activeParams.configType } : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<SystemConfig>>(`/api/system-configs?${query}`);
       if (res.code === 0) {
@@ -61,7 +64,8 @@ export default function SystemConfigsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
 
   useEffect(() => {
     void fetchData();

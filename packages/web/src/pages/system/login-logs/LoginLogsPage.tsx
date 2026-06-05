@@ -23,19 +23,22 @@ export default function LoginLogsPage() {
   const [pageSize, setPageSize] = useState(10);
 
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
+  const searchParamsRef = useRef<SearchParams>(defaultParams);
+  searchParamsRef.current = searchParams;
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
-        ...(params.username ? { username: params.username } : {}),
-        ...(params.status ? { status: params.status } : {}),
+        ...(activeParams.username ? { username: activeParams.username } : {}),
+        ...(activeParams.status ? { status: activeParams.status } : {}),
       });
-      if (params.timeRange) {
-        query.set('startTime', formatDateTimeForApi(params.timeRange[0]));
-        query.set('endTime', formatDateTimeForApi(params.timeRange[1]));
+      if (activeParams.timeRange) {
+        query.set('startTime', formatDateTimeForApi(activeParams.timeRange[0]));
+        query.set('endTime', formatDateTimeForApi(activeParams.timeRange[1]));
       }
       const res = await request.get<PaginatedResponse<LoginLog>>(`/api/login-logs?${query.toString()}`);
       setData(res.data.list);
@@ -47,7 +50,8 @@ export default function LoginLogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
 
   useEffect(() => {
     fetchData();
