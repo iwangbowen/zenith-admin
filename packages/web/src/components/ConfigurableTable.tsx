@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePreferences } from '@/hooks/usePreferences';
 import { Button, Checkbox, Dropdown, Radio, RadioGroup, Space, Switch, Table } from '@douyinfe/semi-ui';
-import { RotateCcw, Rows3, Settings, Settings2, Expand, Shrink } from 'lucide-react';
+import { RotateCcw, Rows3, Settings, Settings2, Maximize2, Minimize2 } from 'lucide-react';
 import type { ColumnProps, Data, TableProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TableSizePreference } from '@/hooks/usePreferences';
 
@@ -420,7 +420,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
         <Button
           type="tertiary"
           theme="borderless"
-          icon={isFullscreen ? <Shrink size={14} /> : <Expand size={14} />}
+          icon={isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           aria-label={isFullscreen ? '退出全屏' : '全屏展示'}
           title={isFullscreen ? '退出全屏（Esc）' : '全屏展示'}
           onClick={() => setIsFullscreen((v) => !v)}
