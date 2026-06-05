@@ -4,7 +4,7 @@ import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
-import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock } from 'lucide-react';
+import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -1337,6 +1337,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     render={
                       <Dropdown.Menu>
                         <Dropdown.Item icon={<RotateCcw size={14} />} onClick={() => handleTabRefresh(tab.key)}>刷新页面</Dropdown.Item>
+                        <Dropdown.Item icon={<Copy size={14} />} onClick={() => void navigator.clipboard.writeText(tab.title)}>复制名称</Dropdown.Item>
                         {tab.key !== '/' && (
                           tab.pinned
                             ? <Dropdown.Item icon={<PinOff size={14} />} onClick={() => unpinTab(tab.key)}>取消固定</Dropdown.Item>
