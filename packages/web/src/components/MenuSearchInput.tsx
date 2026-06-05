@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
 import MenuCommandPalette from './MenuCommandPalette';
 
@@ -16,6 +16,7 @@ interface MenuSearchInputProps {
 
 export default function MenuSearchInput({ menus }: MenuSearchInputProps) {
   const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   // Listen for global Ctrl+K shortcut dispatched from palette
   useEffect(() => {
@@ -24,9 +25,18 @@ export default function MenuSearchInput({ menus }: MenuSearchInputProps) {
     return () => globalThis.removeEventListener('open-menu-palette', handler);
   }, []);
 
+  const handleClose = () => {
+    setOpen(false);
+    // Blur the button to remove focus outline after closing the palette
+    setTimeout(() => {
+      buttonRef.current?.blur();
+    }, 0);
+  };
+
   return (
     <>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen(true)}
         title="搜索菜单 (Ctrl+K)"
@@ -55,7 +65,7 @@ export default function MenuSearchInput({ menus }: MenuSearchInputProps) {
       >
         <Search size={16} strokeWidth={1.8} />
       </button>
-      <MenuCommandPalette menus={menus} open={open} onClose={() => setOpen(false)} />
+      <MenuCommandPalette menus={menus} open={open} onClose={handleClose} />
     </>
   );
 }
