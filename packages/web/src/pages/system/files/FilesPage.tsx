@@ -759,6 +759,8 @@ export default function FilesPage() {
             onChange: (keys) => setSelectedRowKeys((keys as (string | number)[]).map(Number)),
           } : undefined}
           loading={loading}
+          onRefresh={() => void fetchFiles()}
+          refreshLoading={loading}
           size="small"
           empty="暂无文件记录"
           pagination={{
