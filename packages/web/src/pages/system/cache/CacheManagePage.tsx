@@ -17,6 +17,7 @@ import { Search, RotateCcw, RefreshCw, Trash2, MoreHorizontal } from 'lucide-rea
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import './CacheManagePage.css';
@@ -73,6 +74,7 @@ function TtlBadge({ ttl }: Readonly<{ ttl: number }>) {
 
 export default function CacheManagePage() {
   const { hasPermission } = usePermission();
+  const { pageSize } = usePagination();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<CacheItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<CategoryRow | null>(null);
@@ -396,7 +398,7 @@ export default function CacheManagePage() {
               onRefresh={fetchData}
               refreshLoading={loading}
               rowKey="key"
-              pagination={{ pageSize: 20, pageSizeOpts: [20, 50, 100] }}
+              pagination={{ pageSize }}
               empty="该分类暂无缓存数据"
               scroll={{ x: 820 }}
             />
