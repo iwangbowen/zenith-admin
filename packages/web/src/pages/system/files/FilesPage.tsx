@@ -31,6 +31,7 @@ import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePreferences } from '@/hooks/usePreferences';
+import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import './FilesPage.css';
@@ -106,9 +107,8 @@ export default function FilesPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(
-    () => (preferences.filesViewMode ?? 'list') === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE,
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination(
+    (preferences.filesViewMode ?? 'list') === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE,
   );
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
@@ -767,18 +767,7 @@ export default function FilesPage() {
           refreshLoading={loading}
           size="small"
           empty="暂无文件记录"
-          pagination={{
-            currentPage: page,
-            pageSize: pageSize,
-            total: data?.total || 0,
-            onPageChange: (currentPage) => { void fetchFiles(currentPage, pageSize); },
-            onPageSizeChange: (size) => {
-              void fetchFiles(1, size);
-            },
-            showTotal: true,
-            showSizeChanger: true,
-            pageSizeOpts: FILE_LIST_PAGE_SIZE_OPTIONS,
-          }}
+          pagination={{ ...buildPagination(data?.total ?? 0, fetchFiles), pageSizeOpts: FILE_LIST_PAGE_SIZE_OPTIONS }}
         />
       ) : (
         <>

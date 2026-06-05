@@ -20,6 +20,7 @@ import DictTag from '@/components/DictTag';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createdAtColumn } from '../../../utils/table-columns';
+import { usePagination } from '@/hooks/usePagination';
 
 const { Text } = Typography;
 
@@ -116,8 +117,7 @@ export default function TagsPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<Tag[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
 
   const [keyword, setKeyword] = useState('');
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
@@ -384,15 +384,7 @@ export default function TagsPage() {
               }
             : undefined
         }
-        pagination={{
-          total,
-          currentPage: page,
-          pageSize,
-          showTotal: true,
-          showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, filterStatus, filterGroup, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, filterStatus, filterGroup, s); },
-        }}
+        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterStatus, filterGroup, ps))}
         scroll={{ x: 900 }}
       />
 

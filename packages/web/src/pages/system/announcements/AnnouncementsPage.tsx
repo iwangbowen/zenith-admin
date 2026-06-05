@@ -756,10 +756,7 @@ export default function AnnouncementsPage() {
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys as number[]),
         }}
-        pagination={{
-          ...buildPagination(total, fetchData),
-          pageSizeOpts: [10, 20, 50],
-        }}
+        pagination={buildPagination(total, fetchData)}
       />
 
       <SideSheet

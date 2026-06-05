@@ -348,7 +348,7 @@ export default function WorkflowAutomationsPage() {
         rowKey="id"
         dataSource={list}
         columns={columns}
-        pagination={{...buildPagination(total, fetchData), pageSizeOpts: [10, 20, 50]}}
+        pagination={buildPagination(total, fetchData)}
       />
 
       <Modal

@@ -31,6 +31,7 @@ import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
+import { usePagination } from '@/hooks/usePagination';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -230,8 +231,7 @@ export default function MyApplicationsPage() {
   const dynamicFormApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination(20);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchStatus, setSearchStatus] = useState('');
   const [detailVisible, setDetailVisible] = useState(false);
@@ -389,14 +389,7 @@ export default function MyApplicationsPage() {
         dataSource={data?.list ?? []}
         rowKey="id"
         loading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data?.total ?? 0,
-          onPageChange: (p) => { void fetchList(p); },
-          onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, searchStatus, ps); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(data?.total ?? 0, (p, ps) => void fetchList(p, searchStatus, ps))}
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
       />

@@ -15,6 +15,7 @@ import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
 import CategorySidebar from './components/CategorySidebar';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
+import { usePagination } from '@/hooks/usePagination';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -29,8 +30,7 @@ export default function WorkflowDefinitionsPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowDefinition> | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
+  const { page, setPage, pageSize } = usePagination(20);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');

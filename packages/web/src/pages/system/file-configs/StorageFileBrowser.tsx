@@ -22,6 +22,7 @@ import { formatDateTime } from '@/utils/date';
 import { canPreviewFile, fetchProtectedFile, formatFileSize, getFileFullUrl, getFileTypeIcon } from '@/utils/file-utils';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { FileGridCard } from '../files/components/FileGridCard';
@@ -40,7 +41,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
   const [currentPath, setCurrentPath] = useState('');
   const [browseData, setBrowseData] = useState<StorageBrowseResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
+  const { page, setPage } = usePagination();
   const PAGE_SIZE = 50;
 
   // Navigation history for back/forward

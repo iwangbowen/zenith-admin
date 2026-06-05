@@ -1623,7 +1623,7 @@ export default function DbAdminPage() {
                     columns={buildDataColumns(queryResult.columns)}
                     dataSource={queryResult.rows.map((r, i) => ({ ...r, __key: i }))}
                     rowKey="__key"
-                    pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOpts: [20, 50, 100] }}
+                    pagination={{ pageSize: 20, pageSizeOpts: [20, 50, 100] }}
                     size="small"
                     scroll={{ x: 'max-content' }}
                   />

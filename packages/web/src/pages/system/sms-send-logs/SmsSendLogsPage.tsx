@@ -9,6 +9,7 @@ import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { renderEllipsis } from '../../../utils/table-columns';
+import { usePagination } from '@/hooks/usePagination';
 
 const STATUS_OPTIONS: { label: string; value: SendStatus; color: 'orange' | 'green' | 'red' }[] = [
   { label: '待发送', value: 'pending', color: 'orange' },
@@ -39,8 +40,7 @@ export default function SmsSendLogsPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<SmsSendLog[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [phone, setPhone] = useState('');
   const [filterStatus, setFilterStatus] = useState<SendStatus | undefined>();
@@ -168,11 +168,7 @@ export default function SmsSendLogsPage() {
       </SearchToolbar>
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, phone, filterStatus, filterSource, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={{
-          total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, phone, filterStatus, filterSource, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, phone, filterStatus, filterSource, s); },
-        }}
+        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, phone, filterStatus, filterSource, ps))}
         scroll={{ x: 1400 }} />
 
       <Modal title="测试发送短信" visible={testVisible} onOk={handleTest}

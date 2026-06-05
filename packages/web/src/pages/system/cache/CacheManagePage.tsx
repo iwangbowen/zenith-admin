@@ -399,7 +399,7 @@ export default function CacheManagePage() {
               onRefresh={fetchData}
               refreshLoading={loading}
               rowKey="key"
-              pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOpts: [20, 50, 100] }}
+              pagination={{ pageSize: 20, pageSizeOpts: [20, 50, 100] }}
               empty="该分类暂无缓存数据"
               scroll={{ x: 820 }}
             />

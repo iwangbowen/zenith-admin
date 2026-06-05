@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Modal, Popconfirm, Spin,
 } from '@douyinfe/semi-ui';
+import { usePagination } from '@/hooks/usePagination';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { CheckCheck } from 'lucide-react';
@@ -28,7 +29,7 @@ export default function InboxPage() {
   const [list, setList] = useState<InAppMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const { page, setPage } = usePagination();
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read'>('all');
   const [markAllLoading, setMarkAllLoading] = useState(false);
 

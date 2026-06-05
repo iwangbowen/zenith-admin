@@ -3,6 +3,7 @@ import {
   Button, Card, Switch, TextArea, Toast, Spin, Typography,
   Tabs, TabPane, Tag, Input, Select,
 } from '@douyinfe/semi-ui';
+import { usePagination } from '@/hooks/usePagination';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { IpAccessLog, PaginatedResponse, SystemConfig } from '@zenith/shared';
@@ -42,8 +43,7 @@ function IpAccessLogsTab() {
   const [tableLoading, setTableLoading] = useState(false);
   const [logList, setLogList] = useState<IpAccessLog[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const { page, setPage, pageSize } = usePagination(20);
 
   const [filterIp, setFilterIp] = useState('');
   const [filterBlockType, setFilterBlockType] = useState<string | undefined>(undefined);
