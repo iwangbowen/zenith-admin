@@ -214,6 +214,8 @@ export default function WorkflowTriggerExecutionsPage() {
           showSizeChanger: true,
           showTotal: true,
         }}
+        onRefresh={fetchData}
+        refreshLoading={loading}
       />
 
       <SideSheet

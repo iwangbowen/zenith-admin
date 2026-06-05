@@ -365,6 +365,8 @@ export default function WorkflowEventSubscriptionsPage() {
           onPageChange: (p) => setPage(p),
           onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); },
         }}
+        onRefresh={() => void fetchData()}
+        refreshLoading={loading}
       />
 
       <Modal
@@ -420,6 +422,8 @@ export default function WorkflowEventSubscriptionsPage() {
             currentPage: deliveryPage, pageSize: deliveryPageSize, total: deliveriesTotal,
             onPageChange: (p) => setDeliveryPage(p),
           }}
+          onRefresh={() => void fetchDeliveries(deliveryPage)}
+          refreshLoading={deliveryLoading}
         />
       </SideSheet>
     </div>
