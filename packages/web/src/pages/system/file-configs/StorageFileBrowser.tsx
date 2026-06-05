@@ -452,6 +452,8 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
                 dataSource={pagedItems}
                 rowKey={(record) => (record && 'id' in record ? `file-${(record as ManagedFile).id}` : `folder-${(record as FolderEntry).path}`)}
                 loading={false}
+                onRefresh={() => void fetchBrowseData(config.id, currentPath)}
+                refreshLoading={loading}
                 size="small"
                 pagination={false}
                 onRow={(record) => {
