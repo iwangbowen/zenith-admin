@@ -11,7 +11,6 @@ import {
   JsonViewer,
   List,
   Modal,
-  Pagination,
   Popconfirm,
   Select,
   SideSheet,
@@ -472,13 +471,6 @@ export default function DbAdminPage() {
     setRowsOrderDir(undefined);
     setRowsFilters({});
     setSelectedRowKeys([]);
-  };
-
-  const handleRowsPageChange = (page: number, pageSize: number) => {
-    if (!selected) return;
-    setRowsPage(page);
-    setRowsPageSize(pageSize);
-    void loadRows(selected, page, pageSize, rowsOrderBy, rowsOrderDir, rowsFilters);
   };
 
   const handleRowsSort = (col: string, dir: 'asc' | 'desc' | undefined) => {
@@ -1399,7 +1391,21 @@ export default function DbAdminPage() {
                               onChange: (keys?: Array<string | number>) => setSelectedRowKeys(keys ?? []),
                               fixed: true,
                             } : undefined}
-                            pagination={false}
+                            pagination={{
+                              currentPage: rowsPage,
+                              pageSize: rowsPageSize,
+                              total: rows.total,
+                              pageSizeOpts: [20, 50, 100, 200],
+                              onPageChange: (p) => {
+                                setRowsPage(p);
+                                if (selected) void loadRows(selected, p, rowsPageSize, rowsOrderBy, rowsOrderDir, rowsFilters);
+                              },
+                              onPageSizeChange: (size) => {
+                                setRowsPageSize(size);
+                                setRowsPage(1);
+                                if (selected) void loadRows(selected, 1, size, rowsOrderBy, rowsOrderDir, rowsFilters);
+                              },
+                            }}
                             size="small"
                             scroll={{ x: 'max-content' }}
                             resizable
@@ -1427,17 +1433,6 @@ export default function DbAdminPage() {
                               }
                             }}
                           />
-                          <div style={{ marginTop: 12, textAlign: 'right' }}>
-                            <Pagination
-                              currentPage={rowsPage}
-                              pageSize={rowsPageSize}
-                              total={rows.total}
-                              showSizeChanger
-                              showQuickJumper
-                              pageSizeOpts={[20, 50, 100, 200]}
-                              onChange={handleRowsPageChange}
-                            />
-                          </div>
                         </div>
                       )}
                     </TabPane>
