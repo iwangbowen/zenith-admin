@@ -66,7 +66,7 @@ export const defaultPreferences: UserPreferences = {
   tableStriped: false,
   tableSize: 'small',
   enableLockScreen: false,
-  sidebarAccordion: false,
+  sidebarAccordion: true,
 };
 
 export interface PreferencesContextValue {
