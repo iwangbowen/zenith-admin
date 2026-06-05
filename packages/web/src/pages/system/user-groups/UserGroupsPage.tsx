@@ -27,6 +27,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { usePagination } from '@/hooks/usePagination';
 
 interface SearchParams {
   keyword: string;
@@ -54,8 +55,7 @@ export default function UserGroupsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<UserGroup[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
@@ -376,14 +376,7 @@ export default function UserGroupsPage() {
         refreshLoading={loading}
         rowKey="id"
         scroll={{ x: 'max-content' }}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: (p) => { setPage(p); void fetchList(p, pageSize); },
-          onPageSizeChange: (size) => { setPageSize(size); void fetchList(1, size); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(total, fetchList)}
         empty="暂无数据"
         rowSelection={{
           selectedRowKeys,

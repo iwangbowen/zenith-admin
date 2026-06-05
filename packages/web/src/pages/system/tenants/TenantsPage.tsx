@@ -22,6 +22,7 @@ import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { usePagination } from '@/hooks/usePagination';
 
 export default function TenantsPage() {
   const { hasPermission } = usePermission();
@@ -35,8 +36,7 @@ export default function TenantsPage() {
   const formApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<Tenant[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
@@ -240,14 +240,7 @@ export default function TenantsPage() {
         loading={loading}
         onRefresh={fetchData}
         refreshLoading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          onPageChange: (p) => { setPage(p); void fetchData(p, pageSize); },
-          onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); void fetchData(1, ps); },
-        }}
+        pagination={buildPagination(total, fetchData)}
       />
 
       <Modal
