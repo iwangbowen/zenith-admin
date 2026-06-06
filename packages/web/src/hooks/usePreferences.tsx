@@ -5,6 +5,7 @@ export type NavLayout = 'vertical' | 'horizontal' | 'mixed' | 'double';
 export type TabAnimation = 'none' | 'fade' | 'slide' | 'scale';
 export type TabStyle = 'line' | 'pill' | 'card';
 export type TableSizePreference = 'small' | 'default' | 'middle';
+export type RouteAnimation = 'none' | 'fade' | 'slide-up' | 'slide-left';
 
 export interface UserPreferences {
   enableTabs: boolean;
@@ -39,6 +40,8 @@ export interface UserPreferences {
   enableLockScreen: boolean;
   /** 侧边栏手风琴展开：同级只允许展开一个子菜单 */
   sidebarAccordion: boolean;
+  /** 路由切换动画 */
+  routeAnimation: RouteAnimation;
   /** 最大标签页超限后的关闭策略: fifo 最早打开，lru 最近最少使用 */
   tabEvictPolicy: 'fifo' | 'lru';
   /** 灰色模式（国家公祭日等场景） */
@@ -77,6 +80,7 @@ export const defaultPreferences: UserPreferences = {
   enableLockScreen: false,
   sidebarAccordion: true,
   tabEvictPolicy: 'fifo',
+  routeAnimation: 'fade',
   grayscale: false,
   colorBlind: false,
 };

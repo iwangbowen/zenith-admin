@@ -8,7 +8,7 @@ import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Mon
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
-import { usePreferences, type NavLayout, type TableSizePreference } from '@/hooks/usePreferences';
+import { usePreferences, type NavLayout, type TableSizePreference, type RouteAnimation } from '@/hooks/usePreferences';
 import { THEME_COLOR_PRESETS, getThemeColorVars } from '@/lib/theme-color';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTabsStore } from '@/hooks/useTabsStore';
@@ -1422,7 +1422,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           )}
           <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
             <RouteErrorBoundary>
-              <Outlet key={outletRefreshKey} />
+              <div
+                key={outletRefreshKey}
+                className={preferences.routeAnimation && preferences.routeAnimation !== 'none'
+                  ? `route-anim--${preferences.routeAnimation}`
+                  : undefined}
+              >
+                <Outlet key={outletRefreshKey} />
+              </div>
             </RouteErrorBoundary>
           </div>
 
@@ -1818,6 +1825,19 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                           </Popover>
                         );
                       })}
+                    </RadioGroup>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>路由切换动画</span>
+                    <RadioGroup
+                      type="button"
+                      value={preferences.routeAnimation ?? 'fade'}
+                      onChange={(e) => setPreferences({ routeAnimation: e.target.value as RouteAnimation })}
+                    >
+                      <Radio value="none">无</Radio>
+                      <Radio value="fade">淡入</Radio>
+                      <Radio value="slide-up">上滑</Radio>
+                      <Radio value="slide-left">左滑</Radio>
                     </RadioGroup>
                   </div>
                 </>

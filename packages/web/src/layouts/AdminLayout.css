@@ -1724,3 +1724,31 @@
 .admin-layout--color-blind {
   filter: contrast(1.2) saturate(1.3);
 }
+
+/* ===== 路由切换动画 ===== */
+@keyframes route-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes route-slide-up-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes route-slide-left-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.route-anim--fade {
+  animation: route-fade-in 0.2s ease;
+}
+
+.route-anim--slide-up {
+  animation: route-slide-up-in 0.22s ease;
+}
+
+.route-anim--slide-left {
+  animation: route-slide-left-in 0.22s ease;
+}
