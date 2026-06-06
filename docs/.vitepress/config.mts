@@ -60,6 +60,8 @@ export default defineConfig({
           { text: '项目结构', link: '/guide/project-structure' },
           { text: '部署说明', link: '/guide/deployment' },
           { text: 'Docker 部署', link: '/guide/docker' },
+          { text: 'PWA 支持', link: '/guide/pwa' },
+          { text: 'Electron 客户端', link: '/guide/electron' },
           { text: '项目维护', link: '/guide/contributing' },
           { text: 'Demo 演示模式', link: '/guide/demo-mode' },
         ],
