@@ -23,6 +23,7 @@ import Watermark from '@/components/Watermark';
 import QuickChatButton from '@/components/QuickChatButton';
 import AppLogo from '@/components/AppLogo';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
+import ElectronTitleBar from '@/components/ElectronTitleBar';
 import { TopNavWithOverflow } from './TopNavWithOverflow';
 import { LockScreen } from '@/components/LockScreen';
 import { useLockScreen } from '@/hooks/useLockScreen';
@@ -1339,6 +1340,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   const adminLayoutEl = (
     <div className={layoutClassName} style={sectionDarkThemeStyle}>
+      {/* Electron 自定义标题栏（仅在 Electron 环境下渲染） */}
+      <ElectronTitleBar />
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && navLayout !== 'double' && (
         <header className="admin-topbar">
@@ -1585,7 +1588,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                           void navigator.clipboard.writeText(path);
                         }}>复制面包屑路径</Dropdown.Item>
                         {/* 收藏 */}
-                        {/* eslint-disable-next-line react/no-unstable-nested-components */}
                         {(preferences.showFavorites ?? false) && (() => {
                           const menu = flatMenus.find((m) => m.path === tab.key);
                           if (!menu) return null;

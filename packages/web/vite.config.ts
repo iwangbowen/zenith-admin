@@ -27,7 +27,9 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:3300';
   const port = Number(env.VITE_PORT) || 5373;
   // GitHub Pages 部署时通过环境变量注入 base 路径（如 /zenith-admin/）
-  const base = env.VITE_BASE_URL || '/';
+  // Electron 模式下使用相对路径（./ 针对 file:// 协议）
+  const isElectron = env.VITE_ELECTRON === 'true';
+  const base = isElectron ? './' : (env.VITE_BASE_URL || '/');
   // 使用 esnext 目标（React 19 要求现代浏览器）
   const buildTarget = 'esnext';
 

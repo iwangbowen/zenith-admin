@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useGlobalErrorHandler } from '@/hooks/useGlobalErrorHandler';
@@ -199,9 +199,11 @@ export default function App() {
     return <PageLoadingDots />;
   }
 
+  // Electron file:// 协议不支持 BrowserRouter，需使用 HashRouter
+  const RouterComponent = import.meta.env.VITE_ELECTRON === 'true' ? HashRouter : BrowserRouter;
   return (
     <PageErrorBoundary>
-    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+    <RouterComponent basename={import.meta.env.VITE_ELECTRON === 'true' ? undefined : (import.meta.env.BASE_URL.replace(/\/$/, '') || '/')}>
       {user ? (
         <PreferencesProvider>
           <ThemeProvider>
@@ -221,7 +223,7 @@ export default function App() {
           </PageErrorBoundary>
         </ThemeProvider>
       )}
-    </BrowserRouter>
+    </RouterComponent>
     </PageErrorBoundary>
   );
 }

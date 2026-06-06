@@ -1,0 +1,65 @@
+{
+  "name": "@zenith/electron",
+  "version": "0.41.0",
+  "private": true,
+  "description": "Zenith Admin Electron Client",
+  "author": "Zenith Admin",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsc && concurrently \"npm run dev -w @zenith/web\" \"tsc --watch --preserveWatchOutput\" \"wait-on http://localhost:5373 && electron .\"",
+    "build": "tsc && electron-builder",
+    "build:win": "tsc && electron-builder --win",
+    "build:mac": "tsc && electron-builder --mac",
+    "build:linux": "tsc && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.zenith.admin",
+    "productName": "Zenith Admin",
+    "copyright": "Copyright © 2024",
+    "electronVersion": "42.3.3",
+    "icon": "../web/public/icons/icon-512.png",
+    "directories": {
+      "output": "../../dist/electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "!dist/**/*.map",
+      "!dist/win-unpacked/**",
+      "!dist/mac/**",
+      "!dist/linux-unpacked/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "../web/public/icons/icon-512.png"
+    },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "category": "public.app-category.business",
+      "icon": "../web/public/icons/icon-512.png"
+    },
+    "linux": {
+      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "icon": "../web/public/icons/icon-512.png",
+      "category": "Office"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "electron": "42.3.3",
+    "electron-builder": "^26.15.0",
+    "typescript": "^6.0.3",
+    "wait-on": "^8.0.3"
+  }
+}
