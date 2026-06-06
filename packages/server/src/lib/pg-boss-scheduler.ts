@@ -14,7 +14,7 @@ import { cleanExpiredSessions } from './session-manager';
 import { createPgDumpBackup, createDrizzleExportBackup } from './db-backup';
 import { formatFileTimestamp } from './datetime';
 import { config } from '../config';
-import CronParser from 'cron-parser';
+import { CronExpressionParser } from 'cron-parser';
 
 // ─── 队列名工具 ───────────────────────────────────────────────────────────────
 // pg-boss 队列名只允许：字母数字、连字符、句点、斜杠
@@ -283,9 +283,7 @@ export async function stopAllJobs(): Promise<void> {
 /** 校验 cron 表达式（兼容 5 段标准格式和带秒的 6 段格式） */
 export function validateCronExpression(expression: string): boolean {
   try {
-    const parts = expression.trim().split(/\s+/);
-    const expr = parts.length === 6 ? parts.slice(1).join(' ') : expression;
-    CronParser.parse(expr);
+    CronExpressionParser.parse(expression.trim());
     return true;
   } catch {
     return false;
