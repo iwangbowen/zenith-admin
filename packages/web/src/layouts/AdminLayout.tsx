@@ -1354,7 +1354,10 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     render={
                       <Dropdown.Menu>
                         <Dropdown.Item icon={<RotateCcw size={14} />} onClick={() => handleTabRefresh(tab.key)}>刷新页面</Dropdown.Item>
-                        <Dropdown.Item icon={isContentFullscreen ? <Shrink size={14} /> : <Expand size={14} />} onClick={() => setIsContentFullscreen((v) => !v)}>{isContentFullscreen ? '退出内容全屏' : '内容全屏'}</Dropdown.Item>
+                        <Dropdown.Item icon={isContentFullscreen ? <Shrink size={14} /> : <Expand size={14} />} onClick={() => {
+                          navigate(tab.key);
+                          setIsContentFullscreen((v) => !v);
+                        }}>{isContentFullscreen ? '退出内容全屏' : '内容全屏'}</Dropdown.Item>
                         <Dropdown.Item icon={<Copy size={14} />} onClick={() => void navigator.clipboard.writeText(tab.title)}>复制名称</Dropdown.Item>
                         <Dropdown.Item icon={<Route size={14} />} onClick={() => {
                           const crumbs = findBreadcrumbs(menuTree, tab.key);
