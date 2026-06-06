@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useGlobalErrorHandler } from '@/hooks/useGlobalErrorHandler';
