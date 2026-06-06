@@ -41,7 +41,7 @@
 
 ```bash
 unzip zenith-admin-server-vX.Y.Z.zip -d zenith-server
-cd zenith-server/server
+cd zenith-server/server    # zip 包内含 server/ 子目录，工作目录即此
 
 # 仅安装生产依赖
 npm install --production
@@ -116,6 +116,33 @@ pm2 startup
 ```
 
 后端服务默认监听 `http://localhost:3300`。
+
+::: tip PM2 多进程（cluster）模式
+**推荐使用单进程 fork 模式**（`instances: 1`，默认行为），无需任何额外配置。
+
+若需多进程充分利用多核 CPU，在工作目录（`zenith-server/server/`）下创建 `ecosystem.config.js`：
+
+```js
+// ecosystem.config.js（放在 zenith-server/server/ 目录下）
+module.exports = {
+  apps: [{
+    name: 'zenith-server',
+    script: 'dist/index.js',
+    instances: 'max',      // 或具体数字，如 4
+    exec_mode: 'cluster',
+  }]
+}
+```
+
+然后通过 ecosystem 文件启动：
+
+```bash
+pm2 start ecosystem.config.js
+pm2 save
+```
+
+**Zenith Admin 已内置防重复保障**：定时任务（cron-jobs）和工作流延迟调度器仅在 PM2 **0 号实例**（`NODE_APP_INSTANCE === '0'`）上启动，cluster 模式下不会出现多进程重复执行定时任务的问题。
+:::
 
 ---
 
