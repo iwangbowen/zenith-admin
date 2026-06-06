@@ -235,6 +235,27 @@ npm run build -w @zenith/web
 CORS_ORIGIN=https://admin.example.com
 ```
 
+## 启用 PWA（可选）
+
+Zenith Admin 内置 PWA 支持（由 `vite-plugin-pwa` 提供），可让用户将系统"添加到主屏幕"像原生 App 一样使用。默认**关闭**，需从源码重新构建前端开启：
+
+```ini
+# packages/web/.env.production（追加以下内容）
+VITE_PWA_ENABLED=true
+VITE_APP_SHORT_NAME=Zenith      # 主屏幕显示的短名称
+VITE_APP_DESCRIPTION=企业级后台管理系统
+VITE_APP_THEME_COLOR=#07c160    # 标题栏颜色，建议与系统主题色一致
+```
+
+重新构建后，构建产物中会包含 `sw.js`（Service Worker）和 `manifest.webmanifest`。
+
+::: tip PWA 注意事项
+- **需要 HTTPS**：Service Worker 要求在 HTTPS 下运行（`localhost` 除外）
+- **API 请求不缓存**：`/api/*` 路径走 Network Only 策略，数据始终实时
+- **静态资源缓存**：JS/CSS/字体等静态资源被预缓存，首屏加载更快
+- **自定义图标**：可将自己的品牌图标替换 `packages/web/public/icons/icon-192.png` 和 `icon-512.png`（需 192×192 和 512×512 像素）
+:::
+
 ---
 
 ## 健康检查

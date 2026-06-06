@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 function sanitizeChunkName(name: string) {
   return name.replace(/^@/, '').replace(/[\/]/g, '-');
@@ -30,9 +31,52 @@ export default defineConfig(({ mode }) => {
   // 使用 esnext 目标（React 19 要求现代浏览器）
   const buildTarget = 'esnext';
 
+  const pwaEnabled = env.VITE_PWA_ENABLED === 'true';
+
   return {
     base,
-    plugins: [react()],
+    plugins: [
+      react(),
+      ...(pwaEnabled ? [VitePWA({
+        registerType: 'autoUpdate',
+        // 预缓存 Vite 构建产物中的静态资源
+        includeAssets: ['favicon.svg', 'icons/*.png'],
+        manifest: {
+          name: env.VITE_APP_TITLE || 'Zenith Admin',
+          short_name: env.VITE_APP_SHORT_NAME || 'Zenith',
+          description: env.VITE_APP_DESCRIPTION || '企业级后台管理系统',
+          theme_color: env.VITE_APP_THEME_COLOR || '#07c160',
+          background_color: '#ffffff',
+          display: 'standalone',
+          start_url: '/',
+          scope: '/',
+          lang: 'zh-CN',
+          icons: [
+            { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          ],
+        },
+        workbox: {
+          // 只缓存静态资源（JS/CSS/字体/图片），API 请求完全走网络
+          globPatterns: ['**/*.{js,css,woff2,png,svg,ico}'],
+          // API 请求不缓存，保证数据实时性
+          navigateFallback: 'index.html',
+          navigateFallbackDenylist: [/^\/api\//],
+          runtimeCaching: [
+            {
+              // API 请求：Network Only（不缓存）
+              urlPattern: /^\/api\//,
+              handler: 'NetworkOnly',
+            },
+          ],
+        },
+        devOptions: {
+          // 开发模式下也启用 Service Worker（方便调试）
+          enabled: false,
+        },
+      })] : []),
+    ],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
