@@ -320,8 +320,8 @@ export default function LoginLogStatsPanel() {
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
                   <Pie data={browserPieData} nameKey="browser" dataKey="count" cx="50%" cy="50%" outerRadius={90} paddingAngle={2}
-                    label={({ browser, percent }: { browser: string; percent: number }) =>
-                      percent > 0.04 ? `${browser} ${(percent * 100).toFixed(0)}%` : ''
+                    label={({ name, percent }: { name?: string; percent?: number }) =>
+                      (percent ?? 0) > 0.04 ? `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%` : ''
                     }
                     labelLine
                   />
@@ -337,8 +337,8 @@ export default function LoginLogStatsPanel() {
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
                   <Pie data={osPieData} nameKey="os" dataKey="count" cx="50%" cy="50%" outerRadius={90} paddingAngle={2}
-                    label={({ os, percent }: { os: string; percent: number }) =>
-                      percent > 0.04 ? `${os} ${(percent * 100).toFixed(0)}%` : ''
+                    label={({ name, percent }: { name?: string; percent?: number }) =>
+                      (percent ?? 0) > 0.04 ? `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%` : ''
                     }
                     labelLine
                   />
