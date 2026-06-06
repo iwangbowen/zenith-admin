@@ -10,7 +10,7 @@ import {
   getMyProfile, updateMyProfile, changeMyPassword,
   listMyLoginLogs, listMyOperationLogs, listMySessions, deleteMyOtherSessions, deleteMySession,
   switchTenantView, listSwitchableTenants, forgotPassword, resetPassword,
-  getMyPreferences, saveMyPreferences,
+  getMyPreferences, saveMyPreferences, getMyFavoriteMenus, saveMyFavoriteMenus,
 } from '../services/auth.service';
 
 const auth = new OpenAPIHono({ defaultHook: validationHook });
@@ -351,6 +351,30 @@ const savePreferencesRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await saveMyPreferences(c.req.valid('json') as Record<string, unknown>)), 200),
 });
 
-auth.openapiRoutes([captchaRoute, loginRoute, registerRoute, refreshRoute, logoutRoute, meRoute, profileRoute, passwordRoute, myLoginLogsRoute, myOperationLogsRoute, mySessionsRoute, deleteOtherSessionsRoute, deleteSessionRoute, switchTenantRoute, authTenantsRoute, forgotPasswordRoute, resetPasswordRoute, getPreferencesRoute, savePreferencesRoute] as const);
+const getFavoriteMenusRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/favorite-menus', tags: ['Auth'], summary: '获取收藏菜单',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(z.number().int()), '收藏菜单 ID 列表') },
+  }),
+  handler: async (c) => c.json(okBody(await getMyFavoriteMenus()), 200),
+});
+
+const saveFavoriteMenusRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/favorite-menus', tags: ['Auth'], summary: '更新收藏菜单',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { body: { content: jsonContent(z.object({ menuIds: z.array(z.number().int()) })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(z.array(z.number().int()), '已更新') },
+  }),
+  handler: async (c) => {
+    const { menuIds } = c.req.valid('json');
+    return c.json(okBody(await saveMyFavoriteMenus(menuIds)), 200);
+  },
+});
+
+auth.openapiRoutes([captchaRoute, loginRoute, registerRoute, refreshRoute, logoutRoute, meRoute, profileRoute, passwordRoute, myLoginLogsRoute, myOperationLogsRoute, mySessionsRoute, deleteOtherSessionsRoute, deleteSessionRoute, switchTenantRoute, authTenantsRoute, forgotPasswordRoute, resetPasswordRoute, getPreferencesRoute, savePreferencesRoute, getFavoriteMenusRoute, saveFavoriteMenusRoute] as const);
 
 export default auth;

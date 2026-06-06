@@ -320,6 +320,18 @@ export async function saveMyPreferences(prefs: Record<string, unknown>) {
   return prefs;
 }
 
+export async function getMyFavoriteMenus(): Promise<number[]> {
+  const userId = currentUser().userId;
+  const [row] = await db.select({ favoriteMenus: users.favoriteMenus }).from(users).where(eq(users.id, userId)).limit(1);
+  return (row?.favoriteMenus ?? []) as number[];
+}
+
+export async function saveMyFavoriteMenus(menuIds: number[]): Promise<number[]> {
+  const userId = currentUser().userId;
+  await db.update(users).set({ favoriteMenus: menuIds }).where(eq(users.id, userId));
+  return menuIds;
+}
+
 export async function getMyProfile() {
   const userId = currentUser().userId;
   const user = await db.query.users.findFirst({

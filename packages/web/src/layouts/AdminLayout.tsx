@@ -4,7 +4,7 @@ import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
-import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search } from 'lucide-react';
+import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star } from 'lucide-react';
 import { match as pinyinMatch } from 'pinyin-pro';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
@@ -26,6 +26,7 @@ import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import { TopNavWithOverflow } from './TopNavWithOverflow';
 import { LockScreen } from '@/components/LockScreen';
 import { useLockScreen } from '@/hooks/useLockScreen';
+import { useFavoriteMenus } from '@/hooks/useFavoriteMenus';
 import './AdminLayout.css';
 
 // 主题图标
@@ -283,6 +284,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     );
   }, [prefsSearch]);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
+  const { favorites, isFavorite, toggle: toggleFavorite } = useFavoriteMenus();
   const [isContentFullscreen, setIsContentFullscreen] = useState(false);
   const [lockPasswordModalVisible, setLockPasswordModalVisible] = useState(false);
   const [lockPasswordModalMode, setLockPasswordModalMode] = useState<'set' | 'change'>('set');
@@ -874,6 +876,76 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const headerActions = (
     <div className="admin-header__actions">
       {(preferences.showMenuSearch ?? true) && <div className="admin-menu-search"><MenuSearchInput menus={flatMenus} /></div>}
+      {/* 收藏菜单快捷入口 */}
+      <Popover
+        position="bottomRight"
+        trigger="hover"
+        mouseEnterDelay={200}
+        mouseLeaveDelay={300}
+        showArrow
+        content={
+          <div style={{ width: 260, maxHeight: 400, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '10px 14px 8px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--semi-color-border)' }}>
+              我的收藏
+            </div>
+            {favorites.length === 0 ? (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+                暂无收藏，点击面包屑右侧 ⭐ 可收藏当前页
+              </div>
+            ) : (
+              <div style={{ overflow: 'auto', maxHeight: 320 }}>
+                {favorites.map((menuId) => {
+                  const menu = flatMenus.find((m) => m.id === menuId);
+                  if (!menu) return null;
+                  return (
+                    <button
+                      key={menuId}
+                      type="button"
+                      onClick={() => { navigate(menu.path); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                        padding: '8px 14px', border: 0, background: 'transparent',
+                        cursor: 'pointer', textAlign: 'left', color: 'var(--semi-color-text-0)',
+                        fontSize: 13, transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--semi-color-fill-0)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <span style={{ color: 'var(--semi-color-warning)', flexShrink: 0, display: 'flex' }}>
+                        <Star size={13} fill="currentColor" strokeWidth={0} />
+                      </span>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {menu.title}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--semi-color-text-3)', flexShrink: 0 }}>
+                        {menu.breadcrumb.at(-1) ?? ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        }
+      >
+        <div className="admin-header-action" style={{ display: 'inline-flex', cursor: 'pointer' }}>
+          <button
+            type="button"
+            className="admin-theme-btn"
+            title="我的收藏"
+            style={{ position: 'relative' }}
+          >
+            <Star size={16} strokeWidth={1.5} />
+            {favorites.length > 0 && (
+              <span style={{
+                position: 'absolute', top: 4, right: 4,
+                width: 6, height: 6, borderRadius: '50%',
+                background: 'var(--semi-color-warning)',
+              }} />
+            )}
+          </button>
+        </div>
+      </Popover>
       {isPlatformAdmin && tenantList.length > 0 && (
         <>
           <Select
@@ -1322,7 +1394,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             <header className="admin-header">
               {/* Left: breadcrumb (vertical / double layouts only) */}
               {preferences.showBreadcrumb && displayBreadcrumbs.length > 0 ? (
-                <div className="admin-header__breadcrumb">
+                <div className="admin-header__breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Breadcrumb maxItemCount={10}>
                     {displayBreadcrumbs.map((crumb, index) => {
                       const isLast = index === displayBreadcrumbs.length - 1;
@@ -1351,6 +1423,31 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       );
                     })}
                   </Breadcrumb>
+                  {/* 收藏当前页按钮 */}
+                  {(() => {
+                    const currentMenu = flatMenus.find((m) => m.path === location.pathname);
+                    if (!currentMenu) return null;
+                    const faved = isFavorite(currentMenu.id);
+                    return (
+                      <Tooltip content={faved ? '取消收藏' : '收藏此页'} position="bottom">
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite(currentMenu.id)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 22, height: 22, border: 0, borderRadius: 4, background: 'transparent',
+                            cursor: 'pointer', flexShrink: 0, padding: 0,
+                            color: faved ? 'var(--semi-color-warning)' : 'var(--semi-color-text-2)',
+                            transition: 'color 0.15s',
+                          }}
+                          onMouseEnter={(e) => { if (!faved) e.currentTarget.style.color = 'var(--semi-color-text-0)'; }}
+                          onMouseLeave={(e) => { if (!faved) e.currentTarget.style.color = 'var(--semi-color-text-2)'; }}
+                        >
+                          <Star size={14} fill={faved ? 'currentColor' : 'none'} strokeWidth={faved ? 0 : 1.8} />
+                        </button>
+                      </Tooltip>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div />
@@ -1385,10 +1482,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     render={
                       <Dropdown.Menu>
                         <Dropdown.Item icon={<RotateCcw size={14} />} onClick={() => handleTabRefresh(tab.key)}>刷新页面</Dropdown.Item>
-                        <Dropdown.Item icon={isContentFullscreen ? <Shrink size={14} /> : <Expand size={14} />} onClick={() => {
-                          navigate(tab.key);
-                          setIsContentFullscreen((v) => !v);
-                        }}>{isContentFullscreen ? '退出内容全屏' : '内容全屏'}</Dropdown.Item>
                         <Dropdown.Item icon={<Copy size={14} />} onClick={() => void navigator.clipboard.writeText(tab.title)}>复制名称</Dropdown.Item>
                         <Dropdown.Item icon={<Route size={14} />} onClick={() => {
                           const crumbs = findBreadcrumbs(menuTree, tab.key);
@@ -1397,6 +1490,21 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                             : tab.title;
                           void navigator.clipboard.writeText(path);
                         }}>复制面包屑路径</Dropdown.Item>
+                        {/* 收藏 */}
+                        {/* eslint-disable-next-line react/no-unstable-nested-components */}
+                        {(() => {
+                          const menu = flatMenus.find((m) => m.path === tab.key);
+                          if (!menu) return null;
+                          const faved = isFavorite(menu.id);
+                          return (
+                            <Dropdown.Item
+                              icon={<Star size={14} fill={faved ? 'currentColor' : 'none'} strokeWidth={faved ? 0 : 1.8} style={{ color: faved ? 'var(--semi-color-warning)' : undefined }} />}
+                              onClick={() => toggleFavorite(menu.id)}
+                            >
+                              {faved ? '取消收藏' : '收藏此页'}
+                            </Dropdown.Item>
+                          );
+                        })()}
                         {tab.key !== '/' && (
                           tab.pinned
                             ? <Dropdown.Item icon={<PinOff size={14} />} onClick={() => unpinTab(tab.key)}>取消固定</Dropdown.Item>

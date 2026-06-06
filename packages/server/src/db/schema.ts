@@ -89,6 +89,8 @@ export const users = pgTable('users', {
   gender: varchar('gender', { length: 20 }),
   status: statusEnum('status').notNull().default('enabled'),
   preferences: jsonb('preferences'),
+  /** 用户收藏的菜单 ID 列表（有序） */
+  favoriteMenus: jsonb('favorite_menus').$type<number[]>(),
   userDataScope: dataScopeEnum('user_data_scope'),
   passwordUpdatedAt: timestamp('password_updated_at').defaultNow().notNull(),
   ...auditColumns(),
