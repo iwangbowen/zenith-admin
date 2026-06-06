@@ -4,6 +4,31 @@
 
 ---
 
+## v0.40.0 - 2026-06-06
+
+### Changed
+
+#### 定时任务调度引擎迁移（node-cron → pg-boss）
+
+- 调度引擎从进程内 `node-cron` 迁移至 **pg-boss**（PostgreSQL SKIP LOCKED 队列），原生支持多进程安全执行，无需 `NODE_APP_INSTANCE` 限制
+- `cron_jobs` 表：移除 `nextRunAt` 字段；`retryInterval` 单位改为秒；新增 `retryBackoff` 字段（指数退避重试）
+- 内置 7 个 Handler 迁移至 pg-boss worker 架构，处理器名称和行为不变
+- 移除 `node-cron` 和 `@types/node-cron` 依赖，新增 `pg-boss`
+
+#### 定时任务页面增强
+
+- 概览 Tab 新增「当前运行中」指标卡片（实时读取 pg-boss WIP 数据），5 个卡片等宽一行显示
+- 执行日志「清除日志」下拉菜单新增「清除全部日志」选项（`months=0`）
+- Cron 表达式列、处理器列、操作列均加宽
+- 统一 cron 表达式格式（`*/5 * * * *` 5 段标准格式）
+
+### Fixed
+
+- 窄屏下 SideSheet 宽度超出视口问题（通过 CSS media query 全局修复，`max-width: 95vw`）
+- 清除日志下拉菜单点击后未自动关闭（添加 `clickToHide`）
+
+---
+
 ## v0.39.0 - 2026-06-06
 
 ### Added
