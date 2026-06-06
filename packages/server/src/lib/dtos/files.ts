@@ -8,7 +8,7 @@ export const FileStorageConfigDTO = z
   .object({
     id: z.number().int(),
     name: z.string(),
-    provider: z.enum(['local', 'oss', 's3', 'cos']),
+    provider: z.enum(['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']),
     status: z.enum(['enabled', 'disabled']),
     isDefault: z.boolean(),
     basePath: z.string().nullable().optional(),
@@ -40,7 +40,7 @@ export const ManagedFileDTO = z
     id: z.number().int(),
     storageConfigId: z.number().int(),
     storageName: z.string(),
-    provider: z.enum(['local', 'oss', 's3', 'cos']),
+    provider: z.enum(['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']),
     originalName: z.string().openapi({ example: 'avatar.png' }),
     objectKey: z.string(),
     size: z.number().int().openapi({ example: 10240 }),

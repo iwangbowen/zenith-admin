@@ -37,7 +37,7 @@ function isProtectedAdminUser(username: string) {
   return username.trim().toLowerCase() === PROTECTED_ADMIN_USERNAME;
 }
 
-async function ensureNoProtectedAdminInIds(ids: number[], action: '删除' | '禁用') {
+async function ensureNoProtectedAdminInIds(ids: number[], action: '删除' | '禁用' | '修改密码') {
   if (ids.length === 0) return;
   const user = currentUser();
   const tc = tenantCondition(users, user);
