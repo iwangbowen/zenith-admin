@@ -185,7 +185,7 @@ const idLogsRoute = defineOpenAPIRoute({
 });
 
 const clearLogsMonthsQuery = z.object({
-  months: z.coerce.number().int().refine((v) => [1, 3, 6, 12].includes(v), { message: 'months 必须为 1、3、6 或 12' }),
+  months: z.coerce.number().int().refine((v) => [0, 1, 3, 6, 12].includes(v), { message: 'months 必须为 0（全部）、1、3、6 或 12' }),
 }).openapi('ClearLogsQuery');
 
 const clearAllLogsRoute = defineOpenAPIRoute({
