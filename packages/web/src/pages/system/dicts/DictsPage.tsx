@@ -16,7 +16,6 @@ import {
   JsonViewer,
   Row,
   Col,
-  Tooltip,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react';
@@ -704,22 +703,52 @@ export default function DictsPage() {
                 <Form.Slot label={{ text: '颜色' }}>
                   {(() => {
                     const TAG_COLORS = ['amber', 'blue', 'cyan', 'green', 'grey', 'indigo', 'light-blue', 'light-green', 'lime', 'orange', 'pink', 'purple', 'red', 'teal', 'violet', 'yellow', 'white'];
+                    const COLOR_LABELS: Record<string, string> = {
+                      amber: '琥珀', blue: '蓝色', cyan: '青色', green: '绿色', grey: '灰色',
+                      indigo: '靛蓝', 'light-blue': '浅蓝', 'light-green': '浅绿', lime: '柠绿',
+                      orange: '橙色', pink: '粉色', purple: '紫色', red: '红色', teal: '蓝绿',
+                      violet: '紫罗兰', yellow: '黄色', white: '白色',
+                    };
                     return (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      <Select
+                        value={itemColor ?? undefined}
+                        onChange={(val) => setItemColor((val as string) ?? null)}
+                        placeholder="无颜色"
+                        showClear
+                        onClear={() => setItemColor(null)}
+                        style={{ width: '100%' }}
+                        renderSelectedItem={(option) => (
+                          <Tag color={(option.value as string) as any} size="small" style={{ margin: '2px 0' }}>
+                            {option.label as string}
+                          </Tag>
+                        )}
+                        renderOptionItem={({ selected, style, onClick, value, label }) => (
+                          <button
+                            type="button"
+                            onClick={onClick}
+                            style={{
+                              ...style,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              padding: '6px 12px',
+                              cursor: 'pointer',
+                              width: '100%',
+                              border: 'none',
+                              background: selected ? 'var(--semi-color-primary-light-default)' : 'transparent',
+                              textAlign: 'left',
+                            }}
+                          >
+                            <Tag color={(value as string) as any} size="small">{label as string}</Tag>
+                          </button>
+                        )}
+                      >
                         {TAG_COLORS.map((c) => (
-                          <Tooltip key={c} content={c} position="top">
-                            <Tag
-                              color={c as any}
-                              size="large"
-                              style={{ cursor: 'pointer', outline: itemColor === c ? '2px solid var(--semi-color-primary)' : undefined, outlineOffset: 1 }}
-                              onClick={() => setItemColor(itemColor === c ? null : c)}
-                            >
-                              {'  '}
-                            </Tag>
-                          </Tooltip>
+                          <Select.Option key={c} value={c} label={COLOR_LABELS[c] ?? c}>
+                            <Tag color={c as any} size="small">{COLOR_LABELS[c] ?? c}</Tag>
+                          </Select.Option>
                         ))}
-                        <Button size="small" type="tertiary" onClick={() => setItemColor(null)}>清空</Button>
-                      </div>
+                      </Select>
                     );
                   })()}
                 </Form.Slot>
