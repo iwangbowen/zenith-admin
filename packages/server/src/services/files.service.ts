@@ -1,6 +1,7 @@
 import { managedFiles, fileStorageConfigs, users } from '../db/schema';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
+import { getConfigBoolean, getConfigValue } from '../lib/system-config';
 
 export function mapManagedFile(row: typeof managedFiles.$inferSelect) {
   return {
@@ -119,6 +120,29 @@ export async function uploadManagedFileFromBody(fileValue: unknown) {
 
 export async function uploadManagedFile(file: File) {
   const user = currentUser();
+
+  // 基于 magic bytes 校验真实文件类型
+  const validateEnabled = await getConfigBoolean('file_upload_validate_type', true);
+  if (validateEnabled) {
+    const allowedTypesRaw = await getConfigValue('file_upload_allowed_types', 'image/*,video/*,audio/*,application/pdf,text/plain,application/zip,application/x-zip-compressed');
+    const allowedPatterns = allowedTypesRaw.split(',').map(s => s.trim()).filter(Boolean);
+    // 只读前 4100 字节用于检测
+    const { fileTypeFromBuffer } = await import('file-type');
+    const headBytes = await file.slice(0, 4100).arrayBuffer();
+    const detected = await fileTypeFromBuffer(Buffer.from(headBytes));
+    // 如果无法检测（如纯文本文件），回退使用 MIME type 头
+    const actualMime = detected?.mime ?? file.type;
+    const allowed = allowedPatterns.some(pattern => {
+      if (pattern.endsWith('/*')) {
+        const mainType = pattern.slice(0, -2);
+        return actualMime.startsWith(`${mainType}/`);
+      }
+      return actualMime === pattern;
+    });
+    if (!allowed) {
+      throw new HTTPException(400, { message: `文件类型不允许：检测到 ${actualMime}，不在允许类型列表中` });
+    }
+  }
   const [defaultConfig] = await db
     .select()
     .from(fileStorageConfigs)
