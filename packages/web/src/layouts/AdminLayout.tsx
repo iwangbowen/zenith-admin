@@ -1129,6 +1129,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     preferences.sidebarDarkMode ? 'admin-layout--sidebar-dark' : '',
     preferences.headerDarkMode ? 'admin-layout--header-dark' : '',
     isContentFullscreen ? 'admin-layout--content-fullscreen' : '',
+    preferences.grayscale ? 'admin-layout--grayscale' : '',
+    preferences.colorBlind ? 'admin-layout--color-blind' : '',
   ].filter(Boolean).join(' ');
   const sectionDarkThemeStyle = useMemo<CSSProperties>(() => {
     if (!preferences.sidebarDarkMode && !preferences.headerDarkMode) return {};
@@ -1718,6 +1720,36 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     <span>显示表格列设置按钮</span>
                     <Switch checked={preferences.showTableColumnSettings ?? true} onChange={(v) => setPreferences({ showTableColumnSettings: v })} />
                   </div>
+                </div>
+              </div>
+
+              <Divider style={{ margin: '0 -24px' }} />
+
+              {/* ── 无障碍 ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    灰色模式
+                    <Tooltip content="适用于国家公祭日等场景，全局去除色彩" position="right">
+                      <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                    </Tooltip>
+                  </span>
+                  <Switch
+                    checked={preferences.grayscale ?? false}
+                    onChange={(v) => setPreferences({ grayscale: v, ...(v ? { colorBlind: false } : {}) })}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    色弱模式
+                    <Tooltip content="提高界面对比度，辅助色觉障碍用户" position="right">
+                      <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                    </Tooltip>
+                  </span>
+                  <Switch
+                    checked={preferences.colorBlind ?? false}
+                    onChange={(v) => setPreferences({ colorBlind: v, ...(v ? { grayscale: false } : {}) })}
+                  />
                 </div>
               </div>
 

@@ -1714,3 +1714,13 @@
 .admin-content-fullscreen-exit:hover {
   opacity: 1;
 }
+
+/* ===== 无障碍模式 ===== */
+.admin-layout--grayscale {
+  filter: grayscale(100%);
+}
+
+/* 色弱模式：提升对比度 + 轻微饱和度增强，辅助色觉障碍用户识别界面元素 */
+.admin-layout--color-blind {
+  filter: contrast(1.2) saturate(1.3);
+}

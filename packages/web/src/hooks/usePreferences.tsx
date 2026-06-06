@@ -39,6 +39,10 @@ export interface UserPreferences {
   enableLockScreen: boolean;
   /** 侧边栏手风琴展开：同级只允许展开一个子菜单 */
   sidebarAccordion: boolean;
+  /** 灰色模式（国家公祭日等场景） */
+  grayscale: boolean;
+  /** 色弱模式（反转色/高对比） */
+  colorBlind: boolean;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -70,6 +74,8 @@ export const defaultPreferences: UserPreferences = {
   tablePageSize: 10,
   enableLockScreen: false,
   sidebarAccordion: true,
+  grayscale: false,
+  colorBlind: false,
 };
 
 export interface PreferencesContextValue {
