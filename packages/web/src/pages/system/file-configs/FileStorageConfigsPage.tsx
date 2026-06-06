@@ -821,7 +821,7 @@ export default function FileStorageConfigsPage() {
                   <Form.Input field="sftpUsername" label="用户名" placeholder="登录用户名" rules={[{ required: true, message: '请输入用户名' }]} />
                 </Col>
                 <Col span={12}>
-                  <Form.Input field="sftpPassword" label="密码" placeholder="密码或私鬥二选一" type="password" />
+                  <Form.Input field="sftpPassword" label="密码" placeholder="密码或私钥二选一" type="password" />
                 </Col>
               </Row>
               <Row gutter={16}>
@@ -836,7 +836,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.TextArea field="sftpPrivateKey" label="SSH 私鬥（可选）" placeholder="如果使用私鬥登录，请将 PEM 内容粘贴至此" rows={4} />
+                  <Form.TextArea field="sftpPrivateKey" label="SSH 私钥（可选）" placeholder="如果使用私钥登录，请将 PEM 内容粘贴至此" rows={4} />
                 </Col>
               </Row>
             </>
