@@ -45,7 +45,31 @@ export function useAuth() {
   }, [fetchUser]);
 
   const login = async (username: string, password: string, captchaId?: string, captchaCode?: string, tenantCode?: string) => {
-    const res = await request.post<LoginResponse>('/api/auth/login', { username, password, captchaId, captchaCode, tenantCode }, { silent: true });
+    // 收集设备信息（尽尽所能，不强制要求）
+    let deviceInfo: Record<string, unknown> | undefined;
+    try {
+      const scr = window.screen;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nav = navigator as any;
+      let gpu: string | undefined;
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') ?? canvas.getContext('experimental-webgl');
+        if (gl) {
+          const ext = (gl as WebGLRenderingContext).getExtension('WEBGL_debug_renderer_info');
+          if (ext) gpu = (gl as WebGLRenderingContext).getParameter(ext.UNMASKED_RENDERER_WEBGL) as string || undefined;
+        }
+      } catch { /* ignore */ }
+      deviceInfo = {
+        screenWidth: scr.width,
+        screenHeight: scr.height,
+        devicePixelRatio: String(window.devicePixelRatio ?? 1),
+        ...(gpu ? { gpu } : {}),
+        ...(nav.hardwareConcurrency ? { cpuCores: nav.hardwareConcurrency } : {}),
+        ...(nav.deviceMemory ? { memoryGb: String(nav.deviceMemory) } : {}),
+      };
+    } catch { /* ignore */ }
+    const res = await request.post<LoginResponse>('/api/auth/login', { username, password, captchaId, captchaCode, tenantCode, deviceInfo }, { silent: true });
     if (res.code === 0) {
       localStorage.setItem(TOKEN_KEY, res.data.token.accessToken);
       localStorage.setItem(REFRESH_TOKEN_KEY, res.data.token.refreshToken);

@@ -49,6 +49,15 @@ export async function issueTokens(
 
 // ─── 记录登录日志 ─────────────────────────────────────────────────────────────
 
+export interface DeviceInfo {
+  screenWidth?: number;
+  screenHeight?: number;
+  devicePixelRatio?: string;
+  gpu?: string;
+  cpuCores?: number;
+  memoryGb?: string;
+}
+
 export interface LoginLogParams {
   username: string;
   status: 'success' | 'fail';
@@ -57,10 +66,11 @@ export interface LoginLogParams {
   tenantId?: number | null;
   ip: string;
   ua: string;
+  deviceInfo?: DeviceInfo;
 }
 
 export async function recordLoginLog(params: LoginLogParams) {
-  const { username, status, message, userId, tenantId, ip, ua } = params;
+  const { username, status, message, userId, tenantId, ip, ua, deviceInfo } = params;
   const { browser, os } = parseUserAgent(ua);
   await db.insert(loginLogs).values({
     username,
@@ -73,6 +83,12 @@ export async function recordLoginLog(params: LoginLogParams) {
     status,
     message,
     tenantId: tenantId ?? null,
+    screenWidth: deviceInfo?.screenWidth ?? null,
+    screenHeight: deviceInfo?.screenHeight ?? null,
+    devicePixelRatio: deviceInfo?.devicePixelRatio ?? null,
+    gpu: deviceInfo?.gpu ?? null,
+    cpuCores: deviceInfo?.cpuCores ?? null,
+    memoryGb: deviceInfo?.memoryGb ?? null,
   });
 }
 
@@ -115,6 +131,7 @@ export interface LoginInput {
   tenantCode?: string;
   ip: string;
   ua: string;
+  deviceInfo?: DeviceInfo;
 }
 
 export async function login(input: LoginInput) {
@@ -190,7 +207,7 @@ export async function login(input: LoginInput) {
       os,
       loginAt: new Date(),
     }),
-    recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '登录成功', userId: user.id, tenantId }),
+    recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '登录成功', userId: user.id, tenantId, deviceInfo: input.deviceInfo }),
   ]);
   const { password: _pw, ...userInfo } = user;
   return {

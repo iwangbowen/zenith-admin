@@ -343,6 +343,13 @@ export const loginLogs = pgTable('login_logs', {
   status: loginStatusEnum('status').notNull(),
   message: varchar('message', { length: 256 }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  // 设备信息（登录时由前端上报）
+  screenWidth: smallint('screen_width'),
+  screenHeight: smallint('screen_height'),
+  devicePixelRatio: varchar('device_pixel_ratio', { length: 8 }),
+  gpu: varchar('gpu', { length: 256 }),
+  cpuCores: smallint('cpu_cores'),
+  memoryGb: varchar('memory_gb', { length: 8 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

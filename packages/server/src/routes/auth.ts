@@ -16,12 +16,22 @@ import {
 const auth = new OpenAPIHono({ defaultHook: validationHook });
 
 // ─── 本地 Zod schemas ────────────────────────────────────────────────────────
+const deviceInfoSchema = z.object({
+  screenWidth: z.number().int().optional(),
+  screenHeight: z.number().int().optional(),
+  devicePixelRatio: z.string().optional(),
+  gpu: z.string().max(256).optional(),
+  cpuCores: z.number().int().optional(),
+  memoryGb: z.string().optional(),
+}).optional();
+
 const loginSchema = z.object({
   username: z.string().min(2).max(32),
   password: z.string().min(6).max(64),
   captchaId: z.string().optional(),
   captchaCode: z.string().optional(),
   tenantCode: z.string().max(50).optional(),
+  deviceInfo: deviceInfoSchema,
 });
 const registerSchema = z.object({
   username: z.string().min(2).max(32),

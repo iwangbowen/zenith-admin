@@ -15,6 +15,12 @@ export const LoginLogDTO = z
     userAgent: z.string().nullable(),
     status: z.enum(['success', 'fail']),
     message: z.string().nullable(),
+    screenWidth: z.number().int().nullable().optional(),
+    screenHeight: z.number().int().nullable().optional(),
+    devicePixelRatio: z.string().nullable().optional(),
+    gpu: z.string().nullable().optional(),
+    cpuCores: z.number().int().nullable().optional(),
+    memoryGb: z.string().nullable().optional(),
     createdAt: z.string(),
   })
   .openapi('LoginLog');

@@ -294,6 +294,12 @@ export interface LoginLog {
   userAgent: string | null;
   status: 'success' | 'fail';
   message: string | null;
+  screenWidth?: number | null;
+  screenHeight?: number | null;
+  devicePixelRatio?: string | null;
+  gpu?: string | null;
+  cpuCores?: number | null;
+  memoryGb?: string | null;
   createdAt: string;
 }
 
