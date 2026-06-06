@@ -1411,6 +1411,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       onDragEnd={handleDragEnd}
                       onDragLeave={() => setDragOverKey(null)}
                       onClick={() => handleTabChange(tab.key)}
+                      onDoubleClick={() => {
+                        const action = preferences.tabDoubleClickAction ?? 'refresh';
+                        if (action === 'refresh') handleTabRefresh(tab.key);
+                        else if (action === 'close' && tab.closable) handleTabClose(tab.key);
+                      }}
                       onMouseDown={(e) => { if (e.button === 1 && tab.closable) { e.preventDefault(); handleTabClose(tab.key); } }}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleTabChange(tab.key); }}
                     >
@@ -1836,6 +1841,18 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     >
                       <Radio value="append">末尾</Radio>
                       <Radio value="insert-next">当前后方</Radio>
+                    </RadioGroup>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>双击标签行为</span>
+                    <RadioGroup
+                      type="button"
+                      value={preferences.tabDoubleClickAction ?? 'refresh'}
+                      onChange={(e) => setPreferences({ tabDoubleClickAction: e.target.value as 'refresh' | 'close' | 'none' })}
+                    >
+                      <Radio value="refresh">刷新</Radio>
+                      <Radio value="close">关闭</Radio>
+                      <Radio value="none">无</Radio>
                     </RadioGroup>
                   </div>
 

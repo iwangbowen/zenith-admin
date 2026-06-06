@@ -48,6 +48,8 @@ export interface UserPreferences {
   openTabBehavior: 'append' | 'insert-next';
   /** 菜单选中时自动滚动到可视区 */
   scrollMenuIntoView: boolean;
+  /** 双击页签行为：refresh 刷新 / close 关闭 / none 无 */
+  tabDoubleClickAction: 'refresh' | 'close' | 'none';
   /** 路由切换动画 */
   routeAnimation: RouteAnimation;
   /** 最大标签页超限后的关闭策略: fifo 最早打开，lru 最近最少使用 */
@@ -91,6 +93,7 @@ export const defaultPreferences: UserPreferences = {
   breadcrumbClickable: true,
   openTabBehavior: 'append',
   scrollMenuIntoView: true,
+  tabDoubleClickAction: 'refresh',
   tabEvictPolicy: 'fifo',
   routeAnimation: 'fade',
   grayscale: false,
