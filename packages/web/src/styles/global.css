@@ -119,6 +119,13 @@ body {
     margin: 0 auto;
   }
 }
+
+/* 窄屏 SideSheet 宽度自适应，防止溢出屏幕 */
+@media (max-width: 960px) {
+  .semi-sidesheet-inner {
+    max-width: 95vw !important;
+  }
+}
 /* 面包屑链接悬浮时使用主题色 */
 .semi-breadcrumb-item-link:hover .semi-breadcrumb-item-title {
   color: var(--semi-color-primary);
