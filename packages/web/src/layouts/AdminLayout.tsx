@@ -1993,14 +1993,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         visible={selectedAnnouncement !== null}
         onClose={() => setSelectedAnnouncement(null)}
       />
-
-      {/* ===== 内容全屏退出按钮 ===== */}
-      {isContentFullscreen && (
-        <button type="button" className="admin-content-fullscreen-exit" onClick={() => setIsContentFullscreen(false)}>
-          <Shrink size={13} />
-          退出内容全屏
-        </button>
-      )}
     </div>
   );
 
