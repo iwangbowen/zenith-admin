@@ -42,6 +42,8 @@ export interface UserPreferences {
   sidebarAccordion: boolean;
   /** 侧边栏悬浮模式：开启后，侧边栏居按展开，鼠标入内时临时滑出，移开则自动收起 */
   sidebarHoverTrigger: boolean;
+  /** 面包屑可点击跳转：false 时仅展示文字路径，防止误触导致表单中断 */
+  breadcrumbClickable: boolean;
   /** 路由切换动画 */
   routeAnimation: RouteAnimation;
   /** 最大标签页超限后的关闭策略: fifo 最早打开，lru 最近最少使用 */
@@ -82,6 +84,7 @@ export const defaultPreferences: UserPreferences = {
   enableLockScreen: false,
   sidebarAccordion: true,
   sidebarHoverTrigger: false,
+  breadcrumbClickable: true,
   tabEvictPolicy: 'fifo',
   routeAnimation: 'fade',
   grayscale: false,

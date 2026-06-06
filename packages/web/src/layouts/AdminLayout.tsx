@@ -1320,7 +1320,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                         <Breadcrumb.Item
                           key={crumb.title}
                           href={isLast ? undefined : '#'}
-                          onClick={isLast ? undefined : handleCrumbClick}
+                          onClick={isLast || !(preferences.breadcrumbClickable ?? true) ? undefined : handleCrumbClick}
                           noLink={isLast}
                         >
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -1593,6 +1593,15 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       </Tooltip>
                     </span>
                     <Switch checked={preferences.breadcrumbShowHome ?? true} onChange={(v) => setPreferences({ breadcrumbShowHome: v })} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      面包屑可点击
+                      <Tooltip content="关闭后面包屑仅展示路径文字，不可点击跳转" position="right">
+                        <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                      </Tooltip>
+                    </span>
+                    <Switch checked={preferences.breadcrumbClickable ?? true} onChange={(v) => setPreferences({ breadcrumbClickable: v })} />
                   </div>
                 </>
               )}
