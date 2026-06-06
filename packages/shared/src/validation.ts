@@ -160,8 +160,9 @@ export const createDictItemSchema = z.object({
   color: z.string().max(32).optional(),
   sort: z.number().int().default(0),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
-  remark: z.string().max(256).optional(),
+  remark: z.string().max(256).nullish(),
   parentId: z.number().int().nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const updateDictItemSchema = createDictItemSchema.partial();

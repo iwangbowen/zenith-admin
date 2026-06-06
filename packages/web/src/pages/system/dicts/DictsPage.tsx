@@ -13,6 +13,7 @@ import {
   Spin,
   Toast,
   TreeSelect,
+  JsonViewer,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react';
@@ -34,6 +35,8 @@ export default function DictsPage() {
   const { hasPermission } = usePermission();
   const dictFormApi = useRef<FormApi | null>(null);
   const itemFormApi = useRef<FormApi | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const jsonViewerRef = useRef<any>(null);
 
   // ─── 字典列表 ──────────────────────────────────────────────────────────────
   const [dicts, setDicts] = useState<Dict[]>([]);
@@ -58,6 +61,8 @@ export default function DictsPage() {
   const [itemKeyword, setItemKeyword] = useState('');
   const [itemStatusFilter, setItemStatusFilter] = useState('');  const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
   const [itemParentId, setItemParentId] = useState<number | null>(null);
+  // metadataStr 仅用于 JsonViewer 的初始值（非受控），提交时通过 ref.getValue() 读取
+  const [metadataStr, setMetadataStr] = useState<string>('{}');
   const { items: statusItems } = useDictItems('common_status');
 
   // ─── 数据获取 ──────────────────────────────────────────────────────────────
@@ -279,7 +284,17 @@ export default function DictsPage() {
     } catch {
       throw new Error('validation');
     }
-    const payload = { ...values, parentId: itemParentId ?? undefined };
+    let metadata: Record<string, unknown> | null = null;
+    const currentJson = (jsonViewerRef.current?.getValue() ?? metadataStr).trim();
+    if (currentJson && currentJson !== '{}') {
+      try {
+        metadata = JSON.parse(currentJson) as Record<string, unknown>;
+      } catch {
+        Toast.error('元数据 JSON 格式有误，请检查后重试');
+        throw new Error('invalid metadata json');
+      }
+    }
+    const payload = { ...values, parentId: itemParentId ?? undefined, metadata };
     const res = editingItem
       ? await request.put(`/api/dicts/${selectedDict.id}/items/${editingItem.id}`, payload)
       : await request.post(`/api/dicts/${selectedDict.id}/items`, payload);
@@ -464,7 +479,7 @@ export default function DictsPage() {
           {hasPermission('system:dict:item') && <Button
             theme="borderless"
             size="small"
-            onClick={() => { setEditingItem(row); setItemParentId(row.parentId ?? null); setItemModalVisible(true); }}
+            onClick={() => { setEditingItem(row); setItemParentId(row.parentId ?? null); setMetadataStr(row.metadata ? JSON.stringify(row.metadata, null, 2) : '{}'); setItemModalVisible(true); }}
           >
             编辑
           </Button>}
@@ -536,7 +551,7 @@ export default function DictsPage() {
             <Button
               type="primary"
               icon={<Plus size={14} />}
-              onClick={() => { setEditingItem(null); setItemParentId(null); setItemModalVisible(true); }}
+              onClick={() => { setEditingItem(null); setItemParentId(null); setMetadataStr('{}'); setItemModalVisible(true); }}
               disabled={!selectedDict}
             >
               新增
@@ -614,7 +629,7 @@ export default function DictsPage() {
         visible={itemModalVisible}
         onCancel={() => setItemModalVisible(false)}
         onOk={handleItemModalOk}
-        width={480}
+        width={600}
 
       >
         <Form
@@ -643,6 +658,15 @@ export default function DictsPage() {
             placeholder="请选择状态"
           />
           <Form.Input field="remark" label="备注" placeholder="请输入备注" style={{ width: '100%' }} />
+          <Form.Slot label={{ text: '元数据' }}>
+            <JsonViewer
+              key={metadataStr}
+              ref={jsonViewerRef}
+              value={metadataStr}
+              height={200}
+              width="100%"
+            />
+          </Form.Slot>
         </Form>
       </Modal>
     </div>

@@ -233,6 +233,7 @@ export const dictItems = pgTable('dict_items', {
   sort: integer('sort').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   remark: varchar('remark', { length: 256 }),
+  metadata: jsonb('metadata'),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),

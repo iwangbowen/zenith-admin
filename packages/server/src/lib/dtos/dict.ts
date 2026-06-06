@@ -28,6 +28,7 @@ export const DictItemDTO = z
     sort: z.number().int(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable().optional(),
+    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),

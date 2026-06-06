@@ -184,6 +184,7 @@ export interface DictItem {
   sort: number;
   status: EntityStatus;
   remark?: string;
+  metadata?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
   children?: DictItem[];
