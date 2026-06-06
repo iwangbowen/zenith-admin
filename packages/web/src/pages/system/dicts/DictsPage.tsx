@@ -14,6 +14,8 @@ import {
   Toast,
   TreeSelect,
   JsonViewer,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react';
@@ -653,35 +655,62 @@ export default function DictsPage() {
           allowEmpty
           initValues={editingItem ?? { status: 'enabled', sort: 0 }}
           labelPosition="left"
-          labelWidth={80}
+          labelWidth={72}
         >
-          <Form.Input field="label" label="标签" placeholder="请输入标签" style={{ width: '100%' }} rules={[{ required: true, message: '请输入标签' }]} />
-          <Form.Input field="value" label="键值" placeholder="请输入键值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入键值' }]} />
-          <Form.Slot label={{ text: '父级' }}>
-            <TreeSelect
-              treeData={parentSelectorTreeData}
-              value={itemParentId ?? 0}
-              onChange={(val) => setItemParentId(val === 0 ? null : (val as number))}
-              style={{ width: '100%' }}
-              filterTreeNode
-              expandAll
-            />
-          </Form.Slot>
-          <Form.InputNumber field="sort" label="排序" placeholder="请输入排序" min={0} style={{ width: '100%' }} />
-          <Form.Select field="status" label="状态" style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
-            placeholder="请选择状态"
-          />
-          <Form.Input field="remark" label="备注" placeholder="请输入备注" style={{ width: '100%' }} />
-          <Form.Slot label={{ text: '元数据' }}>
-            <JsonViewer
-              key={metadataStr}
-              ref={jsonViewerRef}
-              value={metadataStr}
-              height={200}
-              width="100%"
-            />
-          </Form.Slot>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="label" label="标签" placeholder="请输入标签" style={{ width: '100%' }} rules={[{ required: true, message: '请输入标签' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="value" label="键值" placeholder="请输入键值" style={{ width: '100%' }} rules={[{ required: true, message: '请输入键值' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.InputNumber field="sort" label="排序" placeholder="请输入排序" min={0} style={{ width: '100%' }} />
+            </Col>
+            <Col span={12}>
+              <Form.Select field="status" label="状态" style={{ width: '100%' }}
+                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+                placeholder="请选择状态"
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Slot label={{ text: '父级' }}>
+                <TreeSelect
+                  treeData={parentSelectorTreeData}
+                  value={itemParentId ?? 0}
+                  onChange={(val) => setItemParentId(val === 0 ? null : (val as number))}
+                  style={{ width: '100%' }}
+                  filterTreeNode
+                  expandAll
+                />
+              </Form.Slot>
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="sort" label="排序" placeholder="请输入排序" min={0} style={{ width: '100%' }} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Input field="remark" label="备注" placeholder="请输入备注" style={{ width: '100%' }} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Slot label={{ text: '元数据' }}>
+                <JsonViewer
+                  key={metadataStr}
+                  ref={jsonViewerRef}
+                  value={metadataStr}
+                  height={200}
+                  width="100%"
+                />
+              </Form.Slot>
+            </Col>
+          </Row>
         </Form>
         </Spin>
       </Modal>
