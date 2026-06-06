@@ -343,7 +343,7 @@ export default function CronJobsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 220,
+      width: 260,
       render: (_: unknown, record: CronJob) => (
         <Space>
           {hasPermission('system:cronjob:execute') && (
