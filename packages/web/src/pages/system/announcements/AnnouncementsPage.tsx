@@ -107,6 +107,7 @@ export default function AnnouncementsPage() {
 
   // ─── 查看详情 ─────────────────────────────────────────────────────────────────────────────
   const [viewOnly, setViewOnly] = useState(false);
+  const sideSheetTitle = viewOnly ? '查看公告' : editingNotice ? '编辑公告' : '新增公告';
 
   // ─── 已读统计 ─────────────────────────────────────────────────────────────────────────────
   const [statsDrawerVisible, setStatsDrawerVisible] = useState(false);
@@ -760,7 +761,7 @@ export default function AnnouncementsPage() {
       />
 
       <SideSheet
-        title={viewOnly ? '查看公告' : editingNotice ? '编辑公告' : '新增公告'}
+        title={sideSheetTitle}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
         width={860}
