@@ -11,6 +11,7 @@ import {
   Spin,
   SplitButtonGroup,
   Dropdown,
+  Switch,
   Toast,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -267,6 +268,37 @@ export default function DepartmentsPage() {
     }
   };
 
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+
+  const handleToggleStatus = useCallback(async (dept: Department, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认停用部门「${dept.name}」？`,
+          content: '停用后该部门将不可选择。',
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认停用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(dept.id);
+    try {
+      const res = await request.put(`/api/departments/${dept.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已停用');
+        void fetchDepartments();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchDepartments]);
+
   const columns: ColumnProps<Department>[] = [
     { title: '部门名称', dataIndex: 'name', width: 220 },
     { title: '部门编码', dataIndex: 'code', width: 180, render: renderEllipsis },
@@ -281,7 +313,15 @@ export default function DepartmentsPage() {
       dataIndex: 'status',
       width: 90,
       fixed: 'right',
-      render: (value: string) => <DictTag dictCode="common_status" value={value} />,
+      render: (value: string, record: Department) => (
+        <Switch
+          size="small"
+          checked={value === 'enabled'}
+          loading={togglingStatusId === record.id}
+          disabled={!hasPermission('system:department:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '操作',
