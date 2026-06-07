@@ -171,7 +171,7 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 200,
       fixed: 'right',
       render: (_: unknown, record: WorkflowDefinition) => (
         <Space>
