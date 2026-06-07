@@ -166,6 +166,16 @@ export const authHandlers = [
     }
     return HttpResponse.json({ code: 0, message: '密码已重置，请使用新密码登录', data: null });
   }),
+
+  // 验证当前用户密码
+  http.post('/api/auth/verify-password', async ({ request }) => {
+    const body = await request.json() as { password: string };
+    const user = mockUsers[0];
+    if (body.password !== user.password) {
+      return HttpResponse.json({ code: 401, message: '密码错误', data: null }, { status: 401 });
+    }
+    return HttpResponse.json({ code: 0, message: '验证通过', data: null });
+  }),
 ];
 
 // ─── 我的设备 mock 状态（模块级可变，支持踢人操作）────────────────────────────

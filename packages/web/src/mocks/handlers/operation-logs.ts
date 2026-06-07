@@ -131,4 +131,18 @@ export const operationLogsHandlers = [
       },
     });
   }),
+
+  http.delete('/api/operation-logs/clean', ({ request }) => {
+    const url = new URL(request.url);
+    const months = Number(url.searchParams.get('months')) || 0;
+    const cutoff = months === 0 ? null : new Date(Date.now() - months * 30 * 24 * 3600 * 1000);
+    let deleted = 0;
+    for (let i = mockOperationLogs.length - 1; i >= 0; i--) {
+      if (cutoff === null || new Date(mockOperationLogs[i].createdAt) < cutoff) {
+        mockOperationLogs.splice(i, 1);
+        deleted++;
+      }
+    }
+    return HttpResponse.json({ code: 0, message: `共删除 ${deleted} 条操作日志`, data: null });
+  }),
 ];

@@ -18,4 +18,18 @@ export const loginLogsHandlers = [
     list = list.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
   }),
+
+  http.delete('/api/login-logs/clean', ({ request }) => {
+    const url = new URL(request.url);
+    const months = Number(url.searchParams.get('months')) || 0;
+    const cutoff = months === 0 ? null : new Date(Date.now() - months * 30 * 24 * 3600 * 1000);
+    let deleted = 0;
+    for (let i = mockLoginLogs.length - 1; i >= 0; i--) {
+      if (cutoff === null || new Date(mockLoginLogs[i].createdAt) < cutoff) {
+        mockLoginLogs.splice(i, 1);
+        deleted++;
+      }
+    }
+    return HttpResponse.json({ code: 0, message: `共删除 ${deleted} 条登录日志`, data: null });
+  }),
 ];
