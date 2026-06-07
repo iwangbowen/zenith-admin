@@ -11,13 +11,13 @@ import {
   Popconfirm,
   SplitButtonGroup,
   Dropdown,
+  Switch,
 } from '@douyinfe/semi-ui';
 import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, ChevronsDownUp, ChevronsUpDown, Download, ChevronDown } from 'lucide-react';
 import type { Region } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
@@ -55,6 +55,7 @@ export default function RegionsPage() {
   const [data, setData] = useState<Region[]>([]);
   const [flatData, setFlatData] = useState<Region[]>([]);
   const [flatLoading, setFlatLoading] = useState(false);
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
@@ -253,6 +254,34 @@ export default function RegionsPage() {
     }
   }
 
+  const handleToggleStatus = useCallback(async (region: Region, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认禁用「${region.name}」？`,
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认禁用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(region.id);
+    try {
+      const res = await request.put(`/api/regions/${region.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        void fetchRegions();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchRegions]);
+
   const FIXED_COLS_WIDTH = 140 + 90 + 120 + 70 + 180 + 90 + 160; // 其他列总宽
   const nameColWidth = Math.max(240, tableWidth - FIXED_COLS_WIDTH);
   const totalTableWidth = nameColWidth + FIXED_COLS_WIDTH;
@@ -291,7 +320,17 @@ export default function RegionsPage() {
       title: '状态',
       dataIndex: 'status',
       width: 90,
-      render: (value: string) => <DictTag dictCode="common_status" value={value} />,
+      align: 'center',
+      fixed: 'right',
+      render: (v: string, record: Region) => (
+        <Switch
+          size="small"
+          checked={v === 'enabled'}
+          loading={togglingStatusId === record.id}
+          disabled={!hasPermission('system:region:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '操作',
