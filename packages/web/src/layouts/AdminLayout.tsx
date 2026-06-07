@@ -1592,6 +1592,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   const hasClosableRight = tabs.slice(tabIndex + 1).some((t) => t.closable);
                   const hasClosableOthers = tabs.some((t) => t.closable && t.key !== tab.key);
                   const hasAnyClosable = tabs.some((t) => t.closable);
+                  // 收藏相关（提前计算，避免 JSX 内 IIFE）
+                  const tabFavMenu = (preferences.showFavorites ?? false) ? flatMenus.find((m) => m.path === tab.key) : null;
+                  const tabFaved = tabFavMenu ? isFavorite(tabFavMenu.id) : false;
                   return (
                   <Dropdown
                     key={tab.key}
@@ -1610,19 +1613,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                           void navigator.clipboard.writeText(path);
                         }}>复制面包屑路径</Dropdown.Item>
                         {/* 收藏 */}
-                        {(preferences.showFavorites ?? false) && (() => {
-                          const menu = flatMenus.find((m) => m.path === tab.key);
-                          if (!menu) return null;
-                          const faved = isFavorite(menu.id);
-                          return (
-                            <Dropdown.Item
-                              icon={<Star size={14} fill={faved ? 'currentColor' : 'none'} strokeWidth={faved ? 0 : 1.8} style={{ color: faved ? 'var(--semi-color-warning)' : undefined }} />}
-                              onClick={() => toggleFavorite(menu.id)}
-                            >
-                              {faved ? '取消收藏' : '收藏此页'}
-                            </Dropdown.Item>
-                          );
-                        })()}
+                        {tabFavMenu && (
+                          <Dropdown.Item
+                            icon={<Star size={14} fill={tabFaved ? 'currentColor' : 'none'} strokeWidth={tabFaved ? 0 : 1.8} style={{ color: tabFaved ? 'var(--semi-color-warning)' : undefined }} />}
+                            onClick={() => toggleFavorite(tabFavMenu.id)}
+                          >
+                            {tabFaved ? '取消收藏' : '收藏此页'}
+                          </Dropdown.Item>
+                        )}
                         {tab.key !== '/' && (
                           tab.pinned
                             ? <Dropdown.Item icon={<PinOff size={14} />} onClick={() => unpinTab(tab.key)}>取消固定</Dropdown.Item>
