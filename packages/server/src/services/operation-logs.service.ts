@@ -19,6 +19,8 @@ export interface ListOperationLogsQuery {
   status?: 'success' | 'fail';
   startTime?: string;
   endTime?: string;
+  minDurationMs?: number;
+  maxDurationMs?: number;
 }
 
 function buildWhere(q: ListOperationLogsQuery) {
@@ -36,6 +38,8 @@ function buildWhere(q: ListOperationLogsQuery) {
   const endTime = parseDateTimeInput(q.endTime);
   if (startTime) conditions.push(gte(operationLogs.createdAt, startTime));
   if (endTime) conditions.push(lte(operationLogs.createdAt, endTime));
+  if (q.minDurationMs != null) conditions.push(gte(operationLogs.durationMs, q.minDurationMs));
+  if (q.maxDurationMs != null) conditions.push(lte(operationLogs.durationMs, q.maxDurationMs));
   const where = and(...conditions);
   const tc = tenantCondition(operationLogs, user);
   return mergeWhere(where, tc);

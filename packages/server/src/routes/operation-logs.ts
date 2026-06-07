@@ -23,6 +23,8 @@ const listRoute = defineOpenAPIRoute({
         status: z.enum(['success', 'fail']).optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
+        minDurationMs: z.coerce.number().int().nonnegative().optional(),
+        maxDurationMs: z.coerce.number().int().nonnegative().optional(),
       }),
     },
     responses: { ...okPaginated(OperationLogDTO, '日志列表'), ...commonErrorResponses },

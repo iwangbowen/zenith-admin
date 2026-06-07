@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Input, Button, DatePicker, Select, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Input, Button, DatePicker, Select, Tabs, TabPane, InputNumber } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -18,9 +18,11 @@ interface SearchParams {
   ip: string;
   status: string;
   timeRange: [Date, Date] | null;
+  minDurationMs: number | null;
+  maxDurationMs: number | null;
 }
 
-const defaultParams: SearchParams = { username: '', module: '', description: '', method: '', path: '', ip: '', status: '', timeRange: null };
+const defaultParams: SearchParams = { username: '', module: '', description: '', method: '', path: '', ip: '', status: '', timeRange: null, minDurationMs: null, maxDurationMs: null };
 
 export default function OperationLogsPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
@@ -45,6 +47,8 @@ export default function OperationLogsPage() {
         ...(params.path ? { path: params.path } : {}),
         ...(params.status ? { status: params.status } : {}),
         ...(params.timeRange ? { startTime: formatDateTimeForApi(params.timeRange[0]), endTime: formatDateTimeForApi(params.timeRange[1]) } : {}),
+        ...(params.minDurationMs === null ? {} : { minDurationMs: String(params.minDurationMs) }),
+        ...(params.maxDurationMs === null ? {} : { maxDurationMs: String(params.maxDurationMs) }),
       }).toString();
       const res = await request.get<PaginatedResponse<OperationLog>>(`/api/operation-logs?${query}`);
       setData(res.data.list);
@@ -162,6 +166,22 @@ export default function OperationLogsPage() {
                 value={searchParams.timeRange ?? undefined}
                 onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
                 style={{ width: 360 }}
+              />
+              <InputNumber
+                placeholder="耗时 ≥ (ms)"
+                value={searchParams.minDurationMs ?? undefined}
+                onChange={(v) => setSearchParams({ ...searchParams, minDurationMs: v !== '' && v != null ? Number(v) : null })}
+                min={0}
+                style={{ width: 130 }}
+                hideButtons
+              />
+              <InputNumber
+                placeholder="耗时 ≤ (ms)"
+                value={searchParams.maxDurationMs ?? undefined}
+                onChange={(v) => setSearchParams({ ...searchParams, maxDurationMs: v !== '' && v != null ? Number(v) : null })}
+                min={0}
+                style={{ width: 130 }}
+                hideButtons
               />
               <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
                 查询

@@ -116,7 +116,7 @@ export function OperationLogsTable({
     {
       title: '耗时',
       dataIndex: 'durationMs',
-      width: 90,
+      width: 120,
       render: (v: number | null) => v === null ? '-' : `${v} ms`,
     },
     {
