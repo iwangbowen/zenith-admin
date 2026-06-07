@@ -59,6 +59,7 @@ import workflowCategoriesRoutes from './routes/workflow-categories';
 import workflowInstancesRoutes from './routes/workflow-instances';
 import workflowAutomationsRoutes from './routes/workflow-automations';
 import healthRoutes from './routes/health';
+import maintenanceRoutes from './routes/maintenance';
 import logFilesRoutes from './routes/log-files';
 import chatRoutes from './routes/chat';
 import tagsRoutes from './routes/tags';
@@ -92,6 +93,7 @@ import workflowTriggerCallbackRoutes from './routes/workflow-trigger-callback';
 import { initTelemetry } from './lib/telemetry';
 import { metricsSampler } from './lib/metrics-sampler';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
+import { maintenanceMiddleware } from './middleware/maintenance';
 
 await initTelemetry();
 
@@ -198,6 +200,10 @@ app.use('/api/auth/register', sensitiveRateLimit);
 app.use('/api/auth/forgot-password', sensitiveRateLimit);
 app.use('/api/auth/reset-password', sensitiveRateLimit);
 
+// ─── 维护模式拦截（认证路由、公开维护接口之后注册）────────────────────────
+app.use('/api/*', maintenanceMiddleware);
+
+app.route('/api/maintenance', maintenanceRoutes);
 app.route('/api/auth', authRoutes);
 app.route('/api/users', usersRoutes);
 app.route('/api/departments', departmentsRoutes);

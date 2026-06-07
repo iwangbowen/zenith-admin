@@ -44,6 +44,7 @@ import { ipAccessLogsHandlers } from './ip-access-logs';
 import { dataMaskHandlers } from './data-mask';
 import { dbQueryFavoritesHandlers } from './db-query-favorites';
 import { userPermissionsHandlers } from './user-permissions';
+import { maintenanceHandlers } from './maintenance';
 
 export const handlers = [
   ...authHandlers,
@@ -92,4 +93,5 @@ export const handlers = [
   ...oauth2AppsHandlers,
   ...oauth2AuthHandlers,
   ...userPermissionsHandlers,
+  ...maintenanceHandlers,
 ];

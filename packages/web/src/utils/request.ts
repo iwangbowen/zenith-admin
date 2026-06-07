@@ -101,6 +101,20 @@ class Request {
       }
     }
 
+    if (res.status === 503) {
+      let detail: { message?: string; estimatedEndAt?: string | null; startedAt?: string | null } = {};
+      try {
+        const parsed = await res.json() as { message: string; data: typeof detail };
+        detail = parsed.data ?? {};
+        globalThis.dispatchEvent(new CustomEvent('maintenance:enabled', { detail }));
+        if (!silent) Toast.warning(parsed.message || '系统维护中，请稍后重试');
+        return { code: 503, message: parsed.message || '系统维护中，请稍后重试', data: null as unknown as T };
+      } catch {
+        globalThis.dispatchEvent(new CustomEvent('maintenance:enabled', { detail }));
+        return { code: 503, message: '系统维护中，请稍后重试', data: null as unknown as T };
+      }
+    }
+
     try {
       const data: ApiResponse<T> = await res.json();
       if (data.code !== 0 && !silent) {

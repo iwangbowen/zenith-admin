@@ -4,7 +4,7 @@ import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
-import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock } from 'lucide-react';
+import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench } from 'lucide-react';
 import { match as pinyinMatch } from 'pinyin-pro';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
@@ -356,6 +356,47 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   // ─── 租户切换（仅平台管理员） ─────────────────────────────────────────────
   const isPlatformAdmin = config.multiTenantMode && !user.tenantId && user.roles?.some((r) => r.code === 'super_admin');
+  const isSuperAdmin = user.roles?.some((r) => r.code === 'super_admin') ?? false;
+
+  // ─── 维护模式横幅（超管提示） ─────────────────────────────────────────
+  const [maintenanceBannerEnabled, setMaintenanceBannerEnabled] = useState(false);
+  const [maintenanceBannerMsg, setMaintenanceBannerMsg] = useState('');
+  const [disablingMaintenance, setDisablingMaintenance] = useState(false);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    request.get<{ enabled: boolean; message: string }>('/api/maintenance/status', { silent: true })
+      .then((res) => {
+        if (res.code === 0 && res.data?.enabled) {
+          setMaintenanceBannerEnabled(true);
+          setMaintenanceBannerMsg(res.data.message);
+        }
+      });
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string } | null>).detail;
+      setMaintenanceBannerEnabled(true);
+      setMaintenanceBannerMsg(detail?.message ?? '系统维护中');
+    };
+    globalThis.addEventListener('maintenance:enabled', handler);
+    return () => globalThis.removeEventListener('maintenance:enabled', handler);
+  }, [isSuperAdmin]);
+
+  const handleDisableMaintenance = useCallback(async () => {
+    setDisablingMaintenance(true);
+    try {
+      const res = await request.put<{ enabled: boolean }>('/api/maintenance', { enabled: false });
+      if (res.code === 0) {
+        setMaintenanceBannerEnabled(false);
+        Toast.success('维护模式已关闭');
+      }
+    } finally {
+      setDisablingMaintenance(false);
+    }
+  }, []);
   const [tenantList, setTenantList] = useState<Tenant[]>([]);
   const [viewingTenantId, setViewingTenantId] = useState<number | null>(null);
 
@@ -1352,6 +1393,30 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           : {}),
       }}
     >
+      {/* 维护模式横幅（仅超级管理员可见） */}
+      {isSuperAdmin && maintenanceBannerEnabled && (
+        <div style={{
+          padding: '8px 20px',
+          background: 'var(--semi-color-warning-light-default)',
+          borderBottom: '1px solid var(--semi-color-warning-light-active)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 13,
+          color: 'var(--semi-color-text-0)',
+          zIndex: 1000,
+          position: 'relative',
+        }}>
+          <Wrench size={14} color="var(--semi-color-warning)" />
+          <span style={{ flex: 1 }}>
+            系统当前处于 <strong>维护模式</strong>，普通用户无法访问接口。
+            {maintenanceBannerMsg && <span style={{ marginLeft: 8, color: 'var(--semi-color-text-2)' }}>{maintenanceBannerMsg}</span>}
+          </span>
+          <Button size="small" theme="solid" type="warning" loading={disablingMaintenance} onClick={handleDisableMaintenance}>
+            关闭维护模式
+          </Button>
+        </div>
+      )}
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && navLayout !== 'double' && (
         <header className="admin-topbar">

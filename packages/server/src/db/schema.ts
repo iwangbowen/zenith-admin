@@ -1704,3 +1704,17 @@ export const oauth2TokensRelations = relations(oauth2Tokens, ({ one }) => ({
 export const oauth2UserGrantsRelations = relations(oauth2UserGrants, ({ one }) => ({
   user: one(users, { fields: [oauth2UserGrants.userId], references: [users.id] }),
 }));
+
+// ─── 维护模式（单例，id 固定为 1）───────────────────────────────────────────
+export const maintenanceMode = pgTable('maintenance_mode', {
+  id: serial('id').primaryKey(),
+  enabled: boolean('enabled').notNull().default(false),
+  message: varchar('message', { length: 512 }).notNull().default('系统维护中，请稍后重试'),
+  estimatedEndAt: timestamp('estimated_end_at'),
+  startedAt: timestamp('started_at'),
+  startedByName: varchar('started_by_name', { length: 64 }),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type MaintenanceModeRow = typeof maintenanceMode.$inferSelect;
+export type NewMaintenanceMode = typeof maintenanceMode.$inferInsert;

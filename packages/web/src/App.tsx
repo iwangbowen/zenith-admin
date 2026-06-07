@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
@@ -8,6 +8,8 @@ import { PermissionContext } from '@/hooks/usePermission';
 import { PreferencesProvider } from '@/hooks/PreferencesProvider';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { request } from '@/utils/request';
+import MaintenanceOverlay from '@/components/MaintenanceOverlay';
+import { config } from '@/config';
 import type { Menu, User } from '@zenith/shared';
 
 import AdminLayout from '@/layouts/AdminLayout';
@@ -196,6 +198,46 @@ export default function App() {
   useGlobalErrorHandler();
   const { user, permissions, loading, login, register, logout, updateUser } = useAuth();
 
+  const isSuperAdmin = user?.roles?.some((r) => r.code === 'super_admin') ?? false;
+
+  interface MaintenanceInfo {
+    message: string;
+    estimatedEndAt: string | null;
+    startedAt: string | null;
+  }
+  const [maintenanceInfo, setMaintenanceInfo] = useState<MaintenanceInfo | null>(null);
+
+  const handleMaintenanceResolved = useCallback(() => setMaintenanceInfo(null), []);
+
+  // Poll maintenance status once auth has resolved
+  const maintenanceCheckedRef = React.useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (maintenanceCheckedRef.current) return;
+    maintenanceCheckedRef.current = true;
+    fetch(`${config.apiBaseUrl}/api/maintenance/status`)
+      .then((r) => r.json())
+      .then((data: { code: number; data: MaintenanceInfo & { enabled: boolean } }) => {
+        if (data.code === 0 && data.data?.enabled && !isSuperAdmin) {
+          setMaintenanceInfo(data.data);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  // Listen for 503 events dispatched by request.ts
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if (!isSuperAdmin) {
+        const detail = (e as CustomEvent<MaintenanceInfo>).detail;
+        setMaintenanceInfo(detail ?? { message: '系统维护中，请稍后重试', estimatedEndAt: null, startedAt: null });
+      }
+    };
+    globalThis.addEventListener('maintenance:enabled', handler);
+    return () => globalThis.removeEventListener('maintenance:enabled', handler);
+  }, [isSuperAdmin]);
+
   if (loading) {
     return <PageLoadingDots />;
   }
@@ -204,6 +246,9 @@ export default function App() {
   const RouterComponent = import.meta.env.VITE_ELECTRON === 'true' ? HashRouter : BrowserRouter;
   return (
     <PageErrorBoundary>
+    {maintenanceInfo && (
+      <MaintenanceOverlay info={maintenanceInfo} onResolved={handleMaintenanceResolved} />
+    )}
     {/* Electron 自定义标题栏（登录页和内容页共用） */}
     <ElectronTitleBar />
     <RouterComponent basename={import.meta.env.VITE_ELECTRON === 'true' ? undefined : (import.meta.env.BASE_URL.replace(/\/$/, '') || '/')}>
