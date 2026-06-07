@@ -64,6 +64,8 @@ export interface UserPreferences {
   colorBlind: boolean;
   /** 内容区域宽度模式：fluid 流式充满（默认）/ fixed 固定最大宽度居中 */
   contentWidth: 'fluid' | 'fixed';
+  /** 侧边栏展开宽度（px），默认 216 */
+  sidebarWidth: number;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -107,6 +109,7 @@ export const defaultPreferences: UserPreferences = {
   grayscale: false,
   colorBlind: false,
   contentWidth: 'fluid',
+  sidebarWidth: 216,
 };
 
 export interface PreferencesContextValue {

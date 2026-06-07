@@ -1343,7 +1343,15 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   }, [preferences.headerDarkMode, preferences.sidebarDarkMode, themeColor]);
 
   const adminLayoutEl = (
-    <div className={layoutClassName} style={sectionDarkThemeStyle}>
+    <div
+      className={layoutClassName}
+      style={{
+        ...sectionDarkThemeStyle,
+        ...(preferences.sidebarWidth && preferences.sidebarWidth !== 216
+          ? { '--sidebar-width': `${preferences.sidebarWidth}px` } as CSSProperties
+          : {}),
+      }}
+    >
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && navLayout !== 'double' && (
         <header className="admin-topbar">
@@ -1755,6 +1763,21 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>侧边栏深色模式</span>
                 <Switch checked={preferences.sidebarDarkMode ?? false} onChange={(v) => setPreferences({ sidebarDarkMode: v })} />
+              </div>
+              )}
+              {matchesPref(['侧边栏宽度', '侧边栏', '菜单宽度', '展开宽度']) && navLayout !== 'horizontal' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                <span style={{ flexShrink: 0 }}>侧边栏宽度</span>
+                <InputNumber
+                  style={{ width: 110 }}
+                  size="small"
+                  min={160}
+                  max={320}
+                  step={4}
+                  suffix="px"
+                  value={preferences.sidebarWidth ?? 216}
+                  onChange={(v) => setPreferences({ sidebarWidth: Number(v) || 216 })}
+                />
               </div>
               )}
               {!isDark && matchesPref(['顶部栏深色', '深色', '深色模式', '顶部栏', '顶部导航']) && (
