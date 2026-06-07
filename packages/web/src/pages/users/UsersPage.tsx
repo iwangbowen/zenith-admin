@@ -19,6 +19,7 @@ import {
   Dropdown,
   SplitButtonGroup,
   Spin,
+  Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, MoreHorizontal, Building2, ArrowLeft, KeyRound, ToggleLeft, ToggleRight, ChevronDown } from 'lucide-react';
@@ -117,6 +118,8 @@ export default function UsersPage() {
     const selectedSet = new Set(selectedRowKeys);
     return data.list.filter((item) => selectedSet.has(item.id) && !isAdminUser(item)).map((item) => item.id);
   }, [data?.list, selectedRowKeys]);
+
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
 
   const handleBatchStatus = (status: 'enabled' | 'disabled') => {
     if (selectedNonAdminIds.length === 0) return;
@@ -282,6 +285,35 @@ export default function UsersPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize]);
+
+  const handleToggleStatus = useCallback(async (user: User, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认停用用户「${user.nickname ?? user.username}」？`,
+          content: '停用后该用户将无法登录。',
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认停用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(user.id);
+    try {
+      const res = await request.put<null>('/api/users/batch-status', { ids: [user.id], status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已停用');
+        void fetchUsers();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchUsers]);
 
   useEffect(() => {
     void fetchUsers();
@@ -525,9 +557,17 @@ export default function UsersPage() {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 100,
+      width: 90,
       fixed: 'right',
-      render: (status: string) => <DictTag dictCode="common_status" value={status} />,
+      render: (status: string, record: User) => (
+        <Switch
+          size="small"
+          checked={status === 'enabled'}
+          loading={togglingStatusId === record.id}
+          disabled={isAdminUser(record) || !hasPermission('system:user:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '操作',

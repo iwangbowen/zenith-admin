@@ -121,6 +121,19 @@ export const usersHandlers = [
     return HttpResponse.json({ code: 0, message: `已删除 ${before - mockUsers.length} 个用户`, data: null });
   }),
 
+  // 批量修改用户状态
+  http.put('/api/users/batch-status', async ({ request }) => {
+    const body = await request.json() as { ids: number[]; status: 'enabled' | 'disabled' };
+    const ids = new Set(body?.ids ?? []);
+    mockUsers.forEach((u) => {
+      if (ids.has(u.id) && u.username !== 'admin') {
+        u.status = body.status;
+        u.updatedAt = mockDateTime();
+      }
+    });
+    return HttpResponse.json({ code: 0, message: '状态更新成功', data: null });
+  }),
+
   // 删除用户
   http.delete('/api/users/:id', ({ params }) => {
     const index = mockUsers.findIndex((u) => u.id === Number(params.id));
