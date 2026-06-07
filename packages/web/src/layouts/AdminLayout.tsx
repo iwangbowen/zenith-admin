@@ -1323,6 +1323,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     isContentFullscreen ? 'admin-layout--content-fullscreen' : '',
     preferences.grayscale ? 'admin-layout--grayscale' : '',
     preferences.colorBlind ? 'admin-layout--color-blind' : '',
+    (preferences.contentWidth ?? 'fluid') === 'fixed' ? 'admin-layout--content-fixed' : '',
   ].filter(Boolean).join(' ');
   const sectionDarkThemeStyle = useMemo<CSSProperties>(() => {
     if (!preferences.sidebarDarkMode && !preferences.headerDarkMode) return {};
@@ -2221,6 +2222,19 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   <Radio value="slide-up">上滑</Radio>
                   <Radio value="slide-left">左滑</Radio>
                 </RadioGroup>
+              </div>
+              )}
+
+              {/* ── 外观增强 ── */}
+              {matchesPref(['内容宽度', '固定宽度', '居中', '内容区']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  固定内容宽度
+                  <Tooltip content="开启后内容区最大宽度为 1400px 并居中，适合宽屏显示器" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={(preferences.contentWidth ?? 'fluid') === 'fixed'} onChange={(v) => setPreferences({ contentWidth: v ? 'fixed' : 'fluid' })} />
               </div>
               )}
 

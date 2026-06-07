@@ -46,7 +46,7 @@ export interface UserPreferences {
   sidebarHoverTrigger: boolean;
   /** 面包屑可点击跳转：false 时仅展示文字路径，防止误触导致表单中断 */
   breadcrumbClickable: boolean;
-  /** 面包屑子菜单：悬浮目录节点时展示其子菜单 Popover */
+  /** 项目目录节点的子菜单 Popover */
   breadcrumbSubMenu: boolean;
   /** 新开标签页插入行为：append 数尾 / insert-next 现当前标签页后插入 */
   openTabBehavior: 'append' | 'insert-next';
@@ -62,6 +62,8 @@ export interface UserPreferences {
   grayscale: boolean;
   /** 色弱模式（反转色/高对比） */
   colorBlind: boolean;
+  /** 内容区域宽度模式：fluid 流式充满（默认）/ fixed 固定最大宽度居中 */
+  contentWidth: 'fluid' | 'fixed';
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -104,6 +106,7 @@ export const defaultPreferences: UserPreferences = {
   routeAnimation: 'fade',
   grayscale: false,
   colorBlind: false,
+  contentWidth: 'fluid',
 };
 
 export interface PreferencesContextValue {
