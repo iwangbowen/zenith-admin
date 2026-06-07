@@ -10,6 +10,8 @@ export const dataMaskHandlers = [
     const page = Number(url.searchParams.get('page')) || 1;
     const pageSize = Number(url.searchParams.get('pageSize')) || 20;
     const keyword = url.searchParams.get('keyword') ?? '';
+    const maskType = url.searchParams.get('maskType') ?? '';
+    const enabledStr = url.searchParams.get('enabled') ?? '';
 
     let list = [...mockDataMaskConfigs];
     if (keyword) {
@@ -18,6 +20,8 @@ export const dataMaskHandlers = [
         r.entity.toLowerCase().includes(kw) || r.field.toLowerCase().includes(kw) || r.label.toLowerCase().includes(kw),
       );
     }
+    if (maskType) list = list.filter((r) => r.maskType === maskType);
+    if (enabledStr) list = list.filter((r) => r.enabled === (enabledStr === 'true'));
     const total = list.length;
     const paged = list.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });

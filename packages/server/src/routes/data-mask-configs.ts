@@ -38,7 +38,7 @@ const listRoute = defineOpenAPIRoute({
     method: 'get', path: '/', tags: ['DataMaskConfigs'], summary: '数据脱敏规则列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:data-mask:list' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional() }) },
+    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), maskType: z.string().optional(), enabled: z.string().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(DataMaskConfigDTO, '脉敏规则列表') },
   }),
   handler: async (c) => c.json(okBody(await listDataMaskConfigs(c.req.valid('query'))), 200),

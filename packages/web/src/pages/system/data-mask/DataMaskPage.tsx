@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
   Input,
+  Select,
   Tag,
   Space,
   Modal,
@@ -63,9 +64,11 @@ type FormValues = {
 
 interface SearchParams {
   keyword: string;
+  maskType: string;
+  enabled: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '' };
+const defaultSearchParams: SearchParams = { keyword: '', maskType: '', enabled: '' };
 
 export default function DataMaskPage() {
   const { hasPermission } = usePermission();
@@ -85,13 +88,16 @@ export default function DataMaskPage() {
   const formRef = useRef<FormApi>(null);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const { keyword: kw } = params ?? searchParamsRef.current;
+    const params2 = params ?? searchParamsRef.current;
+    const { keyword: kw } = params2;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
         ...(kw ? { keyword: kw } : {}),
+        ...(params2.maskType ? { maskType: params2.maskType } : {}),
+        ...(params2.enabled ? { enabled: params2.enabled } : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<DataMaskConfig>>(`/api/data-mask-configs?${query}`);
       if (res.code === 0) {
@@ -256,8 +262,29 @@ export default function DataMaskPage() {
           onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
           onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
           showClear
-          style={{ width: 240 }}
+          style={{ width: 200 }}
         />
+        <Select
+          placeholder="脉敏类型"
+          value={searchParams.maskType || undefined}
+          onChange={(v) => setSearchParams((prev) => ({ ...prev, maskType: typeof v === 'string' ? v : '' }))}
+          showClear
+          style={{ width: 160 }}
+        >
+          {MASK_TYPE_OPTIONS.map((o) => (
+            <Select.Option key={o.value} value={o.value}>{MASK_TYPE_LABELS[o.value]}</Select.Option>
+          ))}
+        </Select>
+        <Select
+          placeholder="启用状态"
+          value={searchParams.enabled || undefined}
+          onChange={(v) => setSearchParams((prev) => ({ ...prev, enabled: typeof v === 'string' ? v : '' }))}
+          showClear
+          style={{ width: 120 }}
+        >
+          <Select.Option value="true">启用</Select.Option>
+          <Select.Option value="false">停用</Select.Option>
+        </Select>
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         {hasPermission('system:data-mask:create') && (

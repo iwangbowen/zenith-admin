@@ -1,4 +1,4 @@
-import { eq, ilike, or } from 'drizzle-orm';
+import { eq, ilike, or, and } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { dataMaskConfigs } from '../db/schema';
@@ -45,11 +45,15 @@ export function mapDataMaskConfig(row: DataMaskConfigRow): DataMaskConfig {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function listDataMaskConfigs(query: { page?: number; pageSize?: number; keyword?: string } = {}) {
-  const { page = 1, pageSize = 20, keyword } = query;
-  const where = keyword
-    ? or(ilike(dataMaskConfigs.entity, `%${escapeLike(keyword)}%`), ilike(dataMaskConfigs.field, `%${escapeLike(keyword)}%`), ilike(dataMaskConfigs.label, `%${escapeLike(keyword)}%`))
-    : undefined;
+export async function listDataMaskConfigs(query: { page?: number; pageSize?: number; keyword?: string; maskType?: string; enabled?: string } = {}) {
+  const { page = 1, pageSize = 20, keyword, maskType, enabled } = query;
+  const conditions = [];
+  if (keyword) {
+    conditions.push(or(ilike(dataMaskConfigs.entity, `%${escapeLike(keyword)}%`), ilike(dataMaskConfigs.field, `%${escapeLike(keyword)}%`), ilike(dataMaskConfigs.label, `%${escapeLike(keyword)}%`))!);
+  }
+  if (maskType) conditions.push(eq(dataMaskConfigs.maskType, maskType));
+  if (enabled !== undefined) conditions.push(eq(dataMaskConfigs.enabled, enabled === 'true'));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [total, rows] = await Promise.all([
     db.$count(dataMaskConfigs, where),
     withPagination(
