@@ -10,6 +10,7 @@ const BYPASS_PREFIXES = [
   '/api/auth/',
   '/api/maintenance/status',
   '/metrics',
+  '/api/ws',
 ];
 
 export const maintenanceMiddleware = createMiddleware(async (c, next) => {
