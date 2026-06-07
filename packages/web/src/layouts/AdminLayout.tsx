@@ -516,7 +516,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       // Auto-logout after a brief delay so the user can see the notification
       setTimeout(() => { clearLockPassword(); onLogout(); }, 2000);
     }
-  }, [onLogout, fetchInAppMessages]);
+  }, [onLogout, fetchInAppMessages, clearLockPassword]);
 
   const { disconnect: disconnectWs } = useWebSocket(handleWsMessage);
 
@@ -873,7 +873,10 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     [navItems, navigate],
   );
 
-  const currentSelectedKeys = location.pathname === '/users' ? ['/system/users'] : [location.pathname];
+  const currentSelectedKeys = useMemo(
+    () => (location.pathname === '/users' ? ['/system/users'] : [location.pathname]),
+    [location.pathname],
+  );
 
   // ─── Header actions (reused in both topbar and vertical header) ────────────
   const headerActions = (
