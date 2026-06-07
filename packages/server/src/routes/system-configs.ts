@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { getPasswordPolicy } from '../lib/password-policy';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { SystemConfigDTO, PublicConfigDTO, PasswordPolicyDTO } from '../lib/openapi-dtos';
 import {
   getPublicConfig,
@@ -10,7 +10,7 @@ import {
   createSystemConfig,
   updateSystemConfig,
   deleteSystemConfig,
-  exportSystemConfigs,
+  exportSystemConfigs, exportSystemConfigsAsCsv,
   getSystemConfigBeforeAudit,
   getSystemConfig,
 } from '../services/system-configs.service';
@@ -122,6 +122,19 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-systemConfigsRoute.openapiRoutes([publicGetRoute, passwordPolicyRoute, listRoute, getOneRoute, createConfigRoute, updateConfigRoute, deleteRouteDef, exportRoute] as const);
+const exportCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['SystemConfigs'], summary: '导出系统配置 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:config:list' })] as const,
+    responses: { ...commonErrorResponses, ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportSystemConfigsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+systemConfigsRoute.openapiRoutes([publicGetRoute, passwordPolicyRoute, listRoute, getOneRoute, createConfigRoute, updateConfigRoute, deleteRouteDef, exportRoute, exportCsvRoute] as const);
 
 export default systemConfigsRoute;

@@ -4,7 +4,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { isPlatformAdmin } from '../lib/tenant';
 import type { AppEnv } from '../lib/context';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { TenantDTO } from '../lib/openapi-dtos';
 import {
   listTenants,
@@ -14,7 +14,7 @@ import {
   updateTenant,
   deleteTenant,
   getTenantBeforeAudit,
-  exportTenants,
+  exportTenants, exportTenantsAsCsv,
 } from '../services/tenants.service';
 
 const tenantsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -137,6 +137,19 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
-tenantsRoute.openapiRoutes([listRoute, allRoute, exportRouteDef, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
+const exportCsvRouteDef = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['Tenants'], summary: '导出租户 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, platformAdminMiddleware] as const,
+    responses: { ...okCsv() },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportTenantsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+tenantsRoute.openapiRoutes([listRoute, allRoute, exportRouteDef, exportCsvRouteDef, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
 
 export default tenantsRoute;

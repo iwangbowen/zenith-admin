@@ -8,7 +8,7 @@ import { tenantScope, currentCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { sendMail } from '../lib/email';
 import { renderTemplate } from '../lib/sms-sender';
-import { streamToExcel, formatDateTimeForExcel, batchIterable } from '../lib/excel-export';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel, batchIterable } from '../lib/excel-export';
 import { ensureEmailTemplateExists } from './email-templates.service';
 import type { SendStatus, SendSource, SendEmailInput } from '@zenith/shared';
 
@@ -94,6 +94,27 @@ export async function exportEmailSendLogs(q: Omit<ListEmailSendLogsQuery, 'page'
     '邮件发送记录',
   );
   return { stream, filename: 'email-send-logs.xlsx' };
+}
+
+export async function exportEmailSendLogsAsCsv(q: Omit<ListEmailSendLogsQuery, 'page' | 'pageSize'>) {
+  const where = buildListWhere({ ...q, page: 1, pageSize: 1 });
+  const rows = batchIterable((limit, offset) =>
+    db.select().from(emailSendLogs).where(where).orderBy(desc(emailSendLogs.id)).limit(limit).offset(offset),
+  );
+  const stream = streamToCsv(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '收件邮筱', key: 'toEmail', width: 26 },
+      { header: '主题', key: 'subject', width: 30 },
+      { header: '状态', key: 'status', width: 10 },
+      { header: '错误信息', key: 'errorMsg', width: 24, transform: (v) => (v as string | null) ?? '' },
+      { header: '来源', key: 'source', width: 10 },
+      { header: '发送时间', key: 'sentAt', width: 20, transform: (v) => v ? formatDateTimeForExcel(v as Date) : '' },
+      { header: '创建时间', key: 'createdAt', width: 20, transform: (v) => formatDateTimeForExcel(v as Date) },
+    ],
+    rows,
+  );
+  return { stream, filename: 'email-send-logs.csv' };
 }
 
 export async function getEmailSendLog(id: number) {

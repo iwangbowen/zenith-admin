@@ -4,12 +4,12 @@ import { guard, setAuditBeforeData } from '../middleware/guard';
 import { announcementRecipientSchema } from '@zenith/shared';
 import {
   ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody,
+  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody,
 } from '../lib/openapi-schemas';
 import { AnnouncementDTO, AnnouncementReadStatsDTO, AnnouncementUnreadCountDTO } from '../lib/openapi-dtos';
 import {
   listPublishedForUser, markAnnouncementRead, markAllAnnouncementsRead, getInbox, listAnnouncements,
-  exportAnnouncements, batchDeleteAnnouncements, getAnnouncementReadStats, getAnnouncementDetail,
+  exportAnnouncements, exportAnnouncementsAsCsv, batchDeleteAnnouncements, getAnnouncementReadStats, getAnnouncementDetail,
   createAnnouncement, updateAnnouncement, deleteAnnouncement, getAnnouncementBeforeAudit, getAnnouncementsBeforeAudit,
   getUnreadAnnouncementCount,
 } from '../services/announcements.service';
@@ -127,6 +127,19 @@ const exportRouteDef = defineOpenAPIRoute({
   },
 });
 
+const exportCsvRouteDef = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['Announcements'], summary: '导出 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:announcement:list' })] as const,
+    responses: { ...commonErrorResponses, ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportAnnouncementsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
 const batchDeleteRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete', path: '/batch', tags: ['Announcements'], summary: '批量删除',
@@ -238,7 +251,7 @@ const deleteRouteDef = defineOpenAPIRoute({
 
 announcementsRouter.openapiRoutes([
   publishedRoute, unreadCountRoute, readRoute, readAllRoute, inboxRoute, listRoute, exportRouteDef,
-  batchDeleteRoute, readStatsRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
+  exportCsvRouteDef, batchDeleteRoute, readStatsRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
 ] as const);
 
 export default announcementsRouter;

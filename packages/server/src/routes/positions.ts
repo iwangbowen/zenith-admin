@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { PositionDTO } from '../lib/openapi-dtos';
 import {
   listAllPositions,
@@ -10,7 +10,7 @@ import {
   updatePosition,
   deletePosition,
   batchDeletePositions,
-  exportPositions,
+  exportPositions, exportPositionsAsCsv,
   getPositionsBeforeAudit,
   getPositionBeforeAudit,
   getPosition,
@@ -142,6 +142,19 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-positionsRouter.openapiRoutes([allRoute, listRoute, getOneRoute, createPositionRoute, updatePositionRoute, batchDeleteRoute, deleteRoute, exportRoute] as const);
+const exportCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['Positions'], summary: '导出岗位 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:position:list' })] as const,
+    responses: { ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportPositionsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+positionsRouter.openapiRoutes([allRoute, listRoute, getOneRoute, createPositionRoute, updatePositionRoute, batchDeleteRoute, deleteRoute, exportRoute, exportCsvRoute] as const);
 
 export default positionsRouter;

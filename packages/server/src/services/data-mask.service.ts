@@ -45,7 +45,7 @@ export function mapDataMaskConfig(row: DataMaskConfigRow): DataMaskConfig {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function listDataMaskConfigs(query: { page?: number; pageSize?: number; keyword?: string; maskType?: string; enabled?: string } = {}) {
+export async function listDataMaskConfigs(query: { page?: number; pageSize?: number; keyword?: string; maskType?: MaskType; enabled?: string } = {}) {
   const { page = 1, pageSize = 20, keyword, maskType, enabled } = query;
   const conditions = [];
   if (keyword) {

@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { validateCronExpression, getRegisteredHandlers } from '../lib/pg-boss-scheduler';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { CronJobDTO, CronJobLogDTO, CronJobStatsDTO } from '../lib/openapi-dtos';
 import {
   listCronJobs,
@@ -12,7 +12,7 @@ import {
   deleteCronJob,
   runCronJob,
   setCronJobStatus,
-  exportCronJobs,
+  exportCronJobs, exportCronJobsAsCsv,
   listAllCronJobLogs,
   listCronJobLogs,
   clearCronJobLogs,
@@ -229,6 +229,19 @@ const statsRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getCronJobStats()), 200),
 });
 
-cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, exportRouteDef, logsRoute, clearAllLogsRoute, statsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute, clearJobLogsRoute] as const);
+const exportCsvRouteDef = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['CronJobs'], summary: '导出任务 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:cronjob:list' })] as const,
+    responses: { ...commonErrorResponses, ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportCronJobsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, exportRouteDef, exportCsvRouteDef, logsRoute, clearAllLogsRoute, statsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute, clearJobLogsRoute] as const);
 
 export default cronJobsRoute;

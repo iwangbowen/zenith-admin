@@ -4,7 +4,7 @@ import { departments, users } from '../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { formatDateTime } from '../lib/datetime';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import type { Department, createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
@@ -212,4 +212,30 @@ export async function exportDepartments(): Promise<{ stream: ReadableStream; fil
     '部门列表',
   );
   return { stream, filename: 'departments.xlsx' };
+}
+
+export async function exportDepartmentsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
+  const tc = tenantCondition(departments, currentUser());
+  const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort));
+  const leaderIds = [...new Set(rows.map((r) => r.leaderId).filter((id): id is number => id !== null))];
+  const leaderMap = await buildLeaderMap(leaderIds);
+  const stream = streamToCsv(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '部门名称', key: 'name', width: 20 },
+      { header: '部门编码', key: 'code', width: 16 },
+      { header: '类别', key: 'category', width: 10, transform: (v) => ({ group: '集团', company: '公司', department: '部门' }[v as string] ?? String(v)) },
+      { header: '负责人', key: 'leaderName', width: 14 },
+      { header: '电话', key: 'phone', width: 16 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '停用') },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({
+      ...r,
+      leaderName: r.leaderId ? leaderMap.get(r.leaderId) ?? '' : '',
+      phone: r.phone ?? '',
+      createdAt: formatDateTimeForExcel(r.createdAt),
+    })),
+  );
+  return { stream, filename: 'departments.csv' };
 }

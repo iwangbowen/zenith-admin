@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
-import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { DepartmentDTO } from '../lib/openapi-dtos';
 import {
   listDepartmentTree,
@@ -10,7 +10,7 @@ import {
   createDepartment,
   updateDepartment,
   deleteDepartment,
-  exportDepartments,
+  exportDepartments, exportDepartmentsAsCsv,
   getDepartmentBeforeAudit,
   getDepartment,
 } from '../services/departments.service';
@@ -153,6 +153,25 @@ const exportRouteDef = defineOpenAPIRoute({
   },
 });
 
-departmentsRouter.openapiRoutes([listRoute, flatRoute, getOneRoute, createRouteDef, updateRouteDef, deleteRouteDef, exportRouteDef] as const);
+const exportCsvRouteDef = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/export/csv',
+    tags: ['Departments'],
+    summary: '导出部门 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:department:list' })] as const,
+    responses: {
+      ...commonErrorResponses,
+      ...okCsv('CSV 文件'),
+    },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportDepartmentsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+departmentsRouter.openapiRoutes([listRoute, flatRoute, getOneRoute, createRouteDef, updateRouteDef, deleteRouteDef, exportRouteDef, exportCsvRouteDef] as const);
 
 export default departmentsRouter;

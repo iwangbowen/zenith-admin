@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { RegionDTO } from '../lib/openapi-dtos';
 import {
   listRegionTree,
@@ -10,7 +10,7 @@ import {
   updateRegion,
   deleteRegion,
   getRegionBeforeAudit,
-  exportRegions,
+  exportRegions, exportRegionsAsCsv,
   getRegion,
 } from '../services/regions.service';
 
@@ -121,6 +121,19 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-regionsRouter.openapiRoutes([listRoute, flatRoute, getOneRoute, createRegionRoute, updateRegionRoute, deleteRoute, exportRoute] as const);
+const exportCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['Regions'], summary: '导出地区 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:region:export' })] as const,
+    responses: { ...commonErrorResponses, ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportRegionsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+regionsRouter.openapiRoutes([listRoute, flatRoute, getOneRoute, createRegionRoute, updateRegionRoute, deleteRoute, exportRoute, exportCsvRoute] as const);
 
 export default regionsRouter;

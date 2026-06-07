@@ -18,9 +18,11 @@ import {
   TabPane,
   Progress,
   Typography,
+  SplitButtonGroup,
+  Dropdown,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2 } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2, ChevronDown } from 'lucide-react';
 import type { Announcement, AnnouncementRecipient, AnnouncementTargetType, PaginatedResponse, User, Role, Department, AnnouncementReadStats, AnnouncementAttachment } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -71,6 +73,7 @@ export default function AnnouncementsPage() {
   const [data, setData] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const defaultSearchParams: SearchParams = { title: '', type: '', publishStatus: '', timeRange: null };
@@ -737,7 +740,12 @@ export default function AnnouncementsPage() {
           />
           <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
           <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
-          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/announcements/export', '公告列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+              <SplitButtonGroup>
+                <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/announcements/export', '公告列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+                <Dropdown trigger="click" position="bottomRight" clickToHide render={<Dropdown.Menu><Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/announcements/export', '公告列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item><Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/announcements/export/csv', '公告列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item></Dropdown.Menu>}>
+                  <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+                </Dropdown>
+              </SplitButtonGroup>
           {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
             <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
               批量删除 ({selectedRowKeys.length})

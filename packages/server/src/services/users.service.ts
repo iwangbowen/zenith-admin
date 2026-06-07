@@ -11,7 +11,7 @@ import { getDataScopeCondition } from '../lib/data-scope';
 import { escapeLike } from '../lib/where-helpers';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { unlockUser as unlockUserSession, batchCheckLoginLock, getOnlineSessions } from '../lib/session-manager';
-import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { clearUserPermissionCache } from '../lib/permissions';
 import type { JwtPayload } from '../middleware/auth';
 import type { User } from '@zenith/shared';
@@ -457,6 +457,32 @@ export async function exportUsers(): Promise<{ stream: ReadableStream; filename:
     '用户列表',
   );
   return { stream, filename: 'users.xlsx' };
+}
+
+export async function exportUsersAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
+  const user = currentUser();
+  const tc = tenantCondition(users, user);
+  const rawList = await db.query.users.findMany({
+    where: tc, with: { department: { columns: { name: true } } }, orderBy: users.id,
+  });
+  const list = rawList.map((u) => ({
+    id: u.id, username: u.username, nickname: u.nickname, email: u.email,
+    departmentName: u.department?.name ?? '', status: u.status,
+    createdAt: formatDateTimeForExcel(u.createdAt),
+  }));
+  const stream = streamToCsv(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '用户名', key: 'username', width: 16 },
+      { header: '昵称', key: 'nickname', width: 16 },
+      { header: '邮筱', key: 'email', width: 24 },
+      { header: '部门', key: 'departmentName', width: 16 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '禁用') },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    list,
+  );
+  return { stream, filename: 'users.csv' };
 }
 
 export async function getUserImportTemplate(): Promise<ArrayBuffer> {

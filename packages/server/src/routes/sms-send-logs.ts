@@ -3,12 +3,12 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody,
+  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody,
 } from '../lib/openapi-schemas';
 import { sendSmsSchema, SMS_PROVIDERS, SEND_STATUSES, SEND_SOURCES } from '@zenith/shared';
 import { SmsSendLogDTO, SmsSendResultDTO } from '../lib/openapi-dtos';
 import {
-  listSmsSendLogs, getSmsSendLog, deleteSmsSendLog, sendSms, exportSmsSendLogs,
+  listSmsSendLogs, getSmsSendLog, deleteSmsSendLog, sendSms, exportSmsSendLogs, exportSmsSendLogsAsCsv,
 } from '../services/sms-send-logs.service';
 
 const smsSendLogsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -77,6 +77,20 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-smsSendLogsRouter.openapiRoutes([listRoute, sendRoute, exportRoute, deleteRoute] as const);
+const exportCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['SmsSendLogs'], summary: '导出短信发送记录 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:sms-send-log:export' })] as const,
+    request: { query: listQuery },
+    responses: { ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportSmsSendLogsAsCsv(c.req.valid('query'));
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+smsSendLogsRouter.openapiRoutes([listRoute, sendRoute, exportRoute, exportCsvRoute, deleteRoute] as const);
 
 export default smsSendLogsRouter;

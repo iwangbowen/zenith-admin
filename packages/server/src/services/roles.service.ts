@@ -4,7 +4,7 @@ import { db } from '../db';
 import type { DbTransaction } from '../db/types';
 import { roles, roleMenus, roleDeptScopes, userRoles } from '../db/schema';
 import { clearUserPermissionCache } from '../lib/permissions';
-import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { HTTPException } from 'hono/http-exception';
@@ -192,6 +192,23 @@ export async function exportRoles(): Promise<{ stream: ReadableStream; filename:
     '角色列表',
   );
   return { stream, filename: 'roles.xlsx' };
+}
+
+export async function exportRolesAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
+  const user = currentUser();
+  const rows = await db.select().from(roles).where(tenantCondition(roles, user));
+  const stream = streamToCsv(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '角色名称', key: 'name', width: 18 },
+      { header: '角色编码', key: 'code', width: 18 },
+      { header: '描述', key: 'description', width: 30 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '禁用') },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
+  );
+  return { stream, filename: 'roles.csv' };
 }
 
 export async function getRoleBeforeAudit(id: number) {

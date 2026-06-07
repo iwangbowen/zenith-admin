@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 import { DictDTO, DictItemDTO } from '../lib/openapi-dtos';
 import {
@@ -14,7 +14,7 @@ import {
   createDictItem,
   updateDictItem,
   deleteDictItem,
-  exportDicts,
+  exportDicts, exportDictsAsCsv,
   getDictBeforeAudit,
   getDictItemBeforeAudit,
   getDict,
@@ -214,6 +214,19 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-dictsRouter.openapiRoutes([listDictsRoute, getDictRoute, createDictRoute, updateDictRoute, deleteDictRoute, listItemsRoute, getItemsByCodeRoute, getItemRoute, createItemRoute, updateItemRoute, deleteItemRoute, exportRoute] as const);
+const exportCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['Dicts'], summary: '导出字典 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:dict:list' })] as const,
+    responses: { ...commonErrorResponses, ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportDictsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+dictsRouter.openapiRoutes([listDictsRoute, getDictRoute, createDictRoute, updateDictRoute, deleteDictRoute, listItemsRoute, getItemsByCodeRoute, getItemRoute, createItemRoute, updateItemRoute, deleteItemRoute, exportRoute, exportCsvRoute] as const);
 
 export default dictsRouter;

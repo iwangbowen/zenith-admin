@@ -5,7 +5,7 @@ import type { DbExecutor } from '../db/types';
 import { announcements, announcementRecipients, announcementReads, users, userRoles, roles, departments, businessFiles, managedFiles } from '../db/schema';
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { buildManagedFileUrl } from '../lib/file-storage';
@@ -304,6 +304,24 @@ export async function exportAnnouncements(): Promise<{ stream: ReadableStream; f
     '公告',
   );
   return { stream, filename: 'announcements.xlsx' };
+}
+
+export async function exportAnnouncementsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
+  const user = currentUser();
+  const rows = await db.select().from(announcements).where(tenantCondition(announcements, user)).orderBy(desc(announcements.id));
+  const stream = streamToCsv(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '标题', key: 'title', width: 24 },
+      { header: '类型', key: 'type', width: 12 },
+      { header: '优先级', key: 'priority', width: 10 },
+      { header: '发布状态', key: 'publishStatus', width: 12 },
+      { header: '创建人', key: 'createByName', width: 14 },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
+  );
+  return { stream, filename: 'announcements.csv' };
 }
 
 export async function batchDeleteAnnouncements(ids: number[]) {

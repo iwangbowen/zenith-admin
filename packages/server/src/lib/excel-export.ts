@@ -49,7 +49,8 @@ export function streamToCsv(
         const BATCH_SIZE = 500;
         let batch: string[] = [];
         for await (const row of data) {
-          batch.push(columns.map((c) => csvEscapeCell(row[c.key])).join(','));
+          const val = (c: ExcelColumn) => c.transform ? c.transform(row[c.key]) : row[c.key];
+          batch.push(columns.map((c) => csvEscapeCell(val(c))).join(','));
           if (batch.length >= BATCH_SIZE) {
             controller.enqueue(encoder.encode(batch.join('\n') + '\n'));
             batch = [];

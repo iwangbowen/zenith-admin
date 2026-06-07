@@ -3,13 +3,13 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody, excelStreamBody, BatchIdsBody,
+  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody, excelStreamBody, BatchIdsBody, okCsv, csvStreamBody,
 } from '../lib/openapi-schemas';
 import { UserDTO, ImportResultDTO, UserMenuPermissionsDTO, UserDataPermissionDTO, UserEffectivePermissionsDTO } from '../lib/openapi-dtos';
 import {
   listAllUsers, listUsers, createUser, batchDeleteUsers, batchUpdateUserStatus, batchResetUsersPassword,
   updateUser, deleteUser, updateUserPassword, unlockUserById,
-  exportUsers, getUserImportTemplate, importUsersFromFormData, getUserBeforeAudit, getUsersBeforeAudit,
+  exportUsers, exportUsersAsCsv, getUserImportTemplate, importUsersFromFormData, getUserBeforeAudit, getUsersBeforeAudit,
   getUser,
   getUserMenuPermissions, assignUserMenus,
   getUserDataPermission, updateUserDataPermission, getUserEffectivePermissions,
@@ -424,9 +424,22 @@ const getUserEffectivePermissionsRoute = defineOpenAPIRoute({
   },
 });
 
+const exportUsersCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['Users'], summary: '导出用户 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:user:list' })] as const,
+    responses: { ...commonErrorResponses, ...okCsv() },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportUsersAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
 usersRouter.openapiRoutes([
   getAllUsersRoute, listUsersRoute, createUserRoute, batchDeleteUsersRoute, batchStatusUsersRoute, batchResetPasswordRoute,
-  importTemplateRoute, importUsersRoute, exportUsersRoute, updateUserPasswordRoute, unlockUserRoute,
+  importTemplateRoute, importUsersRoute, exportUsersRoute, exportUsersCsvRoute, updateUserPasswordRoute, unlockUserRoute,
   getOneUserRoute, updateUserRoute, deleteUserRoute,
   getUserMenusRoute, assignUserMenusRoute,
   assignUserRolesRoute,

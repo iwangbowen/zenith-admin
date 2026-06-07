@@ -2,7 +2,7 @@ import { desc, eq, like, and, gte, lte, count, sql } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { loginLogs } from '../db/schema';
-import { streamToExcel, formatDateTimeForExcel, batchIterable } from '../lib/excel-export';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel, batchIterable } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { formatDateTime, formatDate, parseDateTimeInput } from '../lib/datetime';
@@ -126,4 +126,28 @@ export async function exportLoginLogs(): Promise<{ stream: ReadableStream; filen
     '登录日志',
   );
   return { stream, filename: 'login-logs.xlsx' };
+}
+
+export async function exportLoginLogsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
+  const user = currentUser();
+  const tc = tenantCondition(loginLogs, user);
+  const rows = batchIterable(
+    (limit, offset) =>
+      db.select().from(loginLogs).where(tc).orderBy(desc(loginLogs.id)).limit(limit).offset(offset),
+  );
+  const stream = streamToCsv(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '用户名', key: 'username', width: 16 },
+      { header: 'IP', key: 'ip', width: 18 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'success' ? '成功' : '失败') },
+      { header: '消息', key: 'message', width: 30, transform: (v) => (v as string | null) ?? '' },
+      { header: '浏览器', key: 'browser', width: 16, transform: (v) => (v as string | null) ?? '' },
+      { header: '操作系统', key: 'os', width: 16, transform: (v) => (v as string | null) ?? '' },
+      { header: 'User-Agent', key: 'userAgent', width: 60, transform: (v) => (v as string | null) ?? '' },
+      { header: '登录时间', key: 'createdAt', width: 22, transform: (v) => formatDateTimeForExcel(v as Date) },
+    ],
+    rows,
+  );
+  return { stream, filename: 'login-logs.csv' };
 }

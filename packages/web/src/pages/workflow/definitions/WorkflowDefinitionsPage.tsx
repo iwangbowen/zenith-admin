@@ -274,7 +274,7 @@ export default function WorkflowDefinitionsPage() {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
             {hasPermission('workflow:definition:create') && (
               <Button type="primary" icon={<Plus size={14} />} onClick={() => {
-                const qs = selectedCategoryId === null ? '' : `?categoryId=${selectedCategoryId}`;
+                const qs = searchParams.selectedCategoryId === null ? '' : `?categoryId=${searchParams.selectedCategoryId}`;
                 navigate(`/workflow/designer/new${qs}`);
               }}>
                 新建流程

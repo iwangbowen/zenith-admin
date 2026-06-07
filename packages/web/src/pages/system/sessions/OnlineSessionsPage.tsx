@@ -91,7 +91,7 @@ export default function OnlineSessionsPage() {
           : await request.delete(`/api/sessions/${record.tokenId}`);
         if (res.code === 0) {
           Toast.success(logoutMode === 'all' ? '已强制下线全部会话' : '已强制下线');
-          void fetchData(page, pageSize, keyword);
+          void fetchData(page, pageSize);
         }
       },
     });

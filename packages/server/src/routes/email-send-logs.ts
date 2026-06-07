@@ -3,12 +3,12 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody,
+  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody,
 } from '../lib/openapi-schemas';
 import { sendEmailSchema, SEND_STATUSES, SEND_SOURCES } from '@zenith/shared';
 import { EmailSendLogDTO, EmailSendResultDTO } from '../lib/openapi-dtos';
 import {
-  listEmailSendLogs, getEmailSendLog, deleteEmailSendLog, sendEmail, exportEmailSendLogs,
+  listEmailSendLogs, getEmailSendLog, deleteEmailSendLog, sendEmail, exportEmailSendLogs, exportEmailSendLogsAsCsv,
 } from '../services/email-send-logs.service';
 
 const emailSendLogsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -76,6 +76,20 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-emailSendLogsRouter.openapiRoutes([listRoute, sendRoute, exportRoute, deleteRoute] as const);
+const exportCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['EmailSendLogs'], summary: '导出邮件发送记录 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:email-send-log:export' })] as const,
+    request: { query: listQuery },
+    responses: { ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportEmailSendLogsAsCsv(c.req.valid('query'));
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+emailSendLogsRouter.openapiRoutes([listRoute, sendRoute, exportRoute, exportCsvRoute, deleteRoute] as const);
 
 export default emailSendLogsRouter;

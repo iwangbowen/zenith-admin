@@ -7,7 +7,7 @@ import { formatDateTime } from '../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { sendSmsByProvider, renderTemplate } from '../lib/sms-sender';
-import { streamToExcel, formatDateTimeForExcel, batchIterable } from '../lib/excel-export';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel, batchIterable } from '../lib/excel-export';
 import { ensureSmsTemplateExists } from './sms-templates.service';
 import { findDefaultSmsConfig } from './sms-configs.service';
 import type { SmsProvider, SendSource, SendStatus, SendSmsInput } from '@zenith/shared';
@@ -107,8 +107,31 @@ export async function exportSmsSendLogs(q: Omit<ListSmsSendLogsQuery, 'page' | '
   return { stream, filename: 'sms-send-logs.xlsx' };
 }
 
+export async function exportSmsSendLogsAsCsv(q: Omit<ListSmsSendLogsQuery, 'page' | 'pageSize'>) {
+  const where = buildListWhere({ ...q, page: 1, pageSize: 1 });
+  const rows = batchIterable((limit, offset) =>
+    db.select().from(smsSendLogs).where(where).orderBy(desc(smsSendLogs.id)).limit(limit).offset(offset),
+  );
+  const stream = streamToCsv(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '手机号', key: 'phone', width: 16 },
+      { header: '服务商', key: 'provider', width: 12 },
+      { header: '内容', key: 'content', width: 40 },
+      { header: '状态', key: 'status', width: 10 },
+      { header: '错误信息', key: 'errorMsg', width: 24, transform: (v) => (v as string | null) ?? '' },
+      { header: '业务流水号', key: 'bizId', width: 24, transform: (v) => (v as string | null) ?? '' },
+      { header: '来源', key: 'source', width: 10 },
+      { header: '发送时间', key: 'sentAt', width: 20, transform: (v) => v ? formatDateTimeForExcel(v as Date) : '' },
+      { header: '创建时间', key: 'createdAt', width: 20, transform: (v) => formatDateTimeForExcel(v as Date) },
+    ],
+    rows,
+  );
+  return { stream, filename: 'sms-send-logs.csv' };
+}
+
 export async function getSmsSendLog(id: number) {
-  const [row] = await db.select().from(smsSendLogs).where(and(eq(smsSendLogs.id, id), tenantScope(smsSendLogs))).limit(1);
+  const [row] = await db.select().from(smsSendLogs).where(eq(smsSendLogs.id, id)).limit(1);
   if (!row) throw new HTTPException(404, { message: '发送记录不存在' });
   return row;
 }

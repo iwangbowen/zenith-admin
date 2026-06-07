@@ -2,7 +2,7 @@ import { eq, like, and, ne, desc } from 'drizzle-orm';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { tenants } from '../db/schema';
-import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 
@@ -108,4 +108,23 @@ export async function exportTenants(): Promise<{ stream: ReadableStream; filenam
     '租户列表',
   );
   return { stream, filename: 'tenants.xlsx' };
+}
+
+export async function exportTenantsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
+  const rows = await db.select().from(tenants).orderBy(desc(tenants.id));
+  const stream = streamToCsv(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '租户名称', key: 'name', width: 20 },
+      { header: '租户编码', key: 'code', width: 16 },
+      { header: '联系人', key: 'contactName', width: 14 },
+      { header: '联系电话', key: 'contactPhone', width: 16 },
+      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'enabled' ? '启用' : '停用' },
+      { header: '到期时间', key: 'expireAt', width: 22 },
+      { header: '最大用户数', key: 'maxUsers', width: 12 },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, expireAt: formatDateTimeForExcel(r.expireAt), createdAt: formatDateTimeForExcel(r.createdAt), updatedAt: formatDateTimeForExcel(r.updatedAt) })),
+  );
+  return { stream, filename: 'tenants.csv' };
 }

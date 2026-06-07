@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
+import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { LoginLogDTO, LoginLogStatsDTO } from '../lib/openapi-dtos';
-import { listLoginLogs, loginLogStats, exportLoginLogs } from '../services/login-logs.service';
+import { listLoginLogs, loginLogStats, exportLoginLogs, exportLoginLogsAsCsv } from '../services/login-logs.service';
 
 const loginLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -49,6 +49,19 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
-loginLogsRoute.openapiRoutes([listRoute, statsRoute, exportRoute] as const);
+const exportCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['LoginLogs'], summary: '导出登录日志 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:log:login' })] as const,
+    responses: { ...okCsv('CSV 文件') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportLoginLogsAsCsv();
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
+loginLogsRoute.openapiRoutes([listRoute, statsRoute, exportRoute, exportCsvRoute] as const);
 
 export default loginLogsRoute;
