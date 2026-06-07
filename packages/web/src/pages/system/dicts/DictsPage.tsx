@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Button,
   Dropdown,
-  SplitButtonGroup,
   List as SemiList,
   Input,
   Select,
@@ -17,9 +16,10 @@ import {
   JsonViewer,
   Row,
   Col,
+  Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Download, Pencil, Trash2, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react';
 import type { Dict, DictItem, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -27,7 +27,6 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
-import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
@@ -67,6 +66,8 @@ export default function DictsPage() {
   const [itemParentId, setItemParentId] = useState<number | null>(null);
   const [itemColor, setItemColor] = useState<string | null>(null);
   const [itemDetailLoading, setItemDetailLoading] = useState(false);
+  const [togglingItemStatusId, setTogglingItemStatusId] = useState<number | null>(null);
+  const [togglingDictStatusId, setTogglingDictStatusId] = useState<number | null>(null);
   // metadataStr 仅用于 JsonViewer 的初始值（非受控），提交时通过 ref.getValue() 读取
   const [metadataStr, setMetadataStr] = useState<string>('{}');
   const { items: statusItems } = useDictItems('common_status');
@@ -331,6 +332,63 @@ export default function DictsPage() {
     }
   };
 
+  const handleToggleItemStatus = useCallback(async (item: DictItem, newStatus: 'enabled' | 'disabled') => {
+    if (!selectedDict) return;
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认禁用字典项「${item.label}」？`,
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认禁用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingItemStatusId(item.id);
+    try {
+      const res = await request.put(`/api/dicts/${selectedDict.id}/items/${item.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        void fetchItems(selectedDict.id);
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingItemStatusId(null);
+    }
+  }, [selectedDict, fetchItems]);
+
+  const handleToggleDictStatus = useCallback(async (dict: Dict, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认禁用字典「${dict.name}」？`,
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认禁用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingDictStatusId(dict.id);
+    try {
+      const res = await request.put(`/api/dicts/${dict.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        void fetchDicts();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingDictStatusId(null);
+    }
+  }, [fetchDicts]);
+
   const renderDictListItem = (dict: Dict) => {
     const active = selectedDict?.id === dict.id;
     return (
@@ -486,10 +544,18 @@ export default function DictsPage() {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 80,
+      width: 90,
       align: 'center',
       fixed: 'right',
-      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
+      render: (v: string, record: DictItem) => (
+        <Switch
+          size="small"
+          checked={v === 'enabled'}
+          loading={togglingItemStatusId === record.id}
+          disabled={!hasPermission('system:dict:item')}
+          onChange={(checked: boolean) => void handleToggleItemStatus(record, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '操作',
@@ -554,7 +620,13 @@ export default function DictsPage() {
               <span title={selectedDict.name}>{selectedDict.name}</span>
             </div>
             <Tag size="small" color="blue">{selectedDict.code}</Tag>
-            <DictTag dictCode="common_status" value={selectedDict.status} />
+            <Switch
+              size="small"
+              checked={selectedDict.status === 'enabled'}
+              loading={togglingDictStatusId === selectedDict.id}
+              disabled={!hasPermission('system:dict:update')}
+              onChange={(checked: boolean) => void handleToggleDictStatus(selectedDict, checked ? 'enabled' : 'disabled')}
+            />
           </>
         ) : (
           <span className="dict-detail-placeholder">请选择字典</span>
