@@ -29,7 +29,7 @@ const pendingMineRoute = defineOpenAPIRoute({
     method: 'get', path: '/instances/pending-mine', tags: ['WorkflowInstances'], summary: '待我审批列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:task:handle' })] as const,
-    request: { query: PaginationQuery },
+    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), definitionId: z.coerce.number().int().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(WorkflowInstanceListItemDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listPendingMine(c.req.valid('query'))), 200),

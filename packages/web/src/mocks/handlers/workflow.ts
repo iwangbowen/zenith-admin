@@ -208,15 +208,21 @@ export const workflowHandlers = [
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page')) || 1;
     const pageSize = Number(url.searchParams.get('pageSize')) || 10;
+    const keyword = url.searchParams.get('keyword') ?? '';
+    const definitionIdStr = url.searchParams.get('definitionId') ?? '';
+    const definitionId = definitionIdStr ? Number(definitionIdStr) : null;
 
     const pendingTaskIds = mockWorkflowTasks
       .filter(t => t.assigneeId === 1 && t.status === 'pending')
       .map(t => ({ instanceId: t.instanceId, taskId: t.id }));
 
-    const list = pendingTaskIds.map(({ instanceId, taskId }) => {
+    let list = pendingTaskIds.map(({ instanceId, taskId }) => {
       const inst = mockWorkflowInstances.find(i => i.id === instanceId);
       return inst ? { ...inst, pendingTaskId: taskId, tasks: undefined } : null;
     }).filter(Boolean) as (WorkflowInstance & { pendingTaskId: number })[];
+
+    if (keyword) list = list.filter(i => i.title?.includes(keyword));
+    if (definitionId !== null) list = list.filter(i => i.definitionId === definitionId);
 
     const total = list.length;
     const paged = list.slice((page - 1) * pageSize, page * pageSize);

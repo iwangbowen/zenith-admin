@@ -3,6 +3,7 @@ import {
   Banner,
   Button,
   Form,
+  Input,
   Modal,
   Select,
   SideSheet,
@@ -14,7 +15,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Search } from 'lucide-react';
 import type { WorkflowInstance, WorkflowDefinition, PaginatedResponse, WorkflowTask, WorkflowActionButtonKey, WorkflowActionButtonConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
@@ -25,6 +26,13 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import { renderEllipsis } from '../../../utils/table-columns';
+
+interface SearchParams {
+  keyword: string;
+  definitionId: number | null;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '', definitionId: null };
 
 type PendingItem = WorkflowInstance & { pendingTaskId: number };
 
@@ -60,6 +68,10 @@ export default function PendingApprovalsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<PendingItem> | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
+  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [selectedItem, setSelectedItem] = useState<PendingItem | null>(null);
   const [approveVisible, setApproveVisible] = useState(false);
   const [rejectVisible, setRejectVisible] = useState(false);
@@ -147,12 +159,15 @@ export default function PendingApprovalsPage() {
     }
   }, [userOptions.length]);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize) => {
+  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const { keyword: kw, definitionId: did } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
+        ...(kw ? { keyword: kw } : {}),
+        ...(did === null ? {} : { definitionId: String(did) }),
       }).toString();
       const res = await request.get<PaginatedResponse<PendingItem>>(`/api/workflows/instances/pending-mine?${query}`);
       if (res.code === 0) {
@@ -166,6 +181,8 @@ export default function PendingApprovalsPage() {
 
   useEffect(() => {
     void fetchList();
+    request.get<WorkflowDefinition[]>('/api/workflows/definitions/published')
+      .then((res) => { if (res.code === 0 && res.data) setDefinitions(res.data); });
   }, [fetchList]);
 
   // 当审批弹窗打开且下游存在 approverSelect 节点，预加载用户列表
@@ -395,7 +412,28 @@ export default function PendingApprovalsPage() {
   return (
     <div className="page-container">
       <SearchToolbar>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchList(1)}>刷新</Button>
+        <Input
+          prefix={<Search size={14} />}
+          placeholder="请输入审批标题"
+          value={searchParams.keyword}
+          onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+          onEnterPress={() => { setPage(1); void fetchList(1, pageSize); }}
+          style={{ width: 200 }}
+          showClear
+        />
+        <Select
+          placeholder="流程类型"
+          value={searchParams.definitionId ?? undefined}
+          onChange={(v) => setSearchParams((prev) => ({ ...prev, definitionId: typeof v === 'number' ? v : null }))}
+          style={{ width: 180 }}
+          showClear
+        >
+          {definitions.map((d) => (
+            <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>
+          ))}
+        </Select>
+        <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchList(1, pageSize); }}>查询</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }}>重置</Button>
       </SearchToolbar>
       <ConfigurableTable
         bordered

@@ -784,16 +784,22 @@ export async function listMyInstances(query: { page?: number; pageSize?: number;
   };
 }
 
-export async function listPendingMine(query: { page?: number; pageSize?: number }) {
+export async function listPendingMine(query: { page?: number; pageSize?: number; keyword?: string; definitionId?: number }) {
   const user = currentUser();
-  const { page = 1, pageSize = 20 } = query;
+  const { page = 1, pageSize = 20, keyword, definitionId } = query;
   const tc = tenantCondition(workflowInstances, user);
-  const where = and(
+  const baseConditions = [
     eq(workflowTasks.assigneeId, user.userId),
     eq(workflowTasks.status, 'pending'),
     eq(workflowInstances.status, 'running'),
-    tc,
-  );
+  ];
+  if (tc) baseConditions.push(tc);
+  if (keyword) {
+    const likeValue = `%${escapeLike(keyword)}%`;
+    baseConditions.push(or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue))!);
+  }
+  if (definitionId !== undefined) baseConditions.push(eq(workflowInstances.definitionId, definitionId));
+  const where = and(...baseConditions);
   const [[{ total }], rows] = await Promise.all([
     db
       .select({ total: countDistinct(workflowInstances.id) })
