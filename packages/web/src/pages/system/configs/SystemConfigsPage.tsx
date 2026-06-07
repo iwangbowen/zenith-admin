@@ -38,6 +38,7 @@ export default function SystemConfigsPage() {
   const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [data, setData] = useState<SystemConfig[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -82,6 +83,14 @@ export default function SystemConfigsPage() {
       await request.download('/api/system-configs/export', '系统配置.xlsx');
       Toast.success('导出成功');
     } catch { Toast.error('导出失败'); } finally { setExportLoading(false); }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try {
+      await request.download('/api/system-configs/export/csv', '系统配置.csv');
+      Toast.success('导出成功');
+    } catch { Toast.error('导出失败'); } finally { setExportCsvLoading(false); }
   };
 
   const handleModalOk = async () => {
@@ -198,7 +207,22 @@ export default function SystemConfigsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+          <SplitButtonGroup>
+            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              clickToHide
+              render={(
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
+                  <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+            </Dropdown>
+          </SplitButtonGroup>
           {hasPermission('system:config:create') && (
             <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingConfig(null); setModalVisible(true); }}>新增</Button>
           )}

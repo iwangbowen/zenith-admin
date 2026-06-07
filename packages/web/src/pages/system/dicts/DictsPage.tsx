@@ -45,6 +45,7 @@ export default function DictsPage() {
   const [dicts, setDicts] = useState<Dict[]>([]);
   const [dictsLoading, setDictsLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const { page, pageSize, setPage, setPageSize } = usePagination();
@@ -127,6 +128,15 @@ export default function DictsPage() {
       await request.download('/api/dicts/export', '字典列表.xlsx');
     } finally {
       setExportLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try {
+      await request.download('/api/dicts/export/csv', '字典列表.csv');
+    } finally {
+      setExportCsvLoading(false);
     }
   };
 
@@ -410,6 +420,11 @@ export default function DictsPage() {
                   <Download size={14} /> 导出字典
                 </span>
               </Dropdown.Item>
+              <Dropdown.Item onClick={() => void handleExportCsv()}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Download size={14} /> 导出字典 CSV
+                </span>
+              </Dropdown.Item>
             </Dropdown.Menu>
           }
         >
@@ -417,7 +432,7 @@ export default function DictsPage() {
             theme="borderless"
             size="small"
             icon={<MoreHorizontal size={14} />}
-            loading={exportLoading}
+            loading={exportLoading || exportCsvLoading}
           />
         </Dropdown>
       </div>

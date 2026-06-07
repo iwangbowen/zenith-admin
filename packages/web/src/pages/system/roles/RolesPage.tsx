@@ -354,7 +354,7 @@ export default function RolesPage() {
               render={(
                 <Dropdown.Menu>
                   <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/roles/export', '角色列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/roles/export/csv', '角色列表.csv'); } finally { setExportCsvLoading(false); } }>导出 CSV</Dropdown.Item>
+                  <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/roles/export/csv', '角色列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
                 </Dropdown.Menu>
               )}
             >

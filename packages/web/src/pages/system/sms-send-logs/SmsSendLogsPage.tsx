@@ -47,6 +47,7 @@ export default function SmsSendLogsPage() {
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportCsvLoading, setExportCsvLoading] = useState(false);
 
   const [testVisible, setTestVisible] = useState(false);
   const [templates, setTemplates] = useState<SmsTemplate[]>([]);
@@ -88,6 +89,12 @@ export default function SmsSendLogsPage() {
     setExportLoading(true);
     try { await request.download('/api/sms-send-logs/export', '短信发送记录.xlsx'); }
     finally { setExportLoading(false); }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try { await request.download('/api/sms-send-logs/export/csv', '短信发送记录.csv'); }
+    finally { setExportCsvLoading(false); }
   };
 
   const openTest = async () => {
@@ -163,7 +170,22 @@ export default function SmsSendLogsPage() {
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         {can('system:sms-send-log:export') && (
-          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+          <SplitButtonGroup>
+            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              clickToHide
+              render={(
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
+                  <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+            </Dropdown>
+          </SplitButtonGroup>
         )}
         {can('system:sms-send-log:send') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={openTest}>测试发送</Button>
