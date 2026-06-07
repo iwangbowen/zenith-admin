@@ -4,7 +4,7 @@ import { ChevronRight } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
 import { renderLucideIcon } from '@/utils/icons';
 
-/** 用于向子菜单传递"关闭整棵树"的回调 */
+/** 用于向子菜单传递"立即关闭整棵 Popover 树"的稳定回调 */
 const CloseAllContext = createContext<(() => void) | null>(null);
 
 interface MenuItemProps {
@@ -15,10 +15,7 @@ interface MenuItemProps {
 
 /** 单个菜单项：叶子菜单直接导航，目录节点展示嵌套 Popover */
 function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
-  const [hovered, setHovered] = useState(false);
-  const [subVisible, setSubVisible] = useState(false);
   const closeAll = useContext(CloseAllContext);
-
   const visibleChildren = (item.children ?? []).filter(
     (c) => c.visible && c.status === 'enabled' && c.type !== 'button',
   );
@@ -28,8 +25,6 @@ function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
     <div
       role="menuitem"
       tabIndex={0}
-      onMouseEnter={() => { setHovered(true); if (isDirectory) setSubVisible(true); }}
-      onMouseLeave={() => { setHovered(false); if (isDirectory) setSubVisible(false); }}
       onClick={() => {
         if (!isDirectory && item.path) {
           closeAll?.();
@@ -42,6 +37,8 @@ function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
           onNavigate(item.path);
         }
       }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--semi-color-fill-0)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -52,7 +49,7 @@ function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
         borderRadius: 4,
         fontSize: 13,
         color: 'var(--semi-color-text-0)',
-        background: hovered ? 'var(--semi-color-fill-0)' : 'transparent',
+        background: 'transparent',
         transition: 'background 0.15s',
         userSelect: 'none',
         minWidth: 140,
@@ -76,9 +73,10 @@ function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
 
   return (
     <Popover
-      trigger="custom"
-      visible={subVisible}
+      trigger="hover"
       position="rightTop"
+      mouseEnterDelay={80}
+      mouseLeaveDelay={300}
       showArrow={false}
       content={
         <MenuList items={visibleChildren} onNavigate={onNavigate} depth={depth + 1} />
@@ -124,7 +122,7 @@ interface BreadcrumbMenuPopoverProps {
 
 /**
  * 面包屑目录节点的子菜单 Popover
- * 悬停目录节点时弹出，支持多级嵌套展开；点击叶子菜单后自动关闭整棵树
+ * 悬停目录节点时弹出，支持多级嵌套展开；点击叶子菜单后立即关闭
  */
 export default function BreadcrumbMenuPopover({
   children,
@@ -132,7 +130,6 @@ export default function BreadcrumbMenuPopover({
   trigger,
 }: BreadcrumbMenuPopoverProps) {
   const [visible, setVisible] = useState(false);
-
   const closeAll = useCallback(() => setVisible(false), []);
 
   if (!children.length) return <>{trigger}</>;
@@ -145,7 +142,7 @@ export default function BreadcrumbMenuPopover({
         onVisibleChange={setVisible}
         position="bottomLeft"
         mouseEnterDelay={100}
-        mouseLeaveDelay={200}
+        mouseLeaveDelay={300}
         showArrow={false}
         content={<MenuList items={children} onNavigate={onNavigate} />}
       >

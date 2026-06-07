@@ -1527,7 +1527,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                         const subItems = crumb.menuChildren!.filter(c => c.visible && c.status === 'enabled' && c.type !== 'button');
                         return (
                           <BreadcrumbMenuPopover
-                            key={crumb.title}
+                            key={`${crumb.title}:${location.pathname}`}
                             onNavigate={(path) => navigate(path)}
                             trigger={breadcrumbItem}
                           >
