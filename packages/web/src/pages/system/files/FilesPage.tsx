@@ -88,6 +88,28 @@ function uploadSingleFile(
   xhr.send(formData);
 }
 
+/** 加载图片并返回其分辨率，失败时返回 null */
+async function loadImageResolution(file: { url: string }): Promise<{ width: number; height: number } | null> {
+  try {
+    let src: string;
+    const isExternal = /^https?:\/\//.test(file.url);
+    if (isExternal) {
+      src = getFileFullUrl(file.url);
+    } else {
+      const blob = await fetchProtectedFile(file.url);
+      src = URL.createObjectURL(blob);
+    }
+    return await new Promise((resolve) => {
+      const img = new Image();
+      const cleanup = () => { if (!isExternal) URL.revokeObjectURL(src); };
+      img.onload = () => { cleanup(); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
+      img.onerror = () => { cleanup(); resolve(null); };
+      img.src = src;
+    });
+  } catch {
+    return null;
+  }
+}
 
 export default function FilesPage() {
   const { hasPermission } = usePermission();
@@ -129,6 +151,7 @@ export default function FilesPage() {
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
   const [detailFileLoading, setDetailFileLoading] = useState(false);
+  const [imageResolution, setImageResolution] = useState<{ width: number; height: number } | null>(null);
 
   const viewMode = preferences.filesViewMode ?? 'list';
 
@@ -163,11 +186,16 @@ export default function FilesPage() {
 
   const handleOpenDetail = async (file: ManagedFile) => {
     setDetailFile(file);
+    setImageResolution(null);
     setDetailFileLoading(true);
     try {
       const res = await request.get<ManagedFile>(`/api/files/${file.id}`);
       if (res.code === 0 && res.data) {
         setDetailFile(res.data);
+        // 图片文件：异步加载分辨率
+        if (res.data.mimeType?.startsWith('image/')) {
+          void loadImageResolution(res.data).then((r) => { if (r) setImageResolution(r); });
+        }
       } else {
         Toast.error(res.message || '获取文件信息失败');
       }
@@ -721,7 +749,7 @@ export default function FilesPage() {
       <Modal
         title="文件详情"
         visible={!!detailFile}
-        onCancel={() => { setDetailFile(null); setDetailFileLoading(false); }}
+        onCancel={() => { setDetailFile(null); setDetailFileLoading(false); setImageResolution(null); }}
         footer={
           <Space>
             <Button onClick={() => detailFile && handleCopyUrl(detailFile)}>复制链接</Button>
@@ -740,6 +768,7 @@ export default function FilesPage() {
                 { key: '存储服务', value: detailFile.storageName },
                 { key: 'MIME 类型', value: detailFile.mimeType || '—' },
                 { key: '文件大小', value: formatFileSize(detailFile.size) },
+                ...(imageResolution ? [{ key: '分辨率', value: `${imageResolution.width} × ${imageResolution.height} px` }] : []),
                 { key: '上传人', value: detailFile.uploaderName || '—' },
                 { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{detailFile.objectKey}</Text> },
                 { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(detailFile.url)}</Text> },
