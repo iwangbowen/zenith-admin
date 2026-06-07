@@ -25,30 +25,34 @@ const STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   disabled: { text: '已禁用', color: 'red' },
 };
 
+interface SearchParams {
+  keyword: string;
+  status: string;
+  selectedCategoryId: number | null;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '', status: '', selectedCategoryId: null };
+
 export default function WorkflowDefinitionsPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowDefinition> | null>(null);
   const { page, setPage, pageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const [status, setStatus] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [openMoreId, setOpenMoreId] = useState<number | null>(null);
   const [historyTarget, setHistoryTarget] = useState<WorkflowDefinition | null>(null);
-  const searchRef = useRef({ keyword: '', status: '', selectedCategoryId: null as number | null });
-  searchRef.current.selectedCategoryId = selectedCategoryId;
   const { categories, refetch: refetchCategories } = useWorkflowCategories();
 
-  const fetchList = useCallback(async (p = page, params?: { keyword?: string; status?: string; selectedCategoryId?: number | null }) => {
-    const kw = params?.keyword ?? searchRef.current.keyword;
-    const st = params?.status ?? searchRef.current.status;
-    const cid = params?.selectedCategoryId !== undefined ? params.selectedCategoryId : searchRef.current.selectedCategoryId;
+  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const { keyword: kw, status: st, selectedCategoryId: cid } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
-        pageSize: String(pageSize),
+        pageSize: String(ps),
         ...(kw ? { keyword: kw } : {}),
         ...(st ? { status: st } : {}),
         ...(cid === null ? {} : { categoryId: String(cid) }),
@@ -68,25 +72,20 @@ export default function WorkflowDefinitionsPage() {
   }, [fetchList]);
 
   const handleSelectCategory = (id: number | null) => {
-    setSelectedCategoryId(id);
-    searchRef.current.selectedCategoryId = id;
-    void fetchList(1, { selectedCategoryId: id });
+    setSearchParams((prev) => ({ ...prev, selectedCategoryId: id }));
+    setPage(1);
+    void fetchList(1, pageSize, { ...searchParamsRef.current, selectedCategoryId: id });
   };
 
   const handleSearch = () => {
-    searchRef.current.keyword = keyword;
-    searchRef.current.status = status;
     setPage(1);
-    void fetchList(1);
+    void fetchList(1, pageSize);
   };
 
   const handleReset = () => {
-    setKeyword('');
-    setStatus('');
-    searchRef.current.keyword = '';
-    searchRef.current.status = '';
+    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1, { keyword: '', status: '' });
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const handlePublish = async (record: WorkflowDefinition) => {
@@ -243,7 +242,7 @@ export default function WorkflowDefinitionsPage() {
       master={
         <CategorySidebar
           categories={categories}
-          selectedId={selectedCategoryId}
+          selectedId={searchParams.selectedCategoryId}
           onSelect={handleSelectCategory}
           onChanged={() => { refetchCategories(); void fetchList(); }}
           canManage={hasPermission('workflow:definition:create')}
@@ -255,15 +254,15 @@ export default function WorkflowDefinitionsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索流程名称"
-              value={keyword}
-              onChange={setKeyword}
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
               showClear
               style={{ width: 200 }}
             />
             <Select
               placeholder="状态"
-              value={status || undefined}
-              onChange={v => setStatus(typeof v === 'string' ? v : '')}
+              value={searchParams.status || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, status: typeof v === 'string' ? v : '' }))}
               showClear
               style={{ width: 120 }}
             >
@@ -290,7 +289,7 @@ export default function WorkflowDefinitionsPage() {
             loading={loading}
             onRefresh={() => void fetchList()}
             refreshLoading={loading}
-            pagination={buildPagination(data?.total ?? 0, (p) => void fetchList(p))}
+            pagination={buildPagination(data?.total ?? 0, fetchList)}
           />
           {historyTarget && (
             <WorkflowVersionsModal

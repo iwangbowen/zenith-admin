@@ -76,12 +76,11 @@ export default function WorkflowEventSubscriptionsPage() {
   const [list, setList] = useState<WorkflowEventSubscription[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keywordInput, setKeywordInput] = useState('');
-  const [definitionId, setDefinitionId] = useState<number | ''>('');
-  const [enabledFilter, setEnabledFilter] = useState<'' | 'true' | 'false'>('');
-  const searchRef = useRef<{ keyword: string; definitionId: number | ''; enabled: '' | 'true' | 'false' }>({ keyword: '', definitionId: '', enabled: '' });
-  searchRef.current.definitionId = definitionId;
-  searchRef.current.enabled = enabledFilter;
+  interface SearchParams { keyword: string; definitionId: number | ''; enabled: '' | 'true' | 'false' }
+  const defaultSearchParams: SearchParams = { keyword: '', definitionId: '', enabled: '' };
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   const [defs, setDefs] = useState<WorkflowDefinition[]>([]);
 
@@ -99,8 +98,8 @@ export default function WorkflowEventSubscriptionsPage() {
   const { page: deliveryPage, pageSize: deliveryPageSize, setPage: setDeliveryPage, buildPagination: buildDeliveryPagination } = usePagination();
   const [deliveryLoading, setDeliveryLoading] = useState(false);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize) => {
-    const { keyword: kw, definitionId: did, enabled: enb } = searchRef.current;
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const { keyword: kw, definitionId: did, enabled: enb } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const q = new URLSearchParams({ page: String(p), pageSize: String(ps) });
@@ -130,17 +129,13 @@ export default function WorkflowEventSubscriptionsPage() {
   }, []);
 
   const handleSearch = () => {
-    searchRef.current.keyword = keywordInput.trim();
     setPage(1);
     void fetchData(1, pageSize);
   };
   const handleReset = () => {
-    setKeywordInput('');
-    setDefinitionId('');
-    setEnabledFilter('');
-    searchRef.current = { keyword: '', definitionId: '', enabled: '' };
+    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize);
+    void fetchData(1, pageSize, defaultSearchParams);
   };
 
   const openCreate = () => {
@@ -334,23 +329,23 @@ export default function WorkflowEventSubscriptionsPage() {
         <Input
           prefix={<Search size={14} />}
           placeholder="名称 / URL"
-          value={keywordInput}
-          onChange={setKeywordInput}
+          value={searchParams.keyword}
+          onChange={v => setSearchParams(prev => ({ ...prev, keyword: v }))}
           showClear
           style={{ width: 220 }}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
         />
         <Select
           placeholder="所属流程"
-          value={definitionId === '' ? undefined : definitionId}
-          onChange={(v) => setDefinitionId((v as number) ?? '')}
+          value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
+          onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
           showClear style={{ width: 200 }}
           optionList={[{ value: '', label: '全部（含全局）' }, ...defs.map((d) => ({ value: d.id, label: d.name }))]}
         />
         <Select
           placeholder="状态"
-          value={enabledFilter || undefined}
-          onChange={(v) => setEnabledFilter((v as 'true' | 'false') ?? '')}
+          value={searchParams.enabled || undefined}
+          onChange={(v) => setSearchParams(prev => ({ ...prev, enabled: (v as 'true' | 'false') ?? '' }))}
           showClear style={{ width: 120 }}
           optionList={[
             { value: 'true', label: '启用' },

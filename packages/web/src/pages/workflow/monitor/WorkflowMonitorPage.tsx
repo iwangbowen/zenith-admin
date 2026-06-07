@@ -95,29 +95,30 @@ export default function WorkflowMonitorPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<MonitorResponse | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keywordInput, setKeywordInput] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [categoryFilter, setCategoryFilter] = useState<number | ''>('');
-  const [initiatorInput, setInitiatorInput] = useState('');
-  const searchRef = useRef<{ keyword: string; initiator: string; status: string; categoryId: number | '' }>({ keyword: '', initiator: '', status: '', categoryId: '' });
-  const { categories } = useWorkflowCategories();
+  interface SearchParams { keyword: string; initiator: string; status: string; categoryId: number | '' }
+  const defaultSearchParams: SearchParams = { keyword: '', initiator: '', status: '', categoryId: '' };
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
-  // 详情弹窗
-  const [detailVisible, setDetailVisible] = useState(false);
+  const { categories } = useWorkflowCategories();
   const [detail, setDetail] = useState<WorkflowInstance | null>(null);
   const [detailDef, setDetailDef] = useState<WorkflowDefinition | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize) => {
-    const { keyword: kw, status: st, categoryId: cat, initiator: initKw } = searchRef.current;
+  // 详情弹窗
+  const [detailVisible, setDetailVisible] = useState(false);
+
+  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const { keyword: kw, status: st, categoryId: cat, initiator: initKw } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (kw) params.set('keyword', kw);
-      if (st) params.set('status', st);
-      if (cat !== '') params.set('categoryId', String(cat));
-      if (initKw) params.set('initiatorKeyword', initKw);
-      const res = await request.get<MonitorResponse>(`/api/workflows/instances/all?${params.toString()}`);
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+      if (kw) qs.set('keyword', kw);
+      if (st) qs.set('status', st);
+      if (cat !== '') qs.set('categoryId', String(cat));
+      if (initKw) qs.set('initiatorKeyword', initKw);
+      const res = await request.get<MonitorResponse>(`/api/workflows/instances/all?${qs.toString()}`);
       if (res.code === 0) {
         setData(res.data);
         setPage(res.data.page);
@@ -132,29 +133,22 @@ export default function WorkflowMonitorPage() {
   }, [fetchList]);
 
   const handleSearch = () => {
-    searchRef.current.keyword = keywordInput;
-    searchRef.current.initiator = initiatorInput;
-    searchRef.current.status = statusFilter;
-    searchRef.current.categoryId = categoryFilter;
     setPage(1);
-    void fetchList(1);
+    void fetchList(1, pageSize);
   };
 
   const handleReset = () => {
-    setKeywordInput('');
-    setInitiatorInput('');
-    setStatusFilter('');
-    setCategoryFilter('');
-    searchRef.current = { keyword: '', initiator: '', status: '', categoryId: '' };
+    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchList(1);
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const handleStatCardClick = (st: string) => {
-    const next = statusFilter === st ? '' : st;
-    setStatusFilter(next);
-    searchRef.current.status = next;
-    void fetchList(1);
+    const next = searchParams.status === st ? '' : st;
+    const newParams = { ...searchParams, status: next };
+    setSearchParams(newParams);
+    setPage(1);
+    void fetchList(1, pageSize, newParams);
   };
 
   const openDetail = (item: WorkflowInstance) => {
@@ -245,11 +239,11 @@ export default function WorkflowMonitorPage() {
     <div className="page-container">
       {/* 统计卡片 */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <StatCard label="全部" value={stats.total}     color="var(--semi-color-text-0)" onClick={() => handleStatCardClick('')}          active={statusFilter === ''} />
-        <StatCard label="审批中" value={stats.running}  color="var(--semi-color-primary)"        onClick={() => handleStatCardClick('running')}   active={statusFilter === 'running'} />
-        <StatCard label="已通过" value={stats.approved} color="#0dc87c"                          onClick={() => handleStatCardClick('approved')}  active={statusFilter === 'approved'} />
-        <StatCard label="已驳回" value={stats.rejected} color="#ff4d4f"                          onClick={() => handleStatCardClick('rejected')}  active={statusFilter === 'rejected'} />
-        <StatCard label="已撤回" value={stats.withdrawn ?? 0} color="var(--semi-color-warning)"  onClick={() => handleStatCardClick('withdrawn')} active={statusFilter === 'withdrawn'} />
+        <StatCard label="全部" value={stats.total}     color="var(--semi-color-text-0)" onClick={() => handleStatCardClick('')}          active={searchParams.status === ''} />
+        <StatCard label="审批中" value={stats.running}  color="var(--semi-color-primary)"        onClick={() => handleStatCardClick('running')}   active={searchParams.status === 'running'} />
+        <StatCard label="已通过" value={stats.approved} color="#0dc87c"                          onClick={() => handleStatCardClick('approved')}  active={searchParams.status === 'approved'} />
+        <StatCard label="已驳回" value={stats.rejected} color="#ff4d4f"                          onClick={() => handleStatCardClick('rejected')}  active={searchParams.status === 'rejected'} />
+        <StatCard label="已撤回" value={stats.withdrawn ?? 0} color="var(--semi-color-warning)"  onClick={() => handleStatCardClick('withdrawn')} active={searchParams.status === 'withdrawn'} />
       </div>
 
       {/* 搜索栏 */}
@@ -258,32 +252,32 @@ export default function WorkflowMonitorPage() {
             prefix={<Search size={14} />}
             placeholder="搜索申请标题 / 流程名称"
             showClear
-            value={keywordInput}
-            onChange={v => setKeywordInput(v)}
+            value={searchParams.keyword}
+            onChange={v => setSearchParams(prev => ({ ...prev, keyword: v }))}
             onEnterPress={handleSearch}
             style={{ width: 240 }}
           />
           <Select
             placeholder="所有分类"
             showClear
-            value={categoryFilter === '' ? undefined : categoryFilter}
-            onChange={v => setCategoryFilter(v as number ?? '')}
+            value={searchParams.categoryId === '' ? undefined : searchParams.categoryId}
+            onChange={v => setSearchParams(prev => ({ ...prev, categoryId: (v as number) ?? '' }))}
             style={{ width: 140 }}
             optionList={categories.map((c: WorkflowCategory) => ({ label: c.name, value: c.id }))}
           />
           <Input
             placeholder="申请人"
             showClear
-            value={initiatorInput}
-            onChange={v => setInitiatorInput(v)}
+            value={searchParams.initiator}
+            onChange={v => setSearchParams(prev => ({ ...prev, initiator: v }))}
             onEnterPress={handleSearch}
             style={{ width: 120 }}
           />
           <Select
             placeholder="所有状态"
             showClear
-            value={statusFilter || undefined}
-            onChange={v => setStatusFilter(v as string ?? '')}
+            value={searchParams.status || undefined}
+            onChange={v => setSearchParams(prev => ({ ...prev, status: (v as string) ?? '' }))}
             style={{ width: 140 }}
             optionList={[
               { label: '审批中', value: 'running' },

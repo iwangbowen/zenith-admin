@@ -232,9 +232,9 @@ export default function MyApplicationsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [statusFilter, setStatusFilter] = useState('');
-  const statusFilterRef = useRef('');
-  statusFilterRef.current = statusFilter;
+  const [searchParams, setSearchParams] = useState<{ status: string }>({ status: '' });
+  const searchParamsRef = useRef<{ status: string }>({ status: '' });
+  searchParamsRef.current = searchParams;
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [applyVisible, setApplyVisible] = useState(false);
@@ -244,8 +244,8 @@ export default function MyApplicationsPage() {
   const [applyCategoryId, setApplyCategoryId] = useState<number | null>(null);
   const { categories } = useWorkflowCategories();
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, overrideStatus?: string) => {
-    const activeStatus = overrideStatus ?? statusFilterRef.current;
+  const fetchList = useCallback(async (p = page, ps = pageSize, params?: { status: string }) => {
+    const { status: activeStatus } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
@@ -278,9 +278,9 @@ export default function MyApplicationsPage() {
   };
 
   const handleReset = () => {
-    setStatusFilter('');
+    setSearchParams({ status: '' });
     setPage(1);
-    void fetchList(1, pageSize, '');
+    void fetchList(1, pageSize, { status: '' });
   };
 
   const openDetail = (id: number) => {
@@ -370,8 +370,8 @@ export default function MyApplicationsPage() {
       <SearchToolbar>
           <Select
             placeholder="全部状态"
-            value={statusFilter || undefined}
-            onChange={v => setStatusFilter(typeof v === 'string' ? v : '')}
+            value={searchParams.status || undefined}
+            onChange={v => setSearchParams({ status: typeof v === 'string' ? v : '' })}
             showClear
             style={{ width: 140 }}
           >
@@ -391,7 +391,7 @@ export default function MyApplicationsPage() {
         dataSource={data?.list ?? []}
         rowKey="id"
         loading={loading}
-        pagination={buildPagination(data?.total ?? 0, (p, ps) => void fetchList(p, ps))}
+        pagination={buildPagination(data?.total ?? 0, fetchList)}
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
       />

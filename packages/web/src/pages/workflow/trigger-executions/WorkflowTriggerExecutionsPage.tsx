@@ -52,18 +52,19 @@ const STATUS_OPTIONS = [
 export default function WorkflowTriggerExecutionsPage() {
   const [list, setList] = useState<WorkflowTriggerExecution[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize } = usePagination();
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [loading, setLoading] = useState(false);
 
-  const [statusInput, setStatusInput] = useState<WorkflowTriggerExecutionStatus | ''>('');
-  const [instanceIdInput, setInstanceIdInput] = useState<number | undefined>();
-  const [nodeKeyInput, setNodeKeyInput] = useState('');
-  const searchRef = useRef<{ status: WorkflowTriggerExecutionStatus | ''; instanceId: number | undefined; nodeKey: string }>({ status: '', instanceId: undefined, nodeKey: '' });
+  interface SearchParams { status: WorkflowTriggerExecutionStatus | ''; instanceId: number | undefined; nodeKey: string }
+  const defaultSearchParams: SearchParams = { status: '', instanceId: undefined, nodeKey: '' };
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   const [detail, setDetail] = useState<WorkflowTriggerExecution | null>(null);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize) => {
-    const { status, instanceId, nodeKey } = searchRef.current;
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const { status, instanceId, nodeKey } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -87,19 +88,13 @@ export default function WorkflowTriggerExecutionsPage() {
   useEffect(() => { void fetchData(); }, [fetchData]);
 
   const handleSearch = () => {
-    searchRef.current.status = statusInput;
-    searchRef.current.instanceId = instanceIdInput;
-    searchRef.current.nodeKey = nodeKeyInput.trim();
     setPage(1);
     void fetchData(1, pageSize);
   };
   const handleReset = () => {
-    setStatusInput('');
-    setInstanceIdInput(undefined);
-    setNodeKeyInput('');
-    searchRef.current = { status: '', instanceId: undefined, nodeKey: '' };
+    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize);
+    void fetchData(1, pageSize, defaultSearchParams);
   };
 
   const openDetail = async (row: WorkflowTriggerExecution) => {
@@ -174,22 +169,22 @@ export default function WorkflowTriggerExecutionsPage() {
     <div className="page-container">
       <SearchToolbar>
         <Select
-          value={statusInput}
-          onChange={(v) => setStatusInput(v as WorkflowTriggerExecutionStatus | '')}
+          value={searchParams.status}
+          onChange={(v) => setSearchParams(prev => ({ ...prev, status: v as WorkflowTriggerExecutionStatus | '' }))}
           style={{ width: 140 }}
           optionList={STATUS_OPTIONS}
         />
         <InputNumber
-          value={instanceIdInput}
-          onChange={(v) => setInstanceIdInput(typeof v === 'number' ? v : undefined)}
+          value={searchParams.instanceId}
+          onChange={(v) => setSearchParams(prev => ({ ...prev, instanceId: typeof v === 'number' ? v : undefined }))}
           placeholder="实例 ID"
           min={1}
           style={{ width: 140 }}
         />
         <Input
           prefix={<Search size={14} />}
-          value={nodeKeyInput}
-          onChange={setNodeKeyInput}
+          value={searchParams.nodeKey}
+          onChange={(v) => setSearchParams(prev => ({ ...prev, nodeKey: v }))}
           placeholder="节点 key"
           showClear
           style={{ width: 180 }}
@@ -204,13 +199,7 @@ export default function WorkflowTriggerExecutionsPage() {
         loading={loading}
         dataSource={list}
         columns={columns}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: setPage,
-          onPageSizeChange: (s: number) => { setPageSize(s); setPage(1); },
-        }}
+        pagination={buildPagination(total, fetchData)}
         onRefresh={fetchData}
         refreshLoading={loading}
       />

@@ -135,13 +135,11 @@ export default function WorkflowAutomationsPage() {
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
 
-  const [definitionId, setDefinitionId] = useState<number | ''>('');
-  const [triggerFilter, setTriggerFilter] = useState<WorkflowAutomationTrigger | ''>('');
-  const [statusFilter, setStatusFilter] = useState<'enabled' | 'disabled' | ''>('');
-  const searchRef = useRef<{ definitionId: number | ''; trigger: WorkflowAutomationTrigger | ''; status: 'enabled' | 'disabled' | '' }>({ definitionId: '', trigger: '', status: '' });
-  searchRef.current.definitionId = definitionId;
-  searchRef.current.trigger = triggerFilter;
-  searchRef.current.status = statusFilter;
+  interface SearchParams { definitionId: number | ''; trigger: WorkflowAutomationTrigger | ''; status: 'enabled' | 'disabled' | '' }
+  const defaultSearchParams: SearchParams = { definitionId: '', trigger: '', status: '' };
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   const [defs, setDefs] = useState<WorkflowDefinition[]>([]);
 
@@ -151,8 +149,8 @@ export default function WorkflowAutomationsPage() {
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [actions, setActions] = useState<Array<ActionDraft & { buttonsJson?: string }>>([]);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize) => {
-    const { definitionId: did, trigger: trg, status: sts } = searchRef.current;
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const { definitionId: did, trigger: trg, status: sts } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const q = new URLSearchParams({ page: String(p), pageSize: String(ps) });
@@ -182,9 +180,8 @@ export default function WorkflowAutomationsPage() {
 
   const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
   const handleReset = () => {
-    setDefinitionId(''); setTriggerFilter(''); setStatusFilter('');
-    searchRef.current = { definitionId: '', trigger: '', status: '' };
-    setPage(1); void fetchData(1, pageSize);
+    setSearchParams(defaultSearchParams);
+    setPage(1); void fetchData(1, pageSize, defaultSearchParams);
   };
 
   const openCreate = () => {
@@ -323,22 +320,22 @@ export default function WorkflowAutomationsPage() {
       <SearchToolbar>
         <Select
           placeholder="所属流程"
-          value={definitionId === '' ? undefined : definitionId}
-          onChange={(v) => setDefinitionId((v as number) ?? '')}
+          value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
+          onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
           showClear style={{ width: 220 }}
           optionList={defOptions}
         />
         <Select
           placeholder="触发时机"
-          value={triggerFilter || undefined}
-          onChange={(v) => setTriggerFilter((v as WorkflowAutomationTrigger) ?? '')}
+          value={searchParams.trigger || undefined}
+          onChange={(v) => setSearchParams(prev => ({ ...prev, trigger: (v as WorkflowAutomationTrigger) ?? '' }))}
           showClear style={{ width: 140 }}
           optionList={TRIGGER_OPTIONS}
         />
         <Select
           placeholder="状态"
-          value={statusFilter || undefined}
-          onChange={(v) => setStatusFilter((v as 'enabled' | 'disabled') ?? '')}
+          value={searchParams.status || undefined}
+          onChange={(v) => setSearchParams(prev => ({ ...prev, status: (v as 'enabled' | 'disabled') ?? '' }))}
           showClear style={{ width: 120 }}
           optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }]}
         />
