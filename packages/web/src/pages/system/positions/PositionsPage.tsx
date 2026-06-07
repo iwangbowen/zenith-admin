@@ -10,6 +10,7 @@ import {
   Spin,
   SplitButtonGroup,
   Dropdown,
+  Switch,
   Toast,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -154,6 +155,37 @@ export default function PositionsPage() {
     }
   };
 
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+
+  const handleToggleStatus = useCallback(async (pos: Position, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认停用岗位「${pos.name}」？`,
+          content: '停用后该岗位将不可选择。',
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认停用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(pos.id);
+    try {
+      const res = await request.put(`/api/positions/${pos.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已停用');
+        void fetchPositions();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchPositions]);
+
   const handleBatchDelete = () => {
     Modal.confirm({
       title: `确认删除选中的 ${selectedRowKeys.length} 个岗位？`,
@@ -183,9 +215,17 @@ export default function PositionsPage() {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 100,
+      width: 90,
       fixed: 'right',
-      render: (value: string) => <DictTag dictCode="common_status" value={value} />,
+      render: (value: string, record: Position) => (
+        <Switch
+          size="small"
+          checked={value === 'enabled'}
+          loading={togglingStatusId === record.id}
+          disabled={!hasPermission('system:position:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '操作',
