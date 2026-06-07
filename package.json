@@ -1,6 +1,6 @@
 {
   "name": "zenith-admin",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "private": true,
   "workspaces": [
     "packages/*"
