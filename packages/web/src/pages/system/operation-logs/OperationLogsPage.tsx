@@ -276,7 +276,7 @@ export default function OperationLogsPage() {
                 </Dropdown>
               </SplitButtonGroup>
               <SplitButtonGroup>
-                <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(1)}>清除日志</Button>
+                <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(12)}>清除日志</Button>
                 <Dropdown
                   trigger="click"
                   position="bottomRight"
