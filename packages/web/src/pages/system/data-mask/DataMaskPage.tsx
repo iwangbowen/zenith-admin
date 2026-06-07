@@ -15,12 +15,13 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { DataMaskConfig, MaskType, Role } from '@zenith/shared';
+import type { DataMaskConfig, MaskType, Role, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 
 const { Text } = Typography;
 
@@ -60,12 +61,21 @@ type FormValues = {
   maskChar?: string;
 };
 
+interface SearchParams {
+  keyword: string;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '' };
+
 export default function DataMaskPage() {
   const { hasPermission } = usePermission();
   const [data, setData] = useState<DataMaskConfig[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [keyword, setKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<DataMaskConfig | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -74,19 +84,29 @@ export default function DataMaskPage() {
   const [maskTypePreview, setMaskTypePreview] = useState<MaskType>('phone');
   const formRef = useRef<FormApi>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const { keyword: kw } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
-      const res = await request.get<DataMaskConfig[]>('/api/data-mask-configs');
-      setData(res.data ?? []);
+      const query = new URLSearchParams({
+        page: String(p),
+        pageSize: String(ps),
+        ...(kw ? { keyword: kw } : {}),
+      }).toString();
+      const res = await request.get<PaginatedResponse<DataMaskConfig>>(`/api/data-mask-configs?${query}`);
+      if (res.code === 0) {
+        setData(res.data.list);
+        setTotal(res.data.total);
+        setPage(res.data.page);
+      }
     } catch {
-      Toast.error('加载脱敏规则失败');
+      Toast.error('加载脉敏规则失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { void fetchData(); }, [fetchData]);
 
   useEffect(() => {
     request.get<Role[]>('/api/roles/all').then((res) => {
@@ -94,14 +114,8 @@ export default function DataMaskPage() {
     }).catch(() => {});
   }, []);
 
-  const filtered = data.filter((r) => {
-    if (!submittedKeyword) return true;
-    const kw = submittedKeyword.toLowerCase();
-    return r.entity.toLowerCase().includes(kw) || r.field.toLowerCase().includes(kw) || r.label.includes(kw);
-  });
-
-  const handleSearch = () => { setSubmittedKeyword(keyword); fetchData(); };
-  const handleReset = () => { setKeyword(''); setSubmittedKeyword(''); fetchData(); };
+  const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
+  const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
 
   const closeModal = () => {
     setModalVisible(false);
@@ -134,7 +148,7 @@ export default function DataMaskPage() {
     try {
       await request.delete(`/api/data-mask-configs/${id}`);
       Toast.success('删除成功');
-      fetchData();
+      void fetchData();
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
       Toast.error(msg || '删除失败');
@@ -166,7 +180,7 @@ export default function DataMaskPage() {
         Toast.success('创建成功');
       }
       closeModal();
-      fetchData();
+      void fetchData();
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
       if (msg && !msg.includes('validate')) Toast.error(msg || '保存失败');
@@ -238,9 +252,9 @@ export default function DataMaskPage() {
         <Input
           prefix={<Search size={14} />}
           placeholder="搜索实体 / 字段"
-          value={keyword}
-          onChange={setKeyword}
-          onEnterPress={handleSearch}
+          value={searchParams.keyword}
+          onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+          onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
           showClear
           style={{ width: 240 }}
         />
@@ -254,12 +268,12 @@ export default function DataMaskPage() {
       <ConfigurableTable
         bordered
         columns={columns}
-        dataSource={filtered}
+        dataSource={data}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={() => void fetchData()}
         refreshLoading={loading}
         rowKey="id"
-        pagination={false}
+        pagination={buildPagination(total, fetchData)}
         scroll={{ x: 'max-content' }}
       />
 

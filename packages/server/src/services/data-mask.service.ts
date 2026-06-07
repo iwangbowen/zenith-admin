@@ -1,10 +1,11 @@
-import { eq } from 'drizzle-orm';
+import { eq, ilike, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { dataMaskConfigs } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { applyMask } from '../lib/masking';
+import { escapeLike, withPagination } from '../lib/where-helpers';
 import type { DataMaskConfigRow } from '../db/schema';
 import type { DataMaskConfig, CustomMaskRule, MaskType, CreateDataMaskConfigInput, UpdateDataMaskConfigInput } from '@zenith/shared';
 
@@ -44,9 +45,19 @@ export function mapDataMaskConfig(row: DataMaskConfigRow): DataMaskConfig {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function listDataMaskConfigs(): Promise<DataMaskConfig[]> {
-  const rows = await db.select().from(dataMaskConfigs).orderBy(dataMaskConfigs.entity, dataMaskConfigs.field);
-  return rows.map(mapDataMaskConfig);
+export async function listDataMaskConfigs(query: { page?: number; pageSize?: number; keyword?: string } = {}) {
+  const { page = 1, pageSize = 20, keyword } = query;
+  const where = keyword
+    ? or(ilike(dataMaskConfigs.entity, `%${escapeLike(keyword)}%`), ilike(dataMaskConfigs.field, `%${escapeLike(keyword)}%`), ilike(dataMaskConfigs.label, `%${escapeLike(keyword)}%`))
+    : undefined;
+  const [total, rows] = await Promise.all([
+    db.$count(dataMaskConfigs, where),
+    withPagination(
+      db.select().from(dataMaskConfigs).where(where).orderBy(dataMaskConfigs.entity, dataMaskConfigs.field).$dynamic(),
+      page, pageSize,
+    ),
+  ]);
+  return { list: rows.map(mapDataMaskConfig), total, page, pageSize };
 }
 
 export async function getDataMaskConfig(id: number): Promise<DataMaskConfig> {

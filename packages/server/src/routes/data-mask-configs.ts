@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
+import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody, PaginationQuery } from '../lib/openapi-schemas';
 import { DataMaskConfigDTO } from '../lib/openapi-dtos';
 import { maskTypeValues } from '@zenith/shared';
 import {
@@ -38,10 +38,10 @@ const listRoute = defineOpenAPIRoute({
     method: 'get', path: '/', tags: ['DataMaskConfigs'], summary: '数据脱敏规则列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:data-mask:list' })] as const,
-    request: {},
-    responses: { ...commonErrorResponses, ...ok(z.array(DataMaskConfigDTO), '脱敏规则列表') },
+    request: { query: PaginationQuery.extend({ keyword: z.string().optional() }) },
+    responses: { ...commonErrorResponses, ...okPaginated(DataMaskConfigDTO, '脉敏规则列表') },
   }),
-  handler: async (c) => c.json(okBody(await listDataMaskConfigs()), 200),
+  handler: async (c) => c.json(okBody(await listDataMaskConfigs(c.req.valid('query'))), 200),
 });
 
 const getOneRoute = defineOpenAPIRoute({

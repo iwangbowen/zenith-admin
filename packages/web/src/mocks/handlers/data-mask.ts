@@ -4,9 +4,23 @@ import { mockDateTime } from '@/mocks/utils/date';
 import type { DataMaskConfig } from '@zenith/shared';
 
 export const dataMaskHandlers = [
-  // 列表
-  http.get('/api/data-mask-configs', () => {
-    return HttpResponse.json({ code: 0, message: 'ok', data: mockDataMaskConfigs });
+  // 列表（分页+关键词）
+  http.get('/api/data-mask-configs', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 20;
+    const keyword = url.searchParams.get('keyword') ?? '';
+
+    let list = [...mockDataMaskConfigs];
+    if (keyword) {
+      const kw = keyword.toLowerCase();
+      list = list.filter((r) =>
+        r.entity.toLowerCase().includes(kw) || r.field.toLowerCase().includes(kw) || r.label.toLowerCase().includes(kw),
+      );
+    }
+    const total = list.length;
+    const paged = list.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });
   }),
 
   // 创建
