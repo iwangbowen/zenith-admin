@@ -161,7 +161,7 @@ export default function TagsPage() {
         setLoading(false);
       }
     },
-    [page, pageSize, setPage, setPageSize],
+    [page, pageSize],
   );
 
   useEffect(() => {

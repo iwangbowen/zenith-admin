@@ -43,7 +43,7 @@ function IpAccessLogsTab() {
   const [tableLoading, setTableLoading] = useState(false);
   const [logList, setLogList] = useState<IpAccessLog[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, setPage, pageSize } = usePagination();
+  const { page, setPage, pageSize, buildPagination } = usePagination();
 
   const [filterIp, setFilterIp] = useState('');
   const [filterBlockType, setFilterBlockType] = useState<string | undefined>(undefined);
@@ -53,11 +53,11 @@ function IpAccessLogsTab() {
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
 
-  const fetchLogs = useCallback(async (p = 1, params?: SearchParams) => {
+  const fetchLogs = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const { filterIp: ip, filterBlockType: blockType } = params ?? searchParamsRef.current;
     setTableLoading(true);
     try {
-      const query = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
+      const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
       if (ip) query.set('ip', ip);
       if (blockType) query.set('blockType', blockType);
       const res = await request.get<PaginatedResponse<IpAccessLog>>(`/api/ip-access-logs?${query}`);
@@ -69,13 +69,13 @@ function IpAccessLogsTab() {
     } finally {
       setTableLoading(false);
     }
-  }, []);
+  }, [page, pageSize]);
 
-  useEffect(() => { void fetchLogs(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void fetchLogs(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const handleSearch = () => {
     setPage(1);
-    void fetchLogs(1);
+    void fetchLogs(1, pageSize);
   };
 
   const handleReset = () => {
@@ -83,7 +83,7 @@ function IpAccessLogsTab() {
     setFilterBlockType(undefined);
     setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchLogs(1, defaultSearchParams);
+    void fetchLogs(1, pageSize, defaultSearchParams);
   };
 
   const columns: ColumnProps<IpAccessLog>[] = [
@@ -135,14 +135,8 @@ function IpAccessLogsTab() {
         dataSource={logList}
         loading={tableLoading}
         rowKey="id"
-        pagination={{
-          total,
-          currentPage: page,
-          pageSize,
-          showSizeChanger: false,
-          onPageChange: (p) => void fetchLogs(p),
-        }}
-        onRefresh={() => void fetchLogs(page)}
+        pagination={buildPagination(total, fetchLogs)}
+        onRefresh={() => void fetchLogs()}
         refreshLoading={tableLoading}
       />
     </>
