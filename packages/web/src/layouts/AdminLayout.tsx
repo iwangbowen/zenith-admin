@@ -23,6 +23,7 @@ import Watermark from '@/components/Watermark';
 import QuickChatButton from '@/components/QuickChatButton';
 import AppLogo from '@/components/AppLogo';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
+import BreadcrumbMenuPopover from '@/components/BreadcrumbMenuPopover';
 import { TopNavWithOverflow } from './TopNavWithOverflow';
 import { LockScreen } from '@/components/LockScreen';
 import { useLockScreen } from '@/hooks/useLockScreen';
@@ -1502,19 +1503,39 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                           if (leaf) navigate(leaf);
                         }
                       };
-                      return (
+                      const crumbInner = (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {preferences.breadcrumbIcon && crumb.icon && <span style={{ display: 'flex', alignItems: 'center' }}>{renderLucideIcon(crumb.icon, 13)}</span>}
+                          {isHome ? '首页' : crumb.title}
+                        </span>
+                      );
+                      const hasSubMenu = (preferences.breadcrumbSubMenu ?? false)
+                        && !isLast
+                        && !isHome
+                        && (crumb.menuChildren?.filter(c => c.visible && c.status === 'enabled' && c.type !== 'button').length ?? 0) > 0;
+                      const breadcrumbItem = (
                         <Breadcrumb.Item
                           key={crumb.title}
                           href={isLast ? undefined : '#'}
                           onClick={isLast || !(preferences.breadcrumbClickable ?? true) ? undefined : handleCrumbClick}
                           noLink={isLast}
                         >
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            {preferences.breadcrumbIcon && crumb.icon && <span style={{ display: 'flex', alignItems: 'center' }}>{renderLucideIcon(crumb.icon, 13)}</span>}
-                            {isHome ? '首页' : crumb.title}
-                          </span>
+                          {crumbInner}
                         </Breadcrumb.Item>
                       );
+                      if (hasSubMenu) {
+                        const subItems = crumb.menuChildren!.filter(c => c.visible && c.status === 'enabled' && c.type !== 'button');
+                        return (
+                          <BreadcrumbMenuPopover
+                            key={crumb.title}
+                            onNavigate={(path) => navigate(path)}
+                            trigger={breadcrumbItem}
+                          >
+                            {subItems}
+                          </BreadcrumbMenuPopover>
+                        );
+                      }
+                      return breadcrumbItem;
                     })}
                   </Breadcrumb>
                   {/* 收藏当前页按钮 */}
@@ -1851,6 +1872,17 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   </Tooltip>
                 </span>
                 <Switch checked={preferences.breadcrumbClickable ?? true} onChange={(v) => setPreferences({ breadcrumbClickable: v })} />
+              </div>
+              )}
+              {(preferences.showBreadcrumb || !!prefsSearch.trim()) && matchesPref(['面包屑子菜单', '子菜单', '面包屑悬浮', '面包屑展开']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  面包屑子菜单
+                  <Tooltip content="悬停目录层级时弹出子菜单快速导航，支持多级展开" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={preferences.breadcrumbSubMenu ?? false} onChange={(v) => setPreferences({ breadcrumbSubMenu: v })} />
               </div>
               )}
 

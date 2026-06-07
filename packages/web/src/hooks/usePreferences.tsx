@@ -46,6 +46,8 @@ export interface UserPreferences {
   sidebarHoverTrigger: boolean;
   /** 面包屑可点击跳转：false 时仅展示文字路径，防止误触导致表单中断 */
   breadcrumbClickable: boolean;
+  /** 面包屑子菜单：悬浮目录节点时展示其子菜单 Popover */
+  breadcrumbSubMenu: boolean;
   /** 新开标签页插入行为：append 数尾 / insert-next 现当前标签页后插入 */
   openTabBehavior: 'append' | 'insert-next';
   /** 菜单选中时自动滚动到可视区 */
@@ -94,6 +96,7 @@ export const defaultPreferences: UserPreferences = {
   sidebarAccordion: true,
   sidebarHoverTrigger: false,
   breadcrumbClickable: true,
+  breadcrumbSubMenu: false,
   openTabBehavior: 'append',
   scrollMenuIntoView: true,
   tabDoubleClickAction: 'refresh',
