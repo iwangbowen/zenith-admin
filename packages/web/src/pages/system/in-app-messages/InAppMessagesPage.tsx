@@ -26,13 +26,15 @@ const READ_OPTIONS = [
 export default function InAppMessagesPage() {
   const { hasPermission: can } = usePermission();
 
+  interface SearchParams { keyword: string; filterType: InAppMessageType | undefined; filterRead: string | undefined; }
+  const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterRead: undefined };
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<InAppMessage[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const [filterType, setFilterType] = useState<InAppMessageType | undefined>();
-  const [filterRead, setFilterRead] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   const [sendVisible, setSendVisible] = useState(false);
   const [templates, setTemplates] = useState<InAppTemplate[]>([]);
@@ -41,14 +43,15 @@ export default function InAppMessagesPage() {
   const formRef = useRef<FormApi>(null);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, t: InAppMessageType | undefined, isRead: string | undefined, ps = pageSize) => {
+    async (p = page, ps = pageSize, params?: SearchParams) => {
+      const { keyword: kw, filterType: t, filterRead: isRead } = params ?? searchParamsRef.current;
       setLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) params.set('keyword', kw);
-        if (t) params.set('type', t);
-        if (isRead !== undefined) params.set('isRead', isRead);
-        const res = await request.get<PaginatedResponse<InAppMessage>>(`/api/in-app-messages/admin?${params}`);
+        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+        if (kw) query.set('keyword', kw);
+        if (t) query.set('type', t);
+        if (isRead !== undefined) query.set('isRead', isRead);
+        const res = await request.get<PaginatedResponse<InAppMessage>>(`/api/in-app-messages/admin?${query}`);
         setList(res.data?.list ?? []);
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
@@ -57,15 +60,16 @@ export default function InAppMessagesPage() {
         setLoading(false);
       }
     },
-    [pageSize, setPage, setPageSize],
+    [page, pageSize, setPage, setPageSize],
   );
 
-  useEffect(() => { void fetchList(1, '', undefined, undefined, pageSize); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, filterType, filterRead, pageSize); };
+  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => {
-    setKeyword(''); setFilterType(undefined); setFilterRead(undefined);
-    void fetchList(1, '', undefined, undefined, pageSize);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const openSend = async () => {
@@ -110,7 +114,7 @@ export default function InAppMessagesPage() {
       Toast.success('发送成功');
       setSendVisible(false);
       globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-      void fetchList(1, keyword, filterType, filterRead, pageSize);
+      void fetchList(1, pageSize);
     } finally {
       setSubmitting(false);
     }
@@ -121,7 +125,7 @@ export default function InAppMessagesPage() {
     if (res.code !== 0) return;
     Toast.success('已标记为已读');
     globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-    void fetchList(page, keyword, filterType, filterRead, pageSize);
+    void fetchList();
   };
 
   const handleMarkAllRead = () => {
@@ -132,7 +136,7 @@ export default function InAppMessagesPage() {
         if (res.code !== 0) return;
         Toast.success('已全部标记为已读');
         globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-        void fetchList(page, keyword, filterType, filterRead, pageSize);
+        void fetchList();
       },
     });
   };
@@ -146,7 +150,7 @@ export default function InAppMessagesPage() {
         if (res.code !== 0) return;
         Toast.success('删除成功');
         globalThis.dispatchEvent(new CustomEvent('in-app-messages:refresh'));
-        void fetchList(page, keyword, filterType, filterRead, pageSize);
+        void fetchList();
       },
     });
   };
@@ -188,10 +192,10 @@ export default function InAppMessagesPage() {
     <div className="page-container">
       <SearchToolbar>
         <Input prefix={<Search size={14} />} placeholder="标题/内容关键词"
-          value={keyword} onChange={setKeyword} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-        <Select placeholder="类型" value={filterType} onChange={(v) => setFilterType(v as InAppMessageType | undefined)}
+          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+        <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
           optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
-        <Select placeholder="阅读状态" value={filterRead} onChange={(v) => setFilterRead(v as string | undefined)}
+        <Select placeholder="阅读状态" value={searchParams.filterRead} onChange={(v) => setSearchParams({ ...searchParams, filterRead: v as string | undefined })}
           optionList={READ_OPTIONS} showClear style={{ width: 120 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -203,8 +207,8 @@ export default function InAppMessagesPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, filterType, filterRead, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterType, filterRead, ps))}
+      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1400 }} />
 
       <Modal title="发送站内信" visible={sendVisible} onOk={handleSend}

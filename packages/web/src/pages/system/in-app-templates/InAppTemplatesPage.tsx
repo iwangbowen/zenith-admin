@@ -24,13 +24,15 @@ export default function InAppTemplatesPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
 
+  interface SearchParams { keyword: string; filterType: InAppMessageType | undefined; filterStatus: string | undefined; }
+  const defaultSearchParams: SearchParams = { keyword: '', filterType: undefined, filterStatus: undefined };
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<InAppTemplate[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const [filterType, setFilterType] = useState<InAppMessageType | undefined>();
-  const [filterStatus, setFilterStatus] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<InAppTemplate | null>(null);
@@ -39,14 +41,15 @@ export default function InAppTemplatesPage() {
   const formRef = useRef<FormApi>(null);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, t: InAppMessageType | undefined, st: string | undefined, ps = pageSize) => {
+    async (p = page, ps = pageSize, params?: SearchParams) => {
+      const { keyword: kw, filterType: t, filterStatus: st } = params ?? searchParamsRef.current;
       setLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) params.set('keyword', kw);
-        if (t) params.set('type', t);
-        if (st) params.set('status', st);
-        const res = await request.get<PaginatedResponse<InAppTemplate>>(`/api/in-app-templates?${params}`);
+        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+        if (kw) query.set('keyword', kw);
+        if (t) query.set('type', t);
+        if (st) query.set('status', st);
+        const res = await request.get<PaginatedResponse<InAppTemplate>>(`/api/in-app-templates?${query}`);
         setList(res.data?.list ?? []);
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
@@ -55,15 +58,16 @@ export default function InAppTemplatesPage() {
         setLoading(false);
       }
     },
-    [pageSize, setPage, setPageSize],
+    [page, pageSize, setPage, setPageSize],
   );
 
-  useEffect(() => { void fetchList(1, '', undefined, undefined, pageSize); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, filterType, filterStatus, pageSize); };
+  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => {
-    setKeyword(''); setFilterType(undefined); setFilterStatus(undefined);
-    void fetchList(1, '', undefined, undefined, pageSize);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
@@ -93,7 +97,7 @@ export default function InAppTemplatesPage() {
         Toast.success('创建成功');
       }
       setModalVisible(false);
-      void fetchList(page, keyword, filterType, filterStatus, pageSize);
+      void fetchList();
     } finally {
       setSubmitting(false);
     }
@@ -106,7 +110,7 @@ export default function InAppTemplatesPage() {
       onOk: async () => {
         await request.delete(`/api/in-app-templates/${id}`);
         Toast.success('删除成功');
-        void fetchList(page, keyword, filterType, filterStatus, pageSize);
+        void fetchList();
       },
     });
   };
@@ -146,10 +150,10 @@ export default function InAppTemplatesPage() {
     <div className="page-container">
       <SearchToolbar>
         <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/标题"
-          value={keyword} onChange={setKeyword} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
-        <Select placeholder="类型" value={filterType} onChange={(v) => setFilterType(v as InAppMessageType | undefined)}
+          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
+        <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
           optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
-        <Select placeholder="状态" value={filterStatus} onChange={(v) => setFilterStatus(v as string | undefined)}
+        <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
           optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -158,8 +162,8 @@ export default function InAppTemplatesPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, filterType, filterStatus, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterType, filterStatus, ps))}
+      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1100 }} />
 
       <Modal title={editingRecord ? '编辑站内信模板' : '新增站内信模板'} visible={modalVisible}

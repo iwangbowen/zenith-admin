@@ -37,14 +37,15 @@ function StatusTag({ value }: Readonly<{ value: SendStatus }>) {
 export default function SmsSendLogsPage() {
   const { hasPermission: can } = usePermission();
 
+  interface SearchParams { keyword: string; phone: string; filterStatus: SendStatus | undefined; filterSource: string | undefined; }
+  const defaultSearchParams: SearchParams = { keyword: '', phone: '', filterStatus: undefined, filterSource: undefined };
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<SmsSendLog[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [filterStatus, setFilterStatus] = useState<SendStatus | undefined>();
-  const [filterSource, setFilterSource] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [exportLoading, setExportLoading] = useState(false);
 
   const [testVisible, setTestVisible] = useState(false);
@@ -53,15 +54,16 @@ export default function SmsSendLogsPage() {
   const formRef = useRef<FormApi>(null);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, ph: string, st: SendStatus | undefined, src: string | undefined, ps = pageSize) => {
+    async (p = page, ps = pageSize, params?: SearchParams) => {
+      const { keyword: kw, phone: ph, filterStatus: st, filterSource: src } = params ?? searchParamsRef.current;
       setLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) params.set('keyword', kw);
-        if (ph) params.set('phone', ph);
-        if (st) params.set('status', st);
-        if (src) params.set('source', src);
-        const res = await request.get<PaginatedResponse<SmsSendLog>>(`/api/sms-send-logs?${params}`);
+        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+        if (kw) query.set('keyword', kw);
+        if (ph) query.set('phone', ph);
+        if (st) query.set('status', st);
+        if (src) query.set('source', src);
+        const res = await request.get<PaginatedResponse<SmsSendLog>>(`/api/sms-send-logs?${query}`);
         setList(res.data?.list ?? []);
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
@@ -70,15 +72,16 @@ export default function SmsSendLogsPage() {
         setLoading(false);
       }
     },
-    [pageSize, setPage, setPageSize],
+    [page, pageSize, setPage, setPageSize],
   );
 
-  useEffect(() => { void fetchList(1, '', '', undefined, undefined, pageSize); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, phone, filterStatus, filterSource, pageSize); };
+  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => {
-    setKeyword(''); setPhone(''); setFilterStatus(undefined); setFilterSource(undefined);
-    void fetchList(1, '', '', undefined, undefined, pageSize);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const handleExport = async () => {
@@ -103,7 +106,7 @@ export default function SmsSendLogsPage() {
       await request.post('/api/sms-send-logs/test', values);
       Toast.success('测试短信已发送');
       setTestVisible(false);
-      void fetchList(1, keyword, phone, filterStatus, filterSource, pageSize);
+      void fetchList(1, pageSize);
     } finally {
       setSubmitting(false);
     }
@@ -116,7 +119,7 @@ export default function SmsSendLogsPage() {
       onOk: async () => {
         await request.delete(`/api/sms-send-logs/${id}`);
         Toast.success('删除成功');
-        void fetchList(page, keyword, phone, filterStatus, filterSource, pageSize);
+        void fetchList();
       },
     });
   };
@@ -150,12 +153,12 @@ export default function SmsSendLogsPage() {
     <div className="page-container">
       <SearchToolbar>
         <Input prefix={<Search size={14} />} placeholder="内容关键词"
-          value={keyword} onChange={setKeyword} onEnterPress={handleSearch} showClear style={{ width: 180 }} />
-        <Input placeholder="手机号" value={phone} onChange={setPhone}
+          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 180 }} />
+        <Input placeholder="手机号" value={searchParams.phone} onChange={(v) => setSearchParams({ ...searchParams, phone: v })}
           onEnterPress={handleSearch} showClear style={{ width: 160 }} />
-        <Select placeholder="状态" value={filterStatus} onChange={(v) => setFilterStatus(v as SendStatus | undefined)}
+        <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as SendStatus | undefined })}
           optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
-        <Select placeholder="来源" value={filterSource} onChange={(v) => setFilterSource(v as string | undefined)}
+        <Select placeholder="来源" value={searchParams.filterSource} onChange={(v) => setSearchParams({ ...searchParams, filterSource: v as string | undefined })}
           optionList={SOURCE_OPTIONS} showClear style={{ width: 110 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -167,8 +170,8 @@ export default function SmsSendLogsPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, phone, filterStatus, filterSource, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, phone, filterStatus, filterSource, ps))}
+      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1400 }} />
 
       <Modal title="测试发送短信" visible={testVisible} onOk={handleTest}

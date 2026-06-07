@@ -17,12 +17,15 @@ export default function EmailTemplatesPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
 
+  interface SearchParams { keyword: string; filterStatus: string | undefined; }
+  const defaultSearchParams: SearchParams = { keyword: '', filterStatus: undefined };
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<EmailTemplate[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<EmailTemplate | null>(null);
@@ -31,13 +34,14 @@ export default function EmailTemplatesPage() {
   const formRef = useRef<FormApi>(null);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, st: string | undefined, ps = pageSize) => {
+    async (p = page, ps = pageSize, params?: SearchParams) => {
+      const { keyword: kw, filterStatus: st } = params ?? searchParamsRef.current;
       setLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) params.set('keyword', kw);
-        if (st) params.set('status', st);
-        const res = await request.get<PaginatedResponse<EmailTemplate>>(`/api/email-templates?${params}`);
+        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+        if (kw) query.set('keyword', kw);
+        if (st) query.set('status', st);
+        const res = await request.get<PaginatedResponse<EmailTemplate>>(`/api/email-templates?${query}`);
         setList(res.data?.list ?? []);
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
@@ -46,18 +50,19 @@ export default function EmailTemplatesPage() {
         setLoading(false);
       }
     },
-    [pageSize, setPage, setPageSize],
+    [page, pageSize, setPage, setPageSize],
   );
 
   useEffect(() => {
-    void fetchList(1, '', undefined, pageSize);
+    void fetchList(1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, filterStatus, pageSize); };
+  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => {
-    setKeyword(''); setFilterStatus(undefined);
-    void fetchList(1, '', undefined, pageSize);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
@@ -87,7 +92,7 @@ export default function EmailTemplatesPage() {
         Toast.success('创建成功');
       }
       setModalVisible(false);
-      void fetchList(page, keyword, filterStatus, pageSize);
+      void fetchList();
     } finally {
       setSubmitting(false);
     }
@@ -100,7 +105,7 @@ export default function EmailTemplatesPage() {
       onOk: async () => {
         await request.delete(`/api/email-templates/${id}`);
         Toast.success('删除成功');
-        void fetchList(page, keyword, filterStatus, pageSize);
+        void fetchList();
       },
     });
   };
@@ -135,8 +140,8 @@ export default function EmailTemplatesPage() {
     <div className="page-container">
       <SearchToolbar>
         <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/主题"
-          value={keyword} onChange={setKeyword} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
-        <Select placeholder="状态" value={filterStatus} onChange={(v) => setFilterStatus(v as string | undefined)}
+          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+        <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
           optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -145,8 +150,8 @@ export default function EmailTemplatesPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, filterStatus, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterStatus, ps))}
+      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1200 }} />
 
       <Modal title={editingRecord ? '编辑邮件模板' : '新增邮件模板'} visible={modalVisible}

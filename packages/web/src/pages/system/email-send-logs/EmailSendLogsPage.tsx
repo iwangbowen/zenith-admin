@@ -35,11 +35,12 @@ export default function EmailSendLogsPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<EmailSendLog[]>([]);
   const [total, setTotal] = useState(0);
+  interface SearchParams { keyword: string; toEmail: string; filterStatus: SendStatus | undefined; filterSource: string | undefined; }
+  const defaultSearchParams: SearchParams = { keyword: '', toEmail: '', filterStatus: undefined, filterSource: undefined };
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const [toEmail, setToEmail] = useState('');
-  const [filterStatus, setFilterStatus] = useState<SendStatus | undefined>();
-  const [filterSource, setFilterSource] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [exportLoading, setExportLoading] = useState(false);
 
   const [testVisible, setTestVisible] = useState(false);
@@ -48,15 +49,16 @@ export default function EmailSendLogsPage() {
   const formRef = useRef<FormApi>(null);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, te: string, st: SendStatus | undefined, src: string | undefined, ps = pageSize) => {
+    async (p = page, ps = pageSize, params?: SearchParams) => {
+      const { keyword: kw, toEmail: te, filterStatus: st, filterSource: src } = params ?? searchParamsRef.current;
       setLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) params.set('keyword', kw);
-        if (te) params.set('toEmail', te);
-        if (st) params.set('status', st);
-        if (src) params.set('source', src);
-        const res = await request.get<PaginatedResponse<EmailSendLog>>(`/api/email-send-logs?${params}`);
+        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+        if (kw) query.set('keyword', kw);
+        if (te) query.set('toEmail', te);
+        if (st) query.set('status', st);
+        if (src) query.set('source', src);
+        const res = await request.get<PaginatedResponse<EmailSendLog>>(`/api/email-send-logs?${query}`);
         setList(res.data?.list ?? []);
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
@@ -65,15 +67,16 @@ export default function EmailSendLogsPage() {
         setLoading(false);
       }
     },
-    [pageSize, setPage, setPageSize],
+    [page, pageSize, setPage, setPageSize],
   );
 
-  useEffect(() => { void fetchList(1, '', '', undefined, undefined, pageSize); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, toEmail, filterStatus, filterSource, pageSize); };
+  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => {
-    setKeyword(''); setToEmail(''); setFilterStatus(undefined); setFilterSource(undefined);
-    void fetchList(1, '', '', undefined, undefined, pageSize);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const handleExport = async () => {
@@ -101,7 +104,7 @@ export default function EmailSendLogsPage() {
       await request.post('/api/email-send-logs/test', values);
       Toast.success('测试邮件已发送');
       setTestVisible(false);
-      void fetchList(1, keyword, toEmail, filterStatus, filterSource, pageSize);
+      void fetchList(1);
     } finally {
       setSubmitting(false);
     }
@@ -114,7 +117,7 @@ export default function EmailSendLogsPage() {
       onOk: async () => {
         await request.delete(`/api/email-send-logs/${id}`);
         Toast.success('删除成功');
-        void fetchList(page, keyword, toEmail, filterStatus, filterSource, pageSize);
+        void fetchList();
       },
     });
   };
@@ -145,12 +148,12 @@ export default function EmailSendLogsPage() {
     <div className="page-container">
       <SearchToolbar>
         <Input prefix={<Search size={14} />} placeholder="主题/内容关键词"
-          value={keyword} onChange={setKeyword} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-        <Input placeholder="收件人邮箱" value={toEmail} onChange={setToEmail}
+          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+        <Input placeholder="收件人邮箱" value={searchParams.toEmail} onChange={(v) => setSearchParams({ ...searchParams, toEmail: v })}
           onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-        <Select placeholder="状态" value={filterStatus} onChange={(v) => setFilterStatus(v as SendStatus | undefined)}
+        <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as SendStatus | undefined })}
           optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
-        <Select placeholder="来源" value={filterSource} onChange={(v) => setFilterSource(v as string | undefined)}
+        <Select placeholder="来源" value={searchParams.filterSource} onChange={(v) => setSearchParams({ ...searchParams, filterSource: v as string | undefined })}
           optionList={SOURCE_OPTIONS} showClear style={{ width: 110 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -162,8 +165,8 @@ export default function EmailSendLogsPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, toEmail, filterStatus, filterSource, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, toEmail, filterStatus, filterSource, ps))}
+      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1400 }} />
 
       <Modal title="测试发送邮件" visible={testVisible} onOk={handleTest}
