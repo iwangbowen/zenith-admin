@@ -478,7 +478,7 @@ export default function DictsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 180,
+      width: 220,
       align: 'center',
       render: (_v, row) => (
         <Space>
@@ -505,6 +505,17 @@ export default function DictsPage() {
           >
             编辑
           </Button>}
+          {hasPermission('system:dict:item') && <Button
+            theme="borderless"
+            size="small"
+            onClick={() => {
+              setEditingItem(null);
+              setItemParentId(row.id);
+              setItemColor(null);
+              setMetadataStr('{}');
+              setItemModalVisible(true);
+            }}
+          >子项</Button>}
           {hasPermission('system:dict:item') && <Button theme="borderless" size="small" type="danger" onClick={() => {
             Modal.confirm({
               title: '确认删除此字典项？',
