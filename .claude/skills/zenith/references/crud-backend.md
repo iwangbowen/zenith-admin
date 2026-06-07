@@ -700,7 +700,7 @@ try {
 - 敏感 Header 在日志中脱敏（`authorization` / `cookie` / `*token*` / `*secret*` / `*password*`）
 - 完整 winston 结构化日志（request / response / retry / error）
 
-> 详细 API 与设计说明：[docs/backend/http-client.md](../../../docs/backend/http-client.md)
+> 详细 API 与设计说明：[docs/backend/http-client.md](../../../../docs/backend/http-client.md)
 
 ---
 
