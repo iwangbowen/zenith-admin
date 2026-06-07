@@ -326,6 +326,40 @@ export default function FileStorageConfigsPage() {
     }
   };
 
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+
+  const handleToggleStatus = useCallback(async (config: FileStorageConfig, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      if (config.isDefault) {
+        Toast.warning('默认配置不能禁用，请先将其他配置设为默认');
+        return;
+      }
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认禁用「${config.name}」？`,
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认禁用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(config.id);
+    try {
+      const res = await request.put(`/api/file-storage-configs/${config.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        fetchConfigs();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchConfigs]);
+
   const columns: ColumnProps<FileStorageConfig>[] = [
     {
       title: '配置名称',
@@ -400,10 +434,14 @@ export default function FileStorageConfigsPage() {
       width: 90,
       align: 'center',
       fixed: 'right',
-      render: (status: FileStorageConfig['status']) => (
-        <Tag color={status === 'enabled' ? 'green' : 'grey'} size="small">
-          {status === 'enabled' ? '启用' : '禁用'}
-        </Tag>
+      render: (v: FileStorageConfig['status'], record: FileStorageConfig) => (
+        <Switch
+          size="small"
+          checked={v === 'enabled'}
+          loading={togglingStatusId === record.id}
+          disabled={!hasPermission('system:file:config:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+        />
       ),
     },
     {
