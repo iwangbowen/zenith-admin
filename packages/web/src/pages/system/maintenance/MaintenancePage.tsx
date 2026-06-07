@@ -4,7 +4,7 @@ import {
   Button,
   DatePicker,
   Form,
-  Space,
+  Modal,
   Spin,
   Tag,
   Toast,
@@ -60,8 +60,32 @@ export default function MaintenancePage() {
     void fetchStatus();
   }, [fetchStatus]);
 
+  // 横幅关闭维护后同步刷新页面状态
+  useEffect(() => {
+    const handler = () => void fetchStatus();
+    globalThis.addEventListener('maintenance:statusChanged', handler);
+    return () => globalThis.removeEventListener('maintenance:statusChanged', handler);
+  }, [fetchStatus]);
+
   const handleToggle = async (enable: boolean) => {
     if (!canManage) return;
+
+    if (enable) {
+      // 开启前二次确认，防止误操作
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: '确认开启维护模式？',
+          content: '开启后，所有非超级管理员用户的 API 请求将返回 503，前端会显示维护提示页面。请确认已通知相关用户。',
+          okText: '确认开启',
+          okType: 'danger',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+
     const values = formApi.current?.getValues() as FormValues | undefined;
     setSubmitting(true);
     try {

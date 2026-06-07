@@ -392,6 +392,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       if (res.code === 0) {
         setMaintenanceBannerEnabled(false);
         Toast.success('维护模式已关闭');
+        globalThis.dispatchEvent(new CustomEvent('maintenance:statusChanged'));
       }
     } finally {
       setDisablingMaintenance(false);
