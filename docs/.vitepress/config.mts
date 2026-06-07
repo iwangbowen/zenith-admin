@@ -101,6 +101,7 @@ export default defineConfig({
           { text: '外呼 HTTP 客户端', link: '/backend/http-client' },
           { text: 'HTTP 流量日志', link: '/backend/http-logging' },
           { text: '定时任务', link: '/backend/cron-jobs' },
+          { text: '维护模式', link: '/backend/maintenance-mode' },
           { text: 'WebSocket 事件清单', link: '/backend/websocket-events' },
           {
             text: '工作流',
