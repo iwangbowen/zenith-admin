@@ -11,10 +11,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.send('window:maximize'),
   /** 关闭窗口 */
   close: () => ipcRenderer.send('window:close'),
-  /** 监听窗口最大化状态变化 */
+  /** 监听窗口最大化状态变化（不返回函数，避免 contextBridge 序列化报错） */
   onMaximizeChange: (callback: (isMaximized: boolean) => void) => {
+    ipcRenderer.removeAllListeners('window:maximized');
     ipcRenderer.on('window:maximized', (_event: Electron.IpcRendererEvent, val: boolean) => callback(val));
-    return () => ipcRenderer.removeAllListeners('window:maximized');
+  },
+  /** 取消监听最大化状态变化 */
+  offMaximizeChange: () => {
+    ipcRenderer.removeAllListeners('window:maximized');
   },
   /** 是否在 Electron 环境中运行 */
   isElectron: true,

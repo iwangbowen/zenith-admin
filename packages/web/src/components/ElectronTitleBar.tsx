@@ -8,7 +8,8 @@ declare global {
       minimize: () => void;
       maximize: () => void;
       close: () => void;
-      onMaximizeChange: (cb: (isMaximized: boolean) => void) => () => void;
+      onMaximizeChange: (cb: (isMaximized: boolean) => void) => void;
+      offMaximizeChange: () => void;
       isElectron: boolean;
     };
   }
@@ -24,8 +25,8 @@ export default function ElectronTitleBar() {
 
   useEffect(() => {
     if (!api) return;
-    const cleanup = api.onMaximizeChange(setIsMaximized);
-    return cleanup;
+    api.onMaximizeChange(setIsMaximized);
+    return () => api.offMaximizeChange();
   }, [api]);
 
   // 非 Electron 环境不渲染
