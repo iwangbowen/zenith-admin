@@ -114,14 +114,15 @@ export default function TagsPage() {
   const { hasPermission: can } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
 
+  interface SearchParams { keyword: string; filterStatus: string | undefined; filterGroup: string | undefined; }
+  const defaultSearchParams: SearchParams = { keyword: '', filterStatus: undefined, filterGroup: undefined };
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<Tag[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-
-  const [keyword, setKeyword] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string | undefined>();
-  const [filterGroup, setFilterGroup] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [groups, setGroups] = useState<string[]>([]);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
@@ -143,14 +144,15 @@ export default function TagsPage() {
   }, []);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, st: string | undefined, gn: string | undefined, ps = pageSize) => {
+    async (p = page, ps = pageSize, params?: SearchParams) => {
+      const { keyword: kw, filterStatus: st, filterGroup: gn } = params ?? searchParamsRef.current;
       setLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) params.set('keyword', kw);
-        if (st) params.set('status', st);
-        if (gn) params.set('groupName', gn);
-        const res = await request.get<PaginatedResponse<Tag>>(`/api/tags?${params}`);
+        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+        if (kw) query.set('keyword', kw);
+        if (st) query.set('status', st);
+        if (gn) query.set('groupName', gn);
+        const res = await request.get<PaginatedResponse<Tag>>(`/api/tags?${query}`);
         setList(res.data?.list ?? []);
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
@@ -159,25 +161,22 @@ export default function TagsPage() {
         setLoading(false);
       }
     },
-    [pageSize, setPage, setPageSize],
+    [page, pageSize, setPage, setPageSize],
   );
 
   useEffect(() => {
-    void fetchList(1, '', undefined, undefined, pageSize);
+    void fetchList(1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { void fetchGroups(); }, [fetchGroups]);
 
-  const handleSearch = () => {
-    void fetchList(1, keyword, filterStatus, filterGroup, pageSize);
-  };
+  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
 
   const handleReset = () => {
-    setKeyword('');
-    setFilterStatus(undefined);
-    setFilterGroup(undefined);
-    void fetchList(1, '', undefined, undefined, pageSize);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const openCreate = () => {
@@ -219,7 +218,7 @@ export default function TagsPage() {
         Toast.success('创建成功');
       }
       setModalVisible(false);
-      void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
+      void fetchList();
       void fetchGroups();
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
@@ -237,7 +236,7 @@ export default function TagsPage() {
         await request.delete(`/api/tags/${id}`);
         Toast.success('删除成功');
         setSelectedRowKeys(selectedRowKeys.filter((k) => k !== id));
-        void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
+        void fetchList();
       },
     });
   };
@@ -252,7 +251,7 @@ export default function TagsPage() {
         await request.delete('/api/tags/batch', { ids: selectedRowKeys });
         Toast.success(`已删除 ${selectedRowKeys.length} 条标签`);
         setSelectedRowKeys([]);
-        void fetchList(page, keyword, filterStatus, filterGroup, pageSize);
+        void fetchList();
       },
     });
   };
@@ -327,24 +326,24 @@ export default function TagsPage() {
         <Input
           prefix={<Search size={14} />}
           placeholder="搜索标签名称或描述"
-          value={keyword}
-          onChange={setKeyword}
+          value={searchParams.keyword}
+          onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
           onEnterPress={handleSearch}
           showClear
           style={{ width: 200 }}
         />
         <Select
           placeholder="所属分组"
-          value={filterGroup}
-          onChange={(v) => setFilterGroup(v as string | undefined)}
+          value={searchParams.filterGroup}
+          onChange={(v) => setSearchParams({ ...searchParams, filterGroup: v as string | undefined })}
           optionList={groupOptions}
           showClear
           style={{ width: 160 }}
         />
         <Select
           placeholder="状态"
-          value={filterStatus}
-          onChange={(v) => setFilterStatus(v as string | undefined)}
+          value={searchParams.filterStatus}
+          onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
           optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
           showClear
           style={{ width: 100 }}
@@ -370,7 +369,7 @@ export default function TagsPage() {
       <ConfigurableTable
         bordered
         loading={loading}
-        onRefresh={() => void fetchList(page, keyword, filterStatus, filterGroup, pageSize)}
+        onRefresh={() => void fetchList()}
         refreshLoading={loading}
         columns={columns}
         dataSource={list}
@@ -384,7 +383,7 @@ export default function TagsPage() {
               }
             : undefined
         }
-        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterStatus, filterGroup, ps))}
+        pagination={buildPagination(total, fetchList)}
         scroll={{ x: 900 }}
       />
 

@@ -60,12 +60,14 @@ export default function OAuth2AppsPage() {
   const formApi = useRef<FormApi | null>(null);
 
   // ─── 状态 ──────────────────────────────────────────────────────────────
+  interface SearchParams { keyword: string; }
+  const defaultSearchParams: SearchParams = { keyword: '' };
   const [data, setData] = useState<PaginatedResponse<OAuth2Client> | null>(null);
   const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
@@ -80,8 +82,8 @@ export default function OAuth2AppsPage() {
 
   // ─── 数据加载 ──────────────────────────────────────────────────────────
   const fetchData = useCallback(
-    async (p = page, ps = pageSize, kw?: string) => {
-      const activeKw = kw ?? keywordRef.current;
+    async (p = page, ps = pageSize, params?: SearchParams) => {
+      const { keyword: activeKw } = params ?? searchParamsRef.current;
       setLoading(true);
       try {
         const queryObj: Record<string, string> = { page: String(p), pageSize: String(ps) };
@@ -111,9 +113,9 @@ export default function OAuth2AppsPage() {
   }
 
   function handleReset() {
-    setKeyword('');
+    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, '');
+    void fetchData(1, pageSize, defaultSearchParams);
   }
 
   // ─── 新增 ──────────────────────────────────────────────────────────────
@@ -294,8 +296,8 @@ export default function OAuth2AppsPage() {
         <Input
           prefix={<Search size={14} />}
           placeholder="搜索应用名称"
-          value={keyword}
-          onChange={(v) => setKeyword(v)}
+          value={searchParams.keyword}
+          onChange={(v) => setSearchParams({ keyword: v })}
           onEnterPress={handleSearch}
           showClear
           style={{ width: 220 }}

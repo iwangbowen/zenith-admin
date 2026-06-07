@@ -47,16 +47,20 @@ function IpAccessLogsTab() {
 
   const [filterIp, setFilterIp] = useState('');
   const [filterBlockType, setFilterBlockType] = useState<string | undefined>(undefined);
-  const searchIpRef = useRef('');
-  const searchBlockTypeRef = useRef<string | undefined>(undefined);
+  interface SearchParams { filterIp: string; filterBlockType: string | undefined; }
+  const defaultSearchParams: SearchParams = { filterIp: '', filterBlockType: undefined };
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
-  const fetchLogs = useCallback(async (p = 1, ip?: string, blockType?: string) => {
+  const fetchLogs = useCallback(async (p = 1, params?: SearchParams) => {
+    const { filterIp: ip, filterBlockType: blockType } = params ?? searchParamsRef.current;
     setTableLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
-      if (ip) params.set('ip', ip);
-      if (blockType) params.set('blockType', blockType);
-      const res = await request.get<PaginatedResponse<IpAccessLog>>(`/api/ip-access-logs?${params}`);
+      const query = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
+      if (ip) query.set('ip', ip);
+      if (blockType) query.set('blockType', blockType);
+      const res = await request.get<PaginatedResponse<IpAccessLog>>(`/api/ip-access-logs?${query}`);
       if (res.code === 0) {
         setLogList(res.data.list);
         setTotal(res.data.total);
@@ -67,20 +71,19 @@ function IpAccessLogsTab() {
     }
   }, []);
 
-  useEffect(() => { fetchLogs(1); }, [fetchLogs]);
+  useEffect(() => { void fetchLogs(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const handleSearch = () => {
-    searchIpRef.current = filterIp;
-    searchBlockTypeRef.current = filterBlockType;
-    fetchLogs(1, filterIp, filterBlockType);
+    setPage(1);
+    void fetchLogs(1);
   };
 
   const handleReset = () => {
     setFilterIp('');
     setFilterBlockType(undefined);
-    searchIpRef.current = '';
-    searchBlockTypeRef.current = undefined;
-    fetchLogs(1, '', '');
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchLogs(1, defaultSearchParams);
   };
 
   const columns: ColumnProps<IpAccessLog>[] = [
@@ -109,14 +112,14 @@ function IpAccessLogsTab() {
           prefix={<Search size={14} />}
           placeholder="搜索 IP 地址"
           value={filterIp}
-          onChange={(v) => setFilterIp(v)}
+          onChange={(v) => { setFilterIp(v); setSearchParams((prev) => ({ ...prev, filterIp: v })); }}
           showClear
           style={{ width: 200 }}
         />
         <Select
           placeholder="拦截类型"
           value={filterBlockType}
-          onChange={(v) => setFilterBlockType(v as string)}
+          onChange={(v) => { setFilterBlockType(v as string | undefined); setSearchParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
           showClear
           style={{ width: 140 }}
         >
@@ -137,9 +140,9 @@ function IpAccessLogsTab() {
           currentPage: page,
           pageSize,
           showSizeChanger: false,
-          onPageChange: (p) => fetchLogs(p, searchIpRef.current, searchBlockTypeRef.current),
+          onPageChange: (p) => void fetchLogs(p),
         }}
-        onRefresh={() => fetchLogs(page, searchIpRef.current, searchBlockTypeRef.current)}
+        onRefresh={() => void fetchLogs(page)}
         refreshLoading={tableLoading}
       />
     </>
