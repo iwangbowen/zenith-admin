@@ -27,10 +27,12 @@ export default function OnlineSessionsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<OnlineUser[]>([]);
   const [total, setTotal] = useState(0);
+  interface SearchParams { keyword: string; }
+  const defaultSearchParams: SearchParams = { keyword: '' };
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const keywordRef = useRef('');
-  keywordRef.current = keyword;
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   // 从本地 JWT 解码当前会话 tokenId（jti），无需额外请求
   const currentTokenId = useMemo<string | null>(() => {
@@ -44,8 +46,8 @@ export default function OnlineSessionsPage() {
     }
   }, []);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, kw?: string) => {
-    const activeKw = kw ?? keywordRef.current;
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const { keyword: activeKw } = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
@@ -146,14 +148,14 @@ export default function OnlineSessionsPage() {
           <Input
             prefix={<Search size={14} />}
             placeholder="搜索用户名/昵称/IP"
-            value={keyword}
-            onChange={(v) => setKeyword(v)}
-            onEnterPress={() => { setPage(1); void fetchData(1, pageSize, keyword); }}
+            value={searchParams.keyword}
+            onChange={(v) => setSearchParams({ keyword: v })}
+            onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
             style={{ width: 240 }}
             showClear
           />
-          <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize, keyword); }}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); setPage(1); void fetchData(1, pageSize, ''); }}>重置</Button>
+          <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize); }}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); }}>重置</Button>
       </SearchToolbar>
 
       <ConfigurableTable

@@ -26,9 +26,11 @@ export default function SmsConfigsPage() {
   const [list, setList] = useState<SmsConfig[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const [filterProvider, setFilterProvider] = useState<SmsProvider | undefined>();
-  const [filterStatus, setFilterStatus] = useState<string | undefined>();
+  interface SearchParams { keyword: string; filterProvider: SmsProvider | undefined; filterStatus: string | undefined; }
+  const defaultSearchParams: SearchParams = { keyword: '', filterProvider: undefined, filterStatus: undefined };
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<SmsConfig | null>(null);
@@ -37,14 +39,15 @@ export default function SmsConfigsPage() {
   const formRef = useRef<FormApi>(null);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, pr: SmsProvider | undefined, st: string | undefined, ps = pageSize) => {
+    async (p = page, ps = pageSize, params?: SearchParams) => {
+      const { keyword: kw, filterProvider: pr, filterStatus: st } = params ?? searchParamsRef.current;
       setLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-        if (kw) params.set('keyword', kw);
-        if (pr) params.set('provider', pr);
-        if (st) params.set('status', st);
-        const res = await request.get<PaginatedResponse<SmsConfig>>(`/api/sms-configs?${params}`);
+        const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+        if (kw) query.set('keyword', kw);
+        if (pr) query.set('provider', pr);
+        if (st) query.set('status', st);
+        const res = await request.get<PaginatedResponse<SmsConfig>>(`/api/sms-configs?${query}`);
         setList(res.data?.list ?? []);
         setTotal(res.data?.total ?? 0);
         setPage(res.data?.page ?? p);
@@ -53,15 +56,16 @@ export default function SmsConfigsPage() {
         setLoading(false);
       }
     },
-    [pageSize, setPage, setPageSize],
+    [page, pageSize, setPage, setPageSize],
   );
 
-  useEffect(() => { void fetchList(1, '', undefined, undefined, pageSize); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void fetchList(1); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const handleSearch = () => { void fetchList(1, keyword, filterProvider, filterStatus, pageSize); };
+  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => {
-    setKeyword(''); setFilterProvider(undefined); setFilterStatus(undefined);
-    void fetchList(1, '', undefined, undefined, pageSize);
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
   const openCreate = () => { setEditingRecord(null); setModalVisible(true); };
@@ -93,7 +97,7 @@ export default function SmsConfigsPage() {
         Toast.success('创建成功');
       }
       setModalVisible(false);
-      void fetchList(page, keyword, filterProvider, filterStatus, pageSize);
+      void fetchList();
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +106,7 @@ export default function SmsConfigsPage() {
   const handleSetDefault = async (record: SmsConfig) => {
     await request.post(`/api/sms-configs/${record.id}/default`);
     Toast.success('已设为默认');
-    void fetchList(page, keyword, filterProvider, filterStatus, pageSize);
+    void fetchList();
   };
 
   const handleDelete = (id: number) => {
@@ -112,7 +116,7 @@ export default function SmsConfigsPage() {
       onOk: async () => {
         await request.delete(`/api/sms-configs/${id}`);
         Toast.success('删除成功');
-        void fetchList(page, keyword, filterProvider, filterStatus, pageSize);
+        void fetchList();
       },
     });
   };
@@ -157,10 +161,10 @@ export default function SmsConfigsPage() {
     <div className="page-container">
       <SearchToolbar>
         <Input prefix={<Search size={14} />} placeholder="搜索名称/签名"
-          value={keyword} onChange={setKeyword} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-        <Select placeholder="服务商" value={filterProvider} onChange={(v) => setFilterProvider(v as SmsProvider | undefined)}
+          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+        <Select placeholder="服务商" value={searchParams.filterProvider} onChange={(v) => setSearchParams({ ...searchParams, filterProvider: v as SmsProvider | undefined })}
           optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
-        <Select placeholder="状态" value={filterStatus} onChange={(v) => setFilterStatus(v as string | undefined)}
+        <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
           optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -169,8 +173,8 @@ export default function SmsConfigsPage() {
         )}
       </SearchToolbar>
 
-      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, filterProvider, filterStatus, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterProvider, filterStatus, ps))}
+      <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
+        pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1300 }} />
 
       <Modal title={editingRecord ? '编辑短信配置' : '新增短信配置'} visible={modalVisible}
