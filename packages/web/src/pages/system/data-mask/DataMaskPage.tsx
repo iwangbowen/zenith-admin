@@ -256,8 +256,9 @@ export default function DataMaskPage() {
         ? <Text type="quaternary">—</Text>
         : <Space wrap>{codes.map((c) => <Tag key={c} size="small" color="blue">{roleOptions.find((r) => r.value === c)?.label ?? c}</Tag>)}</Space>,
     },
+    { title: '备注', dataIndex: 'remark', ellipsis: true },
     {
-      title: '启用状态', dataIndex: 'enabled', width: 90,
+      title: '启用状态', dataIndex: 'enabled', width: 90, fixed: 'right' as const,
       render: (v: boolean, record: DataMaskConfig) => (
         <Switch
           checked={v}
@@ -268,7 +269,6 @@ export default function DataMaskPage() {
         />
       ),
     },
-    { title: '备注', dataIndex: 'remark', ellipsis: true },
     {
       title: '操作', fixed: 'right' as const, width: 130,
       render: (_: unknown, record: DataMaskConfig) => (
