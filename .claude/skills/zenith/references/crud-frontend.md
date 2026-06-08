@@ -20,13 +20,14 @@ packages/web/src/pages/xxx/XxxPage.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button, Form, Input, Select, Space, Spin, SplitButtonGroup, Dropdown,
-  Modal, Toast, Popconfirm, Switch,
+  Toast, Popconfirm, Switch,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus, Download, ChevronDown } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import AppModal from '@/components/AppModal';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
@@ -393,11 +394,11 @@ export default function XxxPage() {
 
       {/* 新增/编辑弹窗（共用一个） */}
       {/*
-        Modal 宽度规则：
+        AppModal 宽度规则：
         - 有 3 对以上可并排的普通字段 → width={660}，双列布局
         - 字段较少或含 TreeSelect/TextArea 等宽字段 → width 480-520，单列布局
       */}
-      <Modal
+      <AppModal
         title={editingXxx ? '编辑XXX' : '新增XXX'}
         visible={modalVisible}
         onOk={handleModalOk}
@@ -463,7 +464,7 @@ export default function XxxPage() {
             {/* 如需关联选择，在此添加 Form.Select 多选等 */}
           </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }
