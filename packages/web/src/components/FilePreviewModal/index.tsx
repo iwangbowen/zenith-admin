@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
-import { Modal, Spin, Toast, AudioPlayer, VideoPlayer } from '@douyinfe/semi-ui';
+import { Modal, Spin, Toast, AudioPlayer, VideoPlayer, Typography } from '@douyinfe/semi-ui';
+import { Maximize2, Minimize2, X } from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
-import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPlainTextFile, isZipFile } from '@/utils/file-utils';
+import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPlainTextFile, isZipFile, getFileTypeIcon } from '@/utils/file-utils';
 import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
 import { request } from '@/utils/request';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -46,6 +47,8 @@ export default function FilePreviewModal({
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null);
   const [markdownText, setMarkdownText] = useState<string | null>(null);
   const [zipBlob, setZipBlob] = useState<Blob | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const toggleFullscreen = useCallback(() => setFullscreen(f => !f), []);
   const { isDark } = useThemeController();
   const abortRef = useRef<AbortController | null>(null);
 
@@ -70,6 +73,7 @@ export default function FilePreviewModal({
       setDocxBlob(null);
       setMarkdownText(null);
       setZipBlob(null);
+      setFullscreen(false);
       return;
     }
 
@@ -161,6 +165,35 @@ export default function FilePreviewModal({
     onClose();
   };
 
+  /** 统一标题栏：文件图标 + 文件名 + 全屏切换 + 关闭 */
+  const iconStyle: CSSProperties = { cursor: 'pointer', color: 'var(--semi-color-text-2)', flexShrink: 0 };
+  const renderHeader = () => (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '10px 16px',
+        borderBottom: '1px solid var(--semi-color-border)',
+        background: 'var(--semi-color-bg-1)',
+        flexShrink: 0,
+      }}
+    >
+      {getFileTypeIcon(mimeType, 15)}
+      <Typography.Text
+        ellipsis={{ showTooltip: true }}
+        style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0 }}
+      >
+        {fileName}
+      </Typography.Text>
+      {fullscreen
+        ? <Minimize2 size={16} style={iconStyle} onClick={toggleFullscreen} />
+        : <Maximize2 size={16} style={iconStyle} onClick={toggleFullscreen} />
+      }
+      <X size={18} style={iconStyle} onClick={handleClose} />
+    </div>
+  );
+
   if (!visible) return null;
 
   if (loading) {
@@ -208,20 +241,22 @@ export default function FilePreviewModal({
         onCancel={handleClose}
         title={null}
         footer={null}
+        fullScreen={fullscreen}
         width="min(1200px, 94vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, height: '90vh', display: 'flex', overflow: 'hidden' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100%' : '90vh' }}
         closable={false}
         keepDOM={false}
       >
+        {renderHeader()}
         <Suspense
           fallback={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
               <Spin size="large" tip="加载预览组件..." />
             </div>
           }
         >
-          <ExcelPreviewPanel data={sheetData} fileName={fileName} onClose={handleClose} />
+          <ExcelPreviewPanel data={sheetData} style={{ flex: 1, minHeight: 0 }} />
         </Suspense>
       </Modal>
     );
@@ -234,20 +269,22 @@ export default function FilePreviewModal({
         onCancel={handleClose}
         title={null}
         footer={null}
+        fullScreen={fullscreen}
         width="min(960px, 92vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, height: '90vh', display: 'flex', overflow: 'hidden' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100%' : '90vh' }}
         closable={false}
         keepDOM={false}
       >
+        {renderHeader()}
         <Suspense
           fallback={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
               <Spin size="large" tip="加载预览组件..." />
             </div>
           }
         >
-          <DocxPreviewPanel blob={docxBlob} fileName={fileName} onClose={handleClose} />
+          <DocxPreviewPanel blob={docxBlob} style={{ flex: 1, minHeight: 0 }} />
         </Suspense>
       </Modal>
     );
@@ -262,24 +299,25 @@ export default function FilePreviewModal({
         onCancel={handleClose}
         title={null}
         footer={null}
+        fullScreen={fullscreen}
         width="min(900px, 92vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, height: '90vh', display: 'flex', overflow: 'hidden' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100%' : '90vh' }}
         closable={false}
         keepDOM={false}
       >
+        {renderHeader()}
         <Suspense
           fallback={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
               <Spin size="large" tip="加载预览组件..." />
             </div>
           }
         >
           <MarkdownPreviewPanel
             content={displayContent}
-            fileName={fileName}
-            onClose={handleClose}
             rawText={isRawText}
+            style={{ flex: 1, minHeight: 0 }}
           />
         </Suspense>
       </Modal>
@@ -293,20 +331,22 @@ export default function FilePreviewModal({
         onCancel={handleClose}
         title={null}
         footer={null}
+        fullScreen={fullscreen}
         width="min(700px, 92vw)"
         style={{ top: '5vh' }}
-        bodyStyle={{ padding: 0, height: '85vh', display: 'flex', overflow: 'hidden' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100%' : '85vh' }}
         closable={false}
         keepDOM={false}
       >
+        {renderHeader()}
         <Suspense
           fallback={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
               <Spin size="large" tip="加载预览组件..." />
             </div>
           }
         >
-          <ZipPreviewPanel blob={zipBlob} fileName={fileName} onClose={handleClose} />
+          <ZipPreviewPanel blob={zipBlob} style={{ flex: 1, minHeight: 0 }} />
         </Suspense>
       </Modal>
     );

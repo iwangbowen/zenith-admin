@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { Tree, Typography, Spin, Toast, Tag } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { FileArchive, X, FileText, FolderOpen } from 'lucide-react';
+import { FileText, FolderOpen } from 'lucide-react';
 import JSZip from 'jszip';
 import { formatFileSize } from '@/utils/file-utils';
 
@@ -10,8 +10,6 @@ const { Text } = Typography;
 
 interface ZipPreviewPanelProps {
   readonly blob: Blob;
-  readonly fileName: string;
-  readonly onClose: () => void;
   readonly style?: CSSProperties;
 }
 
@@ -26,9 +24,10 @@ interface ZipEntry {
  * ZIP 文件内容预览面板：使用 JSZip 解析 ZIP 包，以 Semi Design Tree 目录树展示。
  * 支持搜索、文件数量/总大小统计，仅展示文件结构，不解压内容。
  */
-export function ZipPreviewPanel({ blob, fileName, onClose, style }: ZipPreviewPanelProps) {
+export function ZipPreviewPanel({ blob, style }: ZipPreviewPanelProps) {
   const [treeData, setTreeData] = useState<TreeNodeData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
   const [stats, setStats] = useState({ fileCount: 0, totalSize: 0, compressedSize: 0 });
 
   useEffect(() => {
@@ -58,7 +57,7 @@ export function ZipPreviewPanel({ blob, fileName, onClose, style }: ZipPreviewPa
       })
       .catch(() => {
         Toast.error('ZIP 文件解析失败');
-        onClose();
+        setHasError(true);
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,6 +67,7 @@ export function ZipPreviewPanel({ blob, fileName, onClose, style }: ZipPreviewPa
     <div
       style={{
         width: '100%',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--semi-color-bg-0)',
@@ -75,51 +75,41 @@ export function ZipPreviewPanel({ blob, fileName, onClose, style }: ZipPreviewPa
         ...style,
       }}
     >
-      {/* 顶栏 */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '10px 16px',
-          borderBottom: '1px solid var(--semi-color-border)',
-          background: 'var(--semi-color-bg-1)',
-          flexShrink: 0,
-        }}
-      >
-        <FileArchive size={15} style={{ color: 'var(--semi-color-warning)', flexShrink: 0 }} />
-        <Text
-          ellipsis={{ showTooltip: true }}
-          style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0 }}
+      {/* 统计信息栏 */}
+      {!loading && !hasError && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 6,
+            padding: '6px 16px',
+            borderBottom: '1px solid var(--semi-color-border)',
+            background: 'var(--semi-color-bg-1)',
+            flexShrink: 0,
+          }}
         >
-          {fileName}
-        </Text>
-        {!loading && (
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-            <Tag size="small" color="grey">
-              {stats.fileCount} 个文件
-            </Tag>
-            <Tag size="small" color="grey">
-              {formatFileSize(stats.totalSize)}
-            </Tag>
-          </div>
-        )}
-        <X
-          size={18}
-          style={{ cursor: 'pointer', color: 'var(--semi-color-text-2)', flexShrink: 0 }}
-          onClick={onClose}
-        />
-      </div>
+          <Tag size="small" color="grey">{stats.fileCount} 个文件</Tag>
+          <Tag size="small" color="grey">{formatFileSize(stats.totalSize)}</Tag>
+        </div>
+      )}
 
       {/* 文件树 */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 8px' }}>
-        {loading ? (
-          <div
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}
-          >
-            <Spin tip="解析 ZIP..." />
-          </div>
-        ) : (
+        {(() => {
+          if (loading) {
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
+                <Spin tip="解析 ZIP..." />
+              </div>
+            );
+          }
+          if (hasError) {
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--semi-color-text-2)' }}>
+                ZIP 文件解析失败
+              </div>
+            );
+          }
+          return (
           <Tree
             treeData={treeData}
             directory
@@ -156,7 +146,8 @@ export function ZipPreviewPanel({ blob, fileName, onClose, style }: ZipPreviewPa
               );
             }}
           />
-        )}
+        );
+        })()}
       </div>
     </div>
   );

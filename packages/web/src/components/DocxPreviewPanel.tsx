@@ -1,17 +1,11 @@
 import { useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
-import { Typography } from '@douyinfe/semi-ui';
-import { FileText, X } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { useThemeController } from '@/providers/theme-controller';
 import './DocxPreviewPanel.css';
 
-const { Text } = Typography;
-
 interface DocxPreviewPanelProps {
   readonly blob: Blob;
-  readonly fileName: string;
-  readonly onClose: () => void;
   readonly style?: CSSProperties;
 }
 
@@ -19,7 +13,7 @@ interface DocxPreviewPanelProps {
  * Word(.docx) 只读预览面板：使用 docx-preview 将 OOXML 渲染为 HTML。
  * 直接消费鉴权下载得到的 Blob，无需后端转换。
  */
-export function DocxPreviewPanel({ blob, fileName, onClose, style }: DocxPreviewPanelProps) {
+export function DocxPreviewPanel({ blob, style }: DocxPreviewPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { isDark } = useThemeController();
 
@@ -53,43 +47,13 @@ export function DocxPreviewPanel({ blob, fileName, onClose, style }: DocxPreview
     <div
       style={{
         width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
+        height: '100%',
         background: isDark ? '#1f1f1f' : '#f0f0f0',
-        overflow: 'hidden',
+        overflowY: 'auto',
         ...style,
       }}
     >
-      {/* 顶栏：文件名 + 关闭 */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '10px 16px',
-          borderBottom: '1px solid var(--semi-color-border)',
-          background: 'var(--semi-color-bg-1)',
-          flexShrink: 0,
-        }}
-      >
-        <FileText size={15} style={{ color: '#2b579a', flexShrink: 0 }} />
-        <Text
-          ellipsis={{ showTooltip: true }}
-          style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0 }}
-        >
-          {fileName}
-        </Text>
-        <X
-          size={18}
-          style={{ cursor: 'pointer', color: 'var(--semi-color-text-2)', flexShrink: 0 }}
-          onClick={onClose}
-        />
-      </div>
-
-      {/* docx-preview 渲染容器，垂直滚动 */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <div ref={containerRef} />
-      </div>
+      <div ref={containerRef} />
     </div>
   );
 }
