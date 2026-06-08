@@ -6,6 +6,8 @@
   justify-content: space-between;
   gap: 8px;
   min-height: 22px;
+  /* 对齐 Semi Modal 默认 title 的上下间距（.semi-modal-header 有 padding: 20px 24px 0） */
+  padding: 20px 0 16px;
 }
 
 .app-modal-title {
