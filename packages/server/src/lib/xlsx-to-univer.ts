@@ -222,7 +222,7 @@ export async function xlsxBufferToWorkbookData(
     sheetOrder.push(sheetId);
 
     const cellData: Record<number, Record<number, UniverCellData>> = {};
-    const rowData: Record<number, { h: number }> = {};
+    const rowData: Record<number, { h?: number; ia?: number; ah?: number }> = {};
     let maxDataRow = 0;
     let maxDataCol = 0;
 

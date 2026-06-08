@@ -4,6 +4,39 @@
 
 ---
 
+## v0.48.0 - 2026-06-09
+
+### Added
+
+#### 文件预览扩展（5 种新格式）
+
+- **Word (.docx)**：使用 `docx-preview` 纯前端渲染，无需后端转换，支持表格、页眉页脚、脚注
+- **Markdown (.md)**：使用 `react-markdown` + GFM 渲染，支持标题、代码块语法高亮、表格、任务列表
+- **纯文本 (.txt)**：等宽字体原样展示，保留换行与缩进
+- **CSV**：复用 Excel 预览路径（后端 csv-to-univer 解析 → Univer 渲染），零前端改动
+- **ZIP**：使用 `jszip` 解析并用 Semi Tree 展示文件树，含文件数量/大小统计
+
+#### 文件预览全屏切换
+
+- 所有格式（Excel / Word / Markdown / txt / ZIP / PDF）预览弹窗右上角新增 ↗/↙ 全屏切换按钮
+- PDF 预览面板在 `FilePreviewModal` 上下文中支持全屏；在聊天侧边栏中独立使用时不受影响
+
+#### AppModal 组件
+
+- 新增 `AppModal` 组件，在 Semi Design Modal 基础上增加右上角全屏切换（↗）和关闭（✕）按钮
+- 全站 30+ 个新增/编辑表单弹窗统一替换为 `AppModal`
+
+### Changed
+
+- 各预览 Panel（ExcelPreviewPanel / DocxPreviewPanel / MarkdownPreviewPanel / ZipPreviewPanel）重构为纯内容组件，标题栏统一由 `FilePreviewModal` 管理，提升可复用性
+
+### Fixed
+
+- **Excel/CSV 全屏预览空白**：Semi Modal fullscreen 模式下 `semi-modal-body-wrapper` 高度仅为 78px，改用 `height: 100vh` 绕过，配合 spinner + 360ms 延迟重建 Univer 实例，确保 canvas 在最终尺寸容器中初始化
+- **Excel 行高自适应**：后端 rowData 改为 `{ ia: 1, ah? }` 模式，前端在 `LifecycleStages.Rendered` 后触发全表自适应行高命令
+
+---
+
 ## v0.47.0 - 2026-06-08
 
 ### Added

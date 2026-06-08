@@ -1,6 +1,6 @@
 {
   "name": "@zenith/electron",
-  "version": "0.41.0",
+  "version": "0.48.0",
   "private": true,
   "description": "Zenith Admin Electron Client",
   "author": "Zenith Admin",
@@ -33,20 +33,44 @@
       {
         "from": "../web/dist",
         "to": "web",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "../web/public/icons/icon-512.png"
     },
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "category": "public.app-category.business",
       "icon": "../web/public/icons/icon-512.png"
     },
     "linux": {
-      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "../web/public/icons/icon-512.png",
       "category": "Office"
     },

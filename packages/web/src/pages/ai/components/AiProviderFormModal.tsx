@@ -259,7 +259,6 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
         </div>
       }
       width={720}
-      destroyOnClose
     >
       {detailLoading ? (
         <div style={{ textAlign: 'center', padding: '32px 0' }}>

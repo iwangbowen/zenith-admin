@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Form, Tag, Banner, Tooltip } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Info } from 'lucide-react';
-
+import AppModal from '@/components/AppModal';
 import { request } from '@/utils/request';
 
 interface ColumnInfo {

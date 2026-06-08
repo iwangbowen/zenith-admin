@@ -347,7 +347,6 @@ export default function DataMaskPage() {
         okText={editing ? '保存' : '创建'}
         okButtonProps={{ loading: submitting, disabled: modalDetailLoading }}
         width={660}
-        destroyOnClose
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
         <Form<FormValues>
