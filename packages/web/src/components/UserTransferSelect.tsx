@@ -156,6 +156,16 @@ export function UserTransferSelect({ dataSource, value, onChange }: Readonly<Use
           }}
         >
           {item.label}
+          <span
+            style={{
+              fontSize: 12,
+              color: 'var(--semi-color-text-2)',
+              marginLeft: 4,
+              fontWeight: 400,
+            }}
+          >
+            {item._username}
+          </span>
         </div>
         {item._departmentName && (
           <div
