@@ -55,7 +55,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
-  const [filePreview, setFilePreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
+  const [filePreview, setFilePreview] = useState<{ id: number; url: string; name: string; mimeType: string } | null>(null);
   const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
   const [detailFileLoading, setDetailFileLoading] = useState(false);
@@ -158,7 +158,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
     if (!isImage) {
       setPreviewLoadingId(file.id);
       try {
-        setFilePreview({ url: file.url, name: file.originalName, mimeType: file.mimeType ?? 'application/octet-stream' });
+        setFilePreview({ id: file.id, url: file.url, name: file.originalName, mimeType: file.mimeType ?? 'application/octet-stream' });
       } catch (error) {
         Toast.error(error instanceof Error ? error.message : '预览文件失败');
       } finally {
@@ -564,6 +564,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
       {/* Non-image file preview */}
       <FilePreviewModal
         fileUrl={filePreview?.url ?? ''}
+        fileId={filePreview?.id}
         fileName={filePreview?.name}
         mimeType={filePreview?.mimeType}
         visible={!!filePreview}

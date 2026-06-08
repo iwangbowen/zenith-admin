@@ -154,6 +154,7 @@ export default function FileAttachment({
   // 文件预览状态
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewFile, setPreviewFile] = useState<{
+    id: number;
     url: string;
     name: string;
     mimeType: string | null;
@@ -252,6 +253,7 @@ export default function FileAttachment({
       if (canPreviewFile(mimeType)) {
         // PDF/音频/视频：用 FilePreviewModal
         setPreviewFile({
+          id: item.file.id,
           url: item.file.url,
           name: item.file.originalName,
           mimeType,
@@ -584,6 +586,7 @@ export default function FileAttachment({
         <FilePreviewModal
           visible={previewVisible}
           fileUrl={previewFile.url}
+          fileId={previewFile.id}
           fileName={previewFile.name}
           mimeType={previewFile.mimeType}
           onClose={() => {
