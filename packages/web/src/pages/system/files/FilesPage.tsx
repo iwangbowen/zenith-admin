@@ -536,7 +536,7 @@ export default function FilesPage() {
       width: 180,
       align: 'center',
       render: (_: unknown, record: ManagedFile) => {
-        const isPreviewable = record.mimeType?.startsWith('image/') || record.mimeType?.startsWith('audio/') || record.mimeType?.startsWith('video/') || record.mimeType === 'application/pdf';
+        const isPreviewable = canPreviewFile(record.mimeType);
         return (
         <Space>
           <Button theme="borderless" size="small" loading={downloadLoadingId === record.id} onClick={() => handleDownload(record)}>下载</Button>
