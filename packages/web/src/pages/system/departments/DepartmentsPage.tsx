@@ -13,6 +13,9 @@ import {
   Dropdown,
   Switch,
   Toast,
+  Avatar,
+  AvatarGroup,
+  Tag,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
@@ -307,6 +310,33 @@ export default function DepartmentsPage() {
     { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || '—' },
     { title: '邮箱', dataIndex: 'email', width: 200, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 90 },
+    {
+      title: '成员', dataIndex: 'userPreview', width: 150,
+      render: (_: unknown, record: Department) => {
+        const preview = record.userPreview ?? [];
+        const count = record.userCount ?? 0;
+        if (count === 0) return <Tag color="blue">0</Tag>;
+        return (
+          <Space spacing={6}>
+            <AvatarGroup maxCount={4} size="extra-extra-small" overlapFrom="end">
+              {preview.map((m) => (
+                <Avatar
+                  key={m.id}
+                  style={{ width: 22, height: 22, minWidth: 22, lineHeight: '22px', fontSize: 12, cursor: 'default' }}
+                  src={m.avatar ?? undefined}
+                  alt={m.nickname}
+                  color="light-blue"
+                  title={m.nickname}
+                >
+                  {m.nickname?.[0]}
+                </Avatar>
+              ))}
+            </AvatarGroup>
+            <Tag color="blue" style={{ flexShrink: 0 }}>{count}</Tag>
+          </Space>
+        );
+      },
+    },
     createdAtColumn,
     {
       title: '状态',

@@ -109,8 +109,37 @@ export async function listDepartmentTree(params: { keyword?: string; status?: st
   const tc = tenantCondition(departments, currentUser());
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
   const leaderIds = [...new Set(rows.map((r) => r.leaderId).filter((id): id is number => id !== null))];
-  const leaderMap = await buildLeaderMap(leaderIds);
-  const mapped = rows.map((r) => mapDepartment(r, r.leaderId ? leaderMap.get(r.leaderId) ?? null : null));
+  const deptIds = rows.map((r) => r.id);
+
+  // 并行查询负责人 + 部门成员预览
+  const [leaderMap, userRows] = await Promise.all([
+    buildLeaderMap(leaderIds),
+    deptIds.length > 0
+      ? db
+          .select({ departmentId: users.departmentId, id: users.id, nickname: users.nickname, avatar: users.avatar })
+          .from(users)
+          .where(inArray(users.departmentId, deptIds))
+          .orderBy(asc(users.departmentId), asc(users.id))
+      : Promise.resolve([]),
+  ]);
+
+  // 构建 userCount / userPreview Map
+  const countMap = new Map<number, number>();
+  const previewMap = new Map<number, Array<{ id: number; nickname: string; avatar: string | null }>>();
+  for (const u of userRows) {
+    const deptId = u.departmentId;
+    if (deptId === null) continue;
+    countMap.set(deptId, (countMap.get(deptId) ?? 0) + 1);
+    if (!previewMap.has(deptId)) previewMap.set(deptId, []);
+    const arr = previewMap.get(deptId)!;
+    if (arr.length < 5) arr.push({ id: u.id, nickname: u.nickname, avatar: u.avatar ?? null });
+  }
+
+  const mapped = rows.map((r) => ({
+    ...mapDepartment(r, r.leaderId ? leaderMap.get(r.leaderId) ?? null : null),
+    userCount: countMap.get(r.id) ?? 0,
+    userPreview: previewMap.get(r.id) ?? [],
+  }));
   const tree = buildDepartmentTree(mapped);
   const { keyword = '', status } = params;
   return keyword || status ? filterDepartmentTree(tree, keyword, status) : tree;

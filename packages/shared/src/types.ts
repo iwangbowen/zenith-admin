@@ -136,6 +136,8 @@ export interface Department {
   createdAt: string;
   updatedAt: string;
   children?: Department[];
+  userCount?: number;
+  userPreview?: Array<{ id: number; nickname: string; avatar: string | null }>;
 }
 
 // ─── 岗位 ─────────────────────────────────────────────────────────────────────

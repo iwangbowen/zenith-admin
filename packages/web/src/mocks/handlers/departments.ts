@@ -9,12 +9,22 @@ function withLeaderName(dept: Department): Department {
   return { ...dept, leaderName: leader?.nickname ?? null };
 }
 
+function withUserStats(dept: Department): Department {
+  const deptUsers = mockUsers.filter((u) => u.departmentId === dept.id);
+  return {
+    ...dept,
+    userCount: deptUsers.length,
+    userPreview: deptUsers.slice(0, 5).map((u) => ({ id: u.id, nickname: u.nickname, avatar: u.avatar ?? null })),
+  };
+}
+
 function buildDeptTree(list: Department[], parentId: number = 0): Department[] {
   return list
     .filter((d) => d.parentId === parentId)
     .map((d) => {
       const children = buildDeptTree(list, d.id);
-      return children.length > 0 ? { ...withLeaderName(d), children } : { ...withLeaderName(d) };
+      const enriched = withUserStats(withLeaderName(d));
+      return children.length > 0 ? { ...enriched, children } : { ...enriched };
     });
 }
 
