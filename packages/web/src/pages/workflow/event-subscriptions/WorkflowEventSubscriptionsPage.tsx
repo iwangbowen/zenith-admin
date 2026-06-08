@@ -6,10 +6,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
+  Col,
   Form,
   Input,
   Modal,
   Popconfirm,
+  Row,
   Select,
   Space,
   SideSheet,
@@ -379,28 +381,73 @@ export default function WorkflowEventSubscriptionsPage() {
         width={680}
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
-        <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} allowEmpty labelPosition="top">
-          <Form.Input field="name" label="名称" maxLength={64} rules={[{ required: true, message: '请输入名称' }]} />
-          <Form.TextArea field="description" label="描述" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
-          <Form.Select
-            field="definitionId" label="所属流程（不选则订阅全局）" showClear
-            optionList={defs.map((d) => ({ value: d.id, label: d.name }))}
-          />
-          <Form.Select
-            field="events" label="订阅事件" multiple maxTagCount={5}
-            rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个事件' }]}
-            optionList={EVENT_OPTIONS}
-          />
-          <Form.Input field="url" label="回调 URL" placeholder="https://example.com/webhook"
-            rules={[{ required: true, message: '请输入 URL' }, { pattern: /^https?:\/\//i, message: '必须以 http:// 或 https:// 开头' }]} />
-          <Form.Input field="secret" label={editing ? '签名密钥（留空保持不变）' : '签名密钥'} placeholder="留空将自动生成" maxLength={256} />
-          <Form.Select field="signMode" label="签名模式" optionList={[
-            { value: 'hmacSha256', label: 'HMAC-SHA256' },
-            { value: 'none', label: '不签名' },
-          ]} />
-          <Form.TextArea field="headers" label="自定义请求头（JSON 对象，可留空）" autosize={{ minRows: 2, maxRows: 6 }}
-            placeholder={'{\n  "X-Source": "zenith"\n}'} />
-          <Form.Switch field="enabled" label="启用" />
+        <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} allowEmpty labelPosition="left" labelWidth={96}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="name" label="名称" maxLength={64} rules={[{ required: true, message: '请输入名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="definitionId" label="所属流程" showClear
+                style={{ width: '100%' }}
+                helpText="不选则订阅全局"
+                optionList={defs.map((d) => ({ value: d.id, label: d.name }))}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Select
+                field="events" label="订阅事件" multiple maxTagCount={5}
+                style={{ width: '100%' }}
+                rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个事件' }]}
+                optionList={EVENT_OPTIONS}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Input field="url" label="回调 URL" placeholder="https://example.com/webhook"
+                rules={[{ required: true, message: '请输入 URL' }, { pattern: /^https?:\/\//i, message: '必须以 http:// 或 https:// 开头' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input
+                field="secret"
+                label="签名密钥"
+                placeholder={editing ? '留空保持不变' : '留空将自动生成'}
+                maxLength={256}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Select field="signMode" label="签名模式" style={{ width: '100%' }} optionList={[
+                { value: 'hmacSha256', label: 'HMAC-SHA256' },
+                { value: 'none', label: '不签名' },
+              ]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Switch field="enabled" label="启用" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="description" label="描述" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea
+                field="headers"
+                label="自定义请求头"
+                autosize={{ minRows: 2, maxRows: 6 }}
+                placeholder={'{\n  "X-Source": "zenith"\n}'}
+                helpText="JSON 对象格式，可留空"
+              />
+            </Col>
+          </Row>
         </Form>
         </Spin>
       </AppModal>
