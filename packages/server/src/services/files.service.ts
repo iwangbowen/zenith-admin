@@ -29,15 +29,18 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { xlsxBufferToWorkbookData } from '../lib/xlsx-to-univer';
+import { csvTextToWorkbookData } from '../lib/csv-to-univer';
 
 const SPREADSHEET_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 
-/** 校验文件为可预览的 .xlsx 表格 */
+/** 校验文件为可预览的表格（.xlsx 或 .csv） */
 function ensureSpreadsheetPreviewable(mimeType: string | null, extension: string | null) {
   const mime = (mimeType ?? '').toLowerCase();
   const ext = (extension ?? '').toLowerCase();
-  if (!mime.includes('spreadsheetml') && ext !== 'xlsx') {
-    throw new HTTPException(400, { message: '该文件不是可预览的 Excel(.xlsx) 表格' });
+  const isXlsx = mime.includes('spreadsheetml') || ext === 'xlsx';
+  const isCsv = mime === 'text/csv' || mime === 'application/csv' || ext === 'csv';
+  if (!isXlsx && !isCsv) {
+    throw new HTTPException(400, { message: '该文件不是可预览的 Excel(.xlsx) 或 CSV 表格' });
   }
 }
 
@@ -76,10 +79,19 @@ export async function getSheetPreview(id: number) {
   const stored = await readStoredFile(file, storageConfig);
   const arrayBuffer = await new Response(stored.stream).arrayBuffer();
 
+  // CSV 与 xlsx 走不同处理分支
+  const mime = (file.mimeType ?? '').toLowerCase();
+  const ext = (file.extension ?? '').toLowerCase();
+  const isCsv = mime === 'text/csv' || mime === 'application/csv' || ext === 'csv';
+
   try {
+    if (isCsv) {
+      const text = Buffer.from(arrayBuffer).toString('utf-8');
+      return csvTextToWorkbookData(text, { fileName: file.originalName });
+    }
     return await xlsxBufferToWorkbookData(arrayBuffer, { fileName: file.originalName });
   } catch {
-    throw new HTTPException(400, { message: 'Excel 文件解析失败，可能已损坏或格式不受支持' });
+    throw new HTTPException(400, { message: isCsv ? 'CSV 文件解析失败' : 'Excel 文件解析失败，可能已损坏或格式不受支持' });
   }
 }
 

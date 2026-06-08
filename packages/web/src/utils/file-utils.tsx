@@ -79,9 +79,11 @@ export function canPreviewFile(mimeType: string | null | undefined): boolean {
   );
 }
 
-/** 判断是否为可预览的 Excel(.xlsx) 表格 */
+/** 判断是否为可预览的表格（Excel .xlsx 或 CSV） */
 export function isSpreadsheetFile(mimeType?: string | null): boolean {
-  return !!mimeType?.toLowerCase().includes('spreadsheetml');
+  if (!mimeType) return false;
+  const mime = mimeType.toLowerCase();
+  return mime.includes('spreadsheetml') || mime === 'text/csv' || mime === 'application/csv';
 }
 
 /** 判断是否为可预览的 Word(.docx) 文档（仅 OOXML 格式，不含旧版 .doc） */
