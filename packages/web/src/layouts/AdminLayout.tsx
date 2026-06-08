@@ -1708,6 +1708,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                             ? <Dropdown.Item icon={<PinOff size={14} />} onClick={() => unpinTab(tab.key)}>取消固定</Dropdown.Item>
                             : <Dropdown.Item icon={<Pin size={14} />} onClick={() => pinTab(tab.key)}>固定标签页</Dropdown.Item>
                         )}
+                        <Dropdown.Item icon={isContentFullscreen ? <Shrink size={14} /> : <Expand size={14} />} onClick={() => setIsContentFullscreen((v) => !v)}>{isContentFullscreen ? '退出全屏' : '全屏显示'}</Dropdown.Item>
                         <Dropdown.Divider />
                         <Dropdown.Item icon={<X size={14} />} disabled={!tab.closable} onClick={() => handleTabClose(tab.key)}>关闭当前</Dropdown.Item>
                         <Dropdown.Item icon={<XCircle size={14} />} disabled={!hasClosableOthers} onClick={() => { const nextKey = closeOthers(tab.key); navigate(nextKey); }}>关闭其他</Dropdown.Item>
