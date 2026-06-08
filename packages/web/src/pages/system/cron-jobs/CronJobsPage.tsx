@@ -28,6 +28,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
@@ -489,7 +490,7 @@ export default function CronJobsPage() {
         </Tabs.TabPane>
       </Tabs>
 
-      <Modal
+      <AppModal
         title={editingJob ? '编辑定时任务' : '新增定时任务'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditingJob(null); setCronExprValue(''); setModalDetailLoading(false); }}
@@ -588,7 +589,7 @@ export default function CronJobsPage() {
           <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} rows={2} />
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
 
       {/* 全量执行日志抽屉 */}
       <SideSheet

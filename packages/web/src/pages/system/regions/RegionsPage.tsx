@@ -23,6 +23,7 @@ import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -459,7 +460,7 @@ export default function RegionsPage() {
       />
       </div>
 
-      <Modal
+      <AppModal
         title={editingRegion ? '编辑地区' : '新增地区'}
         visible={modalVisible}
         onOk={handleModalOk}
@@ -528,7 +529,7 @@ export default function RegionsPage() {
           />
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

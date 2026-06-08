@@ -30,6 +30,7 @@ import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import { renderEllipsis } from '@/utils/table-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
@@ -588,7 +589,7 @@ export default function FileStorageConfigsPage() {
         size="small"
       />
 
-      <Modal
+      <AppModal
         title={editingConfig ? '编辑文件配置' : '新增文件配置'}
         visible={modalVisible}
         onCancel={() => {
@@ -908,7 +909,7 @@ export default function FileStorageConfigsPage() {
           </Row>
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
 
       <StorageFileBrowser config={browsingConfig} onClose={() => setBrowsingConfig(null)} />
     </div>

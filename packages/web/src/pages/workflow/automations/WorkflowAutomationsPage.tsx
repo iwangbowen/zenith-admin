@@ -33,6 +33,7 @@ import type {
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -355,7 +356,7 @@ export default function WorkflowAutomationsPage() {
         pagination={buildPagination(total, fetchData)}
       />
 
-      <Modal
+      <AppModal
         title={editing ? '编辑自动化规则' : '新增自动化规则'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
@@ -474,7 +475,7 @@ export default function WorkflowAutomationsPage() {
           <Button icon={<Plus size={14} />} onClick={() => addAction('sendMessage')}>添加「站内信」</Button>
         </Space>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

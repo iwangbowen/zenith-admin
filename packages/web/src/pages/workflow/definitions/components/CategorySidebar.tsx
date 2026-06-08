@@ -163,7 +163,7 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
         renderItem={renderItem}
       />
 
-      <Modal
+      <AppModal
         title={editing ? '编辑分类' : '新增分类'}
         visible={editVisible}
         onCancel={() => setEditVisible(false)}
@@ -221,7 +221,7 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
           <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
           <Form.TextArea field="description" label="描述" autosize={{ minRows: 2, maxRows: 4 }} />
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

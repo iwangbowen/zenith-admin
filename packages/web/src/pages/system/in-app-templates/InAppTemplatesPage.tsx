@@ -9,6 +9,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
@@ -203,7 +204,7 @@ export default function InAppTemplatesPage() {
         pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1100 }} />
 
-      <Modal title={editingRecord ? '编辑站内信模板' : '新增站内信模板'} visible={modalVisible}
+      <AppModal title={editingRecord ? '编辑站内信模板' : '新增站内信模板'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); setModalDetailLoading(false); }}
         confirmLoading={submitting} okButtonProps={{ disabled: modalDetailLoading }} width={720}>
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
@@ -259,7 +260,7 @@ export default function InAppTemplatesPage() {
           </Row>
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

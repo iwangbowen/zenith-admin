@@ -21,6 +21,7 @@ import { Plus, ChevronsDownUp, ChevronsUpDown, Search, RotateCcw } from 'lucide-
 import type { Menu } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { renderLucideIcon } from '@/utils/icons';
 import IconPicker from '@/components/IconPicker';
@@ -408,7 +409,7 @@ export default function MenusPage() {
         onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Menu => 'id' in r).map((r) => r.id) ?? [])}
       />
 
-      <Modal
+      <AppModal
         title={editingMenu ? '编辑菜单' : '新增菜单'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditingMenu(null); setModalDetailLoading(false); }}
@@ -537,7 +538,7 @@ export default function MenusPage() {
           </Row>
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

@@ -24,6 +24,7 @@ import type { Dict, DictItem, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -715,7 +716,7 @@ export default function DictsPage() {
       />
 
       {/* 字典创建/编辑 Modal */}
-      <Modal
+      <AppModal
         title={editingDict ? '编辑字典' : '新增字典'}
         visible={dictModalVisible}
         onCancel={() => { setDictModalVisible(false); setModalDetailLoading(false); }}
@@ -742,10 +743,10 @@ export default function DictsPage() {
           />
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
 
       {/* 字典项创建/编辑 Modal */}
-      <Modal
+      <AppModal
         title={editingItem ? '编辑字典项' : '新增字典项'}
         visible={itemModalVisible}
         onCancel={() => setItemModalVisible(false)}
@@ -875,7 +876,7 @@ export default function DictsPage() {
             </Row>
           </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

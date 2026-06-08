@@ -24,6 +24,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -358,7 +359,7 @@ export default function OAuth2AppsPage() {
       />
 
       {/* 新增 / 编辑弹窗 */}
-      <Modal
+      <AppModal
         title={editing ? '编辑 OAuth2 应用' : '新增 OAuth2 应用'}
         visible={modalVisible}
         onOk={handleModalOk}
@@ -477,7 +478,7 @@ export default function OAuth2AppsPage() {
             </Row>
           </Form>
         </Spin>
-      </Modal>
+      </AppModal>
 
       {/* 一次性 Secret 展示弹窗 */}
       <Modal

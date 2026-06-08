@@ -21,6 +21,7 @@ import type { DataMaskConfig, MaskType, Role, PaginatedResponse } from '@zenith/
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
@@ -338,7 +339,7 @@ export default function DataMaskPage() {
         scroll={{ x: 'max-content' }}
       />
 
-      <Modal
+      <AppModal
         title={editing ? '编辑脱敏规则' : '新增脱敏规则'}
         visible={modalVisible}
         onCancel={closeModal}
@@ -448,7 +449,7 @@ export default function DataMaskPage() {
           </Row>
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

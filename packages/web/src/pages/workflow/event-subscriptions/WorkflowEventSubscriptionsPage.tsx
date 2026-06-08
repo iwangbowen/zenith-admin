@@ -32,6 +32,7 @@ import type {
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -368,7 +369,7 @@ export default function WorkflowEventSubscriptionsPage() {
         refreshLoading={loading}
       />
 
-      <Modal
+      <AppModal
         title={editing ? '编辑订阅' : '新增订阅'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
@@ -403,7 +404,7 @@ export default function WorkflowEventSubscriptionsPage() {
           <Form.Switch field="enabled" label="启用" />
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
 
       <SideSheet
         title="投递记录"

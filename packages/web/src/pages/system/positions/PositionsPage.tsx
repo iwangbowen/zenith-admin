@@ -30,6 +30,7 @@ import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
@@ -407,7 +408,7 @@ export default function PositionsPage() {
         }}
       />
 
-      <Modal
+      <AppModal
         title={editingPosition ? '编辑岗位' : '新增岗位'}
         visible={modalVisible}
         onCancel={() => {
@@ -442,7 +443,7 @@ export default function PositionsPage() {
           <Form.TextArea field="remark" label="备注" placeholder="请输入备注" maxCount={256} />
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
 
       <SideSheet
         title={

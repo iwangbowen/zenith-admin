@@ -21,6 +21,7 @@ import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
@@ -240,7 +241,7 @@ export default function SystemConfigsPage() {
         empty="暂无数据"
       />
 
-      <Modal
+      <AppModal
         title={editingConfig ? '编辑配置' : '新增配置'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditingConfig(null); setModalDetailLoading(false); }}
@@ -275,7 +276,7 @@ export default function SystemConfigsPage() {
           <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} />
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

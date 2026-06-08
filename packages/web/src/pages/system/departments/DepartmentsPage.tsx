@@ -27,6 +27,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
@@ -450,7 +451,7 @@ export default function DepartmentsPage() {
         onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Department => 'id' in r).map((r) => r.id) ?? [])}
       />
 
-      <Modal
+      <AppModal
         title={editingDepartment ? '编辑部门' : '新增部门'}
         visible={modalVisible}
         onCancel={() => {
@@ -538,7 +539,7 @@ export default function DepartmentsPage() {
           </Row>
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

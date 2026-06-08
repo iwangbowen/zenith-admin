@@ -18,6 +18,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createdAtColumn } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -426,7 +427,7 @@ export default function TagsPage() {
         scroll={{ x: 900 }}
       />
 
-      <Modal
+      <AppModal
         title={editRecord ? '编辑标签' : '新增标签'}
         visible={modalVisible}
         onOk={handleSubmit}
@@ -495,7 +496,7 @@ export default function TagsPage() {
           />
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

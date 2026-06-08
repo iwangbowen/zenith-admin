@@ -19,6 +19,7 @@ import { Search, Plus, RotateCcw, Download, ChevronDown } from 'lucide-react';
 import type { Tenant } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -295,7 +296,7 @@ export default function TenantsPage() {
         pagination={buildPagination(total, fetchData)}
       />
 
-      <Modal
+      <AppModal
         title={editingTenant ? '编辑租户' : '新增租户'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditingTenant(null); setModalDetailLoading(false); }}
@@ -357,7 +358,7 @@ export default function TenantsPage() {
           </Row>
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

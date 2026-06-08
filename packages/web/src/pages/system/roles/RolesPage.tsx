@@ -24,6 +24,7 @@ import { request } from '@/utils/request';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -469,7 +470,7 @@ export default function RolesPage() {
       />
 
       {/* 创建/编辑 Modal */}
-      <Modal
+      <AppModal
         title={editingRole ? '编辑角色' : '新增角色'}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
@@ -502,7 +503,7 @@ export default function RolesPage() {
             placeholder="请选择状态"
           />
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* 菜单权限 Modal */}
       <Modal

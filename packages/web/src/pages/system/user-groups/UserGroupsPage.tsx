@@ -27,6 +27,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -398,7 +399,7 @@ export default function UserGroupsPage() {
         }}
       />
 
-      <Modal
+      <AppModal
         title={editing ? '编辑用户组' : '新增用户组'}
         visible={modalVisible}
         onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
@@ -457,7 +458,7 @@ export default function UserGroupsPage() {
           <Form.TextArea field="description" label="描述" placeholder="请输入描述（可选）" maxCount={256} />
         </Form>
         </Spin>
-      </Modal>
+      </AppModal>
 
       <SideSheet
         title={
