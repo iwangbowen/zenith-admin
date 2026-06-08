@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Modal, Input, Toast, Typography, List as SemiList } from '@douyinfe/semi-ui';
+import { Input, Toast, Typography, List as SemiList } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import { Search, CheckSquare, Square } from 'lucide-react';
 import type { ChatConversation } from '@zenith/shared';
 
@@ -36,7 +37,7 @@ export function ForwardModal({
   };
 
   return (
-    <Modal
+    <AppModal
       title={mode === 'merge' ? '合并转发 — 选择目标会话' : '逐条转发 — 选择目标会话'}
       visible={visible}
       onCancel={() => { setSelected([]); setKeyword(''); onCancel(); }}
@@ -89,6 +90,6 @@ export function ForwardModal({
           已选 {selected.length} 个会话
         </Text>
       )}
-    </Modal>
+    </AppModal>
   );
 }

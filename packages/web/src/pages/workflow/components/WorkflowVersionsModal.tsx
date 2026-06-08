@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Modal, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowDefinition, WorkflowDefinitionVersion } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -76,7 +77,7 @@ export default function WorkflowVersionsModal({
   ];
 
   return (
-    <Modal title="历史版本" visible={visible} onCancel={onCancel} footer={null} width={720}>
+    <AppModal title="历史版本" visible={visible} onCancel={onCancel} footer={null} width={720}>
       <Table
         dataSource={versions}
         loading={loading}
@@ -84,6 +85,6 @@ export default function WorkflowVersionsModal({
         pagination={false}
         columns={columns}
       />
-    </Modal>
+    </AppModal>
   );
 }

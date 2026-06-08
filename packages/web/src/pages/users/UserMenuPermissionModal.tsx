@@ -6,7 +6,8 @@
  *  2. 最终有效权限 — 只读，显示角色继承 ∪ 直接授权，并用 Tag 标注来源
  */
 import { useState, useEffect } from 'react';
-import { Modal, Tabs, TabPane, Toast, Tag } from '@douyinfe/semi-ui';
+import { Tabs, TabPane, Toast, Tag } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import type { Menu } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
@@ -94,7 +95,7 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
   }
 
   return (
-    <Modal
+    <AppModal
       title={`菜单权限 — ${userName}`}
       visible={visible}
       onCancel={onClose}
@@ -126,6 +127,6 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
           />
         </TabPane>
       </Tabs>
-    </Modal>
+    </AppModal>
   );
 }

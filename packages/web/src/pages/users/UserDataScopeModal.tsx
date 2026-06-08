@@ -7,7 +7,8 @@
  *  - 最终有效权限（只读）：取两者中最宽松的
  */
 import { useState, useEffect } from 'react';
-import { Modal, Typography, Divider, Toast } from '@douyinfe/semi-ui';
+import { Typography, Divider, Toast } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import type { Department } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { DataScopePanel, DATA_SCOPE_OPTIONS } from '@/components/permissions/DataScopePanel';
@@ -92,7 +93,7 @@ export function UserDataScopeModal({ userId, userName, visible, deptTree, onClos
       : [];
 
   return (
-    <Modal
+    <AppModal
       title={`数据权限 — ${userName}`}
       visible={visible}
       onCancel={onClose}
@@ -146,6 +147,6 @@ export function UserDataScopeModal({ userId, userName, visible, deptTree, onClos
           readonly
         />
       </div>
-    </Modal>
+    </AppModal>
   );
 }

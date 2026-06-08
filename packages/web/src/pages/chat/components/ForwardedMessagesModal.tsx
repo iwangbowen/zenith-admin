@@ -1,4 +1,5 @@
-import { Modal, Typography, List as SemiList } from '@douyinfe/semi-ui';
+import { Typography, List as SemiList } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import { getFileTypeIcon } from '@/utils/file-utils';
 import type { ChatMessageExtra } from '@zenith/shared';
 
@@ -13,7 +14,7 @@ export function ForwardedMessagesModal({
   onCancel: () => void;
 }>) {
   return (
-    <Modal
+    <AppModal
       title={title}
       visible={visible}
       onCancel={onCancel}
@@ -75,6 +76,6 @@ export function ForwardedMessagesModal({
           />
         )}
       />
-    </Modal>
+    </AppModal>
   );
 }

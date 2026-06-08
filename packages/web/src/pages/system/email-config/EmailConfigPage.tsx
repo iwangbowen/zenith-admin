@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Form, Button, Toast, Space, Spin, Typography, Divider, Modal, Input } from '@douyinfe/semi-ui';
+import { Form, Button, Toast, Space, Spin, Typography, Divider, Input } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Save, Send, Mail } from 'lucide-react';
 import type { EmailConfig } from '@zenith/shared';
@@ -161,7 +162,7 @@ export default function EmailConfigPage() {
         </div>
       )}
 
-      <Modal
+      <AppModal
         title={
           <Space>
             <Mail size={16} />
@@ -186,7 +187,7 @@ export default function EmailConfigPage() {
             onChange={setTestEmail}
           />
         </div>
-      </Modal>
+      </AppModal>
     </div>
     </div>
   );

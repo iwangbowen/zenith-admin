@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Modal, Form, Button, Toast } from '@douyinfe/semi-ui';
+import { Form, Button, Toast } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import { Mail } from 'lucide-react';
 import { request } from '@/utils/request';
 
@@ -32,7 +33,7 @@ export default function ForgotPasswordModal({ visible, onClose }: Readonly<Forgo
   };
 
   return (
-    <Modal
+    <AppModal
       title="找回密码"
       visible={visible}
       onCancel={handleClose}
@@ -79,6 +80,6 @@ export default function ForgotPasswordModal({ visible, onClose }: Readonly<Forgo
           </Button>
         </Form>
       )}
-    </Modal>
+    </AppModal>
   );
 }

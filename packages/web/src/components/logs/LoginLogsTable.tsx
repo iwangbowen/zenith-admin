@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Button, Descriptions, Modal, Tag } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Tag } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import type { ColumnProps, TableProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { LoginLog } from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -84,7 +85,7 @@ export function LoginLogsTable({
         columnSettingsKey={columnSettingsKey}
       />
 
-      <Modal
+      <AppModal
         title="登录日志详情"
         visible={detailLog !== null}
         onCancel={() => setDetailLog(null)}
@@ -120,7 +121,7 @@ export function LoginLogsTable({
             align="left"
           />
         )}
-      </Modal>
+      </AppModal>
     </>
   );
 }

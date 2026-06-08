@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
-import { Button, Tag, Space, Modal, Typography, Divider, Spin } from '@douyinfe/semi-ui';
+import { Button, Tag, Space, Typography, Divider, Spin } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { BookOpen, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Announcement, AnnouncementAttachment } from '@zenith/shared';
@@ -85,7 +86,7 @@ export default function AnnouncementDetailModal({
   );
 
   return (
-    <Modal
+    <AppModal
       visible={visible}
       onCancel={onClose}
       width={640}
@@ -146,6 +147,6 @@ export default function AnnouncementDetailModal({
         </div>
         )}
       </Spin>
-    </Modal>
+    </AppModal>
   );
 }

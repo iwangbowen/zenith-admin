@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { Button, Descriptions, JsonViewer, Modal, TabPane, Tabs, Tag } from '@douyinfe/semi-ui';
+import { Button, Descriptions, JsonViewer, TabPane, Tabs, Tag } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import type { ColumnProps, TableProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { OperationLog } from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -167,7 +168,7 @@ export function OperationLogsTable({
         columnSettingsKey={columnSettingsKey}
       />
 
-      <Modal
+      <AppModal
         title="操作日志详情"
         visible={detailLog !== null}
         onCancel={() => { setDetailLog(null); setDetailActiveTab('basic'); }}
@@ -264,7 +265,7 @@ export function OperationLogsTable({
             </Tabs>
           );
         })()}
-      </Modal>
+      </AppModal>
     </>
   );
 }

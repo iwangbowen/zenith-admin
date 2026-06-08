@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Modal, Input, Button, Switch, DatePicker, Toast, Typography } from '@douyinfe/semi-ui';
+import { Input, Button, Switch, DatePicker, Toast, Typography } from '@douyinfe/semi-ui';
+import AppModal from '@/components/AppModal';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ChatVoteData, ChatVoteOption } from '@zenith/shared';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -88,7 +89,7 @@ export function VotePollModal({
   }, [expireAt, isAnonymous, isMultiple, onConfirm, options, question, resetForm]);
 
   return (
-    <Modal
+    <AppModal
       title="发起投票"
       visible={visible}
       onCancel={handleClose}
@@ -180,6 +181,6 @@ export function VotePollModal({
           </Button>
         </div>
       </div>
-    </Modal>
+    </AppModal>
   );
 }
