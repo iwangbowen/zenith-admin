@@ -1764,6 +1764,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
             <RouteErrorBoundary>
               <div
                 key={outletRefreshKey}
+                style={{ height: '100%' }}
                 className={preferences.routeAnimation && preferences.routeAnimation !== 'none'
                   ? `route-anim--${preferences.routeAnimation}`
                   : undefined}
