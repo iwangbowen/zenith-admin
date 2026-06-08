@@ -1,6 +1,6 @@
 # 文件预览组件
 
-`FilePreviewModal` 是全站统一的文件预览弹窗，支持图片、PDF、音频、视频、Excel 电子表格和 Word 文档六种格式。调用方只需传入文件元数据，无需自行判断格式或引入额外组件。
+`FilePreviewModal` 是全站统一的文件预览弹窗，支持图片、PDF、音频、视频、Excel/CSV 表格、Word 文档、Markdown、纯文本和 ZIP 压缩包九种格式。调用方只需传入文件元数据，无需自行判断格式或引入额外组件。
 
 **文件位置**：`packages/web/src/components/FilePreviewModal/index.tsx`
 
@@ -19,12 +19,15 @@
 | Word | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `docx-preview` 渲染为 HTML（`DocxPreviewPanel`，懒加载） | 否 |
 | Markdown | `text/markdown` / `text/x-markdown` | `react-markdown` 渲染（`MarkdownPreviewPanel`，懒加载） | 否 |
 | 纯文本 | `text/plain` | `<pre>` 原文本展示（复用 `MarkdownPreviewPanel`，`rawText=true`） | 否 |
+| ZIP | `application/zip` / `application/x-zip-compressed` | JSZip 解析 + Semi Design `Tree` 目录树（`ZipPreviewPanel`，懒加载） | 否 |
 
 > **图片**不在 `FilePreviewModal` 内部渲染。遇到 `image/*` 时组件会立即调用 `onClose` 并回退，由调用方自行打开 `ImagePreview`。
 >
 > **Word** 仅支持 `.docx`（OOXML 格式），旧版 `.doc`（二进制格式）不支持预览。
 >
 > **Markdown** 支持 `text/markdown`（`.md`）和 `text/x-markdown`（`.markdown`）两种 MIME 类型。
+>
+> **ZIP** 展示文件树结构和大小统计，不解压内容。仅支持标准 ZIP，不支持 RAR/7z。
 
 ---
 
@@ -240,14 +243,40 @@ fWorkbook.setEditable(false)   // 设为只读，禁止编辑
 @univerjs/preset-sheets-core@0.25.0
 ```
 
+### ZIP
+
+通过 `fetchProtectedFile(fileUrl)` 携带 Bearer Token 下载 Blob，**懒加载** `ZipPreviewPanel`，使用 `JSZip.loadAsync(blob)` 在浏览器端解析 ZIP，将所有目录/文件条目转换为 Semi Design `Tree` 组件的 `TreeNodeData` 结构并渲染。**无需后端改动**。
+
+`ZipPreviewPanel`（`packages/web/src/components/ZipPreviewPanel.tsx`）关键功能：
+
+```text
+JSZip.loadAsync(blob)解析所有条目
+路径树构建：目录在前，文件在后，同类型按名称字母排序
+<Tree directory filterTreeNode expandAll>  目录模式 + 文件搜索 + 默认全展开
+顶格显示文件总数 + 解压前总大小
+renderLabel 自定义节点：展示文件路径名 + 单个文件大小
+```
+
+**限制**：
+
+- 仅支持标准 ZIP，不支持 RAR/7z/tar.gz
+- 只展示文件树，不支持单文件预览/提取
+- 加密压缩包需用户先解压再上传
+
+**依赖**（`packages/web`）：
+
+```text
+jszip@^3.10.1
+```
+
 ---
 
 ## 判断工具函数
 
-`packages/web/src/utils/file-utils.tsx` 提供四个辅助函数：
+`packages/web/src/utils/file-utils.tsx` 提供六个辅助函数：
 
 ```ts
-/** 判断是否支持预览（覆盖 image / audio / video / PDF / xlsx / csv / docx / markdown / text）*/
+/** 判断是否支持预览（覆盖 image / audio / video / PDF / xlsx / csv / docx / markdown / text / zip） */
 canPreviewFile(mimeType: string | null | undefined): boolean
 
 /** 判断是否为可预览的表格（xlsx 或 csv） */
@@ -261,6 +290,9 @@ isMarkdownFile(mimeType?: string | null): boolean
 
 /** 判断是否为纯文本文件（仅内部使用） */
 isPlainTextFile(mimeType?: string | null): boolean
+
+/** 判断是否为 ZIP 压缩包（仅内部使用） */
+isZipFile(mimeType?: string | null): boolean
 ```
 
 ---
