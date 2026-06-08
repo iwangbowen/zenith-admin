@@ -4,6 +4,7 @@ import { Typography } from '@douyinfe/semi-ui';
 import { FileText, X } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import { useThemeController } from '@/providers/theme-controller';
+import './DocxPreviewPanel.css';
 
 const { Text } = Typography;
 
@@ -27,7 +28,7 @@ export function DocxPreviewPanel({ blob, fileName, onClose, style }: DocxPreview
     if (!container) return;
     container.innerHTML = '';
     renderAsync(blob, container, undefined, {
-      className: 'docx-preview',
+      // className 不传，使用默认 .docx-wrapper / .docx，与 DocxPreviewPanel.css 的覆盖选择器匹配
       inWrapper: true,
       ignoreWidth: false,
       ignoreHeight: false,

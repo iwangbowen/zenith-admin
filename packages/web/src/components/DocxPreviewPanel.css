@@ -1,0 +1,24 @@
+/**
+ * 覆盖 docx-preview 默认注入的全局样式。
+ * docx-preview 内联注入到 body 中，此文件由 Vite 构建到 <head>，
+ * 使用 !important 确保覆盖赢出。
+ *
+ * 实际类名由 renderAsync 的 className 选项决定，此处我们不传 className，
+ * 则使用库默认的 .docx-wrapper 和 .docx。
+ */
+
+/* 外层包裹器：去掉默认灰色背景和左右内边距，保留上下留白 */
+.docx-wrapper {
+  background: transparent !important;
+  padding: 20px 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 0 !important;
+}
+
+/* 每个页面：缩短页间距，给予柔和阴影 */
+section.docx {
+  margin-bottom: 16px !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2) !important;
+}
