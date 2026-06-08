@@ -36,6 +36,7 @@ interface DeptTreeNode {
   key: string;
   value: string;
   label: string;
+  disabled: true; // 部门节点不可选，只作为分组导航
   children: Array<DeptTreeNode | TransferDataItem>;
 }
 
@@ -89,8 +90,7 @@ function buildHierarchicalTree(
       .filter((n): n is DeptTreeNode => n !== null);
     const deptUsers = usersByDept.get(deptId) ?? [];
     const children: Array<DeptTreeNode | TransferDataItem> = [...childDepts, ...deptUsers];
-    if (children.length === 0) return null; // skip empty departments
-    return { key: `dept-${deptId}`, value: `dept-${deptId}`, label: dept.name, children };
+    return { key: `dept-${deptId}`, value: `dept-${deptId}`, label: dept.name, disabled: true as const, children };
   }
 
   const result: Array<DeptTreeNode | TransferDataItem> = [];
@@ -102,7 +102,7 @@ function buildHierarchicalTree(
   // Users with no matched department
   const noDeptUsers = users.filter((u) => !assignedUserIds.has(u.value));
   if (noDeptUsers.length > 0) {
-    result.push({ key: 'dept-none', value: 'dept-none', label: '无部门', children: noDeptUsers });
+result.push({ key: 'dept-none', value: 'dept-none', label: '无部门', disabled: true as const, children: noDeptUsers });
   }
 
   return result;
@@ -122,10 +122,10 @@ function buildFlatTree(users: TransferDataItem[]): DeptTreeNode[] {
   });
   const result: DeptTreeNode[] = [];
   deptMap.forEach((u, name) => {
-    result.push({ key: `dept-${name}`, value: `dept-${name}`, label: name, children: u });
+    result.push({ key: `dept-${name}`, value: `dept-${name}`, label: name, disabled: true as const, children: u });
   });
   if (noDept.length > 0) {
-    result.push({ key: 'dept-none', value: 'dept-none', label: '无部门', children: noDept });
+    result.push({ key: 'dept-none', value: 'dept-none', label: '无部门', disabled: true as const, children: noDept });
   }
   return result;
 }
@@ -305,6 +305,7 @@ export function UserTransferSelect({
             filterTreeNode: filterTreeNode as unknown as never,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             renderLabel: renderTreeLabel as any,
+            disableStrictly: false, // 部门节点 disabled=true 但不影响子节点（用户）可选
           }}
         />
       )}
