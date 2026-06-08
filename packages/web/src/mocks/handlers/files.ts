@@ -98,6 +98,41 @@ export const mockManagedFiles: ManagedFile[] = [
 
 let nextFileId = mockManagedFiles.length + 1;
 
+// demo 模式下的静态 Excel 预览数据（Univer IWorkbookData 子集）
+const mockSheetPreview = {
+  id: 'preview-demo',
+  name: 'data-export.xlsx',
+  appVersion: '0.1.0',
+  sheetOrder: ['sheet-1'],
+  styles: {
+    s1: { bl: 1, bg: { rgb: '#1A7F37' }, cl: { rgb: '#FFFFFF' }, ht: 2, vt: 2 },
+  },
+  sheets: {
+    'sheet-1': {
+      id: 'sheet-1',
+      name: '销售数据',
+      rowCount: 50,
+      columnCount: 26,
+      defaultColumnWidth: 88,
+      defaultRowHeight: 24,
+      mergeData: [],
+      cellData: {
+        0: {
+          0: { v: '产品', t: 1, s: 's1' },
+          1: { v: '销量', t: 1, s: 's1' },
+          2: { v: '金额（元）', t: 1, s: 's1' },
+        },
+        1: { 0: { v: '苹果', t: 1 }, 1: { v: 120, t: 2 }, 2: { v: 2400, t: 2 } },
+        2: { 0: { v: '香蕉', t: 1 }, 1: { v: 80, t: 2 }, 2: { v: 960, t: 2 } },
+        3: { 0: { v: '橙子', t: 1 }, 1: { v: 200, t: 2 }, 2: { v: 3000, t: 2 } },
+        4: { 0: { v: '合计', t: 1, s: 's1' }, 1: { v: 400, t: 2 }, 2: { v: 6360, t: 2 } },
+      },
+      rowData: {},
+      columnData: { 0: { w: 120 }, 1: { w: 100 }, 2: { w: 120 } },
+    },
+  },
+};
+
 function buildBrowseResult(storageConfigId: number, path: string): StorageBrowseResult {
   const config = mockFileStorageConfigs.find((c) => c.id === storageConfigId);
   const basePath = (config?.basePath ?? '').replace(/^\/+|\/+$/g, '');
@@ -206,6 +241,13 @@ export const filesHandlers = [
     };
     mockManagedFiles.push(uploaded);
     return HttpResponse.json({ code: 0, message: '上传成功', data: uploaded });
+  }),
+
+  // 获取 Excel 表格预览数据（必须放在 /api/files/:id 之前）
+  http.get('/api/files/:id/sheet-preview', ({ params }) => {
+    const file = mockManagedFiles.find((f) => f.id === Number(params.id));
+    if (!file) return HttpResponse.json({ code: 404, message: '文件不存在', data: null });
+    return HttpResponse.json({ code: 0, message: 'ok', data: { ...mockSheetPreview, name: file.originalName } });
   }),
 
   // 获取单个文件详情

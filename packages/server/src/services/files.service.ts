@@ -28,6 +28,18 @@ import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
+import { xlsxBufferToWorkbookData } from '../lib/xlsx-to-univer';
+
+const SPREADSHEET_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
+
+/** 校验文件为可预览的 .xlsx 表格 */
+function ensureSpreadsheetPreviewable(mimeType: string | null, extension: string | null) {
+  const mime = (mimeType ?? '').toLowerCase();
+  const ext = (extension ?? '').toLowerCase();
+  if (!mime.includes('spreadsheetml') && ext !== 'xlsx') {
+    throw new HTTPException(400, { message: '该文件不是可预览的 Excel(.xlsx) 表格' });
+  }
+}
 
 export async function readFileContent(id: number) {
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
@@ -39,6 +51,36 @@ export async function readFileContent(id: number) {
     .limit(1);
   if (!storageConfig) throw new HTTPException(404, { message: '文件存储配置不存在' });
   return readStoredFile(file, storageConfig);
+}
+
+/** 读取 .xlsx 文件并转换为 Univer 只读预览数据 */
+export async function getSheetPreview(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(managedFiles, user);
+  const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
+  const [file] = await db.select().from(managedFiles).where(where).limit(1);
+  if (!file) throw new HTTPException(404, { message: '文件不存在' });
+
+  ensureSpreadsheetPreviewable(file.mimeType, file.extension);
+  if (file.size > SPREADSHEET_PREVIEW_MAX_BYTES) {
+    throw new HTTPException(400, { message: 'Excel 文件过大，暂不支持在线预览' });
+  }
+
+  const [storageConfig] = await db
+    .select()
+    .from(fileStorageConfigs)
+    .where(eq(fileStorageConfigs.id, file.storageConfigId))
+    .limit(1);
+  if (!storageConfig) throw new HTTPException(404, { message: '文件存储配置不存在' });
+
+  const stored = await readStoredFile(file, storageConfig);
+  const arrayBuffer = await new Response(stored.stream).arrayBuffer();
+
+  try {
+    return await xlsxBufferToWorkbookData(arrayBuffer, { fileName: file.originalName });
+  } catch {
+    throw new HTTPException(400, { message: 'Excel 文件解析失败，可能已损坏或格式不受支持' });
+  }
 }
 
 export async function listManagedFiles(query: {

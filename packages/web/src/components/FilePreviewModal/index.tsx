@@ -1,12 +1,19 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Modal, Spin, Toast, AudioPlayer, VideoPlayer } from '@douyinfe/semi-ui';
 import { useThemeController } from '@/providers/theme-controller';
-import { fetchProtectedFile } from '@/utils/file-utils';
+import { fetchProtectedFile, isSpreadsheetFile } from '@/utils/file-utils';
 import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
+import { request } from '@/utils/request';
+import type { IWorkbookData } from '@univerjs/presets';
 import type { CSSProperties } from 'react';
+
+// Univer 体积较大，懒加载，避免进入文件管理页即拉取
+const ExcelPreviewPanel = lazy(() => import('@/components/ExcelPreviewPanel'));
 
 interface FilePreviewModalProps {
   fileUrl: string;
+  /** 表格预览需要文件 ID 调用 /sheet-preview 接口 */
+  fileId?: number;
   fileName?: string;
   mimeType?: string | null;
   visible: boolean;
@@ -18,6 +25,7 @@ interface FilePreviewModalProps {
 
 export default function FilePreviewModal({
   fileUrl,
+  fileId,
   fileName = '文件',
   mimeType,
   visible,
@@ -28,6 +36,7 @@ export default function FilePreviewModal({
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [sheetData, setSheetData] = useState<IWorkbookData | null>(null);
   const { isDark } = useThemeController();
   const abortRef = useRef<AbortController | null>(null);
 
@@ -48,6 +57,7 @@ export default function FilePreviewModal({
       setPdfFile(null);
       setAudioUrl(null);
       setVideoUrl(null);
+      setSheetData(null);
       return;
     }
 
@@ -60,8 +70,9 @@ export default function FilePreviewModal({
     const isPdf = mimeType === 'application/pdf';
     const isAudio = mimeType.startsWith('audio/');
     const isVideo = mimeType.startsWith('video/');
+    const isSpreadsheet = isSpreadsheetFile(mimeType, fileName);
 
-    if (!isImage && !isPdf && !isAudio && !isVideo) {
+    if (!isImage && !isPdf && !isAudio && !isVideo && !isSpreadsheet) {
       onFallback?.(fileUrl, fileName, mimeType);
       onClose();
       return;
@@ -78,6 +89,13 @@ export default function FilePreviewModal({
 
     (async () => {
       try {
+        if (isSpreadsheet) {
+          if (!fileId) throw new Error('缺少文件 ID，无法预览表格');
+          const res = await request.get<IWorkbookData>(`/api/files/${fileId}/sheet-preview`, { silent: true });
+          if (res.code !== 0 || !res.data) throw new Error(res.message || '表格预览加载失败');
+          setSheetData(res.data);
+          return;
+        }
         const blob = await fetchProtectedFile(fileUrl);
         if (isPdf) {
           const file = new File([blob], fileName, { type: 'application/pdf' });
@@ -89,8 +107,8 @@ export default function FilePreviewModal({
           const url = URL.createObjectURL(blob);
           setVideoUrl(url);
         }
-      } catch {
-        Toast.error('文件加载失败');
+      } catch (e) {
+        Toast.error(e instanceof Error ? e.message : '文件加载失败');
         onClose();
       } finally {
         setLoading(false);
@@ -101,7 +119,7 @@ export default function FilePreviewModal({
       cleanup();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, fileUrl, fileName, mimeType]);
+  }, [visible, fileUrl, fileId, fileName, mimeType]);
 
   const handleClose = () => {
     cleanup();
@@ -144,6 +162,32 @@ export default function FilePreviewModal({
           onClose={handleClose}
           style={{ width: '100%', borderLeft: 'none' }}
         />
+      </Modal>
+    );
+  }
+
+  if (sheetData) {
+    return (
+      <Modal
+        visible
+        onCancel={handleClose}
+        title={null}
+        footer={null}
+        width="min(1200px, 94vw)"
+        style={{ top: '3vh' }}
+        bodyStyle={{ padding: 0, height: '90vh', display: 'flex', overflow: 'hidden' }}
+        closable={false}
+        keepDOM={false}
+      >
+        <Suspense
+          fallback={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+              <Spin size="large" tip="加载预览组件..." />
+            </div>
+          }
+        >
+          <ExcelPreviewPanel data={sheetData} fileName={fileName} onClose={handleClose} />
+        </Suspense>
       </Modal>
     );
   }

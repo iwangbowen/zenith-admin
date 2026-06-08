@@ -26,7 +26,7 @@ import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
+import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, canPreviewFile, isSpreadsheetFile } from '@/utils/file-utils';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import FileStatsPanel from './FileStatsPanel';
 import { FileGridCard } from './components/FileGridCard';
@@ -139,7 +139,7 @@ export default function FilesPage() {
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
-  const [filePreview, setFilePreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
+  const [filePreview, setFilePreview] = useState<{ id: number; url: string; name: string; mimeType: string } | null>(null);
   const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
   // previewBlobUrlsRef: index-aligned with image list, tracks created blob URLs for cleanup
   const previewBlobUrlsRef = useRef<string[]>([]);
@@ -316,7 +316,7 @@ export default function FilesPage() {
 
   const handlePreview = async (file: ManagedFile) => {
     const isImage = file.mimeType?.startsWith('image/');
-    const isPreviewable = canPreviewFile(file.mimeType);
+    const isPreviewable = canPreviewFile(file.mimeType) || isSpreadsheetFile(file.mimeType, file.originalName);
 
     if (!isPreviewable && !isImage) {
       try {
@@ -334,6 +334,7 @@ export default function FilesPage() {
       setPreviewLoadingId(file.id);
       try {
         setFilePreview({
+          id: file.id,
           url: file.url,
           name: file.originalName,
           mimeType: file.mimeType ?? 'application/octet-stream',
@@ -536,7 +537,7 @@ export default function FilesPage() {
       width: 180,
       align: 'center',
       render: (_: unknown, record: ManagedFile) => {
-        const isPreviewable = canPreviewFile(record.mimeType);
+        const isPreviewable = canPreviewFile(record.mimeType) || isSpreadsheetFile(record.mimeType, record.originalName);
         return (
         <Space>
           <Button theme="borderless" size="small" loading={downloadLoadingId === record.id} onClick={() => handleDownload(record)}>下载</Button>
@@ -788,6 +789,7 @@ export default function FilesPage() {
 
       <FilePreviewModal
         fileUrl={filePreview?.url ?? ''}
+        fileId={filePreview?.id}
         fileName={filePreview?.name}
         mimeType={filePreview?.mimeType}
         visible={!!filePreview}

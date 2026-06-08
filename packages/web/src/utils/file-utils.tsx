@@ -75,6 +75,13 @@ export function canPreviewFile(mimeType: string | null | undefined): boolean {
   );
 }
 
+/** 判断是否为可预览的 Excel(.xlsx) 表格（mime 不准时回退到文件名后缀） */
+export function isSpreadsheetFile(mimeType?: string | null, fileName?: string | null): boolean {
+  if (mimeType?.toLowerCase().includes('spreadsheetml')) return true;
+  if (fileName && /\.xlsx$/i.test(fileName)) return true;
+  return false;
+}
+
 /** 使用当前登录 token 获取受保护的文件内容，返回 Blob */
 export async function fetchProtectedFile(url: string): Promise<Blob> {
   const token = localStorage.getItem(TOKEN_KEY);

@@ -85,3 +85,14 @@ export const StorageBrowseResultDTO = z
     basePath: z.string(),
   })
   .openapi('StorageBrowseResult');
+
+export const SheetPreviewDTO = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    appVersion: z.string(),
+    sheetOrder: z.array(z.string()),
+    styles: z.record(z.string(), z.any()),
+    sheets: z.record(z.string(), z.any()),
+  })
+  .openapi('SheetPreview');
