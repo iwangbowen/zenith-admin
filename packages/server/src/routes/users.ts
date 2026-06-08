@@ -40,6 +40,7 @@ const updateUserSchema = z.object({
   positionIds: z.array(z.number().int().positive()).optional(),
   roleIds: z.array(z.number().int()).optional(),
   status: z.enum(['enabled', 'disabled']).optional(),
+  avatar: z.string().max(512).nullable().optional(),
 });
 const resetUserPasswordSchema = z.object({ password: z.string().min(6).max(64) });
 const batchStatusSchema = z.object({ ids: z.array(z.number().int()), status: z.enum(['enabled', 'disabled']) });

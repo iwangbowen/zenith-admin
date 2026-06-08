@@ -333,6 +333,7 @@ export interface UpdateUserInput {
   departmentId?: number | null;
   positionIds?: number[]; roleIds?: number[];
   status?: 'enabled' | 'disabled';
+  avatar?: string | null;
 }
 
 export async function updateUser(id: number, data: UpdateUserInput) {

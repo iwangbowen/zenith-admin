@@ -41,6 +41,7 @@ import './UsersPage.css';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { UserMenuPermissionModal } from './UserMenuPermissionModal';
 import { UserDataScopeModal } from './UserDataScopeModal';
+import { UserAvatarModal } from './UserAvatarModal';
 
 interface SearchParams {
   keyword: string;
@@ -83,6 +84,8 @@ export default function UsersPage() {
   const [roleAssignVisible, setRoleAssignVisible] = useState(false);
   const [roleAssignIds, setRoleAssignIds] = useState<number[]>([]);
   const [roleAssignSubmitting, setRoleAssignSubmitting] = useState(false);
+  const [avatarUser, setAvatarUser] = useState<User | null>(null);
+  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [allDepartments, setAllDepartments] = useState<Department[]>([]);
   const [allPositions, setAllPositions] = useState<Position[]>([]);
@@ -600,6 +603,10 @@ export default function UsersPage() {
               render={
                 <Dropdown.Menu>
                   <Dropdown.Item onClick={() => {
+                    setAvatarUser(record);
+                    setAvatarModalVisible(true);
+                  }}>管理头像</Dropdown.Item>
+                  <Dropdown.Item onClick={() => {
                     setPasswordUser(record);
                     setPasswordModalVisible(true);
                   }}>修改密码</Dropdown.Item>
@@ -1116,6 +1123,18 @@ export default function UsersPage() {
           />
         </Form>
       </Modal>
+
+      {/* 管理头像 */}
+      {avatarUser && (
+        <UserAvatarModal
+          visible={avatarModalVisible}
+          user={avatarUser}
+          onClose={() => setAvatarModalVisible(false)}
+          onUpdated={(updated) => {
+            setData((prev) => prev ? { ...prev, list: prev.list.map((u) => (u.id === updated.id ? updated : u)) } : prev);
+          }}
+        />
+      )}
 
       {/* 用户菜单权限 */}
       {menuPermUser && (
