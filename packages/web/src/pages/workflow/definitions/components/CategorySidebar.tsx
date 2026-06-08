@@ -2,11 +2,12 @@
  * 流程定义页左侧分类侧栏
  */
 import { useState } from 'react';
-import { Button, Dropdown, List, Modal, Popconfirm, Space, Toast, Form } from '@douyinfe/semi-ui';
+import { Button, Dropdown, List, Popconfirm, Space, Toast, Form } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { MoreHorizontal, Plus } from 'lucide-react';
 import type { WorkflowCategory } from '@zenith/shared';
 import { request } from '@/utils/request';
+import AppModal from '@/components/AppModal';
 
 interface Props {
   categories: WorkflowCategory[];
@@ -171,7 +172,7 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
         confirmLoading={submitting}
         okText="保存"
         width={520}
-       
+
       >
         <Form
           key={editKey}

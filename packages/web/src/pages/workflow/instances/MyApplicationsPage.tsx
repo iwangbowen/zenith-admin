@@ -25,6 +25,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { AppModal } from '@/components/AppModal';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
@@ -189,7 +190,7 @@ function InstanceDetailDrawer({
           style={{ marginTop: 8 }}
         />
       </Modal>
-      <Modal
+      <AppModal
         title="添加抄送人"
         visible={ccVisible}
         onCancel={() => setCcVisible(false)}
@@ -220,7 +221,7 @@ function InstanceDetailDrawer({
             placeholder="请选择抄送人"
           />
         </div>
-      </Modal>
+      </AppModal>
     </SideSheet>
   );
 }

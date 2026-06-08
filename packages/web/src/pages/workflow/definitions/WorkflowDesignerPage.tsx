@@ -33,6 +33,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ArrowLeft, Copy, Diamond, GitFork, Plus, Save, Trash2 } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowNodeConfig, WorkflowEdgeCondition, WorkflowConditionOperator } from '@zenith/shared';
 import { WORKFLOW_CONDITION_OPERATORS } from '@zenith/shared';
+import { AppModal } from '@/components/AppModal';
 import { request } from '@/utils/request';
 
 // ─── Custom Node Component ────────────────────────────────────────────────────
@@ -561,7 +562,7 @@ export default function WorkflowDesignerPage() {
       </Modal>
 
       {/* 节点属性编辑弹窗 */}
-      <Modal
+      <AppModal
         title="编辑节点属性"
         visible={nodeEditVisible}
         onCancel={() => setNodeEditVisible(false)}
@@ -616,10 +617,10 @@ export default function WorkflowDesignerPage() {
             </div>
           )}
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* 连线条件编辑弹窗 */}
-      <Modal
+      <AppModal
         title="编辑分支条件"
         visible={edgeEditVisible}
         onCancel={() => setEdgeEditVisible(false)}
@@ -665,7 +666,7 @@ export default function WorkflowDesignerPage() {
             <p>若要清除条件，将字段名留空后保存。</p>
           </div>
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

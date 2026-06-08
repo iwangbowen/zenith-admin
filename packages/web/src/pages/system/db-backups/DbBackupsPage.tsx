@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Space, Tag, Select, Popconfirm, Toast, Modal, Form } from '@douyinfe/semi-ui';
+import { Button, Space, Tag, Select, Popconfirm, Toast, Form } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Plus } from 'lucide-react';
 import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
