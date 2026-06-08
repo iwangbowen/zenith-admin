@@ -1,7 +1,7 @@
-import { and, asc, eq, gte, inArray, like, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
-import { positions, userPositions } from '../db/schema';
+import { positions, userPositions, users } from '../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
@@ -71,7 +71,38 @@ export async function listPositions(q: ListPositionsQuery) {
     ),
   ]);
 
-  return { list: list.map(mapPosition), total, page, pageSize };
+  // Fetch user count & previews (first 5 per position) for the current page
+  const positionIds = list.map((p) => p.id);
+  const countMap = new Map<number, number>();
+  const previewMap = new Map<number, Array<{ id: number; nickname: string; avatar: string | null }>>();
+  if (positionIds.length > 0) {
+    const rows = await db
+      .select({
+        positionId: userPositions.positionId,
+        id: users.id,
+        nickname: users.nickname,
+        avatar: users.avatar,
+      })
+      .from(userPositions)
+      .innerJoin(users, eq(users.id, userPositions.userId))
+      .where(inArray(userPositions.positionId, positionIds))
+      .orderBy(asc(userPositions.positionId), asc(userPositions.userId));
+
+    for (const row of rows) {
+      countMap.set(row.positionId, (countMap.get(row.positionId) ?? 0) + 1);
+      if (!previewMap.has(row.positionId)) previewMap.set(row.positionId, []);
+      const arr = previewMap.get(row.positionId)!;
+      if (arr.length < 5) arr.push({ id: row.id, nickname: row.nickname, avatar: row.avatar ?? null });
+    }
+  }
+
+  const mappedList = list.map((row) => ({
+    ...mapPosition(row),
+    userCount: countMap.get(row.id) ?? 0,
+    userPreview: previewMap.get(row.id) ?? [],
+  }));
+
+  return { list: mappedList, total, page, pageSize };
 }
 
 export async function createPosition(input: CreatePositionInput) {
@@ -152,6 +183,52 @@ export async function getPositionBeforeAudit(id: number) {
   const [row] = await db.select().from(positions).where(and(eq(positions.id, id), tc)).limit(1);
   if (!row) return null;
   return mapPosition(row);
+}
+
+// ─── 成员管理 ────────────────────────────────────────────────────────────────
+
+async function ensurePositionAccessible(positionId: number) {
+  const tc = tenantCondition(positions, currentUser());
+  const [row] = await db.select({ id: positions.id }).from(positions).where(and(eq(positions.id, positionId), tc)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '岗位不存在' });
+}
+
+export async function listPositionMembers(positionId: number) {
+  await ensurePositionAccessible(positionId);
+  const rows = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      nickname: users.nickname,
+      email: users.email,
+      avatar: users.avatar,
+      departmentName: sql<string | null>`(SELECT name FROM departments WHERE id = ${users.departmentId})`,
+      createdAt: users.createdAt,
+    })
+    .from(userPositions)
+    .innerJoin(users, eq(users.id, userPositions.userId))
+    .where(eq(userPositions.positionId, positionId))
+    .orderBy(asc(users.id));
+
+  return rows.map(r => ({
+    id: r.id,
+    username: r.username,
+    nickname: r.nickname,
+    email: r.email ?? null,
+    avatar: r.avatar ?? null,
+    departmentName: r.departmentName ?? null,
+    joinedAt: formatDateTime(r.createdAt),
+  }));
+}
+
+export async function setPositionMembers(positionId: number, userIds: number[]) {
+  await ensurePositionAccessible(positionId);
+  await db.transaction(async (tx) => {
+    await tx.delete(userPositions).where(eq(userPositions.positionId, positionId));
+    if (userIds.length > 0) {
+      await tx.insert(userPositions).values(userIds.map(uid => ({ positionId, userId: uid })));
+    }
+  });
 }
 
 export async function exportPositions(): Promise<{ stream: ReadableStream; filename: string }> {

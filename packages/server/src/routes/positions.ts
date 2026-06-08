@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
-import { PositionDTO } from '../lib/openapi-dtos';
+import { PositionDTO, PositionUserPreviewDTO } from '../lib/openapi-dtos';
 import {
   listAllPositions,
   listPositions,
@@ -14,6 +14,8 @@ import {
   getPositionsBeforeAudit,
   getPositionBeforeAudit,
   getPosition,
+  listPositionMembers,
+  setPositionMembers,
 } from '../services/positions.service';
 
 const positionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -155,6 +157,35 @@ const exportCsvRoute = defineOpenAPIRoute({
   },
 });
 
-positionsRouter.openapiRoutes([allRoute, listRoute, getOneRoute, createPositionRoute, updatePositionRoute, batchDeleteRoute, deleteRoute, exportRoute, exportCsvRoute] as const);
+const MembersBody = z.object({ userIds: z.array(z.number().int().positive()) });
+
+const listMembersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/members', tags: ['Positions'], summary: '获取岗位成员',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:position:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...ok(z.array(PositionUserPreviewDTO), '成员列表'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await listPositionMembers(c.req.valid('param').id)), 200),
+});
+
+const setMembersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}/members', tags: ['Positions'], summary: '设置岗位成员（全量覆盖）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:position:update', audit: { description: '设置岗位成员', module: '岗位管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(MembersBody), required: true } },
+    responses: { ...okMsg('保存成功'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { userIds } = c.req.valid('json');
+    await setPositionMembers(id, userIds);
+    return c.json(okBody(null, '保存成功'), 200);
+  },
+});
+
+positionsRouter.openapiRoutes([allRoute, listRoute, getOneRoute, createPositionRoute, updatePositionRoute, batchDeleteRoute, deleteRoute, exportRoute, exportCsvRoute, listMembersRoute, setMembersRoute] as const);
 
 export default positionsRouter;

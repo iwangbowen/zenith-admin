@@ -146,6 +146,8 @@ export interface Position {
   sort: number;
   status: EntityStatus;
   remark?: string;
+  userCount?: number;
+  userPreview?: Array<{ id: number; nickname: string; avatar?: string | null }>;
   createdAt: string;
   updatedAt: string;
 }

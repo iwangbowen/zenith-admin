@@ -12,9 +12,15 @@ import {
   Dropdown,
   Switch,
   Toast,
+  SideSheet,
+  Transfer,
+  Empty,
+  Tag,
+  Avatar,
+  AvatarGroup,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2, ChevronDown, Users } from 'lucide-react';
 import type { Position, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
@@ -57,6 +63,13 @@ export default function PositionsPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems } = useDictItems('common_status');
 
+  // 成员管理
+  const [allUsers, setAllUsers] = useState<Array<{ id: number; username: string; nickname: string }>>([]);
+  const [memberSheetVisible, setMemberSheetVisible] = useState(false);
+  const [memberPosition, setMemberPosition] = useState<Position | null>(null);
+  const [memberIds, setMemberIds] = useState<number[]>([]);
+  const [memberSaving, setMemberSaving] = useState(false);
+
   const fetchPositions = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
@@ -87,6 +100,15 @@ export default function PositionsPage() {
   useEffect(() => {
     void fetchPositions();
   }, [fetchPositions]);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await request.get<Array<{ id: number; username: string; nickname: string }>>('/api/users/all');
+      if (res.code === 0) {
+        setAllUsers(res.data);
+      }
+    })();
+  }, []);
 
   const formInitValues = editingPosition
     ? {
@@ -202,6 +224,30 @@ export default function PositionsPage() {
     });
   };
 
+  const openMembers = async (pos: Position) => {
+    setMemberPosition(pos);
+    setMemberSheetVisible(true);
+    const res = await request.get<Array<{ id: number }>>(`/api/positions/${pos.id}/members`);
+    if (res.code === 0) {
+      setMemberIds((res.data || []).map(m => m.id));
+    }
+  };
+
+  const handleSaveMembers = async () => {
+    if (!memberPosition) return;
+    setMemberSaving(true);
+    try {
+      const res = await request.put(`/api/positions/${memberPosition.id}/members`, { userIds: memberIds });
+      if (res.code === 0) {
+        Toast.success('保存成功');
+        setMemberSheetVisible(false);
+        void fetchPositions();
+      }
+    } finally {
+      setMemberSaving(false);
+    }
+  };
+
   const columns: ColumnProps<Position>[] = [
     { title: '岗位名称', dataIndex: 'name', width: 200, render: renderEllipsis },
     { title: '岗位编码', dataIndex: 'code', width: 180, render: renderEllipsis },
@@ -210,6 +256,33 @@ export default function PositionsPage() {
       title: '备注',
       dataIndex: 'remark',
       render: renderEllipsis,
+    },
+    {
+      title: '成员', dataIndex: 'userPreview', width: 150,
+      render: (_: unknown, record: Position) => {
+        const preview = record.userPreview ?? [];
+        const count = record.userCount ?? 0;
+        if (count === 0) return <Tag color="blue">0</Tag>;
+        return (
+          <Space spacing={6}>
+            <AvatarGroup maxCount={4} size="extra-extra-small" overlapFrom="end">
+              {preview.map((m) => (
+                <Avatar
+                  key={m.id}
+                  style={{ width: 22, height: 22, minWidth: 22, lineHeight: '22px', fontSize: 12, cursor: 'default' }}
+                  src={m.avatar ?? undefined}
+                  alt={m.nickname}
+                  color="light-blue"
+                  title={m.nickname}
+                >
+                  {m.nickname?.[0]}
+                </Avatar>
+              ))}
+            </AvatarGroup>
+            <Tag color="blue" style={{ flexShrink: 0 }}>{count}</Tag>
+          </Space>
+        );
+      },
     },
     createdAtColumn,
     {
@@ -230,14 +303,15 @@ export default function PositionsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 160,
+      width: 220,
       render: (_: unknown, record: Position) => (
         <Space>
-          {hasPermission('system:position:update') && <Button
-            theme="borderless"
-            size="small"
-            onClick={() => { void openEdit(record); }}
-          >编辑</Button>}
+          {hasPermission('system:position:update') && (
+            <Button theme="borderless" size="small" onClick={() => { void openEdit(record); }}>编辑</Button>
+          )}
+          {hasPermission('system:position:update') && (
+            <Button theme="borderless" size="small" onClick={() => { void openMembers(record); }}>成员</Button>
+          )}
           {hasPermission('system:position:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
             Modal.confirm({
               title: '确定要删除该岗位吗？',
@@ -366,6 +440,42 @@ export default function PositionsPage() {
         </Form>
         </Spin>
       </Modal>
+
+      <SideSheet
+        title={
+          <Space>
+            <Users size={16} />
+            <span>成员管理 - {memberPosition?.name}</span>
+          </Space>
+        }
+        visible={memberSheetVisible}
+        onCancel={() => setMemberSheetVisible(false)}
+        width={720}
+        footer={
+          <Space>
+            <Button onClick={() => setMemberSheetVisible(false)}>取消</Button>
+            <Button type="primary" loading={memberSaving} onClick={handleSaveMembers}>保存</Button>
+          </Space>
+        }
+      >
+        {allUsers.length === 0 ? (
+          <Empty title="暂无用户" description="请先创建用户" />
+        ) : (
+          <Transfer
+            style={{ width: '100%' }}
+            dataSource={allUsers.map(u => ({
+              key: String(u.id),
+              value: u.id,
+              label: `${u.nickname}（${u.username}）`,
+              disabled: false,
+            }))}
+            value={memberIds}
+            onChange={(values) => setMemberIds((values as number[]) || [])}
+            inputProps={{ placeholder: '搜索用户名、账号' }}
+            emptyContent={{ left: '暂无可选', right: '暂无成员', search: '无匹配' }}
+          />
+        )}
+      </SideSheet>
     </div>
   );
 }
