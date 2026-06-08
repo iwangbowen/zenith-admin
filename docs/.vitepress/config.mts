@@ -130,6 +130,7 @@ export default defineConfig({
           { text: 'UI 规范', link: '/frontend/ui-conventions' },
           { text: '认证与请求', link: '/frontend/auth-request' },
           { text: '公共组件', link: '/frontend/components' },
+          { text: '文件预览组件', link: '/frontend/file-preview' },
           { text: '路由与菜单', link: '/frontend/routing' },
         ],
       },
