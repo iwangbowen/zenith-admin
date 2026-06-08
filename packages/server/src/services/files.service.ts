@@ -133,6 +133,7 @@ export async function uploadManagedFile(file: File) {
     // 如果无法检测（如纯文本文件），回退使用 MIME type 头
     const actualMime = detected?.mime ?? file.type;
     const allowed = allowedPatterns.some(pattern => {
+      if (pattern === '*' || pattern === '*/*') return true;
       if (pattern.endsWith('/*')) {
         const mainType = pattern.slice(0, -2);
         return actualMime.startsWith(`${mainType}/`);
