@@ -54,6 +54,14 @@ npm run docs:build
 
 文档站构建成功（`build complete`）后方可继续。如有错误须先修复。
 
+同时验证 Demo 构建：
+
+```bash
+npm run build:demo
+```
+
+Demo 构建成功后方可继续。如有错误须先修复（Demo 构建使用 MSW Mock 模式，可能因 `.env.demo` 变量差异暴露额外问题）。
+
 ---
 
 ## Step 5：更新 `docs/changelog/index.md`
