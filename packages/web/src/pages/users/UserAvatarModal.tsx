@@ -101,6 +101,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
           onUpdated(updateRes.data);
           Toast.success('头像已更新');
           closeCropper();
+          onClose();
         } else {
           Toast.error(updateRes.message ?? '头像更新失败');
         }
@@ -116,7 +117,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
     setPresetVisible(false);
     const res = await request.put<User>(`/api/users/${user.id}`, { avatar: url });
     setAvatarLoading(false);
-    if (res.code === 0) { onUpdated(res.data); Toast.success('头像已更新'); }
+    if (res.code === 0) { onUpdated(res.data); Toast.success('头像已更新'); onClose(); }
     else Toast.error(res.message ?? '更新失败');
   }
 
@@ -129,7 +130,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
         setAvatarLoading(true);
         const res = await request.put<User>(`/api/users/${user.id}`, { avatar: null });
         setAvatarLoading(false);
-        if (res.code === 0) { onUpdated(res.data); Toast.success('头像已移除'); }
+        if (res.code === 0) { onUpdated(res.data); Toast.success('头像已移除'); onClose(); }
         else Toast.error(res.message ?? '移除失败');
       },
     });
