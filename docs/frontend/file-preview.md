@@ -16,10 +16,13 @@
 | 视频 | `video/*` | Semi Design `VideoPlayer` | 否 |
 | Excel | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | Univer 开源版只读渲染（`ExcelPreviewPanel`，懒加载） | **是** |
 | Word | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `docx-preview` 渲染为 HTML（`DocxPreviewPanel`，懒加载） | 否 |
+| Markdown | `text/markdown` / `text/x-markdown` | `react-markdown` 渲染（`MarkdownPreviewPanel`，懒加载） | 否 |
 
 > **图片**不在 `FilePreviewModal` 内部渲染。遇到 `image/*` 时组件会立即调用 `onClose` 并回退，由调用方自行打开 `ImagePreview`。
 >
 > **Word** 仅支持 `.docx`（OOXML 格式），旧版 `.doc`（二进制格式）不支持预览。
+>
+> **Markdown** 支持 `text/markdown`（`.md`）和 `text/x-markdown`（`.markdown`）两种 MIME 类型。
 
 ---
 
@@ -104,6 +107,34 @@ const isPreviewable = canPreviewFile(record.mimeType);
 
 同样通过 `fetchProtectedFile` 下载 Blob，创建 `Object URL` 传给 Semi Design `AudioPlayer` / `VideoPlayer`，关闭时主动调用 `URL.revokeObjectURL` 释放内存。
 
+### Markdown（.md）
+
+通过 `fetchProtectedFile(fileUrl)` 携带 Bearer Token 下载 Blob，调用 `Blob.text()` 将内容读取为 UTF-8 字符串后，**懒加载** `MarkdownPreviewPanel`，使用 `react-markdown` 渲染为 React 组件树。**无 `dangerouslySetInnerHTML`，无 XSS 风险，无需后端改动**。
+
+`MarkdownPreviewPanel`（`packages/web/src/components/MarkdownPreviewPanel.tsx`）插件配置：
+
+```text
+remarkPlugins: [remarkGfm]   // GFM：表格、任务列表、删除线、自动链接
+rehypePlugins: [rehypeHighlight]  // 代码块语法高亮（highlight.js）
+```
+
+**支持**：标题、列表、任务列表、表格、代码块语法高亮、划线引用、分割线、图片、加粗、斜体、删除线、行内代码
+
+**限制**：
+
+- 不支持 HTML 嵌入（`rehype-sanitize` 过滤）
+- 尾注需额外启用 `remark-footnotes` 插件（未预装）
+- 弹窗宽度 `min(900px, 92vw)`，高度 `90vh`，内容带最大宽 860px 居中
+
+**依赖**（`packages/web`）：
+
+```text
+react-markdown
+remark-gfm
+rehype-highlight
+highlight.js（rehype-highlight 的 peerDep）
+```
+
 ### Word（.docx）
 
 通过 `fetchProtectedFile(fileUrl)` 携带 Bearer Token 下载 Blob，**懒加载** `DocxPreviewPanel` 后直接将 Blob 交给 `docx-preview` 的 `renderAsync()` 在浏览器端渲染为 HTML。整个过程**无需后端转换**。
@@ -178,8 +209,13 @@ createUniver({
   })],
 })
 univerAPI.createWorkbook(data)
+// Rendered 生命周期后，触发自适应行高计算（保证 canvas skeleton 已就绪）
+univerAPI.executeCommand('sheet.command.set-row-is-auto-height', { ranges: [...] })
 fWorkbook.setEditable(false)   // 设为只读，禁止编辑
 ```
+
+> **行高自适应**：所有行均设置 `ia: 1`（is-adaptive）并在 `Rendered` 阶段后执行 `set-row-is-auto-height` 命令，
+> 确保含 `wrapText` 和 `\n` 换行符的单元格行高能正确跟随内容自动展开。
 
 组件卸载时调用 `univer.dispose()` 释放所有 Univer 实例资源，防止内存泄漏。
 
@@ -194,10 +230,10 @@ fWorkbook.setEditable(false)   // 设为只读，禁止编辑
 
 ## 判断工具函数
 
-`packages/web/src/utils/file-utils.tsx` 提供三个辅助函数：
+`packages/web/src/utils/file-utils.tsx` 提供四个辅助函数：
 
 ```ts
-/** 判断是否支持预览（覆盖 image / audio / video / PDF / xlsx / docx） */
+/** 判断是否支持预览（覆盖 image / audio / video / PDF / xlsx / docx / markdown） */
 canPreviewFile(mimeType: string | null | undefined): boolean
 
 /** 判断是否为 xlsx 表格（仅内部使用） */
@@ -205,6 +241,9 @@ isSpreadsheetFile(mimeType?: string | null): boolean
 
 /** 判断是否为 docx 文档（仅内部使用） */
 isWordFile(mimeType?: string | null): boolean
+
+/** 判断是否为 Markdown 文件（仅内部使用） */
+isMarkdownFile(mimeType?: string | null): boolean
 ```
 
 ---
