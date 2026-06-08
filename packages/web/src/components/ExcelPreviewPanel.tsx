@@ -44,7 +44,7 @@ export function ExcelPreviewPanel({ data, fileName, onClose, style }: ExcelPrevi
           toolbar: false,
           formulaBar: false,
           contextMenu: false,
-          footer: true,
+          footer: { sheetBar: true, statisticBar: false, zoomSlider: true },
         }),
       ],
     });
