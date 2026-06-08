@@ -158,7 +158,20 @@ interface AdminLayoutProps {
   readonly presetMenus?: Menu[];
 }
 
-export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayoutProps) {
+export default function AdminLayout({ user: userProp, onLogout, presetMenus }: AdminLayoutProps) {
+  // 本地维护 displayUser，通过 auth:user-updated 事件直接更新头像，
+  // 避免触发整条 App.tsx → Provider 树的重渲染链路。
+  const [displayUser, setDisplayUser] = useState(userProp);
+  useEffect(() => { setDisplayUser(userProp); }, [userProp]);
+  useEffect(() => {
+    function handler(e: Event) {
+      const updated = (e as CustomEvent<Omit<User, 'password'>>).detail;
+      setDisplayUser((prev) => (prev.id === updated.id ? updated : prev));
+    }
+    globalThis.addEventListener('auth:user-updated', handler);
+    return () => globalThis.removeEventListener('auth:user-updated', handler);
+  }, []);
+  const user = displayUser;
   const [collapsed, setCollapsed] = useState(false);
   const autoCollapsedRef = useRef(false);
   // hover 模式：鼠标悬浮时侧边栏临时滑出

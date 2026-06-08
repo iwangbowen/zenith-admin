@@ -44,15 +44,6 @@ export function useAuth() {
     fetchUser();
   }, [fetchUser]);
 
-  useEffect(() => {
-    function handleUserUpdated(e: Event) {
-      const updated = (e as CustomEvent<Omit<User, 'password'>>).detail;
-      setState((prev) => (prev.user?.id === updated.id ? { ...prev, user: updated } : prev));
-    }
-    globalThis.addEventListener('auth:user-updated', handleUserUpdated);
-    return () => globalThis.removeEventListener('auth:user-updated', handleUserUpdated);
-  }, []);
-
   const login = async (username: string, password: string, captchaId?: string, captchaCode?: string, tenantCode?: string) => {
     // 收集设备信息（尽尽所能，不强制要求）
     let deviceInfo: Record<string, unknown> | undefined;
