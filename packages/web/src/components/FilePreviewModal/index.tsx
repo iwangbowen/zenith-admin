@@ -12,7 +12,7 @@ const ExcelPreviewPanel = lazy(() => import('@/components/ExcelPreviewPanel'));
 
 interface FilePreviewModalProps {
   fileUrl: string;
-  /** 表格预览需要文件 ID 调用 /sheet-preview 接口 */
+  /** 文件 ID。预览 Excel 表格时必须传入，其他类型可不传 */
   fileId?: number;
   fileName?: string;
   mimeType?: string | null;
@@ -90,7 +90,7 @@ export default function FilePreviewModal({
     (async () => {
       try {
         if (isSpreadsheet) {
-          if (!fileId) throw new Error('缺少文件 ID，无法预览表格');
+          if (!fileId) throw new Error('预览 Excel 表格需要传入 fileId');
           const res = await request.get<IWorkbookData>(`/api/files/${fileId}/sheet-preview`, { silent: true });
           if (res.code !== 0 || !res.data) throw new Error(res.message || '表格预览加载失败');
           setSheetData(res.data);

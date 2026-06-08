@@ -26,7 +26,7 @@ import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, canPreviewFile, isSpreadsheetFile } from '@/utils/file-utils';
+import { formatFileSize, getFileTypeIcon, fetchProtectedFile, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import FileStatsPanel from './FileStatsPanel';
 import { FileGridCard } from './components/FileGridCard';
@@ -316,7 +316,7 @@ export default function FilesPage() {
 
   const handlePreview = async (file: ManagedFile) => {
     const isImage = file.mimeType?.startsWith('image/');
-    const isPreviewable = canPreviewFile(file.mimeType) || isSpreadsheetFile(file.mimeType, file.originalName);
+    const isPreviewable = canPreviewFile(file.mimeType, file.originalName);
 
     if (!isPreviewable && !isImage) {
       try {
@@ -537,7 +537,7 @@ export default function FilesPage() {
       width: 180,
       align: 'center',
       render: (_: unknown, record: ManagedFile) => {
-        const isPreviewable = canPreviewFile(record.mimeType) || isSpreadsheetFile(record.mimeType, record.originalName);
+        const isPreviewable = canPreviewFile(record.mimeType, record.originalName);
         return (
         <Space>
           <Button theme="borderless" size="small" loading={downloadLoadingId === record.id} onClick={() => handleDownload(record)}>下载</Button>

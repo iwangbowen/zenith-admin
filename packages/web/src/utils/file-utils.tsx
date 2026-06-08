@@ -64,15 +64,18 @@ export function getFileTypeIcon(mimeType?: string | null, iconSize = 15) {
   return <File size={size} color={color} />;
 }
 
-/** 判断文件是否支持预览 */
-export function canPreviewFile(mimeType: string | null | undefined): boolean {
-  if (!mimeType) return false;
-  return (
-    mimeType.startsWith('image/') ||
-    mimeType.startsWith('audio/') ||
-    mimeType.startsWith('video/') ||
-    mimeType === 'application/pdf'
-  );
+/** 判断文件是否支持预览，可选传 fileName 以支持 .xlsx 扩展名兜底判断 */
+export function canPreviewFile(mimeType: string | null | undefined, fileName?: string | null): boolean {
+  if (!mimeType && !fileName) return false;
+  if (mimeType) {
+    if (
+      mimeType.startsWith('image/') ||
+      mimeType.startsWith('audio/') ||
+      mimeType.startsWith('video/') ||
+      mimeType === 'application/pdf'
+    ) return true;
+  }
+  return isSpreadsheetFile(mimeType, fileName);
 }
 
 /** 判断是否为可预览的 Excel(.xlsx) 表格（mime 不准时回退到文件名后缀） */
