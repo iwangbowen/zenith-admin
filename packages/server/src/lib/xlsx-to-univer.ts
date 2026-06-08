@@ -196,6 +196,8 @@ export async function xlsxBufferToWorkbookData(
   const maxColumns = options.maxColumns ?? DEFAULTS.maxColumns;
 
   const workbook = new ExcelJS.Workbook();
+  // exceljs 自带的 Buffer 类型定义与 @types/node 的泛型 Buffer 存在已知摩擦（仅类型层面，运行时正常）
+  // @ts-expect-error exceljs 的 xlsx.load 参数类型过时，与当前 @types/node 的 Buffer 不兼容
   await workbook.xlsx.load(Buffer.from(data));
 
   const styles: Record<string, unknown> = {};
