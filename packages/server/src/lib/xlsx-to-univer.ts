@@ -35,7 +35,7 @@ export interface UniverWorksheetData {
   defaultRowHeight: number;
   mergeData: Array<{ startRow: number; startColumn: number; endRow: number; endColumn: number }>;
   cellData: Record<number, Record<number, UniverCellData>>;
-  rowData: Record<number, { h: number }>;
+  rowData: Record<number, { h?: number; ia?: number; ah?: number }>;
   columnData: Record<number, { w: number }>;
 }
 
@@ -231,7 +231,14 @@ export async function xlsxBufferToWorkbookData(
       const r = rowNumber - 1;
 
       const h = rowHeightToPx(row.height);
-      if (h) rowData[r] = { h };
+      // exceljs 读取时不保留 customHeight 标志，无法区分用户固定行高与 Excel 自动计算行高。
+      // 为确保 wrapText 单元格的行高能自动跟随内容，对所有行设置 ia:1（自适应），
+      // 同时将 Excel 给出的高度作为 ah（初始参考高度），Univer 将在此基础上向上扩展。
+      if (h) {
+        rowData[r] = { ia: 1, ah: h };
+      } else {
+        rowData[r] = { ia: 1 };
+      }
 
       row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
         if (colNumber > maxColumns) return;

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { Typography } from '@douyinfe/semi-ui';
 import { FileSpreadsheet, X } from 'lucide-react';
-import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
+import { createUniver, LifecycleStages, LocaleType, mergeLocales } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -50,6 +50,35 @@ export function ExcelPreviewPanel({ data, fileName, onClose, style }: ExcelPrevi
     });
 
     const workbook = univerAPI.createWorkbook(data);
+
+    // 在 Univer Rendered 生命周期阶段（canvas skeleton 已建立）后执行自适应行高命令，
+    // 确保 generateMutationsOfAutoHeight 能正确测量文字高度。
+    // 若当前已过 Rendered 阶段则立即执行（Steady 或更晚），否则等事件触发。
+    const triggerAutoHeight = () => {
+      const unitId = workbook.getId();
+      workbook.getSheets().forEach((sheet) => {
+        const subUnitId = sheet.getSheetId();
+        const rowCount = sheet.getMaxRows();
+        const colCount = sheet.getMaxColumns();
+        univerAPI.executeCommand('sheet.command.set-row-is-auto-height', {
+          unitId,
+          subUnitId,
+          ranges: [{ startRow: 0, endRow: rowCount - 1, startColumn: 0, endColumn: colCount - 1 }],
+        });
+      });
+    };
+
+    if (univerAPI.getCurrentLifecycleStage() >= LifecycleStages.Rendered) {
+      triggerAutoHeight();
+    } else {
+      const disposable = univerAPI.addEvent(univerAPI.Event.LifeCycleChanged, ({ stage }) => {
+        if (stage === LifecycleStages.Rendered) {
+          triggerAutoHeight();
+          disposable.dispose();
+        }
+      });
+    }
+
     workbook.setEditable(false);
 
     return () => {
