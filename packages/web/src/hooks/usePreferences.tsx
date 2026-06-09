@@ -66,6 +66,8 @@ export interface UserPreferences {
   contentWidth: 'fluid' | 'fixed';
   /** 侧边栏展开宽度（px），默认 216 */
   sidebarWidth: number;
+  /** 显示回到顶部按钮（滚动超过 400px 后浮现） */
+  showBackTop: boolean;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -110,6 +112,7 @@ export const defaultPreferences: UserPreferences = {
   colorBlind: false,
   contentWidth: 'fluid',
   sidebarWidth: 216,
+  showBackTop: true,
 };
 
 export interface PreferencesContextValue {

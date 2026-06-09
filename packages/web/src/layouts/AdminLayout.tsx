@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
-import { BackTop, Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, HotKeys, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
+import { BackTop, Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink } from 'lucide-react';
@@ -1773,10 +1773,12 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 <Outlet key={outletRefreshKey} />
               </div>
             </RouteErrorBoundary>
-            <BackTop
-              target={() => (document.querySelector('.admin-content') as HTMLElement) ?? document.body}
-              style={{ right: 24, bottom: 24 }}
-            />
+            {(preferences.showBackTop ?? true) && (
+              <BackTop
+                target={() => (document.querySelector('.admin-content') as HTMLElement) ?? document.body}
+                style={{ right: 24, bottom: 24 }}
+              />
+            )}
           </div>
 
           {/* Preferences SideSheet */}
@@ -2013,6 +2015,19 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>显示全屏按钮</span>
                 <Switch checked={preferences.showFullscreen ?? true} onChange={(v) => setPreferences({ showFullscreen: v })} />
+              </div>
+              )}
+
+              {/* ── 回到顶部按钮 ── */}
+              {matchesPref(['回到顶部', 'BackTop', '返回顶部', '回到顶', '顶部按钮']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  显示回到顶部按钮
+                  <Tooltip content="内容区域滚动超过 400px 后，右下角浮现回顶按钮" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={preferences.showBackTop ?? true} onChange={(v) => setPreferences({ showBackTop: v })} />
               </div>
               )}
 
