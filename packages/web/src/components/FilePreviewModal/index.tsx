@@ -100,7 +100,11 @@ export default function FilePreviewModal({
     const isImage = mimeType.startsWith('image/');
     const isPdf = mimeType === 'application/pdf';
     const isAudio = mimeType.startsWith('audio/');
-    const isVideo = mimeType.startsWith('video/');
+    // .ts 文件扩展名与 MPEG-2 TS 视频流共用，服务器可能误判为 video/mp2t。
+    // 当文件名以 .ts/.tsx 结尾时强制排除出视频分支。
+    const tsExtPattern = /\.(ts|tsx)$/i;
+    const isMpegTsAsCode = mimeType === 'video/mp2t' && tsExtPattern.test(fileName);
+    const isVideo = mimeType.startsWith('video/') && !isMpegTsAsCode;
     const isSpreadsheet = isSpreadsheetFile(mimeType);
     const isWord = isWordFile(mimeType);
     const isMarkdown = isMarkdownFile(mimeType);
@@ -108,7 +112,7 @@ export default function FilePreviewModal({
     const isZip = isZipFile(mimeType);
     const isJson = isJsonFile(mimeType);
     const isSvg = isSvgFile(mimeType);
-    const isCode = isCodeFile(mimeType);
+    const isCode = isCodeFile(mimeType) || isMpegTsAsCode;
 
     if (!isImage && !isPdf && !isAudio && !isVideo && !isSpreadsheet && !isWord && !isMarkdown && !isPlainText && !isZip && !isJson && !isSvg && !isCode) {
       onFallback?.(fileUrl, fileName, mimeType);
