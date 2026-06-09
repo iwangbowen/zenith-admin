@@ -318,8 +318,8 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
         const isPreviewable = canPreviewFile(record.mimeType);
         return (
           <Space>
-            <Button theme="borderless" size="small" loading={downloadLoadingId === record.id} onClick={() => handleDownload(record)}>下载</Button>
             <Button theme="borderless" size="small" disabled={!isPreviewable} loading={previewLoadingId === record.id} onClick={() => handlePreview(record)}>预览</Button>
+            <Button theme="borderless" size="small" loading={downloadLoadingId === record.id} onClick={() => handleDownload(record)}>下载</Button>
             <Dropdown
               trigger="click"
               position="bottomRight"
