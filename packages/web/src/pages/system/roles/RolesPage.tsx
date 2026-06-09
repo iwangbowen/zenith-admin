@@ -506,13 +506,12 @@ export default function RolesPage() {
       </AppModal>
 
       {/* 菜单权限 Modal */}
-      <Modal
+      <AppModal
         title={`分配菜单权限 — ${menuRole?.name}`}
         visible={menuModalVisible}
         onCancel={() => setMenuModalVisible(false)}
         onOk={handleAssignMenus}
         width={480}
-
       >
         <MenuPermissionPanel
           allMenus={allMenus}
@@ -520,16 +519,15 @@ export default function RolesPage() {
           onChange={setCheckedMenuIds}
           loading={menuLoading}
         />
-      </Modal>
+      </AppModal>
 
       {/* 数据权限 Modal */}
-      <Modal
+      <AppModal
         title={`数据权限 — ${dataScopeRole?.name}`}
         visible={dataScopeModalVisible}
         onCancel={() => setDataScopeModalVisible(false)}
         onOk={handleSaveDataScope}
         width={400}
-
       >
         <DataScopePanel
           dataScope={selectedDataScope}
@@ -539,7 +537,7 @@ export default function RolesPage() {
           onDeptIdsChange={setSelectedDeptScopeIds}
           loading={dataScopeLoading}
         />
-      </Modal>
+      </AppModal>
 
       {/* 分配用户 SideSheet */}
       <SideSheet
