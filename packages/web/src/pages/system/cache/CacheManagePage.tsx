@@ -12,7 +12,6 @@ import {
   Toast,
   Tooltip,
   Typography,
-  List as SemiList,
 } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, RefreshCw, Trash2, MoreHorizontal } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -21,7 +20,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
-import './CacheManagePage.css';
+import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 
 interface CacheItem {
   key: string;
@@ -291,9 +290,11 @@ export default function CacheManagePage() {
   ];
 
   const cacheMaster = (
-    <div className="cache-master">
-      <div className="cache-master-header">
-        <span className="cache-master-title">缓存分类</span>
+    <NavListPanel
+      title="缓存分类"
+      loading={loading}
+      emptyText="暂无缓存分类"
+      headerExtra={
         <Dropdown
           trigger="click"
           position="bottomRight"
@@ -317,47 +318,39 @@ export default function CacheManagePage() {
         >
           <Button theme="borderless" size="small" icon={<MoreHorizontal size={14} />} />
         </Dropdown>
-      </div>
-      <div className="cache-master-list">
-        <SemiList<CategoryRow>
-          className="cache-list"
-          size="small"
-          split={false}
-          loading={loading}
-          dataSource={categoryRows}
-          emptyContent={<div className="cache-empty">暂无缓存分类</div>}
-          renderItem={(row) => (
-            <SemiList.Item
-              key={row.category}
-              className={`cache-list-item${selectedCategory?.category === row.category ? ' cache-list-item--active' : ''}`}
-              onClick={() => setSelectedCategory(row)}
-              main={
-                <div className="cache-list-item-main">
-                  <div className="cache-list-item-title">
-                    <Tag color={CATEGORY_COLORS[row.category] ?? 'grey'} size="small" style={{ whiteSpace: 'nowrap' }}>
-                      {row.category}
-                    </Tag>
-                  </div>
-                  <Badge count={row.count} overflowCount={9999} type="primary" />
-                </div>
-              }
-              extra={
-                hasPermission('system:cache:delete') ? (
-                  <Button
-                    theme="borderless"
-                    type="danger"
-                    size="small"
-                    onClick={(e) => { e.stopPropagation(); handleDeleteCategory(row); }}
-                  >
-                    删除
-                  </Button>
-                ) : null
-              }
-            />
-          )}
+      }
+    >
+      {categoryRows.map((row) => (
+        <NavListItem
+          key={row.category}
+          active={selectedCategory?.category === row.category}
+          onClick={() => setSelectedCategory(row)}
+          icon={
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%', flexShrink: 0, display: 'inline-block',
+              background: `var(--semi-color-${CATEGORY_COLORS[row.category] ?? 'grey'}-5, var(--semi-color-primary))`,
+            }} />
+          }
+          primary={row.category}
+          secondary={
+            <Badge count={row.count} overflowCount={9999} type="primary" />
+          }
+          extraAlwaysVisible
+          extra={
+            hasPermission('system:cache:delete') ? (
+              <Button
+                theme="borderless"
+                type="danger"
+                size="small"
+                onClick={(e) => { e.stopPropagation(); handleDeleteCategory(row); }}
+              >
+                删除
+              </Button>
+            ) : undefined
+          }
         />
-      </div>
-    </div>
+      ))}
+    </NavListPanel>
   );
 
   const cacheDetail = (
