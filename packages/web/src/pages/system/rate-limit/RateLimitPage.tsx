@@ -385,8 +385,13 @@ export default function RateLimitPage() {
             multiple
             filter
             allowCreate
+            showClear
+            searchPosition="dropdown"
+            maxTagCount={5}
+            showRestTagsPopover
             style={{ width: '100%' }}
             optionList={apiPaths}
+            virtualize={{ height: 260, width: '100%', itemSize: 36 }}
           />
           <Form.Switch field="enabled" label="启用" />
           <Form.InputNumber field="windowMs" label="时间窗口(ms)" min={1000} step={1000} style={{ width: '100%' }} rules={[{ required: true }]} />
@@ -432,8 +437,13 @@ export default function RateLimitPage() {
               multiple
               filter
               allowCreate
+              showClear
+              searchPosition="dropdown"
+              maxTagCount={5}
+              showRestTagsPopover
               style={{ width: '100%' }}
               optionList={apiPaths}
+              virtualize={{ height: 260, width: '100%', itemSize: 36 }}
             />
             <Form.Switch field="enabled" label="启用" />
             <Form.InputNumber field="windowMs" label="时间窗口(ms)" min={1000} step={1000} style={{ width: '100%' }} rules={[{ required: true }]} />
