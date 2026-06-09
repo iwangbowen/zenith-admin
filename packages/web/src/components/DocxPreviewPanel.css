@@ -7,10 +7,10 @@
  * 则使用库默认的 .docx-wrapper 和 .docx。
  */
 
-/* 外层包裹器：去掉默认灰色背景和左右内边距，保留上下留白 */
+/* 外层包裹器：去掉默认灰色背景和内边距 */
 .docx-wrapper {
   background: transparent !important;
-  padding: 20px 0 !important;
+  padding: 0 !important;
   display: flex !important;
   flex-direction: column !important;
   align-items: center !important;

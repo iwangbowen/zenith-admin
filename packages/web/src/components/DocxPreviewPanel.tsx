@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { renderAsync } from 'docx-preview';
-import { useThemeController } from '@/providers/theme-controller';
 import './DocxPreviewPanel.css';
 
 interface DocxPreviewPanelProps {
@@ -15,7 +14,6 @@ interface DocxPreviewPanelProps {
  */
 export function DocxPreviewPanel({ blob, style }: DocxPreviewPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { isDark } = useThemeController();
 
   useEffect(() => {
     const container = containerRef.current;
@@ -48,7 +46,7 @@ export function DocxPreviewPanel({ blob, style }: DocxPreviewPanelProps) {
       style={{
         width: '100%',
         height: '100%',
-        background: isDark ? '#1f1f1f' : '#f0f0f0',
+        background: '#ffffff',
         overflowY: 'auto',
         ...style,
       }}
