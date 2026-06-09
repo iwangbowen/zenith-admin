@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { Button, Dropdown, Modal, Toast, Form } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { MoreHorizontal, Plus, Layers, Pencil, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Layers, LayoutGrid, Pencil, Trash2 } from 'lucide-react';
 import type { WorkflowCategory } from '@zenith/shared';
 import { request } from '@/utils/request';
 import AppModal from '@/components/AppModal';
@@ -95,16 +95,16 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
         {listData.map((item) => {
           const isAll = item.id === null;
           const isActive = isAll ? selectedId === null : selectedId === item.id;
+          const colorDot = item.color
+            ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0, display: 'inline-block' }} />
+            : <Layers size={13} />;
+          const itemIcon = isAll ? <LayoutGrid size={13} /> : colorDot;
           return (
             <NavListItem
               key={item.id ?? 'all'}
               active={isActive}
               onClick={() => onSelect(isAll ? null : item.id!)}
-              icon={
-                item.color
-                  ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0, display: 'inline-block' }} />
-                  : <Layers size={13} />
-              }
+              icon={itemIcon}
               primary={item.name}
               extra={
                 canManage && !isAll ? (
