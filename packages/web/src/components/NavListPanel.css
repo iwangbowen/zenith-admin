@@ -81,6 +81,13 @@
   transition: background 0.15s;
   user-select: none;
   box-sizing: border-box;
+  /* button reset */
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  width: 100%;
 }
 
 .nav-list-item:last-child {
@@ -163,8 +170,8 @@
   transition: opacity 0.15s, visibility 0.15s;
 }
 
-.nav-list-item:hover .nav-list-item__extra,
 .nav-list-item--active .nav-list-item__extra,
+.nav-list-item:hover .nav-list-item__extra,
 .nav-list-item .nav-list-item__extra--visible {
   opacity: 1;
   visibility: visible;

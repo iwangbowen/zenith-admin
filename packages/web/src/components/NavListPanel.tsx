@@ -129,7 +129,8 @@ export function NavListItem({
   className,
 }: Readonly<NavListItemProps>) {
   return (
-    <div
+    <button
+      type="button"
       className={[
         'nav-list-item',
         active ? 'nav-list-item--active' : '',
@@ -160,6 +161,6 @@ export function NavListItem({
           {extra}
         </div>
       )}
-    </div>
+    </button>
   );
 }
