@@ -4,6 +4,35 @@
 
 ---
 
+## v0.49.0 - 2026-06-09
+
+### Added
+
+#### NavListPanel / NavListItem 通用导航列表组件
+
+- 新增 `NavListPanel` + `NavListItem` 组件（`packages/web/src/components/NavListPanel.tsx`），作为左右分栏布局中左侧平铺列表的统一实现
+- `NavListPanel`：带标题栏、搜索框、加载状态、空状态、底部插槽的面板容器
+- `NavListItem`：圆角卡片条目，支持左侧图标、主/副标题、元信息行、hover 可见操作区（`extra`）、`extraAlwaysVisible` 模式
+- 根元素改用 `<button>` 语义元素，原生支持键盘交互，消除无障碍警告
+
+### Changed
+
+#### 多页面左侧列表改造（统一使用 NavListPanel + NavListItem）
+
+- **日志文件管理**：`LogFilesPage` 左侧文件列表，hover 显示「下载/删除」Dropdown 更多菜单；修复 meta 区 `<Tag color>` 渲染多余色块的问题，改用 styled span
+- **缓存管理**：`CacheManagePage` 左侧分类列表，彩色圆点图标 + 分类名 + 计数 Badge；删除按钮常驻可见；去除 `CacheManagePage.css` 中全部 master 相关手写样式
+- **流程分类侧栏**：`CategorySidebar` 用 `NavListPanel` 重写，Dropdown 从 `trigger="custom"` 改为 `trigger="click"` 标准模式；「全部流程」用 `LayoutGrid` 图标，有颜色的分类用彩色圆点，无颜色的分类用 `Layers` 图标
+
+### Fixed
+
+#### 文件存储 bucketName 快照
+
+- `managed_files` 表新增 `bucketName` 字段（nullable），上传时快照 bucket 标识
+- `readStoredFile` / `deleteStoredFile` 优先使用快照值，修复修改 OSS/S3/COS bucket 名后旧文件无法访问的问题
+- 向后兼容：旧记录 `bucketName` 为 null 时继续使用当前配置
+
+---
+
 ## v0.48.0 - 2026-06-09
 
 ### Added
