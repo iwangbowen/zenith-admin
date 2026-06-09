@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AppModal } from '@/components/AppModal';
 import {
   Badge,
   Button,
@@ -437,7 +438,7 @@ export default function CacheManagePage() {
         style={{ flex: 1, overflow: 'hidden' }}
       />
 
-      <Modal
+      <AppModal
         title={
           <span>
             查看缓存值
@@ -476,7 +477,7 @@ export default function CacheManagePage() {
             加载完整内容中…
           </div>
         )}
-      </Modal>
+      </AppModal>
     </div>
   );
 }
