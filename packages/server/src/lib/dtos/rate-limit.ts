@@ -14,6 +14,7 @@ export const RateLimitRuleDTO = z
     keyType: z.enum(['ip', 'user', 'ip_path']),
     enabled: z.boolean(),
     blockedMessage: z.string().nullable(),
+    pathPatterns: z.array(z.string()),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),

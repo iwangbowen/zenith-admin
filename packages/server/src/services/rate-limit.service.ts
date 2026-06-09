@@ -27,6 +27,7 @@ function mapRule(row: RateLimitRuleRow) {
     keyType: row.keyType,
     enabled: row.enabled,
     blockedMessage: row.blockedMessage,
+    pathPatterns: row.pathPatterns ?? [],
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
@@ -62,6 +63,7 @@ export interface UpdateRateLimitRuleInput {
   enabled?: boolean;
   description?: string | null;
   blockedMessage?: string | null;
+  pathPatterns?: string[];
 }
 
 export interface CreateRateLimitRuleInput {
@@ -72,6 +74,7 @@ export interface CreateRateLimitRuleInput {
   keyType: 'ip' | 'user' | 'ip_path';
   enabled: boolean;
   blockedMessage?: string | null;
+  pathPatterns?: string[];
 }
 
 export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRuleInput) {
@@ -86,6 +89,7 @@ export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRule
       ...(patch.enabled === undefined ? {} : { enabled: patch.enabled }),
       ...(patch.description === undefined ? {} : { description: patch.description }),
       ...(patch.blockedMessage === undefined ? {} : { blockedMessage: patch.blockedMessage }),
+      ...(patch.pathPatterns === undefined ? {} : { pathPatterns: patch.pathPatterns }),
     })
     .where(eq(rateLimitRules.id, id));
   await refreshRateLimitRules();
@@ -106,6 +110,7 @@ export async function createRateLimitRule(input: CreateRateLimitRuleInput) {
       keyType: input.keyType,
       enabled: input.enabled,
       blockedMessage: input.blockedMessage ?? null,
+      pathPatterns: input.pathPatterns ?? [],
     })
     .returning();
   await refreshRateLimitRules();

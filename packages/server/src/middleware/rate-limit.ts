@@ -21,12 +21,13 @@ export interface RuleConfig {
   keyType: RateLimitKeyType;
   enabled: boolean;
   blockedMessage: string | null;
+  pathPatterns: string[];
 }
 
 const DEFAULTS: Record<RateLimitName, RuleConfig> = {
-  auth:      { name: 'auth',      description: '登录接口限流',          windowMs: 3 * 60 * 1000,      limit: 20, keyType: 'ip', enabled: false, blockedMessage: '登录尝试过于频繁，请 3 分钟后再试' },
-  captcha:   { name: 'captcha',   description: '验证码接口限流',        windowMs: 60 * 1000,          limit: 30, keyType: 'ip', enabled: true, blockedMessage: '验证码请求过于频繁，请稍后再试' },
-  sensitive: { name: 'sensitive', description: '敏感操作（注册/重置）限流', windowMs: 60 * 60 * 1000,  limit: 5,  keyType: 'ip', enabled: true, blockedMessage: '操作过于频繁，请 1 小时后重试' },
+  auth:      { name: 'auth',      description: '登录接口限流',          windowMs: 3 * 60 * 1000,      limit: 20, keyType: 'ip', enabled: false, blockedMessage: '登录尝试过于频繁，请 3 分钟后再试', pathPatterns: [] },
+  captcha:   { name: 'captcha',   description: '验证码接口限流',        windowMs: 60 * 1000,          limit: 30, keyType: 'ip', enabled: true, blockedMessage: '验证码请求过于频繁，请稍后再试', pathPatterns: [] },
+  sensitive: { name: 'sensitive', description: '敏感操作（注册/重置）限流', windowMs: 60 * 60 * 1000,  limit: 5,  keyType: 'ip', enabled: true, blockedMessage: '操作过于频繁，请 1 小时后重试', pathPatterns: [] },
 };
 
 const ruleCache = new Map<string, RuleConfig>(Object.entries(DEFAULTS));
@@ -167,6 +168,25 @@ export function namedRateLimit(name: string): MiddlewareHandler {
   return makeNamed(name as RateLimitName);
 }
 
+/** 全局路径绑定限流中间件：自动应用 pathPatterns 匹配的规则 */
+export const pathBoundRateLimit: MiddlewareHandler = async (c, next) => {
+  const path = c.req.path;
+  for (const rule of ruleCache.values()) {
+    if (!rule.enabled || !rule.pathPatterns.length) continue;
+    const matched = rule.pathPatterns.some((pattern) => {
+      if (pattern.endsWith('/*')) {
+        return path.startsWith(pattern.slice(0, -2));
+      }
+      return path === pattern;
+    });
+    if (matched) {
+      const limiter = compiledLimiters.get(rule.name);
+      if (limiter) return limiter(c, next);
+    }
+  }
+  return next();
+};
+
 /** 从数据库加载规则到内存缓存并重建限流器 */
 export async function refreshRateLimitRules(): Promise<void> {
   try {
@@ -181,6 +201,7 @@ export async function refreshRateLimitRules(): Promise<void> {
         keyType: r.keyType,
         enabled: r.enabled,
         blockedMessage: r.blockedMessage,
+        pathPatterns: r.pathPatterns ?? [],
       });
     }
     ruleCache.clear();

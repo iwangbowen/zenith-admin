@@ -695,6 +695,7 @@ export const rateLimitRules = pgTable('rate_limit_rules', {
   keyType: rateLimitKeyTypeEnum('key_type').default('ip').notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   blockedMessage: varchar('blocked_message', { length: 255 }),
+  pathPatterns: text('path_patterns').array().notNull().default([]),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),

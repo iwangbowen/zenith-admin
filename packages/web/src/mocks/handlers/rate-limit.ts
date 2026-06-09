@@ -10,14 +10,15 @@ interface MockRule {
   keyType: 'ip' | 'user' | 'ip_path';
   enabled: boolean;
   blockedMessage: string | null;
+  pathPatterns: string[];
   createdAt: string;
   updatedAt: string;
 }
 
 const rules: MockRule[] = [
-  { id: 1, name: 'auth',      description: '登录接口限流',          windowMs: 3 * 60 * 1000,     limit: 20, keyType: 'ip', enabled: false,  blockedMessage: '登录尝试过于频繁，请 3 分钟后再试',  createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { id: 2, name: 'captcha',   description: '验证码接口限流',        windowMs: 60 * 1000,         limit: 30, keyType: 'ip', enabled: true,  blockedMessage: '验证码请求过于频繁，请稍后再试',     createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { id: 3, name: 'sensitive', description: '敏感操作（注册/重置）限流', windowMs: 60 * 60 * 1000, limit: 5,  keyType: 'ip', enabled: false, blockedMessage: '操作过于频繁，请 1 小时后重试',     createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 1, name: 'auth',      description: '登录接口限流',          windowMs: 3 * 60 * 1000,     limit: 20, keyType: 'ip', enabled: false,  blockedMessage: '登录尝试过于频繁，请 3 分钟后再试',  pathPatterns: [],  createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 2, name: 'captcha',   description: '验证码接口限流',        windowMs: 60 * 1000,         limit: 30, keyType: 'ip', enabled: true,  blockedMessage: '验证码请求过于频繁，请稍后再试',     pathPatterns: [],  createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 3, name: 'sensitive', description: '敏感操作（注册/重置）限流', windowMs: 60 * 60 * 1000, limit: 5,  keyType: 'ip', enabled: false, blockedMessage: '操作过于频繁，请 1 小时后重试',     pathPatterns: [],  createdAt: mockDateTime(), updatedAt: mockDateTime() },
 ];
 
 const stats = {

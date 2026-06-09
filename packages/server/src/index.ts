@@ -23,7 +23,7 @@ import logger from './lib/logger';
 import { errBody } from './lib/openapi-schemas';
 import { ipAccessMiddleware } from './middleware/ip-access';
 import { httpLoggerMiddleware } from './middleware/http-logger';
-import { authRateLimit, captchaRateLimit, sensitiveRateLimit, bootstrapRateLimitRules } from './middleware/rate-limit';
+import { authRateLimit, captchaRateLimit, sensitiveRateLimit, bootstrapRateLimitRules, pathBoundRateLimit } from './middleware/rate-limit';
 import rateLimitRoutes from './routes/rate-limit';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
@@ -199,6 +199,9 @@ app.use('/api/auth/captcha', captchaRateLimit);
 app.use('/api/auth/register', sensitiveRateLimit);
 app.use('/api/auth/forgot-password', sensitiveRateLimit);
 app.use('/api/auth/reset-password', sensitiveRateLimit);
+
+// 路径绑定限流：匹配自定义规则的 pathPatterns
+app.use('/api/*', pathBoundRateLimit);
 
 // ─── 维护模式拦截（认证路由、公开维护接口之后注册）────────────────────────
 app.use('/api/*', maintenanceMiddleware);

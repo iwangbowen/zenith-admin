@@ -41,6 +41,7 @@ interface RateLimitRule {
   keyType: RateLimitKeyType;
   enabled: boolean;
   blockedMessage: string | null;
+  pathPatterns: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +75,7 @@ interface UpdateForm {
   keyType: RateLimitKeyType;
   enabled: boolean;
   blockedMessage: string | null;
+  pathPatterns: string[];
 }
 
 interface CreateForm {
@@ -84,6 +86,7 @@ interface CreateForm {
   keyType: RateLimitKeyType;
   enabled: boolean;
   blockedMessage: string | null;
+  pathPatterns: string[];
 }
 
 const PREDEFINED_NAMES = new Set(['auth', 'captcha', 'sensitive']);
@@ -114,6 +117,23 @@ export default function RateLimitPage() {
   const [creating, setCreating] = useState(false);
   const [formApi, setFormApi] = useState<FormApi<UpdateForm> | null>(null);
   const [createFormApi, setCreateFormApi] = useState<FormApi<CreateForm> | null>(null);
+  const [apiPaths, setApiPaths] = useState<{ label: string; value: string }[]>([]);
+
+  // 加载 OpenAPI 路径列表（用于路径绑定选择器）
+  useEffect(() => {
+    fetch('/api/openapi.json')
+      .then((r) => r.json())
+      .then((spec: { paths?: Record<string, unknown> }) => {
+        if (spec?.paths) {
+          const opts = Object.keys(spec.paths)
+            .filter((p) => p.startsWith('/api/'))
+            .sort((a, b) => a.localeCompare(b))
+            .map((p) => ({ label: p, value: p }));
+          setApiPaths(opts);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -344,7 +364,7 @@ export default function RateLimitPage() {
         <Form<CreateForm>
           getFormApi={setCreateFormApi}
           allowEmpty
-          initValues={{ name: '', description: null, keyType: 'ip', enabled: true, windowMs: 60000, limit: 30, blockedMessage: null }}
+          initValues={{ name: '', description: null, keyType: 'ip', enabled: true, windowMs: 60000, limit: 30, blockedMessage: null, pathPatterns: [] }}
           labelPosition="left"
           labelWidth={130}
         >
@@ -361,8 +381,23 @@ export default function RateLimitPage() {
           <Form.Switch field="enabled" label="启用" />
           <Form.InputNumber field="windowMs" label="时间窗口(ms)" min={1000} step={1000} style={{ width: '100%' }} rules={[{ required: true }]} />
           <Form.InputNumber field="limit" label="窗口内上限" min={1} style={{ width: '100%' }} rules={[{ required: true }]} />
-          <Form.Select field="keyType" label="计数维度" optionList={KEY_TYPE_OPTIONS} style={{ width: '100%' }} />
+          <Form.Select
+            field="keyType"
+            label="计数维度"
+            optionList={KEY_TYPE_OPTIONS}
+            style={{ width: '100%' }}
+          />
           <Form.Input field="blockedMessage" label="拦截提示文案" placeholder="为空使用默认提示" />
+          <Form.Select
+            field="pathPatterns"
+            label="绑定路径"
+            placeholder="选择或输入路径，支持 /* 通配符，留空则不自动应用"
+            multiple
+            filter
+            allowCreate
+            style={{ width: '100%' }}
+            optionList={apiPaths}
+          />
         </Form>
       </AppModal>
 
@@ -385,6 +420,7 @@ export default function RateLimitPage() {
               keyType: editing.keyType,
               enabled: editing.enabled,
               blockedMessage: editing.blockedMessage,
+              pathPatterns: editing.pathPatterns ?? [],
             }}
             labelPosition="left"
             labelWidth={130}
@@ -394,6 +430,16 @@ export default function RateLimitPage() {
             <Form.InputNumber field="limit" label="窗口内上限" min={1} style={{ width: '100%' }} rules={[{ required: true }]} />
             <Form.Select field="keyType" label="计数维度" optionList={KEY_TYPE_OPTIONS} style={{ width: '100%' }} />
             <Form.Input field="blockedMessage" label="拦截提示文案" placeholder="为空使用默认提示" />
+            <Form.Select
+              field="pathPatterns"
+              label="绑定路径"
+              placeholder="选择或输入路径，支持 /* 通配符，留空则不自动应用"
+              multiple
+              filter
+              allowCreate
+              style={{ width: '100%' }}
+              optionList={apiPaths}
+            />
           </Form>
         )}
       </AppModal>

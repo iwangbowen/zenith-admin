@@ -30,6 +30,7 @@ const UpdateRuleBody = z.object({
   enabled: z.boolean().optional(),
   description: z.string().nullable().optional(),
   blockedMessage: z.string().nullable().optional(),
+  pathPatterns: z.array(z.string().max(256)).max(50).optional(),
 });
 
 const CreateRuleBody = z.object({
@@ -40,6 +41,7 @@ const CreateRuleBody = z.object({
   keyType: z.enum(['ip', 'user', 'ip_path']),
   enabled: z.boolean(),
   blockedMessage: z.string().max(255).nullable().optional(),
+  pathPatterns: z.array(z.string().max(256)).max(50).optional(),
 });
 
 const UnblockBody = z.object({
