@@ -115,7 +115,10 @@ function buildLimiter(rule: RuleConfig): MiddlewareHandler {
       } catch (err) {
         logger.warn('[rate-limit] stats record failed', err);
       }
-      return c.json(errBody(rule.blockedMessage ?? '请求过于频繁，请稍后再试', 429), 429);
+      const retryAfterSec = Math.ceil(rule.windowMs / 1000);
+      return c.json(errBody(rule.blockedMessage ?? '请求过于频繁，请稍后再试', 429), 429, {
+        'Retry-After': String(retryAfterSec),
+      });
     },
   });
 }

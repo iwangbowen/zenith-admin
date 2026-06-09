@@ -3,6 +3,9 @@ import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { ApiResponse } from '@zenith/shared';
 import { config } from '@/config';
 
+/** ApiResponse 扩展：限流时携带 retryAfterSeconds */
+export type ApiResponseWithMeta<T> = ApiResponse<T> & { retryAfterSeconds?: number };
+
 export interface RequestOptions {
   /** 静默模式：为 true 时不自动弹出错误提示，由调用方自行处理 */
   silent?: boolean;
@@ -60,7 +63,7 @@ class Request {
     return this.refreshing;
   }
 
-  async request<T>(url: string, options: RequestInit & RequestOptions = {}): Promise<ApiResponse<T>> {
+  async request<T>(url: string, options: RequestInit & RequestOptions = {}): Promise<ApiResponseWithMeta<T>> {
     const { silent, skipAuth, ...fetchOptions } = options;
     let res: Response;
     try {
@@ -109,6 +112,20 @@ class Request {
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         globalThis.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '') || ''}/login`;
         throw new Error('Unauthorized');
+      }
+    }
+
+    if (res.status === 429) {
+      const retryAfterHeader = res.headers.get('Retry-After');
+      const retryAfterSeconds = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : undefined;
+      try {
+        const data = await res.json() as ApiResponse<T>;
+        if (!silent) Toast.error(data.message || '请求过于频繁，请稍后再试');
+        return retryAfterSeconds ? { ...data, retryAfterSeconds } : data;
+      } catch {
+        const msg = '请求过于频繁，请稍后再试';
+        if (!silent) Toast.error(msg);
+        return { code: 429, message: msg, data: null as unknown as T, ...(retryAfterSeconds ? { retryAfterSeconds } : {}) };
       }
     }
 

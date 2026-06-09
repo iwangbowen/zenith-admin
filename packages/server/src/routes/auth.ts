@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
+import { authRateLimit, captchaRateLimit, sensitiveRateLimit } from '../middleware/rate-limit';
 import { generateCaptcha } from '../lib/captcha';
 import { getConfigBoolean } from '../lib/system-config';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody } from '../lib/openapi-schemas';
@@ -58,6 +59,7 @@ const refreshSchema = z.object({ refreshToken: z.string().min(1) });
 const captchaRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/captcha', tags: ['Auth'], summary: '获取验证码', security: [],
+    middleware: [captchaRateLimit] as const,
     responses: { ...commonErrorResponses, ...ok(CaptchaDTO, 'ok') },
   }),
   handler: async (c) => {
@@ -71,6 +73,7 @@ const captchaRoute = defineOpenAPIRoute({
 const loginRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/login', tags: ['Auth'], summary: '登录', security: [],
+    middleware: [authRateLimit] as const,
     request: { body: { content: jsonContent(loginSchema), required: true } },
     responses: {
       ...commonErrorResponses,
@@ -90,6 +93,7 @@ const loginRoute = defineOpenAPIRoute({
 const registerRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/register', tags: ['Auth'], summary: '注册', security: [],
+    middleware: [sensitiveRateLimit] as const,
     request: { body: { content: jsonContent(registerSchema), required: true } },
     responses: {
       ...commonErrorResponses,
@@ -292,6 +296,7 @@ const authTenantsRoute = defineOpenAPIRoute({
 const forgotPasswordRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/forgot-password', tags: ['Auth'], summary: '忘记密码', security: [],
+    middleware: [sensitiveRateLimit] as const,
     request: { body: { content: jsonContent(forgotPasswordSchema), required: true } },
     responses: {
       ...commonErrorResponses,
@@ -308,6 +313,7 @@ const forgotPasswordRoute = defineOpenAPIRoute({
 const resetPasswordRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/reset-password', tags: ['Auth'], summary: '重置密码', security: [],
+    middleware: [sensitiveRateLimit] as const,
     request: { body: { content: jsonContent(resetPasswordSchema), required: true } },
     responses: {
       ...commonErrorResponses,

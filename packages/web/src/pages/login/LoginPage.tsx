@@ -13,8 +13,8 @@ import './LoginPage.css';
 const { Title, Text } = Typography;
 
 interface LoginPageProps {
-  onLogin: (username: string, password: string, captchaId?: string, captchaCode?: string, tenantCode?: string) => Promise<{ code: number; message: string }>;
-  onRegister: (data: { username: string; nickname: string; email: string; password: string }) => Promise<{ code: number; message: string }>;
+  onLogin: (username: string, password: string, captchaId?: string, captchaCode?: string, tenantCode?: string) => Promise<{ code: number; message: string; retryAfterSeconds?: number }>;
+  onRegister: (data: { username: string; nickname: string; email: string; password: string }) => Promise<{ code: number; message: string; retryAfterSeconds?: number }>;
 }
 
 export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPageProps>) {
@@ -24,6 +24,15 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   const redirectTo = params.get('redirect') || '/';
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState('login');
+  const [retrySeconds, setRetrySeconds] = useState(0);
+
+  useEffect(() => {
+    if (retrySeconds <= 0) return;
+    const timer = setInterval(() => {
+      setRetrySeconds((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [retrySeconds]);
   const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 
   // Captcha state
@@ -70,6 +79,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   }, []);
 
   const handleLogin = async (values: Record<string, string>) => {
+    if (retrySeconds > 0) return;
     setLoading(true);
     try {
       const res = await onLogin(values.username, values.password, captchaId, values.captchaCode, values.tenantCode);
@@ -77,7 +87,9 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
         navigate(redirectTo, { replace: true });
         return;
       }
-
+      if (res.code === 429 && res.retryAfterSeconds) {
+        setRetrySeconds(res.retryAfterSeconds);
+      }
       Toast.error(res.message);
       if (captchaEnabled) fetchCaptcha();
     } finally {
@@ -86,6 +98,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   };
 
   const handleRegister = async (values: RegisterInput) => {
+    if (retrySeconds > 0) return;
     setLoading(true);
     try {
       const res = await onRegister(values);
@@ -93,7 +106,9 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
         navigate(redirectTo, { replace: true });
         return;
       }
-
+      if (res.code === 429 && res.retryAfterSeconds) {
+        setRetrySeconds(res.retryAfterSeconds);
+      }
       Toast.error(res.message);
     } finally {
       setLoading(false);
@@ -164,11 +179,12 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
         type="primary"
         theme="solid"
         loading={loading}
+        disabled={retrySeconds > 0}
         block
         size="large"
         style={{ marginTop: 8, borderRadius: 8, height: 42 }}
       >
-        登录
+        {retrySeconds > 0 ? `${retrySeconds}s 后可重试` : '登录'}
       </Button>
       {forgotPasswordEnabled && (
         <div style={{ textAlign: 'right', marginTop: 8 }}>
@@ -225,11 +241,12 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
         type="primary"
         theme="solid"
         loading={loading}
+        disabled={retrySeconds > 0}
         block
         size="large"
         style={{ marginTop: 8, borderRadius: 8, height: 42 }}
       >
-        注册
+        {retrySeconds > 0 ? `${retrySeconds}s 后可重试` : '注册'}
       </Button>
     </Form>
   );
