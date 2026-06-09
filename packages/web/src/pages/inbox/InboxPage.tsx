@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AppModal } from '@/components/AppModal';
 import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Modal, Popconfirm, Spin,
 } from '@douyinfe/semi-ui';
@@ -226,7 +227,7 @@ export default function InboxPage() {
         />
       )}
 
-      <Modal
+      <AppModal
         title={selected?.title ?? ''}
         visible={selected !== null}
         onCancel={() => { setSelected(null); setDetailLoading(false); }}
@@ -246,7 +247,7 @@ export default function InboxPage() {
             </div>
           )}
         </Spin>
-      </Modal>
+      </AppModal>
     </div>
   );
 }
