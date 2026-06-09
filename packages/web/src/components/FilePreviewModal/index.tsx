@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Modal, Spin, Toast, AudioPlayer, VideoPlayer, Typography } from '@douyinfe/semi-ui';
-import { Maximize2, Minimize2, X } from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
 import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPlainTextFile, isZipFile, getFileTypeIcon } from '@/utils/file-utils';
 import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
 import { request } from '@/utils/request';
+import AppModal from '@/components/AppModal';
 import type { IWorkbookData } from '@univerjs/presets';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 // Univer 体积较大，懒加载，避免进入文件管理页即拉取
 const ExcelPreviewPanel = lazy(() => import('@/components/ExcelPreviewPanel'));
@@ -177,32 +177,20 @@ export default function FilePreviewModal({
     onClose();
   };
 
-  /** 统一标题栏：文件图标 + 文件名 + 全屏切换 + 关闭 */
-  const iconStyle: CSSProperties = { cursor: 'pointer', color: 'var(--semi-color-text-2)', flexShrink: 0 };
-  const renderHeader = () => (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '10px 16px',
-        borderBottom: '1px solid var(--semi-color-border)',
-        background: 'var(--semi-color-bg-1)',
-        flexShrink: 0,
-      }}
-    >
+  /**
+   * 预览弹窗标题：文件类型图标 + 文件名。
+   * 由 AppModal 的 title prop 承载，统一在弹窗顶部展示。
+   * PDF 除外（PDFPreviewPanel 有自己的完整标题栏，不使用 AppModal）。
+   */
+  const previewTitle: ReactNode = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
       {getFileTypeIcon(mimeType, 15)}
       <Typography.Text
         ellipsis={{ showTooltip: true }}
-        style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0 }}
+        style={{ fontSize: 13, fontWeight: 500, minWidth: 0 }}
       >
         {fileName}
       </Typography.Text>
-      {fullscreen
-        ? <Minimize2 size={16} style={iconStyle} onClick={toggleFullscreen} />
-        : <Maximize2 size={16} style={iconStyle} onClick={toggleFullscreen} />
-      }
-      <X size={18} style={iconStyle} onClick={handleClose} />
     </div>
   );
 
@@ -210,17 +198,17 @@ export default function FilePreviewModal({
 
   if (loading) {
     return (
-      <Modal
+      <AppModal
         visible
         onCancel={handleClose}
-        title={null}
+        title={previewTitle}
         footer={null}
-        closable={false}
+        fullscreenable={false}
         keepDOM={false}
         bodyStyle={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}
       >
         <Spin size="large" tip="加载中..." />
-      </Modal>
+      </AppModal>
     );
   }
 
@@ -251,19 +239,18 @@ export default function FilePreviewModal({
 
   if (sheetData) {
     return (
-      <Modal
+      <AppModal
         visible
         onCancel={handleClose}
-        title={null}
+        title={previewTitle}
         footer={null}
-        fullScreen={fullscreen}
+        fullscreen={fullscreen}
+        onToggleFullscreen={toggleFullscreen}
         width="min(1200px, 94vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100vh' : '90vh' }}
-        closable={false}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? 'calc(100vh - 40px)' : 'calc(90vh - 40px)' }}
         keepDOM={false}
       >
-        {renderHeader()}
         <Suspense
           fallback={
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
@@ -279,25 +266,24 @@ export default function FilePreviewModal({
             <ExcelPreviewPanel key={sheetKey} data={sheetData} style={{ flex: 1, minHeight: 0 }} />
           )}
         </Suspense>
-      </Modal>
+      </AppModal>
     );
   }
 
   if (docxBlob) {
     return (
-      <Modal
+      <AppModal
         visible
         onCancel={handleClose}
-        title={null}
+        title={previewTitle}
         footer={null}
-        fullScreen={fullscreen}
+        fullscreen={fullscreen}
+        onToggleFullscreen={toggleFullscreen}
         width="min(960px, 92vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100vh' : '90vh' }}
-        closable={false}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? 'calc(100vh - 40px)' : 'calc(90vh - 40px)' }}
         keepDOM={false}
       >
-        {renderHeader()}
         <Suspense
           fallback={
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
@@ -307,7 +293,7 @@ export default function FilePreviewModal({
         >
           <DocxPreviewPanel blob={docxBlob} style={{ flex: 1, minHeight: 0 }} />
         </Suspense>
-      </Modal>
+      </AppModal>
     );
   }
 
@@ -315,19 +301,18 @@ export default function FilePreviewModal({
     const isRawText = markdownText.startsWith('\u0000PLAINTEXT\u0000');
     const displayContent = isRawText ? markdownText.slice('\u0000PLAINTEXT\u0000'.length) : markdownText;
     return (
-      <Modal
+      <AppModal
         visible
         onCancel={handleClose}
-        title={null}
+        title={previewTitle}
         footer={null}
-        fullScreen={fullscreen}
+        fullscreen={fullscreen}
+        onToggleFullscreen={toggleFullscreen}
         width="min(900px, 92vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100vh' : '90vh' }}
-        closable={false}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? 'calc(100vh - 40px)' : 'calc(90vh - 40px)' }}
         keepDOM={false}
       >
-        {renderHeader()}
         <Suspense
           fallback={
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
@@ -341,25 +326,24 @@ export default function FilePreviewModal({
             style={{ flex: 1, minHeight: 0 }}
           />
         </Suspense>
-      </Modal>
+      </AppModal>
     );
   }
 
   if (zipBlob) {
     return (
-      <Modal
+      <AppModal
         visible
         onCancel={handleClose}
-        title={null}
+        title={previewTitle}
         footer={null}
-        fullScreen={fullscreen}
+        fullscreen={fullscreen}
+        onToggleFullscreen={toggleFullscreen}
         width="min(700px, 92vw)"
         style={{ top: '5vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100vh' : '85vh' }}
-        closable={false}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? 'calc(100vh - 40px)' : 'calc(85vh - 40px)' }}
         keepDOM={false}
       >
-        {renderHeader()}
         <Suspense
           fallback={
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
@@ -369,21 +353,21 @@ export default function FilePreviewModal({
         >
           <ZipPreviewPanel blob={zipBlob} style={{ flex: 1, minHeight: 0 }} />
         </Suspense>
-      </Modal>
+      </AppModal>
     );
   }
 
   if (audioUrl) {
     return (
-      <Modal
+      <AppModal
         visible
         onCancel={handleClose}
-        title={null}
+        title={previewTitle}
         footer={null}
+        fullscreenable={false}
         width={600}
         style={{ top: '25vh' }}
         bodyStyle={{ padding: 0, overflow: 'hidden', borderRadius: 8 }}
-        closable={false}
         keepDOM={false}
       >
         <AudioPlayer
@@ -391,21 +375,21 @@ export default function FilePreviewModal({
           theme={isDark ? 'dark' : 'light'}
           style={{ borderRadius: 8 }}
         />
-      </Modal>
+      </AppModal>
     );
   }
 
   if (videoUrl) {
     return (
-      <Modal
+      <AppModal
         visible
         onCancel={handleClose}
-        title={null}
+        title={previewTitle}
         footer={null}
+        fullscreenable={false}
         width="min(960px, 92vw)"
         style={{ top: '4vh' }}
         bodyStyle={{ padding: 0, overflow: 'hidden', borderRadius: 8 }}
-        closable={false}
         keepDOM={false}
       >
         <VideoPlayer
@@ -425,7 +409,7 @@ export default function FilePreviewModal({
           ]}
           style={{ borderRadius: 8 }}
         />
-      </Modal>
+      </AppModal>
     );
   }
 
