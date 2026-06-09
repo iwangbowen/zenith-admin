@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
-import { BackTop, Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
+import { BackTop, Badge, Banner, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink } from 'lucide-react';
@@ -1404,27 +1404,23 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
     >
       {/* 维护模式横幅（仅超级管理员可见） */}
       {isSuperAdmin && maintenanceBannerEnabled && (
-        <div style={{
-          padding: '8px 20px',
-          background: 'var(--semi-color-warning-light-default)',
-          borderBottom: '1px solid var(--semi-color-warning-light-active)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 13,
-          color: 'var(--semi-color-text-0)',
-          zIndex: 1000,
-          position: 'relative',
-        }}>
-          <Wrench size={14} color="var(--semi-color-warning)" />
-          <span style={{ flex: 1 }}>
-            系统当前处于 <strong>维护模式</strong>，普通用户无法访问接口。
-            {maintenanceBannerMsg && <span style={{ marginLeft: 8, color: 'var(--semi-color-text-2)' }}>{maintenanceBannerMsg}</span>}
-          </span>
-          <Button size="small" theme="solid" type="warning" loading={disablingMaintenance} onClick={handleDisableMaintenance}>
-            关闭维护模式
-          </Button>
-        </div>
+        <Banner
+          type="warning"
+          icon={<Wrench size={15} />}
+          style={{ borderRadius: 0 }}
+          description={
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>
+                系统当前处于 <strong>维护模式</strong>，普通用户无法访问接口。
+                {maintenanceBannerMsg && <span style={{ marginLeft: 8, color: 'var(--semi-color-text-2)' }}>{maintenanceBannerMsg}</span>}
+              </span>
+              <Button size="small" theme="solid" type="warning" loading={disablingMaintenance} onClick={handleDisableMaintenance}>
+                关闭维护模式
+              </Button>
+            </span>
+          }
+          closeIcon={null}
+        />
       )}
       {/* Top bar for horizontal and mixed layouts */}
       {navLayout !== 'vertical' && navLayout !== 'double' && (
