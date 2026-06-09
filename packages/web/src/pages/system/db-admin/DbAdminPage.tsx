@@ -1686,7 +1686,7 @@ export default function DbAdminPage() {
         </TabPane>
       </Tabs>
 
-      <Modal
+      <AppModal
         title="查询计划 (EXPLAIN)"
         visible={explainOpen}
         onCancel={() => setExplainOpen(false)}
@@ -1694,7 +1694,7 @@ export default function DbAdminPage() {
         width={800}
       >
         <JsonViewer value={JSON.stringify(explainData, null, 2)} height={500} width="100%" />
-      </Modal>
+      </AppModal>
 
       {selected && structure && (
         <RowEditModal
