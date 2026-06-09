@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button, Col, Form, Input, Modal, Row, Select, Space, Tag,
   Toast } from '@douyinfe/semi-ui';
+import { AppModal } from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { CheckCheck, Plus, RotateCcw, Search } from 'lucide-react';
 import type { InAppMessage, InAppMessageType, InAppTemplate, PaginatedResponse, User } from '@zenith/shared';
@@ -211,7 +212,7 @@ export default function InAppMessagesPage() {
         pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1400 }} />
 
-      <Modal title="发送站内信" visible={sendVisible} onOk={handleSend}
+      <AppModal title="发送站内信" visible={sendVisible} onOk={handleSend}
         onCancel={() => setSendVisible(false)} confirmLoading={submitting} width={720}>
         <Form key="send" getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           allowEmpty labelPosition="left" labelWidth={120} initValues={{ type: 'info' }}>
@@ -255,7 +256,7 @@ export default function InAppMessagesPage() {
             </Col>
           </Row>
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

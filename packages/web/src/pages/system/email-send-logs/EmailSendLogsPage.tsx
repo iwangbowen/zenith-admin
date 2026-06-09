@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button, Form, Input, Modal, Select, SplitButtonGroup, Dropdown, Tag,
   Toast } from '@douyinfe/semi-ui';
+import { AppModal } from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Download, Plus, RotateCcw, Search, ChevronDown } from 'lucide-react';
 import type { EmailSendLog, EmailTemplate, PaginatedResponse, SendStatus } from '@zenith/shared';
@@ -194,7 +195,7 @@ export default function EmailSendLogsPage() {
         pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1400 }} />
 
-      <Modal title="测试发送邮件" visible={testVisible} onOk={handleTest}
+      <AppModal title="测试发送邮件" visible={testVisible} onOk={handleTest}
         onCancel={() => setTestVisible(false)} confirmLoading={submitting} width={560}>
         <Form key="test" getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           labelPosition="left" labelWidth={90} initValues={{}}>
@@ -205,7 +206,7 @@ export default function EmailSendLogsPage() {
           <Form.TextArea field="content" label="邮件内容" rows={5} rules={[{ required: true, message: '请输入邮件内容' }]} />
           <Form.Input field="variables" label="变量" placeholder='如：{"username":"张三"}' />
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

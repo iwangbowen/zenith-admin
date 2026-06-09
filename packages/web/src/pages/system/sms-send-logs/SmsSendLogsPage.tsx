@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button, Form, Input, Modal, Select, SplitButtonGroup, Dropdown, Tag,
   Toast } from '@douyinfe/semi-ui';
+import { AppModal } from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Download, Plus, RotateCcw, Search, ChevronDown } from 'lucide-react';
 import type { PaginatedResponse, SendStatus, SmsSendLog, SmsTemplate } from '@zenith/shared';
@@ -196,7 +197,7 @@ export default function SmsSendLogsPage() {
         pagination={buildPagination(total, fetchList)}
         scroll={{ x: 1400 }} />
 
-      <Modal title="测试发送短信" visible={testVisible} onOk={handleTest}
+      <AppModal title="测试发送短信" visible={testVisible} onOk={handleTest}
         onCancel={() => setTestVisible(false)} confirmLoading={submitting} width={520}>
         <Form key="test" getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
           labelPosition="left" labelWidth={90} initValues={{}}>
@@ -206,7 +207,7 @@ export default function SmsSendLogsPage() {
           <Form.Input field="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }]} />
           <Form.Input field="variables" label="变量" placeholder='如：{"code":"1234"}' />
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }
