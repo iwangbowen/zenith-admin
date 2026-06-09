@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
-import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
+import { BackTop, Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, HotKeys, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink } from 'lucide-react';
@@ -1773,6 +1773,10 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 <Outlet key={outletRefreshKey} />
               </div>
             </RouteErrorBoundary>
+            <BackTop
+              target={() => (document.querySelector('.admin-content') as HTMLElement) ?? document.body}
+              style={{ right: 24, bottom: 24 }}
+            />
           </div>
 
           {/* Preferences SideSheet */}
