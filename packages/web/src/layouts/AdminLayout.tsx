@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
+import { AppModal } from '@/components/AppModal';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink } from 'lucide-react';
 import { match as pinyinMatch } from 'pinyin-pro';
@@ -2396,7 +2397,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
           </SideSheet>
 
           {/* ─── 快捷键 Modal ─── */}
-          <Modal
+          <AppModal
             title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Keyboard size={16} />快捷键</span>}
             visible={shortcutsVisible}
             onCancel={() => setShortcutsVisible(false)}
@@ -2461,10 +2462,10 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 </div>
               </div>
             ))}
-          </Modal>
+          </AppModal>
 
           {/* ─── 锁屏密码设置 Modal ─── */}
-          <Modal
+          <AppModal
             title={lockPasswordModalMode === 'set' ? '设置锁屏密码' : '修改锁屏密码'}
             visible={lockPasswordModalVisible}
             onCancel={() => {
@@ -2515,7 +2516,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 }}
               />
             </div>
-          </Modal>
+          </AppModal>
         </div>
       </div>
 
@@ -2533,7 +2534,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
       {quickChatEnabled && (preferences.showQuickChat ?? true) && <QuickChatButton onHide={() => setPreferences({ showQuickChat: false })} />}
 
       {/* ===== 消息详情 Modal ===== */}
-      <Modal
+      <AppModal
         title={selectedMessage?.title ?? ''}
         visible={selectedMessage !== null}
         onCancel={() => setSelectedMessage(null)}
@@ -2551,7 +2552,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
             </div>
           </div>
         )}
-      </Modal>
+      </AppModal>
 
       {/* ===== 公告详情 Modal ===== */}
       {/* ===== 公告详情 Modal ===== */}
