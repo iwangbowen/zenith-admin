@@ -11,6 +11,7 @@ import type {
   UserSession, UserApiToken, UserApiTokenCreated,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { AppModal } from '@/components/AppModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
@@ -758,7 +759,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       </div>
 
       {/* ── 预设头像选择 Modal ─────────────────────────────────────────────── */}
-      <Modal
+      <AppModal
         title="选择预设头像"
         visible={presetModalVisible}
         onCancel={() => setPresetModalVisible(false)}
@@ -792,10 +793,10 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
             </button>
           ))}
         </div>
-      </Modal>
+      </AppModal>
 
-      {/* ── 头像裁剪 Modal ──────────────────────────────────────────────────── */}
-      <Modal
+      {/* ── 头像裁剪 Modal ────────────────────────────────────────────────────────────────── */}
+      <AppModal
         title="裁剪头像"
         visible={cropperVisible}
         onCancel={closeCropper}
@@ -834,10 +835,10 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
             onClick={() => void handleCropRotate(90)}
           >向右旋转</Button>
         </div>
-      </Modal>
+      </AppModal>
 
-      {/* ── 新建 Token Modal ────────────────────────────────────────────────── */}
-      <Modal
+      {/* ── 新建 Token Modal ──────────────────────────────────────────────────────────────── */}
+      <AppModal
         title="新建 API Token"
         visible={newTokenVisible}
         onCancel={() => { setNewTokenVisible(false); setNewTokenName(''); setNewTokenExpiresAt(null); }}
@@ -870,7 +871,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
             />
           </Form.Slot>
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* ── 创建成功展示完整 Token ──────────────────────────────────────────── */}
       <Modal
