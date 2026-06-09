@@ -544,7 +544,7 @@ export default function WorkflowDesignerPage() {
       </div>
 
       {/* 流程元信息弹窗（新建时填写名称） */}
-      <Modal
+      <AppModal
         title="填写流程信息"
         visible={metaModalVisible}
         onCancel={() => setMetaModalVisible(false)}
@@ -559,9 +559,9 @@ export default function WorkflowDesignerPage() {
           <Form.Input field="name" label="流程名称" placeholder="请输入流程名称" rules={[{ required: true, message: '请输入流程名称' }]} />
           <Form.TextArea field="description" label="描述" placeholder="请输入描述" />
         </Form>
-      </Modal>
+      </AppModal>
 
-      {/* 节点属性编辑弹窗 */}
+      {/* 节点属性编辑弹窗 */}}
       <AppModal
         title="编辑节点属性"
         visible={nodeEditVisible}

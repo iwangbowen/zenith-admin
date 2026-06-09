@@ -172,7 +172,7 @@ function InstanceDetailDrawer({
       ) : (
         <WorkflowInstanceDetailPanel instance={data} definition={definition} loading={loading} />
       )}
-      <Modal
+      <AppModal
         title="催办"
         visible={urgeVisible}
         onCancel={() => setUrgeVisible(false)}
@@ -189,7 +189,7 @@ function InstanceDetailDrawer({
           rows={3}
           style={{ marginTop: 8 }}
         />
-      </Modal>
+      </AppModal>
       <AppModal
         title="添加抄送人"
         visible={ccVisible}
