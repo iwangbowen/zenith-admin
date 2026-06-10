@@ -26,7 +26,7 @@ function calcStrength(pwd: string): Level {
   let score = 0;
   if (/[a-z]/.test(pwd)) score++;
   if (/[A-Z]/.test(pwd)) score++;
-  if (/[0-9]/.test(pwd)) score++;
+  if (/\d/.test(pwd)) score++;
   if (/[^a-zA-Z0-9]/.test(pwd)) score++;
   if (pwd.length >= 10) score++;
 
@@ -51,19 +51,22 @@ export function PasswordStrengthMeter({ password, policy }: PasswordStrengthMete
 
   const policyChecks = policy
     ? [
-        { label: `至少 ${policy.minLength} 位`, ok: password.length >= policy.minLength },
         ...(policy.requireUppercase
-          ? [{ label: '包含大写字母', ok: /[A-Z]/.test(password) }]
+          ? [{ label: '含大写字母', ok: /[A-Z]/.test(password) }]
           : []),
         ...(policy.requireSpecialChar
-          ? [{ label: '包含特殊字符', ok: /[^a-zA-Z0-9]/.test(password) }]
+          ? [{ label: '含特殊字符', ok: /[^a-zA-Z0-9]/.test(password) }]
           : []),
       ]
     : null;
 
+  // 最小长度单独提出，与强度条同行显示
+  const minLengthOk = policy ? password.length >= policy.minLength : null;
+  const minLengthLabel = policy ? `至少 ${policy.minLength} 位` : null;
+
   return (
     <div style={{ padding: '4px 0' }}>
-      {/* 强度分段条 + 标签 */}
+      {/* 强度分段条 + 标签 + 最小位数（同行） */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', gap: 3, flex: 1 }}>
           {([1, 2, 3, 4] as Level[]).map((i) => (
@@ -82,11 +85,25 @@ export function PasswordStrengthMeter({ password, policy }: PasswordStrengthMete
         <span style={{ fontSize: 12, fontWeight: 600, color, minWidth: 28, textAlign: 'right' }}>
           {label}
         </span>
+        {minLengthLabel !== null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+            {minLengthOk
+              ? <CheckCircle size={11} style={{ flexShrink: 0, color: '#00b42a' }} />
+              : <Circle size={11} style={{ flexShrink: 0, color: 'var(--semi-color-text-3)' }} />}
+            <span style={{
+              fontSize: 12,
+              color: minLengthOk ? '#00b42a' : 'var(--semi-color-text-3)',
+              transition: 'color 0.2s',
+            }}>
+              {minLengthLabel}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* 策略达标清单 */}
-      {policyChecks && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 14px', marginTop: 6 }}>
+      {/* 其他策略达标项（大写/特殊字符等），仍在下方 */}
+      {policyChecks && policyChecks.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 14px', marginTop: 5 }}>
           {policyChecks.map(({ label: l, ok }) => (
             <div
               key={l}
