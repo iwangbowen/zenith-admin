@@ -1186,6 +1186,7 @@ export default function DbAdminPage() {
                   loading={tablesLoading && tables.length === 0}
                   emptyText="无匹配的表"
                   bodyNoPadding
+                  rawBody
                 >
                   {filteredTables.length > 0 && (
                     <Collapse
@@ -1204,7 +1205,7 @@ export default function DbAdminPage() {
                             </Space>
                           }
                         >
-                          <div style={{ padding: '0 8px 8px' }}>
+                          <List split={false} className="nav-list-panel__list" style={{ padding: '0 8px 8px' }}>
                             {list.map((t: TableItem) => {
                               const isActive = selected?.schema === t.schema && selected?.name === t.name;
                               return (
@@ -1235,7 +1236,7 @@ export default function DbAdminPage() {
                                 />
                               );
                             })}
-                          </div>
+                          </List>
                         </Collapse.Panel>
                       ))}
                     </Collapse>

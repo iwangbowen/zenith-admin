@@ -1,5 +1,6 @@
+import { Children } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { Input, Spin } from '@douyinfe/semi-ui';
+import { Input, List, Spin } from '@douyinfe/semi-ui';
 import { Search } from 'lucide-react';
 import './NavListPanel.css';
 
@@ -30,6 +31,11 @@ export interface NavListPanelProps {
   style?: CSSProperties;
   /** 是否去掉 body 的 padding（用于 Collapse 分组等场景） */
   bodyNoPadding?: boolean;
+  /**
+   * 原样渲染 children，不套内置的 Semi `<List>` 容器（用于分组 Collapse 等自定义布局，
+   * 由调用方自行组合 `<List>` 与空状态）。默认 false：会把扁平 children 包进 `<List>`。
+   */
+  rawBody?: boolean;
 }
 
 export function NavListPanel({
@@ -42,8 +48,10 @@ export function NavListPanel({
   children,
   style,
   bodyNoPadding,
+  rawBody,
 }: Readonly<NavListPanelProps>) {
-  const isEmpty = !loading && !children;
+  const childCount = Children.count(children);
+  const isEmpty = !loading && childCount === 0;
 
   return (
     <div className="nav-list-panel" style={style}>
@@ -78,10 +86,15 @@ export function NavListPanel({
             <Spin />
           </div>
         )}
-        {isEmpty && (
+        {!loading && rawBody && children}
+        {!loading && !rawBody && isEmpty && (
           <div className="nav-list-panel__empty">{emptyText}</div>
         )}
-        {!loading && children}
+        {!loading && !rawBody && childCount > 0 && (
+          <List split={false} className="nav-list-panel__list">
+            {children}
+          </List>
+        )}
       </div>
 
       {footer && (
@@ -129,8 +142,7 @@ export function NavListItem({
   className,
 }: Readonly<NavListItemProps>) {
   return (
-    <button
-      type="button"
+    <List.Item
       className={[
         'nav-list-item',
         active ? 'nav-list-item--active' : '',
@@ -161,6 +173,6 @@ export function NavListItem({
           {extra}
         </div>
       )}
-    </button>
+    </List.Item>
   );
 }

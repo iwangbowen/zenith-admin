@@ -54,6 +54,17 @@
   padding: 0;
 }
 
+/* Semi List 容器：去掉 List 默认字体，继承应用字体；条目间不显示分割线 */
+.nav-list-panel__list.semi-list,
+.nav-list-panel__list .semi-list-items {
+  font: inherit;
+}
+.nav-list-panel__list .semi-list-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .nav-list-panel__footer {
   flex-shrink: 0;
   padding: 8px 10px;
@@ -69,37 +80,34 @@
 }
 
 /* ─── NavListItem：导航列表条目（字典管理风格：圆角卡片 + hover/active 状态）── */
-
-.nav-list-item {
+/* 作为 Semi List.Item（li.semi-list-item）渲染，需以更高优先级覆盖其默认 padding/对齐/换行 */
+.nav-list-item.semi-list-item {
   display: flex;
+  flex-wrap: nowrap;
   align-items: flex-start;
   gap: 8px;
   padding: 8px;
-  margin-bottom: 4px;
+  margin: 0 0 4px;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
   user-select: none;
   box-sizing: border-box;
-  /* button reset */
-  border: none;
-  background: transparent;
-  text-align: left;
   font-family: inherit;
   color: inherit;
   width: 100%;
 }
 
-.nav-list-item:last-child {
+.nav-list-item.semi-list-item:last-child {
   margin-bottom: 0;
 }
 
-.nav-list-item:hover {
+.nav-list-item.semi-list-item:hover {
   background: var(--semi-color-fill-0);
 }
 
-.nav-list-item--active {
-  background: var(--semi-color-primary-light-default) !important;
+.nav-list-item.semi-list-item.nav-list-item--active {
+  background: var(--semi-color-primary-light-default);
 }
 
 .nav-list-item__icon {
