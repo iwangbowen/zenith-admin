@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table } from '@douyinfe/semi-ui';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -816,55 +816,94 @@ export default function MonitorPage() {
 
           {/* ===== Redis ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Layers size={14} />Redis</span>} itemKey="redis">
-            {data.redis ? (<>
-              <div className="monitor-detail-grid">
-                <InfoRow label="版本" value={data.redis.version} />
-                <InfoRow label="角色" value={data.redis.role} />
-                <InfoRow label="运行时长" value={formatUptime(data.redis.uptimeSeconds)} />
-                <InfoRow label="已用内存" value={`${data.redis.usedMemoryHuman}`} />
-                {data.redis.usedMemoryRss !== undefined && (
-                  <InfoRow label="RSS 内存" value={formatBytes(data.redis.usedMemoryRss)} />
-                )}
-                {data.redis.memFragmentationRatio !== undefined && (
-                  <InfoRow label="碎片率" value={data.redis.memFragmentationRatio.toFixed(2)} />
-                )}
-                {data.redis.maxMemory !== undefined && (
-                  <InfoRow label="最大内存" value={data.redis.maxMemory > 0 ? formatBytes(data.redis.maxMemory) : '不限'} />
-                )}
-                {data.redis.maxMemoryPolicy && (
-                  <InfoRow label="淘汰策略" value={data.redis.maxMemoryPolicy} />
-                )}
-                <InfoRow label="已连接客户端" value={data.redis.connectedClients} />
-                {data.redis.blockedClients !== undefined && (
-                  <InfoRow label="阻塞客户端" value={data.redis.blockedClients} />
-                )}
-                {data.redis.rejectedConnections !== undefined && (
-                  <InfoRow label="拒绝连接数" value={formatNumber(data.redis.rejectedConnections)} />
-                )}
-                <InfoRow label="Key 总数" value={data.redis.keyCount} />
-                <InfoRow label="命令总执行数" value={formatNumber(data.redis.totalCommandsProcessed)} />
-                <InfoRow label="命中率" value={(() => {
-                  const r = data.redis;
-                  if (!r) return 'N/A';
-                  const total = r.keyspaceHits + r.keyspaceMisses;
-                  return total > 0 ? `${((r.keyspaceHits / total) * 100).toFixed(1)}%` : 'N/A';
-                })()} />
-                {data.redis.aofEnabled !== undefined && (
-                  <InfoRow label="AOF" value={data.redis.aofEnabled ? '已启用' : '未启用'} />
-                )}
-                {data.redis.rdbLastSaveTime !== undefined && data.redis.rdbLastSaveTime > 0 && (
-                  <InfoRow label="RDB 最近保存" value={formatDateTime(new Date(data.redis.rdbLastSaveTime * 1000))} />
-                )}
-                {data.redis.rdbChangesSinceLastSave !== undefined && (
-                  <InfoRow label="距上次保存变更" value={formatNumber(data.redis.rdbChangesSinceLastSave)} />
-                )}
-                {data.redis.masterLinkStatus && (
-                  <InfoRow label="主从链路" value={data.redis.masterLinkStatus} />
-                )}
-              </div>
-              <div className="monitor-section-title">慢日志（最近 10 条）</div>
-              {renderRedisSlowLog(data.redis.slowLog)}
-            </>) : <Text type="tertiary">Redis 信息不可用</Text>}
+            {data.redis ? (() => {
+              const r = data.redis!;
+              const hitTotal = r.keyspaceHits + r.keyspaceMisses;
+              const hitRate = hitTotal > 0 ? `${((r.keyspaceHits / hitTotal) * 100).toFixed(1)}%` : 'N/A';
+              return (
+                <>
+                  {/* 基本信息 */}
+                  <div className="monitor-section-title">基本信息</div>
+                  <Descriptions
+                    data={[
+                      { key: '版本', value: r.version },
+                      { key: '角色', value: r.role },
+                      { key: '运行时长', value: formatUptime(r.uptimeSeconds), span: 2 },
+                    ]}
+                    column={2}
+                    layout="horizontal"
+                    align="left"
+                  />
+
+                  {/* 内存 */}
+                  <div className="monitor-section-title">内存</div>
+                  <Descriptions
+                    data={[
+                      { key: '已用内存', value: r.usedMemoryHuman },
+                      ...(r.usedMemoryRss === undefined ? [] : [{ key: 'RSS 内存', value: formatBytes(r.usedMemoryRss) }]),
+                      ...(r.memFragmentationRatio === undefined ? [] : [{ key: '碎片率', value: r.memFragmentationRatio.toFixed(2) }]),
+                      ...(r.maxMemory === undefined ? [] : [{ key: '最大内存', value: r.maxMemory > 0 ? formatBytes(r.maxMemory) : '不限' }]),
+                      ...(r.maxMemoryPolicy ? [{ key: '淘汰策略', value: r.maxMemoryPolicy }] : []),
+                    ]}
+                    column={2}
+                    layout="horizontal"
+                    align="left"
+                  />
+
+                  {/* 客户端 */}
+                  <div className="monitor-section-title">客户端</div>
+                  <Descriptions
+                    data={[
+                      { key: '已连接客户端', value: String(r.connectedClients) },
+                      ...(r.blockedClients === undefined ? [] : [{ key: '阻塞客户端', value: String(r.blockedClients) }]),
+                      ...(r.rejectedConnections === undefined ? [] : [{ key: '拒绝连接数', value: formatNumber(r.rejectedConnections) }]),
+                    ]}
+                    column={2}
+                    layout="horizontal"
+                    align="left"
+                  />
+
+                  {/* 命令统计 */}
+                  <div className="monitor-section-title">命令统计</div>
+                  <Descriptions
+                    data={[
+                      { key: 'Key 总数', value: String(r.keyCount) },
+                      { key: '命令总执行数', value: formatNumber(r.totalCommandsProcessed) },
+                      { key: '命中率', value: hitRate },
+                    ]}
+                    column={2}
+                    layout="horizontal"
+                    align="left"
+                  />
+
+                  {/* 持久化 */}
+                  {(r.aofEnabled !== undefined ||
+                    (r.rdbLastSaveTime !== undefined && r.rdbLastSaveTime > 0) ||
+                    r.rdbChangesSinceLastSave !== undefined ||
+                    r.masterLinkStatus) && (
+                    <>
+                      <div className="monitor-section-title">持久化</div>
+                      <Descriptions
+                        data={[
+                          ...(r.aofEnabled === undefined ? [] : [{ key: 'AOF', value: r.aofEnabled ? '已启用' : '未启用' }]),
+                          ...(r.rdbLastSaveTime !== undefined && r.rdbLastSaveTime > 0
+                            ? [{ key: 'RDB 最近保存', value: formatDateTime(new Date(r.rdbLastSaveTime * 1000)) }]
+                            : []),
+                          ...(r.rdbChangesSinceLastSave === undefined ? [] : [{ key: '距上次保存变更', value: formatNumber(r.rdbChangesSinceLastSave) }]),
+                          ...(r.masterLinkStatus ? [{ key: '主从链路', value: r.masterLinkStatus }] : []),
+                        ]}
+                        column={2}
+                        layout="horizontal"
+                        align="left"
+                      />
+                    </>
+                  )}
+
+                  <div className="monitor-section-title">慢日志（最近 10 条）</div>
+                  {renderRedisSlowLog(r.slowLog)}
+                </>
+              );
+            })() : <Text type="tertiary">Redis 信息不可用</Text>}
           </TabPane>
 
           <TabPane tab={<span className="monitor-tab-label"><Activity size={14} />WebSocket</span>} itemKey="ws">
