@@ -14,7 +14,7 @@ import { config } from '@/config';
 import type { AiConversation, AiMessage, AiProviderConfig, UserAiConfig, SystemConfig } from '@zenith/shared';
 
 const { Configure } = AIChatInput;
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 type AIChatDialogueInstance = InstanceType<typeof AIChatDialogue>;
 
