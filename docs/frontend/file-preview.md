@@ -108,6 +108,38 @@ const isPreviewable = canPreviewFile(record.mimeType);
 
 通过 `fetchProtectedFile(fileUrl)` 携带 Bearer Token 下载 Blob，再以 `File` 对象喂给 `PDFPreviewPanel`（基于 `@embedpdf/react-pdf-viewer`）。支持页面缩放、适合页宽/页高等模式，弹窗高度占 88vh。
 
+#### 本地化加载（去 CDN）
+
+`@embedpdf` 默认会在运行时从外部 CDN 拉取若干资源。为保证**内网/国内网络（jsDelivr、Google Fonts 不可达）**下也能正常预览，`PDFPreviewPanel`（`packages/web/src/pages/ai/chat/PDFPreviewPanel.tsx`）通过 `PDFViewer` 的 `config` 将其全部本地化或关闭：
+
+| 默认 CDN 资源 | 默认来源 | 处理方式 |
+| --- | --- | --- |
+| `pdfium.wasm`（PDF 渲染引擎） | jsDelivr | **本地 npm 引入**，见下方说明 |
+| `default-stamps`（印章 `manifest.json` + `stamps.pdf`） | jsDelivr | `stamp: { manifests: [] }` 禁用（只读预览不使用印章/批注） |
+| UI 字体 `Open Sans` | Google Fonts | `fonts: { ui: null }`，回退系统字体栈（拉丁字体，中文 UI 无影响） |
+| 签名手写体字体 | Google Fonts | `fonts: { signature: null }`（`signature` 分类已禁用） |
+
+**wasm 本地引入的关键点**：
+
+```ts
+// 经 npm 安装的 @embedpdf/pdfium 直接引入 wasm，Vite 在 dev/生产均处理为本地资源
+import pdfiumWasmUrl from '@embedpdf/pdfium/pdfium.wasm?url';
+
+// ⚠️ 必须转为带 origin 的绝对 URL：
+// Vite 的 ?url 在 dev 返回根相对路径（/@fs/...），而 EmbedPDF 在一个 blob: URL 的
+// Web Worker 内 fetch 该地址，blob: 基址无法解析根相对/相对路径，会抛 "Failed to
+// parse URL" 导致引擎卡在"文件加载中..."。
+const pdfiumWasmAbsUrl = new URL(pdfiumWasmUrl, globalThis.location.origin).href;
+
+<PDFViewer config={{ wasmUrl: pdfiumWasmAbsUrl, /* ... */ }} />
+```
+
+> 因为 web 源码直接 `import` 了 `@embedpdf/pdfium`，需在 `packages/web/package.json` 中将其声明为**显式依赖**（而非仅依赖 `react-pdf-viewer` 的传递依赖），避免依赖树变化时解析失败。
+>
+> 生产构建后 wasm 会作为本地资源产出到 `dist/assets/pdfium-*.wasm`（约 4.6MB）。打包产物里仍可搜到 `cdn.jsdelivr` 字符串，那是库源码内的**默认常量**，运行时已被 `config` 覆盖，不会真正请求。
+
+**尚未本地化**：当 PDF 含**未内嵌字体**（部分 CJK 文档）时，`@embedpdf` 仍会按需从 jsDelivr 拉取 `fontFallback` 字形字体。如需彻底零 CDN，需引入约 10MB 的 `@embedpdf/fonts-*` 包并配置 `fontFallback`。
+
 ### 音频 / 视频
 
 同样通过 `fetchProtectedFile` 下载 Blob，创建 `Object URL` 传给 Semi Design `AudioPlayer` / `VideoPlayer`，关闭时主动调用 `URL.revokeObjectURL` 释放内存。
