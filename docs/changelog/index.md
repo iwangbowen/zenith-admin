@@ -4,6 +4,33 @@
 
 ---
 
+## v0.50.0 - 2026-06-10
+
+### Added
+
+#### PDF 预览去 CDN（本地 npm 资源替代 jsDelivr / Google Fonts）
+
+- `PDFPreviewPanel` 改用本地加载策略，彻底移除运行时对外部 CDN 的依赖：
+  - `pdfium.wasm`（4.5 MB）：通过 `@embedpdf/pdfium/pdfium.wasm?url` npm 引入，Vite dev/生产均产出为本地资源；传给 `wasmUrl` 时用 `new URL(..., globalThis.location.origin).href` 转绝对路径，修复 blob worker 无法解析根相对路径的问题
+  - 默认印章库（`@embedpdf/default-stamps`）：设置 `stamp: { manifests: [] }` 禁用，避免从 jsDelivr 拉取 `manifest.json` + `stamps.pdf`（只读预览不使用印章，零功能损失）
+  - 查看器 UI 字体 Open Sans 和签名手写体：设置 `fonts: { ui: null, signature: null }`，回退系统字体栈，国内用户不再因 Google Fonts 被墙而遭遇工具栏渲染阻塞
+- `@embedpdf/pdfium` 在 `packages/web/package.json` 中从传递依赖升级为显式声明
+
+#### NavListPanel 深化重构（泛型 + Semi 带筛选器最佳实践）
+
+- `NavListPanel<T>` 升级为泛型组件，支持 Semi List 原生 `dataSource: T[]` + `renderItem: (item: T, index: number) => ReactNode` API：
+  - 空数组时由 List 原生 `emptyContent` 处理，无需手动 `childCount` 判断
+  - 4 个调用方（DictsPage / CacheManagePage / LogFilesPage / CategorySidebar）迁移至 `dataSource` + `renderItem`，DbAdminPage（Collapse 分组）保持 `rawBody` + `children` 路径
+- 对齐 Semi "带筛选器" 最佳实践：搜索 Input 进 `List header` 槽（固定不滚动）、分页进 `List footer` 槽（固定不滚动）、条目区域由 `.semi-spin` 承载 `flex:1; overflow-y:auto` 滚动
+- 分页器居中：`List footer` 槽 CSS 加 `display:flex; justify-content:center`
+- Skill 文档（`constraints.md`）同步更新 `NavListPanel<T>` 使用规范，明确推荐用法与 rawBody 兼容路径
+
+### Changed
+
+- `MasterDetailLayout` 折叠按钮 chevron 颜色改为主题色 `--semi-color-primary`（hover 改为 `--semi-color-primary-hover`），替代原来的灰色文本色
+
+---
+
 ## v0.49.0 - 2026-06-09
 
 ### Added
