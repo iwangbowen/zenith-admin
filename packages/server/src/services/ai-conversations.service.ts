@@ -13,6 +13,7 @@ function mapConversation(row: typeof aiConversations.$inferSelect) {
     title: row.title,
     providerSnapshot: row.providerSnapshot,
     isArchived: row.isArchived,
+    isPinned: row.isPinned,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
@@ -37,7 +38,7 @@ export async function listConversations() {
     .select()
     .from(aiConversations)
     .where(and(eq(aiConversations.userId, user.userId), eq(aiConversations.isArchived, false)))
-    .orderBy(desc(aiConversations.updatedAt));
+    .orderBy(desc(aiConversations.isPinned), desc(aiConversations.updatedAt));
   return rows.map(mapConversation);
 }
 
@@ -88,6 +89,24 @@ export async function updateConversationTitle(id: number, title: string) {
     .update(aiConversations)
     .set({ title: title.slice(0, 200) })
     .where(and(eq(aiConversations.id, id), eq(aiConversations.userId, user.userId)));
+}
+
+export async function renameConversation(id: number, title: string) {
+  const row = await ensureConversationOwner(id);
+  if (!row) return;
+  await db
+    .update(aiConversations)
+    .set({ title: title.trim().slice(0, 200) || '新对话' })
+    .where(eq(aiConversations.id, id));
+}
+
+export async function togglePinConversation(id: number) {
+  const row = await ensureConversationOwner(id);
+  await db
+    .update(aiConversations)
+    .set({ isPinned: !row.isPinned })
+    .where(eq(aiConversations.id, id));
+  return !row.isPinned;
 }
 
 export async function saveMessages(

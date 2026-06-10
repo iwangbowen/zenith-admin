@@ -33,6 +33,7 @@ export const AiConversationDTO = z
       .nullable()
       .openapi({ description: '供应商快照' }),
     isArchived: z.boolean().openapi({ description: '是否归档' }),
+    isPinned: z.boolean().openapi({ description: '是否置顶' }),
     createdAt: z.string().openapi({ description: '创建时间' }),
     updatedAt: z.string().openapi({ description: '更新时间' }),
   })

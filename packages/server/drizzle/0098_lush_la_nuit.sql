@@ -1,0 +1,1 @@
+ALTER TABLE "ai_conversations" ADD COLUMN "is_pinned" boolean DEFAULT false NOT NULL;

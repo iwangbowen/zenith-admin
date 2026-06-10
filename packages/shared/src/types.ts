@@ -1641,6 +1641,7 @@ export interface AiConversation {
   title: string;
   providerSnapshot: { provider: string; model: string; configId?: number } | null;
   isArchived: boolean;
+  isPinned: boolean;
   createdAt: string;
   updatedAt: string;
 }

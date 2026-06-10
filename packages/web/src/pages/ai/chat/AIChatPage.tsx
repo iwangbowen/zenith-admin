@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, Popconfirm, TextArea } from '@douyinfe/semi-ui';
+import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, TextArea, Dropdown, Input, Modal } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
-import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings } from 'lucide-react';
+import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings, MoreHorizontal, Pencil, Pin, PinOff } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { useAuth } from '@/hooks/useAuth';
@@ -198,6 +198,8 @@ export default function AIChatPage() {
   const [generating, setGenerating] = useState(false);
   const [convsLoading, setConvsLoading] = useState(false);
   const [msgsLoading, setMsgsLoading] = useState(false);
+  const [renameConvId, setRenameConvId] = useState<number | null>(null);
+  const [renameText, setRenameText] = useState('');
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string; source: 'system' | 'user' }[]>(DEFAULT_MODEL_OPTIONS);
   const userConfigsRef = useRef<UserAiConfig[]>([]);
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -571,6 +573,32 @@ export default function AIChatPage() {
     }
   };
 
+  const handleRenameConv = async () => {
+    if (!renameConvId || !renameText.trim()) return;
+    try {
+      await request.put(`/api/ai/conversations/${renameConvId}/rename`, { title: renameText.trim() });
+      setConversations((prev) => prev.map((c) => c.id === renameConvId ? { ...c, title: renameText.trim() } : c));
+      setRenameConvId(null);
+    } catch {
+      Toast.error('重命名失败');
+    }
+  };
+
+  const handleTogglePin = async (id: number) => {
+    try {
+      const res = await request.put<{ isPinned: boolean }>(`/api/ai/conversations/${id}/pin`, {});
+      const pinned = res.data?.isPinned ?? false;
+      setConversations((prev) => {
+        const updated = prev.map((c) => c.id === id ? { ...c, isPinned: pinned } : c);
+        // 重新排序：置顶在前
+        return [...updated.filter((c) => c.isPinned), ...updated.filter((c) => !c.isPinned)];
+      });
+      Toast.success(pinned ? '已置顶' : '已取消置顶');
+    } catch {
+      Toast.error('操作失败');
+    }
+  };
+
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
   return (
@@ -603,24 +631,38 @@ export default function AIChatPage() {
               key={conv.id}
               active={activeConvId === conv.id}
               onClick={() => setActiveConvId(conv.id)}
-              primary={conv.title}
+              primary={conv.isPinned ? <><Pin size={11} style={{ verticalAlign: -1, marginRight: 3, color: 'var(--semi-color-primary)' }} />{conv.title}</> : conv.title}
+              extraAlwaysVisible={false}
               extra={
-                <Popconfirm
-                  title="确定要删除这个会话吗？"
-                  onConfirm={(e) => {
-                    e?.stopPropagation();
-                    void handleDeleteConversation(conv.id);
-                  }}
-                  position="right"
+                <Dropdown
+                  trigger="click"
+                  position="bottomRight"
+                  clickToHide
+                  render={
+                    <Dropdown.Menu>
+                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); setRenameText(conv.title); setRenameConvId(conv.id); }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Pencil size={13} />重命名</span>
+                      </Dropdown.Item>
+                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); void handleTogglePin(conv.id); }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {conv.isPinned ? <PinOff size={13} /> : <Pin size={13} />}
+                          {conv.isPinned ? '取消置顶' : '置顶'}
+                        </span>
+                      </Dropdown.Item>
+                      <Dropdown.Divider />
+                      <Dropdown.Item type="danger" onClick={(e) => { (e as React.MouseEvent).stopPropagation(); Modal.confirm({ title: '确定要删除这个会话吗？', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDeleteConversation(conv.id) }); }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Trash2 size={13} />删除</span>
+                      </Dropdown.Item>
+                    </Dropdown.Menu>
+                  }
                 >
                   <Button
                     theme="borderless"
                     size="small"
-                    icon={<Trash2 size={12} />}
-                    type="danger"
+                    icon={<MoreHorizontal size={13} />}
                     onClick={(e) => e.stopPropagation()}
                   />
-                </Popconfirm>
+                </Dropdown>
               }
             />
           )}
@@ -824,6 +866,25 @@ export default function AIChatPage() {
         }}
       />
     )}
+    <Modal
+      title="重命名会话"
+      visible={renameConvId !== null}
+      onOk={() => void handleRenameConv()}
+      onCancel={() => setRenameConvId(null)}
+      confirmLoading={false}
+      closeOnEsc
+      width={360}
+    >
+      <Input
+        value={renameText}
+        onChange={(v) => setRenameText(v)}
+        placeholder="请输入新名称"
+        maxLength={200}
+        showClear
+        onEnterPress={() => void handleRenameConv()}
+        autoFocus
+      />
+    </Modal>
     </>
   );
 }

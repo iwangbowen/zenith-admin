@@ -1504,6 +1504,7 @@ export const aiConversations = pgTable('ai_conversations', {
   title: varchar('title', { length: 200 }).notNull().default('新对话'),
   providerSnapshot: jsonb('provider_snapshot').$type<{ provider: string; model: string; configId?: number }>(),
   isArchived: boolean('is_archived').notNull().default(false),
+  isPinned: boolean('is_pinned').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });

@@ -22,6 +22,8 @@ import {
   listFeedbackMessages,
   deleteMessage,
   deleteMessageCascade,
+  renameConversation,
+  togglePinConversation,
 } from '../services/ai-conversations.service';
 import { createAiConversationSchema } from '@zenith/shared';
 import { guard } from '../middleware/guard';
@@ -189,6 +191,46 @@ const deleteMsgCascade = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, create, getOne, remove, getMessages, submitFeedback, deleteMsg, deleteMsgCascade, adminFeedbackList] as const);
+const rename = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put',
+    path: '/{id}/rename',
+    tags: ['AI'],
+    summary: '重命名对话',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ title: z.string().min(1).max(200) })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('重命名成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { title } = c.req.valid('json');
+    await renameConversation(id, title);
+    return c.json(okBody(null, '重命名成功'), 200);
+  },
+});
+
+const togglePin = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put',
+    path: '/{id}/pin',
+    tags: ['AI'],
+    summary: '置顶/取消置顶对话',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.object({ isPinned: z.boolean() }), '操作成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const isPinned = await togglePinConversation(id);
+    return c.json(okBody({ isPinned }), 200);
+  },
+});
+
+router.openapiRoutes([list, create, getOne, remove, getMessages, rename, togglePin, submitFeedback, deleteMsg, deleteMsgCascade, adminFeedbackList] as const);
 
 export default router;
