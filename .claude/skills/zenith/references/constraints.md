@@ -64,9 +64,12 @@
 - **批量按钮显示时机**（Step 8）：批量操作按钮仅在 `selectedRowKeys.length > 0` 时显示，放在查询/重置按钮之后
 - **ConfigurableTable 刷新按钮**（Step 8）：所有使用 `ConfigurableTable` 的列表页均必须传入 `onRefresh` 和 `refreshLoading`
 - **左右分栏布局**（Step 8）：需要「左侧列表 + 右侧详情」结构时，统一使用 `packages/web/src/components/MasterDetailLayout.tsx`，**禁止**手写 flex 两栏布局。master 内部必须用 `display:flex; flexDirection:column; height:100%; overflow:hidden` 的 div 包裹（**禁止**用 Fragment），顶部固定区域 `flexShrink:0`，列表区域 `flex:1; overflow:auto; minHeight:0`。嵌套在 Semi Design Tabs 中时，必须加 `className="tabs-fill-height"` 并给 Tabs/TabPane 设置正确的 height/flex 属性
-- **左侧平铺列表（NavListPanel）**（Step 8）：当左侧 master 是**平铺列表**（分类/文件/分组等，非树形）时，统一使用 `NavListPanel` + `NavListItem`（来自 `packages/web/src/components/NavListPanel.tsx`）替代 `Semi List`+自定义容器。
-  - `NavListPanel` props：`title`（标题）、`headerExtra`（标题右侧按钮/Dropdown）、`search`（搜索框配置）、`loading`、`emptyText`、`footer`（分页等）
-  - `NavListItem` props：`active`、`onClick`、`icon`（左侧图标或彩色圆点）、`primary`（主标题）、`secondary`（副标题）、`meta`（底部元信息）、`extra`（hover 显示的操作区，默认隐藏；`extraAlwaysVisible` 让 extra 始终可见）
+- **左侧平铺列表（NavListPanel）**（Step 8）：当左侧 master 是**平铺列表**（分类/文件/分组等，非树形）时，统一使用 `NavListPanel<T>` + `NavListItem`（来自 `packages/web/src/components/NavListPanel.tsx`）。底层由 Semi `List`/`List.Item` 实现，已对齐 Semi"带筛选器"最佳实践。
+  - `NavListPanel<T>` 核心 props：`title`、`headerExtra`、`search`（搜索框配置）、`loading`、`emptyText`、`footer`（分页等）
+  - **推荐用法（dataSource 模式）**：`<NavListPanel dataSource={items} renderItem={(item) => <NavListItem key={item.id} .../>} />`，空数组时自动显示 `emptyText`。
+  - **兼容用法（children 模式）**：`<NavListPanel>{items.map(fn)}</NavListPanel>`，需注意空数组不触发 emptyContent（需 `childCount > 0` 判断）；rawBody 场景（Collapse 分组）必须用此路径。
+  - 分组/Collapse 场景（如 DbAdmin）：传 `rawBody bodyNoPadding`，在 `children` 内自行渲染 Collapse + 内嵌 `<List split={false} className="nav-list-panel__list">`。
+  - `NavListItem` props：`active`、`onClick`、`icon`（左侧图标或彩色圆点）、`primary`（主标题）、`secondary`（副标题）、`meta`（底部元信息）、`extra`（hover 显示的操作区；`extraAlwaysVisible` 让 extra 始终可见）
   - 当 extra 含多个操作时，用 `Dropdown`（`trigger="click"` + `clickToHide`）+ `MoreHorizontal` 按钮包裹，参考字典管理/日志文件页面
   - meta 区域**禁止**使用 `<Tag color="...">` 内联标签（会渲染颜色指示器色块），改用 styled span（见日志文件页实现）
   - 树形数据（需要展开/折叠节点）使用 `Semi Tree` 组件，不适合 `NavListPanel`（例：用户管理部门树）
