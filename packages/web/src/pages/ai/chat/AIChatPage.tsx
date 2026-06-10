@@ -713,6 +713,14 @@ export default function AIChatPage() {
                       .then(() => Toast.info('感谢您的反馈，我们会持续改进'));
                   }}
                   messageEditRender={renderMessageEdit}
+                  onMessageDelete={(msg) => {
+                    if (!msg || !activeConvId) return;
+                    const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
+                    // Semi 已在 UI 上删除该消息（onChatsChange）；后台级联删除该消息及之后所有消息
+                    if (dbId) {
+                      void request.delete(`/api/ai/conversations/${activeConvId}/messages/${dbId}/cascade`).catch(() => {});
+                    }
+                  }}
                   onMessageReset={(msg) => msg && !generating && void handleRegenerate(msg as Message)}
                   onFileClick={(fileItem) => {
                     const fi = fileItem?.fileInstance;

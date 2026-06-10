@@ -1,4 +1,4 @@
-import { eq, desc, and, isNotNull } from 'drizzle-orm';
+import { eq, desc, and, isNotNull, gte } from 'drizzle-orm';
 import { db } from '../db';
 import { aiConversations, aiMessages } from '../db/schema';
 import { currentUser } from '../lib/context';
@@ -132,6 +132,23 @@ export async function deleteMessage(conversationId: number, messageId: number) {
   if (!msg) throw new HTTPException(404, { message: '消息不存在' });
   if (msg.role !== 'assistant') throw new HTTPException(400, { message: '只能删除 AI 回复消息' });
   await db.delete(aiMessages).where(eq(aiMessages.id, messageId));
+}
+
+/**
+ * 删除一条消息及其之后的所有消息（用于 UI 消息删除操作）。
+ * user/assistant 消息均支持；会话所有者限制。
+ */
+export async function deleteMessageCascade(conversationId: number, messageId: number) {
+  await ensureConversationOwner(conversationId);
+  const [msg] = await db
+    .select()
+    .from(aiMessages)
+    .where(and(eq(aiMessages.id, messageId), eq(aiMessages.conversationId, conversationId)));
+  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  // 删除该消息及之后所有消息（按 createdAt）
+  await db.delete(aiMessages).where(
+    and(eq(aiMessages.conversationId, conversationId), gte(aiMessages.createdAt, msg.createdAt))
+  );
 }
 
 /**
