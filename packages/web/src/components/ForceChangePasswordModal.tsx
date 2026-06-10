@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Modal, Form, Button, Notification } from '@douyinfe/semi-ui';
 import type { User } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { PasswordStrengthMeter } from './PasswordStrengthMeter';
 
 interface Props {
   readonly user: Pick<User, 'requirePasswordChange'>;
@@ -16,6 +17,7 @@ interface FormValues {
 
 export default function ForceChangePasswordModal({ user, onLogout }: Props) {
   const [loading, setLoading] = useState(false);
+  const [newPwdVal, setNewPwdVal] = useState('');
 
   // We show the modal if requirePasswordChange is true.
   const visible = !!user.requirePasswordChange;
@@ -67,6 +69,8 @@ export default function ForceChangePasswordModal({ user, onLogout }: Props) {
             { required: true, message: '请输入新密码' },
             { min: 6, message: '密码至少6个字符' },
           ]}
+          onChange={(v) => setNewPwdVal(String(v ?? ''))}
+          helpText={<PasswordStrengthMeter password={newPwdVal} />}
         />
         <Form.Input
           field="confirmPassword"

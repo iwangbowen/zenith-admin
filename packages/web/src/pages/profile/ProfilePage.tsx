@@ -15,6 +15,7 @@ import { AppModal } from '@/components/AppModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
+import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
@@ -146,6 +147,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   // ─── 账号安全 ────────────────────────────────────────────────────────────────
   const [pwdLoading, setPwdLoading] = useState(false);
   const [passwordPolicy, setPasswordPolicy] = useState<PasswordPolicy | null>(null);
+  const [changePwdVal, setChangePwdVal] = useState('');
   const [oauthAccounts, setOauthAccounts] = useState<OAuthAccount[]>([]);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthLoaded, setOauthLoaded] = useState(false);
@@ -256,7 +258,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     setPwdLoading(true);
     const res = await request.put('/api/auth/password', { oldPassword: values.oldPassword, newPassword: values.newPassword });
     setPwdLoading(false);
-    if (res.code === 0) Toast.success('密码修改成功，请重新登录');
+    if (res.code === 0) { Toast.success('密码修改成功，请重新登录'); setChangePwdVal(''); }
   }
 
   async function handleOAuthBind(provider: OAuthProviderType) {
@@ -573,7 +575,8 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                         ...(passwordPolicy?.minLength ? [{ min: passwordPolicy.minLength, message: `密码至少${passwordPolicy.minLength}个字符` }] : []),
                       ]}
                       style={{ width: 320 }}
-                      helpText={formatPasswordPolicyHint(passwordPolicy)}
+                      onChange={(v) => setChangePwdVal(String(v ?? ''))}
+                      helpText={<PasswordStrengthMeter password={changePwdVal} policy={passwordPolicy} />}
                     />
                     <Form.Input
                       field="confirmPassword"

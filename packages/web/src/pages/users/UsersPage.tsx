@@ -28,6 +28,7 @@ import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTimeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
+import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -91,6 +92,9 @@ export default function UsersPage() {
   const [allDepartments, setAllDepartments] = useState<Department[]>([]);
   const [allPositions, setAllPositions] = useState<Position[]>([]);
   const [passwordPolicy, setPasswordPolicy] = useState<PasswordPolicy | null>(null);
+  const [createPwdVal, setCreatePwdVal] = useState('');
+  const [editPwdVal, setEditPwdVal] = useState('');
+  const [batchPwdVal, setBatchPwdVal] = useState('');
 
   const { items: statusItems } = useDictItems('common_status');
   const { items: genderItems } = useDictItems('user_gender');
@@ -393,6 +397,7 @@ export default function UsersPage() {
       Toast.success('密码修改成功');
       setPasswordModalVisible(false);
       setPasswordUser(null);
+      setEditPwdVal('');
     } else {
       throw new Error(res.message);
     }
@@ -897,7 +902,8 @@ export default function UsersPage() {
                     placeholder="请输入密码"
                     type="password"
                     rules={[{ required: true, message: '请输入密码' }]}
-                    helpText={formatPasswordPolicyHint(passwordPolicy)}
+                    onChange={(v) => setCreatePwdVal(String(v ?? ''))}
+                    helpText={<PasswordStrengthMeter password={createPwdVal} policy={passwordPolicy} />}
                   />
                 </Col>
               </Row>
@@ -986,6 +992,7 @@ export default function UsersPage() {
         onCancel={() => {
           setPasswordModalVisible(false);
           setPasswordUser(null);
+          setEditPwdVal('');
         }}
         onOk={handlePasswordModalOk}
         width={420}
@@ -1005,6 +1012,8 @@ export default function UsersPage() {
               { required: true, message: '请输入新密码' },
               { min: 6, message: '密码至少 6 个字符' },
             ]}
+            onChange={(v) => setEditPwdVal(String(v ?? ''))}
+            helpText={<PasswordStrengthMeter password={editPwdVal} policy={passwordPolicy} />}
           />
           <Form.Input
             field="confirmPassword"
@@ -1080,7 +1089,7 @@ export default function UsersPage() {
       <AppModal
         title={`批量修改密码（共 ${selectedNonAdminIds.length} 个用户）`}
         visible={batchPasswordModalVisible}
-        onCancel={() => { setBatchPasswordModalVisible(false); batchPasswordFormApi.current?.setValues({ password: '', confirmPassword: '' }); }}
+        onCancel={() => { setBatchPasswordModalVisible(false); batchPasswordFormApi.current?.setValues({ password: '', confirmPassword: '' }); setBatchPwdVal(''); }}
         confirmLoading={batchPasswordSubmitting}
         onOk={async () => {
           if (!batchPasswordFormApi.current) return;
@@ -1096,6 +1105,7 @@ export default function UsersPage() {
               Toast.success('密码修改成功');
               setBatchPasswordModalVisible(false);
               batchPasswordFormApi.current.setValues({ password: '', confirmPassword: '' });
+              setBatchPwdVal('');
               setSelectedRowKeys([]);
             } else {
               Toast.error(res.message || '操作失败');
@@ -1114,6 +1124,8 @@ export default function UsersPage() {
             type="password"
             placeholder={passwordPolicy ? formatPasswordPolicyHint(passwordPolicy) : '请输入新密码'}
             rules={[{ required: true, message: '请输入新密码' }]}
+            onChange={(v) => setBatchPwdVal(String(v ?? ''))}
+            helpText={<PasswordStrengthMeter password={batchPwdVal} policy={passwordPolicy} />}
           />
           <Form.Input
             field="confirmPassword"

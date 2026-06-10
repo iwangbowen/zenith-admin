@@ -4,6 +4,7 @@ import { Form, Button, Toast, Typography, Spin } from '@douyinfe/semi-ui';
 import { Lock, CheckCircle } from 'lucide-react';
 import { config } from '@/config';
 import { request } from '@/utils/request';
+import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 
 const { Title, Text } = Typography;
 
@@ -16,6 +17,7 @@ export default function ResetPasswordPage() {
   const [validating, setValidating] = useState(true);
   const [tokenValid, setTokenValid] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [newPwdVal, setNewPwdVal] = useState('');
 
   // 验证 token 是否合法（提前提示，防止无效链接浪费用户时间）
   useEffect(() => {
@@ -95,6 +97,8 @@ export default function ResetPasswordPage() {
             { required: true, message: '请输入新密码' },
             { min: 6, message: '密码至少 6 个字符' },
           ]}
+          onChange={(v) => setNewPwdVal(String(v ?? ''))}
+          helpText={<PasswordStrengthMeter password={newPwdVal} />}
         />
         <Form.Input
           field="confirmPassword"
