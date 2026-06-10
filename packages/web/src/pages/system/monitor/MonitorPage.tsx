@@ -418,18 +418,23 @@ export default function MonitorPage() {
     if (!http) return <Text type="tertiary">暂无 HTTP 统计</Text>;
     return (
       <>
-        <div className="monitor-detail-grid">
-          <InfoRow label="瞬时 QPS（最近 1s）" value={formatNumber(http.currentQps)} />
-          <InfoRow label="平均 QPS（最近 60s）" value={http.qps.toFixed(2)} />
-          <InfoRow label="60s 内总请求" value={formatNumber(http.total)} />
-          <InfoRow label="60s 内错误数" value={formatNumber(http.errors)} />
-          <InfoRow label="错误率" value={`${http.errorRate}%`} />
-          <InfoRow label="累计 4xx / 5xx" value={`${formatNumber(http.total4xx)} / ${formatNumber(http.total5xx)}`} />
-          <InfoRow label="P50 延迟" value={`${http.p50} ms`} />
-          <InfoRow label="P95 延迟" value={`${http.p95} ms`} />
-          <InfoRow label="P99 延迟" value={`${http.p99} ms`} />
-          <InfoRow label="峰值延迟" value={`${http.max} ms`} />
-        </div>
+        <Descriptions
+          data={[
+            { key: '瞬时 QPS（最近 1s）', value: formatNumber(http.currentQps) },
+            { key: '平均 QPS（最近 60s）', value: http.qps.toFixed(2) },
+            { key: '60s 内总请求', value: formatNumber(http.total) },
+            { key: '60s 内错误数', value: formatNumber(http.errors) },
+            { key: '错误率', value: `${http.errorRate}%` },
+            { key: '累计 4xx / 5xx', value: `${formatNumber(http.total4xx)} / ${formatNumber(http.total5xx)}` },
+            { key: 'P50 延迟', value: `${http.p50} ms` },
+            { key: 'P95 延迟', value: `${http.p95} ms` },
+            { key: 'P99 延迟', value: `${http.p99} ms` },
+            { key: '峰值延迟', value: `${http.max} ms` },
+          ]}
+          column={2}
+          layout="horizontal"
+          align="left"
+        />
         {renderTrendChart('QPS / 错误率', [
           { dataKey: 'qps', label: 'QPS', color: '#1677ff' },
           { dataKey: 'errorRate', label: '错误率(%)', color: '#ff4d4f' },
@@ -766,14 +771,19 @@ export default function MonitorPage() {
 
             {data.node.eventLoop && (<>
               <div className="monitor-section-title">Event Loop 延迟</div>
-              <div className="monitor-detail-grid">
-                <InfoRow label="均值" value={`${data.node.eventLoop.meanMs} ms`} />
-                <InfoRow label="P50" value={`${data.node.eventLoop.p50Ms} ms`} />
-                <InfoRow label="P95" value={`${data.node.eventLoop.p95Ms} ms`} />
-                <InfoRow label="P99" value={`${data.node.eventLoop.p99Ms} ms`} />
-                <InfoRow label="最大值" value={`${data.node.eventLoop.maxMs} ms`} />
-                <InfoRow label="标准差" value={`${data.node.eventLoop.stddevMs} ms`} />
-              </div>
+              <Descriptions
+                data={[
+                  { key: '均值', value: `${data.node.eventLoop.meanMs} ms` },
+                  { key: 'P50', value: `${data.node.eventLoop.p50Ms} ms` },
+                  { key: 'P95', value: `${data.node.eventLoop.p95Ms} ms` },
+                  { key: 'P99', value: `${data.node.eventLoop.p99Ms} ms` },
+                  { key: '最大值', value: `${data.node.eventLoop.maxMs} ms` },
+                  { key: '标准差', value: `${data.node.eventLoop.stddevMs} ms` },
+                ]}
+                column={2}
+                layout="horizontal"
+                align="left"
+              />
             </>)}
 
             {data.node.gc && (<>
@@ -812,14 +822,19 @@ export default function MonitorPage() {
 
             {data.node.resourceUsage && (<>
               <div className="monitor-section-title">资源使用</div>
-              <div className="monitor-detail-grid">
-                <InfoRow label="用户态 CPU 时间" value={`${(data.node.resourceUsage.userCPUMicros / 1000).toFixed(0)} ms`} />
-                <InfoRow label="内核态 CPU 时间" value={`${(data.node.resourceUsage.systemCPUMicros / 1000).toFixed(0)} ms`} />
-                <InfoRow label="峰值 RSS" value={formatBytes(data.node.resourceUsage.maxRssBytes)} />
-                <InfoRow label="文件读 / 写" value={`${formatNumber(data.node.resourceUsage.fsRead)} / ${formatNumber(data.node.resourceUsage.fsWrite)}`} />
-                <InfoRow label="主动上下文切换" value={formatNumber(data.node.resourceUsage.voluntaryContextSwitches)} />
-                <InfoRow label="被动上下文切换" value={formatNumber(data.node.resourceUsage.involuntaryContextSwitches)} />
-              </div>
+              <Descriptions
+                data={[
+                  { key: '用户态 CPU 时间', value: `${(data.node.resourceUsage.userCPUMicros / 1000).toFixed(0)} ms` },
+                  { key: '内核态 CPU 时间', value: `${(data.node.resourceUsage.systemCPUMicros / 1000).toFixed(0)} ms` },
+                  { key: '峰值 RSS', value: formatBytes(data.node.resourceUsage.maxRssBytes) },
+                  { key: '文件读 / 写', value: `${formatNumber(data.node.resourceUsage.fsRead)} / ${formatNumber(data.node.resourceUsage.fsWrite)}` },
+                  { key: '主动上下文切换', value: formatNumber(data.node.resourceUsage.voluntaryContextSwitches) },
+                  { key: '被动上下文切换', value: formatNumber(data.node.resourceUsage.involuntaryContextSwitches) },
+                ]}
+                column={2}
+                layout="horizontal"
+                align="left"
+              />
             </>)}
           </TabPane>
 
