@@ -221,6 +221,9 @@ export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen,
             // 只读预览不使用印章/批注，禁用默认印章清单，避免从 jsDelivr CDN
             // 拉取 default-stamps 的 manifest.json 与 stamps.pdf。
             stamp: { manifests: [] },
+            // 关闭查看器 UI 默认从 Google Fonts 加载的 Open Sans 字体（国内被墙会导致
+            // 渲染阻塞、工具栏文字延迟）。置 null 后回退系统字体栈，中文 UI 视觉无影响。
+            fonts: { ui: null, signature: null },
           }}
           style={{ width: '100%', height: '100%' }}
         />
