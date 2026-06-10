@@ -2558,7 +2558,7 @@ export default function ChatPage({
                           return (
                             <SemiList.Item
                               key={item.id}
-                              style={{ padding: '8px 10px', background: 'var(--semi-color-bg-0)', border: '1px solid var(--semi-color-border)', borderRadius: 8, marginBottom: 8 }}
+                              style={{ padding: '8px 10px', background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 8, marginBottom: 8 }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ fontSize: 22, flexShrink: 0 }}>{getFileTypeIcon(asset?.name ?? '')}</span>
@@ -2597,7 +2597,7 @@ export default function ChatPage({
                                 href={urlMatch}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                style={{ display: 'flex', gap: 10, padding: '10px 12px', background: 'var(--semi-color-bg-0)', border: '1px solid var(--semi-color-border)', borderRadius: 8, textDecoration: 'none', color: 'inherit', alignItems: 'flex-start', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}
+                                style={{ display: 'flex', gap: 10, padding: '10px 12px', background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 8, textDecoration: 'none', color: 'inherit', alignItems: 'flex-start', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}
                               >
                                 {preview?.image && (
                                   <img
