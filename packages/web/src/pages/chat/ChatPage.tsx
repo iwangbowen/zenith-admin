@@ -2778,7 +2778,12 @@ export default function ChatPage({
                     <img
                       src={item.previewUrl}
                       alt={item.file.name}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6, display: 'block' }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6, display: 'block', cursor: 'pointer' }}
+                      onClick={() => {
+                        setPreviewSrcList([item.previewUrl]);
+                        setPreviewCurrentIndex(0);
+                        setPreviewVisible(true);
+                      }}
                     />
                     <Button
                       size="small"
