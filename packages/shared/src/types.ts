@@ -1652,6 +1652,8 @@ export interface AiMessage {
   content: string;
   tokensInput: number;
   tokensOutput: number;
+  /** 1 = 点赞, -1 = 点踩, null = 未反馈 */
+  feedback: number | null;
   createdAt: string;
 }
 

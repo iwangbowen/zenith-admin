@@ -1518,6 +1518,8 @@ export const aiMessages = pgTable('ai_messages', {
   content: text('content').notNull(),
   tokensInput: integer('tokens_input').notNull().default(0),
   tokensOutput: integer('tokens_output').notNull().default(0),
+  /** 用户反馈：1 = 👍 点赞，-1 = 👎 点踩，null = 未反馈 */
+  feedback: integer('feedback'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

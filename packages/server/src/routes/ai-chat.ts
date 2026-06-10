@@ -96,7 +96,15 @@ router.post('/:id/chat', authMiddleware, async (c) => {
 
     // 保存消息 & 更新标题
     if (assistantContent) {
-      await saveMessages(id, message, assistantContent, tokensInput, tokensOutput, snapshot);
+      const { assistantMsgId } = await saveMessages(id, message, assistantContent, tokensInput, tokensOutput, snapshot);
+
+      // 发送包含数据库消息 ID 的 saved 事件，前端用它更新 message.id 以便点赞/点踩调 API
+      if (assistantMsgId) {
+        await stream.writeSSE({
+          event: 'saved',
+          data: JSON.stringify({ assistantMsgId }),
+        });
+      }
 
       // 如果对话还没有自定义标题，用第一条消息的前 30 个字作为标题
       const conversation = await ensureConversationOwner(id).catch(() => null);

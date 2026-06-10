@@ -8,6 +8,8 @@ import {
   okMsg,
   IdParam,
   okBody,
+  okPaginated,
+  PaginationQuery,
 } from '../lib/openapi-schemas';
 import { AiConversationDTO, AiMessageDTO } from '../lib/openapi-dtos';
 import {
@@ -16,8 +18,11 @@ import {
   getConversation,
   deleteConversation,
   listMessages,
+  submitMessageFeedback,
+  listFeedbackMessages,
 } from '../services/ai-conversations.service';
 import { createAiConversationSchema } from '@zenith/shared';
+import { guard } from '../middleware/guard';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -103,6 +108,49 @@ const getMessages = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, create, getOne, remove, getMessages] as const);
+const feedbackSchema = z.object({
+  feedback: z.union([z.literal(1), z.literal(-1), z.null()]).openapi({ description: '1=点赞, -1=点踩, null=撤销' }),
+});
+
+const submitFeedback = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put',
+    path: '/{id}/messages/{msgId}/feedback',
+    tags: ['AI'],
+    summary: '提交消息反馈（点赞/点踩）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: z.object({ id: z.coerce.number(), msgId: z.coerce.number() }),
+      body: { content: jsonContent(feedbackSchema), required: true },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('反馈成功') },
+  }),
+  handler: async (c) => {
+    const { id, msgId } = c.req.valid('param');
+    const { feedback } = c.req.valid('json');
+    await submitMessageFeedback(id, msgId, feedback);
+    return c.json(okBody(null, '反馈成功'), 200);
+  },
+});
+
+const adminFeedbackList = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/admin/feedback',
+    tags: ['AI'],
+    summary: '管理员获取消息反馈列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard('ai:feedback:view')] as const,
+    request: { query: PaginationQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(AiMessageDTO, '反馈列表') },
+  }),
+  handler: async (c) => {
+    const { page, pageSize } = c.req.valid('query');
+    return c.json(okBody(await listFeedbackMessages(page, pageSize)), 200);
+  },
+});
+
+router.openapiRoutes([list, create, getOne, remove, getMessages, submitFeedback, adminFeedbackList] as const);
 
 export default router;

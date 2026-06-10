@@ -46,6 +46,7 @@ export const AiMessageDTO = z
     content: z.string().openapi({ description: '消息内容' }),
     tokensInput: z.number().openapi({ description: '输入 token 数' }),
     tokensOutput: z.number().openapi({ description: '输出 token 数' }),
+    feedback: z.number().nullable().openapi({ description: '用户反馈：1=点赞, -1=点踩, null=未反馈' }),
     createdAt: z.string().openapi({ description: '创建时间' }),
   })
   .openapi('AiMessage');

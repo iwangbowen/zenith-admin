@@ -1,4 +1,4 @@
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, isNotNull } from 'drizzle-orm';
 import { db } from '../db';
 import { aiConversations, aiMessages } from '../db/schema';
 import { currentUser } from '../lib/context';
@@ -26,6 +26,7 @@ function mapMessage(row: typeof aiMessages.$inferSelect) {
     content: row.content,
     tokensInput: row.tokensInput,
     tokensOutput: row.tokensOutput,
+    feedback: row.feedback,
     createdAt: formatDateTime(row.createdAt),
   };
 }
@@ -97,13 +98,14 @@ export async function saveMessages(
   tokensOutput: number,
   snapshot: { provider: string; model: string; configId?: number } | null,
 ) {
-  await db.insert(aiMessages).values([
+  const [, assistantRow] = await db.insert(aiMessages).values([
     { conversationId, role: 'user', content: userContent, tokensInput: 0, tokensOutput: 0 },
     { conversationId, role: 'assistant', content: assistantContent, tokensInput, tokensOutput },
-  ]);
+  ]).returning({ id: aiMessages.id });
   if (snapshot) {
     await db.update(aiConversations).set({ providerSnapshot: snapshot }).where(eq(aiConversations.id, conversationId));
   }
+  return { assistantMsgId: assistantRow?.id ?? null };
 }
 
 export async function getHistoryMessages(conversationId: number, limit = 20) {
@@ -114,5 +116,48 @@ export async function getHistoryMessages(conversationId: number, limit = 20) {
     .orderBy(desc(aiMessages.createdAt))
     .limit(limit);
   // 按时间升序返回
-  return rows.reverse().map((r) => ({ role: r.role as 'system' | 'user' | 'assistant', content: r.content }));
+  return rows.toReversed().map((r) => ({ role: r.role, content: r.content }));
+}
+
+/**
+ * 给 assistant 消息提交用户反馈（点赞 +1 / 点踩 -1 / 撤销 null）。
+ * 只允许对 assistant 消息打分；会话所有者限制。
+ */
+export async function submitMessageFeedback(conversationId: number, messageId: number, feedback: 1 | -1 | null) {
+  await ensureConversationOwner(conversationId);
+  const [msg] = await db
+    .select()
+    .from(aiMessages)
+    .where(and(eq(aiMessages.id, messageId), eq(aiMessages.conversationId, conversationId)));
+  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  if (msg.role !== 'assistant') throw new HTTPException(400, { message: '只能对 AI 回复打分' });
+  await db.update(aiMessages).set({ feedback }).where(eq(aiMessages.id, messageId));
+}
+
+/**
+ * 管理员：列出所有有反馈的 assistant 消息（分页）。
+ */
+export async function listFeedbackMessages(page: number, pageSize: number) {
+  const offset = (page - 1) * pageSize;
+  const base = and(isNotNull(aiMessages.feedback), eq(aiMessages.role, 'assistant'));
+  const [total, list] = await Promise.all([
+    db.$count(aiMessages, base),
+    db
+      .select({
+        id: aiMessages.id,
+        conversationId: aiMessages.conversationId,
+        role: aiMessages.role,
+        content: aiMessages.content,
+        tokensInput: aiMessages.tokensInput,
+        tokensOutput: aiMessages.tokensOutput,
+        feedback: aiMessages.feedback,
+        createdAt: aiMessages.createdAt,
+      })
+      .from(aiMessages)
+      .where(base)
+      .orderBy(desc(aiMessages.createdAt))
+      .limit(pageSize)
+      .offset(offset),
+  ]);
+  return { total, list: list.map(mapMessage), page, pageSize };
 }

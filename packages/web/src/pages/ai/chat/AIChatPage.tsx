@@ -381,6 +381,14 @@ export default function AIChatPage() {
                   setMessages((prev) =>
                     prev.map((m) => (m.id === assistantMsgId ? { ...m, content: accContent } : m))
                   );
+                } else if (eventType === 'saved') {
+                  // 服务端保存完成，返回了真实的数据库消息 ID，更新本地消息 ID
+                  const dbId = (parsed.assistantMsgId as number | undefined);
+                  if (dbId) {
+                    setMessages((prev) =>
+                      prev.map((m) => (m.id === assistantMsgId ? { ...m, id: `api-${dbId}` } : m))
+                    );
+                  }
                 } else if (eventType === 'done') {
                   setMessages((prev) =>
                     prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'completed' } : m))
@@ -590,8 +598,18 @@ export default function AIChatPage() {
                   align={align}
                   mode={mode}
                   onMessageCopy={() => Toast.success('已复制到剪贴板')}
-                  onMessageGoodFeedback={() => Toast.success('感谢您的正向反馈')}
-                  onMessageBadFeedback={() => Toast.info('感谢您的反馈，我们会持续改进')}
+                  onMessageGoodFeedback={(msg) => {
+                    const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
+                    if (!dbId || !activeConvId) { Toast.success('感谢您的正向反馈'); return; }
+                    void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: 1 })
+                      .then(() => Toast.success('感谢您的正向反馈'));
+                  }}
+                  onMessageBadFeedback={(msg) => {
+                    const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
+                    if (!dbId || !activeConvId) { Toast.info('感谢您的反馈，我们会持续改进'); return; }
+                    void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: -1 })
+                      .then(() => Toast.info('感谢您的反馈，我们会持续改进'));
+                  }}
                   onMessageReset={() => Toast.info('重新生成功能暂不支持')}
                   onFileClick={(fileItem) => {
                     const fi = fileItem?.fileInstance;
