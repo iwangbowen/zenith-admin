@@ -151,11 +151,11 @@ export default function SystemConfigsPage() {
 
   const columns: ColumnProps<SystemConfig>[] = [
     { title: '配置键', dataIndex: 'configKey', width: 220, render: renderEllipsis },
-    { title: '配置値', dataIndex: 'configValue', width: 260, render: renderEllipsis },
+    { title: '配置値', dataIndex: 'configValue', width: 140, render: renderEllipsis },
     {
       title: '类型',
       dataIndex: 'configType',
-      width: 110,
+      width: 80,
       render: (v: string) => <DictTag dictCode="system_config_type" value={v} />,
     },
     { title: '描述', dataIndex: 'description', render: renderEllipsis },
