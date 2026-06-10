@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, List as SemiList, Tooltip, Spin, Popconfirm } from '@douyinfe/semi-ui';
+import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, Popconfirm } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
+import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { PDFPreviewPanel } from './PDFPreviewPanel';
 import UserAiConfigModal from '../components/UserAiConfigModal';
@@ -289,7 +290,23 @@ export default function AIChatPage() {
   const handleMessageSend = useCallback(
     async (content: { inputContents?: { type: string; text?: string }[]; text?: string }) => {
       const text = content.text ?? content.inputContents?.find((c) => c.type === 'text')?.text;
-      if (!text?.trim() || !activeConvId) return;
+      if (!text?.trim()) return;
+
+      // 若当前没有会话，先自动创建一个
+      let convId = activeConvId;
+      if (!convId) {
+        try {
+          const res = await request.post<AiConversation>('/api/ai/conversations', { title: '新对话' });
+          const newConv = res.data;
+          convId = newConv.id;
+          setConversations((prev) => [newConv, ...prev]);
+          setActiveConvId(convId);
+          setMessages([]);
+        } catch {
+          Toast.error('创建对话失败');
+          return;
+        }
+      }
 
       const userMsg: Message = {
         id: nextMsgId(),
@@ -317,7 +334,7 @@ export default function AIChatPage() {
 
       try {
         const response = await fetch(
-          `${config.apiBaseUrl}/api/ai/conversations/${activeConvId}/chat`,
+          `${config.apiBaseUrl}/api/ai/conversations/${convId}/chat`,
           {
             method: 'POST',
             headers: {
@@ -462,76 +479,48 @@ export default function AIChatPage() {
       showDetail={activeConvId !== null}
       onBack={() => setActiveConvId(null)}
       master={(
-        <>
-          <div style={{ padding: '16px 12px 8px' }}>
+        <NavListPanel
+          headerExtra={
             <Button
               theme="solid"
               type="primary"
+              size="small"
               icon={<MessageSquarePlus size={14} />}
-              style={{ width: '100%' }}
               onClick={() => void handleNewConversation()}
             >
               新建对话
             </Button>
-          </div>
-          <MasterDetailLayout.Body style={{ padding: '4px 8px' }}>
-            {convsLoading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
-                <Spin />
-              </div>
-            ) : (
-              <SemiList
-                dataSource={conversations}
-                split={false}
-                renderItem={(conv) => {
-                  const active = activeConvId === conv.id;
-                  return (
-                    <SemiList.Item
-                      key={conv.id}
-                      align="center"
-                      onClick={() => setActiveConvId(conv.id)}
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: 6,
-                        marginBottom: 2,
-                        cursor: 'pointer',
-                        background: active ? 'var(--semi-color-primary-light-default)' : 'transparent',
-                        color: active ? 'var(--semi-color-primary)' : 'var(--semi-color-text-0)',
-                      }}
-                      main={(
-                        <Text
-                          ellipsis={{ showTooltip: true }}
-                          style={{ flex: 1, fontSize: 13, color: 'inherit' }}
-                        >
-                          {conv.title}
-                        </Text>
-                      )}
-                      extra={(
-                        <Popconfirm
-                          title="确定要删除这个会话吗？"
-                          onConfirm={(e) => {
-                            e?.stopPropagation();
-                            void handleDeleteConversation(conv.id);
-                          }}
-                          position="right"
-                        >
-                          <Button
-                            theme="borderless"
-                            size="small"
-                            icon={<Trash2 size={12} />}
-                            type="danger"
-                            style={{ flexShrink: 0, marginLeft: 4, opacity: 0.6 }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </Popconfirm>
-                      )}
-                    />
-                  );
-                }}
-              />
-            )}
-          </MasterDetailLayout.Body>
-        </>
+          }
+          loading={convsLoading}
+          emptyText="暂无对话"
+          dataSource={conversations}
+          renderItem={(conv) => (
+            <NavListItem
+              key={conv.id}
+              active={activeConvId === conv.id}
+              onClick={() => setActiveConvId(conv.id)}
+              primary={conv.title}
+              extra={
+                <Popconfirm
+                  title="确定要删除这个会话吗？"
+                  onConfirm={(e) => {
+                    e?.stopPropagation();
+                    void handleDeleteConversation(conv.id);
+                  }}
+                  position="right"
+                >
+                  <Button
+                    theme="borderless"
+                    size="small"
+                    icon={<Trash2 size={12} />}
+                    type="danger"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Popconfirm>
+              }
+            />
+          )}
+        />
       )}
       detail={(
         <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
