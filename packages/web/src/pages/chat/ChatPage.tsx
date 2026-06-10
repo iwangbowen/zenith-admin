@@ -2592,12 +2592,12 @@ export default function ChatPage({
                           const preview = item.extra?.linkPreview;
                           const urlMatch = preview?.url ?? (/(https?:\/\/[^\s]+)/.exec(item.content)?.[1] ?? item.content);
                           return (
-                            <SemiList.Item key={item.id} style={{ padding: 0, marginBottom: 8, border: 'none' }}>
+                            <SemiList.Item key={item.id} style={{ padding: 0, marginBottom: 8, border: 'none', overflow: 'hidden' }}>
                               <a
                                 href={urlMatch}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                style={{ display: 'flex', gap: 10, padding: '10px 12px', background: 'var(--semi-color-bg-0)', border: '1px solid var(--semi-color-border)', borderRadius: 8, textDecoration: 'none', color: 'inherit', alignItems: 'flex-start' }}
+                                style={{ display: 'flex', gap: 10, padding: '10px 12px', background: 'var(--semi-color-bg-0)', border: '1px solid var(--semi-color-border)', borderRadius: 8, textDecoration: 'none', color: 'inherit', alignItems: 'flex-start', width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}
                               >
                                 {preview?.image && (
                                   <img
