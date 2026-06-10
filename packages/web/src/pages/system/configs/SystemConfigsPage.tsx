@@ -158,7 +158,7 @@ export default function SystemConfigsPage() {
       width: 80,
       render: (v: string) => <DictTag dictCode="system_config_type" value={v} />,
     },
-    { title: '描述', dataIndex: 'description', render: renderEllipsis },
+    { title: '描述', dataIndex: 'description', width: 300, render: renderEllipsis },
     {
       title: '更新时间', dataIndex: 'updatedAt', width: 180,
       render: (v: string) => formatDateTime(v),
