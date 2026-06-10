@@ -512,13 +512,18 @@ export default function MonitorPage() {
     }
     if (d.disk) {
       return (
-        <div className="monitor-detail-grid">
-          <InfoRow label="挂载点" value={d.disk.mount ?? '/'} />
-          <InfoRow label="总容量" value={formatBytes(d.disk.total)} />
-          <InfoRow label="已使用" value={formatBytes(d.disk.used)} />
-          <InfoRow label="可用空间" value={formatBytes(d.disk.free)} />
-          <InfoRow label="使用率" value={`${d.disk.usagePercent}%`} />
-        </div>
+        <Descriptions
+          data={[
+            { key: '挂载点', value: d.disk.mount ?? '/' },
+            { key: '总容量', value: formatBytes(d.disk.total) },
+            { key: '已使用', value: formatBytes(d.disk.used) },
+            { key: '可用空间', value: formatBytes(d.disk.free) },
+            { key: '使用率', value: `${d.disk.usagePercent}%` },
+          ]}
+          column={2}
+          layout="horizontal"
+          align="left"
+        />
       );
     }
     return <Text type="tertiary">磁盘信息不可用</Text>;
@@ -591,25 +596,37 @@ export default function MonitorPage() {
             ], 'ms')}
 
             <div className="monitor-overview-sys">
-              <InfoRow label="主机名" value={data.os.hostname} />
-              <InfoRow label="操作系统" value={`${data.os.platform} ${data.os.release} (${data.os.arch})`} />
-              <InfoRow label="系统运行时长" value={formatUptime(data.os.uptimeSeconds)} />
-              <InfoRow label="Node 版本" value={data.node.version} />
-              <InfoRow label="进程 PID" value={data.node.pid} />
-              <InfoRow label="进程运行时长" value={formatUptime(data.node.uptime)} />
+              <Descriptions
+                data={[
+                  { key: '主机名', value: data.os.hostname },
+                  { key: 'Node 版本', value: data.node.version },
+                  { key: '操作系统', value: `${data.os.platform} ${data.os.release} (${data.os.arch})`, span: 2 },
+                  { key: '系统运行时长', value: formatUptime(data.os.uptimeSeconds) },
+                  { key: '进程运行时长', value: formatUptime(data.node.uptime) },
+                  { key: '进程 PID', value: String(data.node.pid), span: 2 },
+                ]}
+                column={2}
+                layout="horizontal"
+                align="left"
+              />
             </div>
           </TabPane>
 
           {/* ===== CPU ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Cpu size={14} />CPU</span>} itemKey="cpu">
-            <div className="monitor-detail-grid">
-              <InfoRow label="处理器型号" value={data.cpu.model} />
-              <InfoRow label="核心数量" value={`${data.cpu.cores} 核`} />
-              <InfoRow label="主频" value={`${data.cpu.speed} MHz`} />
-              <InfoRow label="系统 CPU 使用率" value={`${data.cpu.usage}%`} />
-              <InfoRow label="进程 CPU 使用率" value={data.node.cpuUsagePercent === undefined ? '—' : `${data.node.cpuUsagePercent}%（单核满载=100%）`} />
-              <InfoRow label="系统负载 (1/5/15min)" value={data.cpu.loadAvg.map((v) => v.toFixed(2)).join(' / ')} />
-            </div>
+            <Descriptions
+              data={[
+                { key: '处理器型号', value: data.cpu.model, span: 2 },
+                { key: '核心数量', value: `${data.cpu.cores} 核` },
+                { key: '主频', value: `${data.cpu.speed} MHz` },
+                { key: '系统 CPU 使用率', value: `${data.cpu.usage}%` },
+                { key: '进程 CPU 使用率', value: data.node.cpuUsagePercent === undefined ? '—' : `${data.node.cpuUsagePercent}%（单核满载=100%）` },
+                { key: '系统负载 (1/5/15min)', value: data.cpu.loadAvg.map((v) => v.toFixed(2)).join(' / '), span: 2 },
+              ]}
+              column={2}
+              layout="horizontal"
+              align="left"
+            />
 
             {data.cpu.perCore && data.cpu.perCore.length > 0 && (<>
               <div className="monitor-section-title">每核使用率</div>
@@ -641,32 +658,47 @@ export default function MonitorPage() {
 
           {/* ===== 内存 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><MemoryStick size={14} />内存</span>} itemKey="mem">
-            <div className="monitor-detail-grid">
-              <InfoRow label="总内存" value={formatBytes(data.memory.total)} />
-              <InfoRow label="已使用" value={formatBytes(data.memory.used)} />
-              <InfoRow label="可用内存" value={formatBytes(data.memory.free)} />
-              <InfoRow label="使用率" value={`${data.memory.usagePercent}%`} />
-            </div>
+            <Descriptions
+              data={[
+                { key: '总内存', value: formatBytes(data.memory.total) },
+                { key: '已使用', value: formatBytes(data.memory.used) },
+                { key: '可用内存', value: formatBytes(data.memory.free) },
+                { key: '使用率', value: `${data.memory.usagePercent}%` },
+              ]}
+              column={2}
+              layout="horizontal"
+              align="left"
+            />
 
             {data.memory.detail && (<>
               <div className="monitor-section-title">Linux 内存明细</div>
-              <div className="monitor-detail-grid">
-                <InfoRow label="MemAvailable" value={formatBytes(data.memory.detail.memAvailable)} />
-                <InfoRow label="Buffers" value={formatBytes(data.memory.detail.buffers)} />
-                <InfoRow label="Cached" value={formatBytes(data.memory.detail.cached)} />
-                <InfoRow label="Shared" value={formatBytes(data.memory.detail.shared)} />
-                <InfoRow label="Dirty" value={formatBytes(data.memory.detail.dirty)} />
-                <InfoRow label="Writeback" value={formatBytes(data.memory.detail.writeback)} />
-              </div>
+              <Descriptions
+                data={[
+                  { key: 'MemAvailable', value: formatBytes(data.memory.detail.memAvailable) },
+                  { key: 'Buffers', value: formatBytes(data.memory.detail.buffers) },
+                  { key: 'Cached', value: formatBytes(data.memory.detail.cached) },
+                  { key: 'Shared', value: formatBytes(data.memory.detail.shared) },
+                  { key: 'Dirty', value: formatBytes(data.memory.detail.dirty) },
+                  { key: 'Writeback', value: formatBytes(data.memory.detail.writeback) },
+                ]}
+                column={2}
+                layout="horizontal"
+                align="left"
+              />
               <div className="monitor-section-title">Swap</div>
               {data.memory.detail.swapTotal > 0 ? (
-                <div className="monitor-detail-grid">
-                  <InfoRow label="总容量" value={formatBytes(data.memory.detail.swapTotal)} />
-                  <InfoRow label="已使用" value={formatBytes(data.memory.detail.swapTotal - data.memory.detail.swapFree)} />
-                  <InfoRow label="可用" value={formatBytes(data.memory.detail.swapFree)} />
-                  <InfoRow label="使用率" value={`${data.memory.detail.swapUsagePercent}%`} />
-                  <InfoRow label="SwapCached" value={formatBytes(data.memory.detail.swapCached)} />
-                </div>
+                <Descriptions
+                  data={[
+                    { key: '总容量', value: formatBytes(data.memory.detail.swapTotal) },
+                    { key: '已使用', value: formatBytes(data.memory.detail.swapTotal - data.memory.detail.swapFree) },
+                    { key: '可用', value: formatBytes(data.memory.detail.swapFree) },
+                    { key: '使用率', value: `${data.memory.detail.swapUsagePercent}%` },
+                    { key: 'SwapCached', value: formatBytes(data.memory.detail.swapCached) },
+                  ]}
+                  column={2}
+                  layout="horizontal"
+                  align="left"
+                />
               ) : <Text type="tertiary" size="small">未启用 Swap</Text>}
             </>)}
 
@@ -715,17 +747,22 @@ export default function MonitorPage() {
 
           {/* ===== Node.js ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Server size={14} />Node.js</span>} itemKey="node">
-            <div className="monitor-detail-grid">
-              <InfoRow label="进程 PID" value={data.node.pid} />
-              <InfoRow label="Node 版本" value={data.node.version} />
-              <InfoRow label="进程运行时长" value={formatUptime(data.node.uptime)} />
-              <InfoRow label="堆内存使用率" value={`${heapPercent}%`} />
-              <InfoRow label="RSS 内存" value={formatBytes(data.node.memoryUsage.rss)} />
-              <InfoRow label="堆内存总量" value={formatBytes(data.node.memoryUsage.heapTotal)} />
-              <InfoRow label="堆内存已用" value={formatBytes(data.node.memoryUsage.heapUsed)} />
-              <InfoRow label="external" value={formatBytes(data.node.memoryUsage.external)} />
-              <InfoRow label="进程 CPU%" value={data.node.cpuUsagePercent === undefined ? '—' : `${data.node.cpuUsagePercent}%`} />
-            </div>
+            <Descriptions
+              data={[
+                { key: '进程 PID', value: String(data.node.pid) },
+                { key: 'Node 版本', value: data.node.version },
+                { key: '进程运行时长', value: formatUptime(data.node.uptime) },
+                { key: '堆内存使用率', value: `${heapPercent}%` },
+                { key: 'RSS 内存', value: formatBytes(data.node.memoryUsage.rss) },
+                { key: '堆内存总量', value: formatBytes(data.node.memoryUsage.heapTotal) },
+                { key: '堆内存已用', value: formatBytes(data.node.memoryUsage.heapUsed) },
+                { key: 'external', value: formatBytes(data.node.memoryUsage.external) },
+                { key: '进程 CPU%', value: data.node.cpuUsagePercent === undefined ? '—' : `${data.node.cpuUsagePercent}%` },
+              ]}
+              column={2}
+              layout="horizontal"
+              align="left"
+            />
 
             {data.node.eventLoop && (<>
               <div className="monitor-section-title">Event Loop 延迟</div>
@@ -741,13 +778,19 @@ export default function MonitorPage() {
 
             {data.node.gc && (<>
               <div className="monitor-section-title">垃圾回收（GC）</div>
-              <div className="monitor-detail-grid">
-                <InfoRow label="累计次数" value={formatNumber(data.node.gc.totalCount)} />
-                <InfoRow label="累计耗时" value={`${data.node.gc.totalDurationMs.toFixed(2)} ms`} />
-                {Object.entries(data.node.gc.byKind).map(([kind, v]) => (
-                  <InfoRow key={kind} label={`${kind}`} value={`${formatNumber(v.count)} 次 / ${v.durationMs.toFixed(2)} ms`} />
-                ))}
-              </div>
+              <Descriptions
+                data={[
+                  { key: '累计次数', value: formatNumber(data.node.gc.totalCount) },
+                  { key: '累计耗时', value: `${data.node.gc.totalDurationMs.toFixed(2)} ms` },
+                  ...Object.entries(data.node.gc.byKind).map(([kind, v]) => ({
+                    key: kind,
+                    value: `${formatNumber(v.count)} 次 / ${v.durationMs.toFixed(2)} ms`,
+                  })),
+                ]}
+                column={2}
+                layout="horizontal"
+                align="left"
+              />
             </>)}
 
             {data.node.heapSpaces && data.node.heapSpaces.length > 0 && (<>
@@ -788,27 +831,32 @@ export default function MonitorPage() {
           {/* ===== 数据库 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Database size={14} />数据库</span>} itemKey="db">
             {data.database ? (<>
-              <div className="monitor-detail-grid">
-                <InfoRow label="数据库名称" value={data.database.name} />
-                <InfoRow label="数据库大小" value={formatBytes(data.database.size)} />
-                <InfoRow label="数据表数量" value={`${data.database.tableCount} 张`} />
-                <InfoRow label="总连接数" value={data.database.totalConnections} />
-                {data.database.connectionStates && (<>
-                  <InfoRow label="活跃连接 (active)" value={data.database.connectionStates.active} />
-                  <InfoRow label="空闲连接 (idle)" value={data.database.connectionStates.idle} />
-                  <InfoRow label="事务中空闲" value={data.database.connectionStates.idleInTransaction} />
-                  <InfoRow label="其他状态" value={data.database.connectionStates.other} />
-                </>)}
-                {data.database.cacheHit && (
-                  <InfoRow label="缓存命中率" value={`${data.database.cacheHit.ratio}% (${formatNumber(data.database.cacheHit.blksHit)} / ${formatNumber(data.database.cacheHit.blksHit + data.database.cacheHit.blksRead)})`} />
-                )}
-                {data.database.transactions && (<>
-                  <InfoRow label="提交事务" value={formatNumber(data.database.transactions.commit)} />
-                  <InfoRow label="回滚事务" value={formatNumber(data.database.transactions.rollback)} />
-                  <InfoRow label="死锁次数" value={formatNumber(data.database.transactions.deadlocks)} />
-                  <InfoRow label="临时文件字节" value={formatBytes(data.database.transactions.tempBytes)} />
-                </>)}
-              </div>
+              <Descriptions
+                data={[
+                  { key: '数据库名称', value: data.database.name },
+                  { key: '数据库大小', value: formatBytes(data.database.size) },
+                  { key: '数据表数量', value: `${data.database.tableCount} 张` },
+                  { key: '总连接数', value: String(data.database.totalConnections) },
+                  ...(data.database.connectionStates ? [
+                    { key: '活跃连接 (active)', value: String(data.database.connectionStates.active) },
+                    { key: '空闲连接 (idle)', value: String(data.database.connectionStates.idle) },
+                    { key: '事务中空闲', value: String(data.database.connectionStates.idleInTransaction) },
+                    { key: '其他状态', value: String(data.database.connectionStates.other) },
+                  ] : []),
+                  ...(data.database.cacheHit ? [
+                    { key: '缓存命中率', value: `${data.database.cacheHit.ratio}% (${formatNumber(data.database.cacheHit.blksHit)} / ${formatNumber(data.database.cacheHit.blksHit + data.database.cacheHit.blksRead)})`, span: 2 },
+                  ] : []),
+                  ...(data.database.transactions ? [
+                    { key: '提交事务', value: formatNumber(data.database.transactions.commit) },
+                    { key: '回滚事务', value: formatNumber(data.database.transactions.rollback) },
+                    { key: '死锁次数', value: formatNumber(data.database.transactions.deadlocks) },
+                    { key: '临时文件字节', value: formatBytes(data.database.transactions.tempBytes) },
+                  ] : []),
+                ]}
+                column={2}
+                layout="horizontal"
+                align="left"
+              />
               <div className="monitor-section-title">慢查询 Top 5</div>
               {renderSlowQueries(data.database.slowQueries, data.database.slowQueriesAvailable)}
             </>) : <Text type="tertiary">数据库信息不可用</Text>}
