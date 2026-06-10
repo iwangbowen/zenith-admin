@@ -138,6 +138,7 @@ export default defineConfig(({ mode }) => {
       // decimal.js 是 CJS 包，Vite 有时在 HMR 热更新时无法保证初始化顺序，
       // 导致 recharts -> victory-vendor -> decimal.js 出现 "not a constructor" 报错。
       // 强制预构建后，模块始终以 ESM 形式完整初始化，消除该竞态问题。
+      // victory-vendor 也一并加入，确保整个依赖链在同一预构建批次中完成初始化。
       include: ['decimal.js'],
     },
     server: {
