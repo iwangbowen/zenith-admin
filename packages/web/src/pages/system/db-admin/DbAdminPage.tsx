@@ -1214,7 +1214,7 @@ export default function DbAdminPage() {
                                   active={isActive}
                                   onClick={() => handleSelectTable(t)}
                                   primary={t.name}
-                                  meta={t.sizeText}
+                                  secondary={t.sizeText}
                                   extra={
                                     <Dropdown
                                       trigger="click"
