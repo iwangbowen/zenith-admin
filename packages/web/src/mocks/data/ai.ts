@@ -66,6 +66,7 @@ export const mockAiMessages: Record<number, AiMessage[]> = {
       content: '如何优化 PostgreSQL 中的慢查询？',
       tokensInput: 18,
       tokensOutput: 0,
+      feedback: null,
       createdAt: mockDateTimeOffset(-3600 * 1000 * 2),
     },
     {
@@ -93,6 +94,7 @@ CREATE INDEX idx_users_dept ON users(department_id);
 需要针对具体的 SQL 进一步分析吗？`,
       tokensInput: 0,
       tokensOutput: 180,
+      feedback: null,
       createdAt: mockDateTimeOffset(-3600 * 1000 * 2 + 5000),
     },
   ],
@@ -104,6 +106,7 @@ CREATE INDEX idx_users_dept ON users(department_id);
       content: 'Zenith Admin 使用什么权限模型？',
       tokensInput: 15,
       tokensOutput: 0,
+      feedback: null,
       createdAt: mockDateTimeOffset(-86400 * 1000),
     },
     {
@@ -119,6 +122,7 @@ CREATE INDEX idx_users_dept ON users(department_id);
 在 RBAC 基础上还支持数据范围控制：all / dept / self。`,
       tokensInput: 0,
       tokensOutput: 120,
+      feedback: null,
       createdAt: mockDateTimeOffset(-86400 * 1000 + 5000),
     },
   ],

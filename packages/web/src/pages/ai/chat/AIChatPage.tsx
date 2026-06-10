@@ -623,18 +623,20 @@ export default function AIChatPage() {
                   mode={mode}
                   onMessageCopy={() => { /* Semi 内置已弹 Toast，此处不重复 */ }}
                   onMessageGoodFeedback={(msg) => {
+                    if (!msg) return;
                     const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
                     if (!dbId || !activeConvId) { Toast.success('感谢您的正向反馈'); return; }
                     void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: 1 })
                       .then(() => Toast.success('感谢您的正向反馈'));
                   }}
                   onMessageBadFeedback={(msg) => {
+                    if (!msg) return;
                     const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
                     if (!dbId || !activeConvId) { Toast.info('感谢您的反馈，我们会持续改进'); return; }
                     void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: -1 })
                       .then(() => Toast.info('感谢您的反馈，我们会持续改进'));
                   }}
-                  onMessageReset={(msg) => msg && void handleRegenerate(msg)}
+                  onMessageReset={(msg) => msg && !generating && void handleRegenerate(msg as Message)}
                   onFileClick={(fileItem) => {
                     const fi = fileItem?.fileInstance;
                     if (fi instanceof File) setPdfFile(fi);

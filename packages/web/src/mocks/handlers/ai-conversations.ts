@@ -71,6 +71,7 @@ export const aiConversationsHandlers = [
       content: userText,
       tokensInput: Math.floor(userText.length / 4),
       tokensOutput: 0,
+      feedback: null,
       createdAt: now,
     };
     if (!msgStore[id]) msgStore[id] = [];
@@ -109,6 +110,7 @@ export const aiConversationsHandlers = [
       content: replyText,
       tokensInput: 0,
       tokensOutput: Math.floor(replyText.length / 4),
+      feedback: null,
       createdAt: now,
     };
     msgStore[id].push(assistantMsg);
