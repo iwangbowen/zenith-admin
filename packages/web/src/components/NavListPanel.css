@@ -93,8 +93,8 @@
   padding: 8px 10px;
   border-top: 1px solid var(--semi-color-border);
   overflow-x: auto;
-  box-sizing: border-box;
-}
+  box-sizing: border-box;  display: flex;
+  justify-content: center;}
 
 /* rawBody 模式保留的 footer div */
 .nav-list-panel__footer {
