@@ -176,16 +176,6 @@ function formatTimestamp(ms: number): string {
   return `${hh}:${mm}:${ss}`;
 }
 
-interface InfoRowProps { readonly label: string; readonly value: React.ReactNode; }
-function InfoRow({ label, value }: InfoRowProps) {
-  return (
-    <div className="monitor-info-row">
-      <Text type="tertiary" className="monitor-info-label">{label}</Text>
-      <Text className="monitor-info-value">{value}</Text>
-    </div>
-  );
-}
-
 const SKELETON_ROW_KEYS = ['r0','r1','r2','r3','r4','r5','r6','r7','r8','r9','r10','r11'] as const;
 
 const REFRESH_OPTIONS = [
