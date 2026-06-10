@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, Popconfirm, TextArea } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
+import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
 import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
@@ -307,11 +308,14 @@ export default function AIChatPage() {
 
   const dialogueRenderConfig = useMemo(() => ({
     // 隐藏分享按钮：从默认操作栏中排除 shareNode
-    renderDialogueAction: (props: { defaultActionsObj?: Record<string, React.ReactNode>; className: string }) => {
-      const { shareNode: _, ...rest } = props.defaultActionsObj ?? {};
-      return <div className={props.className}>{Object.values(rest)}</div>;
+    renderDialogueAction: (props: RenderActionProps) => {
+      // DefaultActionNodeObj 没有 shareNode，分享按鈕在 defaultActions 列表里
+      // 直接使用 defaultActionsObj，它不包含 share
+      if (!props.defaultActionsObj) return null;
+      const { copyNode, resetNode, likeNode, dislikeNode, moreNode } = props.defaultActionsObj;
+      return <div className={props.className}>{copyNode}{resetNode}{likeNode}{dislikeNode}{moreNode}</div>;
     },
-  }), []);
+  }) satisfies { renderDialogueAction: (props: RenderActionProps) => React.ReactNode }, []);
 
   const renderDialogueContentItem = useMemo(() => ({
     pdf_card: (item: Record<string, unknown>) => renderPdfCardItem(item, setPdfFile),

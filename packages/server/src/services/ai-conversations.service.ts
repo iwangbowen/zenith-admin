@@ -116,7 +116,7 @@ export async function getHistoryMessages(conversationId: number, limit = 20) {
     .orderBy(desc(aiMessages.createdAt))
     .limit(limit);
   // 按时间升序返回
-  return rows.toReversed().map((r) => ({ role: r.role, content: r.content }));
+  return [...rows].reverse().map((r: typeof rows[0]) => ({ role: r.role, content: r.content }));
 }
 
 /**

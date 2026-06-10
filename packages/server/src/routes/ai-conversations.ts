@@ -143,7 +143,7 @@ const adminFeedbackList = defineOpenAPIRoute({
     tags: ['AI'],
     summary: '管理员获取消息反馈列表',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard('ai:feedback:view')] as const,
+    middleware: [authMiddleware, guard({ permission: 'ai:feedback:view' })] as const,
     request: { query: PaginationQuery },
     responses: { ...commonErrorResponses, ...okPaginated(AiMessageDTO, '反馈列表') },
   }),

@@ -4,6 +4,44 @@
 
 ---
 
+## v0.51.0 - 2026-06-10
+
+### Added
+
+#### AI 对话功能增强
+
+- **消息反馈（点赞/点踩）持久化**：`ai_messages` 表新增 `feedback` 字段（1=点赞, -1=点踩, null=未反馈）；`PUT /{convId}/messages/{msgId}/feedback` 接口持久化反馈；前端 `convertApiMessage` 将 DB `feedback` 映射到 Semi `like`/`dislike` 字段，刷新后回显正确
+- **重新生成**：点击消息的 redo 按钮，删除 DB 里的 assistant 回复，重新发送上一条 user 消息
+- **消息编辑重发**：点击用户消息的编辑图标，进入受控编辑框（TextArea + 重新发送/取消），提交后删除该消息之后的所有 assistant 回复并以新内容重新发送（Ctrl/Cmd+Enter 快捷提交）
+- **消息删除**：点击消息操作栏"更多"里的删除，UI 移除后调 `DELETE /{convId}/messages/{msgId}/cascade` 级联删除 DB 里该消息及其之后所有消息
+- **AI 反馈管理页**：新增 `/ai/feedback` 页面，管理员可查看所有带反馈的 assistant 消息，支持按点赞/点踩筛选，权限 `ai:feedback:view`
+- **移除 CDN 复制 Toast 重复**：Semi `AIChatDialogue` 内置复制 Toast，去掉我们额外的重复提示
+- **隐藏分享按钮**：通过 `dialogueRenderConfig.renderDialogueAction` 过滤 `shareNode`，移除暂无实际功能的分享按钮
+- **移除提示词（hints）**：删除"如何新增 CRUD 模块"等默认提示，保持界面简洁
+
+#### 密码强度指示器
+
+- 新增 `PasswordStrengthMeter` 组件，4 段渐变强度条 + 弱/一般/良好/强标签 + 最小位数提示
+- 覆盖所有密码输入场景：ProfilePage 修改密码、ForceChangePasswordModal、ResetPasswordPage、UsersPage（新建/修改/批量修改密码），全部 modal 关闭时重置状态
+- 强度条与最小位数提示同行显示；若有大写/特殊字符策略要求则在下方另行显示
+
+#### 服务监控 Descriptions 改造
+
+- 将所有 tab（总览 / CPU / 内存 / 磁盘 / Node.js / HTTP / 数据库 / Redis / WebSocket）的 key-value 信息展示从自定义 `InfoRow` + `monitor-detail-grid` 全面替换为 Semi `Descriptions` 组件（`column=2, layout="horizontal"`）；图表和明细表格保持原样
+- 删除废弃的 `InfoRow` 组件及相关 CSS
+
+### Changed
+
+- **偏好设置排序**：「顶部栏深色模式」调整到「侧边栏深色模式」上方，更符合视觉层级
+- **AI 对话会话列表**：从 Semi List 自定义样式迁移到 `NavListPanel` + `NavListItem`，与项目其他导航列表风格统一；`新建对话` 按钮移到面板标题栏右侧
+
+### Fixed
+
+- AI 对话页：无历史对话时直接发送消息无响应（`activeConvId === null` 直接 return），改为自动创建新对话再发送
+- AI 反馈页：时间列宽度不足导致日期换行，改为 180px + `whiteSpace: nowrap`
+
+---
+
 ## v0.50.0 - 2026-06-10
 
 ### Added
