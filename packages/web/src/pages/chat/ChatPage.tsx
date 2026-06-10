@@ -2203,7 +2203,7 @@ export default function ChatPage({
                 )}
               >
                 <span style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: isQuick ? 6 : 8, maxWidth: '60%', minWidth: 0 }}>
-                  <UserAvatar name={activeConv.targetUser.nickname} avatar={activeConv.targetUser.avatar} size={28} />
+                  <UserAvatar name={activeConv.targetUser.nickname} avatar={activeConv.targetUser.avatar} size={24} />
                   <span style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                     <Title
                       heading={6}
@@ -2230,7 +2230,7 @@ export default function ChatPage({
             )}
             {activeConv.type === 'group' && (
               <>
-                <GroupGridAvatar name={activeConv.name ?? '群聊'} size={28} members={groupAvatarMap[activeConv.id]} />
+                <GroupGridAvatar name={activeConv.name ?? '群聊'} size={24} members={groupAvatarMap[activeConv.id]} />
                 <Title
                   heading={6}
                   style={{
