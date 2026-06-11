@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Button, InputNumber, Popover, Radio, Select, Space, Tooltip, Typography } from '@douyinfe/semi-ui';
+import type React from 'react';
+import { Button, Checkbox, InputNumber, Popover, Radio, Select, Space, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { Settings } from 'lucide-react';
+
+const toggleWeekday = (
+  day: string,
+  checked: boolean,
+  setWeeklyDays: React.Dispatch<React.SetStateAction<string[]>>,
+) => {
+  if (checked) setWeeklyDays((prev) => [...prev, day]);
+  else setWeeklyDays((prev) => prev.filter((v) => v !== day));
+};
 
 type CronMode = 'minutes' | 'hours' | 'daily' | 'weekly' | 'monthly' | 'custom';
 
@@ -20,10 +30,10 @@ function parseExpression(expr: string): {
   hourInterval: number;
   dailyHour: number;
   dailyMinute: number;
-  weeklyDay: string;
+  weeklyDays: string[];
   weeklyHour: number;
   weeklyMinute: number;
-  monthlyDay: number;
+  monthlyDays: number[];
   monthlyHour: number;
   monthlyMinute: number;
 } {
@@ -33,10 +43,10 @@ function parseExpression(expr: string): {
     hourInterval: 1,
     dailyHour: 8,
     dailyMinute: 0,
-    weeklyDay: '1',
+    weeklyDays: ['1'],
     weeklyHour: 9,
     weeklyMinute: 0,
-    monthlyDay: 1,
+    monthlyDays: [1],
     monthlyHour: 9,
     monthlyMinute: 0,
   };
@@ -58,13 +68,17 @@ function parseExpression(expr: string): {
   if (sec === '0' && /^\d+$/.test(min) && /^\d+$/.test(hour) && dom === '*' && mon === '*' && dow === '*') {
     return { ...defaults, mode: 'daily', dailyHour: Number.parseInt(hour, 10), dailyMinute: Number.parseInt(min, 10) };
   }
-  // Weekly: 0 MIN HOUR * * DOW
-  if (sec === '0' && /^\d+$/.test(min) && /^\d+$/.test(hour) && dom === '*' && mon === '*' && /^\d+$/.test(dow)) {
-    return { ...defaults, mode: 'weekly', weeklyHour: Number.parseInt(hour, 10), weeklyMinute: Number.parseInt(min, 10), weeklyDay: dow };
+  // Weekly: 0 MIN HOUR * * DOW[,DOW...]
+  const dowParts = dow.split(',');
+  const validDow = dowParts.every((d) => /^\d+$/.test(d) && Number(d) >= 0 && Number(d) <= 7);
+  if (sec === '0' && /^\d+$/.test(min) && /^\d+$/.test(hour) && dom === '*' && mon === '*' && validDow && dow !== '*') {
+    return { ...defaults, mode: 'weekly', weeklyHour: Number.parseInt(hour, 10), weeklyMinute: Number.parseInt(min, 10), weeklyDays: dowParts };
   }
-  // Monthly: 0 MIN HOUR DOM * *
-  if (sec === '0' && /^\d+$/.test(min) && /^\d+$/.test(hour) && /^\d+$/.test(dom) && mon === '*' && dow === '*') {
-    return { ...defaults, mode: 'monthly', monthlyHour: Number.parseInt(hour, 10), monthlyMinute: Number.parseInt(min, 10), monthlyDay: Number.parseInt(dom, 10) };
+  // Monthly: 0 MIN HOUR DOM[,DOM...] * *
+  const domParts = dom.split(',');
+  const validDom = domParts.every((d) => /^\d+$/.test(d) && Number(d) >= 1 && Number(d) <= 31);
+  if (sec === '0' && /^\d+$/.test(min) && /^\d+$/.test(hour) && validDom && dom !== '*' && mon === '*' && dow === '*') {
+    return { ...defaults, mode: 'monthly', monthlyHour: Number.parseInt(hour, 10), monthlyMinute: Number.parseInt(min, 10), monthlyDays: domParts.map(Number) };
   }
   return { ...defaults, mode: 'custom' };
 }
@@ -76,10 +90,10 @@ function buildExpression(
     hourInterval: number;
     dailyHour: number;
     dailyMinute: number;
-    weeklyDay: string;
+    weeklyDays: string[];
     weeklyHour: number;
     weeklyMinute: number;
-    monthlyDay: number;
+    monthlyDays: number[];
     monthlyHour: number;
     monthlyMinute: number;
     customExpr: string;
@@ -89,8 +103,14 @@ function buildExpression(
     case 'minutes':  return `0 */${values.minuteInterval} * * * *`;
     case 'hours':    return `0 0 */${values.hourInterval} * * *`;
     case 'daily':    return `0 ${values.dailyMinute} ${values.dailyHour} * * *`;
-    case 'weekly':   return `0 ${values.weeklyMinute} ${values.weeklyHour} * * ${values.weeklyDay}`;
-    case 'monthly':  return `0 ${values.monthlyMinute} ${values.monthlyHour} ${values.monthlyDay} * *`;
+    case 'weekly': {
+      const days = [...values.weeklyDays].sort((a, b) => Number(a) - Number(b)).join(',');
+      return `0 ${values.weeklyMinute} ${values.weeklyHour} * * ${days}`;
+    }
+    case 'monthly': {
+      const days = [...values.monthlyDays].sort((a, b) => a - b).join(',');
+      return `0 ${values.monthlyMinute} ${values.monthlyHour} ${days} * *`;
+    }
     default:         return values.customExpr;
   }
 }
@@ -102,22 +122,26 @@ function describeExpression(
     hourInterval: number;
     dailyHour: number;
     dailyMinute: number;
-    weeklyDay: string;
+    weeklyDays: string[];
     weeklyHour: number;
     weeklyMinute: number;
-    monthlyDay: number;
+    monthlyDays: number[];
     monthlyHour: number;
     monthlyMinute: number;
   },
 ): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  const weekLabel = WEEKDAYS.find((d) => d.value === values.weeklyDay)?.label ?? '';
+  const weekLabels = [...values.weeklyDays]
+    .sort((a, b) => Number(a) - Number(b))
+    .map((d) => WEEKDAYS.find((w) => w.value === d)?.label ?? d)
+    .join('、');
+  const monthLabels = [...values.monthlyDays].sort((a, b) => a - b).map((d) => `${d} 日`).join('、');
   switch (mode) {
     case 'minutes':  return `每 ${values.minuteInterval} 分钟执行一次`;
     case 'hours':    return `每 ${values.hourInterval} 小时执行一次（整点）`;
     case 'daily':    return `每天 ${pad(values.dailyHour)}:${pad(values.dailyMinute)} 执行`;
-    case 'weekly':   return `每周${weekLabel} ${pad(values.weeklyHour)}:${pad(values.weeklyMinute)} 执行`;
-    case 'monthly':  return `每月 ${values.monthlyDay} 日 ${pad(values.monthlyHour)}:${pad(values.monthlyMinute)} 执行`;
+    case 'weekly':   return `每周${weekLabels} ${pad(values.weeklyHour)}:${pad(values.weeklyMinute)} 执行`;
+    case 'monthly':  return `每月 ${monthLabels} ${pad(values.monthlyHour)}:${pad(values.monthlyMinute)} 执行`;
     default:         return '自定义表达式';
   }
 }
@@ -135,10 +159,10 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
   const [hourInterval, setHourInterval] = useState(parsed.hourInterval);
   const [dailyHour, setDailyHour] = useState(parsed.dailyHour);
   const [dailyMinute, setDailyMinute] = useState(parsed.dailyMinute);
-  const [weeklyDay, setWeeklyDay] = useState(parsed.weeklyDay);
+  const [weeklyDays, setWeeklyDays] = useState<string[]>(parsed.weeklyDays);
   const [weeklyHour, setWeeklyHour] = useState(parsed.weeklyHour);
   const [weeklyMinute, setWeeklyMinute] = useState(parsed.weeklyMinute);
-  const [monthlyDay, setMonthlyDay] = useState(parsed.monthlyDay);
+  const [monthlyDays, setMonthlyDays] = useState<number[]>(parsed.monthlyDays);
   const [monthlyHour, setMonthlyHour] = useState(parsed.monthlyHour);
   const [monthlyMinute, setMonthlyMinute] = useState(parsed.monthlyMinute);
   const [customExpr, setCustomExpr] = useState(value ?? '');
@@ -151,19 +175,23 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
     setHourInterval(p.hourInterval);
     setDailyHour(p.dailyHour);
     setDailyMinute(p.dailyMinute);
-    setWeeklyDay(p.weeklyDay);
+    setWeeklyDays(p.weeklyDays);
     setWeeklyHour(p.weeklyHour);
     setWeeklyMinute(p.weeklyMinute);
-    setMonthlyDay(p.monthlyDay);
+    setMonthlyDays(p.monthlyDays);
     setMonthlyHour(p.monthlyHour);
     setMonthlyMinute(p.monthlyMinute);
     if (p.mode === 'custom') setCustomExpr(value ?? '');
   }, [value]);
 
-  const vals = { minuteInterval, hourInterval, dailyHour, dailyMinute, weeklyDay, weeklyHour, weeklyMinute, monthlyDay, monthlyHour, monthlyMinute, customExpr };
+  const vals = { minuteInterval, hourInterval, dailyHour, dailyMinute, weeklyDays, weeklyHour, weeklyMinute, monthlyDays, monthlyHour, monthlyMinute, customExpr };
   const expr = buildExpression(mode, vals);
   const isCustom = mode === 'custom';
   const desc = isCustom ? '' : describeExpression(mode, vals);
+
+  let isApplyDisabled = false;
+  if (mode === 'weekly' && weeklyDays.length === 0) isApplyDisabled = true;
+  if (mode === 'monthly' && monthlyDays.length === 0) isApplyDisabled = true;
 
   const handleApply = () => {
     onApply(expr);
@@ -219,15 +247,18 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
         {mode === 'daily' && timeInputs(dailyHour, setDailyHour, dailyMinute, setDailyMinute)}
         {mode === 'weekly' && (
           <Space vertical align="start" style={{ gap: 8 }}>
-            <Space>
-              <span>每周</span>
-              <Select
-                value={weeklyDay}
-                onChange={(v) => setWeeklyDay(v as string)}
-                optionList={WEEKDAYS}
-                style={{ width: 90 }}
-              />
-            </Space>
+            <div>
+              <span style={{ fontSize: 13 }}>每周</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                {WEEKDAYS.map((d) => (
+                  <Checkbox
+                    key={d.value}
+                    checked={weeklyDays.includes(d.value)}
+                    onChange={(e) => { toggleWeekday(d.value, e.target.checked, setWeeklyDays); }}
+                  >{d.label}</Checkbox>
+                ))}
+              </div>
+            </div>
             {timeInputs(weeklyHour, setWeeklyHour, weeklyMinute, setWeeklyMinute)}
           </Space>
         )}
@@ -235,8 +266,15 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
           <Space vertical align="start" style={{ gap: 8 }}>
             <Space>
               <span>每月</span>
-              <InputNumber value={monthlyDay} onChange={(v) => setMonthlyDay(Number(v) || 1)} min={1} max={31} style={inputStyle} />
-              <span>日</span>
+              <Select
+                multiple
+                value={monthlyDays}
+                onChange={(v) => setMonthlyDays(v as number[])}
+                optionList={Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: `${i + 1} 日` }))}
+                style={{ width: 220 }}
+                placeholder="请选择日期"
+                maxTagCount={4}
+              />
             </Space>
             {timeInputs(monthlyHour, setMonthlyHour, monthlyMinute, setMonthlyMinute)}
           </Space>
@@ -254,7 +292,7 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <Button size="small" onClick={() => setVisible(false)}>取消</Button>
-        {!isCustom && <Button size="small" type="primary" onClick={handleApply}>应用</Button>}
+        {!isCustom && <Button size="small" type="primary" disabled={isApplyDisabled} onClick={handleApply}>应用</Button>}
       </div>
     </div>
   );
