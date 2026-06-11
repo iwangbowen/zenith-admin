@@ -14,7 +14,7 @@ import Picker from '@emoji-mart/react';
 import {
   Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, MoreHorizontal,
   Pin, PinOff, Star, X, Paperclip, Bookmark, History, Forward, Trash2, BellOff, Images, AlertCircle,
-  ArrowLeft, ExternalLink, BarChart3, MessageSquare,
+  ArrowLeft, ExternalLink, BarChart3, MessageSquare, Eye, Download,
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage, useWsConnected } from '@/hooks/useWebSocket';
 import { useAuth } from '@/hooks/useAuth';
@@ -209,6 +209,23 @@ export default function ChatPage({
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
   const [filePreview, setFilePreview] = useState<{ fileId?: number; url: string; name: string; mimeType: string } | null>(null);
+
+  const handleMediaFilePreview = useCallback((item: ChatMessage) => {
+    const asset = item.extra?.asset;
+    if (!asset || !canPreviewFile(asset.mimeType)) return;
+    if (isSpreadsheetFile(asset.mimeType) && !asset.fileId) {
+      void fetchProtectedFile(item.content).then((blob) => {
+        const objectUrl = globalThis.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = asset.name ?? '文件.xlsx';
+        link.click();
+        globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(objectUrl), 60_000);
+      }).catch(() => Toast.error('文件下载失败'));
+      return;
+    }
+    setFilePreview({ url: item.content, name: asset.name ?? '文件', mimeType: asset.mimeType ?? 'application/octet-stream', fileId: asset.fileId ?? undefined });
+  }, []);
   const previewSessionRef = useRef(0);
   const previewBlobUrlsRef = useRef<string[]>([]);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -2606,9 +2623,9 @@ export default function ChatPage({
                           return (
                             <SemiList.Item
                               key={item.id}
-                              style={{ padding: '8px 10px', background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 8, marginBottom: 8 }}
+                              style={{ padding: '8px 10px', background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
                                 <span style={{ fontSize: 22, flexShrink: 0 }}>{getFileTypeIcon(asset?.name ?? '')}</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <Text strong style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2618,14 +2635,24 @@ export default function ChatPage({
                                     {asset?.size ? formatFileSize(asset.size) : ''}
                                   </Text>
                                 </div>
+                                {canPreviewFile(asset?.mimeType) && (
+                                  <Button
+                                    size="small"
+                                    theme="borderless"
+                                    type="tertiary"
+                                    icon={<Eye size={14} />}
+                                    title="预览"
+                                    onClick={() => { handleMediaFilePreview(item); }}
+                                  />
+                                )}
                                 <Button
                                   size="small"
                                   theme="borderless"
                                   type="primary"
+                                  icon={<Download size={14} />}
+                                  title="下载"
                                   onClick={() => { window.open(item.content, '_blank'); }}
-                                >
-                                  下载
-                                </Button>
+                                />
                               </div>
                             </SemiList.Item>
                           );
