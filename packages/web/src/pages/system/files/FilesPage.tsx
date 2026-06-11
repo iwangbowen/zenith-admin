@@ -644,6 +644,11 @@ export default function FilesPage() {
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}
+          {selectedRowKeys.length > 0 && (
+            <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
+              取消选择
+            </Button>
+          )}
           {hasPermission('system:file:upload') && (
             <Button
               type="primary"
