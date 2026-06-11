@@ -705,29 +705,27 @@ export default function ChatPage({
       ];
       setUploadingItems((prev) => [...prev, ...tempItems]);
 
-      // 后台上传，不阻塞当前函数，不 loading 发送按钮
-      void (async () => {
-        let failedImageCount = 0;
-        let failedFileCount = 0;
-
-        for (const item of imagesToSend) {
+      // 后台并行上传所有图片和文件，不阻塞当前函数，不 loading 发送按钮
+      void Promise.all([
+        ...imagesToSend.map(async (item) => {
           const uploadId = `upload-img-${item.id}`;
           const ok = await sendImageFile(item.file, makeProgressHandler(uploadId, setUploadingItems));
           URL.revokeObjectURL(item.previewUrl);
           setUploadingItems(removeUploadingItemById(uploadId));
-          if (!ok) failedImageCount += 1;
-        }
-
-        for (const item of filesToSend) {
+          return ok ? null : 'image';
+        }),
+        ...filesToSend.map(async (item) => {
           const uploadId = `upload-file-${item.id}`;
           const ok = await sendFileMessage(item.file, makeProgressHandler(uploadId, setUploadingItems));
           setUploadingItems(removeUploadingItemById(uploadId));
-          if (!ok) failedFileCount += 1;
-        }
-
+          return ok ? null : 'file';
+        }),
+      ]).then((results) => {
+        const failedImageCount = results.filter((r) => r === 'image').length;
+        const failedFileCount = results.filter((r) => r === 'file').length;
         if (failedImageCount > 0) Toast.error(`有 ${failedImageCount} 张图片发送失败`);
         if (failedFileCount > 0) Toast.error(`有 ${failedFileCount} 个文件发送失败`);
-      })();
+      });
     }
   }, [activeConvId, appendMessageOnce, fetchLinkPreview, input, pendingFiles, pendingImages, replyTo, saveDraft, selectedMentions, sendFileMessage, sendImageFile, sending, setUploadingItems]);
 
