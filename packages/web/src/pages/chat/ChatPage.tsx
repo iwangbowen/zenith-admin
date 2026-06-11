@@ -230,6 +230,12 @@ export default function ChatPage({
   const previewBlobUrlsRef = useRef<string[]>([]);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const isAtBottomRef = useRef(true);
+  const showMediaPanelRef = useRef(showMediaPanel);
+  showMediaPanelRef.current = showMediaPanel;
+  const mediaTypeRef = useRef(mediaType);
+  mediaTypeRef.current = mediaType;
+  const activeConvIdRef = useRef(activeConvId);
+  activeConvIdRef.current = activeConvId;
   const [firstItemIndex, setFirstItemIndex] = useState(VIRTUOSO_FIRST_INDEX_BUFFER);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -590,6 +596,13 @@ export default function ChatPage({
 
   const appendMessageOnce = useCallback((message: ChatMessage) => {
     setMessages((prev) => (prev.some((item) => item.id === message.id) ? prev : [...prev, message]));
+    if (!showMediaPanelRef.current || message.conversationId !== activeConvIdRef.current) return;
+    const type = mediaTypeRef.current;
+    const isMediaMatch =
+      (type === 'image' && message.type === 'image') ||
+      (type === 'file' && message.type === 'file') ||
+      (type === 'link' && message.type === 'text' && (message.extra?.linkPreview || /https?:\/\//i.test(message.content)));
+    if (isMediaMatch) setMediaItems((prev) => (prev.some((m) => m.id === message.id) ? prev : [message, ...prev]));
   }, []);
 
   const sendFileMessage = useCallback(async (file: File, onProgress?: (percent: number) => void) => {
@@ -982,6 +995,7 @@ export default function ChatPage({
     const res = await request.post('/api/chat/messages/batch-delete', { messageIds: [msg.id] });
     if ((res as { code: number }).code === 0) {
       setMessages(removeMessageById(msg.id));
+      setMediaItems(removeMessageById(msg.id));
       Toast.success('已删除');
     } else {
       Toast.error((res as { message?: string }).message ?? '删除失败');
@@ -1000,6 +1014,7 @@ export default function ChatPage({
         if ((res as { code: number }).code === 0) {
           const deletedIds = new Set(selectedMessageIds);
           setMessages(removeMessagesByIds(deletedIds));
+          setMediaItems(removeMessagesByIds(deletedIds));
           Toast.success('已删除');
           handleExitMultiSelect();
         } else {
@@ -1315,6 +1330,7 @@ export default function ChatPage({
     } else if (wsMsg.type === 'chat:recall') {
       const { messageId } = wsMsg.payload;
       setMessages(recallMessageById(messageId));
+      setMediaItems(removeMessageById(messageId));
     } else if (wsMsg.type === 'chat:edit') {
       applyMessageUpdate(wsMsg.payload);
     } else if (wsMsg.type === 'chat:reaction') {
