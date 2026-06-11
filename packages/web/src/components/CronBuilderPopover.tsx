@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type React from 'react';
 import { Button, Checkbox, InputNumber, Popover, Radio, Select, Space, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { Settings } from 'lucide-react';
+import { CronBuilderModal } from './CronBuilderModal';
 
 const addWeekday = (day: string, set: React.Dispatch<React.SetStateAction<string[]>>) =>
   set((prev) => [...prev, day]);
@@ -162,6 +163,7 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
   const [monthlyHour, setMonthlyHour] = useState(parsed.monthlyHour);
   const [monthlyMinute, setMonthlyMinute] = useState(parsed.monthlyMinute);
   const [customExpr, setCustomExpr] = useState(value ?? '');
+  const [modalVisible, setModalVisible] = useState(false);
 
   // Re-sync when value changes externally
   useEffect(() => {
@@ -286,32 +288,49 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
         {desc && <Typography.Text type="secondary" size="small" style={{ display: 'block', marginTop: 4 }}>{desc}</Typography.Text>}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <Button size="small" onClick={() => setVisible(false)}>取消</Button>
-        {!isCustom && <Button size="small" type="primary" disabled={isApplyDisabled} onClick={handleApply}>应用</Button>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <Button
+          size="small"
+          theme="borderless"
+          type="tertiary"
+          icon={<Settings size={12} />}
+          onClick={() => { setVisible(false); setModalVisible(true); }}
+        >高级配置</Button>
+        <Space>
+          <Button size="small" onClick={() => setVisible(false)}>取消</Button>
+          {!isCustom && <Button size="small" type="primary" disabled={isApplyDisabled} onClick={handleApply}>应用</Button>}
+        </Space>
       </div>
     </div>
   );
 
   return (
-    <Popover
-      trigger="custom"
-      visible={visible}
-      onClickOutSide={() => setVisible(false)}
-      content={content}
-      position="bottomRight"
-    >
-      <Tooltip content="可视化配置">
-        <div style={{ display: 'inline-flex' }}>
-          <Button
-            icon={<Settings size={14} />}
-            size="small"
-            theme="borderless"
-            type="tertiary"
-            onClick={(e) => { e.stopPropagation(); setVisible((v) => !v); }}
-          />
-        </div>
-      </Tooltip>
-    </Popover>
+    <>
+      <Popover
+        trigger="custom"
+        visible={visible}
+        onClickOutSide={() => setVisible(false)}
+        content={content}
+        position="bottomRight"
+      >
+        <Tooltip content="可视化配置">
+          <div style={{ display: 'inline-flex' }}>
+            <Button
+              icon={<Settings size={14} />}
+              size="small"
+              theme="borderless"
+              type="tertiary"
+              onClick={(e) => { e.stopPropagation(); setVisible((v) => !v); }}
+            />
+          </div>
+        </Tooltip>
+      </Popover>
+      <CronBuilderModal
+        visible={modalVisible}
+        value={isCustom ? (value ?? '') : expr}
+        onClose={() => setModalVisible(false)}
+        onApply={(e) => { onApply(e); setModalVisible(false); }}
+      />
+    </>
   );
 }
