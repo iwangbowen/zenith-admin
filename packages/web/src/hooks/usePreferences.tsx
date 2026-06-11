@@ -68,6 +68,8 @@ export interface UserPreferences {
   sidebarWidth: number;
   /** 显示回到顶部按钮（滚动超过 400px 后浮现） */
   showBackTop: boolean;
+  /** 标签栏右侧显示标签切换器（chevron 下拉列表） */
+  showTabSwitcher: boolean;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -113,6 +115,7 @@ export const defaultPreferences: UserPreferences = {
   contentWidth: 'fluid',
   sidebarWidth: 216,
   showBackTop: true,
+  showTabSwitcher: true,
 };
 
 export interface PreferencesContextValue {

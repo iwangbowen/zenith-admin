@@ -1758,12 +1758,14 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                   );
               })}
               </div>
+              {(preferences.showTabSwitcher ?? true) && (
               <TabSwitcher
                 tabs={tabs}
                 activeKey={activeKey}
                 onNavigate={(key) => { setActiveKey(key); navigate(key); }}
                 onClose={(key) => handleTabClose(key)}
               />
+              )}
             </div>
           )}
           <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
@@ -2222,6 +2224,12 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>标签页显示图标</span>
                 <Switch checked={preferences.showTabIcon} onChange={(v) => setPreferences({ showTabIcon: v })} />
+              </div>
+              )}
+              {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['标签切换器', '切换器', 'chevron', '标签页', '标签']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>显示标签切换器</span>
+                <Switch checked={preferences.showTabSwitcher ?? true} onChange={(v) => setPreferences({ showTabSwitcher: v })} />
               </div>
               )}
               {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['最大标签', '标签数量', '标签页', '标签']) && (
