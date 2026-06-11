@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
-import { Button, Typography, Space, Dropdown } from '@douyinfe/semi-ui';
-import { Plus, TerminalSquare, ChevronDown, X } from 'lucide-react';
+import { Button, Typography, Space, Dropdown, Tooltip } from '@douyinfe/semi-ui';
+import { Plus, TerminalSquare, ChevronDown, X, PanelLeft } from 'lucide-react';
 import TerminalTab, { type ShellType } from './TerminalTab';
+import FileExplorer from './FileExplorer';
 
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
 
@@ -44,6 +45,7 @@ export default function TerminalPage() {
     { id: String(sessionCounter), title: SHELL_LABELS.powershell, shell: 'powershell' },
   ]);
   const [activeId, setActiveId] = useState(String(sessionCounter));
+  const [showExplorer, setShowExplorer] = useState(false);
 
   const addSession = useCallback((shell: ShellType) => {
     sessionCounter += 1;
@@ -117,6 +119,16 @@ export default function TerminalPage() {
     >
       {/* 自定义标签栏：复用应用顶部 .admin-tab-item 紧凑 line 风格 */}
       <div className="admin-tabs-bar" data-tab-style="line" style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
+        <Tooltip content={showExplorer ? '隐藏文件浏览器' : '显示文件浏览器'}>
+          <Button
+            icon={<PanelLeft size={14} />}
+            size="small"
+            theme="borderless"
+            type={showExplorer ? 'primary' : 'tertiary'}
+            onClick={() => setShowExplorer((v) => !v)}
+            style={{ margin: '0 4px', flexShrink: 0 }}
+          />
+        </Tooltip>
         <div className="admin-tabs-bar__scroll">
           {sessions.map((s) => {
             const isActive = s.id === activeId;
@@ -153,21 +165,28 @@ export default function TerminalPage() {
         {tabBarRight}
       </div>
 
-      {/* 内容区：所有终端保持挂载，用 display 切换，避免切 tab 时销毁会话 */}
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: s.id === activeId ? 'block' : 'none',
-              padding: '8px 4px 4px',
-            }}
-          >
-            <TerminalTab sessionId={s.id} active={s.id === activeId} shell={s.shell} />
+      {/* 内容区：左侧文件浏览器（可收起）+ 右侧终端 */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        {showExplorer && (
+          <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid var(--semi-color-border)' }}>
+            <FileExplorer active={showExplorer} />
           </div>
-        ))}
+        )}
+        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+          {sessions.map((s) => (
+            <div
+              key={s.id}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: s.id === activeId ? 'block' : 'none',
+                padding: '8px 4px 4px',
+              }}
+            >
+              <TerminalTab sessionId={s.id} active={s.id === activeId} shell={s.shell} />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
