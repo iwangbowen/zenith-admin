@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AppModal } from '@/components/AppModal';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover,
+  Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover, Progress,
   List as SemiList,
 } from '@douyinfe/semi-ui';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
@@ -2323,20 +2323,18 @@ export default function ChatPage({
                               {item.type === 'image' ? (
                                 <div style={{ position: 'relative', width: 120, height: 120, flexShrink: 0 }}>
                                   <img src={item.previewUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8, display: 'block', opacity: 0.55 }} />
-                                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'rgba(0,0,0,0.35)', gap: 4 }}>
-                                    <Spin size="middle" />
-                                    {item.progress !== undefined && (
-                                      <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>{item.progress}%</span>
-                                    )}
+                                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'rgba(0,0,0,0.45)', gap: 6 }}>
+                                    <Progress type="circle" percent={item.progress ?? 0} size="small" showInfo={false} strokeColor="#fff" trailColor="rgba(255,255,255,0.25)" />
+                                    <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>{item.progress ?? 0}%</span>
                                   </div>
                                 </div>
                               ) : (
-                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--semi-color-primary-light-default)', border: '1px solid var(--semi-color-primary-light-active)', borderRadius: 12, maxWidth: 260, fontSize: 13, color: 'var(--semi-color-text-0)' }}>
-                                  <Spin size="small" />
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{item.name}</span>
-                                  {item.progress !== undefined && (
-                                    <span style={{ flexShrink: 0, fontSize: 12, color: 'var(--semi-color-primary)', fontWeight: 600 }}>{item.progress}%</span>
-                                  )}
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 6, padding: '8px 14px', background: 'var(--semi-color-primary-light-default)', border: '1px solid var(--semi-color-primary-light-active)', borderRadius: 12, maxWidth: 260, fontSize: 13, color: 'var(--semi-color-text-0)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{item.name}</span>
+                                    <span style={{ flexShrink: 0, fontSize: 12, color: 'var(--semi-color-primary)', fontWeight: 600 }}>{item.progress ?? 0}%</span>
+                                  </div>
+                                  <Progress percent={item.progress ?? 0} size="small" showInfo={false} style={{ margin: 0 }} />
                                 </div>
                               )}
                             </div>
