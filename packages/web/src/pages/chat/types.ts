@@ -28,6 +28,8 @@ export interface UploadingItem {
   previewUrl?: string;
   mimeType?: string | null;
   convId: number;
+  /** 上传进度 0-100，未开始时为 undefined */
+  progress?: number;
 }
 
 export type SearchDatePreset = '' | 'today' | '7d' | '30d';

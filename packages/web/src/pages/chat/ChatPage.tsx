@@ -61,6 +61,14 @@ function getNextMentionUnread(
 // 模块级 state updater 工厂，避免组件内函数嵌套超过 4 层
 const removeMessageById = (id: number) => (prev: ChatMessage[]) => prev.filter((m) => m.id !== id);
 const removeUploadingItemById = (id: string) => (prev: import('./types').UploadingItem[]) => prev.filter((u) => u.id !== id);
+const updateUploadingProgress = (id: string, percent: number) =>
+  (prev: import('./types').UploadingItem[]) => prev.map((u) => (u.id === id ? { ...u, progress: percent } : u));
+function makeProgressHandler(
+  id: string,
+  setItems: React.Dispatch<React.SetStateAction<import('./types').UploadingItem[]>>,
+) {
+  return (percent: number) => { setItems(updateUploadingProgress(id, percent)); };
+}
 
 const getReplyPreviewText = (m: ChatMessage): string => {
   if (m.type === 'image') return '[图片]';
@@ -567,11 +575,11 @@ export default function ChatPage({
     setMessages((prev) => (prev.some((item) => item.id === message.id) ? prev : [...prev, message]));
   }, []);
 
-  const sendFileMessage = useCallback(async (file: File) => {
+  const sendFileMessage = useCallback(async (file: File, onProgress?: (percent: number) => void) => {
     if (!activeConvId) return false;
     const fd = new FormData();
     fd.append('file', file);
-    const uploadRes = await request.postForm<{ id: number; url: string; originalName: string; size: number }>('/api/files/upload-one', fd);
+    const uploadRes = await request.postForm<{ id: number; url: string; originalName: string; size: number }>('/api/files/upload-one', fd, { onProgress });
     if (uploadRes.code !== 0 || !uploadRes.data) return false;
     const { id: fileId, url, originalName, size } = uploadRes.data;
     const asset: ChatAssetMeta = {
@@ -598,14 +606,12 @@ export default function ChatPage({
     typingThrottleRef.current = setTimeout(() => { typingThrottleRef.current = null; }, 3000);
   }, [activeConvId, currentUserId, currentUserNickname]);
 
-  const sendImageFile = useCallback(async (file: File) => {
+  const sendImageFile = useCallback(async (file: File, onProgress?: (percent: number) => void) => {
     if (!activeConvId) return false;
     const dimensions = await getImageDimensions(file);
     const fd = new FormData();
     fd.append('file', file);
-    const uploadRes = await request.postForm<{ url: string; originalName: string; size: number }>(
-      '/api/files/upload-one', fd,
-    );
+    const uploadRes = await request.postForm<{ url: string; originalName: string; size: number }>('/api/files/upload-one', fd, { onProgress });
     if (uploadRes.code !== 0 || !uploadRes.data) {
       return false;
     }
@@ -706,7 +712,7 @@ export default function ChatPage({
 
         for (const item of imagesToSend) {
           const uploadId = `upload-img-${item.id}`;
-          const ok = await sendImageFile(item.file);
+          const ok = await sendImageFile(item.file, makeProgressHandler(uploadId, setUploadingItems));
           URL.revokeObjectURL(item.previewUrl);
           setUploadingItems(removeUploadingItemById(uploadId));
           if (!ok) failedImageCount += 1;
@@ -714,7 +720,7 @@ export default function ChatPage({
 
         for (const item of filesToSend) {
           const uploadId = `upload-file-${item.id}`;
-          const ok = await sendFileMessage(item.file);
+          const ok = await sendFileMessage(item.file, makeProgressHandler(uploadId, setUploadingItems));
           setUploadingItems(removeUploadingItemById(uploadId));
           if (!ok) failedFileCount += 1;
         }
@@ -2317,14 +2323,20 @@ export default function ChatPage({
                               {item.type === 'image' ? (
                                 <div style={{ position: 'relative', width: 120, height: 120, flexShrink: 0 }}>
                                   <img src={item.previewUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8, display: 'block', opacity: 0.55 }} />
-                                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'rgba(0,0,0,0.25)' }}>
+                                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'rgba(0,0,0,0.35)', gap: 4 }}>
                                     <Spin size="middle" />
+                                    {item.progress !== undefined && (
+                                      <span style={{ fontSize: 12, color: '#fff', fontWeight: 600 }}>{item.progress}%</span>
+                                    )}
                                   </div>
                                 </div>
                               ) : (
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--semi-color-primary-light-default)', border: '1px solid var(--semi-color-primary-light-active)', borderRadius: 12, maxWidth: 260, fontSize: 13, color: 'var(--semi-color-text-0)' }}>
                                   <Spin size="small" />
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{item.name}</span>
+                                  {item.progress !== undefined && (
+                                    <span style={{ flexShrink: 0, fontSize: 12, color: 'var(--semi-color-primary)', fontWeight: 600 }}>{item.progress}%</span>
+                                  )}
                                 </div>
                               )}
                             </div>

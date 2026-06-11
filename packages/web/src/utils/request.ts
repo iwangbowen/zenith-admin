@@ -177,8 +177,36 @@ class Request {
     return this.request<T>(url, { method: 'DELETE', ...bodyInit, ...opts });
   }
 
-  postForm<T>(url: string, body: FormData, opts: RequestOptions = {}) {
-    return this.request<T>(url, { method: 'POST', body, ...opts });
+  postForm<T>(url: string, body: FormData, opts: RequestOptions & { onProgress?: (percent: number) => void } = {}) {
+    const { onProgress, ...restOpts } = opts;
+    if (!onProgress) return this.request<T>(url, { method: 'POST', body, ...restOpts });
+    // 有进度回调时改用 XMLHttpRequest（fetch 不支持上传进度）
+    return new Promise<ApiResponseWithMeta<T>>((resolve) => {
+      const xhr = new XMLHttpRequest();
+      const token = localStorage.getItem(TOKEN_KEY);
+      xhr.open('POST', `${this.baseUrl}${url}`);
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+      });
+      xhr.addEventListener('load', () => {
+        try {
+          const data = JSON.parse(xhr.responseText) as ApiResponse<T>;
+          if (data.code !== 0 && !restOpts.silent) Toast.error(data.message || '操作失败');
+          resolve(data);
+        } catch {
+          const errResp = { code: -1, message: '响应解析失败', data: null as unknown as T };
+          if (!restOpts.silent) Toast.error(errResp.message);
+          resolve(errResp);
+        }
+      });
+      xhr.addEventListener('error', () => {
+        const errResp = { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
+        if (!restOpts.silent) Toast.error(errResp.message);
+        resolve(errResp);
+      });
+      xhr.send(body);
+    });
   }
 
   /** Download a file (binary response) - used for Excel export */
