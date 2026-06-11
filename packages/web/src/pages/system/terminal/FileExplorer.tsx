@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Tree, Button, Upload, Toast, Typography, Tooltip } from '@douyinfe/semi-ui';
 import { Upload as UploadIcon, RotateCcw } from 'lucide-react';
+import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { request } from '@/utils/request';
 
 interface FileEntry {
@@ -77,26 +78,30 @@ export default function FileExplorer({ active }: FileExplorerProps) {
   }, [active, loadRoot]);
 
   // 懒加载子目录
-  const loadData = useCallback((node?: FileNode) => {
+  const loadData = useCallback((node?: TreeNodeData) => {
     if (!node) return Promise.resolve();
-    const dir = node.value;
+    const dir = String(node.value);
+    const key = String(node.key);
     return request
       .get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(dir)}`)
       .then((res) => {
         if (res.code === 0 && res.data) {
-          setTreeData((prev) => setChildren(prev, node.key, res.data!.entries.map(entryToNode)));
+          setTreeData((prev) => setChildren(prev, key, res.data!.entries.map(entryToNode)));
         }
       });
   }, []);
 
   // 选中：文件 → 下载；目录 → 设为上传目标
-  const handleSelect = (_value: string, _selected: boolean, node: FileNode) => {
-    if (node.fileType === 'file') {
+  const handleSelect = (_value: string, _selected: boolean, node: TreeNodeData) => {
+    const fileType = (node as FileNode).fileType;
+    const value = String(node.value);
+    if (fileType === 'file') {
+      const fileName = value.split(/[\\/]/).pop() ?? 'download';
       request
-        .download(`/api/terminal-files/download?path=${encodeURIComponent(node.value)}`, node.label)
+        .download(`/api/terminal-files/download?path=${encodeURIComponent(value)}`, fileName)
         .catch(() => undefined);
     } else {
-      setSelectedDir(node.value);
+      setSelectedDir(value);
     }
   };
 
@@ -133,7 +138,7 @@ export default function FileExplorer({ active }: FileExplorerProps) {
               .then((res) => {
                 if (res.code === 0) {
                   Toast.success('上传成功');
-                  onSuccess?.(res.data ?? {}, file);
+                  onSuccess?.(res.data ?? {});
                   void loadRoot();
                 } else {
                   onError?.({ status: 0 });
