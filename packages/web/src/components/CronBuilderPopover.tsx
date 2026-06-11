@@ -3,14 +3,10 @@ import type React from 'react';
 import { Button, Checkbox, InputNumber, Popover, Radio, Select, Space, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { Settings } from 'lucide-react';
 
-const toggleWeekday = (
-  day: string,
-  checked: boolean,
-  setWeeklyDays: React.Dispatch<React.SetStateAction<string[]>>,
-) => {
-  if (checked) setWeeklyDays((prev) => [...prev, day]);
-  else setWeeklyDays((prev) => prev.filter((v) => v !== day));
-};
+const addWeekday = (day: string, set: React.Dispatch<React.SetStateAction<string[]>>) =>
+  set((prev) => [...prev, day]);
+const removeWeekday = (day: string, set: React.Dispatch<React.SetStateAction<string[]>>) =>
+  set((prev) => prev.filter((v) => v !== day));
 
 type CronMode = 'minutes' | 'hours' | 'daily' | 'weekly' | 'monthly' | 'custom';
 
@@ -254,7 +250,7 @@ export function CronBuilderPopover({ value, onApply }: CronBuilderPopoverProps) 
                   <Checkbox
                     key={d.value}
                     checked={weeklyDays.includes(d.value)}
-                    onChange={(e) => { toggleWeekday(d.value, e.target.checked, setWeeklyDays); }}
+                    onChange={(e) => { if (e.target.checked) addWeekday(d.value, setWeeklyDays); else removeWeekday(d.value, setWeeklyDays); }}
                   >{d.label}</Checkbox>
                 ))}
               </div>
