@@ -1762,7 +1762,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 tabs={tabs}
                 activeKey={activeKey}
                 onNavigate={(key) => { setActiveKey(key); navigate(key); }}
-                onClose={(key) => { const next = removeTab(key); navigate(next); }}
+                onClose={(key) => handleTabClose(key)}
               />
             </div>
           )}
