@@ -26,6 +26,7 @@ import AppLogo from '@/components/AppLogo';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import BreadcrumbMenuPopover from '@/components/BreadcrumbMenuPopover';
 import { TopNavWithOverflow } from './TopNavWithOverflow';
+import { TabSwitcher } from './TabSwitcher';
 import { LockScreen } from '@/components/LockScreen';
 import { useLockScreen } from '@/hooks/useLockScreen';
 import { useFavoriteMenus } from '@/hooks/useFavoriteMenus';
@@ -1755,6 +1756,12 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                   </Dropdown>
                   );
               })}
+              <TabSwitcher
+                tabs={tabs}
+                activeKey={activeKey}
+                onNavigate={(key) => { setActiveKey(key); navigate(key); }}
+                onClose={(key) => { const next = removeTab(key); navigate(next); }}
+              />
             </div>
           )}
           <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>

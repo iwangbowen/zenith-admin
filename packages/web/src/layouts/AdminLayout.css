@@ -787,6 +787,17 @@
   height: 0;
 }
 
+/* TabSwitcher chevron — sticky at the right edge of the scrollable tab bar */
+.admin-tabs-bar__switcher {
+  position: sticky;
+  right: 0;
+  height: 100%;
+  background: var(--color-layout-bg);
+  border-left: 1px solid var(--semi-color-border);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .admin-tab-item {
   position: relative;
   display: flex;
