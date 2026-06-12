@@ -20,6 +20,7 @@ import { TOKEN_KEY } from '@zenith/shared';
 import { config as appConfig } from '@/config';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import FilePreviewModal from '@/components/FilePreviewModal';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { getFileIcon, getFolderIcon } from '../terminal/fileIcons';
 import './FileManagerPage.css';
 
@@ -598,243 +599,252 @@ export default function FileManagerPage() {
   // ── 渲染 ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="fm-page">
-      {/* 左侧目录树 */}
-      <div className="fm-sidebar">
-        {rootInfo?.isWindows && rootInfo.drives.length > 1 && (
-          <div className="fm-sidebar__drives">
-            {rootInfo.drives.map((d) => {
-              const isActive = currentPath.toUpperCase().startsWith(d.toUpperCase());
-              return (
-                <Button
-                  key={d}
-                  size="small"
-                  theme={isActive ? 'solid' : 'borderless'}
-                  type={isActive ? 'primary' : 'tertiary'}
-                  style={{ minWidth: 36 }}
-                  onClick={() => void navigateTo(d + '\\')}
-                >
-                  {d}
-                </Button>
-              );
-            })}
-          </div>
-        )}
-        {rootInfo?.home && (
-          <div className="fm-sidebar__shortcuts">
-            <Button
-              size="small"
-              theme="borderless"
-              type="tertiary"
-              icon={<Home size={13} />}
-              onClick={() => void navigateTo(rootInfo.home)}
-              style={{ width: '100%', justifyContent: 'flex-start', paddingLeft: 8 }}
-            >
-              主目录
-            </Button>
-          </div>
-        )}
-        <div className="fm-sidebar__dirs">
-          {sidebarDirs.map((d) => (
-            <button
-              key={d.path}
-              type="button"
-              className={`fm-sidebar__dir-item${d.path === currentPath ? ' fm-sidebar__dir-item--active' : ''}`}
-              onClick={() => void navigateTo(d.path)}
-            >
-              <Icon icon={getFolderIcon(d.name, false)} width={14} height={14} style={{ flexShrink: 0 }} />
-              <span>{d.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 右侧主内容 */}
-      <div className="fm-main">
-        <div className="fm-toolbar">
-          <Breadcrumb className="fm-toolbar__breadcrumb">
-            {breadcrumbs.map((seg, i) => (
-              <Breadcrumb.Item
-                key={seg.path}
-                onClick={i < breadcrumbs.length - 1 ? () => void navigateTo(seg.path) : undefined}
-                style={{ cursor: i < breadcrumbs.length - 1 ? 'pointer' : 'default', color: i < breadcrumbs.length - 1 ? 'var(--semi-color-primary)' : undefined }}
-              >
-                {seg.label}
-              </Breadcrumb.Item>
-            ))}
-          </Breadcrumb>
-
-          <Space spacing={6} style={{ flexShrink: 0 }}>
-            <Input
-              prefix={<Search size={13} />}
-              placeholder="过滤文件名"
-              value={keyword}
-              onChange={setKeyword}
-              showClear
-              size="small"
-              style={{ width: 160 }}
-            />
-            <Tooltip content="刷新">
-              <Button size="small" theme="borderless" type="tertiary" icon={<RotateCcw size={13} />} loading={loading} onClick={refresh} />
-            </Tooltip>
-            <Tooltip content="新建文件夹">
-              <Button size="small" theme="borderless" type="tertiary" icon={<FolderPlus size={13} />} onClick={() => setDialog({ mode: 'newDir', value: '' })} />
-            </Tooltip>
-            <Tooltip content="新建文件">
-              <Button size="small" theme="borderless" type="tertiary" icon={<FilePlus size={13} />} onClick={() => setDialog({ mode: 'newFile', value: '' })} />
-            </Tooltip>
-            <Tooltip content="上传文件">
-              <Button size="small" theme="borderless" type="tertiary" icon={<UploadIcon size={13} />} onClick={() => { ctxUploadDirRef.current = currentPath; ctxUploadInputRef.current?.click(); }} />
-            </Tooltip>
-            {clipboard && (
-              <Tooltip content={`粘贴（${clipboard.op === 'copy' ? '复制' : '移动'} ${clipboard.paths.length} 项）`}>
-                <Button size="small" type="primary" icon={clipboard.op === 'copy' ? <Copy size={13} /> : <Scissors size={13} />} onClick={() => void handlePaste()}>
-                  粘贴
-                </Button>
-              </Tooltip>
-            )}
-            {selectedPaths.size > 0 && (
-              <>
-                <Button size="small" theme="borderless" type="tertiary" icon={<Copy size={13} />} onClick={() => setClipboard({ paths: [...selectedPaths], op: 'copy' })}>复制</Button>
-                <Button size="small" theme="borderless" type="tertiary" icon={<Scissors size={13} />} onClick={() => setClipboard({ paths: [...selectedPaths], op: 'cut' })}>剪切</Button>
-                <Button size="small" theme="borderless" type="tertiary" icon={<Archive size={13} />} onClick={() => {
-                  const sel = filteredEntries.filter((e) => selectedPaths.has(e.path));
-                  setDialog({ mode: 'compress', selEntries: sel, value: 'archive.zip' });
-                }}>压缩</Button>
-                <Popconfirm title={`确定删除选中的 ${selectedPaths.size} 项吗？`} okType="danger" onConfirm={() => void handleDelete([...selectedPaths])}>
-                  <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />}>删除</Button>
-                </Popconfirm>
-              </>
-            )}
-            <Button
-              size="small"
-              theme={viewMode === 'list' ? 'solid' : 'borderless'}
-              type={viewMode === 'list' ? 'primary' : 'tertiary'}
-              icon={<ListIcon size={13} />}
-              style={{ borderRadius: '4px 0 0 4px' }}
-              onClick={() => setViewMode('list')}
-            />
-            <Button
-              size="small"
-              theme={viewMode === 'grid' ? 'solid' : 'borderless'}
-              type={viewMode === 'grid' ? 'primary' : 'tertiary'}
-              icon={<LayoutGrid size={13} />}
-              style={{ borderRadius: '0 4px 4px 0' }}
-              onClick={() => setViewMode('grid')}
-            />
-          </Space>
-        </div>
-
-        <div className="fm-content">
-          {renderContent()}
-        </div>
-
-        {uploading.length > 0 && (
-          <div className="fm-upload-progress">
-            <Typography.Text size="small" strong>
-              上传中（{uploading.filter((u) => u.progress >= 100).length}/{uploading.length}）
-            </Typography.Text>
-            {uploading.map((u) => (
-              <div key={u.name} style={{ marginTop: 4 }}>
-                <Typography.Text size="small" ellipsis style={{ display: 'block' }}>{u.name}</Typography.Text>
-                <div className="fm-upload-bar">
-                  <div className="fm-upload-bar__fill" style={{ width: `${u.progress}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <input ref={ctxUploadInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleUploadChange} />
-
-      {ctxEntry && (
+    <MasterDetailLayout
+      defaultSize={220}
+      minSize={160}
+      maxSize={380}
+      persistKey="file-manager"
+      collapsible
+      master={
         <>
-          <button
-            type="button"
-            aria-label="关闭菜单"
-            style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'transparent', border: 'none', padding: 0, cursor: 'default' }}
-            onClick={closeCtxMenu}
-            onContextMenu={(e) => { e.preventDefault(); closeCtxMenu(); }}
-          />
-          <div style={{ position: 'fixed', left: ctxEntry.x, top: ctxEntry.y, zIndex: 1001, minWidth: 150, background: 'var(--semi-color-bg-3)', border: '1px solid var(--semi-color-border)', borderRadius: 6, boxShadow: 'var(--semi-shadow-elevated)', padding: '4px 0' }}>
-            {ctxMenuItems.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={item.fn}
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 14px', background: 'none', border: 'none', cursor: 'pointer', color: item.danger ? 'var(--semi-color-danger)' : 'var(--semi-color-text-0)', font: 'inherit', fontSize: 13 }}
+          {rootInfo?.isWindows && rootInfo.drives.length > 1 && (
+            <div className="fm-sidebar__drives">
+              {rootInfo.drives.map((d) => {
+                const isActive = currentPath.toUpperCase().startsWith(d.toUpperCase());
+                return (
+                  <Button
+                    key={d}
+                    size="small"
+                    theme={isActive ? 'solid' : 'borderless'}
+                    type={isActive ? 'primary' : 'tertiary'}
+                    style={{ minWidth: 36 }}
+                    onClick={() => void navigateTo(d + '\\')}
+                  >
+                    {d}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+          {rootInfo?.home && (
+            <div className="fm-sidebar__shortcuts">
+              <Button
+                size="small"
+                theme="borderless"
+                type="tertiary"
+                icon={<Home size={13} />}
+                onClick={() => void navigateTo(rootInfo.home)}
+                style={{ width: '100%', justifyContent: 'flex-start', paddingLeft: 8 }}
               >
-                {item.label}
+                主目录
+              </Button>
+            </div>
+          )}
+          <div className="fm-sidebar__dirs">
+            {sidebarDirs.map((d) => (
+              <button
+                key={d.path}
+                type="button"
+                className={`fm-sidebar__dir-item${d.path === currentPath ? ' fm-sidebar__dir-item--active' : ''}`}
+                onClick={() => void navigateTo(d.path)}
+              >
+                <Icon icon={getFolderIcon(d.name, false)} width={14} height={14} style={{ flexShrink: 0 }} />
+                <span>{d.name}</span>
               </button>
             ))}
           </div>
         </>
-      )}
+      }
+      detail={
+        <>
+          <MasterDetailLayout.Header
+            extra={
+              <Space spacing={6} style={{ flexShrink: 0 }}>
+                <Input
+                  prefix={<Search size={13} />}
+                  placeholder="过滤文件名"
+                  value={keyword}
+                  onChange={setKeyword}
+                  showClear
+                  size="small"
+                  style={{ width: 160 }}
+                />
+                <Tooltip content="刷新">
+                  <Button size="small" theme="borderless" type="tertiary" icon={<RotateCcw size={13} />} loading={loading} onClick={refresh} />
+                </Tooltip>
+                <Tooltip content="新建文件夹">
+                  <Button size="small" theme="borderless" type="tertiary" icon={<FolderPlus size={13} />} onClick={() => setDialog({ mode: 'newDir', value: '' })} />
+                </Tooltip>
+                <Tooltip content="新建文件">
+                  <Button size="small" theme="borderless" type="tertiary" icon={<FilePlus size={13} />} onClick={() => setDialog({ mode: 'newFile', value: '' })} />
+                </Tooltip>
+                <Tooltip content="上传文件">
+                  <Button size="small" theme="borderless" type="tertiary" icon={<UploadIcon size={13} />} onClick={() => { ctxUploadDirRef.current = currentPath; ctxUploadInputRef.current?.click(); }} />
+                </Tooltip>
+                {clipboard && (
+                  <Tooltip content={`粘贴（${clipboard.op === 'copy' ? '复制' : '移动'} ${clipboard.paths.length} 项）`}>
+                    <Button size="small" type="primary" icon={clipboard.op === 'copy' ? <Copy size={13} /> : <Scissors size={13} />} onClick={() => void handlePaste()}>
+                      粘贴
+                    </Button>
+                  </Tooltip>
+                )}
+                {selectedPaths.size > 0 && (
+                  <>
+                    <Button size="small" theme="borderless" type="tertiary" icon={<Copy size={13} />} onClick={() => setClipboard({ paths: [...selectedPaths], op: 'copy' })}>复制</Button>
+                    <Button size="small" theme="borderless" type="tertiary" icon={<Scissors size={13} />} onClick={() => setClipboard({ paths: [...selectedPaths], op: 'cut' })}>剪切</Button>
+                    <Button size="small" theme="borderless" type="tertiary" icon={<Archive size={13} />} onClick={() => {
+                      const sel = filteredEntries.filter((e) => selectedPaths.has(e.path));
+                      setDialog({ mode: 'compress', selEntries: sel, value: 'archive.zip' });
+                    }}>压缩</Button>
+                    <Popconfirm title={`确定删除选中的 ${selectedPaths.size} 项吗？`} okType="danger" onConfirm={() => void handleDelete([...selectedPaths])}>
+                      <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />}>删除</Button>
+                    </Popconfirm>
+                  </>
+                )}
+                <Button
+                  size="small"
+                  theme={viewMode === 'list' ? 'solid' : 'borderless'}
+                  type={viewMode === 'list' ? 'primary' : 'tertiary'}
+                  icon={<ListIcon size={13} />}
+                  style={{ borderRadius: '4px 0 0 4px' }}
+                  onClick={() => setViewMode('list')}
+                />
+                <Button
+                  size="small"
+                  theme={viewMode === 'grid' ? 'solid' : 'borderless'}
+                  type={viewMode === 'grid' ? 'primary' : 'tertiary'}
+                  icon={<LayoutGrid size={13} />}
+                  style={{ borderRadius: '0 4px 4px 0' }}
+                  onClick={() => setViewMode('grid')}
+                />
+              </Space>
+            }
+          >
+            <Breadcrumb className="fm-toolbar__breadcrumb">
+              {breadcrumbs.map((seg, i) => (
+                <Breadcrumb.Item
+                  key={seg.path}
+                  onClick={i < breadcrumbs.length - 1 ? () => void navigateTo(seg.path) : undefined}
+                  style={{ cursor: i < breadcrumbs.length - 1 ? 'pointer' : 'default', color: i < breadcrumbs.length - 1 ? 'var(--semi-color-primary)' : undefined }}
+                >
+                  {seg.label}
+                </Breadcrumb.Item>
+              ))}
+            </Breadcrumb>
+          </MasterDetailLayout.Header>
 
-      <Modal
-        title={dialogTitle(dialog?.mode)}
-        visible={!!dialog}
-        onCancel={() => setDialog(null)}
-        onOk={() => void confirmDialog()}
-        closeOnEsc
-        width={480}
-      >
-        {dialog?.mode === 'chmod' ? (
-          <div>
-            <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 6 }}>
-              输入八进制权限值，如 755（rwxr-xr-x）、644（rw-r--r--）
-            </Typography.Text>
-            <Input
-              value={dialog.value}
-              onChange={(v) => setDialog((d) => d ? { ...d, value: v } : d)}
-              onEnterPress={() => void confirmDialog()}
-              placeholder="755"
-              maxLength={4}
-            />
-          </div>
-        ) : (
-          <Input
-            autoFocus
-            value={dialog?.value ?? ''}
-            onChange={(v) => setDialog((d) => d ? { ...d, value: v } : d)}
-            onEnterPress={() => void confirmDialog()}
-            placeholder={dialog?.mode === 'move' || dialog?.mode === 'copy' ? '输入目标完整路径' : '请输入名称'}
+          <MasterDetailLayout.Body scroll="hidden" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="fm-content">
+              {renderContent()}
+              {uploading.length > 0 && (
+                <div className="fm-upload-progress">
+                  <Typography.Text size="small" strong>
+                    上传中（{uploading.filter((u) => u.progress >= 100).length}/{uploading.length}）
+                  </Typography.Text>
+                  {uploading.map((u) => (
+                    <div key={u.name} style={{ marginTop: 4 }}>
+                      <Typography.Text size="small" ellipsis style={{ display: 'block' }}>{u.name}</Typography.Text>
+                      <div className="fm-upload-bar">
+                        <div className="fm-upload-bar__fill" style={{ width: `${u.progress}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </MasterDetailLayout.Body>
+
+          <input ref={ctxUploadInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleUploadChange} />
+
+          {ctxEntry && (
+            <>
+              <button
+                type="button"
+                aria-label="关闭菜单"
+                style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'transparent', border: 'none', padding: 0, cursor: 'default' }}
+                onClick={closeCtxMenu}
+                onContextMenu={(e) => { e.preventDefault(); closeCtxMenu(); }}
+              />
+              <div style={{ position: 'fixed', left: ctxEntry.x, top: ctxEntry.y, zIndex: 1001, minWidth: 150, background: 'var(--semi-color-bg-3)', border: '1px solid var(--semi-color-border)', borderRadius: 6, boxShadow: 'var(--semi-shadow-elevated)', padding: '4px 0' }}>
+                {ctxMenuItems.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={item.fn}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 14px', background: 'none', border: 'none', cursor: 'pointer', color: item.danger ? 'var(--semi-color-danger)' : 'var(--semi-color-text-0)', font: 'inherit', fontSize: 13 }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          <Modal
+            title={dialogTitle(dialog?.mode)}
+            visible={!!dialog}
+            onCancel={() => setDialog(null)}
+            onOk={() => void confirmDialog()}
+            closeOnEsc
+            width={480}
+          >
+            {dialog?.mode === 'chmod' ? (
+              <div>
+                <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 6 }}>
+                  输入八进制权限值，如 755（rwxr-xr-x）、644（rw-r--r--）
+                </Typography.Text>
+                <Input
+                  value={dialog.value}
+                  onChange={(v) => setDialog((d) => d ? { ...d, value: v } : d)}
+                  onEnterPress={() => void confirmDialog()}
+                  placeholder="755"
+                  maxLength={4}
+                />
+              </div>
+            ) : (
+              <Input
+                autoFocus
+                value={dialog?.value ?? ''}
+                onChange={(v) => setDialog((d) => d ? { ...d, value: v } : d)}
+                onEnterPress={() => void confirmDialog()}
+                placeholder={dialog?.mode === 'move' || dialog?.mode === 'copy' ? '输入目标完整路径' : '请输入名称'}
+              />
+            )}
+            {dialog?.mode === 'compress' && (
+              <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 8 }}>
+                将压缩到当前目录下，输入 ZIP 文件名（含 .zip 扩展名）
+              </Typography.Text>
+            )}
+          </Modal>
+
+          {/* ── 图片画廊预览 ── */}
+          <ImagePreview
+            src={previewSrcList}
+            visible={previewVisible}
+            currentIndex={previewCurrentIndex}
+            onChange={setPreviewCurrentIndex}
+            onVisibleChange={(v) => {
+              if (!v) {
+                previewSessionRef.current += 1;
+                setPreviewVisible(false);
+                cleanupPreviewBlobs();
+                setPreviewSrcList([]);
+              }
+            }}
+            infinite
           />
-        )}
-        {dialog?.mode === 'compress' && (
-          <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 8 }}>
-            将压缩到当前目录下，输入 ZIP 文件名（含 .zip 扩展名）
-          </Typography.Text>
-        )}
-      </Modal>
 
-      {/* ── 图片画廈预览 ── */}
-      <ImagePreview
-        src={previewSrcList}
-        visible={previewVisible}
-        currentIndex={previewCurrentIndex}
-        onChange={setPreviewCurrentIndex}
-        onVisibleChange={(v) => {
-          if (!v) {
-            previewSessionRef.current += 1;
-            setPreviewVisible(false);
-            cleanupPreviewBlobs();
-            setPreviewSrcList([]);
-          }
-        }}
-        infinite
-      />
-
-      {/* ── 通用文件预览 (PDF/音视频/Excel/Word/Markdown/ZIP/代码等) ── */}
-      <FilePreviewModal
-        fileUrl={preview?.url ?? ''}
-        fileName={preview?.name}
-        mimeType={preview?.mimeType}
-        visible={!!preview}
-        onClose={() => setPreview(null)}
-        onFallback={() => { Toast.warning('该文件不支持在线预览，请下载后查看'); setPreview(null); }}
-      />
-    </div>
+          {/* ── 通用文件预览 (PDF/音视频/Excel/Word/Markdown/ZIP/代码等) ── */}
+          <FilePreviewModal
+            fileUrl={preview?.url ?? ''}
+            fileName={preview?.name}
+            mimeType={preview?.mimeType}
+            visible={!!preview}
+            onClose={() => setPreview(null)}
+            onFallback={() => { Toast.warning('该文件不支持在线预览，请下载后查看'); setPreview(null); }}
+          />
+        </>
+      }
+    />
   );
 }
