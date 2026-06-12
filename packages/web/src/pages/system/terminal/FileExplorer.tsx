@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Tree, Button, Upload, Toast, Typography, Tooltip, Dropdown, Modal, Input } from '@douyinfe/semi-ui';
+import { Tree, Button, Upload, Toast, Typography, Tooltip, Dropdown, Modal, Input, Collapse } from '@douyinfe/semi-ui';
 import {
   Upload as UploadIcon,
   RotateCcw,
@@ -118,7 +118,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
 
   // 懒加载子目录
   const loadData = useCallback((node?: TreeNodeData) => {
-    if (!node) return Promise.resolve();
+    if (!node || node.isLeaf || (node as unknown as FileNode).fileType === 'file') return Promise.resolve();
     const dir = String(node.value);
     const key = String(node.key);
     return request
@@ -321,57 +321,6 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         </Tooltip>
       </div>
 
-      {favorites.length > 0 && (
-        <div
-          style={{
-            borderBottom: '1px solid var(--semi-color-border)',
-            padding: '4px 0',
-            flexShrink: 0,
-            maxHeight: 132,
-            overflow: 'auto',
-          }}
-        >
-          {favorites.map((f) => (
-            <div
-              key={f.path}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 10px' }}
-              title={f.path}
-            >
-              <button
-                type="button"
-                onClick={() => onOpenTerminalAt(f.path)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  flex: 1,
-                  minWidth: 0,
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  cursor: 'pointer',
-                  color: 'inherit',
-                  font: 'inherit',
-                  textAlign: 'left',
-                }}
-              >
-                <Star size={12} style={{ color: 'var(--semi-color-warning)', flexShrink: 0 }} />
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
-                  {f.name}
-                </span>
-              </button>
-              <Button
-                size="small"
-                theme="borderless"
-                type="tertiary"
-                icon={<X size={11} />}
-                onClick={() => toggleFavorite(f.path, f.name)}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '4px 0' }}>
         <Tree
           treeData={treeData}
@@ -385,6 +334,53 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
           style={{ width: '100%' }}
         />
       </div>
+
+      {favorites.length > 0 && (
+        <Collapse style={{ flexShrink: 0, borderTop: '1px solid var(--semi-color-border)' }}>
+          <Collapse.Panel header={`收藏夹 (${favorites.length})`} itemKey="favorites">
+            <div style={{ maxHeight: 160, overflow: 'auto' }}>
+              {favorites.map((f) => (
+                <div
+                  key={f.path}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 4px' }}
+                  title={f.path}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpenTerminalAt(f.path)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      flex: 1,
+                      minWidth: 0,
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      cursor: 'pointer',
+                      color: 'inherit',
+                      font: 'inherit',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <Star size={12} style={{ color: 'var(--semi-color-warning)', flexShrink: 0 }} />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                      {f.name}
+                    </span>
+                  </button>
+                  <Button
+                    size="small"
+                    theme="borderless"
+                    type="tertiary"
+                    icon={<X size={11} />}
+                    onClick={() => toggleFavorite(f.path, f.name)}
+                  />
+                </div>
+              ))}
+            </div>
+          </Collapse.Panel>
+        </Collapse>
+      )}
 
       <div style={{ padding: '4px 8px', borderTop: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
         <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>

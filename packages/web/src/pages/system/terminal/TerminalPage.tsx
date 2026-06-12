@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Typography, Space, Dropdown, Tooltip } from '@douyinfe/semi-ui';
 import { Plus, TerminalSquare, ChevronDown, X, PanelLeft, Settings, FileCode } from 'lucide-react';
 import TerminalTab from './TerminalTab';
@@ -58,6 +58,8 @@ export default function TerminalPage() {
   const [shells, setShells] = useState<ShellInfo[]>([]);
   const [serverDefaultShell, setServerDefaultShell] = useState('');
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(() => new Set());
+  const [ctxMenu, setCtxMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const dragIdRef = useRef<string | null>(null);
 
   // 拉取当前平台可用 shell 列表
   useEffect(() => {
@@ -137,6 +139,50 @@ export default function TerminalPage() {
     if (activeId === id) setActiveId(next[Math.max(0, idx - 1)]?.id ?? next[0]?.id ?? '');
   };
 
+  const reorderSessions = (fromId: string, toId: string) => {
+    if (!fromId || fromId === toId) return;
+    setSessions((prev) => {
+      const arr = [...prev];
+      const fi = arr.findIndex((s) => s.id === fromId);
+      const ti = arr.findIndex((s) => s.id === toId);
+      if (fi < 0 || ti < 0) return prev;
+      const [moved] = arr.splice(fi, 1);
+      arr.splice(ti, 0, moved);
+      return arr;
+    });
+  };
+
+  const closeOthers = (id: string) => {
+    setSessions((prev) => prev.filter((s) => s.id === id));
+    setActiveId(id);
+    setDirtyIds((prev) => {
+      const n = new Set<string>();
+      if (prev.has(id)) n.add(id);
+      return n;
+    });
+  };
+
+  const closeRight = (id: string) => {
+    const idx = sessions.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    const kept = sessions.slice(0, idx + 1);
+    setSessions(kept);
+    if (!kept.some((s) => s.id === activeId)) setActiveId(id);
+    setDirtyIds((prev) => {
+      const n = new Set<string>();
+      kept.forEach((s) => {
+        if (prev.has(s.id)) n.add(s.id);
+      });
+      return n;
+    });
+  };
+
+  const closeAll = () => {
+    setSessions([]);
+    setActiveId('');
+    setDirtyIds(new Set());
+  };
+
   if (IS_DEMO) return <DemoNotice />;
 
   const shellMenu = (
@@ -203,7 +249,7 @@ export default function TerminalPage() {
             theme="borderless"
             type={showExplorer ? 'primary' : 'tertiary'}
             onClick={() => setShowExplorer((v) => !v)}
-            style={{ margin: '0 4px', flexShrink: 0 }}
+            style={{ margin: '0 4px', flexShrink: 0, alignSelf: 'center' }}
           />
         </Tooltip>
         <div className="admin-tabs-bar__scroll">
@@ -216,6 +262,19 @@ export default function TerminalPage() {
                 role="tab"
                 tabIndex={0}
                 aria-selected={isActive}
+                draggable
+                onDragStart={() => {
+                  dragIdRef.current = s.id;
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => {
+                  reorderSessions(dragIdRef.current ?? '', s.id);
+                  dragIdRef.current = null;
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setCtxMenu({ id: s.id, x: e.clientX, y: e.clientY });
+                }}
                 onClick={() => setActiveId(s.id)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -277,6 +336,65 @@ export default function TerminalPage() {
       </div>
 
       <TerminalSettings visible={showSettings} onClose={() => setShowSettings(false)} shells={shells} />
+
+      {ctxMenu && (
+        <>
+          <button
+            type="button"
+            aria-label="关闭菜单"
+            style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'transparent', border: 'none', padding: 0, cursor: 'default' }}
+            onClick={() => setCtxMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setCtxMenu(null);
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: ctxMenu.x,
+              top: ctxMenu.y,
+              zIndex: 1001,
+              minWidth: 140,
+              background: 'var(--semi-color-bg-3)',
+              border: '1px solid var(--semi-color-border)',
+              borderRadius: 6,
+              boxShadow: 'var(--semi-shadow-elevated)',
+              padding: '4px 0',
+            }}
+          >
+            {[
+              { label: '关闭', fn: () => removeSession(ctxMenu.id) },
+              { label: '关闭其他', fn: () => closeOthers(ctxMenu.id) },
+              { label: '关闭右侧', fn: () => closeRight(ctxMenu.id) },
+              { label: '全部关闭', fn: () => closeAll() },
+            ].map((it) => (
+              <button
+                key={it.label}
+                type="button"
+                onClick={() => {
+                  it.fn();
+                  setCtxMenu(null);
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '6px 14px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--semi-color-text-0)',
+                  font: 'inherit',
+                  fontSize: 13,
+                }}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

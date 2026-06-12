@@ -33,7 +33,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
     <SideSheet title="终端设置" visible={visible} onCancel={onClose} width={360} placement="right">
       <Field label="默认 Shell">
         <Select
-          value={terminal.defaultShell || ''}
+          value={shells.some((s) => s.id === terminal.defaultShell) ? terminal.defaultShell : ''}
           onChange={(v) => setTerminalPref({ defaultShell: typeof v === 'string' ? v : '' })}
           style={{ width: '100%' }}
         >
