@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Button, Input, Modal, Tag, Toast, Popconfirm } from '@douyinfe/semi-ui';
 import { Search, RotateCcw } from 'lucide-react';
 import { request } from '@/utils/request';
@@ -57,7 +57,7 @@ export default function TerminalRecordingsPage() {
   }, []);
 
   // 初始加载
-  useState(() => { void fetchList(1, pageSize, ''); });
+  useEffect(() => { void fetchList(1, pageSize, ''); }, [fetchList, pageSize]);
 
   const handleSearch = () => {
     setSearchKeyword(keyword);
@@ -163,7 +163,7 @@ export default function TerminalRecordingsPage() {
         pagination={buildPagination(total, fetchList)}
         onRefresh={() => void fetchList(page, pageSize, searchKeyword)}
         refreshLoading={loading}
-        emptyContent="暂无录屏记录，使用 Web 终端后会自动保存"
+        empty="暂无录屏记录，使用 Web 终端后会自动保存"
       />
 
       <Modal
