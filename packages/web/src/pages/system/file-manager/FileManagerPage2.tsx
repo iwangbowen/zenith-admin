@@ -5,7 +5,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Button, Input, Space, Tooltip, Dropdown, Modal, Toast,
-  Typography, Tag, Spin, Breadcrumb, Popconfirm,
+  Typography, Tag, Spin, Breadcrumb, Popconfirm, ImagePreview,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Icon } from '@iconify/react';
@@ -13,7 +13,7 @@ import {
   Search, RotateCcw, LayoutGrid, List as ListIcon,
   FolderPlus, FilePlus, Upload as UploadIcon,
   Trash2, Copy, Scissors, Archive, Home,
-  MoreHorizontal, FolderOpen, Eye,
+  MoreHorizontal, FolderOpen,
 } from 'lucide-react';
 import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
@@ -204,9 +204,13 @@ export default function FileManagerPage() {
   const ctxUploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{ name: string; progress: number }[]>([]);
   const [preview, setPreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
-  const [imgPreview, setImgPreview] = useState<{ name: string; blobUrl: string } | null>(null);
-  const [imgPreviewLoading, setImgPreviewLoading] = useState(false);
-  const imgBlobRef = useRef<string | null>(null);
+  // 图片画廈预览
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
+  const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
+  const [previewLoadingEntry, setPreviewLoadingEntry] = useState<string | null>(null);
+  const previewBlobUrlsRef = useRef<string[]>([]);
+  const previewSessionRef = useRef(0);
 
   // ── 初始化 ────────────────────────────────────────────────────────────────
 
@@ -292,33 +296,62 @@ export default function FileManagerPage() {
       .catch(() => Toast.error('下载失败'));
   };
 
-  const closeImgPreview = () => {
-    if (imgBlobRef.current) { URL.revokeObjectURL(imgBlobRef.current); imgBlobRef.current = null; }
-    setImgPreview(null);
+  const cleanupPreviewBlobs = () => {
+    previewBlobUrlsRef.current.forEach((u) => { if (u) URL.revokeObjectURL(u); });
+    previewBlobUrlsRef.current = [];
   };
 
   const handlePreview = useCallback(async (entry: FsEntry) => {
     if (entry.type === 'dir') return;
     const ext = (entry.name.split('.').pop() ?? '').toLowerCase();
     if (NON_SVG_IMAGE_EXTS.has(ext)) {
-      setImgPreviewLoading(true);
+      const imageEntries = filteredEntries.filter(
+        (e) => e.type !== 'dir' && NON_SVG_IMAGE_EXTS.has((e.name.split('.').pop() ?? '').toLowerCase()),
+      );
+      const clickedIndex = Math.max(0, imageEntries.findIndex((e) => e.path === entry.path));
+      setPreviewLoadingEntry(entry.path);
+      previewSessionRef.current += 1;
+      const mySession = previewSessionRef.current;
+      const token = localStorage.getItem(TOKEN_KEY) ?? '';
+      const base = appConfig.apiBaseUrl || '';
       try {
-        const token = localStorage.getItem(TOKEN_KEY) ?? '';
-        const base = appConfig.apiBaseUrl || '';
-        const resp = await fetch(
-          `${base}/api/terminal-files/download?path=${encodeURIComponent(entry.path)}`,
+        cleanupPreviewBlobs();
+        const initialUrls = imageEntries.map(() => '');
+        previewBlobUrlsRef.current = [...initialUrls];
+        // 优先加载点击项
+        const clickedResp = await fetch(
+          `${base}/api/terminal-files/download?path=${encodeURIComponent(imageEntries[clickedIndex].path)}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        if (imgBlobRef.current) URL.revokeObjectURL(imgBlobRef.current);
-        const blobUrl = URL.createObjectURL(blob);
-        imgBlobRef.current = blobUrl;
-        setImgPreview({ name: entry.name, blobUrl });
+        if (previewSessionRef.current !== mySession) return;
+        const clickedBlob = await clickedResp.blob();
+        if (previewSessionRef.current !== mySession) return;
+        const clickedUrl = URL.createObjectURL(clickedBlob);
+        initialUrls[clickedIndex] = clickedUrl;
+        previewBlobUrlsRef.current[clickedIndex] = clickedUrl;
+        setPreviewSrcList([...initialUrls]);
+        setPreviewCurrentIndex(clickedIndex);
+        setPreviewVisible(true);
+        // 后台加载其余图片
+        imageEntries.forEach(async (imgEntry, i) => {
+          if (i === clickedIndex) return;
+          try {
+            const resp = await fetch(
+              `${base}/api/terminal-files/download?path=${encodeURIComponent(imgEntry.path)}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            if (previewSessionRef.current !== mySession) return;
+            const blob = await resp.blob();
+            if (previewSessionRef.current !== mySession) return;
+            const url = URL.createObjectURL(blob);
+            previewBlobUrlsRef.current[i] = url;
+            setPreviewSrcList((prev) => { const u = [...prev]; u[i] = url; return u; });
+          } catch { /* ignore */ }
+        });
       } catch (err) {
         Toast.error(err instanceof Error ? err.message : '图片加载失败');
       } finally {
-        setImgPreviewLoading(false);
+        setPreviewLoadingEntry(null);
       }
     } else {
       const mimeType = getFileMimeType(entry.name);
@@ -328,7 +361,8 @@ export default function FileManagerPage() {
         Toast.warning('该文件不支持预览，请下载后查看');
       }
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredEntries]);
 
   const handlePaste = async () => {
     if (!clipboard || !currentPath) return;
@@ -478,7 +512,7 @@ export default function FileManagerPage() {
             <Button size="small" theme="borderless" onClick={() => void navigateTo(r.path)}>打开</Button>
           ) : (
             <>
-              <Button size="small" theme="borderless" icon={<Eye size={12} />} onClick={() => void handlePreview(r)}>预览</Button>
+              <Button size="small" theme="borderless" onClick={() => void handlePreview(r)}>预览</Button>
               <Button size="small" theme="borderless" onClick={() => handleDownload(r)}>下载</Button>
             </>
           )}
@@ -775,23 +809,22 @@ export default function FileManagerPage() {
         )}
       </Modal>
 
-      {/* ── 图片预览 ── */}
-      <Modal
-        title={imgPreview?.name ?? '图片预览'}
-        visible={!!imgPreview || imgPreviewLoading}
-        onCancel={closeImgPreview}
-        footer={null}
-        width="80vw"
-        closeOnEsc
-        bodyStyle={{ padding: 8, background: 'var(--semi-color-fill-0)', textAlign: 'center', overflow: 'auto' }}
-      >
-        {imgPreviewLoading && (
-          <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin size="large" /></div>
-        )}
-        {imgPreview && (
-          <img src={imgPreview.blobUrl} alt={imgPreview.name} style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} />
-        )}
-      </Modal>
+      {/* ── 图片画廈预览 ── */}
+      <ImagePreview
+        src={previewSrcList}
+        visible={previewVisible}
+        currentIndex={previewCurrentIndex}
+        onChange={setPreviewCurrentIndex}
+        onVisibleChange={(v) => {
+          if (!v) {
+            previewSessionRef.current += 1;
+            setPreviewVisible(false);
+            cleanupPreviewBlobs();
+            setPreviewSrcList([]);
+          }
+        }}
+        infinite
+      />
 
       {/* ── 通用文件预览 (PDF/音视频/Excel/Word/Markdown/ZIP/代码等) ── */}
       <FilePreviewModal
