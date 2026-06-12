@@ -111,11 +111,10 @@ export function splitPane(
 
 /**
  * 关闭目标叶子。
- * - 移除该叶子，若某 split 仅剩一个子节点则将其向上提升（扁平化），
- *   并继承 split 节点的 id，使父级 Panel key 保持稳定，
- *   避免 react-resizable-panels 因 Panel id 突变而重置布局（布局错乱）。
- * - 返回新树（关闭最后一个叶子时为 null）、下一个应聚焦的叶子 id，
- *   以及折叠时可能发生的叶子 id 重命名信息。
+ * - 移除该叶子，若某 split 仅剩一个子节点则将其向上提升（扁平化）。
+ *   - 非根层折叠：继承 split 节点的 id，使父级 Panel key 保持稳定，避免 react-resizable-panels 重置布局。
+ *   - 根层折叠：不重命名 id，配合 PaneTreeView 单叶包裹，让剩余终端面板不重建、WebSocket 不断线。
+ * - 返回新树、下一个应聚焦的叶子 id，以及折叠时可能发生的 id 重命名信息。
  */
 export function closePane(
   root: PaneNode,
@@ -128,31 +127,33 @@ export function closePane(
 
   const nextActiveLeafId = (leaves[idx + 1] ?? leaves[idx - 1]).id;
 
-  // 追踪叶子 id 重命名（仅在 split 折叠时发生）
+  // 追踪叶子 id 重命名（仅层叠 split 折叠时发生）
   let renamedPaneId: { from: string; to: string } | null = null;
 
-  function recur(node: PaneNode): PaneNode | null {
+  function recur(node: PaneNode, isRoot = false): PaneNode | null {
     if (node.type === 'leaf') return node.id === targetId ? null : node;
     const children = node.children
-      .map(recur)
+      .map((c) => recur(c, false))
       .filter((c): c is PaneNode => c !== null);
     if (children.length === 0) return null;
     if (children.length === 1) {
       const child = children[0];
-      // 关键：继承 split 节点的 id，保证父级 PanelGroup 中该 Panel 的 key 不变，
-      // 防止 react-resizable-panels 误以为 panel 被替换而重置面板尺寸。
-      if (child.id !== node.id) {
-        if (child.type === 'leaf') {
-          // 仅叶子 id 变化时需更新 activePaneId
-          renamedPaneId = { from: child.id, to: node.id };
-        }
+      if (isRoot) {
+        // 根层折叠：不重命名 id。
+        // PaneTreeView 根节点始终包裹在 PanelGroup+Panel 中，
+        // 剩余面板的 Panel key 不变，终端不重建、WebSocket 不断线。
+        return child;
+      }
+      // 层叠折叠：继承 split 节点的 id，保证父级 PanelGroup 中该 Panel key 不变。
+      if (child.id !== node.id && child.type === 'leaf') {
+        renamedPaneId = { from: child.id, to: node.id };
       }
       return { ...child, id: node.id };
     }
     return { ...node, children };
   }
 
-  const newRoot = recur(root);
+  const newRoot = recur(root, true);
 
   // 若 nextActiveId 所指的叶子 id 被重命名，同步更新
   const finalNextActiveId =

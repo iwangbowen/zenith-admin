@@ -115,5 +115,19 @@ export default function PaneTreeView({
     );
   };
 
-  return <div className="terminal-pane-tree">{renderNode(root)}</div>;
+  return (
+    <div className="terminal-pane-tree">
+      {root.type === 'leaf' ? (
+        // 单面板：始终包裹在 PanelGroup+Panel 中，保证分屏关闭后 Panel key 不变，
+        // TerminalTab 不重建， WebSocket 不断线。
+        <PanelGroup direction="horizontal" className="terminal-panel-group">
+          <Panel key={root.id} id={root.id} order={0} minSize={8} className="terminal-panel">
+            {renderLeaf(root)}
+          </Panel>
+        </PanelGroup>
+      ) : (
+        renderNode(root)
+      )}
+    </div>
+  );
 }
