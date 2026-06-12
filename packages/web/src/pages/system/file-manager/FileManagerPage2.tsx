@@ -19,6 +19,7 @@ import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config as appConfig } from '@/config';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import FilePreviewModal from '@/components/FilePreviewModal';
 import { getFileIcon, getFolderIcon } from '../terminal/fileIcons';
 import './FileManagerPage.css';
 
@@ -113,20 +114,33 @@ function uploadOneXhrFM(
 
 // ── 文件预览辅助 ──────────────────────────────────────────────────────────────
 
-const IMAGE_EXTS_FM = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'avif']);
-const PDF_EXTS_FM = new Set(['pdf']);
-const VIDEO_EXTS_FM = new Set(['mp4', 'webm', 'ogv', 'mov', 'mkv', 'avi']);
-const AUDIO_EXTS_FM = new Set(['mp3', 'wav', 'ogg', 'oga', 'flac', 'aac', 'm4a', 'opus']);
+/** 非 SVG 图片展名（直接内联显示，不进 FilePreviewModal）*/
+const NON_SVG_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'tif', 'avif']);
 
-type BinaryPreviewType = 'image' | 'pdf' | 'video' | 'audio';
+/** 文件扩展名 → MIME 类型映射 */
+const EXT_TO_MIME: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon', tiff: 'image/tiff', tif: 'image/tiff', avif: 'image/avif',
+  svg: 'image/svg+xml',
+  pdf: 'application/pdf',
+  mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', flac: 'audio/flac', aac: 'audio/aac', m4a: 'audio/m4a', opus: 'audio/opus',
+  mp4: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg', mov: 'video/quicktime', mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel', csv: 'text/csv',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', doc: 'application/msword',
+  md: 'text/markdown', markdown: 'text/markdown',
+  json: 'application/json',
+  zip: 'application/zip', gz: 'application/x-gzip', tar: 'application/x-tar',
+  ts: 'text/typescript', tsx: 'text/typescript', js: 'text/javascript', jsx: 'text/javascript',
+  html: 'text/html', htm: 'text/html', css: 'text/css', xml: 'text/xml',
+  yaml: 'text/yaml', yml: 'text/yaml', sh: 'application/x-sh', bash: 'application/x-sh', zsh: 'application/x-sh',
+  sql: 'text/x-sql', py: 'text/x-python', rs: 'text/x-rust', rb: 'text/plain',
+  txt: 'text/plain', log: 'text/plain', conf: 'text/plain', ini: 'text/plain', env: 'text/plain', toml: 'text/plain',
+};
 
-function getBinaryPreviewType(name: string): BinaryPreviewType | null {
+function getFileMimeType(name: string): string | null {
   const ext = (name.split('.').pop() ?? '').toLowerCase();
-  if (IMAGE_EXTS_FM.has(ext)) return 'image';
-  if (PDF_EXTS_FM.has(ext)) return 'pdf';
-  if (VIDEO_EXTS_FM.has(ext)) return 'video';
-  if (AUDIO_EXTS_FM.has(ext)) return 'audio';
-  return null;
+  return EXT_TO_MIME[ext] ?? null;
 }
 
 // ── 网格卡片 ─────────────────────────────────────────────────────────────────
@@ -189,13 +203,10 @@ export default function FileManagerPage() {
   const ctxUploadDirRef = useRef('');
   const ctxUploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{ name: string; progress: number }[]>([]);
-  const [preview, setPreview] = useState<{
-    name: string; path: string;
-    type: BinaryPreviewType | 'text';
-    blobUrl?: string; content?: string;
-  } | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const previewBlobRef = useRef<string | null>(null);
+  const [preview, setPreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
+  const [imgPreview, setImgPreview] = useState<{ name: string; blobUrl: string } | null>(null);
+  const [imgPreviewLoading, setImgPreviewLoading] = useState(false);
+  const imgBlobRef = useRef<string | null>(null);
 
   // ── 初始化 ────────────────────────────────────────────────────────────────
 
@@ -281,17 +292,17 @@ export default function FileManagerPage() {
       .catch(() => Toast.error('下载失败'));
   };
 
-  const closePreview = () => {
-    if (previewBlobRef.current) { URL.revokeObjectURL(previewBlobRef.current); previewBlobRef.current = null; }
-    setPreview(null);
+  const closeImgPreview = () => {
+    if (imgBlobRef.current) { URL.revokeObjectURL(imgBlobRef.current); imgBlobRef.current = null; }
+    setImgPreview(null);
   };
 
   const handlePreview = useCallback(async (entry: FsEntry) => {
     if (entry.type === 'dir') return;
-    const btype = getBinaryPreviewType(entry.name);
-    setPreviewLoading(true);
-    try {
-      if (btype) {
+    const ext = (entry.name.split('.').pop() ?? '').toLowerCase();
+    if (NON_SVG_IMAGE_EXTS.has(ext)) {
+      setImgPreviewLoading(true);
+      try {
         const token = localStorage.getItem(TOKEN_KEY) ?? '';
         const base = appConfig.apiBaseUrl || '';
         const resp = await fetch(
@@ -300,24 +311,22 @@ export default function FileManagerPage() {
         );
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const blob = await resp.blob();
-        if (previewBlobRef.current) URL.revokeObjectURL(previewBlobRef.current);
+        if (imgBlobRef.current) URL.revokeObjectURL(imgBlobRef.current);
         const blobUrl = URL.createObjectURL(blob);
-        previewBlobRef.current = blobUrl;
-        setPreview({ name: entry.name, path: entry.path, type: btype, blobUrl });
-      } else {
-        const res = await request.get<{ path: string; content: string; size: number }>(
-          `/api/terminal-files/content?path=${encodeURIComponent(entry.path)}`,
-        );
-        if (res.code === 0 && res.data) {
-          setPreview({ name: entry.name, path: entry.path, type: 'text', content: res.data.content });
-        } else {
-          Toast.warning('该文件不支持预览，请下载后查看');
-        }
+        imgBlobRef.current = blobUrl;
+        setImgPreview({ name: entry.name, blobUrl });
+      } catch (err) {
+        Toast.error(err instanceof Error ? err.message : '图片加载失败');
+      } finally {
+        setImgPreviewLoading(false);
       }
-    } catch (err) {
-      Toast.error(err instanceof Error ? err.message : '文件预览失败');
-    } finally {
-      setPreviewLoading(false);
+    } else {
+      const mimeType = getFileMimeType(entry.name);
+      if (mimeType) {
+        setPreview({ url: `/api/terminal-files/download?path=${encodeURIComponent(entry.path)}`, name: entry.name, mimeType });
+      } else {
+        Toast.warning('该文件不支持预览，请下载后查看');
+      }
     }
   }, []);
 
@@ -766,52 +775,33 @@ export default function FileManagerPage() {
         )}
       </Modal>
 
-      {/* ── 文件预览 ── */}
+      {/* ── 图片预览 ── */}
       <Modal
-        title={preview?.name ?? '文件预览'}
-        visible={!!preview || previewLoading}
-        onCancel={closePreview}
+        title={imgPreview?.name ?? '图片预览'}
+        visible={!!imgPreview || imgPreviewLoading}
+        onCancel={closeImgPreview}
         footer={null}
         width="80vw"
         closeOnEsc
-        bodyStyle={{ padding: 0, overflow: 'hidden' }}
+        bodyStyle={{ padding: 8, background: 'var(--semi-color-fill-0)', textAlign: 'center', overflow: 'auto' }}
       >
-        {previewLoading && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
-            <Spin size="large" />
-          </div>
+        {imgPreviewLoading && (
+          <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spin size="large" /></div>
         )}
-        {!previewLoading && preview?.type === 'image' && (
-          <div style={{ textAlign: 'center', padding: 8, background: 'var(--semi-color-fill-0)', overflow: 'auto', maxHeight: '75vh' }}>
-            <img src={preview.blobUrl} alt={preview.name} style={{ maxWidth: '100%', maxHeight: '74vh', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
-          </div>
-        )}
-        {!previewLoading && preview?.type === 'pdf' && (
-          <iframe src={preview.blobUrl} title={preview.name} style={{ width: '100%', height: '75vh', border: 'none', display: 'block' }} />
-        )}
-        {!previewLoading && preview?.type === 'video' && (
-          <div style={{ background: '#000', display: 'flex', justifyContent: 'center' }}>
-            <video src={preview.blobUrl} controls style={{ maxWidth: '100%', maxHeight: '75vh' }} />
-          </div>
-        )}
-        {!previewLoading && preview?.type === 'audio' && (
-          <div style={{ padding: '24px 16px' }}>
-            <audio src={preview.blobUrl} controls style={{ width: '100%' }} />
-          </div>
-        )}
-        {!previewLoading && preview?.type === 'text' && (
-          <pre style={{
-            maxHeight: '75vh', overflow: 'auto', fontSize: 12, lineHeight: 1.6,
-            padding: '12px 16px', margin: 0,
-            background: 'var(--semi-color-fill-0)',
-            color: 'var(--semi-color-text-0)',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-            whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-          }}>
-            {preview.content}
-          </pre>
+        {imgPreview && (
+          <img src={imgPreview.blobUrl} alt={imgPreview.name} style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} />
         )}
       </Modal>
+
+      {/* ── 通用文件预览 (PDF/音视频/Excel/Word/Markdown/ZIP/代码等) ── */}
+      <FilePreviewModal
+        fileUrl={preview?.url ?? ''}
+        fileName={preview?.name}
+        mimeType={preview?.mimeType}
+        visible={!!preview}
+        onClose={() => setPreview(null)}
+        onFallback={() => { Toast.warning('该文件不支持在线预览，请下载后查看'); setPreview(null); }}
+      />
     </div>
   );
 }
