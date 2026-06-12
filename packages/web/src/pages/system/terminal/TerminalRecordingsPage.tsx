@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Table, Modal, Tag, Toast, Typography, Popconfirm, Empty } from '@douyinfe/semi-ui';
-import { Play, Trash2, Video } from 'lucide-react';
+import { Play, Trash2, RotateCcw } from 'lucide-react';
 import { request } from '@/utils/request';
 import RecordingPlayer from './RecordingPlayer';
 
@@ -100,11 +100,11 @@ export default function TerminalRecordingsPage() {
     {
       title: '录制时间',
       dataIndex: 'createdAt',
-      width: 170,
+      width: 200,
     },
     {
       title: '操作',
-      width: 120,
+      width: 160,
       fixed: 'right' as const,
       render: (_: unknown, r: Recording) => (
         <div style={{ display: 'flex', gap: 4 }}>
@@ -133,14 +133,10 @@ export default function TerminalRecordingsPage() {
 
   return (
     <div style={{ padding: '16px 24px', height: '100%', overflow: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <Video size={18} />
-        <Typography.Title heading={5} style={{ margin: 0 }}>终端录屏</Typography.Title>
-        <Typography.Text type="tertiary" size="small" style={{ marginLeft: 8 }}>
-          共 {total} 条
-        </Typography.Text>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Typography.Text type="tertiary" size="small">共 {total} 条录屏</Typography.Text>
         <div style={{ flex: 1 }} />
-        <Button icon={<Trash2 size={14} />} theme="borderless" size="small" onClick={() => void fetchList()}>
+        <Button icon={<RotateCcw size={14} />} theme="borderless" size="small" onClick={() => void fetchList()}>
           刷新
         </Button>
       </div>
