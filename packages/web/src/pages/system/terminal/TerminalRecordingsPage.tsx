@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Button, Table, Modal, Tag, Toast, Typography, Popconfirm, Empty } from '@douyinfe/semi-ui';
-import { Play, Trash2, RotateCcw } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Button, Input, Modal, Tag, Toast, Popconfirm } from '@douyinfe/semi-ui';
+import { Search, RotateCcw } from 'lucide-react';
 import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import RecordingPlayer from './RecordingPlayer';
 
 type RecordingEvent = [number, 'o' | 'i', string];
@@ -30,42 +33,57 @@ function formatDuration(secs: number): string {
 export default function TerminalRecordingsPage() {
   const [list, setList] = useState<Recording[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [keyword, setKeyword] = useState('');
+  const [searchKeyword, setSearchKeyword] = useState('');
   const [playRec, setPlayRec] = useState<RecordingDetail | null>(null);
   const [playLoading, setPlayLoading] = useState(false);
 
-  const fetchList = useCallback(async (p = page) => {
+  const { page, pageSize, resetPage, buildPagination } = usePagination();
+
+  const fetchList = useCallback(async (p: number, ps: number, kw = searchKeyword) => {
     setLoading(true);
+    const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+    if (kw) params.set('keyword', kw);
     const res = await request.get<{ list: Recording[]; total: number; page: number; pageSize: number }>(
-      `/api/terminal-recordings?page=${p}&pageSize=20`,
+      `/api/terminal-recordings?${params.toString()}`,
     );
     setLoading(false);
     if (res.code === 0 && res.data) {
       setList(res.data.list);
       setTotal(res.data.total);
     }
-  }, [page]);
-
-  useEffect(() => {
-    void fetchList();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 初始加载
+  useState(() => { void fetchList(1, pageSize, ''); });
+
+  const handleSearch = () => {
+    setSearchKeyword(keyword);
+    resetPage();
+    void fetchList(1, pageSize, keyword);
+  };
+
+  const handleReset = () => {
+    setKeyword('');
+    setSearchKeyword('');
+    resetPage();
+    void fetchList(1, pageSize, '');
+  };
 
   const handlePlay = async (id: number) => {
     setPlayLoading(true);
     const res = await request.get<RecordingDetail>(`/api/terminal-recordings/${id}`);
     setPlayLoading(false);
-    if (res.code === 0 && res.data) {
-      setPlayRec(res.data);
-    }
+    if (res.code === 0 && res.data) setPlayRec(res.data);
   };
 
   const handleDelete = async (id: number) => {
     const res = await request.delete(`/api/terminal-recordings/${id}`);
     if (res.code === 0) {
       Toast.success('已删除');
-      void fetchList();
+      void fetchList(page, pageSize, searchKeyword);
     }
   };
 
@@ -73,24 +91,18 @@ export default function TerminalRecordingsPage() {
     {
       title: '标题',
       dataIndex: 'title',
-      render: (v: string) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 320 }}>
-          {v || '（无标题）'}
-        </Typography.Text>
-      ),
+      render: (v: string) => v || '（无标题）',
     },
     {
       title: 'Shell',
       dataIndex: 'shell',
       width: 120,
-      render: (v: string | null) => v ? <Tag color="blue" size="small">{v}</Tag> : <Typography.Text type="tertiary">-</Typography.Text>,
+      render: (v: string | null) => (v ? <Tag color="blue" size="small">{v}</Tag> : '-'),
     },
     {
       title: '尺寸',
       width: 100,
-      render: (_: unknown, r: Recording) => (
-        <Typography.Text type="tertiary" size="small">{r.cols}×{r.rows}</Typography.Text>
-      ),
+      render: (_: unknown, r: Recording) => `${r.cols}×${r.rows}`,
     },
     {
       title: '时长',
@@ -102,7 +114,7 @@ export default function TerminalRecordingsPage() {
       title: '操作人',
       dataIndex: 'username',
       width: 110,
-      render: (v: string) => <Typography.Text size="small">{v || '-'}</Typography.Text>,
+      render: (v: string) => v || '-',
     },
     {
       title: '录制时间',
@@ -111,27 +123,15 @@ export default function TerminalRecordingsPage() {
     },
     {
       title: '操作',
-      width: 200,
+      width: 150,
       fixed: 'right' as const,
       render: (_: unknown, r: Recording) => (
         <div style={{ display: 'flex', gap: 4 }}>
-          <Button
-            size="small"
-            theme="borderless"
-            icon={<Play size={14} />}
-            loading={playLoading}
-            onClick={() => void handlePlay(r.id)}
-          >
+          <Button size="small" theme="borderless" loading={playLoading} onClick={() => void handlePlay(r.id)}>
             播放
           </Button>
-          <Popconfirm
-            title="确定删除这条录屏吗？"
-            okType="danger"
-            onConfirm={() => void handleDelete(r.id)}
-          >
-            <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />}>
-              删除
-            </Button>
+          <Popconfirm title="确定删除这条录屏吗？" okType="danger" onConfirm={() => void handleDelete(r.id)}>
+            <Button size="small" theme="borderless" type="danger">删除</Button>
           </Popconfirm>
         </div>
       ),
@@ -139,38 +139,32 @@ export default function TerminalRecordingsPage() {
   ];
 
   return (
-    <div style={{ padding: '16px 24px', height: '100%', overflow: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <div style={{ flex: 1 }} />
-        <Button icon={<RotateCcw size={14} />} theme="borderless" size="small" onClick={() => void fetchList()}>
-          刷新
-        </Button>
-      </div>
+    <>
+      <SearchToolbar>
+        <Input
+          prefix={<Search size={14} />}
+          placeholder="搜索标题"
+          value={keyword}
+          onChange={setKeyword}
+          onEnterPress={handleSearch}
+          showClear
+          style={{ width: 220 }}
+        />
+        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+      </SearchToolbar>
 
-      {list.length === 0 && !loading ? (
-        <Empty
-          description="暂无录屏记录，使用 Web 终端后会自动保存"
-          style={{ paddingTop: 60 }}
-        />
-      ) : (
-        <Table
-          dataSource={list}
-          columns={columns}
-          loading={loading}
-          rowKey="id"
-          pagination={{
-            total,
-            currentPage: page,
-            pageSize: 20,
-            onChange: (p) => {
-              setPage(p);
-              void fetchList(p);
-            },
-          }}
-          size="small"
-          bordered
-        />
-      )}
+      <ConfigurableTable
+        bordered
+        rowKey="id"
+        dataSource={list}
+        columns={columns}
+        loading={loading}
+        pagination={buildPagination(total, fetchList)}
+        onRefresh={() => void fetchList(page, pageSize, searchKeyword)}
+        refreshLoading={loading}
+        emptyContent="暂无录屏记录，使用 Web 终端后会自动保存"
+      />
 
       <Modal
         title={playRec?.title || '播放录屏'}
@@ -191,6 +185,6 @@ export default function TerminalRecordingsPage() {
           />
         )}
       </Modal>
-    </div>
+    </>
   );
 }

@@ -39,13 +39,13 @@ const listRoute = defineOpenAPIRoute({
     method: 'get', path: '/', tags: ['TerminalRecordings'], summary: '我的录屏列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { query: PaginationQuery },
+    request: { query: PaginationQuery.extend({ keyword: z.string().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(TerminalRecordingDTO, '录屏列表') },
   }),
   handler: async (c) => {
     const user = currentUser();
-    const { page = 1, pageSize = 20 } = c.req.valid('query');
-    return c.json(okBody(await listRecordings(user.userId, Number(page), Number(pageSize))), 200);
+    const { page = 1, pageSize = 20, keyword } = c.req.valid('query');
+    return c.json(okBody(await listRecordings(user.userId, Number(page), Number(pageSize), keyword)), 200);
   },
 });
 

@@ -1,8 +1,9 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, ilike } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { terminalRecordings, users, type RecordingEvent } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
+import { escapeLike, withPagination } from '../lib/where-helpers';
 
 export interface CreateRecordingInput {
   title: string;
@@ -47,31 +48,37 @@ export async function createRecording(userId: number, tenantId: number | null, i
 }
 
 /** 分页查询当前用户的录屏列表（不返回 events 字段）。 */
-export async function listRecordings(userId: number, page: number, pageSize: number) {
-  const offset = (page - 1) * pageSize;
-  const where = eq(terminalRecordings.userId, userId);
+export async function listRecordings(userId: number, page: number, pageSize: number, keyword?: string) {
+  const conditions = [eq(terminalRecordings.userId, userId)];
+  if (keyword) conditions.push(ilike(terminalRecordings.title, `%${escapeLike(keyword)}%`));
+  const where = and(...conditions);
+
+  const baseQuery = db
+    .select({
+      id: terminalRecordings.id,
+      title: terminalRecordings.title,
+      userId: terminalRecordings.userId,
+      nickname: users.nickname,
+      shell: terminalRecordings.shell,
+      cols: terminalRecordings.cols,
+      rows: terminalRecordings.rows,
+      duration: terminalRecordings.duration,
+      createdAt: terminalRecordings.createdAt,
+      updatedAt: terminalRecordings.updatedAt,
+    })
+    .from(terminalRecordings)
+    .leftJoin(users, eq(terminalRecordings.userId, users.id))
+    .where(where)
+    .orderBy(desc(terminalRecordings.createdAt))
+    .$dynamic();
+
   const [total, rows] = await Promise.all([
     db.$count(terminalRecordings, where),
-    db
-      .select({
-        id: terminalRecordings.id,
-        title: terminalRecordings.title,
-        userId: terminalRecordings.userId,
-        shell: terminalRecordings.shell,
-        cols: terminalRecordings.cols,
-        rows: terminalRecordings.rows,
-        duration: terminalRecordings.duration,
-        createdAt: terminalRecordings.createdAt,
-        updatedAt: terminalRecordings.updatedAt,
-      })      .from(terminalRecordings)
-      .where(where)
-      .orderBy(desc(terminalRecordings.createdAt))
-      .limit(pageSize)
-      .offset(offset),
+    withPagination(baseQuery, page, pageSize),
   ]);
   return {
     total,
-    list: rows.map(mapRecording),
+    list: rows.map((r) => mapRecording({ ...r, nickname: r.nickname ?? null })),
     page,
     pageSize,
   };
