@@ -79,6 +79,12 @@ handlerRegistry.set('publishScheduledAnnouncements', async () => {
   return `自动发布了 ${count} 条定时公告`;
 });
 
+handlerRegistry.set('cleanupTerminalRecordings', async () => {
+  const { cleanupRecordings } = await import('../services/terminal-recordings.service');
+  const r = await cleanupRecordings();
+  return `清理终端录屏：按保留天数删除 ${r.deletedByAge} 条、按容量删除 ${r.deletedBySize} 条，释放约 ${(r.freedBytes / 1024 / 1024).toFixed(2)} MB`;
+});
+
 /** 已注册 handler 名称列表（供前端下拉选择） */
 export function getRegisteredHandlers(): string[] {
   return Array.from(handlerRegistry.keys());
