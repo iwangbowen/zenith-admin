@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Tree, Button, Upload, Toast, Typography, Tooltip, Dropdown, Modal, Input, Collapse } from '@douyinfe/semi-ui';
+import { Icon } from '@iconify/react';
 import {
   Upload as UploadIcon,
   RotateCcw,
@@ -16,6 +17,7 @@ import {
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { request } from '@/utils/request';
 import { useTerminalPreferences } from './useTerminalPreferences';
+import { getFileIcon, getFolderIcon } from './fileIcons';
 
 interface FileEntry {
   name: string;
@@ -279,8 +281,14 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const renderLabel = (label?: ReactNode, item?: TreeNodeData) => {
     const node = item as unknown as FileNode;
     const fav = node.fileType === 'dir' && isFavorite(node.value);
+    const isOpen = expandedKeys.includes(node.key);
+    const iconId =
+      node.fileType === 'dir'
+        ? getFolderIcon(node.label, isOpen)
+        : getFileIcon(node.label);
     return (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 4 }}>
+        <Icon icon={iconId} width={16} height={16} style={{ flexShrink: 0 }} />
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {label}
           {fav ? ' ★' : ''}
@@ -369,7 +377,6 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
           expandedKeys={expandedKeys}
           onExpand={(keys) => setExpandedKeys(keys.map(String))}
           expandAction="click"
-          directory
           motion={false}
           emptyContent="暂无文件"
           style={{ width: '100%' }}
