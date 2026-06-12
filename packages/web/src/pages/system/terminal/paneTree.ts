@@ -14,6 +14,8 @@ export type SplitDirection = 'horizontal' | 'vertical';
 export interface PaneLeaf {
   type: 'leaf';
   id: string;
+  /** 不可变的 session 标识，始终等于叶子首次创建时的 id，跨 split/collapse 操作保持稳定 */
+  stableSessionId: string;
   kind: PaneKind;
   title: string;
   shell?: string;
@@ -39,10 +41,12 @@ export function nextPaneId(prefix = 'pane'): string {
 }
 
 /** 创建一个叶子节点（未指定 id 时自动生成） */
-export function createLeaf(init: Omit<PaneLeaf, 'type' | 'id'> & { id?: string }): PaneLeaf {
+export function createLeaf(init: Omit<PaneLeaf, 'type' | 'id' | 'stableSessionId'> & { id?: string }): PaneLeaf {
+  const id = init.id ?? nextPaneId();
   return {
     type: 'leaf',
-    id: init.id ?? nextPaneId(),
+    id,
+    stableSessionId: id,  // 不可变，后续 spread 操作会自动保留
     kind: init.kind,
     title: init.title,
     shell: init.shell,

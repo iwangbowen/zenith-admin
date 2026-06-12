@@ -1,13 +1,8 @@
 import { useEffect, useRef, useMemo } from 'react';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { TOKEN_KEY } from '@zenith/shared';
-import { config } from '@/config';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTerminalPreferences } from './useTerminalPreferences';
-import { resolveTheme, toXtermTheme } from './themes';
-import { request } from '@/utils/request';
+import { resolveTheme } from './themes';
+import { terminalSessionStore } from './terminalSessionStore';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalTabProps {
@@ -17,31 +12,10 @@ interface TerminalTabProps {
   readonly cwd?: string;
 }
 
-function buildWsUrl(shell: string, cwd?: string): string {
-  const token = localStorage.getItem(TOKEN_KEY) ?? '';
-  let wsBase = config.wsBaseUrl;
-  if (!wsBase) {
-    const base = config.apiBaseUrl || location.origin;
-    wsBase = base.replace(/^http/, 'ws');
-  }
-  const cwdPart = cwd ? `&cwd=${encodeURIComponent(cwd)}` : '';
-  return `${wsBase}/api/ws/terminal?token=${encodeURIComponent(token)}&shell=${encodeURIComponent(shell)}${cwdPart}`;
-}
-
 export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const fitRef = useRef<FitAddon | null>(null);
-  const termRef = useRef<Terminal | null>(null);
   const { isDark } = useThemeController();
   const { terminal } = useTerminalPreferences();
-
-  // 录屏数据 —— 在闭包内直接读写，无需传入 effect 依赖
-  const recordingRef = useRef<{
-    startTime: number;
-    events: [number, 'o' | 'i', string][];
-    cols: number;
-    rows: number;
-  } | null>(null);
 
   const currentTheme = useMemo(
     () => resolveTheme(isDark ? terminal.themeDark : terminal.themeLight, isDark ? 'dark' : 'light'),
@@ -62,138 +36,42 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     lineHeight: terminal.lineHeight,
   };
 
-  // 初始化 xterm + WebSocket（仅在 mount 时执行一次）
+  // mount / sessionId 变化时：创建或复用 session，然后 attach
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const term = new Terminal({
-      theme: toXtermTheme(initCfgRef.current.theme),
-      fontFamily: initCfgRef.current.fontFamily,
-      fontSize: initCfgRef.current.fontSize,
-      lineHeight: initCfgRef.current.lineHeight,
-      cursorBlink: true,
-      cursorStyle: 'block',
-      scrollback: 5000,
-    });
-
-    const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
-    term.loadAddon(fitAddon);
-    term.loadAddon(webLinksAddon);
-    term.open(container);
-    fitAddon.fit();
-
-    termRef.current = term;
-    fitRef.current = fitAddon;
-
-    // 建立 WebSocket 连接
-    const ws = new WebSocket(buildWsUrl(shell, cwd));
-
-    ws.onopen = () => {
-      // 连接后立即同步当前终端大小并开始录屏
-      const { cols, rows } = term;
-      ws.send(JSON.stringify({ type: 'terminal:resize', cols, rows }));
-      recordingRef.current = { startTime: Date.now(), events: [], cols, rows };
-    };
-
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data as string) as { type: string; data?: string; message?: string };
-        if (msg.type === 'terminal:output' && msg.data) {
-          const rec = recordingRef.current;
-          if (rec) {
-            rec.events.push([(Date.now() - rec.startTime) / 1000, 'o', msg.data]);
-          }
-          term.write(msg.data);
-        } else if (msg.type === 'terminal:exit') {
-          term.write('\r\n\x1b[33m[进程已退出]\x1b[0m\r\n');
-        } else if (msg.type === 'terminal:error' && msg.message) {
-          term.write(`\r\n\x1b[31m[错误] ${msg.message}\x1b[0m\r\n`);
-        }
-      } catch { /* ignore */ }
-    };
-
-    ws.onerror = () => {
-      term.write('\r\n\x1b[31m[WebSocket 连接错误]\x1b[0m\r\n');
-    };
-
-    ws.onclose = (evt) => {
-      // 保存录屏
-      const rec = recordingRef.current;
-      if (rec && rec.events.length > 0) {
-        const duration = (Date.now() - rec.startTime) / 1000;
-        void request.post('/api/terminal-recordings', {
-          title: `${shell || 'terminal'} 录屏 - ${new Date().toLocaleString('zh-CN')}`,
-          shell: shell || null,
-          cols: rec.cols,
-          rows: rec.rows,
-          duration,
-          events: rec.events,
-        }, { silent: true });
-        recordingRef.current = null;
-      }
-      if (evt.code === 4001) {
-        term.write('\r\n\x1b[31m[认证失败，请重新登录]\x1b[0m\r\n');
-      } else if (evt.code === 4003) {
-        term.write('\r\n\x1b[31m[无权限访问终端]\x1b[0m\r\n');
-      } else if (evt.code !== 1000) {
-        term.write('\r\n\x1b[33m[连接已断开]\x1b[0m\r\n');
-      }
-    };
-
-    // 将用户输入发送到服务端 pty
-    term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        // 记录输入事件
-        const rec = recordingRef.current;
-        if (rec) rec.events.push([(Date.now() - rec.startTime) / 1000, 'i', data]);
-        ws.send(JSON.stringify({ type: 'terminal:input', data }));
-      }
-    });
-
-    // 终端大小变化时同步到服务端
-    term.onResize(({ cols, rows }) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'terminal:resize', cols, rows }));
-      }
-    });
-
-    // 监听容器 resize
-    const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
-    });
-    resizeObserver.observe(container);
+    if (!terminalSessionStore.has(sessionId)) {
+      // 首次负载：创建 xterm + WebSocket session
+      terminalSessionStore.create(sessionId, { shell, cwd, ...initCfgRef.current });
+    }
+    // 复用或新建的 session 都挂载到当前容器
+    terminalSessionStore.attach(sessionId, container);
 
     return () => {
-      resizeObserver.disconnect();
-      ws.close(1000);
-      term.dispose();
-      termRef.current = null;
-      fitRef.current = null;
+      // 组件卸载（分屏关闭 / 分屏布局变化）时 detach，保持 WebSocket 不断线
+      terminalSessionStore.detach(sessionId);
     };
-  // sessionId 变化（新 tab）时重新初始化
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // shell / cwd 仅在创建时使用，变化不重连
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // tab 切换为激活时重新 fit
+  // tab 切换激活时重新 fit
   useEffect(() => {
-    if (active && fitRef.current) {
-      const timer = setTimeout(() => fitRef.current?.fit(), 50);
-      return () => clearTimeout(timer);
+    if (active) {
+      terminalSessionStore.refit(sessionId);
     }
-  }, [active]);
+  }, [active, sessionId]);
 
-  // 主题 / 字体 / 字号 / 行高变化时更新终端（不重建实例，保留会话内容）
+  // 主题 / 字体 / 字号 / 行高变化时更新（不重建连接）
   useEffect(() => {
-    const term = termRef.current;
-    if (!term) return;
-    term.options.theme = toXtermTheme(currentTheme);
-    term.options.fontSize = terminal.fontSize;
-    term.options.fontFamily = terminal.fontFamily;
-    term.options.lineHeight = terminal.lineHeight;
-    fitRef.current?.fit();
-  }, [currentTheme, terminal.fontSize, terminal.fontFamily, terminal.lineHeight]);
+    terminalSessionStore.updateOptions(sessionId, {
+      theme: currentTheme,
+      fontSize: terminal.fontSize,
+      fontFamily: terminal.fontFamily,
+      lineHeight: terminal.lineHeight,
+    });
+  }, [currentTheme, terminal.fontSize, terminal.fontFamily, terminal.lineHeight, sessionId]);
 
   return (
     <div

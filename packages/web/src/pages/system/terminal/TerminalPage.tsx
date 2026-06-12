@@ -8,6 +8,7 @@ import PaneTreeView from './PaneTreeView';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { request } from '@/utils/request';
 import { getFileIcon, getShellIcon } from './fileIcons';
+import { terminalSessionStore } from './terminalSessionStore';
 import {
   closePane,
   collectLeaves,
@@ -149,10 +150,14 @@ export default function TerminalPage() {
   const removeSession = (id: string) => {
     const target = sessions.find((s) => s.id === id);
     if (target) {
-      const leafIds = collectLeaves(target.root).map((l) => l.id);
+      const leaves = collectLeaves(target.root);
+      // 标记所有终端 session 待销毁
+      leaves.forEach((l) => {
+        if (l.kind === 'terminal') terminalSessionStore.markForDestruction(l.stableSessionId);
+      });
       setDirtyIds((prev) => {
         const n = new Set(prev);
-        leafIds.forEach((lid) => n.delete(lid));
+        leaves.forEach((l) => n.delete(l.id));
         return n;
       });
     }
@@ -184,6 +189,11 @@ export default function TerminalPage() {
   const handleClosePane = (tabId: string, paneId: string) => {
     const target = sessions.find((s) => s.id === tabId);
     if (!target) return;
+    // 明确关闭前，先标记该面板的 session 待销毁
+    const closedLeaf = findLeaf(target.root, paneId);
+    if (closedLeaf?.kind === 'terminal') {
+      terminalSessionStore.markForDestruction(closedLeaf.stableSessionId);
+    }
     const result = closePane(target.root, paneId);
     setDirtyIds((prev) => {
       const n = new Set(prev);
@@ -231,6 +241,18 @@ export default function TerminalPage() {
 
   const closeOthers = (id: string) => {
     const kept = sessions.find((s) => s.id === id);
+    const keptSessionIds = new Set(
+      kept ? collectLeaves(kept.root).filter((l) => l.kind === 'terminal').map((l) => l.stableSessionId) : [],
+    );
+    // 标记将被关闭的其他 tab 中的 session 待销毁
+    sessions
+      .filter((s) => s.id !== id)
+      .forEach((s) =>
+        collectLeaves(s.root).forEach((l) => {
+          if (l.kind === 'terminal' && !keptSessionIds.has(l.stableSessionId))
+            terminalSessionStore.markForDestruction(l.stableSessionId);
+        }),
+      );
     const keptLeafIds = kept ? collectLeaves(kept.root).map((l) => l.id) : [];
     setSessions((prev) => prev.filter((s) => s.id === id));
     setActiveId(id);
@@ -247,6 +269,18 @@ export default function TerminalPage() {
     const idx = sessions.findIndex((s) => s.id === id);
     if (idx < 0) return;
     const kept = sessions.slice(0, idx + 1);
+    const keptSessionIds = new Set(
+      kept.flatMap((s) => collectLeaves(s.root).filter((l) => l.kind === 'terminal').map((l) => l.stableSessionId)),
+    );
+    // 标记将被关闭的 tab 的 session 待销毁
+    sessions
+      .slice(idx + 1)
+      .forEach((s) =>
+        collectLeaves(s.root).forEach((l) => {
+          if (l.kind === 'terminal' && !keptSessionIds.has(l.stableSessionId))
+            terminalSessionStore.markForDestruction(l.stableSessionId);
+        }),
+      );
     const keptLeafIds = kept.flatMap((s) => collectLeaves(s.root).map((l) => l.id));
     setSessions(kept);
     if (!kept.some((s) => s.id === activeId)) setActiveId(id);
@@ -260,6 +294,12 @@ export default function TerminalPage() {
   };
 
   const closeAll = () => {
+    // 标记所有 session 待销毁
+    sessions.forEach((s) =>
+      collectLeaves(s.root).forEach((l) => {
+        if (l.kind === 'terminal') terminalSessionStore.markForDestruction(l.stableSessionId);
+      }),
+    );
     setSessions([]);
     setActiveId('');
     setDirtyIds(new Set());

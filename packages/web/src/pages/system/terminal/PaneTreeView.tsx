@@ -79,7 +79,7 @@ export default function PaneTreeView({
         </div>
         <div className="terminal-pane__body">
           {leaf.kind === 'terminal' ? (
-            <TerminalTab sessionId={leaf.id} active={sessionActive} shell={leaf.shell ?? ''} cwd={leaf.cwd} />
+            <TerminalTab sessionId={leaf.stableSessionId} active={sessionActive} shell={leaf.shell ?? ''} cwd={leaf.cwd} />
           ) : (
             <EditorTab
               filePath={leaf.filePath ?? ''}
