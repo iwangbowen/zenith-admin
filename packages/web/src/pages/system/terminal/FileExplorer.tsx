@@ -13,7 +13,7 @@ import {
   Download,
   SquareTerminal,
   X,
-  ChevronUp,
+  Home,
 } from 'lucide-react';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { request } from '@/utils/request';
@@ -83,6 +83,12 @@ function dialogTitleOf(mode: DialogState['mode'] | undefined): string {
   return '新建文件';
 }
 
+interface RootInfo {
+  home: string;
+  isWindows: boolean;
+  drives: string[];
+}
+
 interface FileExplorerProps {
   readonly active: boolean;
   readonly onOpenFile: (path: string) => void;
@@ -95,7 +101,6 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
 
   const [treeData, setTreeData] = useState<FileNode[]>([]);
   const [rootPath, setRootPath] = useState('');
-  const [parentPath, setParentPath] = useState<string | null>(null);
   const [selectedDir, setSelectedDir] = useState('');
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -103,8 +108,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const [selectedKey, setSelectedKey] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropTargetDir, setDropTargetDir] = useState('');
-  const [pathEditValue, setPathEditValue] = useState('');
-  const [isEditingPath, setIsEditingPath] = useState(false);
+  const [rootInfo, setRootInfo] = useState<RootInfo | null>(null);
   const loadedRef = useRef(false);
   const dragCounterRef = useRef(0);
   const dropTargetDirRef = useRef('');
@@ -127,26 +131,42 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
 
   const loadRoot = useCallback(async () => {
     setLoading(true);
-    const res = await request.get<DirListing>('/api/terminal-files/list');
+    // 第一步：获取根信息（home 目录、是否 Windows、盘符列表）
+    const infoRes = await request.get<RootInfo>('/api/terminal-files/root-info');
+    if (infoRes.code !== 0 || !infoRes.data) { setLoading(false); return; }
+    const info = infoRes.data;
+    setRootInfo(info);
+
+    // 确定树根：Unix = "/"，Windows = 主目录所在盘符根（如 C:\\)
+    let treeRoot: string;
+    if (info.isWindows) {
+      const driveMatch = /^([A-Za-z]:)/.exec(info.home);
+      treeRoot = driveMatch ? driveMatch[1] + '\\' : (info.drives[0] ?? 'C:') + '\\';
+    } else {
+      treeRoot = '/';
+    }
+
+    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(treeRoot)}`);
     setLoading(false);
     if (res.code === 0 && res.data) {
       setRootPath(res.data.path);
-      setParentPath(res.data.parent);
       setSelectedDir(res.data.path);
       setTreeData(res.data.entries.map(entryToNode));
       setExpandedKeys([]);
       setSelectedKey('');
+      // 定位到 home 目录，传入当前根路径避免依赖 state
+      void locateInTree(info.home, res.data.path);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 加载指定目录为新根目录 */
-  const loadDir = useCallback(async (path: string) => {
+  /** 加载指定目录为新根（Windows 切换盘符时使用） */
+  const loadDir = useCallback(async (dir: string) => {
     setLoading(true);
-    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(path)}`);
+    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(dir)}`);
     setLoading(false);
     if (res.code === 0 && res.data) {
       setRootPath(res.data.path);
-      setParentPath(res.data.parent);
       setSelectedDir(res.data.path);
       setTreeData(res.data.entries.map(entryToNode));
       setExpandedKeys([]);
@@ -194,10 +214,10 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
     [rootPath, loadRoot],
   );
 
-  // 在文件树中逐级展开并定位到指定目录
+  // 在文件树中逐级展开并定位到指定目录，支持传入显式根路径（首次加载时 rootPath state 可能尚未更新）
   const locateInTree = useCallback(
-    async (target: string) => {
-      const root = rootPath;
+    async (target: string, explicitRoot?: string) => {
+      const root = explicitRoot ?? rootPath;
       if (!root) {
         Toast.warning('文件树尚未加载，请稍候再试');
         return;
@@ -478,16 +498,18 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         }}
       >
         <Typography.Text strong size="small" style={{ flex: 1 }}>文件</Typography.Text>
-        <Tooltip content="返回上层目录">
-          <Button
-            size="small"
-            theme="borderless"
-            type="tertiary"
-            icon={<ChevronUp size={14} />}
-            disabled={!parentPath}
-            onClick={() => { if (parentPath) void loadDir(parentPath); }}
-          />
-        </Tooltip>
+        {/* 定位到 Home 目录 */}
+        {rootInfo?.home && (
+          <Tooltip content="定位到主目录">
+            <Button
+              size="small"
+              theme="borderless"
+              type="tertiary"
+              icon={<Home size={14} />}
+              onClick={() => void locateInTree(rootInfo.home)}
+            />
+          </Tooltip>
+        )}
         <Upload
           action=""
           showUploadList={false}
@@ -526,39 +548,26 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         </Tooltip>
       </div>
 
-      {/* 当前目录路径栏（可点击切换为输入模式导航任意目录） */}
-      <div style={{ padding: '3px 8px', borderBottom: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
-        {isEditingPath ? (
-          <Input
-            autoFocus
-            size="small"
-            value={pathEditValue}
-            onChange={setPathEditValue}
-            onBlur={() => setIsEditingPath(false)}
-            onEnterPress={() => {
-              setIsEditingPath(false);
-              const p = pathEditValue.trim();
-              if (p) void loadDir(p);
-            }}
-            placeholder="输入目录路径后按 Enter"
-            style={{ fontSize: 12 }}
-          />
-        ) : (
-          <Typography.Text
-            size="small"
-            type="tertiary"
-            ellipsis={{ showTooltip: true }}
-            style={{ display: 'block', cursor: 'text' }}
-            onClick={() => {
-              setPathEditValue(rootPath);
-              setIsEditingPath(true);
-            }}
-            title="点击手动输入路径"
-          >
-            {rootPath || '加载中…'}
-          </Typography.Text>
-        )}
-      </div>
+      {/* Windows 多盘符切换行（仅 Windows 且有多个盘符时显示） */}
+      {rootInfo?.isWindows && rootInfo.drives.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '3px 8px', borderBottom: '1px solid var(--semi-color-border)', flexShrink: 0, flexWrap: 'wrap' }}>
+          {rootInfo.drives.map((drive) => {
+            const isActive = rootPath.toUpperCase().startsWith(drive.toUpperCase());
+            return (
+              <Button
+                key={drive}
+                size="small"
+                theme={isActive ? 'solid' : 'borderless'}
+                type={isActive ? 'primary' : 'tertiary'}
+                style={{ minWidth: 36, padding: '0 6px' }}
+                onClick={() => void loadDir(drive + '\\')}
+              >
+                {drive}
+              </Button>
+            );
+          })}
+        </div>
+      )}
 
       <section
         ref={treeContainerRef}

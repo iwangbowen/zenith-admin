@@ -38,6 +38,15 @@ export const TerminalShellsDTO = z
   })
   .openapi('TerminalShells');
 
+/** 终端：文件系统根信息（用于文件浏览器初始化） */
+export const TerminalRootInfoDTO = z
+  .object({
+    home: z.string().describe('用户主目录'),
+    isWindows: z.boolean().describe('是否 Windows 系统'),
+    drives: z.array(z.string()).describe('Windows 盘符列表（Unix 下为空数组）'),
+  })
+  .openapi('TerminalRootInfo');
+
 /** 终端：文本文件内容 */
 export const TerminalFileContentDTO = z
   .object({

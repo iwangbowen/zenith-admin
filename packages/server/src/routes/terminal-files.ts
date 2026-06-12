@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { validationHook, commonErrorResponses, ok, okMsg, okBody, jsonContent, ErrorResponse } from '../lib/openapi-schemas';
-import { TerminalDirListingDTO, TerminalFileEntryDTO, TerminalShellsDTO, TerminalFileContentDTO } from '../lib/openapi-dtos';
+import { TerminalDirListingDTO, TerminalFileEntryDTO, TerminalShellsDTO, TerminalFileContentDTO, TerminalRootInfoDTO } from '../lib/openapi-dtos';
 import {
   listDirectory,
   openDownloadStream,
@@ -15,6 +15,7 @@ import {
   createEntry,
   deleteEntry,
   renameEntry,
+  getRootInfo,
 } from '../services/terminal-files.service';
 
 /**
@@ -25,6 +26,16 @@ import {
 const terminalFilesRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const TERMINAL_PERM = 'system:terminal:execute';
+
+const rootInfoRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/root-info', tags: ['TerminalFiles'], summary: '获取文件系统根信息（盘符、home 目录等）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
+    responses: { ...commonErrorResponses, ...ok(TerminalRootInfoDTO, '根信息') },
+  }),
+  handler: async (c) => c.json(okBody(await getRootInfo()), 200),
+});
 
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -176,6 +187,7 @@ const deleteEntryRoute = defineOpenAPIRoute({
 });
 
 terminalFilesRouter.openapiRoutes([
+  rootInfoRoute,
   listRoute,
   downloadRoute,
   uploadRoute,

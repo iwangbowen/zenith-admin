@@ -293,3 +293,28 @@ export async function renameEntry(from: string, to: string): Promise<TerminalFil
     mtime: formatDateTime(s.mtime),
   };
 }
+
+/**
+ * 获取文件系统根目录信息（供文件浏览器初始化使用）。
+ * - Unix：根目录为 `/`，无盘符
+ * - Windows：根目录为各盘符（C:\、D:\ 等），通过检测是否存在筛选
+ */
+export async function getRootInfo(): Promise<{
+  home: string;
+  isWindows: boolean;
+  drives: string[];
+}> {
+  const isWindows = os.platform() === 'win32';
+  const home = os.homedir();
+  const drives: string[] = [];
+
+  if (isWindows) {
+    for (const letter of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+      if (existsSync(`${letter}:\\`)) {
+        drives.push(`${letter}:`);
+      }
+    }
+  }
+
+  return { home, isWindows, drives };
+}
