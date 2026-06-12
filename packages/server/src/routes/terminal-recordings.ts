@@ -43,13 +43,11 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(TerminalRecordingDTO, '录屏列表') },
   }),
   handler: async (c) => {
-    const user = currentUser();
     const { page = 1, pageSize = 20, keyword } = c.req.valid('query');
     return c.json(okBody(await listRecordings({
       page: Number(page),
       pageSize: Number(pageSize),
       keyword,
-      operatorUserId: user.userId,
     })), 200);
   },
 });
@@ -71,7 +69,7 @@ const createRoute_ = defineOpenAPIRoute({
       cols: body.cols,
       rows: body.rows,
       duration: body.duration,
-      events: body.events as [number, 'o' | 'i', string][],
+      events: body.events,
     });
     return c.json(okBody(result, '保存成功'), 200);
   },
