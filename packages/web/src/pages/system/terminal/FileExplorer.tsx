@@ -99,7 +99,9 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [selectedKey, setSelectedKey] = useState<string>('');
+  const [isDragOver, setIsDragOver] = useState(false);
   const loadedRef = useRef(false);
+  const dragCounterRef = useRef(0);
 
   const loadRoot = useCallback(async () => {
     setLoading(true);
@@ -188,6 +190,64 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   );
 
   const isFavorite = (path: string) => favorites.some((f) => f.path === path);
+
+  // ---------- 拖拽上传 ----------
+
+  /** 检查 dataTransfer 是否包含 OS 文件（区分与内部节点拖拽） */
+  const isFilesDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!isFilesDrag(e)) return;
+    dragCounterRef.current += 1;
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!isFilesDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent<HTMLDivElement>) => {
+      dragCounterRef.current = 0;
+      setIsDragOver(false);
+      if (!isFilesDrag(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const { files } = e.dataTransfer;
+      if (!files.length) return;
+
+      const targetDir = selectedDir || rootPath;
+      const uploads = Array.from(files).map((file) => {
+        const fd = new FormData();
+        fd.append('path', targetDir);
+        fd.append('file', file);
+        return request.postForm<FileEntry>('/api/terminal-files/upload', fd, { silent: true });
+      });
+      const results = await Promise.all(uploads);
+      const success = results.filter((r) => r.code === 0).length;
+      const fail = results.length - success;
+      if (success > 0) {
+        const failNote = fail > 0 ? `，${fail} 个失败` : '';
+        Toast.success(`已上传 ${success} 个文件${failNote}`);
+        refreshDir(targetDir);
+      } else {
+        Toast.error('上传失败');
+      }
+    },
+    [selectedDir, rootPath, refreshDir],
+  );
+
+  // -----------------------------------
 
   const toggleFavorite = (path: string, name: string) => {
     const next = isFavorite(path) ? favorites.filter((f) => f.path !== path) : [...favorites, { path, name }];
@@ -366,7 +426,38 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         </Tooltip>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '4px 0' }}>
+      <section
+        aria-label="文件树（支持从本地拖入文件上传）"
+        style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '4px 0', position: 'relative' }}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={(e) => void handleDrop(e)}
+      >
+        {isDragOver && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 10,
+              background: 'var(--semi-color-primary-light-hover)',
+              border: '2px dashed var(--semi-color-primary)',
+              borderRadius: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              pointerEvents: 'none',
+            }}
+          >
+            <UploadIcon size={24} style={{ color: 'var(--semi-color-primary)' }} />
+            <Typography.Text size="small" type="tertiary" style={{ textAlign: 'center', padding: '0 12px' }}>
+              松开即可上传到<br />
+              {selectedDir || rootPath || '主目录'}
+            </Typography.Text>
+          </div>
+        )}
         <Tree
           treeData={treeData}
           loadData={loadData}
@@ -381,7 +472,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
           emptyContent="暂无文件"
           style={{ width: '100%' }}
         />
-      </div>
+      </section>
 
       {favorites.length > 0 && (
         <Collapse style={{ flexShrink: 0, borderTop: '1px solid var(--semi-color-border)' }}>
