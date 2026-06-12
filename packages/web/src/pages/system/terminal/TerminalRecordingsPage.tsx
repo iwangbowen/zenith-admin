@@ -140,7 +140,7 @@ export default function TerminalRecordingsPage() {
   ];
 
   return (
-    <>
+    <div className="page-container">
       <SearchToolbar>
         <Input
           prefix={<Search size={14} />}
@@ -186,6 +186,6 @@ export default function TerminalRecordingsPage() {
           />
         )}
       </Modal>
-    </>
+    </div>
   );
 }
