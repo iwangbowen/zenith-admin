@@ -1,12 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Typography, Space, Dropdown, Tooltip } from '@douyinfe/semi-ui';
-import { Plus, TerminalSquare, ChevronDown, X, PanelLeft, Settings, FileCode } from 'lucide-react';
+import { Plus, TerminalSquare, ChevronDown, X, PanelLeft, Settings } from 'lucide-react';
+import { Icon } from '@iconify/react';
 import TerminalTab from './TerminalTab';
 import EditorTab from './EditorTab';
 import FileExplorer from './FileExplorer';
 import TerminalSettings from './TerminalSettings';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { request } from '@/utils/request';
+import { getFileIcon } from './fileIcons';
 
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
 
@@ -284,7 +286,11 @@ export default function TerminalPage() {
                 }}
               >
                 <span className="admin-tab-item__icon">
-                  {s.type === 'editor' ? <FileCode size={13} /> : <TerminalSquare size={13} />}
+                  {s.type === 'editor' ? (
+                    <Icon icon={getFileIcon(s.title)} width={13} height={13} />
+                  ) : (
+                    <TerminalSquare size={13} />
+                  )}
                 </span>
                 <span className="admin-tab-item__text">
                   {dirtyIds.has(s.id) ? '● ' : ''}
