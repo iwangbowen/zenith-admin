@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Button, Input, Modal, Tag, Toast, Popconfirm } from '@douyinfe/semi-ui';
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -87,7 +88,7 @@ export default function TerminalRecordingsPage() {
     }
   };
 
-  const columns = [
+  const columns: ColumnProps<Recording>[] = [
     {
       title: '标题',
       dataIndex: 'title',

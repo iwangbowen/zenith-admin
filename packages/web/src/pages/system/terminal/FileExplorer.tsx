@@ -237,7 +237,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   /** 检查 dataTransfer 是否包含 OS 文件（区分与内部节点拖拽） */
   const isFilesDrag = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
 
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragEnter = (e: React.DragEvent<HTMLElement>) => {
     if (!isFilesDrag(e)) return;
     dragCounterRef.current += 1;
     setIsDragOver(true);
