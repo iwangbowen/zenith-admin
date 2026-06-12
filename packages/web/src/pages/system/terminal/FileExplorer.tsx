@@ -222,7 +222,12 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         Toast.warning('文件树尚未加载，请稍候再试');
         return;
       }
-      const inRoot = target === root || target.startsWith(`${root}/`) || target.startsWith(`${root}\\`);
+      // normalRoot 去掉尾部分隔符（root='/' 时 normalRoot='' 表示所有绝对路径都在其范围内）
+      const normalRoot = root.replace(/[/\\]+$/, '');
+      const inRoot = !normalRoot
+        || target === root
+        || target.startsWith(normalRoot + '/')
+        || target.startsWith(normalRoot + '\\');
       if (!inRoot) {
         Toast.warning('该目录不在当前文件树范围内');
         return;
