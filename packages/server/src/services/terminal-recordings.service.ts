@@ -1,7 +1,7 @@
 import { eq, and, desc } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
-import { terminalRecordings, type RecordingEvent } from '../db/schema';
+import { terminalRecordings, users, type RecordingEvent } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
 
 export interface CreateRecordingInput {
@@ -13,11 +13,12 @@ export interface CreateRecordingInput {
   events: RecordingEvent[];
 }
 
-function mapRecording(r: typeof terminalRecordings.$inferSelect) {
+function mapRecording(r: typeof terminalRecordings.$inferSelect & { nickname: string | null }) {
   return {
     id: r.id,
     title: r.title,
     userId: r.userId,
+    username: r.nickname ?? '',
     shell: r.shell,
     cols: r.cols,
     rows: r.rows,
@@ -81,9 +82,12 @@ export async function getRecording(id: number, userId: number) {
   const [row] = await db
     .select()
     .from(terminalRecordings)
+    .leftJoin(users, eq(terminalRecordings.userId, users.id))
     .where(and(eq(terminalRecordings.id, id), eq(terminalRecordings.userId, userId)));
   if (!row) throw new HTTPException(404, { message: '录屏不存在' });
-  return { ...mapRecording(row), events: row.events };
+  const rec = row.terminal_recordings;
+  const nickname = row.users?.nickname ?? '';
+  return { ...mapRecording({ ...rec, nickname }), events: rec.events };
 }
 
 /** 删除录屏。仅允许删除自己的录屏。 */

@@ -9,6 +9,7 @@ type RecordingEvent = [number, 'o' | 'i', string];
 interface Recording {
   id: number;
   title: string;
+  username: string;
   shell: string | null;
   cols: number;
   rows: number;
@@ -96,6 +97,12 @@ export default function TerminalRecordingsPage() {
       dataIndex: 'duration',
       width: 90,
       render: (v: number) => formatDuration(v),
+    },
+    {
+      title: '操作人',
+      dataIndex: 'username',
+      width: 110,
+      render: (v: string) => <Typography.Text size="small">{v || '-'}</Typography.Text>,
     },
     {
       title: '录制时间',

@@ -11,6 +11,7 @@ export const TerminalRecordingDTO = z
     id: z.number().int(),
     title: z.string(),
     userId: z.number().int(),
+    username: z.string(),
     shell: z.string().nullable(),
     cols: z.number().int(),
     rows: z.number().int(),
