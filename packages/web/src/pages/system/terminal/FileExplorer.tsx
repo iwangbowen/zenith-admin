@@ -85,6 +85,12 @@ function dialogTitleOf(mode: DialogState['mode'] | undefined): string {
   return '新建文件';
 }
 
+type UploadItem = { name: string; progress: number };
+
+function applyUploadProgress(items: UploadItem[], idx: number, pct: number): UploadItem[] {
+  return items.map((u, j) => (j === idx ? { ...u, progress: pct } : u));
+}
+
 /** XHR 上传单个文件到目录，支持进度回调（模块级函数，避免组件嵌套过深） */
 function uploadOneXhr(
   file: File,
@@ -450,7 +456,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
     setUploading(files.map((f) => ({ name: f.name, progress: 0 })));
 
     function updateProgress(idx: number, pct: number) {
-      setUploading((prev) => prev.map((u, j) => (j === idx ? { ...u, progress: pct } : u)));
+      setUploading((prev) => applyUploadProgress(prev, idx, pct));
     }
 
     const results = await Promise.allSettled(
