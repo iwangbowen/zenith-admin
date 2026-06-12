@@ -13,6 +13,7 @@ import {
   Download,
   SquareTerminal,
   X,
+  ChevronUp,
 } from 'lucide-react';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { request } from '@/utils/request';
@@ -94,6 +95,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
 
   const [treeData, setTreeData] = useState<FileNode[]>([]);
   const [rootPath, setRootPath] = useState('');
+  const [parentPath, setParentPath] = useState<string | null>(null);
   const [selectedDir, setSelectedDir] = useState('');
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -101,6 +103,8 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const [selectedKey, setSelectedKey] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropTargetDir, setDropTargetDir] = useState('');
+  const [pathEditValue, setPathEditValue] = useState('');
+  const [isEditingPath, setIsEditingPath] = useState(false);
   const loadedRef = useRef(false);
   const dragCounterRef = useRef(0);
   const dropTargetDirRef = useRef('');
@@ -127,8 +131,26 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
     setLoading(false);
     if (res.code === 0 && res.data) {
       setRootPath(res.data.path);
+      setParentPath(res.data.parent);
       setSelectedDir(res.data.path);
       setTreeData(res.data.entries.map(entryToNode));
+      setExpandedKeys([]);
+      setSelectedKey('');
+    }
+  }, []);
+
+  /** 加载指定目录为新根目录 */
+  const loadDir = useCallback(async (path: string) => {
+    setLoading(true);
+    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(path)}`);
+    setLoading(false);
+    if (res.code === 0 && res.data) {
+      setRootPath(res.data.path);
+      setParentPath(res.data.parent);
+      setSelectedDir(res.data.path);
+      setTreeData(res.data.entries.map(entryToNode));
+      setExpandedKeys([]);
+      setSelectedKey('');
     }
   }, []);
 
@@ -456,6 +478,16 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         }}
       >
         <Typography.Text strong size="small" style={{ flex: 1 }}>文件</Typography.Text>
+        <Tooltip content="返回上层目录">
+          <Button
+            size="small"
+            theme="borderless"
+            type="tertiary"
+            icon={<ChevronUp size={14} />}
+            disabled={!parentPath}
+            onClick={() => { if (parentPath) void loadDir(parentPath); }}
+          />
+        </Tooltip>
         <Upload
           action=""
           showUploadList={false}
@@ -492,6 +524,40 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
             onClick={() => void loadRoot()}
           />
         </Tooltip>
+      </div>
+
+      {/* 当前目录路径栏（可点击切换为输入模式导航任意目录） */}
+      <div style={{ padding: '3px 8px', borderBottom: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
+        {isEditingPath ? (
+          <Input
+            autoFocus
+            size="small"
+            value={pathEditValue}
+            onChange={setPathEditValue}
+            onBlur={() => setIsEditingPath(false)}
+            onEnterPress={() => {
+              setIsEditingPath(false);
+              const p = pathEditValue.trim();
+              if (p) void loadDir(p);
+            }}
+            placeholder="输入目录路径后按 Enter"
+            style={{ fontSize: 12 }}
+          />
+        ) : (
+          <Typography.Text
+            size="small"
+            type="tertiary"
+            ellipsis={{ showTooltip: true }}
+            style={{ display: 'block', cursor: 'text' }}
+            onClick={() => {
+              setPathEditValue(rootPath);
+              setIsEditingPath(true);
+            }}
+            title="点击手动输入路径"
+          >
+            {rootPath || '加载中…'}
+          </Typography.Text>
+        )}
       </div>
 
       <section
@@ -608,11 +674,14 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         </Collapse>
       )}
 
-      <div style={{ padding: '4px 8px', borderTop: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
-        <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>
-          {selectedDir || rootPath}
-        </Typography.Text>
-      </div>
+      {/* 当前选中目录（用于上传/操作的目标提示） */}
+      {selectedDir && selectedDir !== rootPath && (
+        <div style={{ padding: '3px 8px', borderTop: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
+          <Typography.Text size="small" type="quaternary" ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>
+            选中：{selectedDir}
+          </Typography.Text>
+        </div>
+      )}
 
       <Modal
         title={dialogTitle}
