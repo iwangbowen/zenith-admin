@@ -188,6 +188,11 @@ export default function TerminalPage() {
     setDirtyIds((prev) => {
       const n = new Set(prev);
       n.delete(paneId);
+      // 若折叠导致叶子 id 被重命名，同步更新脏标记集合
+      if (result.renamedPaneId && n.has(result.renamedPaneId.from)) {
+        n.delete(result.renamedPaneId.from);
+        n.add(result.renamedPaneId.to);
+      }
       return n;
     });
     if (result.root === null) {
@@ -196,7 +201,18 @@ export default function TerminalPage() {
     }
     const nextRoot = result.root;
     setSessions((prev) =>
-      prev.map((s) => (s.id === tabId ? { ...s, root: nextRoot, activePaneId: result.nextActiveId ?? s.activePaneId } : s)),
+      prev.map((s) => {
+        if (s.id !== tabId) return s;
+        let newActivePaneId = s.activePaneId;
+        if (s.activePaneId === paneId) {
+          // 关闭了当前激活面板 → 移至邻近面板
+          newActivePaneId = result.nextActiveId ?? s.activePaneId;
+        } else if (result.renamedPaneId?.from === s.activePaneId) {
+          // 当前激活面板的 id 被重命名 → 更新为新 id
+          newActivePaneId = result.renamedPaneId.to;
+        }
+        return { ...s, root: nextRoot, activePaneId: newActivePaneId };
+      }),
     );
   };
 
