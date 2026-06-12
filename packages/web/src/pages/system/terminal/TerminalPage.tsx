@@ -2,13 +2,23 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Typography, Space, Dropdown, Tooltip } from '@douyinfe/semi-ui';
 import { Plus, TerminalSquare, ChevronDown, X, PanelLeft, Settings } from 'lucide-react';
 import { Icon } from '@iconify/react';
-import TerminalTab from './TerminalTab';
-import EditorTab from './EditorTab';
 import FileExplorer from './FileExplorer';
 import TerminalSettings from './TerminalSettings';
+import PaneTreeView from './PaneTreeView';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { request } from '@/utils/request';
 import { getFileIcon, getShellIcon } from './fileIcons';
+import {
+  closePane,
+  collectLeaves,
+  createLeaf,
+  findLeaf,
+  firstLeaf,
+  splitPane,
+  type PaneLeaf,
+  type PaneNode,
+  type SplitDirection,
+} from './paneTree';
 
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
 
@@ -18,18 +28,22 @@ interface ShellInfo {
   path: string;
 }
 
-type SessionType = 'terminal' | 'editor';
-
 interface Session {
   id: string;
-  title: string;
-  type: SessionType;
-  shell?: string;
-  cwd?: string;
-  filePath?: string;
+  root: PaneNode;
+  activePaneId: string;
 }
 
-let sessionCounter = 0;
+let tabCounter = 0;
+function nextTabId(): string {
+  tabCounter += 1;
+  return `tab-${tabCounter}`;
+}
+
+/** 取 tab 当前聚焦的叶子（兜底取第一个叶子） */
+function activeLeafOf(session: Session): PaneLeaf {
+  return findLeaf(session.root, session.activePaneId) ?? firstLeaf(session.root);
+}
 
 function DemoNotice() {
   return (
@@ -85,12 +99,12 @@ export default function TerminalPage() {
     (shellId?: string, cwd?: string) => {
       const id = shellId && shells.some((s) => s.id === shellId) ? shellId : defaultShellId;
       if (!id) return;
-      sessionCounter += 1;
-      const sid = String(sessionCounter);
       const baseLabel = shells.find((s) => s.id === id)?.label ?? id;
       const title = cwd ? `${baseLabel}: ${cwd.split(/[\\/]/).findLast(Boolean) ?? cwd}` : baseLabel;
-      setSessions((prev) => [...prev, { id: sid, title, type: 'terminal', shell: id, cwd }]);
-      setActiveId(sid);
+      const leaf = createLeaf({ kind: 'terminal', shell: id, cwd, title });
+      const tabId = nextTabId();
+      setSessions((prev) => [...prev, { id: tabId, root: leaf, activePaneId: leaf.id }]);
+      setActiveId(tabId);
     },
     [shells, defaultShellId],
   );
@@ -105,16 +119,19 @@ export default function TerminalPage() {
 
   const openEditor = useCallback((filePath: string) => {
     setSessions((prev) => {
-      const existing = prev.find((s) => s.type === 'editor' && s.filePath === filePath);
-      if (existing) {
-        setActiveId(existing.id);
-        return prev;
+      // 去重：若任意 tab 的某个面板已打开该文件，则聚焦之
+      for (const s of prev) {
+        const leaf = collectLeaves(s.root).find((l) => l.kind === 'editor' && l.filePath === filePath);
+        if (leaf) {
+          setActiveId(s.id);
+          return prev.map((x) => (x.id === s.id ? { ...x, activePaneId: leaf.id } : x));
+        }
       }
-      sessionCounter += 1;
-      const sid = String(sessionCounter);
       const name = filePath.split(/[\\/]/).pop() ?? filePath;
-      setActiveId(sid);
-      return [...prev, { id: sid, title: name, type: 'editor', filePath }];
+      const leaf = createLeaf({ kind: 'editor', filePath, title: name });
+      const tabId = nextTabId();
+      setActiveId(tabId);
+      return [...prev, { id: tabId, root: leaf, activePaneId: leaf.id }];
     });
   }, []);
 
@@ -130,15 +147,57 @@ export default function TerminalPage() {
   }, []);
 
   const removeSession = (id: string) => {
-    setDirtyIds((prev) => {
-      const n = new Set(prev);
-      n.delete(id);
-      return n;
-    });
+    const target = sessions.find((s) => s.id === id);
+    if (target) {
+      const leafIds = collectLeaves(target.root).map((l) => l.id);
+      setDirtyIds((prev) => {
+        const n = new Set(prev);
+        leafIds.forEach((lid) => n.delete(lid));
+        return n;
+      });
+    }
     const idx = sessions.findIndex((s) => s.id === id);
     const next = sessions.filter((s) => s.id !== id);
     setSessions(next);
     if (activeId === id) setActiveId(next[Math.max(0, idx - 1)]?.id ?? next[0]?.id ?? '');
+  };
+
+  const handleFocusPane = (tabId: string, paneId: string) => {
+    setSessions((prev) => prev.map((s) => (s.id === tabId ? { ...s, activePaneId: paneId } : s)));
+  };
+
+  const handleSplitPane = (tabId: string, paneId: string, direction: SplitDirection) => {
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== tabId) return s;
+        const target = findLeaf(s.root, paneId);
+        if (!target) return s;
+        const newLeaf =
+          target.kind === 'terminal'
+            ? createLeaf({ kind: 'terminal', shell: target.shell, cwd: target.cwd, title: target.title })
+            : createLeaf({ kind: 'editor', filePath: target.filePath, title: target.title });
+        return { ...s, root: splitPane(s.root, paneId, direction, newLeaf), activePaneId: newLeaf.id };
+      }),
+    );
+  };
+
+  const handleClosePane = (tabId: string, paneId: string) => {
+    const target = sessions.find((s) => s.id === tabId);
+    if (!target) return;
+    const result = closePane(target.root, paneId);
+    setDirtyIds((prev) => {
+      const n = new Set(prev);
+      n.delete(paneId);
+      return n;
+    });
+    if (result.root === null) {
+      removeSession(tabId);
+      return;
+    }
+    const nextRoot = result.root;
+    setSessions((prev) =>
+      prev.map((s) => (s.id === tabId ? { ...s, root: nextRoot, activePaneId: result.nextActiveId ?? s.activePaneId } : s)),
+    );
   };
 
   const reorderSessions = (fromId: string, toId: string) => {
@@ -155,11 +214,15 @@ export default function TerminalPage() {
   };
 
   const closeOthers = (id: string) => {
+    const kept = sessions.find((s) => s.id === id);
+    const keptLeafIds = kept ? collectLeaves(kept.root).map((l) => l.id) : [];
     setSessions((prev) => prev.filter((s) => s.id === id));
     setActiveId(id);
     setDirtyIds((prev) => {
       const n = new Set<string>();
-      if (prev.has(id)) n.add(id);
+      keptLeafIds.forEach((lid) => {
+        if (prev.has(lid)) n.add(lid);
+      });
       return n;
     });
   };
@@ -168,12 +231,13 @@ export default function TerminalPage() {
     const idx = sessions.findIndex((s) => s.id === id);
     if (idx < 0) return;
     const kept = sessions.slice(0, idx + 1);
+    const keptLeafIds = kept.flatMap((s) => collectLeaves(s.root).map((l) => l.id));
     setSessions(kept);
     if (!kept.some((s) => s.id === activeId)) setActiveId(id);
     setDirtyIds((prev) => {
       const n = new Set<string>();
-      kept.forEach((s) => {
-        if (prev.has(s.id)) n.add(s.id);
+      keptLeafIds.forEach((lid) => {
+        if (prev.has(lid)) n.add(lid);
       });
       return n;
     });
@@ -261,6 +325,8 @@ export default function TerminalPage() {
         <div className="admin-tabs-bar__scroll">
           {sessions.map((s) => {
             const isActive = s.id === activeId;
+            const leaf = activeLeafOf(s);
+            const tabDirty = collectLeaves(s.root).some((l) => dirtyIds.has(l.id));
             return (
               <div
                 key={s.id}
@@ -290,15 +356,15 @@ export default function TerminalPage() {
                 }}
               >
                 <span className="admin-tab-item__icon">
-                  {s.type === 'editor' ? (
-                    <Icon icon={getFileIcon(s.title)} width={13} height={13} />
+                  {leaf.kind === 'editor' ? (
+                    <Icon icon={getFileIcon(leaf.title)} width={13} height={13} />
                   ) : (
-                    <Icon icon={getShellIcon(s.shell)} width={13} height={13} />
+                    <Icon icon={getShellIcon(leaf.shell)} width={13} height={13} />
                   )}
                 </span>
                 <span className="admin-tab-item__text">
-                  {dirtyIds.has(s.id) ? '● ' : ''}
-                  {s.title}
+                  {tabDirty ? '● ' : ''}
+                  {leaf.title}
                 </span>
                 <button
                   className="admin-tab-item__close"
@@ -331,15 +397,21 @@ export default function TerminalPage() {
               style={{
                 position: 'absolute',
                 inset: 0,
-                display: s.id === activeId ? 'block' : 'none',
+                visibility: s.id === activeId ? 'visible' : 'hidden',
+                zIndex: s.id === activeId ? 1 : 0,
                 padding: '8px 4px 4px',
               }}
             >
-              {s.type === 'terminal' ? (
-                <TerminalTab sessionId={s.id} active={s.id === activeId} shell={s.shell ?? ''} cwd={s.cwd} />
-              ) : (
-                <EditorTab filePath={s.filePath ?? ''} active={s.id === activeId} onDirtyChange={(d) => setDirty(s.id, d)} />
-              )}
+              <PaneTreeView
+                root={s.root}
+                sessionActive={s.id === activeId}
+                activePaneId={s.activePaneId}
+                dirtyIds={dirtyIds}
+                onFocusPane={(pid) => handleFocusPane(s.id, pid)}
+                onSplitPane={(pid, dir) => handleSplitPane(s.id, pid, dir)}
+                onClosePane={(pid) => handleClosePane(s.id, pid)}
+                onDirtyChange={setDirty}
+              />
             </div>
           ))}
         </div>

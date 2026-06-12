@@ -1,0 +1,95 @@
+/* 终端分屏布局样式 */
+
+.terminal-pane-tree {
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-panel-group {
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-panel {
+  overflow: hidden;
+}
+
+/* 单个分屏面板容器 */
+.terminal-pane {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.terminal-pane[data-focused='true'] {
+  outline: 1px solid var(--semi-color-primary);
+  outline-offset: -1px;
+}
+
+.terminal-pane__body {
+  position: absolute;
+  inset: 0;
+}
+
+/* 面板右上角悬浮工具栏（拆分 / 关闭） */
+.terminal-pane__toolbar {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.terminal-pane:hover .terminal-pane__toolbar,
+.terminal-pane[data-focused='true'] .terminal-pane__toolbar {
+  opacity: 1;
+}
+
+.terminal-pane__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--semi-color-text-2);
+  background: var(--semi-color-bg-2);
+  box-shadow: var(--semi-shadow-elevated);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.terminal-pane__btn:hover {
+  color: var(--semi-color-text-0);
+  background: var(--semi-color-fill-1);
+}
+
+/* 拖拽分隔条 */
+.terminal-resize-handle {
+  position: relative;
+  flex-shrink: 0;
+  background: var(--semi-color-border);
+  transition: background 0.15s ease;
+}
+
+.terminal-resize-handle--horizontal {
+  width: 4px;
+  cursor: col-resize;
+}
+
+.terminal-resize-handle--vertical {
+  height: 4px;
+  cursor: row-resize;
+}
+
+.terminal-resize-handle:hover,
+.terminal-resize-handle[data-resize-handle-active] {
+  background: var(--semi-color-primary);
+}
