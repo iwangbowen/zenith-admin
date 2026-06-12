@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Tree, Button, Upload, Toast, Typography, Tooltip, Dropdown, Modal, Input, Collapse } from '@douyinfe/semi-ui';
+import { Tree, Button, Upload, Toast, Typography, Tooltip, Dropdown, Modal, Input, Collapse, Progress } from '@douyinfe/semi-ui';
 import { Icon } from '@iconify/react';
 import {
   Upload as UploadIcon,
@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { request } from '@/utils/request';
+import { TOKEN_KEY } from '@zenith/shared';
+import { config } from '@/config';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { getFileIcon, getFolderIcon } from './fileIcons';
 
@@ -83,6 +85,33 @@ function dialogTitleOf(mode: DialogState['mode'] | undefined): string {
   return '新建文件';
 }
 
+/** XHR 上传单个文件到目录，支持进度回调（模块级函数，避免组件嵌套过深） */
+function uploadOneXhr(
+  file: File,
+  dir: string,
+  baseUrl: string,
+  token: string,
+  onProgress: (pct: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const fd = new FormData();
+    fd.append('path', dir);
+    fd.append('file', file);
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error('网络错误'));
+    xhr.open('POST', `${baseUrl}/api/terminal-files/upload`);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.send(fd);
+  });
+}
+
 interface RootInfo {
   home: string;
   isWindows: boolean;
@@ -109,6 +138,9 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropTargetDir, setDropTargetDir] = useState('');
   const [rootInfo, setRootInfo] = useState<RootInfo | null>(null);
+  const [uploading, setUploading] = useState<{ name: string; progress: number }[]>([]);
+  const ctxUploadInputRef = useRef<HTMLInputElement>(null);
+  const ctxUploadDirRef = useRef('');
   const loadedRef = useRef(false);
   const dragCounterRef = useRef(0);
   const dropTargetDirRef = useRef('');
@@ -411,6 +443,32 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
     else setSelectedDir(String(node.value));
   };
 
+  /** 使用 XHR 上传多个文件到指定目录，并实时更新进度 */
+  const handleContextUpload = useCallback(async (files: File[], dir: string) => {
+    const token = localStorage.getItem(TOKEN_KEY) ?? '';
+    const baseUrl = config.apiBaseUrl || '';
+    setUploading(files.map((f) => ({ name: f.name, progress: 0 })));
+
+    function updateProgress(idx: number, pct: number) {
+      setUploading((prev) => prev.map((u, j) => (j === idx ? { ...u, progress: pct } : u)));
+    }
+
+    const results = await Promise.allSettled(
+      files.map((f, i) => uploadOneXhr(f, dir, baseUrl, token, (pct) => updateProgress(i, pct))),
+    );
+    const success = results.filter((r) => r.status === 'fulfilled').length;
+    const fail = results.length - success;
+    if (success > 0) {
+      const failNote = fail > 0 ? `，${fail} 个失败` : '';
+      Toast.success(`已上传 ${success} 个文件${failNote}`);
+      refreshDir(dir);
+    } else {
+      Toast.error('上传失败');
+    }
+    setUploading([]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshDir]);
+
   const nodeMenu = (node: FileNode) => {
     if (node.fileType === 'file') {
       return (
@@ -429,6 +487,10 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         <Dropdown.Item icon={<SquareTerminal size={14} />} onClick={() => onOpenTerminalAt(node.value)}>在此打开终端</Dropdown.Item>
         <Dropdown.Item icon={<Star size={14} />} onClick={() => toggleFavorite(node.value, node.label)}>{fav ? '取消收藏' : '收藏'}</Dropdown.Item>
         <Dropdown.Divider />
+        <Dropdown.Item icon={<UploadIcon size={14} />} onClick={() => {
+          ctxUploadDirRef.current = node.value;
+          ctxUploadInputRef.current?.click();
+        }}>上传文件</Dropdown.Item>
         <Dropdown.Item icon={<FilePlus size={14} />} onClick={() => setDialog({ mode: 'createFile', baseDir: node.value, value: '' })}>新建文件</Dropdown.Item>
         <Dropdown.Item icon={<FolderPlus size={14} />} onClick={() => setDialog({ mode: 'createDir', baseDir: node.value, value: '' })}>新建文件夹</Dropdown.Item>
         <Dropdown.Item icon={<Pencil size={14} />} onClick={() => setDialog({ mode: 'rename', baseDir: parentOf(node.value), oldPath: node.value, value: node.label })}>重命名</Dropdown.Item>
@@ -712,6 +774,38 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
           placeholder="请输入名称"
         />
       </Modal>
+
+      {/* 右键菜单上传：隐藏 file input */}
+      <input
+        ref={ctxUploadInputRef}
+        type="file"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (!files.length) return;
+          const dir = ctxUploadDirRef.current;
+          void handleContextUpload(files, dir);
+          e.target.value = '';
+        }}
+      />
+
+      {/* 上传进度区 */}
+      {uploading.length > 0 && (
+        <div style={{ flexShrink: 0, borderTop: '1px solid var(--semi-color-border)', padding: '8px', background: 'var(--semi-color-bg-2)', maxHeight: 160, overflow: 'auto' }}>
+          <Typography.Text size="small" strong style={{ display: 'block', marginBottom: 6 }}>
+            上传中...（{uploading.filter((u) => u.progress >= 100).length}/{uploading.length}）
+          </Typography.Text>
+          {uploading.map((u) => (
+            <div key={u.name} style={{ marginBottom: 6 }}>
+              <Typography.Text size="small" ellipsis style={{ display: 'block', maxWidth: '100%' }}>
+                {u.name}
+              </Typography.Text>
+              <Progress percent={u.progress} size="small" aria-label={u.name} style={{ marginTop: 2 }} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
