@@ -4,7 +4,28 @@
 
 ---
 
+## v0.54.0 - 2026-06-12
+
+### Added
+
+#### Web 终端全面增强
+
+- **Shell 自动检测**：后端按平台动态探测可用 Shell（Linux/WSL 读 `/etc/shells` + 探测 bash/zsh/fish/sh；Windows 探测 PowerShell/CMD/Git Bash）；前端终端标签和下拉菜单改为动态加载，修复 WSL 下仍显示 Windows Shell 名称的问题
+- **文件编辑 Tab**：文件树点击文本文件在终端 Tab 界面新增编辑 Tab，使用 Monaco Editor（已有依赖），支持代码高亮、Ctrl+S 保存、dirty 圆点标记，编辑器配色与终端主题一致
+- **文件操作增强**：新增文本文件读写、新建文件/文件夹、删除（含二次确认）、重命名/移动接口；文件树右键菜单支持全套文件操作
+- **终端主题系统**：内置 23 套 vscode/Catppuccin/Dracula/Nord/Gruvbox 等经典配色方案，xterm 终端与 Monaco 编辑器共用同一调色板；跟随应用明暗模式，亮/暗可分别选主题
+- **终端设置面板**：侧边抽屉支持配置默认 Shell、暗色/亮色主题、字体、字号、行高；配置实时生效，保存到 `users.preferences.terminal`（零 schema 改动）
+- **文件夹收藏**：文件树目录可收藏，收藏夹以折叠面板展示，点击定位到文件树对应节点（自动展开路径 + 滚动到位），可从菜单在该目录新建终端
+- **Tab 拖拽排序**：终端/编辑器 Tab 支持拖拽重排；右键上下文菜单支持关闭/关闭其他/关闭右侧/全部关闭
+- **文件图标**：文件树节点展示 vscode-icons 风格图标（基于 `@iconify/react`），覆盖 300+ 扩展名/特殊文件名/文件夹语义名称；文件夹展开/折叠状态切换图标
+- **OS 文件拖拽上传**：可从本地文件管理器直接拖拽文件到文件树区域上传；拖拽时高亮当前目标目录（事件委托 `data-node-path`）并在顶部状态条显示目标路径
+- **文件树虚拟化**：Semi Tree 开启 `virtualize`，通过 `ResizeObserver` 动态测量容器高度传入像素值，解决 `height:"100%"` 在 flex 布局下读到 0 导致空树的问题
+- **终端 Session 录屏**：所有终端会话自动录制输入/输出事件（`[timeOffset, 'o'|'i', data][]` 格式存 JSONB），WebSocket 关闭时自动 POST 保存；`terminal_recordings` 新表（含 db migration）；新增录屏管理页（`SearchToolbar` + `ConfigurableTable` + `usePagination`），支持关键词搜索、xterm.js 自定义播放器（播放/暂停/倍速/进度拖拽）、删除
+
+---
+
 ## v0.53.0 - 2026-06-11
+
 
 ### Added
 
