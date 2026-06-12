@@ -41,6 +41,8 @@ interface SessionState {
     cols: number;
     rows: number;
   } | null;
+  /** 是否启用录屏（由系统配置 terminal_recording_enabled 决定） */
+  recordingEnabled: boolean;
   /** 指数退退重连状态 */
   reconnect: {
     attempts: number;
@@ -81,8 +83,18 @@ class TerminalSessionStore {
   }
 
   /** 创建新 session（xterm + WebSocket），初始挂载到隐藏根 */
-  create(sessionId: string, options: SessionCreateOptions): void {
+  async create(sessionId: string, options: SessionCreateOptions): Promise<void> {
     if (this.sessions.has(sessionId)) return;
+
+    // 查询录屏开关（默认关闭）
+    let recordingEnabled = false;
+    try {
+      const res = await request.get<{ configValue: string }>(
+        '/api/system-configs/public/terminal_recording_enabled',
+        { silent: true },
+      );
+      if (res.code === 0) recordingEnabled = res.data?.configValue === 'true';
+    } catch { /* 查询失败则不录屏 */ }
 
     const container = document.createElement('div');
     container.style.cssText = 'width:100%;height:100%;';
@@ -115,6 +127,7 @@ class TerminalSessionStore {
       container,
       resizeObserver: null,
       recording: null,
+      recordingEnabled,
       reconnect: { attempts: 0, timer: null, stopped: false },
     };
     this.sessions.set(sessionId, session);
@@ -149,7 +162,8 @@ class TerminalSessionStore {
       session.reconnect.attempts = 0;
       const { cols, rows } = term;
       ws.send(JSON.stringify({ type: 'terminal:resize', cols, rows }));
-      if (!session.recording) {
+      // 仅在系统配置启用录屏时初始化录制状态
+      if (session.recordingEnabled && !session.recording) {
         session.recording = { startTime: Date.now(), events: [], cols, rows };
       }
     };

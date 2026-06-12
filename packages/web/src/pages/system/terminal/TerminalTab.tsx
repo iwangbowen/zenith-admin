@@ -41,14 +41,21 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     const container = containerRef.current;
     if (!container) return;
 
-    if (!terminalSessionStore.has(sessionId)) {
-      // 首次负载：创建 xterm + WebSocket session
-      terminalSessionStore.create(sessionId, { shell, cwd, ...initCfgRef.current });
-    }
-    // 复用或新建的 session 都挂载到当前容器
-    terminalSessionStore.attach(sessionId, container);
+    let cancelled = false;
+    const setupSession = async () => {
+      if (!terminalSessionStore.has(sessionId)) {
+        // 异步创建（会检查录屏开关配置）
+        await terminalSessionStore.create(sessionId, { shell, cwd, ...initCfgRef.current });
+      }
+      if (!cancelled) {
+        // 复用或新建的 session 都挂载到当前容器
+        terminalSessionStore.attach(sessionId, container);
+      }
+    };
+    void setupSession();
 
     return () => {
+      cancelled = true;
       // 组件卸载（分屏关闭 / 分屏布局变化）时 detach，保持 WebSocket 不断线
       terminalSessionStore.detach(sessionId);
     };
