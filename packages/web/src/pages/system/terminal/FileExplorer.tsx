@@ -95,6 +95,8 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const [selectedDir, setSelectedDir] = useState('');
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string>('');
   const loadedRef = useRef(false);
 
   const loadRoot = useCallback(async () => {
@@ -146,6 +148,41 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         });
     },
     [rootPath, loadRoot],
+  );
+
+  const ensureLoaded = useCallback(async (dir: string) => {
+    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(dir)}`, { silent: true });
+    if (res.code === 0 && res.data) {
+      const entries = res.data.entries.map(entryToNode);
+      setTreeData((prev) => setChildren(prev, dir, entries));
+    }
+  }, []);
+
+  // 在文件树中逐级展开并定位到指定目录
+  const locateInTree = useCallback(
+    async (target: string) => {
+      const root = rootPath;
+      const inRoot = !!root && (target === root || target.startsWith(`${root}/`) || target.startsWith(`${root}\\`));
+      if (!inRoot) {
+        Toast.warning('该目录不在当前文件树范围内');
+        return;
+      }
+      const sep = root.includes('\\') && !root.includes('/') ? '\\' : '/';
+      const relParts = target.slice(root.length).split(/[/\\]/).filter(Boolean);
+      const levelPaths: string[] = [];
+      let cur = root;
+      for (const seg of relParts) {
+        cur = `${cur.replace(/[/\\]+$/, '')}${sep}${seg}`;
+        levelPaths.push(cur);
+      }
+      const ancestors = levelPaths.slice(0, -1);
+      for (const dir of ancestors) {
+        await ensureLoaded(dir);
+      }
+      setExpandedKeys((prev) => Array.from(new Set([...prev, ...ancestors])));
+      setSelectedKey(target);
+    },
+    [rootPath, ensureLoaded],
   );
 
   const isFavorite = (path: string) => favorites.some((f) => f.path === path);
@@ -248,7 +285,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
           {label}
           {fav ? ' ★' : ''}
         </span>
-        <Dropdown trigger="click" clickToHide position="bottomRight" render={nodeMenu(node)}>
+        <Dropdown trigger="click" clickToHide stopPropagation position="bottomRight" render={nodeMenu(node)}>
           <Button
             size="small"
             theme="borderless"
@@ -327,6 +364,10 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
           loadData={loadData}
           onSelect={handleSelect}
           renderLabel={renderLabel}
+          value={selectedKey || undefined}
+          onChange={(val) => setSelectedKey(typeof val === 'string' ? val : '')}
+          expandedKeys={expandedKeys}
+          onExpand={(keys) => setExpandedKeys(keys.map(String))}
           expandAction="click"
           directory
           motion={false}
@@ -347,7 +388,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
                 >
                   <button
                     type="button"
-                    onClick={() => onOpenTerminalAt(f.path)}
+                    onClick={() => void locateInTree(f.path)}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -368,13 +409,20 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
                       {f.name}
                     </span>
                   </button>
-                  <Button
-                    size="small"
-                    theme="borderless"
-                    type="tertiary"
-                    icon={<X size={11} />}
-                    onClick={() => toggleFavorite(f.path, f.name)}
-                  />
+                  <Dropdown
+                    trigger="click"
+                    clickToHide
+                    stopPropagation
+                    position="bottomRight"
+                    render={
+                      <Dropdown.Menu>
+                        <Dropdown.Item icon={<SquareTerminal size={14} />} onClick={() => onOpenTerminalAt(f.path)}>在终端打开</Dropdown.Item>
+                        <Dropdown.Item type="danger" icon={<X size={14} />} onClick={() => toggleFavorite(f.path, f.name)}>移除收藏</Dropdown.Item>
+                      </Dropdown.Menu>
+                    }
+                  >
+                    <Button size="small" theme="borderless" type="tertiary" icon={<MoreHorizontal size={13} />} />
+                  </Dropdown>
                 </div>
               ))}
             </div>
