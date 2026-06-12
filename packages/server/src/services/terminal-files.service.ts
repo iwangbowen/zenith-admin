@@ -5,12 +5,28 @@ import path from 'node:path';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../lib/datetime';
 
+/** 将 fs.stat().mode 转为 rwxr-xr-x 格式的权限字符串 */
+function modeToPermissionString(mode: number): string {
+  const chars = '---';
+  const bits = ['r', 'w', 'x'];
+  let result = '';
+  for (let i = 2; i >= 0; i--) {
+    for (let j = 2; j >= 0; j--) {
+      result += (mode >> (i * 3 + j)) & 1 ? bits[2 - j] : chars[2 - j];
+    }
+  }
+  return result;
+}
+
 export interface TerminalFileEntry {
   name: string;
   path: string;
   type: 'dir' | 'file';
   size: number;
   mtime: string;
+  permissions?: string;
+  uid?: number;
+  gid?: number;
 }
 
 /**
@@ -45,6 +61,9 @@ export async function listDirectory(
         type: s.isDirectory() ? 'dir' : 'file',
         size: s.size,
         mtime: formatDateTime(s.mtime),
+        permissions: modeToPermissionString(s.mode),
+        uid: s.uid,
+        gid: s.gid,
       });
     } catch {
       // 跳过无权限或损坏的条目
@@ -317,4 +336,93 @@ export async function getRootInfo(): Promise<{
   }
 
   return { home, isWindows, drives };
+}
+
+// ─── 文件管理器扩展操作 ──────────────────────────────────────────────────────────
+
+/**
+ * 移动/重命名文件或目录（支持跨目录移动）。
+ * 如目标已存在则报 400；目标目录不存在会自动创建。
+ */
+export async function moveEntry(from: string, to: string): Promise<TerminalFileEntry> {
+  if (!from?.trim() || !to?.trim()) throw new HTTPException(400, { message: '缺少路径参数' });
+  const src = path.resolve(from);
+  const dst = path.resolve(to);
+  if (src === dst) return buildEntry(src);
+  try { await fs.stat(src); } catch { throw new HTTPException(404, { message: '源路径不存在' }); }
+  if (existsSyncSafe(dst)) throw new HTTPException(400, { message: '目标路径已存在' });
+  await fs.mkdir(path.dirname(dst), { recursive: true });
+  await fs.rename(src, dst);
+  return buildEntry(dst);
+}
+
+/**
+ * 复制文件或目录（递归复制整个目录树）。
+ */
+export async function copyEntry(from: string, to: string): Promise<TerminalFileEntry> {
+  if (!from?.trim() || !to?.trim()) throw new HTTPException(400, { message: '缺少路径参数' });
+  const src = path.resolve(from);
+  const dst = path.resolve(to);
+  try { await fs.stat(src); } catch { throw new HTTPException(404, { message: '源路径不存在' }); }
+  if (existsSyncSafe(dst)) throw new HTTPException(400, { message: '目标路径已存在' });
+  await fs.cp(src, dst, { recursive: true });
+  return buildEntry(dst);
+}
+
+/**
+ * 将多个文件/目录压缩为 ZIP。
+ * @param paths 要压缩的绝对路径列表
+ * @param destPath 输出 ZIP 文件的绝对路径（含 .zip 扩展名）
+ */
+export async function compressToZip(paths: string[], destPath: string): Promise<TerminalFileEntry> {
+  const archiver = (await import('archiver')).default;
+
+  const dst = path.resolve(destPath);
+  await fs.mkdir(path.dirname(dst), { recursive: true });
+
+  await new Promise<void>((resolve, reject) => {
+    const outStream = require('node:fs').createWriteStream(dst);
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    outStream.on('close', resolve);
+    archive.on('error', reject);
+    archive.pipe(outStream);
+    for (const p of paths) {
+      const resolved = path.resolve(p);
+      const name = path.basename(resolved);
+      archive.file(resolved, { name });
+    }
+    void archive.finalize().catch(reject);
+  });
+  return buildEntry(dst);
+}
+
+/**
+ * 修改文件/目录权限（chmod）。
+ * @param filePath 目标路径
+ * @param mode 八进制权限，如 0o755 或数字 493
+ */
+export async function chmodEntry(filePath: string, mode: number): Promise<void> {
+  const resolved = path.resolve(filePath);
+  try { await fs.stat(resolved); } catch { throw new HTTPException(404, { message: '路径不存在' }); }
+  try {
+    await fs.chmod(resolved, mode);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HTTPException(400, { message: `chmod 失败: ${msg}` });
+  }
+}
+
+/** 构建单个条目的 TerminalFileEntry（含权限信息） */
+async function buildEntry(filePath: string): Promise<TerminalFileEntry> {
+  const s = await fs.stat(filePath);
+  return {
+    name: path.basename(filePath),
+    path: filePath,
+    type: s.isDirectory() ? 'dir' : 'file',
+    size: s.size,
+    mtime: formatDateTime(s.mtime),
+    permissions: modeToPermissionString(s.mode),
+    uid: s.uid,
+    gid: s.gid,
+  };
 }

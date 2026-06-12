@@ -16,6 +16,10 @@ import {
   deleteEntry,
   renameEntry,
   getRootInfo,
+  moveEntry,
+  copyEntry,
+  compressToZip,
+  chmodEntry,
 } from '../services/terminal-files.service';
 
 /**
@@ -186,6 +190,69 @@ const deleteEntryRoute = defineOpenAPIRoute({
   },
 });
 
+const moveEntryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/move', tags: ['TerminalFiles'], summary: '移动文件或目录',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器移动', module: '文件管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({ from: z.string().min(1), to: z.string().min(1) })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(TerminalFileEntryDTO, '移动成功') },
+  }),
+  handler: async (c) => {
+    const { from, to } = c.req.valid('json');
+    return c.json(okBody(await moveEntry(from, to), '移动成功'), 200);
+  },
+});
+
+const copyEntryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/copy', tags: ['TerminalFiles'], summary: '复制文件或目录',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器复制', module: '文件管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({ from: z.string().min(1), to: z.string().min(1) })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(TerminalFileEntryDTO, '复制成功') },
+  }),
+  handler: async (c) => {
+    const { from, to } = c.req.valid('json');
+    return c.json(okBody(await copyEntry(from, to), '复制成功'), 200);
+  },
+});
+
+const compressRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/compress', tags: ['TerminalFiles'], summary: '压缩文件/目录为 ZIP',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器压缩', module: '文件管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({
+      paths: z.array(z.string().min(1)).min(1),
+      destPath: z.string().min(1),
+    })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(TerminalFileEntryDTO, '压缩成功') },
+  }),
+  handler: async (c) => {
+    const { paths, destPath } = c.req.valid('json');
+    return c.json(okBody(await compressToZip(paths, destPath), '压缩成功'), 200);
+  },
+});
+
+const chmodRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/chmod', tags: ['TerminalFiles'], summary: '修改文件/目录权限（chmod）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器修改权限', module: '文件管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({
+      path: z.string().min(1),
+      mode: z.number().int().min(0).max(0o7777),
+    })), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('权限已修改') },
+  }),
+  handler: async (c) => {
+    const { path: filePath, mode } = c.req.valid('json');
+    await chmodEntry(filePath, mode);
+    return c.json(okBody(null, '权限已修改'), 200);
+  },
+});
+
 terminalFilesRouter.openapiRoutes([
   rootInfoRoute,
   listRoute,
@@ -197,6 +264,10 @@ terminalFilesRouter.openapiRoutes([
   createEntryRoute,
   renameEntryRoute,
   deleteEntryRoute,
+  moveEntryRoute,
+  copyEntryRoute,
+  compressRoute,
+  chmodRoute,
 ] as const);
 
 export default terminalFilesRouter;

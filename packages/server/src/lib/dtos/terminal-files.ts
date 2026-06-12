@@ -8,6 +8,12 @@ export const TerminalFileEntryDTO = z
     type: z.enum(['dir', 'file']),
     size: z.number(),
     mtime: z.string(),
+    /** Unix 权限字符串，如 rwxr-xr-x（Windows 下为空字符串） */
+    permissions: z.string().optional(),
+    /** 文件所属用户 ID（Windows 下为 0） */
+    uid: z.number().optional(),
+    /** 文件所属用户组 ID（Windows 下为 0） */
+    gid: z.number().optional(),
   })
   .openapi('TerminalFileEntry');
 
