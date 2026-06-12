@@ -32,6 +32,7 @@ interface SessionState {
   fitAddon: FitAddon;
   ws: WebSocket;
   shell: string;
+  cwd?: string;
   container: HTMLDivElement;
   resizeObserver: ResizeObserver | null;
   recording: {
@@ -40,9 +41,16 @@ interface SessionState {
     cols: number;
     rows: number;
   } | null;
+  /** 指数退退重连状态 */
+  reconnect: {
+    attempts: number;
+    timer: ReturnType<typeof setTimeout> | null;
+    /** true = 已被标记待销毁，不再重连 */
+    stopped: boolean;
+  };
 }
 
-function buildWsUrl(shell: string, cwd?: string): string {
+function buildWsUrl(sessionId: string, shell: string, cwd?: string): string {
   const token = localStorage.getItem(TOKEN_KEY) ?? '';
   let wsBase = config.wsBaseUrl;
   if (!wsBase) {
@@ -50,7 +58,7 @@ function buildWsUrl(shell: string, cwd?: string): string {
     wsBase = base.replace(/^http/, 'ws');
   }
   const cwdPart = cwd ? `&cwd=${encodeURIComponent(cwd)}` : '';
-  return `${wsBase}/api/ws/terminal?token=${encodeURIComponent(token)}&shell=${encodeURIComponent(shell)}${cwdPart}`;
+  return `${wsBase}/api/ws/terminal?token=${encodeURIComponent(token)}&shell=${encodeURIComponent(shell)}${cwdPart}&sessionId=${encodeURIComponent(sessionId)}`;
 }
 
 class TerminalSessionStore {
@@ -95,24 +103,55 @@ class TerminalSessionStore {
     term.loadAddon(new WebLinksAddon());
     term.open(container);
 
-    const ws = new WebSocket(buildWsUrl(options.shell, options.cwd));
-    const { shell } = options;
+    const ws = new WebSocket(buildWsUrl(sessionId, options.shell, options.cwd));
+    const { shell, cwd } = options;
 
     const session: SessionState = {
       term,
       fitAddon,
       ws,
       shell,
+      cwd,
       container,
       resizeObserver: null,
       recording: null,
+      reconnect: { attempts: 0, timer: null, stopped: false },
     };
     this.sessions.set(sessionId, session);
 
+    this.setupWsHandlers(sessionId, ws, session, shell);
+
+    // term.onData / term.onResize 使用 session.ws（每次重连后更新），保证重连后输入仍发送
+    term.onData((data) => {
+      const currentWs = session.ws;
+      if (currentWs.readyState === WebSocket.OPEN) {
+        session.recording?.events.push([(Date.now() - (session.recording?.startTime ?? 0)) / 1000, 'i', data]);
+        currentWs.send(JSON.stringify({ type: 'terminal:input', data }));
+      }
+    });
+
+    term.onResize(({ cols, rows }) => {
+      const currentWs = session.ws;
+      if (currentWs.readyState === WebSocket.OPEN) {
+        currentWs.send(JSON.stringify({ type: 'terminal:resize', cols, rows }));
+      }
+    });
+  }
+
+  /**
+   * 为 WebSocket 设置事件处理器（初始化和重连时复用）。
+   */
+  private setupWsHandlers(sessionId: string, ws: WebSocket, session: SessionState, shell: string): void {
+    const { term } = session;
+
     ws.onopen = () => {
+      // 重连成功时重置计数
+      session.reconnect.attempts = 0;
       const { cols, rows } = term;
       ws.send(JSON.stringify({ type: 'terminal:resize', cols, rows }));
-      session.recording = { startTime: Date.now(), events: [], cols, rows };
+      if (!session.recording) {
+        session.recording = { startTime: Date.now(), events: [], cols, rows };
+      }
     };
 
     ws.onmessage = (evt) => {
@@ -122,10 +161,11 @@ class TerminalSessionStore {
           data?: string;
           message?: string;
         };
-        if (msg.type === 'terminal:output' && msg.data) {
-          if (session.recording) {
-            session.recording.events.push([(Date.now() - session.recording.startTime) / 1000, 'o', msg.data]);
-          }
+        if (msg.type === 'terminal:reconnected') {
+          // 服务端确认重连，回放的 output 数据随后发送，无需特殊处理
+          term.write('\r\n\x1b[32m[已重新连接]\x1b[0m\r\n');
+        } else if (msg.type === 'terminal:output' && msg.data) {
+          session.recording?.events.push([(Date.now() - (session.recording?.startTime ?? 0)) / 1000, 'o', msg.data]);
           term.write(msg.data);
         } else if (msg.type === 'terminal:exit') {
           term.write('\r\n\x1b[33m[进程已退出]\x1b[0m\r\n');
@@ -138,14 +178,15 @@ class TerminalSessionStore {
     };
 
     ws.onerror = () => {
-      term.write('\r\n\x1b[31m[WebSocket 连接错误]\x1b[0m\r\n');
+      // onerror 之后通常会触发 onclose，重连逻辑在 onclose 中统一处理
     };
 
     ws.onclose = (evt) => {
+      // 保存录屏片段
       const rec = session.recording;
       if (rec && rec.events.length > 0) {
         const duration = (Date.now() - rec.startTime) / 1000;
-        void request.post(
+        request.post(
           '/api/terminal-recordings',
           {
             title: `${shell || 'terminal'} 录屏 - ${new Date().toLocaleString('zh-CN')}`,
@@ -159,29 +200,48 @@ class TerminalSessionStore {
         );
         session.recording = null;
       }
+
       if (evt.code === 4001) {
         term.write('\r\n\x1b[31m[认证失败，请重新登录]\x1b[0m\r\n');
+        session.reconnect.stopped = true;
       } else if (evt.code === 4003) {
         term.write('\r\n\x1b[31m[无权限访问终端]\x1b[0m\r\n');
-      } else if (evt.code !== 1000) {
-        term.write('\r\n\x1b[33m[连接已断开]\x1b[0m\r\n');
+        session.reconnect.stopped = true;
+      } else if (evt.code === 1000) {
+        // 正常关闭（进程退出 / 明确关闭），不重连
+      } else if (!session.reconnect.stopped) {
+        // 意外断线：指数退避重连
+        this.scheduleReconnect(sessionId);
       }
     };
+  }
 
-    term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        if (session.recording) {
-          session.recording.events.push([(Date.now() - session.recording.startTime) / 1000, 'i', data]);
-        }
-        ws.send(JSON.stringify({ type: 'terminal:input', data }));
-      }
-    });
+  /** 安排下一次重连（指数退避，最大 30 s） */
+  private scheduleReconnect(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.reconnect.stopped) return;
 
-    term.onResize(({ cols, rows }) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'terminal:resize', cols, rows }));
-      }
-    });
+    const MAX_ATTEMPTS = 8;
+    if (session.reconnect.attempts >= MAX_ATTEMPTS) {
+      session.term.write('\r\n\x1b[31m[已达最大重连次数，停止重连]\x1b[0m\r\n');
+      return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, session.reconnect.attempts), 30_000);
+    session.reconnect.attempts++;
+    const attemptsText = `${session.reconnect.attempts}/${MAX_ATTEMPTS}`;
+    session.term.write(`\r\n\x1b[33m[连接已断开，${delay / 1000}s 后自动重连…（${attemptsText}）]\x1b[0m\r\n`);
+
+    session.reconnect.timer = setTimeout(() => {
+      session.reconnect.timer = null;
+      const s = this.sessions.get(sessionId);
+      if (!s || s.reconnect.stopped) return;
+
+      s.term.write('\r\n\x1b[33m[正在重新连接…]\x1b[0m\r\n');
+      const newWs = new WebSocket(buildWsUrl(sessionId, s.shell, s.cwd));
+      s.ws = newWs;
+      this.setupWsHandlers(sessionId, newWs, s, s.shell);
+    }, delay);
   }
 
   /**
@@ -228,17 +288,35 @@ class TerminalSessionStore {
   /** 标记 session 待销毁（在 TerminalTab 下次 detach 时执行） */
   markForDestruction(sessionId: string): void {
     if (this.sessions.has(sessionId)) {
+      // 立即停止重连
+      const session = this.sessions.get(sessionId);
+      if (session) {
+        session.reconnect.stopped = true;
+        if (session.reconnect.timer !== null) {
+          clearTimeout(session.reconnect.timer);
+          session.reconnect.timer = null;
+        }
+      }
       this.pendingDestroy.add(sessionId);
     }
   }
 
-  /** 立即销毁 session（关闭 WebSocket，释放 xterm DOM） */
+  /** 立即销毁 session（通知服务端关闭 PTY、释放 xterm DOM） */
   destroy(sessionId: string): void {
     this.pendingDestroy.delete(sessionId);
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
+    session.reconnect.stopped = true;
+    if (session.reconnect.timer !== null) {
+      clearTimeout(session.reconnect.timer);
+      session.reconnect.timer = null;
+    }
     session.resizeObserver?.disconnect();
+    // 通知服务端明确关闭 PTY（保活 5 min 后由服务端自动销毁的预防措施）
+    if (session.ws.readyState === WebSocket.OPEN) {
+      try { session.ws.send(JSON.stringify({ type: 'terminal:close' })); } catch { /* ignore */ }
+    }
     session.ws.close(1000);
     session.term.dispose();
     session.container.remove();
