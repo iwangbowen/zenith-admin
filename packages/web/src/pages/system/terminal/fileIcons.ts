@@ -596,7 +596,7 @@ export function getFolderIcon(folderName: string, isOpen = false): string {
 /** Shell 类型 ID → iconify 图标 ID（用于终端标签，与 listShells() 返回的 id 对齐） */
 const SHELL_ICON_MAP: Readonly<Record<string, string>> = {
   powershell: 'vscode-icons:file-type-powershell',
-  cmd: 'vscode-icons:file-type-bat',
+  cmd: 'codicon:terminal-cmd',
   bash: 'vscode-icons:file-type-shell',
   zsh: 'vscode-icons:file-type-shell',
   fish: 'vscode-icons:file-type-shell',
