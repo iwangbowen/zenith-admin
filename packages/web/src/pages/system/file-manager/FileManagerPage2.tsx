@@ -607,7 +607,7 @@ export default function FileManagerPage() {
     {
       title: '操作',
       fixed: 'right' as const,
-      width: 220,
+      width: 160,
       render: (_: unknown, r: FsEntry) => (
         <Space>
           {r.type === 'dir' ? (
@@ -618,9 +618,6 @@ export default function FileManagerPage() {
               <Button size="small" theme="borderless" onClick={() => handleDownload(r)}>下载</Button>
             </>
           )}
-          <Popconfirm title="确定要删除吗？" okType="danger" onConfirm={() => void handleDelete([r.path])}>
-            <Button size="small" theme="borderless" type="danger">删除</Button>
-          </Popconfirm>
           <Dropdown
             trigger="click"
             position="bottomRight"
@@ -632,6 +629,13 @@ export default function FileManagerPage() {
                 <Dropdown.Item onClick={() => setDialog({ mode: 'move', entry: r, value: r.path })}>移动到…</Dropdown.Item>
                 <Dropdown.Item onClick={() => setDialog({ mode: 'compress', selEntries: [r], value: `${r.name}.zip` })}>压缩为 ZIP</Dropdown.Item>
                 <Dropdown.Item onClick={() => setDialog({ mode: 'chmod', entry: r, value: '' })}>修改权限</Dropdown.Item>
+                <Dropdown.Divider />
+                <Dropdown.Item
+                  type="danger"
+                  onClick={() => Modal.confirm({ title: '确定删除此项吗？', okType: 'danger', onOk: () => handleDelete([r.path]) })}
+                >
+                  删除
+                </Dropdown.Item>
               </Dropdown.Menu>
             }
           >
