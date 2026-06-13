@@ -760,7 +760,7 @@ export default function FileManagerPage() {
     {
       title: '操作',
       fixed: 'right' as const,
-      width: 160,
+      width: 170,
       render: (_: unknown, r: FsEntry) => (
         <Space>
           {r.type === 'dir' ? (
