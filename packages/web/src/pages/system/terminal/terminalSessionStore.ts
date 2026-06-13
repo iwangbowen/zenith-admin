@@ -49,6 +49,8 @@ interface SessionState {
   cwd?: string;
   /** OSC 7 追踪到的当前工作目录 */
   currentCwd?: string;
+  /** 选中文字自动复制（xterm v6 无内置选项，手动监听）*/
+  copyOnSelect: boolean;
   container: HTMLDivElement;
   resizeObserver: ResizeObserver | null;
   recording: {
@@ -124,7 +126,6 @@ class TerminalSessionStore {
       lineHeight: options.lineHeight,
       cursorBlink: options.cursorBlink ?? true,
       cursorStyle: options.cursorStyle ?? 'block',
-      copyOnSelection: options.copyOnSelect ?? false,
       scrollback: options.scrollback ?? 5000,
       fastScrollSensitivity: options.fastScrollSensitivity ?? 5,
     });
@@ -150,9 +151,17 @@ class TerminalSessionStore {
       resizeObserver: null,
       recording: null,
       recordingEnabled,
+      copyOnSelect: options.copyOnSelect ?? true,
       reconnect: { attempts: 0, timer: null, stopped: false },
     };
     this.sessions.set(sessionId, session);
+
+    // 选中自动复制（xterm v6 已移除 copyOnSelection 选项，改用事件监听）
+    term.onSelectionChange(() => {
+      if (!session.copyOnSelect) return;
+      const text = term.getSelection();
+      if (text) void navigator.clipboard.writeText(text).catch(() => { /* 忽略权限失败 */ });
+    });
 
     // OSC 7：Shell 报告当前工作目录（需 Shell 配置，如 bash/zsh PROMPT_COMMAND）
     term.parser.registerOscHandler(7, (data: string) => {
@@ -404,7 +413,7 @@ class TerminalSessionStore {
     if (opts.lineHeight !== undefined) session.term.options.lineHeight = opts.lineHeight;
     if (opts.cursorStyle !== undefined) session.term.options.cursorStyle = opts.cursorStyle;
     if (opts.cursorBlink !== undefined) session.term.options.cursorBlink = opts.cursorBlink;
-    if (opts.copyOnSelect !== undefined) session.term.options.copyOnSelection = opts.copyOnSelect;
+    if (opts.copyOnSelect !== undefined) session.copyOnSelect = opts.copyOnSelect;
     if (opts.fastScrollSensitivity !== undefined) session.term.options.fastScrollSensitivity = opts.fastScrollSensitivity;
     session.fitAddon.fit();
   }

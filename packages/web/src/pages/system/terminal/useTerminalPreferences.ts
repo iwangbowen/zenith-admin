@@ -15,7 +15,7 @@ export const defaultTerminalPreferences: TerminalPreferences = {
   scrollback: 5000,
   cursorStyle: 'block',
   cursorBlink: true,
-  copyOnSelect: false,
+  copyOnSelect: true,
   rendererType: 'canvas',
   fastScrollSensitivity: 5,
 };
