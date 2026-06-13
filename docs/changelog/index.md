@@ -4,6 +4,44 @@
 
 ---
 
+## v0.55.0 - 2026-06-13
+
+### Added
+
+#### 进程管理
+
+- **进程列表**：系统运维新增「进程管理」页面，使用 SSE 实时推送（每 3 秒更新一次），展示 PID、进程名、用户、状态、CPU%、内存、线程数、Nice/优先级类、启动时间、监听端口等字段，使用虚拟化表格（Semi UI virtualized）无分页展示所有进程
+- **跨平台支持**：Linux/macOS 通过 `ps` 命令获取进程信息，Windows 通过 PowerShell `Get-Process` 获取；端口列表（Linux 用 `ss -tlnpH`，macOS 用 `lsof -i`，Windows 用 `Get-NetTCPConnection`），每 15 秒缓存一次
+- **进程操作**：支持向进程发送终止信号（SIGTERM/SIGKILL/SIGINT/SIGHUP）；支持调整优先级（Linux/macOS 的 nice 值，Windows 的优先级类）
+- **进程详情**：点击「详情」按钮查看完整进程信息，包括完整命令行（带 lstart 启动时间）和当前网络连接（TCP 连接状态、本地/远端地址端口）
+- **数据导出**：支持导出 Excel 和 CSV 格式，包含所有进程字段及端口信息
+- **客户端过滤**：进程列表支持按名称/PID/用户关键词过滤，以及按状态（运行中/休眠/停止/僵尸等）过滤
+- **菜单配置**：在系统运维目录下新增进程管理菜单（ID: 505）及结束进程、调整优先级按钮权限（ID: 506/507）
+
+#### 文件管理器
+
+- **权限编辑器**：新增文件权限编辑组件（ChmodEditor），支持权限字符串与八进制值的转换和编辑
+- **文件夹选择器**：新增 FolderPickerModal 组件，支持移动/复制操作；Windows 下支持盘符切换
+- **文件删除确认**：删除操作改为 Modal.confirm 弹窗确认，提升误操作防护
+- **虚拟化网格**：文件列表的网格视图引入虚拟化渲染，大目录下性能显著提升
+
+#### 终端管理
+
+- **自定义按键处理器**：新增自定义按键事件处理器，在 xterm 处理前拦截按键事件，修复 stale closure 问题
+- **滚回行数设置**：终端设置面板新增滚回缓冲行数配置，默认 5000 行
+
+### Changed
+
+- **地区管理表格**：去掉斑马纹配置，禁用条纹行样式
+- **虚拟化表格固定列修复**：修复地区管理和进程管理页面 `fixed: 'right'` 列在全宽模式下无法生效的问题；根因为外层容器 `overflowX: auto` 拦截了 Semi UI Table 内部的 sticky 滚动容器，移除后 sticky 正常生效；同时调整名称列最小宽度，确保表格内容宽度超出容器，使 fixed:right 的粘性效果始终可见
+- **终端偏好 scrollback 字段**：补充 `usePreferences.tsx` 中 `TerminalPreferences` 缺少的 `scrollback` 默认值
+
+### Fixed
+
+- 修复 `FileExplorer.tsx` 中 `Tree` 组件 `ref` 类型错误（`ref={treeRef as never}` → `@ts-expect-error` 注释处理）
+
+---
+
 ## v0.54.0 - 2026-06-12
 
 ### Added
