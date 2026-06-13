@@ -85,19 +85,31 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Ctrl+F 打开搜索栏
+  // 使用 xterm 内置钩子拦截 Ctrl+F，避免 ^F 被发送到终端
+  const openSearchRef = useRef(openSearch);
+  openSearchRef.current = openSearch;
+  const closeSearchRef = useRef(closeSearch);
+  closeSearchRef.current = closeSearch;
+  const searchVisibleRef = useRef(searchVisible);
+  searchVisibleRef.current = searchVisible;
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    terminalSessionStore.attachCustomKeyEventHandler(sessionId, (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        if (searchVisible) inputRef.current?.focus();
-        else openSearch();
+        openSearchRef.current();
+        return false; // xterm 不再处理此键
       }
-      if (e.key === 'Escape' && searchVisible) closeSearch();
+      if (e.key === 'Escape' && searchVisibleRef.current) {
+        closeSearchRef.current();
+        return false;
+      }
+      return true;
+    });
+    return () => {
+      // 组件卸载时移除拦截器
+      terminalSessionStore.attachCustomKeyEventHandler(sessionId, () => true);
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [searchVisible, openSearch, closeSearch]);
+  }, [sessionId]);
 
   // tab 切换激活时重新 fit
   useEffect(() => {

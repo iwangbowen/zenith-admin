@@ -422,6 +422,14 @@ class TerminalSessionStore {
   offCwdChange(sessionId: string): void {
     this.cwdCallbacks.delete(sessionId);
   }
+
+  /**
+   * 注册自定义按键事件处理器（在 xterm 处理前拦截）。
+   * handler 返回 false → xterm 不处理该按键；返回 true → 正常处理。
+   */
+  attachCustomKeyEventHandler(sessionId: string, handler: (event: KeyboardEvent) => boolean): void {
+    this.sessions.get(sessionId)?.term.attachCustomKeyEventHandler(handler);
+  }
 }
 
 export const terminalSessionStore = new TerminalSessionStore();
