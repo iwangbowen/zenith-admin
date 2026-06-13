@@ -31,6 +31,7 @@ import {
   Plus,
   Trash2,
   Download,
+  MoreHorizontal,
 } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -292,7 +293,7 @@ function ContainersTab() {
                 <Dropdown.Item icon={<Info size={13} />} onClick={() => void openInspect(r)}>检查详情</Dropdown.Item>
               </Dropdown.Menu>
             }>
-              <Button size="small" theme="borderless" icon={<ChevronDown size={13} />} />
+              <Button size="small" theme="borderless" icon={<MoreHorizontal size={14} />} />
             </Dropdown>
           </div>
         );
