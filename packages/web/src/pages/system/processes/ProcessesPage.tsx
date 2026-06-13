@@ -303,13 +303,13 @@ export default function ProcessesPage() {
     {
       title: '线程',
       dataIndex: 'threads',
-      width: 65,
+      width: 90,
       sorter: (a, b) => (a?.threads ?? 0) - (b?.threads ?? 0),
     },
     {
       title: platform === 'win32' ? '优先级类' : 'Nice',
       dataIndex: platform === 'win32' ? 'priorityClass' : 'nice',
-      width: 80,
+      width: platform === 'win32' ? 110 : 70,
       render: (v: unknown) => {
         if (v === null || v === undefined || v === '') return <span style={{ color: '#bbb' }}>—</span>;
         if (platform !== 'win32') {
@@ -331,7 +331,7 @@ export default function ProcessesPage() {
     {
       title: '操作',
       fixed: 'right' as const,
-      width: hasPermission('system:process:priority') ? 180 : 120,
+      width: hasPermission('system:process:priority') ? 230 : 160,
       render: (_: unknown, record: ProcessInfo) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => openDetail(record)}>
