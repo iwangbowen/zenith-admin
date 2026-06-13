@@ -21,6 +21,7 @@ import { config as appConfig } from '@/config';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
+import AppModal from '@/components/AppModal';
 import { getFileIcon, getFolderIcon } from '../terminal/fileIcons';
 import './FileManagerPage.css';
 
@@ -179,6 +180,117 @@ function FsGridCard({ entry, selected, onSelect, onOpen, onContextMenu }: Readon
   );
 }
 
+// ── 文件夹选择器（移动/复制目标） ────────────────────────────────────────────────
+
+interface FolderPickerModalProps {
+  readonly visible: boolean;
+  readonly title: string;
+  readonly initialPath: string;
+  readonly onConfirm: (destDir: string) => void;
+  readonly onCancel: () => void;
+}
+
+function FolderPickerModal({ visible, title, initialPath, onConfirm, onCancel }: Readonly<FolderPickerModalProps>) {
+  const [pickerPath, setPickerPath] = useState('');
+  const [pickerParent, setPickerParent] = useState<string | null>(null);
+  const [pickerFolders, setPickerFolders] = useState<{ name: string; path: string }[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (visible && !initialized) {
+      void loadPickerDir(initialPath || '/');
+      setInitialized(true);
+    }
+    if (!visible) setInitialized(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initialPath]);
+
+  async function loadPickerDir(path: string) {
+    setPickerLoading(true);
+    const res = await request.get<DirListing>(`/api/terminal-files/list?path=${encodeURIComponent(path)}`);
+    setPickerLoading(false);
+    if (res.code === 0 && res.data) {
+      setPickerPath(res.data.path);
+      setPickerParent(res.data.parent);
+      setPickerFolders(res.data.entries.filter((e) => e.type === 'dir').map((e) => ({ name: e.name, path: e.path })));
+    }
+  }
+
+  const pickerBreadcrumbs = pickerPath ? buildBreadcrumbs(pickerPath) : [];
+  const folderPickerOkText = title.includes('移') ? '移动到此处' : '复制到此处';
+
+  return (
+    <AppModal
+      title={title}
+      visible={visible}
+      onCancel={onCancel}
+      onOk={() => onConfirm(pickerPath)}
+      okText={folderPickerOkText}
+      closeOnEsc
+      width={480}
+      okButtonProps={{ disabled: !pickerPath }}
+      fullscreenable={false}
+    >
+      {/* 面包屑导航 */}
+      <Breadcrumb style={{ marginBottom: 8 }}>
+        {pickerBreadcrumbs.map((seg, i) => (
+          <Breadcrumb.Item
+            key={seg.path}
+            onClick={i < pickerBreadcrumbs.length - 1 ? () => void loadPickerDir(seg.path) : undefined}
+            style={{ cursor: i < pickerBreadcrumbs.length - 1 ? 'pointer' : 'default', color: i < pickerBreadcrumbs.length - 1 ? 'var(--semi-color-primary)' : undefined }}
+          >
+            {seg.label}
+          </Breadcrumb.Item>
+        ))}
+      </Breadcrumb>
+
+      {/* 文件夹列表（无卡片边框，简洁风格） */}
+      <div style={{ height: 280, overflowY: 'auto', background: 'var(--semi-color-fill-0)', borderRadius: 6 }}>
+        {pickerLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <Spin size="middle" />
+          </div>
+        ) : (
+          <>
+            {pickerParent !== null && (
+              <button
+                type="button"
+                onClick={() => void loadPickerDir(pickerParent!)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 14px', background: 'none', border: 'none', borderBottom: '1px solid var(--semi-color-border)', cursor: 'pointer', color: 'var(--semi-color-text-2)', font: 'inherit', fontSize: 13 }}
+              >
+                <Icon icon="mdi:arrow-up" width={15} height={15} />
+                <span>上级目录</span>
+              </button>
+            )}
+            {pickerFolders.length === 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+                当前目录无子文件夹
+              </div>
+            ) : (
+              pickerFolders.map((f) => (
+                <button
+                  key={f.path}
+                  type="button"
+                  onClick={() => void loadPickerDir(f.path)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 14px', background: 'none', border: 'none', borderBottom: '1px solid var(--semi-color-fill-0)', cursor: 'pointer', color: 'var(--semi-color-text-0)', font: 'inherit', fontSize: 13 }}
+                >
+                  <Icon icon={getFolderIcon(f.name, false)} width={16} height={16} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{f.name}</span>
+                </button>
+              ))
+            )}
+          </>
+        )}
+      </div>
+
+      <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 8 }}>
+        目标目录：{pickerPath}
+      </Typography.Text>
+    </AppModal>
+  );
+}
+
 // ── 虚拟网格 ─────────────────────────────────────────────────────────────────
 
 const VG_CARD_MIN_W = 128; // 每卡最小宽（px）
@@ -300,6 +412,8 @@ export default function FileManagerPage() {
   const [previewLoadingEntry, setPreviewLoadingEntry] = useState<string | null>(null);
   const previewBlobUrlsRef = useRef<string[]>([]);
   const previewSessionRef = useRef(0);
+  // 文件夹选择器（移动/复制）
+  const [folderPicker, setFolderPicker] = useState<{ mode: 'move' | 'copy'; entries: FsEntry[] } | null>(null);
   // 内容区高度（用于 Table 虚拟滚动）
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState(0);
@@ -396,6 +510,24 @@ export default function FileManagerPage() {
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       })
       .catch(() => Toast.error('下载失败'));
+  };
+
+  const handleFolderPickerConfirm = async (destDir: string) => {
+    if (!folderPicker) return;
+    const { mode, entries: pickedEntries } = folderPicker;
+    const sep = destDir.includes('\\') ? '\\' : '/';
+    const endpoint = mode === 'move' ? '/api/terminal-files/move' : '/api/terminal-files/copy';
+    let success = 0;
+    for (const e of pickedEntries) {
+      const destName = e.path.split(/[\\/]/).pop() ?? e.name;
+      const dest = `${destDir.replace(/[/\\]+$/, '')}${sep}${destName}`;
+      const res = await request.post(endpoint, { from: e.path, to: dest });
+      if (res.code === 0) success++;
+    }
+    const verb = mode === 'move' ? '移动' : '复制';
+    Toast.success(`已${verb} ${success}/${pickedEntries.length} 项`);
+    setFolderPicker(null);
+    refresh();
   };
 
   const cleanupPreviewBlobs = () => {
@@ -567,8 +699,8 @@ export default function FileManagerPage() {
       },
       ...(entry.type !== 'dir' ? [{ label: '预览', fn: () => { void handlePreview(entry); closeCtxMenu(); } }] : []),
       { label: '重命名', fn: () => { setDialog({ mode: 'rename', entry, value: entry.name }); closeCtxMenu(); } },
-      { label: '复制到…', fn: () => { setDialog({ mode: 'copy', entry, value: entry.path }); closeCtxMenu(); } },
-      { label: '移动到…', fn: () => { setDialog({ mode: 'move', entry, value: entry.path }); closeCtxMenu(); } },
+      { label: '复制到…', fn: () => { setFolderPicker({ mode: 'copy', entries: [entry] }); closeCtxMenu(); } },
+      { label: '移动到…', fn: () => { setFolderPicker({ mode: 'move', entries: [entry] }); closeCtxMenu(); } },
       { label: '压缩为 ZIP', fn: () => { setDialog({ mode: 'compress', selEntries: [entry], value: `${entry.name}.zip` }); closeCtxMenu(); } },
       { label: '修改权限', fn: () => { setDialog({ mode: 'chmod', entry, value: '' }); closeCtxMenu(); } },
       ...(entry.type === 'dir' ? [{ label: '上传到此目录', fn: () => { ctxUploadDirRef.current = entry.path; ctxUploadInputRef.current?.click(); closeCtxMenu(); } }] : []),
@@ -625,8 +757,8 @@ export default function FileManagerPage() {
             render={
               <Dropdown.Menu>
                 <Dropdown.Item onClick={() => setDialog({ mode: 'rename', entry: r, value: r.name })}>重命名</Dropdown.Item>
-                <Dropdown.Item onClick={() => setDialog({ mode: 'copy', entry: r, value: r.path })}>复制到…</Dropdown.Item>
-                <Dropdown.Item onClick={() => setDialog({ mode: 'move', entry: r, value: r.path })}>移动到…</Dropdown.Item>
+                <Dropdown.Item onClick={() => setFolderPicker({ mode: 'copy', entries: [r] })}>复制到…</Dropdown.Item>
+                <Dropdown.Item onClick={() => setFolderPicker({ mode: 'move', entries: [r] })}>移动到…</Dropdown.Item>
                 <Dropdown.Item onClick={() => setDialog({ mode: 'compress', selEntries: [r], value: `${r.name}.zip` })}>压缩为 ZIP</Dropdown.Item>
                 <Dropdown.Item onClick={() => setDialog({ mode: 'chmod', entry: r, value: '' })}>修改权限</Dropdown.Item>
                 <Dropdown.Divider />
@@ -952,6 +1084,15 @@ export default function FileManagerPage() {
             visible={!!preview}
             onClose={() => setPreview(null)}
             onFallback={() => { Toast.warning('该文件不支持在线预览，请下载后查看'); setPreview(null); }}
+          />
+
+          {/* ── 文件夹选择器（移动/复制） ── */}
+          <FolderPickerModal
+            visible={!!folderPicker}
+            title={folderPicker?.mode === 'move' ? '移动到' : '复制到'}
+            initialPath={currentPath}
+            onConfirm={(destDir) => void handleFolderPickerConfirm(destDir)}
+            onCancel={() => setFolderPicker(null)}
           />
         </>
       }
