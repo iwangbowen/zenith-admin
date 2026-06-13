@@ -15,7 +15,8 @@ import {
   Input,
   Tabs,
   TabPane,
-  Form,
+  Select,
+  Switch,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import {
@@ -381,11 +382,11 @@ function ImagesTab() {
 
       <Modal title="拉取镜像" visible={pullVisible} onCancel={() => { setPullVisible(false); setPullTag(''); }}
         onOk={() => void handlePull()} okText="开始拉取" okButtonProps={{ loading: pulling }} width={440}>
-        <Form layout="vertical">
-          <Form.Input field="repoTag" label="镜像标签（如 nginx:latest）" placeholder="nginx:latest"
-            value={pullTag} onChange={(v) => setPullTag(v as string)}
-            helpText="格式：<镜像名>:<标签>，留空标签默认 latest" />
-        </Form>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <Typography.Text>镜像标签（如 nginx:latest）</Typography.Text>
+          <Input placeholder="nginx:latest" value={pullTag} onChange={(v) => setPullTag(v)} style={{ width: '100%' }} />
+          <Typography.Text type="tertiary" size="small">格式：&lt;镜像名&gt;:&lt;标签&gt;，留空标签默认 latest</Typography.Text>
+        </div>
       </Modal>
     </>
   );
@@ -474,19 +475,26 @@ function NetworksTab() {
 
       <Modal title="创建网络" visible={createVisible} onCancel={() => setCreateVisible(false)}
         onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: creating }} width={440}>
-        <Form layout="vertical">
-          <Form.Input field="name" label="网络名称" placeholder="my-network" value={createForm.name}
-            onChange={(v) => setCreateForm((f) => ({ ...f, name: v as string }))} />
-          <Form.Select field="driver" label="驱动" value={createForm.driver}
-            onChange={(v) => setCreateForm((f) => ({ ...f, driver: v as string }))} style={{ width: '100%' }}>
-            <Form.Select.Option value="bridge">bridge（默认）</Form.Select.Option>
-            <Form.Select.Option value="overlay">overlay（Swarm）</Form.Select.Option>
-            <Form.Select.Option value="host">host</Form.Select.Option>
-            <Form.Select.Option value="macvlan">macvlan</Form.Select.Option>
-          </Form.Select>
-          <Form.Switch field="internal" label="内部网络（无外网访问）"
-            checked={createForm.internal} onChange={(v) => setCreateForm((f) => ({ ...f, internal: v }))} />
-        </Form>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <Typography.Text style={{ display: 'block', marginBottom: 4 }}>网络名称</Typography.Text>
+            <Input placeholder="my-network" value={createForm.name}
+              onChange={(v) => setCreateForm((f) => ({ ...f, name: v }))} style={{ width: '100%' }} />
+          </div>
+          <div>
+            <Typography.Text style={{ display: 'block', marginBottom: 4 }}>驱动</Typography.Text>
+            <Select value={createForm.driver} onChange={(v) => setCreateForm((f) => ({ ...f, driver: v as string }))} style={{ width: '100%' }}>
+              <Select.Option value="bridge">bridge（默认）</Select.Option>
+              <Select.Option value="overlay">overlay（Swarm）</Select.Option>
+              <Select.Option value="host">host</Select.Option>
+              <Select.Option value="macvlan">macvlan</Select.Option>
+            </Select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Switch checked={createForm.internal} onChange={(v) => setCreateForm((f) => ({ ...f, internal: v }))} />
+            <Typography.Text>内部网络（无外网访问）</Typography.Text>
+          </div>
+        </div>
       </Modal>
     </>
   );
@@ -564,12 +572,18 @@ function VolumesTab() {
 
       <Modal title="创建存储卷" visible={createVisible} onCancel={() => setCreateVisible(false)}
         onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: creating }} width={400}>
-        <Form layout="vertical">
-          <Form.Input field="name" label="卷名称" placeholder="my-volume" value={createForm.name}
-            onChange={(v) => setCreateForm((f) => ({ ...f, name: v as string }))} />
-          <Form.Input field="driver" label="驱动（默认 local）" placeholder="local" value={createForm.driver}
-            onChange={(v) => setCreateForm((f) => ({ ...f, driver: v as string }))} />
-        </Form>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <Typography.Text style={{ display: 'block', marginBottom: 4 }}>卷名称</Typography.Text>
+            <Input placeholder="my-volume" value={createForm.name}
+              onChange={(v) => setCreateForm((f) => ({ ...f, name: v }))} style={{ width: '100%' }} />
+          </div>
+          <div>
+            <Typography.Text style={{ display: 'block', marginBottom: 4 }}>驱动（默认 local）</Typography.Text>
+            <Input placeholder="local" value={createForm.driver}
+              onChange={(v) => setCreateForm((f) => ({ ...f, driver: v }))} style={{ width: '100%' }} />
+          </div>
+        </div>
       </Modal>
     </>
   );
