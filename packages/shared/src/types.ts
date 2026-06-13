@@ -1793,6 +1793,38 @@ export interface OAuth2AuthorizeInfo {
   alreadyGranted: boolean;
 }
 
+// ─── 进程管理 ───────────────────────────────────────────────────────────────
+export interface ProcessInfo {
+  pid: number;
+  ppid: number;
+  name: string;
+  /** 'running' | 'sleeping' | 'disk-sleep' | 'stopped' | 'zombie' | 'idle' | 'unknown' */
+  status: string;
+  /** CPU usage percentage (instantaneous on Linux/macOS; cumulative seconds on Windows) */
+  cpu: number;
+  /** RSS memory in bytes */
+  memory: number;
+  /** Memory usage percentage */
+  memoryPercent: number;
+  startTime: string | null;
+  /** Full command line or process name */
+  command: string;
+  user: string;
+  threads: number;
+  /** Nice value -20~19 (Linux/macOS), null on Windows */
+  nice: number | null;
+  /** Windows priority class, null on Unix */
+  priorityClass: string | null;
+}
+
+export interface ProcessListResponse {
+  /** OS platform: 'linux' | 'darwin' | 'win32' */
+  platform: string;
+  processes: ProcessInfo[];
+  total: number;
+  timestamp: string;
+}
+
 // ─── SQL 收藏夹 ──────────────────────────────────────────────────────────────
 export interface DbQueryFavorite {
   id: number;
