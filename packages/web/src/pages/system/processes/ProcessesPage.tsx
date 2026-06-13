@@ -16,6 +16,15 @@ import { config } from '@/config';
 import { TOKEN_KEY } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import type { ProcessInfo, ProcessListResponse } from '@zenith/shared';
+
+// 让操作列的固定分隔线在任何情况下都可见
+const processesTableStyle = `
+  .processes-table .semi-table-cell-fixed-right-first {
+    border-left: 2px solid var(--semi-color-border) !important;
+    box-shadow: -4px 0 8px -4px rgba(0,0,0,.15) !important;
+  }
+`;
+
 // ─── 工具函数 ─────────────────────────────────────────────────────────────
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -139,7 +148,7 @@ export default function ProcessesPage() {
           return;
         }
         setSseStatus('open');
-        setLoading(false);
+        // 注意：loading 在收到第一帧数据后才关闭（不在 SSE open 时关闭）
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         while (true) {
@@ -162,6 +171,7 @@ export default function ProcessesPage() {
                 setProcesses(payload.processes);
                 setPlatform(payload.platform);
                 setLastUpdated(new Date());
+                setLoading(false); // 收到第一帧数据后关闭 loading spin
               }
             } catch { /* ignore parse errors */ }
           }
@@ -375,6 +385,7 @@ export default function ProcessesPage() {
   // ════════════════════════════════════════════════════════════════════════
   return (
     <div className="page-container">
+      <style>{processesTableStyle}</style>
       {/* 搜索与操作栏 */}
       <SearchToolbar>
         {/* 搜索框 */}
@@ -472,6 +483,7 @@ export default function ProcessesPage() {
       <ConfigurableTable
         bordered
         virtualized
+        className="processes-table"
         scroll={{ y: tableHeight, x: 1380 }}
         columns={columns}
         dataSource={filteredProcesses}
