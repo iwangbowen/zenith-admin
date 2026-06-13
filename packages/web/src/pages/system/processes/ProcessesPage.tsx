@@ -267,8 +267,10 @@ export default function ProcessesPage() {
   const FIXED_COLS_WIDTH = 80 + 100 + 90 + 80 + 110 + 90
     + (platform === 'win32' ? 110 : 70) + 155 + 130
     + (hasPermission('system:process:priority') ? 230 : 160);
-  // 进程名列弹性宽度：容器宽度 - 固定列 - 滚动条(17px)，最小 160px
-  const nameColWidth = Math.max(160, tableWidth > 0 ? tableWidth - FIXED_COLS_WIDTH - 17 : 200);
+  // 进程名列最小宽度 160px（不动态自适应容器）
+  // 这样 total = 160 + 1175≈ = 1335px，超出大多数管理页面宽度， fixed:right 自然生效
+  const nameColWidth = Math.max(160, tableWidth > 0 ? tableWidth - FIXED_COLS_WIDTH - 17 : 160);
+  const totalTableWidth = nameColWidth + FIXED_COLS_WIDTH;
 
   const columns: ColumnProps<ProcessInfo>[] = [
     {
@@ -501,7 +503,7 @@ export default function ProcessesPage() {
         bordered
         virtualized
         className="processes-table"
-        scroll={{ y: tableHeight, x: tableWidth || undefined }}
+        scroll={{ y: tableHeight, x: tableWidth || totalTableWidth }}
         columns={columns}
         dataSource={filteredProcesses}
         loading={loading && processes.length === 0}

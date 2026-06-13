@@ -284,7 +284,8 @@ export default function RegionsPage() {
   }, [fetchRegions]);
 
   const FIXED_COLS_WIDTH = 140 + 90 + 120 + 70 + 180 + 90 + 160; // 其他列总宽
-  const nameColWidth = Math.max(240, tableWidth - FIXED_COLS_WIDTH);
+  // 地区名列宽度：不动态自适应容器，保持固定最小宽度，这样内容宽度 (total) 能超出容器，使 fixed:right 生效
+  const nameColWidth = Math.max(400, tableWidth - FIXED_COLS_WIDTH);
   const totalTableWidth = nameColWidth + FIXED_COLS_WIDTH;
 
   const columns: ColumnProps<Region>[] = [
@@ -441,7 +442,7 @@ export default function RegionsPage() {
           )}
       </SearchToolbar>
 
-      <div ref={tableWrapperRef} style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden' }}>
+      <div ref={tableWrapperRef} style={{ flex: 1, minHeight: 0 }}>
         <ConfigurableTable
           bordered
           columns={columns}
@@ -456,7 +457,7 @@ export default function RegionsPage() {
         childrenRecordName="children"
         pagination={false}
         virtualized
-        scroll={{ y: tableHeight, x: totalTableWidth }}
+        scroll={{ y: tableHeight, x: tableWidth || totalTableWidth }}
       />
       </div>
 
