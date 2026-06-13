@@ -4,6 +4,59 @@
 
 ---
 
+## v0.56.0 - 2026-06-14
+
+### Added
+
+#### 系统运维 — Docker 管理
+
+- **容器管理**：新增 Docker 管理页面（`/system/docker`），支持容器列表（按 docker-compose 项目分组树形展示）、启动/停止/重启、查看实时日志（2s 轮询，支持暂停/继续追踪）、资源占用（CPU%、内存进度条）、容器检查详情（JSON）
+- **镜像管理**：支持列出所有镜像、删除镜像、拉取新镜像（通过弹窗输入镜像标签）
+- **网络管理**：支持列出网络（含 IP 配置/驱动/容器数）、删除网络、创建网络（支持 bridge/overlay/host/macvlan 驱动及内部网络选项）
+- **存储卷管理**：支持列出卷（含驱动/挂载点）、删除卷、创建卷
+- **容器文件浏览器**：终端页面新增 Docker 侧边栏，可浏览容器内文件树（懒加载）、只读预览文件（Monaco Editor）、一键 Attach Shell 进入容器终端
+- **容器 Shell 接入**：支持通过 `docker exec -it` 在新终端 Tab 中接入正在运行的容器（自动设置 PATH 和 TERM 环境变量）
+
+#### 系统运维 — SSH 快捷连接
+
+- **SSH 配置管理**：终端侧边栏新增 SSH 配置面板，支持新增/编辑/删除 SSH 连接配置（主机、端口、用户名）
+- **多种认证方式**：支持密码、私钥路径、私钥内容、SSH Agent 四种认证方式
+- **字段级加密**：密码、私钥等敏感字段通过 AES-256-GCM 加密存储，密钥由 `FIELD_ENCRYPTION_KEY` 或 `JWT_SECRET` 派生
+- **一键连接**：点击「连接」在新终端 Tab 中建立 SSH 会话
+
+#### 系统运维 — 新增三个运维工具页面
+
+- **端口监听**（`/system/ports`）：展示当前系统所有 TCP 监听端口，包括协议/本地地址/端口/PID/进程名，支持关键词过滤
+- **网络诊断**（`/system/network-diag`）：支持 ping（实时流式输出）、traceroute（实时流式输出 + 逐跳延迟可视化表格，含彩色进度条）、nslookup（DNS 查询）、TCP 端口检测
+- **systemd 服务管理**（`/system/services`）：列出所有 systemd 服务（加载状态/活动状态/子状态），支持启动/停止/重启操作、查看近期日志（SideSheet）、实时日志追踪（journalctl -f）；非 Linux 系统显示不可用提示
+- **日志查看器**（`/system/log-viewer`）：支持读取服务器端任意日志文件末尾 500 行、`tail -f` 实时追踪、关键词高亮（行级黄色指示）、仅显示匹配行过滤、**ANSI 颜色序列渲染**（支持 16 色前景/背景、粗体/斜体/暗淡）
+
+#### 终端增强
+
+- **Ctrl+F 内置搜索**：xterm.js 内新增搜索栏，支持上下导航、大小写切换，通过 `attachCustomKeyEventHandler` 拦截按键防止发送 `^F` 到终端
+- **OSC 7 工作目录追踪**：监听 Shell 输出的 OSC 7 序列，Tab 标题实时更新为当前目录
+- **WSL 发行版支持**：Windows 下自动检测已安装的 WSL 发行版并加入 Shell 选择列表，支持一键进入各 WSL 环境
+- **终端设置新增选项**：光标样式（块/下划线/竖线）、光标闪烁、选中自动复制（默认开启）、渲染模式（Canvas/WebGL）、Alt 快速滚动倍率、滚回行数
+- **xterm 滚动条美化**：将 xterm.js 自定义滚动条宽度收窄至 5px，颜色跟随 Semi Design 主题变量
+
+#### 终端录屏
+
+- **命令计数**：录屏列表新增「命令数」列，实时统计每条录屏中的命令输入次数
+- **清除录屏**：新增「清除录屏」分裂按钮（SplitButtonGroup），支持清除 1/3/6/12 个月前记录或清除全部，操作前弹窗确认
+- **录屏详情**：操作列新增「详情」按钮，解析用户输入事件流并展示命令历史（含时间戳、可单独复制）
+
+#### 文件预览
+
+- **Monaco Editor 代码预览**：`FilePreviewModal` 的代码文件和纯文本文件预览改用 Monaco Editor（取代等宽字体 pre 元素），支持语法高亮和行号
+
+### Fixed
+
+- 修复终端分屏关闭后布局错乱问题：`closePane` 折叠时继承 split 节点 id，保持父 Panel key 稳定；根层折叠始终包裹在 `PanelGroup+Panel` 中防止 TerminalTab 重建
+- 修复 Docker 容器文件 API 永久挂起：`execInContainer` 改为监听原始 stream 的 `end` 事件（而非 passthrough），加入 `Tty: false` 和 `hijack: true` 参数
+- 修复 docker exec 进容器 TTY 问题：添加 `-t` 标志并显式设置 PATH 和 TERM 环境变量，解决非登录 shell 命令找不到的问题
+
+---
+
 ## v0.55.0 - 2026-06-13
 
 ### Added
