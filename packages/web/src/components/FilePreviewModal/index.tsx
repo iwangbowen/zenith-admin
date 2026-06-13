@@ -18,6 +18,8 @@ const MarkdownPreviewPanel = lazy(() => import('@/components/MarkdownPreviewPane
 const ZipPreviewPanel = lazy(() => import('@/components/ZipPreviewPanel'));
 // Semi JsonViewer 懒加载
 const JsonPreviewPanel = lazy(() => import('@/components/JsonPreviewPanel'));
+// Monaco Editor 懒加载（代码/纯文本文件预览）
+const MonacoPreviewPanel = lazy(() => import('@/components/MonacoPreviewPanel'));
 
 interface FilePreviewModalProps {
   fileUrl: string;
@@ -51,6 +53,7 @@ export default function FilePreviewModal({
   const [zipBlob, setZipBlob] = useState<Blob | null>(null);
   const [jsonText, setJsonText] = useState<string | null>(null);
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
+  const [codeContent, setCodeContent] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   // sheetKey 用于全屏切换时重建 Univer，sheetTransitioning 显示过渡 spinner
   const [sheetKey, setSheetKey] = useState(0);
@@ -86,6 +89,7 @@ export default function FilePreviewModal({
       setZipBlob(null);
       setJsonText(null);
       setSvgUrl(null);
+      setCodeContent(null);
       setFullscreen(false);
       setSheetKey(0);
       setSheetTransitioning(false);
@@ -150,8 +154,7 @@ export default function FilePreviewModal({
         }
         if (isPlainText) {
           const text = await blob.text();
-          // 利用 markdownText 状态传递内容，将 mimeType 作为区分标识由 MarkdownPreviewPanel.rawText 处理
-          setMarkdownText(`\u0000PLAINTEXT\u0000${text}`);
+          setCodeContent(text);
           return;
         }
         if (isZip) {
@@ -169,9 +172,8 @@ export default function FilePreviewModal({
           return;
         }
         if (isCode) {
-          // 代码文件与纯文本相同处理，利用 MarkdownPreviewPanel rawText 模式展示
           const text = await blob.text();
-          setMarkdownText(`\u0000PLAINTEXT\u0000${text}`);
+          setCodeContent(text);
           return;
         }
         if (isPdf) {
@@ -405,6 +407,37 @@ export default function FilePreviewModal({
           }
         >
           <JsonPreviewPanel content={jsonText} style={{ flex: 1, minHeight: 0 }} />
+        </Suspense>
+      </AppModal>
+    );
+  }
+
+  if (codeContent !== null) {
+    return (
+      <AppModal
+        visible
+        onCancel={handleClose}
+        title={previewTitle}
+        footer={null}
+        fullscreen={fullscreen}
+        onToggleFullscreen={toggleFullscreen}
+        width="min(1100px, 92vw)"
+        style={{ top: '3vh' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? 'calc(100vh - 40px)' : 'calc(90vh - 40px)' }}
+        keepDOM={false}
+      >
+        <Suspense
+          fallback={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+              <Spin size="large" tip="加载预览组件..." />
+            </div>
+          }
+        >
+          <MonacoPreviewPanel
+            content={codeContent}
+            fileName={fileName}
+            style={{ flex: 1, minHeight: 0 }}
+          />
         </Suspense>
       </AppModal>
     );
