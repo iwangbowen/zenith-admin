@@ -97,6 +97,15 @@ export default function ProcessesPage() {
   const [priorityTarget, setPriorityTarget] = useState<ProcessInfo | null>(null);
   const [settingPriority, setSettingPriority] = useState(false);
 
+  // ─── 虚拟表格高度（Semi UI 要求数字型 scroll.y）──────────────────────────
+  const [tableHeight, setTableHeight] = useState(() => Math.max(200, window.innerHeight - 320));
+
+  useEffect(() => {
+    const onResize = () => setTableHeight(Math.max(200, window.innerHeight - 320));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   // ─── 客户端过滤 ────────────────────────────────────────────────────────
   const filteredProcesses = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -456,7 +465,7 @@ export default function ProcessesPage() {
       <ConfigurableTable
         bordered
         virtualized
-        scroll={{ y: 'calc(100vh - 300px)' }}
+        scroll={{ y: tableHeight }}
         columns={columns}
         dataSource={filteredProcesses}
         loading={loading && processes.length === 0}

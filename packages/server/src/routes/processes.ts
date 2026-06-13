@@ -141,7 +141,11 @@ processesRouter.get(
   guard({ permission: 'system:process:view' }),
   (c) =>
     streamSSE(c, async (stream) => {
-      // 首帧：立即推送完整列表
+      // 立即发送 ping 以确保 HTTP 响应头（200 + text/event-stream）即刻送达客户端
+      // （@hono/node-server 在第一次写入时才真正刷新响应头）
+      await stream.writeSSE({ data: '', event: 'ping' });
+
+      // 首帧：推送完整列表
       try {
         const data = await listProcesses();
         await stream.writeSSE({ data: JSON.stringify(data), event: 'processes' });

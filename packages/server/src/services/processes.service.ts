@@ -59,33 +59,29 @@ async function listProcessesUnix(): Promise<ProcessInfo[]> {
 
 async function listProcessesWindows(): Promise<ProcessInfo[]> {
   const totalMem = os.totalmem();
-  const script = [
-    '$ErrorActionPreference = "SilentlyContinue"',
-    '$cimMap = @{}',
-    'Get-CimInstance Win32_Process | ForEach-Object { $cimMap[$_.ProcessId] = $_ }',
-    '$result = Get-Process | ForEach-Object {',
-    '  $c = $cimMap[$_.Id]',
-    '  [PSCustomObject]@{',
-    '    pid = $_.Id',
-    '    ppid = if ($c) { $c.ParentProcessId } else { 0 }',
-    '    name = $_.Name',
-    '    cpu = [Math]::Round($_.CPU, 2)',
-    '    memory = $_.WorkingSet64',
-    '    threads = $_.Threads.Count',
-    '    startTime = if ($_.StartTime) { $_.StartTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }',
-    '    command = if ($c -and $c.CommandLine) { $c.CommandLine } else { $_.Name }',
-    '    priorityClass = $_.PriorityClass.ToString()',
-    '  }',
-    '}',
-    'if ($null -eq $result) { "[]" }',
-    'elseif ($result -is [array]) { $result | ConvertTo-Json -Depth 1 -Compress }',
-    'else { "[" + ($result | ConvertTo-Json -Depth 1 -Compress) + "]" }',
-  ].join('; ');
+  // 使用换行符拼接（PowerShell 不允许 @{; key=val} 语法，分号拼接会报错）
+  const script = `
+$ErrorActionPreference = "SilentlyContinue"
+$result = Get-Process | ForEach-Object {
+  [PSCustomObject]@{
+    pid = $_.Id
+    name = $_.Name
+    cpu = [Math]::Round($_.CPU, 2)
+    memory = $_.WorkingSet64
+    threads = $_.Threads.Count
+    startTime = if ($_.StartTime) { $_.StartTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }
+    priorityClass = try { $_.PriorityClass.ToString() } catch { "Normal" }
+  }
+}
+if ($null -eq $result) { "[]" }
+elseif ($result -is [array]) { $result | ConvertTo-Json -Depth 1 -Compress }
+else { "[" + ($result | ConvertTo-Json -Depth 1 -Compress) + "]" }
+`.trim();
   try {
     const { stdout } = await execFileAsync(
       'powershell',
       ['-NoProfile', '-NonInteractive', '-Command', script],
-      { maxBuffer: MAX_BUFFER },
+      { maxBuffer: MAX_BUFFER, timeout: 15000 }, // 15s 超时防止卡死
     );
     const raw: unknown[] = JSON.parse(stdout.trim() || '[]');
     const arr = Array.isArray(raw) ? raw : [raw];
@@ -94,12 +90,11 @@ async function listProcessesWindows(): Promise<ProcessInfo[]> {
       .map((p) => {
         const mem = Number(p.memory) || 0;
         const name = typeof p.name === 'string' ? p.name : '';
-        const command = typeof p.command === 'string' ? p.command : name;
         const startTime = typeof p.startTime === 'string' && p.startTime ? p.startTime : null;
         const priorityClass = typeof p.priorityClass === 'string' ? p.priorityClass : 'Normal';
         return {
           pid: Number(p.pid) || 0,
-          ppid: Number(p.ppid) || 0,
+          ppid: 0,
           user: '',
           name,
           status: 'running',
@@ -107,7 +102,7 @@ async function listProcessesWindows(): Promise<ProcessInfo[]> {
           memoryPercent: totalMem > 0 ? Math.round((mem / totalMem) * 10000) / 100 : 0,
           memory: mem,
           startTime,
-          command: command || name,
+          command: name,
           threads: Number(p.threads) || 1,
           nice: null,
           priorityClass,
@@ -171,22 +166,22 @@ async function getProcessDetailUnix(pid: number): Promise<ProcessInfo> {
 }
 
 async function getProcessDetailWindows(pid: number): Promise<ProcessInfo> {
-  const script = [
-    '$ErrorActionPreference = "Stop"',
-    `$p = Get-Process -Id ${pid}`,
-    `$c = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"`,
-    '[PSCustomObject]@{',
-    '  pid = $p.Id',
-    '  ppid = if ($c) { $c.ParentProcessId } else { 0 }',
-    '  name = $p.Name',
-    '  cpu = [Math]::Round($p.CPU, 2)',
-    '  memory = $p.WorkingSet64',
-    '  threads = $p.Threads.Count',
-    '  startTime = if ($p.StartTime) { $p.StartTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }',
-    '  command = if ($c -and $c.CommandLine) { $c.CommandLine } else { $p.Name }',
-    '  priorityClass = $p.PriorityClass.ToString()',
-    '} | ConvertTo-Json -Compress',
-  ].join('; ');
+  const script = `
+$ErrorActionPreference = "Stop"
+$p = Get-Process -Id ${pid}
+$c = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"
+[PSCustomObject]@{
+  pid = $p.Id
+  ppid = if ($c) { $c.ParentProcessId } else { 0 }
+  name = $p.Name
+  cpu = [Math]::Round($p.CPU, 2)
+  memory = $p.WorkingSet64
+  threads = $p.Threads.Count
+  startTime = if ($p.StartTime) { $p.StartTime.ToString("yyyy-MM-dd HH:mm:ss") } else { "" }
+  command = if ($c -and $c.CommandLine) { $c.CommandLine } else { $p.Name }
+  priorityClass = $p.PriorityClass.ToString()
+} | ConvertTo-Json -Compress
+`.trim();
   try {
     const { stdout } = await execFileAsync(
       'powershell',
@@ -246,7 +241,7 @@ export async function killProcess(pid: number, signal: string): Promise<void> {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === 'ESRCH') throw new HTTPException(404, { message: `进程 ${pid} 不存在` });
     if (code === 'EPERM') throw new HTTPException(403, { message: `无权限结束进程 ${pid}` });
-    throw new HTTPException(500, { message: `结束进程 ${pid} 失败: ${String(err)}` });
+    throw new HTTPException(500, { message: `结束进程 ${pid} 失败: ${err instanceof Error ? err.message : 'unknown error'}` });
   }
 }
 
@@ -273,7 +268,7 @@ export async function setProcessPriority(pid: number, input: SetProcessPriorityI
   try {
     await execFileAsync('renice', ['-n', String(input.nice), '-p', String(pid)]);
   } catch (err: unknown) {
-    const stderr = (err as { stderr?: string })?.stderr ?? String(err);
+    const stderr = (err as { stderr?: string })?.stderr ?? (err instanceof Error ? err.message : 'unknown error');
     if (stderr.includes('Operation not permitted') || stderr.includes('EPERM')) {
       throw new HTTPException(403, { message: `无权限调整进程 ${pid} 的 nice 值（降低 nice 值需要 root 权限）` });
     }
