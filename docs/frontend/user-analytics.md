@@ -11,9 +11,10 @@ POST /api/analytics/events
     ↓  批量写入 PostgreSQL
 user_events 表
     ↓  聚合分析接口
-GET /api/analytics/dwell-time     页面停留时长
-GET /api/analytics/feature-usage  功能使用频率
+GET /api/analytics/page-stats     页面停留时长
+GET /api/analytics/feature-stats  功能使用频率
 GET /api/analytics/heatmap        点击热力图
+GET /api/analytics/heatmap-pages  有热力图数据的页面列表
 ```
 
 所有数据均与当前登录用户（`userId`）和租户（`tenantId`）关联，支持多租户隔离。
