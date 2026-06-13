@@ -186,11 +186,13 @@ interface FolderPickerModalProps {
   readonly visible: boolean;
   readonly title: string;
   readonly initialPath: string;
+  /** Windows 盘符列表（如 ['C:', 'D:'])，为空则不显示盘符切换 */
+  readonly drives?: string[];
   readonly onConfirm: (destDir: string) => void;
   readonly onCancel: () => void;
 }
 
-function FolderPickerModal({ visible, title, initialPath, onConfirm, onCancel }: Readonly<FolderPickerModalProps>) {
+function FolderPickerModal({ visible, title, initialPath, drives = [], onConfirm, onCancel }: Readonly<FolderPickerModalProps>) {
   const [pickerPath, setPickerPath] = useState('');
   const [pickerParent, setPickerParent] = useState<string | null>(null);
   const [pickerFolders, setPickerFolders] = useState<{ name: string; path: string }[]>([]);
@@ -262,6 +264,25 @@ function FolderPickerModal({ visible, title, initialPath, onConfirm, onCancel }:
                 <Icon icon="mdi:arrow-up" width={15} height={15} />
                 <span>上级目录</span>
               </button>
+            )}
+            {/* Windows 盘符切换：到达盘符根目录时显示 */}
+            {pickerParent === null && drives.length > 1 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 14px', borderBottom: '1px solid var(--semi-color-border)' }}>
+                {drives.map((d) => {
+                  const isActive = pickerPath.toUpperCase().startsWith(d.toUpperCase());
+                  return (
+                    <Button
+                      key={d}
+                      size="small"
+                      theme={isActive ? 'solid' : 'light'}
+                      type={isActive ? 'primary' : 'tertiary'}
+                      onClick={() => void loadPickerDir(d + '\\')}
+                    >
+                      {d}
+                    </Button>
+                  );
+                })}
+              </div>
             )}
             {pickerFolders.length === 0 ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--semi-color-text-2)', fontSize: 13 }}>
@@ -1091,6 +1112,7 @@ export default function FileManagerPage() {
             visible={!!folderPicker}
             title={folderPicker?.mode === 'move' ? '移动到' : '复制到'}
             initialPath={currentPath}
+            drives={rootInfo?.drives ?? []}
             onConfirm={(destDir) => void handleFolderPickerConfirm(destDir)}
             onCancel={() => setFolderPicker(null)}
           />
