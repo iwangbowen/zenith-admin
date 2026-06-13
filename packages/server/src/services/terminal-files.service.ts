@@ -1,4 +1,5 @@
 import { promises as fs, createReadStream, existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { Readable } from 'node:stream';
 import * as os from 'node:os';
 import path from 'node:path';
@@ -123,6 +124,8 @@ export interface TerminalShellInfo {
   id: string;
   label: string;
   path: string;
+  /** 传给 shell 可执行文件的额外启动参数（如 WSL distro 的 -d <name>）*/
+  args?: string[];
 }
 
 export interface TerminalShellListing {
@@ -136,6 +139,21 @@ function existsSyncSafe(p: string): boolean {
     return existsSync(p);
   } catch {
     return false;
+  }
+}
+
+/**
+ * 通过 `wsl.exe -l -q` 获取已安装的 WSL 发行版列表。
+ * wsl.exe 输出 UTF-16 LE，需要手动解码。
+ */
+function detectWslDistros(): string[] {
+  try {
+    const buf = execFileSync('wsl.exe', ['-l', '-q'], { timeout: 3000 });
+    // wsl.exe -l -q 输出 UTF-16 LE（有 BOM），需转换为 UTF-8
+    const text = buf.toString('utf16le').replaceAll(/[\ufffd\0]/g, '').replaceAll('\r', '');
+    return text.split('\n').map((l) => l.trim()).filter(Boolean);
+  } catch {
+    return [];
   }
 }
 
@@ -160,6 +178,12 @@ export function listShells(): TerminalShellListing {
       .filter((p): p is string => Boolean(p))
       .find((p) => existsSyncSafe(p));
     if (gitBash) shells.push({ id: 'bash', label: 'Git Bash', path: gitBash });
+    // WSL 发行版
+    const wslDistros = detectWslDistros();
+    for (const distro of wslDistros) {
+      // 明确使用 bash 作为入口 shell，防止部分 WSL 发行版默认 shell 配置异常
+      shells.push({ id: `wsl:${distro}`, label: `WSL: ${distro}`, path: 'wsl.exe', args: ['-d', distro, '--exec', 'bash', '-l'] });
+    }
     return { platform, shells, defaultShell: 'powershell' };
   }
 

@@ -19,6 +19,10 @@ function resolveShell(type: string | undefined): { file: string; args: string[] 
   const { shells, defaultShell } = listShells();
   const id = type && shells.some((s) => s.id === type) ? type : defaultShell;
   const shell = shells.find((s) => s.id === id) ?? shells[0];
+  // WSL 发行版：shell.args 已包含 ['-d', '<distro>']
+  if (shell.args?.length) {
+    return { file: shell.path, args: shell.args };
+  }
   // Windows 下 Git Bash 使用 login + interactive
   if (os.platform() === 'win32' && shell.id === 'bash') {
     return { file: shell.path, args: ['--login', '-i'] };
@@ -164,10 +168,12 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {
 
           // ── 创建新 PTY 进程 ──
           const { file: shellFile, args: shellArgs } = resolveShell(shellType);
+          const isWsl = shellType?.startsWith('wsl:');
 
           // 解析工作目录：优先使用前端传入的 cwd（须为已存在目录），否则回退用户主目录
-          let cwd = process.env.HOME ?? process.cwd();
-          if (cwdParam) {
+          // WSL 会话使用 Windows 用户主目录作为 cwd（让 WSL 在自身 home 启动；传 Windows 路径给 wsl.exe 是安全的）
+          let cwd = isWsl ? os.homedir() : (process.env.HOME ?? process.cwd());
+          if (!isWsl && cwdParam) {
             try {
               if (fs.existsSync(cwdParam) && fs.statSync(cwdParam).isDirectory()) {
                 cwd = cwdParam;
