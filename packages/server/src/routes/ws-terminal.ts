@@ -18,6 +18,14 @@ import { getSshConnectParams } from '../services/ssh-profiles.service';
  * 否则回退到平台默认 shell，避免任意可执行文件注入。
  */
 function resolveShell(type: string | undefined): { file: string; args: string[] } {
+  // docker exec 进容器 — 不在 shell 白名单内，提前处理
+  if (type?.startsWith('docker-exec:')) {
+    const cid = type.slice('docker-exec:'.length);
+    // 仅允许合法容器 ID/名称字符，防止命令注入
+    if (/^[a-zA-Z0-9_\-]{1,128}$/.test(cid)) {
+      return { file: 'docker', args: ['exec', '-i', cid, '/bin/sh', '-i'] };
+    }
+  }
   const { shells, defaultShell } = listShells();
   const id = type && shells.some((s) => s.id === type) ? type : defaultShell;
   const shell = shells.find((s) => s.id === id) ?? shells[0];

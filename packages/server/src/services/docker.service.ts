@@ -221,3 +221,72 @@ export async function removeVolume(name: string): Promise<void> {
 export async function createVolume(name: string, driver: string): Promise<void> {
   await getDocker().createVolume({ Name: name, Driver: driver });
 }
+
+// ─── Container File Browsing ──────────────────────────────────────────────────
+
+import { PassThrough } from 'node:stream';
+
+export interface ContainerFileEntry {
+  name: string;
+  path: string;
+  type: 'file' | 'dir' | 'symlink';
+  size: number;
+}
+
+/** 在容器内执行命令并返回 stdout+stderr 文本 */
+export async function execInContainer(containerId: string, cmd: string[]): Promise<string> {
+  const docker = getDocker();
+  const container = docker.getContainer(containerId);
+  const exec = await container.exec({ Cmd: cmd, AttachStdout: true, AttachStderr: true });
+  const stream = await exec.start({ Detach: false });
+  return new Promise<string>((resolve, reject) => {
+    let output = '';
+    const pt = new PassThrough();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (container.modem as unknown as { demuxStream: (...a: unknown[]) => void }).demuxStream(stream, pt, pt);
+    pt.on('data', (chunk: Buffer) => { output += chunk.toString(); });
+    pt.on('end', () => resolve(output));
+    pt.on('error', reject);
+  });
+}
+
+/** 解析 ls -la 输出为文件条目列表 */
+function parseLsLa(output: string, basePath: string): ContainerFileEntry[] {
+  const entries: ContainerFileEntry[] = [];
+  for (const line of output.trim().split('\n')) {
+    if (!line || line.startsWith('total') || line.includes('cannot access') || line.includes('No such file')) continue;
+    // ls -la 字段：perms links owner group size month day time/year name...
+    const parts = line.split(/\s+/);
+    if (parts.length < 9) continue;
+    const perms = parts[0];
+    const size = Number.parseInt(parts[4], 10);
+    const name = parts.slice(8).join(' ').trim();
+    if (!name || name === '.' || name === '..') continue;
+    // 处理软链接：name -> target 只取链接名
+    const actualName = name.includes(' -> ') ? name.split(' -> ')[0].trim() : name;
+    if (!actualName) continue;
+    let type: ContainerFileEntry['type'];
+    if (perms.startsWith('d')) { type = 'dir'; }
+    else if (perms.startsWith('l')) { type = 'symlink'; }
+    else { type = 'file'; }
+    const fullPath = basePath === '/' ? `/${actualName}` : `${basePath.replace(/\/$/, '')}/${actualName}`;
+    entries.push({ name: actualName, path: fullPath, type, size: Number.isNaN(size) ? 0 : size });
+  }
+  return entries;
+}
+
+/** 列出容器内指定目录的文件 */
+export async function listContainerFiles(containerId: string, path = '/'): Promise<ContainerFileEntry[]> {
+  const normPath = path || '/';
+  try {
+    const output = await execInContainer(containerId, ['ls', '-la', '--', normPath]);
+    return parseLsLa(output, normPath);
+  } catch {
+    return [];
+  }
+}
+
+/** 读取容器内文件内容 */
+export async function readContainerFile(containerId: string, filePath: string): Promise<string> {
+  return execInContainer(containerId, ['cat', '--', filePath]);
+}

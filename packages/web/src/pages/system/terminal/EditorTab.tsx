@@ -102,7 +102,9 @@ function detectLanguage(filePath: string): string {
 }
 
 export default function EditorTab({ filePath, active, onDirtyChange }: EditorTabProps) {
-  const isImg = isImageFile(filePath);
+  // docker:// 前缀：容器内文件，只读模式
+  const isDockerFile = filePath.startsWith('docker://');
+  const isImg = !isDockerFile && isImageFile(filePath);
 
   const { isDark } = useThemeController();
   const { terminal } = useTerminalPreferences();
@@ -129,11 +131,25 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
     if (isImg) return;
     let cancelled = false;
     setLoading(true);
-    request
-      .get<FileContent>(`/api/terminal-files/content?path=${encodeURIComponent(filePath)}`)
+
+    let fetchPromise: Promise<{ code: number; data?: FileContent | { content: string } | null }>;
+    if (isDockerFile) {
+      // docker://<containerId>/path/to/file
+      const withoutScheme = filePath.slice('docker://'.length);
+      const slashIdx = withoutScheme.indexOf('/');
+      const containerId = slashIdx >= 0 ? withoutScheme.slice(0, slashIdx) : withoutScheme;
+      const containerPath = slashIdx >= 0 ? withoutScheme.slice(slashIdx) : '/';
+      fetchPromise = request.get<{ content: string }>(
+        `/api/docker/${containerId}/files/content?path=${encodeURIComponent(containerPath)}`,
+      );
+    } else {
+      fetchPromise = request.get<FileContent>(`/api/terminal-files/content?path=${encodeURIComponent(filePath)}`);
+    }
+
+    fetchPromise
       .then((res) => {
         if (cancelled) return;
-        const text = res.code === 0 && res.data ? res.data.content : '';
+        const text = res.code === 0 && res.data ? (res.data as FileContent).content ?? (res.data as { content: string }).content : '';
         savedRef.current = text;
         setContent(text);
         setDirty(false);
@@ -145,7 +161,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
     return () => {
       cancelled = true;
     };
-  }, [filePath, isImg]);
+  }, [filePath, isImg, isDockerFile]);
 
   // 注册并应用自定义主题（与终端配色一致）
   useEffect(() => {
@@ -219,17 +235,22 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
           {filePath}
           {dirty ? ' ●' : ''}
         </Typography.Text>
-        <Button
-          size="small"
-          theme="solid"
-          type="primary"
-          icon={<Save size={13} />}
-          loading={saving}
-          disabled={!dirty}
-          onClick={() => void handleSave()}
-        >
-          保存
-        </Button>
+        {!isDockerFile && (
+          <Button
+            size="small"
+            theme="solid"
+            type="primary"
+            icon={<Save size={13} />}
+            loading={saving}
+            disabled={!dirty}
+            onClick={() => void handleSave()}
+          >
+            保存
+          </Button>
+        )}
+        {isDockerFile && (
+          <Typography.Text size="small" type="tertiary" style={{ marginLeft: 4 }}>只读</Typography.Text>
+        )}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         {loading ? (
@@ -251,6 +272,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
               scrollBeyondLastLine: false,
               automaticLayout: true,
               tabSize: 2,
+              readOnly: isDockerFile,
             }}
           />
         )}

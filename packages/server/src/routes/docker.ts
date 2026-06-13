@@ -26,6 +26,8 @@ import {
   listVolumes,
   removeVolume,
   createVolume,
+  listContainerFiles,
+  readContainerFile,
 } from '../services/docker.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -356,11 +358,58 @@ const createVolumeRoute = defineOpenAPIRoute({
   },
 });
 
+const listContainerFilesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/:id/files', summary: '列出容器内目录', tags: ['Docker'],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: z.object({ id: z.string() }),
+      query: z.object({ path: z.string().optional() }),
+    },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.array(z.object({
+        name: z.string(), path: z.string(),
+        type: z.enum(['file', 'dir', 'symlink']),
+        size: z.number(),
+      })), '容器文件列表'),
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { path } = c.req.valid('query');
+    const entries = await listContainerFiles(id, path ?? '/');
+    return c.json(okBody(entries), 200);
+  },
+});
+
+const readContainerFileRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/:id/files/content', summary: '读取容器内文件', tags: ['Docker'],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: z.object({ id: z.string() }),
+      query: z.object({ path: z.string() }),
+    },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.object({ content: z.string() }), '文件内容'),
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { path } = c.req.valid('query');
+    const content = await readContainerFile(id, path);
+    return c.json(okBody({ content }), 200);
+  },
+});
+
 router.openapiRoutes([
   listRoute, startRoute, stopRoute, restartRoute, logsRoute, statsRoute, inspectRoute,
   listImagesRoute, removeImageRoute, pullImageRoute,
   listNetworksRoute, removeNetworkRoute, createNetworkRoute,
   listVolumesRoute, removeVolumeRoute, createVolumeRoute,
+  listContainerFilesRoute, readContainerFileRoute,
 ] as const);
 
 export default router;
