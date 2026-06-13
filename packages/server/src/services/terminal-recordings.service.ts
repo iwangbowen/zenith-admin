@@ -147,6 +147,21 @@ export async function deleteRecording(id: number) {
   }
 }
 
+/** 清除录屏记录。months=0 删除全部，否则删除 N 个月前的记录。 */
+export async function cleanRecordings(months: number) {
+  if (months === 0) {
+    const result = await db.delete(terminalRecordings).returning({ id: terminalRecordings.id });
+    return result.length;
+  }
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  const result = await db
+    .delete(terminalRecordings)
+    .where(lt(terminalRecordings.createdAt, cutoff))
+    .returning({ id: terminalRecordings.id });
+  return result.length;
+}
+
 /** 全局录屏统计（管理员审计）。 */
 export async function getRecordingStats() {
   const [summaryRows, byOperatorRows, byShellRows, trendRows, retainDays, maxSizeMb] = await Promise.all([

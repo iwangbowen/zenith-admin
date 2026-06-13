@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Button, Input, Modal, Tag, Toast, Popconfirm } from '@douyinfe/semi-ui';
+import { Button, Input, Modal, Tag, Toast, Popconfirm, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw, Trash2, ChevronDown } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -39,6 +39,7 @@ export default function TerminalRecordingsPage() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [playRec, setPlayRec] = useState<RecordingDetail | null>(null);
   const [playLoading, setPlayLoading] = useState(false);
+  const [clearLoading, setClearLoading] = useState(false);
 
   const { page, pageSize, resetPage, buildPagination } = usePagination();
 
@@ -86,6 +87,30 @@ export default function TerminalRecordingsPage() {
       Toast.success('已删除');
       void fetchList(page, pageSize, searchKeyword);
     }
+  };
+
+  const clearLabels: Record<number, string> = { 0: '全部', 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
+
+  const handleClear = (months: number) => {
+    const label = months === 0 ? '全部录屏' : `${clearLabels[months]}前的录屏`;
+    Modal.confirm({
+      title: `确认清除${label}？`,
+      content: `此操作将永久删除${label}，不可恢复。`,
+      okType: 'danger',
+      okText: '确认清除',
+      cancelText: '取消',
+      onOk: async () => {
+        setClearLoading(true);
+        const params = new URLSearchParams({ months: String(months) });
+        const res = await request.delete(`/api/terminal-recordings/clean?${params.toString()}`);
+        setClearLoading(false);
+        if (res.code === 0) {
+          Toast.success(res.message ?? '清除成功');
+          resetPage();
+          void fetchList(1, pageSize, searchKeyword);
+        }
+      },
+    });
   };
 
   const columns: ColumnProps<Recording>[] = [
@@ -153,6 +178,35 @@ export default function TerminalRecordingsPage() {
         />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        <SplitButtonGroup>
+          <Button
+            type="danger"
+            theme="light"
+            icon={<Trash2 size={14} />}
+            loading={clearLoading}
+            onClick={() => handleClear(12)}
+          >
+            清除录屏
+          </Button>
+          <Dropdown
+            trigger="click"
+            position="bottomRight"
+            clickToHide
+            render={(
+              <Dropdown.Menu>
+                {([12, 6, 3, 1] as const).map((m) => (
+                  <Dropdown.Item key={m} onClick={() => handleClear(m)}>
+                    清除{clearLabels[m]}前的录屏
+                  </Dropdown.Item>
+                ))}
+                <Dropdown.Divider />
+                <Dropdown.Item type="danger" onClick={() => handleClear(0)}>清除全部录屏</Dropdown.Item>
+              </Dropdown.Menu>
+            )}
+          >
+            <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
+          </Dropdown>
+        </SplitButtonGroup>
       </SearchToolbar>
 
       <ConfigurableTable

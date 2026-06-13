@@ -19,6 +19,7 @@ import {
   listRecordings,
   getRecording,
   deleteRecording,
+  cleanRecordings,
 } from '../services/terminal-recordings.service';
 
 const recordingsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -103,6 +104,21 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-recordingsRouter.openapiRoutes([listRoute, createRoute_, getRoute, deleteRoute] as const);
+const cleanRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/clean', tags: ['TerminalRecordings'], summary: '清除录屏记录',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '清除终端录屏', module: 'Web 终端' } })] as const,
+    request: { query: z.object({ months: z.coerce.number().int().min(0).default(0) }) },
+    responses: { ...commonErrorResponses, ...okMsg('清除成功') },
+  }),
+  handler: async (c) => {
+    const { months } = c.req.valid('query');
+    const deleted = await cleanRecordings(months);
+    return c.json(okBody(null, `共删除 ${deleted} 条录屏记录`), 200);
+  },
+});
+
+recordingsRouter.openapiRoutes([listRoute, createRoute_, cleanRoute, getRoute, deleteRoute] as const);
 
 export default recordingsRouter;
