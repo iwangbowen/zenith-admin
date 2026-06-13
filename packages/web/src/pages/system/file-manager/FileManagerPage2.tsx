@@ -710,6 +710,23 @@ export default function FileManagerPage() {
       collapsible
       master={
         <>
+          <MasterDetailLayout.Header
+            extra={
+              rootInfo?.home && (
+                <Tooltip content="主目录">
+                  <Button
+                    size="small"
+                    theme="borderless"
+                    type="tertiary"
+                    icon={<Home size={13} />}
+                    onClick={() => void navigateTo(rootInfo.home)}
+                  />
+                </Tooltip>
+              )
+            }
+          >
+            <Typography.Text strong style={{ fontSize: 13 }}>目录导航</Typography.Text>
+          </MasterDetailLayout.Header>
           {rootInfo?.isWindows && rootInfo.drives.length > 1 && (
             <div className="fm-sidebar__drives">
               {rootInfo.drives.map((d) => {
@@ -727,20 +744,6 @@ export default function FileManagerPage() {
                   </Button>
                 );
               })}
-            </div>
-          )}
-          {rootInfo?.home && (
-            <div className="fm-sidebar__shortcuts">
-              <Button
-                size="small"
-                theme="borderless"
-                type="tertiary"
-                icon={<Home size={13} />}
-                onClick={() => void navigateTo(rootInfo.home)}
-                style={{ width: '100%', justifyContent: 'flex-start', paddingLeft: 8 }}
-              >
-                主目录
-              </Button>
             </div>
           )}
           <div className="fm-sidebar__dirs">
