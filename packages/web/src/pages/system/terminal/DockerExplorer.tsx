@@ -202,10 +202,11 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
     }
   }, []);
 
-  const handleSelect = useCallback((_keys: unknown, info: { node: DockerTreeNode }) => {
-    const key = String(info.node.key ?? '');
-    if (key.startsWith('file:')) {
-      const withoutPrefix = key.slice('file:'.length);
+  const handleSelect = useCallback((keys: unknown) => {
+    const selectedKey = Array.isArray(keys) ? (keys[0] as string | undefined) : (typeof keys === 'string' ? keys : undefined);
+    if (!selectedKey) return;
+    if (selectedKey.startsWith('file:')) {
+      const withoutPrefix = selectedKey.slice('file:'.length);
       const firstColon = withoutPrefix.indexOf(':');
       if (firstColon >= 0) {
         const containerId = withoutPrefix.slice(0, firstColon);
@@ -312,10 +313,7 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
             <Tree
               treeData={treeData as TreeNodeData[]}
               loadData={(node) => loadData(node as DockerTreeNode)}
-              onSelect={(_keys, _info) => {
-                const info = _info as unknown as { node: DockerTreeNode };
-                handleSelect(_keys, info);
-              }}
+              onSelect={(keys) => handleSelect(keys)}
               renderLabel={(label, node) => renderLabel(label, node as DockerTreeNode)}
               style={{ fontSize: 12 }}
               motion={false}
