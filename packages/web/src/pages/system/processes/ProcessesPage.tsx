@@ -17,13 +17,8 @@ import { TOKEN_KEY } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import type { ProcessInfo, ProcessListResponse } from '@zenith/shared';
 
-// 让操作列的固定分隔线在任何情况下都可见
-const processesTableStyle = `
-  .processes-table .semi-table-cell-fixed-right-first {
-    border-left: 2px solid var(--semi-color-border) !important;
-    box-shadow: -4px 0 8px -4px rgba(0,0,0,.15) !important;
-  }
-`;
+// 自定义进程表格 CSS
+const processesTableStyle = '';
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────
 function formatBytes(bytes: number): string {
