@@ -315,8 +315,13 @@ function ContainersTab() {
         onRefresh={() => void fetchContainers()} refreshLoading={loading}
         empty="未检测到 Docker 容器" pagination={{ pageSize: 30, showSizeChanger: true }}
         expandedRowKeys={expandedKeys}
-        onExpand={(expanded: boolean | undefined, record: ContainerInfo) =>
-          setExpandedKeys(prev => expanded ? [...prev, record.id] : prev.filter(k => k !== record.id))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onExpand={(expanded: boolean | undefined, record: any) =>
+          setExpandedKeys(prev => {
+            const id = record?.id as string | undefined;
+            if (!id) return prev;
+            return expanded ? [...prev, id] : prev.filter(k => k !== id);
+          })
         }
       />
 
