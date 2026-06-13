@@ -5,7 +5,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Button, Input, Space, Tooltip, Dropdown, Modal, Toast,
-  Typography, Tag, Spin, Breadcrumb, Popconfirm, ImagePreview,
+  Typography, Tag, Spin, Breadcrumb, Popconfirm, ImagePreview, Checkbox,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Icon } from '@iconify/react';
@@ -176,6 +176,78 @@ function FsGridCard({ entry, selected, onSelect, onOpen, onContextMenu }: Readon
         <div className="fm-grid-card__name">{entry.name}</div>
       </Tooltip>
       <div className="fm-grid-card__meta">{isDir ? '—' : formatSize(entry.size)}</div>
+    </div>
+  );
+}
+
+// ── 权限编辑器 ─────────────────────────────────────────────────────────────────
+
+function modeToOctal(mode: number) { return mode.toString(8).padStart(3, '0'); }
+function octalToMode(v: string) { const n = Number.parseInt(v, 8); return Number.isNaN(n) ? 0 : n; }
+function modeToSymbolic(mode: number) {
+  const bits = ['r', 'w', 'x'];
+  return [0o400, 0o200, 0o100, 0o040, 0o020, 0o010, 0o004, 0o002, 0o001]
+    .map((m, i) => (mode & m) ? bits[i % 3] : '-').join('');
+}
+/** 将 rwxr-xr-x 格式的权限字符串转为八进制字符串 */
+function permStringToOctal(perm?: string): string {
+  if (!perm) return '';
+  const p = perm.replace(/^[dl\-]/, '').slice(0, 9);
+  const masks = [0o400, 0o200, 0o100, 0o040, 0o020, 0o010, 0o004, 0o002, 0o001];
+  let mode = 0;
+  for (let i = 0; i < 9 && i < p.length; i++) if (p[i] !== '-') mode |= masks[i];
+  return modeToOctal(mode);
+}
+
+const CHMOD_ROWS = [
+  { label: '读 (r)', bits: [0o400, 0o040, 0o004] as const },
+  { label: '写 (w)', bits: [0o200, 0o020, 0o002] as const },
+  { label: '执行 (x)', bits: [0o100, 0o010, 0o001] as const },
+];
+
+interface ChmodEditorProps {
+  readonly value: string;
+  readonly onChange: (v: string) => void;
+}
+
+function ChmodEditor({ value, onChange }: Readonly<ChmodEditorProps>) {
+  const mode = octalToMode(value);
+  const toggle = (bit: number) => onChange(modeToOctal(mode ^ bit));
+  const symbolic = value ? modeToSymbolic(mode) : '—';
+  return (
+    <div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+        <thead>
+          <tr>
+            <th style={{ width: 76, textAlign: 'left', padding: '4px 0', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 400 }} />
+            {['所有者', '群组', '其他用户'].map((h) => (
+              <th key={h} style={{ textAlign: 'center', padding: '4px 8px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500 }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {CHMOD_ROWS.map((row) => (
+            <tr key={row.label}>
+              <td style={{ fontSize: 13, padding: '6px 0', color: 'var(--semi-color-text-1)' }}>{row.label}</td>
+              {row.bits.map((bit) => (
+                <td key={bit} style={{ textAlign: 'center', padding: '6px 8px' }}>
+                  <Checkbox checked={(mode & bit) !== 0} onChange={() => toggle(bit)} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+        <div style={{ flex: 1 }}>
+          <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 4 }}>八进制值</Typography.Text>
+          <Input value={value} onChange={onChange} placeholder="755" maxLength={4} style={{ fontFamily: 'monospace' }} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 4 }}>符号表示</Typography.Text>
+          <div style={{ fontFamily: 'monospace', fontSize: 16, letterSpacing: 2, color: 'var(--semi-color-text-0)', height: 32, display: 'flex', alignItems: 'center' }}>{symbolic}</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -723,7 +795,7 @@ export default function FileManagerPage() {
       { label: '复制到…', fn: () => { setFolderPicker({ mode: 'copy', entries: [entry] }); closeCtxMenu(); } },
       { label: '移动到…', fn: () => { setFolderPicker({ mode: 'move', entries: [entry] }); closeCtxMenu(); } },
       { label: '压缩为 ZIP', fn: () => { setDialog({ mode: 'compress', selEntries: [entry], value: `${entry.name}.zip` }); closeCtxMenu(); } },
-      { label: '修改权限', fn: () => { setDialog({ mode: 'chmod', entry, value: '' }); closeCtxMenu(); } },
+      { label: '修改权限', fn: () => { setDialog({ mode: 'chmod', entry, value: permStringToOctal(entry.permissions) }); closeCtxMenu(); } },
       ...(entry.type === 'dir' ? [{ label: '上传到此目录', fn: () => { ctxUploadDirRef.current = entry.path; ctxUploadInputRef.current?.click(); closeCtxMenu(); } }] : []),
       { label: '删除', fn: () => { Modal.confirm({ title: '确定删除此项吗？', okType: 'danger', onOk: () => handleDelete([entry.path]) }); closeCtxMenu(); }, danger: true },
     ];
@@ -781,7 +853,7 @@ export default function FileManagerPage() {
                 <Dropdown.Item onClick={() => setFolderPicker({ mode: 'copy', entries: [r] })}>复制到…</Dropdown.Item>
                 <Dropdown.Item onClick={() => setFolderPicker({ mode: 'move', entries: [r] })}>移动到…</Dropdown.Item>
                 <Dropdown.Item onClick={() => setDialog({ mode: 'compress', selEntries: [r], value: `${r.name}.zip` })}>压缩为 ZIP</Dropdown.Item>
-                <Dropdown.Item onClick={() => setDialog({ mode: 'chmod', entry: r, value: '' })}>修改权限</Dropdown.Item>
+                <Dropdown.Item onClick={() => setDialog({ mode: 'chmod', entry: r, value: permStringToOctal(r.permissions) })}>修改权限</Dropdown.Item>
                 <Dropdown.Divider />
                 <Dropdown.Item
                   type="danger"
@@ -1052,18 +1124,10 @@ export default function FileManagerPage() {
             width={480}
           >
             {dialog?.mode === 'chmod' ? (
-              <div>
-                <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 6 }}>
-                  输入八进制权限值，如 755（rwxr-xr-x）、644（rw-r--r--）
-                </Typography.Text>
-                <Input
-                  value={dialog.value}
-                  onChange={(v) => setDialog((d) => d ? { ...d, value: v } : d)}
-                  onEnterPress={() => void confirmDialog()}
-                  placeholder="755"
-                  maxLength={4}
-                />
-              </div>
+              <ChmodEditor
+                value={dialog.value}
+                onChange={(v) => setDialog((d) => d ? { ...d, value: v } : d)}
+              />
             ) : (
               <Input
                 autoFocus
