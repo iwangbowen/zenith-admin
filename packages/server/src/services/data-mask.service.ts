@@ -147,11 +147,11 @@ export async function applyEntityMasking<T extends Record<string, unknown>>(
 // ─── 扫描敏感字段 ──────────────────────────────────────────────────────────────
 
 const SENSITIVE_PATTERNS: Array<{ test: (col: string) => boolean; maskType: MaskType; label: string }> = [
-  { test: (c) => /phone|mobile/i.test(c),                            maskType: 'phone',     label: '手机号' },
-  { test: (c) => /email|mail/i.test(c),                              maskType: 'email',     label: '邮箱' },
-  { test: (c) => /id_card|idcard|identity|id_num|cert_no/i.test(c), maskType: 'id_card',   label: '身份证号' },
-  { test: (c) => /bank|bank_card|bankcard|card_no/i.test(c),        maskType: 'bank_card', label: '银行卡号' },
-  { test: (c) => /real_name|realname|full_name|fullname/i.test(c),  maskType: 'name',      label: '姓名' },
+  { test: (c) => /phone|mobile|cellphone|phoneno|phone_no/i.test(c),                                                 maskType: 'phone',     label: '手机号' },
+  { test: (c) => /email|emailaddr/i.test(c),                                                                          maskType: 'email',     label: '邮箱' },
+  { test: (c) => /id_card|idcard|idno|id_no|idnumber|id_number|certno|cert_no|identity|cert_num|certnum/i.test(c),   maskType: 'id_card',   label: '身份证号' },
+  { test: (c) => /bank|bankcard|bank_card|bankno|bank_no|cardno|card_no/i.test(c),                                   maskType: 'bank_card', label: '银行卡号' },
+  { test: (c) => /real_name|realname|full_name|fullname|truename|true_name|chinesename/i.test(c),                     maskType: 'name',      label: '姓名' },
 ];
 
 export async function scanSensitiveFields(): Promise<SensitiveField[]> {
@@ -161,15 +161,23 @@ export async function scanSensitiveFields(): Promise<SensitiveField[]> {
       FROM information_schema.columns
       WHERE table_schema = 'public'
         AND (
-          column_name ILIKE '%phone%'     OR column_name ILIKE '%mobile%'    OR
-          column_name ILIKE '%email%'     OR column_name ILIKE '%mail%'      OR
-          column_name ILIKE '%id_card%'   OR column_name ILIKE '%idcard%'    OR
-          column_name ILIKE '%identity%'  OR column_name ILIKE '%id_num%'    OR
-          column_name ILIKE '%cert_no%'   OR
-          column_name ILIKE '%bank%'      OR column_name ILIKE '%bankcard%'  OR
-          column_name ILIKE '%card_no%'   OR
-          column_name ILIKE '%real_name%' OR column_name ILIKE '%realname%'  OR
-          column_name ILIKE '%full_name%' OR column_name ILIKE '%fullname%'
+          column_name ILIKE '%phone%'       OR column_name ILIKE '%mobile%'      OR
+          column_name ILIKE '%cellphone%'   OR column_name ILIKE '%phoneno%'     OR
+          column_name ILIKE '%phone_no%'    OR
+          column_name ILIKE '%email%'       OR
+          column_name ILIKE '%id_card%'     OR column_name ILIKE '%idcard%'      OR
+          column_name ILIKE '%idno%'        OR column_name ILIKE '%id_no%'       OR
+          column_name ILIKE '%idnumber%'    OR column_name ILIKE '%id_number%'   OR
+          column_name ILIKE '%certno%'      OR column_name ILIKE '%cert_no%'     OR
+          column_name ILIKE '%certnum%'     OR column_name ILIKE '%identity%'    OR
+          column_name ILIKE '%bank%'        OR column_name ILIKE '%bankcard%'    OR
+          column_name ILIKE '%bank_card%'   OR column_name ILIKE '%bankno%'      OR
+          column_name ILIKE '%bank_no%'     OR column_name ILIKE '%cardno%'      OR
+          column_name ILIKE '%card_no%'     OR
+          column_name ILIKE '%real_name%'   OR column_name ILIKE '%realname%'    OR
+          column_name ILIKE '%full_name%'   OR column_name ILIKE '%fullname%'    OR
+          column_name ILIKE '%truename%'    OR column_name ILIKE '%true_name%'   OR
+          column_name ILIKE '%chinesename%'
         )
       ORDER BY table_name, column_name
     `),
