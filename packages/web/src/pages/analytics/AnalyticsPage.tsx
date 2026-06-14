@@ -252,7 +252,7 @@ function FeatureUsageTab() {
         columns={columns}
         dataSource={data?.items ?? []}
         loading={loading}
-        rowKey={(r: FeatureStatItem) => `${r.pagePath}_${r.elementKey}`}
+        rowKey={(r) => `${r?.pagePath}_${r?.elementKey}`}
         bordered
         empty={<Empty description="暂无功能使用数据" style={{ padding: 60 }} />}
         pagination={false}
@@ -404,27 +404,31 @@ function HeatmapTab() {
       {pages.length > 0 && (
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
           {pages.map((p) => (
-            <Card
+            <div
               key={p.pagePath}
-              style={{ flex: '0 0 auto', cursor: 'pointer', border: selectedPage === p.pagePath ? '1px solid var(--semi-color-primary)' : undefined }}
-              bodyStyle={{ padding: '8px 14px' }}
+              style={{ flex: '0 0 auto', cursor: 'pointer' }}
               onClick={() => { setSelectedPage(p.pagePath); setSelectedArea(null); }}
             >
-              <Text strong size="small">{p.pageTitle ?? p.pagePath}</Text>
-              <div>
-                {p.areas.map((area) => (
-                  <Tag
-                    key={area}
-                    size="small"
-                    color={selectedPage === p.pagePath && selectedArea === area ? 'blue' : 'grey'}
-                    style={{ marginRight: 4, marginTop: 4, cursor: 'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); setSelectedPage(p.pagePath); setSelectedArea(area); }}
-                  >
-                    {area}
-                  </Tag>
-                ))}
-              </div>
-            </Card>
+              <Card
+                style={{ border: selectedPage === p.pagePath ? '1px solid var(--semi-color-primary)' : undefined }}
+                bodyStyle={{ padding: '8px 14px' }}
+              >
+                <Text strong size="small">{p.pageTitle ?? p.pagePath}</Text>
+                <div>
+                  {p.areas.map((area) => (
+                    <Tag
+                      key={area}
+                      size="small"
+                      color={selectedPage === p.pagePath && selectedArea === area ? 'blue' : 'grey'}
+                      style={{ marginRight: 4, marginTop: 4, cursor: 'pointer' }}
+                      onClick={(e) => { e.stopPropagation(); setSelectedPage(p.pagePath); setSelectedArea(area); }}
+                    >
+                      {area}
+                    </Tag>
+                  ))}
+                </div>
+              </Card>
+            </div>
           ))}
         </div>
       )}
@@ -555,7 +559,7 @@ function UserStatsTab() {
         columns={columns}
         dataSource={data?.items ?? []}
         loading={loading}
-        rowKey={(r: UserStatItem) => String(r.userId ?? r.username ?? 'unknown')}
+        rowKey={(r) => String(r?.userId ?? r?.username ?? 'unknown')}
         bordered
         empty={<Empty description="暂无用户行为数据" style={{ padding: 60 }} />}
         pagination={false}

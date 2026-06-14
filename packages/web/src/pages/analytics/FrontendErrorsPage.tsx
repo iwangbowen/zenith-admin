@@ -144,7 +144,7 @@ export default function FrontendErrorsPage() {
       key: 'count',
       width: 90,
       render: (v: number) => {
-        let color = 'grey';
+        let color: 'grey' | 'red' | 'orange' = 'grey';
         if (v >= 10) color = 'red';
         else if (v >= 3) color = 'orange';
         return <Tag color={color} size="small">{v}</Tag>;
@@ -299,7 +299,7 @@ export default function FrontendErrorsPage() {
         {detailItem && (
           <div>
             <div style={{ marginBottom: 12 }}>
-              <Tag color={ERROR_TYPE_CONFIG[detailItem.errorType]?.color ?? 'grey'}>
+              <Tag color={(ERROR_TYPE_CONFIG[detailItem.errorType]?.color ?? 'grey') as 'grey' | 'red' | 'orange' | 'yellow'}>
                 {ERROR_TYPE_CONFIG[detailItem.errorType]?.label ?? detailItem.errorType}
               </Tag>
               <Text style={{ marginLeft: 8 }} strong>触发 {detailItem.count} 次</Text>
