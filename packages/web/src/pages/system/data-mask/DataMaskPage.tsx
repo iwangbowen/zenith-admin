@@ -14,10 +14,11 @@ import {
   Col,
   Spin,
   Switch,
+  Table,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { DataMaskConfig, MaskType, Role, PaginatedResponse } from '@zenith/shared';
+import { Database, Plus, RotateCcw, Search } from 'lucide-react';
+import type { DataMaskConfig, MaskType, Role, PaginatedResponse, SensitiveField } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -89,6 +90,14 @@ export default function DataMaskPage() {
   const [maskTypePreview, setMaskTypePreview] = useState<MaskType>('phone');
   const formRef = useRef<FormApi>(null);
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+
+  // ─── 扫描状态 ─────────────────────────────────────────────────────────────────
+  const [scanVisible, setScanVisible] = useState(false);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanResults, setScanResults] = useState<SensitiveField[] | null>(null);
+  const [scanSelected, setScanSelected] = useState<string[]>([]);
+  const [scanEdits, setScanEdits] = useState<Record<string, { maskType: MaskType; label: string; entity: string }>>({});
+  const [creatingBatch, setCreatingBatch] = useState(false);
 
   const handleToggleStatus = (record: DataMaskConfig, checked: boolean) => {
     const doToggle = async () => {
@@ -185,6 +194,86 @@ export default function DataMaskPage() {
     } catch (err: unknown) {
       const msg = (err as { message?: string })?.message;
       Toast.error(msg || '删除失败');
+    }
+  };
+
+  // ─── 扫描处理 ──────────────────────────────────────────────────────────────────
+
+  const openScan = () => {
+    setScanVisible(true);
+    setScanResults(null);
+    setScanSelected([]);
+    setScanEdits({});
+  };
+
+  const closeScan = () => {
+    setScanVisible(false);
+    setScanResults(null);
+    setScanSelected([]);
+    setScanEdits({});
+  };
+
+  const handleScan = async () => {
+    setScanLoading(true);
+    try {
+      const res = await request.get<SensitiveField[]>('/api/data-mask-configs/scan');
+      if (res.code === 0) {
+        const results = res.data ?? [];
+        setScanResults(results);
+        setScanSelected(results.filter((r) => !r.hasRule).map((r) => `${r.tableName}:${r.columnName}`));
+        setScanEdits({});
+      } else {
+        Toast.error(res.message || '扫描失败');
+      }
+    } catch (err: unknown) {
+      Toast.error((err as { message?: string })?.message || '扫描失败');
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  const getScanEdit = (record: SensitiveField) => {
+    const key = `${record.tableName}:${record.columnName}`;
+    return scanEdits[key] ?? { entity: record.tableName, label: record.suggestedLabel, maskType: record.suggestedMaskType };
+  };
+
+  const setScanEdit = (record: SensitiveField, patch: Partial<{ maskType: MaskType; label: string; entity: string }>) => {
+    const key = `${record.tableName}:${record.columnName}`;
+    setScanEdits((prev) => ({
+      ...prev,
+      [key]: { ...getScanEdit(record), ...patch },
+    }));
+  };
+
+  const handleBatchCreate = async () => {
+    if (scanSelected.length === 0) return;
+    const items = scanSelected.map((key) => {
+      const record = scanResults!.find((r) => `${r.tableName}:${r.columnName}` === key)!;
+      const edit = scanEdits[key] ?? { entity: record.tableName, label: record.suggestedLabel, maskType: record.suggestedMaskType };
+      return {
+        entity:          edit.entity,
+        field:           record.columnName,
+        label:           edit.label,
+        maskType:        edit.maskType,
+        exemptRoleCodes: [] as string[],
+        enabled:         true,
+      };
+    });
+    setCreatingBatch(true);
+    try {
+      const res = await request.post<{ created: number; skipped: number }>('/api/data-mask-configs/batch-create', { items });
+      if (res.code === 0) {
+        const skippedMsg = res.data.skipped > 0 ? `，跳过 ${res.data.skipped} 条（已有规则）` : '';
+        Toast.success(`已生成 ${res.data.created} 条规则${skippedMsg}`);
+        closeScan();
+        void fetchData();
+      } else {
+        Toast.error(res.message || '生成规则失败');
+      }
+    } catch (err: unknown) {
+      Toast.error((err as { message?: string })?.message || '生成规则失败');
+    } finally {
+      setCreatingBatch(false);
     }
   };
 
@@ -322,6 +411,9 @@ export default function DataMaskPage() {
         </Select>
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        {hasPermission('system:data-mask:list') && (
+          <Button icon={<Database size={14} />} onClick={openScan}>扫描敏感字段</Button>
+        )}
         {hasPermission('system:data-mask:create') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>
         )}
@@ -340,8 +432,7 @@ export default function DataMaskPage() {
       />
 
       <AppModal
-        title={editing ? '编辑脱敏规则' : '新增脱敏规则'}
-        visible={modalVisible}
+        title={editing ? '编辑脱敏规则' : '新增脱敏规则'}        visible={modalVisible}
         onCancel={closeModal}
         onOk={handleSubmit}
         okText={editing ? '保存' : '创建'}
@@ -449,6 +540,135 @@ export default function DataMaskPage() {
         </Form>
         </Spin>
       </AppModal>
+
+      {/* ─── 扫描敏感字段对话框 ───────────────────────────────────────────────── */}
+      <Modal
+        title="扫描数据库敏感字段"
+        visible={scanVisible}
+        onCancel={closeScan}
+        width={980}
+        footer={
+          scanResults !== null && scanResults.length > 0 ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography.Text type="secondary" size="small">
+                共发现 {scanResults.length} 个字段，已勾选 {scanSelected.length} 个
+              </Typography.Text>
+              <Space>
+                <Button onClick={closeScan}>取消</Button>
+                <Button
+                  type="primary"
+                  loading={creatingBatch}
+                  disabled={scanSelected.length === 0}
+                  onClick={() => void handleBatchCreate()}
+                >
+                  生成规则（{scanSelected.length}）
+                </Button>
+              </Space>
+            </div>
+          ) : (
+            <Button onClick={closeScan}>关闭</Button>
+          )
+        }
+      >
+        {scanResults === null ? (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 20 }}>
+              自动识别数据库表中字段名含 <Typography.Text code>phone</Typography.Text>、<Typography.Text code>email</Typography.Text>、<Typography.Text code>id_card</Typography.Text>、<Typography.Text code>bank</Typography.Text> 等关键字的列，并给出脱敏建议。
+            </Typography.Text>
+            <Button type="primary" icon={<Database size={14} />} loading={scanLoading} onClick={() => void handleScan()}>
+              开始扫描
+            </Button>
+          </div>
+        ) : null}
+        {scanResults !== null && scanResults.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <Typography.Text type="secondary">未发现敏感字段，或所有敏感字段已配置规则。</Typography.Text>
+            <div style={{ marginTop: 16 }}>
+              <Button size="small" type="tertiary" loading={scanLoading} onClick={() => void handleScan()}>重新扫描</Button>
+            </div>
+          </div>
+        )}
+        {scanResults !== null && scanResults.length > 0 && (
+          <>
+            <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Button size="small" type="tertiary" loading={scanLoading} onClick={() => void handleScan()}>重新扫描</Button>
+              <Typography.Text size="small" type="secondary">可编辑实体名、字段标签、脱敏类型后批量生成规则</Typography.Text>
+            </div>
+            <Table
+              size="small"
+              bordered
+              rowKey={(r: SensitiveField | undefined) => r ? `${r.tableName}:${r.columnName}` : ''}
+              rowSelection={{
+                selectedRowKeys: scanSelected,
+                onChange: (keys) => setScanSelected(keys as string[]),
+              }}
+              dataSource={scanResults}
+              pagination={false}
+              scroll={{ y: 400, x: 'max-content' }}
+              columns={[
+                {
+                  title: '表名', dataIndex: 'tableName', width: 160,
+                  render: (v: string) => <Typography.Text code size="small">{v}</Typography.Text>,
+                },
+                {
+                  title: '字段名', dataIndex: 'columnName', width: 140,
+                  render: (v: string) => <Typography.Text code size="small">{v}</Typography.Text>,
+                },
+                {
+                  title: '数据类型', dataIndex: 'dataType', width: 160,
+                  render: (v: string) => <Typography.Text type="quaternary" size="small">{v}</Typography.Text>,
+                },
+                {
+                  title: <span>实体名 <Typography.Text type="quaternary" size="small">（可编辑）</Typography.Text></span>,
+                  dataIndex: 'tableName',
+                  width: 150,
+                  render: (_: unknown, record: SensitiveField) => (
+                    <Input
+                      size="small"
+                      value={getScanEdit(record).entity}
+                      onChange={(v) => setScanEdit(record, { entity: v })}
+                      style={{ width: '100%' }}
+                    />
+                  ),
+                },
+                {
+                  title: <span>字段标签 <Typography.Text type="quaternary" size="small">（可编辑）</Typography.Text></span>,
+                  dataIndex: 'suggestedLabel',
+                  width: 140,
+                  render: (_: unknown, record: SensitiveField) => (
+                    <Input
+                      size="small"
+                      value={getScanEdit(record).label}
+                      onChange={(v) => setScanEdit(record, { label: v })}
+                      style={{ width: '100%' }}
+                    />
+                  ),
+                },
+                {
+                  title: '脱敏类型',
+                  dataIndex: 'suggestedMaskType',
+                  width: 150,
+                  render: (_: unknown, record: SensitiveField) => (
+                    <Select
+                      size="small"
+                      value={getScanEdit(record).maskType}
+                      style={{ width: '100%' }}
+                      onChange={(v) => setScanEdit(record, { maskType: v as MaskType })}
+                      optionList={MASK_TYPE_OPTIONS}
+                    />
+                  ),
+                },
+                {
+                  title: '状态', dataIndex: 'hasRule', width: 90, fixed: 'right' as const,
+                  render: (v: boolean) => v
+                    ? <Tag color="orange" size="small">已有规则</Tag>
+                    : <Tag color="green" size="small">新规则</Tag>,
+                },
+              ]}
+            />
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

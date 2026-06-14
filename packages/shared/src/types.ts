@@ -1794,6 +1794,15 @@ export interface DataMaskConfig {
   updatedAt: string;
 }
 
+export interface SensitiveField {
+  tableName: string;
+  columnName: string;
+  dataType: string;
+  suggestedMaskType: MaskType;
+  suggestedLabel: string;
+  hasRule: boolean;
+}
+
 // ─── OAuth2 服务端 ─────────────────────────────────────────────────────────
 
 export interface OAuth2Client {

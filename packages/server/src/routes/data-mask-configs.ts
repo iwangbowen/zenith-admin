@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody, PaginationQuery } from '../lib/openapi-schemas';
-import { DataMaskConfigDTO } from '../lib/openapi-dtos';
+import { DataMaskConfigDTO, SensitiveFieldDTO } from '../lib/openapi-dtos';
 import { maskTypeValues } from '@zenith/shared';
 import {
   listDataMaskConfigs,
@@ -10,6 +10,8 @@ import {
   createDataMaskConfig,
   updateDataMaskConfig,
   deleteDataMaskConfig,
+  scanSensitiveFields,
+  batchCreateDataMaskConfigs,
 } from '../services/data-mask.service';
 
 const dataMaskConfigsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -102,6 +104,48 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-dataMaskConfigsRouter.openapiRoutes([listRoute, getOneRoute, createRoute_, updateRoute, deleteRoute] as const);
+const scanRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/scan', tags: ['DataMaskConfigs'], summary: '扫描数据库敏感字段',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:data-mask:list' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(SensitiveFieldDTO), '扫描结果') },
+  }),
+  handler: async (c) => c.json(okBody(await scanSensitiveFields()), 200),
+});
+
+const batchCreateRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/batch-create', tags: ['DataMaskConfigs'], summary: '批量创建脱敏规则',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:data-mask:create', audit: { description: '批量创建脱敏规则', module: '数据脱敏配置' } })] as const,
+    request: {
+      body: {
+        content: jsonContent(z.object({
+          items: z.array(z.object({
+            entity:          z.string().min(1).max(64),
+            field:           z.string().min(1).max(64),
+            label:           z.string().min(1).max(64),
+            maskType:        z.enum(maskTypeValues),
+            exemptRoleCodes: z.array(z.string()).default([]),
+            enabled:         z.boolean().default(true),
+          })).min(1),
+        })),
+        required: true,
+      },
+    },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.object({ created: z.number(), skipped: z.number() }).openapi('BatchCreateResult'), '批量创建结果'),
+    },
+  }),
+  handler: async (c) => {
+    const { items } = c.req.valid('json');
+    const result = await batchCreateDataMaskConfigs(items);
+    return c.json(okBody(result, `已创建 ${result.created} 条，跳过 ${result.skipped} 条`), 200);
+  },
+});
+
+dataMaskConfigsRouter.openapiRoutes([listRoute, scanRoute, batchCreateRoute, getOneRoute, createRoute_, updateRoute, deleteRoute] as const);
 
 export default dataMaskConfigsRouter;

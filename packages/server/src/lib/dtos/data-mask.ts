@@ -22,3 +22,14 @@ export const DataMaskConfigDTO = z
     updatedAt:       z.string(),
   })
   .openapi('DataMaskConfig');
+
+export const SensitiveFieldDTO = z
+  .object({
+    tableName:         z.string().openapi({ example: 'users' }),
+    columnName:        z.string().openapi({ example: 'phone' }),
+    dataType:          z.string().openapi({ example: 'character varying' }),
+    suggestedMaskType: z.enum(['phone', 'email', 'id_card', 'name', 'bank_card', 'custom']),
+    suggestedLabel:    z.string().openapi({ example: '手机号' }),
+    hasRule:           z.boolean().openapi({ description: '是否已有脱敏规则' }),
+  })
+  .openapi('SensitiveField');

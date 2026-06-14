@@ -1,4 +1,4 @@
-import { eq, ilike, or, and } from 'drizzle-orm';
+import { eq, ilike, or, and, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { dataMaskConfigs } from '../db/schema';
@@ -7,7 +7,7 @@ import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { applyMask } from '../lib/masking';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import type { DataMaskConfigRow } from '../db/schema';
-import type { DataMaskConfig, CustomMaskRule, MaskType, CreateDataMaskConfigInput, UpdateDataMaskConfigInput } from '@zenith/shared';
+import type { DataMaskConfig, CustomMaskRule, MaskType, CreateDataMaskConfigInput, UpdateDataMaskConfigInput, SensitiveField } from '@zenith/shared';
 
 // ─── 内存缓存（TTL 5 分钟）───────────────────────────────────────────────────
 
@@ -142,4 +142,86 @@ export async function applyEntityMasking<T extends Record<string, unknown>>(
     (result as Record<string, unknown>)[rule.field] = applyMask(raw, rule.maskType as MaskType, rule.customRule as CustomMaskRule | null) as unknown;
   }
   return result;
+}
+
+// ─── 扫描敏感字段 ──────────────────────────────────────────────────────────────
+
+const SENSITIVE_PATTERNS: Array<{ test: (col: string) => boolean; maskType: MaskType; label: string }> = [
+  { test: (c) => /phone|mobile/i.test(c),                            maskType: 'phone',     label: '手机号' },
+  { test: (c) => /email|mail/i.test(c),                              maskType: 'email',     label: '邮箱' },
+  { test: (c) => /id_card|idcard|identity|id_num|cert_no/i.test(c), maskType: 'id_card',   label: '身份证号' },
+  { test: (c) => /bank|bank_card|bankcard|card_no/i.test(c),        maskType: 'bank_card', label: '银行卡号' },
+  { test: (c) => /real_name|realname|full_name|fullname/i.test(c),  maskType: 'name',      label: '姓名' },
+];
+
+export async function scanSensitiveFields(): Promise<SensitiveField[]> {
+  const [columnRows, existingRules] = await Promise.all([
+    db.execute(sql`
+      SELECT table_name, column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (
+          column_name ILIKE '%phone%'     OR column_name ILIKE '%mobile%'    OR
+          column_name ILIKE '%email%'     OR column_name ILIKE '%mail%'      OR
+          column_name ILIKE '%id_card%'   OR column_name ILIKE '%idcard%'    OR
+          column_name ILIKE '%identity%'  OR column_name ILIKE '%id_num%'    OR
+          column_name ILIKE '%cert_no%'   OR
+          column_name ILIKE '%bank%'      OR column_name ILIKE '%bankcard%'  OR
+          column_name ILIKE '%card_no%'   OR
+          column_name ILIKE '%real_name%' OR column_name ILIKE '%realname%'  OR
+          column_name ILIKE '%full_name%' OR column_name ILIKE '%fullname%'
+        )
+      ORDER BY table_name, column_name
+    `),
+    db.select({ entity: dataMaskConfigs.entity, field: dataMaskConfigs.field }).from(dataMaskConfigs),
+  ]);
+
+  const existingSet = new Set(existingRules.map((r) => `${r.entity}:${r.field}`));
+
+  return (columnRows as unknown as Array<{ table_name: string; column_name: string; data_type: string }>)
+    .map((row) => {
+      const pattern = SENSITIVE_PATTERNS.find((p) => p.test(row.column_name));
+      return {
+        tableName:         row.table_name,
+        columnName:        row.column_name,
+        dataType:          row.data_type,
+        suggestedMaskType: pattern?.maskType ?? 'custom',
+        suggestedLabel:    pattern?.label ?? row.column_name,
+        hasRule:           existingSet.has(`${row.table_name}:${row.column_name}`),
+      };
+    });
+}
+
+// ─── 批量创建 ──────────────────────────────────────────────────────────────────
+
+export async function batchCreateDataMaskConfigs(
+  items: Array<{ entity: string; field: string; label: string; maskType: string; exemptRoleCodes?: string[]; enabled?: boolean }>,
+): Promise<{ created: number; skipped: number }> {
+  if (items.length === 0) return { created: 0, skipped: 0 };
+
+  const existing = await db
+    .select({ entity: dataMaskConfigs.entity, field: dataMaskConfigs.field })
+    .from(dataMaskConfigs);
+  const existingSet = new Set(existing.map((r) => `${r.entity}:${r.field}`));
+
+  const toInsert = items.filter((item) => !existingSet.has(`${item.entity}:${item.field}`));
+  const skipped = items.length - toInsert.length;
+
+  if (toInsert.length > 0) {
+    await db.insert(dataMaskConfigs).values(
+      toInsert.map((item) => ({
+        entity:          item.entity,
+        field:           item.field,
+        label:           item.label,
+        maskType:        item.maskType as MaskType,
+        customRule:      null,
+        exemptRoleCodes: item.exemptRoleCodes ?? [],
+        enabled:         item.enabled ?? true,
+        remark:          null,
+      })),
+    );
+    invalidateMaskCache();
+  }
+
+  return { created: toInsert.length, skipped };
 }
