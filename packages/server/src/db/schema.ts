@@ -423,6 +423,32 @@ export const userEvents = pgTable('user_events', {
 export type UserEventRow = typeof userEvents.$inferSelect;
 export type NewUserEvent = typeof userEvents.$inferInsert;
 
+// ─── 前端错误上报表 ────────────────────────────────────────────────────────────
+export const frontendErrorTypeEnum = pgEnum('frontend_error_type', ['js_error', 'promise_rejection', 'resource_error', 'console_error']);
+
+export const frontendErrors = pgTable('frontend_errors', {
+  id: serial('id').primaryKey(),
+  fingerprint: varchar('fingerprint', { length: 64 }).notNull(), // MD5(type+message+source) for dedup
+  errorType: frontendErrorTypeEnum('error_type').notNull(),
+  message: text('message').notNull(),
+  stack: text('stack'),
+  sourceUrl: varchar('source_url', { length: 512 }),
+  lineNo: integer('line_no'),
+  colNo: integer('col_no'),
+  pageUrl: varchar('page_url', { length: 512 }),
+  userAgent: varchar('user_agent', { length: 512 }),
+  userId: integer('user_id'),
+  username: varchar('username', { length: 64 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  sessionId: varchar('session_id', { length: 36 }),
+  count: integer('count').notNull().default(1),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type FrontendErrorRow = typeof frontendErrors.$inferSelect;
+export type NewFrontendError = typeof frontendErrors.$inferInsert;
+
 // ─── 公告表 ─────────────────────────────────────────────────────────────────
 export const announcements = pgTable('announcements', {
   id: serial('id').primaryKey(),

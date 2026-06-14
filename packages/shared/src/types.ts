@@ -459,6 +459,28 @@ export interface UserStats {
   totalUsers: number;
 }
 
+// ─── 前端错误上报 ──────────────────────────────────────────────────────────────
+export type FrontendErrorType = 'js_error' | 'promise_rejection' | 'resource_error' | 'console_error';
+
+export interface FrontendError {
+  id: number;
+  fingerprint: string;
+  errorType: FrontendErrorType;
+  message: string;
+  stack: string | null;
+  sourceUrl: string | null;
+  lineNo: number | null;
+  colNo: number | null;
+  pageUrl: string | null;
+  userAgent: string | null;
+  userId: number | null;
+  username: string | null;
+  sessionId: string | null;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
 // ─── 公告 ──────────────────────────────────────────────────
 export type AnnouncementPublishStatus = 'draft' | 'published' | 'recalled' | 'scheduled';
 export type AnnouncementType = 'notice' | 'announcement' | 'warning';

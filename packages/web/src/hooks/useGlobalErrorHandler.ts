@@ -1,5 +1,58 @@
 import { useEffect, useRef } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
+import { TOKEN_KEY } from '@zenith/shared';
+
+// ─── Error Reporter ──────────────────────────────────────────────────────────
+
+/** Simple MD5-like fingerprint for deduplication (FNV-1a hash → hex) */
+function hashFingerprint(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.codePointAt(i) ?? 0;
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+function reportToBackend(
+  errorType: 'js_error' | 'promise_rejection' | 'resource_error' | 'console_error',
+  message: string,
+  options?: { stack?: string; sourceUrl?: string; lineNo?: number; colNo?: number },
+) {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return; // only report for authenticated users
+
+    const fingerprint = hashFingerprint(`${errorType}:${message}:${options?.sourceUrl ?? ''}`);
+    const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
+    const sessionId = sessionStorage.getItem('zenith_tracker_sid') ?? undefined;
+
+    const payload = {
+      fingerprint,
+      errorType,
+      message: message.slice(0, 2000),
+      stack: options?.stack?.slice(0, 8000),
+      sourceUrl: options?.sourceUrl?.slice(0, 512),
+      lineNo: options?.lineNo,
+      colNo: options?.colNo,
+      pageUrl: globalThis.location.href.slice(0, 512),
+      userAgent: navigator.userAgent.slice(0, 512),
+      sessionId,
+    };
+
+    fetch(`${apiBase}/frontend-errors`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => { /* ignore reporting failures */ });
+  } catch {
+    // never break the app for monitoring errors
+  }
+}
 
 /**
  * 全局异步错误兜底。
@@ -10,7 +63,7 @@ import { Toast } from '@douyinfe/semi-ui';
  * - `unhandledrejection`：未被 catch 的 Promise 拒绝
  * - `error`：未被捕获的同步运行时错误（脚本层面）
  *
- * 捕获后以 Toast 通知用户，同时在控制台输出完整信息，不影响页面正常使用。
+ * 捕获后以 Toast 通知用户，同时在控制台输出完整信息，并自动上报到后端。
  *
  * 防护机制：
  * - 去重：5 秒内相同消息只弹一次 Toast
@@ -56,6 +109,9 @@ export function useGlobalErrorHandler() {
 
       console.error('[GlobalErrorHandler] 未处理的 Promise rejection:', reason);
       showToast(`操作失败：${message}`);
+      reportToBackend('promise_rejection', message, {
+        stack: reason instanceof Error ? reason.stack : undefined,
+      });
     }
 
     function handleWindowError(event: ErrorEvent) {
@@ -71,6 +127,12 @@ export function useGlobalErrorHandler() {
 
       console.error('[GlobalErrorHandler] 未捕获的运行时错误:', event.error ?? event.message);
       showToast(`页面发生错误：${event.message}`);
+      reportToBackend('js_error', event.message, {
+        stack: event.error instanceof Error ? event.error.stack : undefined,
+        sourceUrl: event.filename,
+        lineNo: event.lineno,
+        colNo: event.colno,
+      });
     }
 
     globalThis.addEventListener('unhandledrejection', handleUnhandledRejection);

@@ -40,3 +40,4 @@ export * from './terminal-recordings';
 export * from './processes';
 export * from './analytics';
 export * from './ssh-profiles';
+export * from './frontend-errors';
