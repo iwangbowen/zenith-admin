@@ -57,6 +57,15 @@ function resolveNotifyUrl(channel: PaymentChannel, config: PaymentChannelConfigR
   return `${base}/api/public/payment/notify/${channel}`;
 }
 
+/** 校验回调地址为公网 http(s) 绝对地址；下单/退款前调用，缺失时快速报错而非让渠道接口报晦涩错误 */
+function assertNotifyUrl(notifyUrl: string): void {
+  if (!/^https?:\/\//.test(notifyUrl)) {
+    throw new HTTPException(400, {
+      message: '未配置有效的支付回调地址（需公网 http(s) 绝对地址）：请在渠道配置填写 notifyUrl，或设置 PAYMENT_NOTIFY_BASE_URL / PUBLIC_BASE_URL 环境变量',
+    });
+  }
+}
+
 /** 解密渠道密钥并组装适配器上下文 */
 export function buildAdapterContext(config: PaymentChannelConfigRow): AdapterContext {
   const secrets: DecryptedSecrets = {
@@ -230,7 +239,9 @@ export async function createPayment(input: CreatePaymentInput & { clientIp?: str
     .returning();
 
   try {
-    const payParams = await getAdapter(channel).createPayment(buildAdapterContext(config), orderRow);
+    const ctx = buildAdapterContext(config);
+    assertNotifyUrl(ctx.notifyUrl);
+    const payParams = await getAdapter(channel).createPayment(ctx, orderRow);
     await db.update(paymentOrders).set({ status: 'paying' }).where(and(eq(paymentOrders.id, orderRow.id), eq(paymentOrders.status, 'pending')));
     return { orderNo, payParams };
   } catch (err) {
@@ -360,7 +371,9 @@ export async function refund(input: CreateRefundInput & { operatorId?: number })
   await db.update(paymentOrders).set({ status: 'refunding' }).where(eq(paymentOrders.id, order.id));
 
   try {
-    const res = await getAdapter(order.channel).refund(buildAdapterContext(config), order, refundRow);
+    const ctx = buildAdapterContext(config);
+    assertNotifyUrl(ctx.notifyUrl);
+    const res = await getAdapter(order.channel).refund(ctx, order, refundRow);
     await db
       .update(paymentRefunds)
       .set({ status: res.status, channelRefundNo: res.channelRefundNo ?? null, refundedAt: res.status === 'success' ? new Date() : null })

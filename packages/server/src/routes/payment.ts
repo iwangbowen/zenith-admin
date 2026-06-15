@@ -52,7 +52,7 @@ const channelCreateSchema = z.object({
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   isDefault: z.boolean().default(false),
   sandbox: z.boolean().default(false),
-  notifyUrl: z.string().max(512).optional(),
+  notifyUrl: z.string().max(512).refine((v) => v === '' || /^https?:\/\/.+/.test(v), { message: '回调地址须为 http(s) 绝对地址' }).optional(),
   wechatAppId: z.string().max(64).optional(),
   wechatMchId: z.string().max(64).optional(),
   wechatApiV3Key: z.string().max(128).optional(),

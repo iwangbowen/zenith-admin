@@ -78,6 +78,21 @@ function buildSignedParams(ctx: AdapterContext, method: string, bizContent: Reco
   return params;
 }
 
+/** 验证支付宝同步响应签名：从原始响应文本中截取 *_response 节点原文并用支付宝公钥验签 */
+function verifyAlipayResponse(rawText: string, method: string, publicKeyPem: string, algorithm: RsaAlgorithm): boolean {
+  const nodeName = `${method.replaceAll('.', '_')}_response`;
+  const nodeIdx = rawText.indexOf(`"${nodeName}"`);
+  const signIdx = rawText.indexOf('"sign"');
+  if (nodeIdx < 0 || signIdx < 0) return false;
+  const start = rawText.indexOf('{', nodeIdx);
+  const end = rawText.lastIndexOf('}', signIdx);
+  if (start < 0 || end < 0 || end < start) return false;
+  const signContent = rawText.slice(start, end + 1);
+  const signMatch = /"sign"\s*:\s*"([^"]+)"/.exec(rawText.slice(signIdx));
+  if (!signMatch) return false;
+  return rsaVerify(signContent, signMatch[1], publicKeyPem, algorithm);
+}
+
 async function alipayApiCall(
   ctx: AdapterContext,
   method: string,
@@ -93,6 +108,12 @@ async function alipayApiCall(
   if (!resp.ok) {
     logger.warn('[alipay] api error', { method, status: resp.status, body: text.slice(0, 500) });
     throw new HTTPException(502, { message: `支付宝接口错误(${resp.status})` });
+  }
+  // 响应验签（仅当已配置支付宝公钥）：防止网关响应被中间人篡改
+  const respPubKey = ctx.config.alipayPublicKey ? ensurePem(ctx.config.alipayPublicKey, 'PUBLIC KEY') : '';
+  if (respPubKey && !verifyAlipayResponse(text, method, respPubKey, rsaAlgo(ctx.config.alipaySignType))) {
+    logger.warn('[alipay] response signature invalid', { method });
+    throw new HTTPException(502, { message: '支付宝响应验签失败' });
   }
   let json: Record<string, any>;
   try {
