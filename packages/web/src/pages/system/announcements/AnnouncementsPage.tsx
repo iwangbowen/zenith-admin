@@ -581,7 +581,7 @@ export default function AnnouncementsPage() {
     {
       title: '发布时间',
       dataIndex: 'publishTime',
-      width: 170,
+      width: 200,
       render: (v: string | null) => (v ? formatDateTime(v) : '-'),
     },
     createdAtColumn,

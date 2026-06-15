@@ -163,7 +163,7 @@ export default function AnnouncementsPage() {
     {
       title: '发布时间',
       dataIndex: 'publishTime',
-      width: 180,
+      width: 200,
       render: (v: string) => formatDateTime(v),
     },
     {
