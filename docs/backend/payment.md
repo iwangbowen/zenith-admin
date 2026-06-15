@@ -185,7 +185,7 @@ sequenceDiagram
 | --- | --- |
 | 密钥存储 | API V3 Key / 商户私钥 / 支付宝应用私钥一律 `encryptField()` 存密文，字段名 `xxxEncrypted` |
 | 响应脱敏 | 列表/详情 DTO 用 `'******'` 掩码 + 哨兵检测（仿 `mapOauthConfig`），**永不返回明文** |
-| 回调验签 | RSA-SHA256 验签 + 时间戳 5 分钟防重放 + `timingSafeEqual` 防时序攻击 |
+| 回调验签 | 微信:按 `Wechatpay-Serial` 自动下载平台证书(12h 缓存,应对轮换) RSA-SHA256 验签;支付宝:RSA2 验签 + 同步响应验签。处理幂等+原子，重放无害 |
 | 幂等 | 下单 + 回调均挂 `idempotencyGuard`，回调以渠道交易号为 key |
 | 金额 | 全链路整数分；退款金额 ≤ 原单金额校验 |
 | 外呼 | 全部走 `http-client`（熔断 + Header 脱敏 + 结构化日志） |
