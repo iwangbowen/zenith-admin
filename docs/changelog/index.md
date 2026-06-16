@@ -4,6 +4,32 @@
 
 ---
 
+## v0.58.1 - 2026-06-16
+
+### Added
+
+#### 支付中心
+
+- 新增支付事件 Outbox 机制（`payment_events` 表）：状态更新与事件写入同事务原子持久化，进程崩溃后由 cron `dispatchPaymentEvents` 兜底补投，杜绝「已支付但业务未履约」
+- 新增支付/退款统计接口（`GET /api/payment/stats`）及仪表盘统计卡（今日金额、总金额、订单数、成功数、退款额）
+- 新增订单/退款 Excel/CSV 导出接口（`GET /api/payment/orders/export` 等）及前端导出按钮
+- 新增手动下单弹窗与微信 native 二维码渲染（基于 `qrcode.react`）
+- 下单、退款接口接入 `idempotencyGuard`（15s 窗口）防重复提交
+
+#### 文档
+
+- 新增「幂等防重复提交」独立文档页（`/backend/idempotency`），涵盖两种工作模式、配置项、工作机制与注意事项
+- 工作流文档从后端子节点提升为顶级文档节点（`/workflow/`），顶部导航新增独立入口，补全「节点类型」页
+
+### Fixed
+
+- 修复支付统计查询 `todayAmount` 因向 Drizzle sql 模板裸插 `Date` 对象导致的 `ERR_INVALID_ARG_TYPE` 500 错误
+- 修复支付/退款回调并发场景下事件重复触发问题（原子条件更新，仅当真正更新到行时发事件）
+- 修复渠道关单 cron 可能误关已支付订单（先查单确认状态再关闭）
+- 修复回调通知公开端点未进入 Swagger 文档（改用 `defineOpenAPIRoute`）
+- 修复订单列表 dataScope `self` 归属列由付款人 `userId` 改为创建人 `createdBy`，与全局数据权限语义一致
+- 修复 VitePress 配置 `lastUpdated` 类型错误（根级改为 `boolean`，文本/格式选项移入 `themeConfig`）
+
 ## v0.58.0 - 2026-06-15
 
 ### Added
