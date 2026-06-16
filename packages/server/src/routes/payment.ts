@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
+import { idempotencyGuard } from '../middleware/idempotency';
 import {
   PaginationQuery,
   jsonContent,
@@ -200,7 +201,7 @@ const orderCreateRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/orders', tags: ['支付中心'], summary: '发起支付下单',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:create', audit: { description: '发起支付下单', module: '支付中心' } })] as const,
+    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 15, message: '下单处理中，请勿重复提交' }), guard({ permission: 'payment:order:create', audit: { description: '发起支付下单', module: '支付中心' } })] as const,
     request: { body: { content: jsonContent(paymentCreateSchema), required: true } },
     responses: { ...ok(CreatePaymentResponseDTO, '下单成功'), ...commonErrorResponses },
   }),
@@ -250,7 +251,7 @@ const refundCreateRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/refunds', tags: ['支付中心'], summary: '发起退款',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:order:refund', audit: { description: '发起退款', module: '支付中心' } })] as const,
+    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 15, message: '退款处理中，请勿重复提交' }), guard({ permission: 'payment:order:refund', audit: { description: '发起退款', module: '支付中心' } })] as const,
     request: { body: { content: jsonContent(refundCreateSchema), required: true } },
     responses: { ...ok(PaymentRefundResultDTO, '退款已发起'), ...commonErrorResponses },
   }),
