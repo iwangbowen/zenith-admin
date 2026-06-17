@@ -161,7 +161,7 @@ export default function CouponsPage() {
     { title: '状态', dataIndex: 'status', width: 90, render: (v: CouponTemplateStatus) => <Tag color={STATUS_COLORS[v] as 'green'}>{COUPON_TEMPLATE_STATUS_LABELS[v]}</Tag> },
     createdAtColumn,
     ...(hasOps ? [{
-      title: '操作', dataIndex: 'ops', width: 170, fixed: 'right' as const,
+      title: '操作', dataIndex: 'ops', width: 190, fixed: 'right' as const,
       render: (_: unknown, r: Coupon) => (
         <span>
           {canIssue && <Button theme="borderless" size="small" onClick={() => openIssue(r)}>发券</Button>}
