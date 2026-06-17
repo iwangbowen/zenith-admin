@@ -1,5 +1,5 @@
 import { SEED_DATA_MASK_CONFIGS } from '@zenith/shared';
-import type { DataMaskConfig, MaskType } from '@zenith/shared';
+import type { DataMaskConfig } from '@zenith/shared';
 import { mockDateTime } from '@/mocks/utils/date';
 
 export const mockDataMaskConfigs: DataMaskConfig[] = [...SEED_DATA_MASK_CONFIGS];
@@ -14,7 +14,7 @@ export function createMockDataMaskConfig(body: Partial<DataMaskConfig>): DataMas
     entity: body.entity ?? '',
     field: body.field ?? '',
     label: body.label ?? '',
-    maskType: (body.maskType ?? 'phone') as MaskType,
+    maskType: body.maskType ?? 'phone',
     customRule: body.customRule ?? null,
     exemptRoleCodes: body.exemptRoleCodes ?? [],
     enabled: body.enabled ?? true,

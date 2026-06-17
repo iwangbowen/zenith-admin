@@ -364,15 +364,10 @@ async function seedRest() {
   logger.info('  ✔ In-app templates seeded (onConflictDoNothing)');
 
   // ── 标签 ────────────────────────────────────────────────────────────────────
-  await db.insert(tags).values([
-    { name: '重要',   color: '#ef4444', groupName: '优先级', description: '高优先级事项',   status: 'enabled', sortOrder: 1 },
-    { name: '紧急',   color: '#f97316', groupName: '优先级', description: '需要立即处理',   status: 'enabled', sortOrder: 2 },
-    { name: '普通',   color: '#6b7280', groupName: '优先级', description: '常规事项',       status: 'enabled', sortOrder: 3 },
-    { name: '新用户', color: '#2563eb', groupName: '用户标签', description: '新注册用户',   status: 'enabled', sortOrder: 1 },
-    { name: 'VIP',    color: '#a855f7', groupName: '用户标签', description: 'VIP 会员用户', status: 'enabled', sortOrder: 2 },
-    { name: '待处理', color: '#f59e0b', groupName: '状态标签', description: '等待处理的事项', status: 'enabled', sortOrder: 1 },
-    { name: '已完成', color: '#10b981', groupName: '状态标签', description: '已完成的事项', status: 'enabled', sortOrder: 2 },
-  ]).onConflictDoNothing({ target: tags.name });
+  await db.insert(tags).values(
+    SEED_TAGS.map(({ id, name, color, groupName, description, status, sortOrder }) => ({ id, name, color, groupName, description, status, sortOrder })),
+  ).onConflictDoNothing({ target: tags.name });
+  await db.execute(sql`SELECT setval('tags_id_seq', GREATEST((SELECT MAX(id) FROM tags), 1))`);
   logger.info('  ✔ Tags seeded (onConflictDoNothing)');
 
   // ── 数据脱敏规则 ──────────────────────────────────────────────────────────────
