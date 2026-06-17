@@ -74,3 +74,11 @@ export const mockMemberCoupons = [
   { id: 1, couponId: 1, memberId: 1, code: 'SEEDCOUPON0001', status: 'unused', receivedAt: now, usedAt: null, expireAt: '2027-01-01 00:00:00', coupon: mockCoupons[0], memberName: '演示会员', createdAt: now },
   { id: 2, couponId: 2, memberId: 1, code: 'SEEDCOUPON0002', status: 'used', receivedAt: now, usedAt: now, expireAt: '2027-01-01 00:00:00', coupon: mockCoupons[1], memberName: '演示会员', createdAt: now },
 ];
+
+export const mockMemberLoginLogs = [
+  { id: 1, memberId: 1, ip: '127.0.0.1', location: '内网IP', browser: 'Chrome', os: 'macOS', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0', status: 'success', message: '登录成功', createdAt: now },
+  { id: 2, memberId: 1, ip: '1.2.3.4', location: '广东省深圳市', browser: 'Safari', os: 'iOS', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)', status: 'success', message: '登录成功', createdAt: '2026-03-20 09:15:00' },
+  { id: 3, memberId: 1, ip: '5.6.7.8', location: '北京市', browser: 'Chrome', os: 'Windows', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0', status: 'fail', message: '账号或密码错误', createdAt: '2026-03-18 22:40:00' },
+  { id: 4, memberId: 1, ip: '127.0.0.1', location: '内网IP', browser: 'Firefox', os: 'Ubuntu', userAgent: 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:120.0)', status: 'success', message: '登录成功', createdAt: '2026-03-15 14:20:00' },
+  { id: 5, memberId: 1, ip: '9.10.11.12', location: '上海市', browser: 'Chrome', os: 'Android', userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0', status: 'success', message: '登录成功', createdAt: '2026-03-10 08:05:00' },
+];

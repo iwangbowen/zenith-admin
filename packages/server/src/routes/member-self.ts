@@ -13,6 +13,7 @@ import {
   MemberLevelDTO,
   MemberCouponDTO,
   CouponDTO,
+  MemberLoginLogDTO,
 } from '../lib/openapi-dtos';
 import { currentMemberId } from '../lib/member-context';
 import { getClientInfo } from '../services/auth.service';
@@ -20,6 +21,11 @@ import { getMyPointAccount, listMyPointTransactions } from '../services/member-p
 import { getMyWallet, listMyWalletTransactions, rechargeWallet } from '../services/member-wallet.service';
 import { getEnabledLevels } from '../services/member-levels.service';
 import { listMyCoupons, getAvailableCoupons, receiveCoupon } from '../services/coupons.service';
+import { db } from '../db';
+import { memberLoginLogs } from '../db/schema';
+import { desc, eq } from 'drizzle-orm';
+import { formatDateTime } from '../lib/datetime';
+import { pageOffset } from '../lib/pagination';
 
 const memberSelf = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -147,6 +153,46 @@ const receiveCouponRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── GET /login-logs — 我的登录历史 ──────────────────────────────────────────
+const loginLogsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/login-logs', tags: ['MemberSelf'], summary: '我的登录历史',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { query: PaginationQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(MemberLoginLogDTO, '登录历史') },
+  }),
+  handler: async (c) => {
+    const memberId = currentMemberId();
+    const { page = 1, pageSize = 20 } = c.req.valid('query');
+    const [list, total] = await Promise.all([
+      db.select().from(memberLoginLogs)
+        .where(eq(memberLoginLogs.memberId, memberId))
+        .orderBy(desc(memberLoginLogs.createdAt))
+        .limit(pageSize)
+        .offset(pageOffset(page, pageSize)),
+      db.$count(memberLoginLogs, eq(memberLoginLogs.memberId, memberId)),
+    ]);
+    return c.json(okBody({
+      list: list.map(r => ({
+        id: r.id,
+        memberId: r.memberId,
+        ip: r.ip,
+        location: r.location,
+        browser: r.browser,
+        os: r.os,
+        userAgent: r.userAgent,
+        status: r.status,
+        message: r.message,
+        createdAt: formatDateTime(r.createdAt),
+      })),
+      total,
+      page,
+      pageSize,
+    }), 200);
+  },
+});
+
 memberSelf.openapiRoutes([
   pointAccountRoute,
   pointTxRoute,
@@ -157,6 +203,7 @@ memberSelf.openapiRoutes([
   availableCouponsRoute,
   myCouponsRoute,
   receiveCouponRoute,
+  loginLogsRoute,
 ] as const);
 
 export default memberSelf;

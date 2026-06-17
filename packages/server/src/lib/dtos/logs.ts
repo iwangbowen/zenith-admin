@@ -25,6 +25,21 @@ export const LoginLogDTO = z
   })
   .openapi('LoginLog');
 
+export const MemberLoginLogDTO = z
+  .object({
+    id: z.number().int(),
+    memberId: z.number().int().nullable(),
+    ip: z.string().nullable(),
+    location: z.string().nullable(),
+    browser: z.string().nullable(),
+    os: z.string().nullable(),
+    userAgent: z.string().nullable(),
+    status: z.enum(['success', 'fail']),
+    message: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('MemberLoginLog');
+
 export const IpAccessLogDTO = z
   .object({
     id: z.number().int(),

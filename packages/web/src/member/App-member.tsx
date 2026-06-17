@@ -18,6 +18,7 @@ import LevelPage from './pages/level/LevelPage';
 import ProfilePage from './pages/profile/ProfilePage';
 import EditProfilePage from './pages/profile/EditProfilePage';
 import ChangePasswordPage from './pages/profile/ChangePasswordPage';
+import LoginHistoryPage from './pages/login-history/LoginHistoryPage';
 
 /** 受保护路由：未登录跳转首页（可通过弹窗登录） */
 function RequireMember({ children }: Readonly<{ children: ReactNode }>) {
@@ -72,6 +73,7 @@ function AppRoutes() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/edit" element={<EditProfilePage />} />
         <Route path="/profile/password" element={<ChangePasswordPage />} />
+        <Route path="/login-history" element={<LoginHistoryPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to={member ? '/home' : '/'} replace />} />

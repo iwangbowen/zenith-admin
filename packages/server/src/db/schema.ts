@@ -2253,3 +2253,19 @@ export const memberCouponsRelations = relations(memberCoupons, ({ one }) => ({
   coupon: one(coupons, { fields: [memberCoupons.couponId], references: [coupons.id] }),
   member: one(members, { fields: [memberCoupons.memberId], references: [members.id] }),
 }));
+
+// ─── 会员登录日志表 ──────────────────────────────────────────────────────────
+export const memberLoginLogs = pgTable('member_login_logs', {
+  id: serial('id').primaryKey(),
+  memberId: integer('member_id').references(() => members.id, { onDelete: 'cascade' }),
+  ip: varchar('ip', { length: 64 }),
+  location: varchar('location', { length: 128 }),
+  browser: varchar('browser', { length: 64 }),
+  os: varchar('os', { length: 64 }),
+  userAgent: varchar('user_agent', { length: 512 }),
+  status: loginStatusEnum('status').notNull(),
+  message: varchar('message', { length: 256 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type MemberLoginLogRow = typeof memberLoginLogs.$inferSelect;
+export type NewMemberLoginLog = typeof memberLoginLogs.$inferInsert;

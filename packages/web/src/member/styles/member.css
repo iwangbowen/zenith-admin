@@ -810,3 +810,129 @@ body {
 .mc-footer-links a:hover {
   color: var(--m-text-secondary);
 }
+
+/* ============================================================
+   响应式 / 移动端适配
+   ============================================================ */
+
+/* ── 平板（≤ 1024px）─────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .mc-features-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .mc-hero {
+    padding: 64px 24px 56px;
+  }
+
+  .mc-hero-title {
+    font-size: 36px;
+  }
+}
+
+/* ── 移动端（≤ 768px）────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Landing 顶部导航 */
+  .mc-landing-header {
+    padding: 0 16px;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    gap: 0;
+  }
+
+  .mc-landing-nav {
+    display: none; /* 移动端隐藏水平导航（可后续改为汉堡菜单） */
+  }
+
+  /* Hero 区 */
+  .mc-hero {
+    padding: 48px 16px 40px;
+  }
+
+  .mc-hero-title {
+    font-size: 28px;
+  }
+
+  .mc-hero-sub {
+    font-size: 15px;
+  }
+
+  .mc-hero-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .mc-hero-actions button,
+  .mc-hero-actions a {
+    width: 100%;
+    max-width: 300px;
+  }
+
+  /* 特性/内容网格：2列 → 1列 */
+  .mc-features-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  /* 公共区块 padding */
+  .mc-features-section,
+  .mc-cta-section,
+  .mc-placeholder-section {
+    padding: 40px 16px;
+  }
+
+  .mc-section-title {
+    font-size: 22px;
+  }
+
+  .mc-section-sub {
+    font-size: 14px;
+  }
+
+  /* Footer */
+  .mc-landing-footer {
+    padding: 24px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  /* 占位页面网格 */
+  .mc-placeholder-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* 会员中心侧边栏在移动端收起（用户可手动展开） */
+  .mc-semi-nav {
+    position: fixed;
+    z-index: 100;
+  }
+}
+
+/* ── 小屏手机（≤ 480px）──────────────────────────────────── */
+@media (max-width: 480px) {
+  .mc-hero-title {
+    font-size: 22px;
+  }
+
+  .mc-hero-icon {
+    width: 56px;
+    height: 56px;
+    font-size: 28px;
+  }
+
+  /* 占位页面网格改为 1 列 */
+  .mc-placeholder-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mc-features-section,
+  .mc-cta-section {
+    padding: 32px 12px;
+  }
+
+  .mc-section-title {
+    font-size: 20px;
+  }
+}

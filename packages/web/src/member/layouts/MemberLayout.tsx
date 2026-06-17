@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Outlet, useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { Nav, Avatar, Modal } from '@douyinfe/semi-ui';
-import { Crown, House, Coins, Wallet, Ticket, UserCog, Lock, LogOut, ArrowLeft } from 'lucide-react';
+import { Crown, House, Coins, Wallet, Ticket, UserCog, Lock, LogOut, ArrowLeft, History } from 'lucide-react';
 import { useMemberAuth } from '../hooks/useMemberAuth';
 
 const NAV_ITEMS = [
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { itemKey: '/level', text: '等级权益', icon: <Crown size={15} /> },
   { itemKey: '/profile/edit', text: '编辑资料', icon: <UserCog size={15} /> },
   { itemKey: '/profile/password', text: '修改密码', icon: <Lock size={15} /> },
+  { itemKey: '/login-history', text: '登录历史', icon: <History size={15} /> },
   { itemKey: '__home__', text: '返回前台', icon: <ArrowLeft size={15} /> },
   { itemKey: '__logout__', text: '退出登录', icon: <LogOut size={15} /> },
 ];

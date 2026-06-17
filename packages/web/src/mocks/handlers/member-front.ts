@@ -8,6 +8,7 @@ import {
   mockMemberLevels,
   mockCoupons,
   mockMemberCoupons,
+  mockMemberLoginLogs,
 } from '../data/members';
 
 const MEMBER_TOKEN = 'mock-member-token-demo';
@@ -84,4 +85,14 @@ export const memberFrontHandlers = [
   http.get('/api/member/coupons', () => paginated(mockMemberCoupons)),
   http.get('/api/member/coupons/available', () => ok(mockCoupons)),
   http.post('/api/member/coupons/receive', () => ok(mockMemberCoupons[0], '领取成功')),
+
+  // ── 自助：登录历史 ────────────────────────────────────────────────────────
+  http.get('/api/member/login-logs', ({ request }) => {
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') ?? '1');
+    const pageSize = parseInt(url.searchParams.get('pageSize') ?? '15');
+    const start = (page - 1) * pageSize;
+    const list = mockMemberLoginLogs.slice(start, start + pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: mockMemberLoginLogs.length, page, pageSize } });
+  }),
 ];

@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import { asc, eq, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
-import { members, memberLevels, memberPointAccounts, memberWallets } from '../db/schema';
+import { members, memberLevels, memberPointAccounts, memberWallets, memberLoginLogs } from '../db/schema';
 import type { MemberRow } from '../db/schema';
 import { signToken, verifyToken } from '../lib/jwt';
 import {
@@ -22,6 +22,7 @@ import type { MemberJwtPayload } from '../middleware/member-auth';
 import { currentMember } from '../lib/member-context';
 import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 import { parseUserAgent } from '../lib/request-helpers';
+import { lookupIpLocation } from '../lib/ip-location';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { verifyMemberSmsCode } from './member-sms.service';
 import type {
@@ -124,6 +125,29 @@ export async function ensureMemberExists(id: number): Promise<MemberRow> {
   return row;
 }
 
+// ─── 登录日志 ─────────────────────────────────────────────────────────────────
+interface MemberLoginLogParams {
+  memberId?: number | null;
+  ip: string;
+  ua: string;
+  status: 'success' | 'fail';
+  message?: string;
+}
+
+export function recordMemberLoginLog(params: MemberLoginLogParams): void {
+  const { browser, os } = parseUserAgent(params.ua);
+  void db.insert(memberLoginLogs).values({
+    memberId: params.memberId ?? null,
+    ip: params.ip || null,
+    location: params.ip ? lookupIpLocation(params.ip) : null,
+    browser,
+    os,
+    userAgent: params.ua || null,
+    status: params.status,
+    message: params.message ?? null,
+  });
+}
+
 // ─── 注册 ─────────────────────────────────────────────────────────────────────
 export interface MemberRegisterServiceInput extends MemberRegisterInput {
   ip: string;
@@ -192,24 +216,42 @@ export async function loginMember(input: MemberLoginServiceInput): Promise<Membe
   if (input.loginType === 'sms') {
     if (!input.phone || !input.smsCode) throw new HTTPException(400, { message: '请输入手机号和验证码' });
     const ok = await verifyMemberSmsCode(input.phone, 'login', input.smsCode);
-    if (!ok) throw new HTTPException(400, { message: '验证码错误或已过期' });
+    if (!ok) {
+      recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '验证码错误或已过期' });
+      throw new HTTPException(400, { message: '验证码错误或已过期' });
+    }
     [member] = await db.select().from(members).where(eq(members.phone, input.phone)).limit(1);
-    if (!member) throw new HTTPException(400, { message: '该手机号未注册' });
+    if (!member) {
+      recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '该手机号未注册' });
+      throw new HTTPException(400, { message: '该手机号未注册' });
+    }
   } else {
     if (!input.account || !input.password) throw new HTTPException(400, { message: '请输入账号和密码' });
     member = await findMemberByAccount(input.account);
-    if (!member?.password) throw new HTTPException(400, { message: '账号或密码错误' });
+    if (!member?.password) {
+      recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '账号或密码错误' });
+      throw new HTTPException(400, { message: '账号或密码错误' });
+    }
     const valid = await bcrypt.compare(input.password, member.password);
-    if (!valid) throw new HTTPException(400, { message: '账号或密码错误' });
+    if (!valid) {
+      recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, status: 'fail', message: '账号或密码错误' });
+      throw new HTTPException(400, { message: '账号或密码错误' });
+    }
   }
 
-  if (member.status === 'banned') throw new HTTPException(403, { message: '账号已被封禁' });
-  if (member.status === 'inactive') throw new HTTPException(403, { message: '账号未激活，请联系客服' });
+  if (member.status === 'banned') {
+    recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, status: 'fail', message: '账号已被封禁' });
+    throw new HTTPException(403, { message: '账号已被封禁' });
+  }
+  if (member.status === 'inactive') {
+    recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, status: 'fail', message: '账号未激活' });
+    throw new HTTPException(403, { message: '账号未激活，请联系客服' });
+  }
 
   return finalizeAuth(member, input.ip, input.ua);
 }
 
-/** 登录/注册成功后：签发 token、注册会话、更新最后登录信息 */
+/** 登录/注册成功后：签发 token、注册会话、更新最后登录信息、记录日志 */
 async function finalizeAuth(member: MemberRow, ip: string, ua: string): Promise<MemberLoginResult> {
   const identifier = memberIdentifier(member);
   const { accessToken, refreshToken, tokenId } = await issueMemberTokens({
@@ -232,6 +274,16 @@ async function finalizeAuth(member: MemberRow, ip: string, ua: string): Promise<
       loginAt: new Date(),
     }),
     db.update(members).set({ lastLoginAt: new Date(), lastLoginIp: ip }).where(eq(members.id, member.id)),
+    db.insert(memberLoginLogs).values({
+      memberId: member.id,
+      ip: ip || null,
+      location: ip ? lookupIpLocation(ip) : null,
+      browser,
+      os,
+      userAgent: ua || null,
+      status: 'success',
+      message: '登录成功',
+    }),
   ]);
   return { member: mapMember(member), token: { accessToken, refreshToken } };
 }

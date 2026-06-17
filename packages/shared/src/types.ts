@@ -396,6 +396,19 @@ export interface LoginLogStats {
   hourlyStats: { hour: number; count: number }[];
 }
 
+export interface MemberLoginLog {
+  id: number;
+  memberId: number | null;
+  ip: string | null;
+  location: string | null;
+  browser: string | null;
+  os: string | null;
+  userAgent: string | null;
+  status: 'success' | 'fail';
+  message: string | null;
+  createdAt: string;
+}
+
 // ─── 用户行为分析 ────────────────────────────────────────────
 export type UserBehaviorEventType = 'page_view' | 'page_leave' | 'feature_use' | 'area_click';
 
