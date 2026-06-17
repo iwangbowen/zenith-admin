@@ -35,7 +35,7 @@ const pointTxCols: ColumnProps<MemberPointTransaction>[] = [
   { title: '变动', dataIndex: 'amount', width: 80, render: (v: number) => <span style={{ color: v > 0 ? '#07c160' : '#fa5151', fontWeight: 600 }}>{v > 0 ? `+${v}` : v}</span> },
   { title: '余额', dataIndex: 'balanceAfter', width: 80 },
   { title: '备注', dataIndex: 'remark', render: (v: string | null) => <Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{v ?? '—'}</Text> },
-  { title: '时间', dataIndex: 'createdAt', width: 160 },
+  { title: '时间', dataIndex: 'createdAt', width: 180 },
 ];
 
 const walletTxCols: ColumnProps<MemberWalletTransaction>[] = [
@@ -43,7 +43,7 @@ const walletTxCols: ColumnProps<MemberWalletTransaction>[] = [
   { title: '变动(元)', dataIndex: 'amount', width: 90, render: (v: number) => <span style={{ color: v > 0 ? '#07c160' : '#fa5151', fontWeight: 600 }}>{v > 0 ? `+${(v / 100).toFixed(2)}` : (v / 100).toFixed(2)}</span> },
   { title: '余额(元)', dataIndex: 'balanceAfter', width: 90, render: (v: number) => (v / 100).toFixed(2) },
   { title: '备注', dataIndex: 'remark', render: (v: string | null) => <Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{v ?? '—'}</Text> },
-  { title: '时间', dataIndex: 'createdAt', width: 160 },
+  { title: '时间', dataIndex: 'createdAt', width: 180 },
 ];
 
 function StatCard({ label, value, sub }: Readonly<{ label: string; value: React.ReactNode; sub?: string }>) {
