@@ -1,21 +1,36 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Avatar, Modal } from '@douyinfe/semi-ui';
+import { useCallback, useState } from 'react';
+import { Outlet, useLocation, useNavigate, NavLink } from 'react-router-dom';
+import { Nav, Avatar, Modal } from '@douyinfe/semi-ui';
 import { Crown, House, Coins, Wallet, Ticket, UserCog, Lock, LogOut } from 'lucide-react';
 import { useMemberAuth } from '../hooks/useMemberAuth';
 
 const NAV_ITEMS = [
-  { key: '/home', label: '会员概览', icon: House },
-  { key: '/points', label: '我的积分', icon: Coins },
-  { key: '/wallet', label: '我的钱包', icon: Wallet },
-  { key: '/coupons', label: '我的卡券', icon: Ticket },
-  { key: '/level', label: '等级权益', icon: Crown },
-  { key: '/profile/edit', label: '编辑资料', icon: UserCog },
-  { key: '/profile/password', label: '修改密码', icon: Lock },
+  { itemKey: '/home', text: '会员概览', icon: <House size={15} /> },
+  { itemKey: '/points', text: '我的积分', icon: <Coins size={15} /> },
+  { itemKey: '/wallet', text: '我的钱包', icon: <Wallet size={15} /> },
+  { itemKey: '/coupons', text: '我的卡券', icon: <Ticket size={15} /> },
+  { itemKey: '/level', text: '等级权益', icon: <Crown size={15} /> },
+  { itemKey: '/profile/edit', text: '编辑资料', icon: <UserCog size={15} /> },
+  { itemKey: '/profile/password', text: '修改密码', icon: <Lock size={15} /> },
+  { itemKey: '__logout__', text: '退出登录', icon: <LogOut size={15} /> },
 ] as const;
 
 export default function MemberLayout() {
   const { member, logout } = useMemberAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [collapsed, setCollapsed] = useState(false);
+
+  const selectedKey = (() => {
+    const path = location.pathname;
+    const exact = NAV_ITEMS.find((item) => item.itemKey === path);
+    if (exact) return exact.itemKey;
+    if (path.startsWith('/profile')) return '/profile/edit';
+    const prefix = NAV_ITEMS.find(
+      (item) => item.itemKey !== '__logout__' && path.startsWith(item.itemKey + '/'),
+    );
+    return prefix?.itemKey ?? '/home';
+  })();
 
   const handleLogout = () => {
     Modal.confirm({
@@ -25,61 +40,81 @@ export default function MemberLayout() {
       cancelText: '取消',
       onOk: () => {
         logout();
-        navigate('/login', { replace: true });
+        navigate('/', { replace: true });
       },
     });
   };
 
+  const handleSelect = ({ itemKey }: { itemKey: string | number }) => {
+    const key = String(itemKey);
+    if (key === '__logout__') {
+      handleLogout();
+      return;
+    }
+    navigate(key);
+  };
+
+  const renderWrapper = useCallback(
+    ({ itemElement, props }: { itemElement: React.ReactNode; props: { itemKey?: string | number } }) => {
+      const key = String(props.itemKey ?? '');
+      if (key === '__logout__') {
+        return <div className="mc-nav-logout-wrapper">{itemElement}</div>;
+      }
+      if (!key.startsWith('/')) return itemElement;
+      return (
+        <NavLink to={key} style={{ display: 'contents' }}>
+          {itemElement}
+        </NavLink>
+      );
+    },
+    [],
+  );
+
+  const sidebarWidth = collapsed ? 48 : 220;
+
   return (
     <div className="mc-app">
-      <aside className="mc-sidebar">
-        <div className="mc-brand">
-          <Crown size={18} color="var(--m-primary)" />
-          <span>会员中心</span>
-        </div>
-
-        <div className="mc-member-info">
-          <Avatar size="default" src={member?.avatar ?? undefined} style={{ background: 'var(--m-primary)', flexShrink: 0 }}>
-            {member?.nickname?.[0] ?? 'U'}
-          </Avatar>
-          <div style={{ minWidth: 0 }}>
-            <div className="mc-member-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {member?.nickname ?? '会员'}
-            </div>
-            {member?.levelName && (
-              <div className="mc-member-level">
-                <Crown size={11} />
-                {member.levelName}
+      <Nav
+        className="mc-semi-nav"
+        mode="vertical"
+        style={{ height: '100vh', position: 'fixed', top: 0, left: 0, width: sidebarWidth, overflowY: 'auto' }}
+        isCollapsed={collapsed}
+        selectedKeys={[selectedKey]}
+        onSelect={handleSelect}
+        onCollapseChange={setCollapsed}
+        items={NAV_ITEMS}
+        header={{
+          logo: (
+            <Avatar
+              size="small"
+              src={member?.avatar ?? undefined}
+              style={{ background: 'var(--m-primary)', flexShrink: 0 }}
+            >
+              {member?.nickname?.[0] ?? 'U'}
+            </Avatar>
+          ),
+          text: (
+            <div style={{ lineHeight: 1.35, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {member?.nickname ?? '会员'}
               </div>
-            )}
-          </div>
-        </div>
+              {member?.levelName && (
+                <div className="mc-member-level" style={{ marginTop: 3 }}>
+                  <Crown size={10} />
+                  {member.levelName}
+                </div>
+              )}
+            </div>
+          ),
+        }}
+        footer={{
+          collapseButton: true,
+          collapseText: (isCollapsed: boolean) => (isCollapsed ? '展开侧边栏' : '收起侧边栏'),
+        }}
+        renderWrapper={renderWrapper}
+      />
 
-        <nav className="mc-nav">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.key}
-                to={item.key}
-                className={({ isActive }) => `mc-nav-item${isActive ? ' active' : ''}`}
-              >
-                <Icon size={15} />
-                <span>{item.label}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
-
-        <div className="mc-sidebar-footer">
-          <button type="button" className="mc-logout-btn" onClick={handleLogout}>
-            <LogOut size={14} />
-            退出登录
-          </button>
-        </div>
-      </aside>
-
-      <main className="mc-main">
+      <main className="mc-main" style={{ marginLeft: sidebarWidth, transition: 'margin-left 0.2s' }}>
         <Outlet />
       </main>
     </div>

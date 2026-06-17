@@ -1,6 +1,6 @@
 /* ============================================================
    会员前台（C 端）PC 端样式
-   主题色：绿色 #07c160；左侧边栏 + 内容区布局
+   主题色：绿色 #07c160；左侧边栏（Semi Nav）+ 内容区布局
    ============================================================ */
 
 :root {
@@ -17,7 +17,6 @@
   --m-border: #ebedf0;
   --m-radius: 8px;
   --m-radius-lg: 12px;
-  --m-sidebar-width: 220px;
 }
 
 * {
@@ -478,4 +477,305 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 200px;
+}
+
+/* ============================================================
+   Semi Design Nav 覆盖（会员侧边栏）
+   ============================================================ */
+.mc-semi-nav.semi-navigation {
+  border-right: 1px solid var(--m-border);
+  background: var(--m-card-bg);
+}
+
+.mc-semi-nav .semi-navigation-header {
+  padding: 16px 12px;
+  border-bottom: 1px solid var(--m-border);
+}
+
+.mc-semi-nav .semi-navigation-item-inner .semi-navigation-item-icon {
+  color: var(--m-text-secondary);
+}
+
+.mc-semi-nav .semi-navigation-item.semi-navigation-item-selected .semi-navigation-item-icon {
+  color: var(--m-primary);
+}
+
+/* 退出登录项颜色 */
+.mc-nav-logout-wrapper .semi-navigation-item .semi-navigation-item-text {
+  color: var(--m-danger);
+}
+
+.mc-nav-logout-wrapper .semi-navigation-item .semi-navigation-item-icon {
+  color: var(--m-danger);
+}
+
+/* 会员等级徽标 */
+.mc-member-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--m-primary-dark);
+  background: var(--m-primary-light);
+  padding: 1px 6px;
+  border-radius: 20px;
+}
+
+/* ============================================================
+   Landing Page 落地页
+   ============================================================ */
+.mc-landing {
+  min-height: 100vh;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 顶部导航栏 */
+.mc-landing-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 40px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--m-border);
+  gap: 32px;
+}
+
+.mc-landing-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--m-primary);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.mc-landing-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.mc-landing-nav-link {
+  padding: 6px 14px;
+  font-size: 14px;
+  color: var(--m-text-secondary);
+  text-decoration: none;
+  border-radius: var(--m-radius);
+  transition: color 0.15s, background 0.15s;
+}
+
+.mc-landing-nav-link:hover {
+  color: var(--m-text);
+  background: var(--m-bg);
+}
+
+.mc-landing-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.mc-landing-avatar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--m-radius);
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.mc-landing-avatar:hover {
+  background: var(--m-bg);
+}
+
+.mc-landing-avatar-name {
+  font-size: 14px;
+  color: var(--m-text);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hero 区域 */
+.mc-hero {
+  background: linear-gradient(135deg, #07c160 0%, #0aab54 60%, #08974d 100%);
+  padding: 100px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.mc-hero-content {
+  max-width: 600px;
+}
+
+.mc-hero-icon {
+  width: 80px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  color: #fff;
+}
+
+.mc-hero-title {
+  font-size: 40px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 16px;
+  line-height: 1.2;
+}
+
+.mc-hero-sub {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 36px;
+  line-height: 1.6;
+}
+
+.mc-hero-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* 功能特性区 */
+.mc-features-section {
+  padding: 80px 40px;
+  background: #fff;
+}
+
+.mc-section-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.mc-section-header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.mc-section-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--m-text);
+  margin: 0 0 12px;
+}
+
+.mc-section-sub {
+  font-size: 16px;
+  color: var(--m-text-secondary);
+  margin: 0;
+}
+
+.mc-features-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+.mc-feature-card {
+  padding: 28px 20px;
+  border: 1px solid var(--m-border);
+  border-radius: var(--m-radius-lg);
+  text-align: center;
+  transition: box-shadow 0.2s, transform 0.2s;
+  cursor: default;
+}
+
+.mc-feature-card:hover {
+  box-shadow: 0 8px 24px rgba(7, 193, 96, 0.12);
+  transform: translateY(-3px);
+}
+
+.mc-feature-icon {
+  width: 56px;
+  height: 56px;
+  background: var(--m-primary-light);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  color: var(--m-primary);
+}
+
+.mc-feature-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--m-text);
+  margin: 0 0 8px;
+}
+
+.mc-feature-desc {
+  font-size: 13px;
+  color: var(--m-text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* CTA 区域 */
+.mc-cta-section {
+  padding: 80px 40px;
+  background: linear-gradient(135deg, #07c160 0%, #0aab54 100%);
+  text-align: center;
+}
+
+.mc-cta-section .mc-section-title {
+  color: #fff;
+}
+
+.mc-cta-section .mc-section-sub {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.mc-cta-actions {
+  margin-top: 32px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* 底部 Footer */
+.mc-landing-footer {
+  padding: 32px 40px;
+  background: #f8f9fa;
+  border-top: 1px solid var(--m-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--m-text-tertiary);
+}
+
+.mc-footer-links {
+  display: flex;
+  gap: 20px;
+}
+
+.mc-footer-links a {
+  color: var(--m-text-tertiary);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.mc-footer-links a:hover {
+  color: var(--m-text-secondary);
 }

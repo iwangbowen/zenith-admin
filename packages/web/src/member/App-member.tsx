@@ -3,8 +3,7 @@ import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-d
 import { Spin } from '@douyinfe/semi-ui';
 import { MemberAuthProvider, useMemberAuth } from './hooks/useMemberAuth';
 import MemberLayout from './layouts/MemberLayout';
-import LoginPage from './pages/auth/LoginPage';
-import RegisterPage from './pages/auth/RegisterPage';
+import LandingPage from './pages/landing/LandingPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import HomePage from './pages/home/HomePage';
 import PointsPage from './pages/points/PointsPage';
@@ -15,7 +14,7 @@ import ProfilePage from './pages/profile/ProfilePage';
 import EditProfilePage from './pages/profile/EditProfilePage';
 import ChangePasswordPage from './pages/profile/ChangePasswordPage';
 
-/** 受保护路由：未登录跳转登录页 */
+/** 受保护路由：未登录跳转首页（可通过弹窗登录） */
 function RequireMember({ children }: Readonly<{ children: ReactNode }>) {
   const { member, loading } = useMemberAuth();
   const location = useLocation();
@@ -27,7 +26,7 @@ function RequireMember({ children }: Readonly<{ children: ReactNode }>) {
     );
   }
   if (!member) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/" replace state={{ from: location.pathname }} />;
   }
   return <>{children}</>;
 }
@@ -36,9 +35,11 @@ function AppRoutes() {
   const { member } = useMemberAuth();
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/" element={<LandingPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      {/* Legacy auth redirects */}
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/register" element={<Navigate to="/" replace />} />
       <Route
         element={
           <RequireMember>
@@ -55,7 +56,7 @@ function AppRoutes() {
         <Route path="/profile/edit" element={<EditProfilePage />} />
         <Route path="/profile/password" element={<ChangePasswordPage />} />
       </Route>
-      <Route path="*" element={<Navigate to={member ? '/home' : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={member ? '/home' : '/'} replace />} />
     </Routes>
   );
 }
