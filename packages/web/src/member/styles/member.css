@@ -583,6 +583,11 @@ body {
   background: var(--m-bg);
 }
 
+.mc-landing-nav-link.active {
+  color: var(--m-primary);
+  background: var(--m-primary-light);
+}
+
 .mc-landing-actions {
   display: flex;
   align-items: center;

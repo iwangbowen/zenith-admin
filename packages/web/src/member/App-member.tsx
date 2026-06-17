@@ -2,8 +2,13 @@ import { type ReactNode } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Spin } from '@douyinfe/semi-ui';
 import { MemberAuthProvider, useMemberAuth } from './hooks/useMemberAuth';
+import PublicLayout from './layouts/PublicLayout';
 import MemberLayout from './layouts/MemberLayout';
 import LandingPage from './pages/landing/LandingPage';
+import FeaturesPage from './pages/features/FeaturesPage';
+import LevelsPage from './pages/levels/LevelsPage';
+import PromotionsPage from './pages/promotions/PromotionsPage';
+import AboutPage from './pages/about/AboutPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import HomePage from './pages/home/HomePage';
 import PointsPage from './pages/points/PointsPage';
@@ -35,11 +40,23 @@ function AppRoutes() {
   const { member } = useMemberAuth();
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      {/* Public routes under shared top-nav layout */}
+      <Route element={<PublicLayout />}>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/levels" element={<LevelsPage />} />
+        <Route path="/promotions" element={<PromotionsPage />} />
+        <Route path="/about" element={<AboutPage />} />
+      </Route>
+
+      {/* Standalone public pages */}
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
       {/* Legacy auth redirects */}
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/register" element={<Navigate to="/" replace />} />
+
+      {/* Protected member-center routes */}
       <Route
         element={
           <RequireMember>
@@ -56,6 +73,7 @@ function AppRoutes() {
         <Route path="/profile/edit" element={<EditProfilePage />} />
         <Route path="/profile/password" element={<ChangePasswordPage />} />
       </Route>
+
       <Route path="*" element={<Navigate to={member ? '/home' : '/'} replace />} />
     </Routes>
   );

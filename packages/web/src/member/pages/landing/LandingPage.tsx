@@ -1,20 +1,8 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Avatar, Button, Dropdown } from '@douyinfe/semi-ui';
-import { Crown, Coins, Tag, Gift, Star, ChevronRight, LogOut, House, Wallet, Ticket } from 'lucide-react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { Button } from '@douyinfe/semi-ui';
+import { Crown, Coins, Tag, Gift, Star, ChevronRight } from 'lucide-react';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
-import { AuthModal } from '../../components/AuthModal';
-
-const NAV_LINKS = [
-  { key: 'features', label: '会员特权' },
-  { key: 'levels', label: '等级体系' },
-  { key: 'coupons', label: '优惠活动' },
-  { key: 'about', label: '关于我们' },
-];
-
-const scrollTo = (id: string) => {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
+import type { PublicOutletContext } from '../../layouts/PublicLayout';
 
 const FEATURES = [
   { icon: Coins, title: '积分奖励', desc: '每笔消费均可获得积分，积分可兑换专属礼品与优惠' },
@@ -25,71 +13,13 @@ const FEATURES = [
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { member, logout } = useMemberAuth();
-  const [authVisible, setAuthVisible] = useState(false);
-  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
-
-  const openLogin = () => { setAuthTab('login'); setAuthVisible(true); };
-  const openRegister = () => { setAuthTab('register'); setAuthVisible(true); };
-
-  const avatarMenu = (
-    <Dropdown.Menu>
-      <Dropdown.Title>欢迎，{member?.nickname ?? '会员'}</Dropdown.Title>
-      <Dropdown.Item icon={<House size={14} />} onClick={() => navigate('/home')}>会员概览</Dropdown.Item>
-      <Dropdown.Item icon={<Coins size={14} />} onClick={() => navigate('/points')}>我的积分</Dropdown.Item>
-      <Dropdown.Item icon={<Wallet size={14} />} onClick={() => navigate('/wallet')}>我的钱包</Dropdown.Item>
-      <Dropdown.Item icon={<Ticket size={14} />} onClick={() => navigate('/coupons')}>我的卡券</Dropdown.Item>
-      <Dropdown.Divider />
-      <Dropdown.Item icon={<LogOut size={14} />} type="danger" onClick={() => logout()}>退出登录</Dropdown.Item>
-    </Dropdown.Menu>
-  );
+  const { member } = useMemberAuth();
+  const { openLogin, openRegister } = useOutletContext<PublicOutletContext>();
 
   return (
-    <div className="mc-landing">
-      {/* ── Top Navbar ── */}
-      <header className="mc-landing-header">
-        <div className="mc-landing-logo">
-          <Crown size={20} color="var(--m-primary)" />
-          <span>会员中心</span>
-        </div>
-
-        <nav className="mc-landing-nav">
-          {NAV_LINKS.map((link) => (
-            <button
-              key={link.key}
-              type="button"
-              className="mc-landing-nav-link"
-              onClick={() => scrollTo(link.key)}
-            >
-              {link.label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="mc-landing-actions">
-          {member ? (
-            <Dropdown render={avatarMenu} position="bottomRight" trigger="click">
-              <div className="mc-landing-avatar">
-                <Avatar size="small" src={member.avatar ?? undefined} style={{ background: 'var(--m-primary)', flexShrink: 0 }}>
-                  {member.nickname?.[0] ?? 'U'}
-                </Avatar>
-                <span className="mc-landing-avatar-name">{member.nickname ?? '会员'}</span>
-                {member.levelName && <span className="m-level-badge" style={{ fontSize: 11 }}>{member.levelName}</span>}
-              </div>
-            </Dropdown>
-          ) : (
-            <>
-              <Button theme="borderless" onClick={openLogin}>登录</Button>
-              <Button theme="solid" onClick={openRegister} style={{ background: 'var(--m-primary)' }}>
-                免费注册
-              </Button>
-            </>
-          )}
-        </div>
-      </header>
-
-      {/* ── Hero Section ── */}
-      <section className="mc-hero" id="features">
+    <>
+      {/* ── Hero ── */}
+      <section className="mc-hero">
         <div className="mc-hero-content">
           <div className="mc-hero-icon">
             <Crown size={52} color="#ffd75e" />
@@ -106,16 +36,18 @@ export default function LandingPage() {
                 icon={<ChevronRight size={16} />}
                 iconPosition="right"
                 onClick={() => navigate('/home')}
-                style={{ background: 'var(--m-primary)' }}
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.5)', color: '#fff' }}
               >
                 进入会员中心
               </Button>
             ) : (
               <>
-                <Button size="large" theme="solid" onClick={openRegister} style={{ background: 'var(--m-primary)' }}>
+                <Button size="large" theme="solid" onClick={openRegister}
+                  style={{ background: '#fff', color: 'var(--m-primary)', fontWeight: 600 }}>
                   立即加入
                 </Button>
-                <Button size="large" theme="light" onClick={openLogin}>
+                <Button size="large" theme="borderless" onClick={openLogin}
+                  style={{ color: '#fff', border: '1px solid rgba(255,255,255,0.5)' }}>
                   已有账户？登录
                 </Button>
               </>
@@ -125,10 +57,12 @@ export default function LandingPage() {
       </section>
 
       {/* ── Features Grid ── */}
-      <section className="mc-features-section" id="levels">
+      <section className="mc-features-section">
         <div className="mc-section-container">
-          <h2 className="mc-section-title">会员专属权益</h2>
-          <p className="mc-section-sub">丰富的会员权益，让每一分价值都被珍视</p>
+          <div className="mc-section-header">
+            <h2 className="mc-section-title">会员专属权益</h2>
+            <p className="mc-section-sub">丰富的会员权益，让每一分价值都被珍视</p>
+          </div>
           <div className="mc-features-grid">
             {FEATURES.map((f) => {
               const Icon = f.icon;
@@ -146,9 +80,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── CTA Section ── */}
+      {/* ── CTA ── */}
       {!member && (
-        <section className="mc-cta-section" id="coupons">
+        <section className="mc-cta-section">
           <div className="mc-section-container" style={{ textAlign: 'center' }}>
             <h2 style={{ color: '#fff', fontSize: 28, fontWeight: 700, margin: '0 0 12px' }}>
               立即加入，享受专属礼遇
@@ -167,21 +101,7 @@ export default function LandingPage() {
           </div>
         </section>
       )}
-
-      {/* ── Footer / About ── */}
-      <footer className="mc-landing-footer" id="about">
-        <div className="mc-landing-logo">
-          <Crown size={15} color="var(--m-primary)" />
-          <span>会员中心</span>
-        </div>
-        <span>© 2026 会员中心. All rights reserved.</span>
-      </footer>
-
-      <AuthModal
-        visible={authVisible}
-        onClose={() => setAuthVisible(false)}
-        defaultTab={authTab}
-      />
-    </div>
+    </>
   );
 }
+
