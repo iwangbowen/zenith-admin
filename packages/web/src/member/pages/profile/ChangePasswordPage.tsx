@@ -50,7 +50,7 @@ export default function ChangePasswordPage() {
 
   return (
     <MemberPage title={needOld ? '修改密码' : '设置密码'} showBack noTabbar>
-      <Card style={{ maxWidth: 520, marginBottom: 16 }}>
+      <Card style={{ maxWidth: 520, marginBottom: 16, marginLeft: 'auto', marginRight: 'auto' }}>
         {needOld && (
           <FieldRow label="原密码">
             <Input mode="password" value={oldPassword} onChange={setOldPassword} placeholder="请输入原密码" borderless />
@@ -63,14 +63,16 @@ export default function ChangePasswordPage() {
           <Input mode="password" value={confirm} onChange={setConfirm} placeholder="再次输入新密码" borderless />
         </FieldRow>
       </Card>
-      <Button
-        theme="solid"
-        loading={saving}
-        onClick={handleSave}
-        style={{ background: 'var(--m-primary)' }}
-      >
-        确认修改
-      </Button>
+      <div style={{ maxWidth: 520, margin: '0 auto' }}>
+        <Button
+          theme="solid"
+          loading={saving}
+          onClick={handleSave}
+          style={{ background: 'var(--m-primary)' }}
+        >
+          确认修改
+        </Button>
+      </div>
     </MemberPage>
   );
 }

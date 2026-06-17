@@ -77,7 +77,7 @@ export default function EditProfilePage() {
   return (
     <MemberPage title="编辑资料" showBack noTabbar>
       {/* Avatar area */}
-      <Card style={{ maxWidth: 520, marginBottom: 16 }}>
+      <Card style={{ maxWidth: 520, marginBottom: 16, marginLeft: 'auto', marginRight: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '8px 0 16px' }}>
           <div style={{ position: 'relative', cursor: 'pointer', flexShrink: 0 }} onClick={() => setPresetVisible(true)}>
             {avatarLoading ? (
@@ -119,9 +119,11 @@ export default function EditProfilePage() {
         </FieldRow>
       </Card>
 
-      <Button theme="solid" loading={saving} onClick={handleSave} style={{ background: 'var(--m-primary)' }}>
-        保存
-      </Button>
+      <div style={{ maxWidth: 520, margin: '0 auto' }}>
+        <Button theme="solid" loading={saving} onClick={handleSave} style={{ background: 'var(--m-primary)' }}>
+          保存
+        </Button>
+      </div>
 
       {/* Avatar picker modal */}
       <Modal

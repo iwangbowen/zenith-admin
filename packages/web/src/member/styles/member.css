@@ -522,7 +522,17 @@ body {
   color: var(--m-text-secondary);
 }
 
-/* 会员等级徽标 */
+/* 折叠时头像居中 */
+.mc-semi-nav .semi-navigation-header-collapsed {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 0;
+}
+
+.mc-semi-nav .semi-navigation-header-collapsed .semi-navigation-header-logo {
+  margin: 0;
+}
 .mc-member-level {
   display: inline-flex;
   align-items: center;
