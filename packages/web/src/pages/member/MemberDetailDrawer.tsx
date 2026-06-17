@@ -83,7 +83,7 @@ export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
           <div style={{ padding: '20px 24px' }}>
             {/* 会员头像 + 基本信息 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, padding: '16px 20px', background: 'var(--semi-color-fill-0)', borderRadius: 10 }}>
-              <Avatar size="extra-large" src={m?.avatar ?? undefined} style={{ flexShrink: 0, background: '#07c160', fontSize: 22 }}>
+              <Avatar size="large" src={m?.avatar ?? undefined} style={{ flexShrink: 0, background: '#07c160', fontSize: 18 }}>
                 {!m?.avatar && (m?.nickname?.charAt(0) ?? '?')}
               </Avatar>
               <div style={{ flex: 1, minWidth: 0 }}>

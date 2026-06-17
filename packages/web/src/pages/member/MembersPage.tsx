@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input, Select, Space, Modal, Form, Toast, Tag, Spin, Row, Col, Dropdown, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, Plus, RotateCcw, Download, KeyRound, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, KeyRound, MoreHorizontal, ChevronDown } from 'lucide-react';
 import type { Member, MemberLevel, PaginatedResponse } from '@zenith/shared';
 import { MEMBER_STATUS_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -183,7 +183,7 @@ export default function MembersPage() {
                 </Dropdown.Menu>
               }
             >
-              <Button theme="borderless" size="small" icon={<ChevronDown size={13} />} iconPosition="right">更多</Button>
+              <Button theme="borderless" size="small" icon={<MoreHorizontal size={14} />} />
             </Dropdown>
           )}
         </Space>
