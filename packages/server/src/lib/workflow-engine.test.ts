@@ -517,14 +517,33 @@ describe('advanceFlow - inclusive gateway', () => {
 });
 
 describe('advanceFlow - auto nodes (delay/trigger/subProcess)', () => {
-  for (const t of ['delay', 'trigger', 'subProcess'] as const) {
-    it(`auto-passes ${t} node and reaches next approve`, () => {
-      const result = advanceFlow(makeAutoFlow(t), 'start', {}, new Set(['start']));
-      const approveTask = result.tasksToCreate.find(task => task.nodeKey === 'a1');
-      expect(approveTask).toBeDefined();
-      expect(approveTask?.assigneeId).toBe(99);
-    });
-  }
+  // trigger（非 callback）即时推进，自动到达下一个 approve
+  it('auto-passes trigger node and reaches next approve', () => {
+    const result = advanceFlow(makeAutoFlow('trigger'), 'start', {}, new Set(['start']));
+    const approveTask = result.tasksToCreate.find(task => task.nodeKey === 'a1');
+    expect(approveTask).toBeDefined();
+    expect(approveTask?.assigneeId).toBe(99);
+  });
+
+  // delay 节点（feat b80d5cc1 delay-scheduler）：创建 waiting 任务并在此停止 BFS，
+  // 由调度器在 wakeAt 唤醒后再推进，故本次不直接到达后续 approve
+  it('delay node creates a waiting task and halts BFS (awaits scheduler)', () => {
+    const result = advanceFlow(makeAutoFlow('delay'), 'start', {}, new Set(['start']));
+    const delayTask = result.tasksToCreate.find(task => task.nodeKey === 'auto');
+    expect(delayTask).toBeDefined();
+    expect(delayTask?.nodeType).toBe('delay');
+    expect(result.tasksToCreate.find(task => task.nodeKey === 'a1')).toBeUndefined();
+  });
+
+  // subProcess 节点（feat c8fd4273）默认 waitChild=true：创建子流程任务并等待子实例完成，
+  // 故本次不直接到达后续 approve
+  it('subProcess node (default waitChild) creates a task and awaits child instance', () => {
+    const result = advanceFlow(makeAutoFlow('subProcess'), 'start', {}, new Set(['start']));
+    const subTask = result.tasksToCreate.find(task => task.nodeKey === 'auto');
+    expect(subTask).toBeDefined();
+    expect(subTask?.nodeType).toBe('subProcess');
+    expect(result.tasksToCreate.find(task => task.nodeKey === 'a1')).toBeUndefined();
+  });
 });
 
 describe('advanceFlow - auto approval nodes', () => {
