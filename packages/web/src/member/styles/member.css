@@ -173,6 +173,7 @@ body {
 /* ── 主内容区 ─────────────────────────────────────────────── */
 .mc-main {
   flex: 1;
+  min-width: 0;
   /* margin-left is set by MemberLayout.tsx inline style (dynamic, respects Nav collapse) */
   min-height: 100vh;
   background: var(--m-bg);
@@ -181,7 +182,8 @@ body {
 /* ── 页面容器 ─────────────────────────────────────────────── */
 .mc-page {
   padding: 24px;
-  max-width: 960px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .mc-page-header {
