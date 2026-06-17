@@ -3,10 +3,10 @@
  * 复用 member-auth.service 的 mapMember / ensureMemberExists。
  */
 import bcrypt from 'bcryptjs';
-import { and, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, ilike, or, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
-import { members, memberPointAccounts, memberWallets } from '../db/schema';
+import { members, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs } from '../db/schema';
 import type { MemberRow } from '../db/schema';
 import { mapMember, ensureMemberExists } from './member-auth.service';
 import { forceLogoutAllByMember } from '../lib/member-session-manager';
@@ -14,6 +14,9 @@ import { escapeLike } from '../lib/where-helpers';
 import { pageOffset } from '../lib/pagination';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { streamToExcel, formatDateTimeForExcel, type ExcelColumn } from '../lib/excel-export';
+import { formatDateTime } from '../lib/datetime';
+import { mapPointAccount, mapPointTransaction, ensurePointAccount } from './member-points.service';
+import { mapWallet, mapWalletTransaction, ensureWallet } from './member-wallet.service';
 import { MEMBER_STATUS_LABELS, type MemberStatus } from '@zenith/shared';
 
 export interface ListMembersQuery {
@@ -182,6 +185,65 @@ export async function resetMemberPasswordByAdmin(id: number, newPassword: string
   const hashed = await bcrypt.hash(newPassword, 10);
   await db.update(members).set({ password: hashed }).where(eq(members.id, id));
   await forceLogoutAllByMember(id);
+}
+
+// ─── 批量操作 ─────────────────────────────────────────────────────────────────
+export async function batchSetMemberStatus(ids: number[], status: MemberStatus): Promise<number> {
+  if (ids.length === 0) return 0;
+  await db.update(members).set({ status }).where(inArray(members.id, ids));
+  if (status !== 'active') {
+    await Promise.all(ids.map((id) => forceLogoutAllByMember(id)));
+  }
+  return ids.length;
+}
+
+export async function batchSetMemberLevel(ids: number[], levelId: number | null): Promise<number> {
+  if (ids.length === 0) return 0;
+  await db.update(members).set({ levelId }).where(inArray(members.id, ids));
+  return ids.length;
+}
+
+// ─── 会员概览（后台详情侧滑）──────────────────────────────────────────────────
+export async function getMemberOverview(id: number) {
+  const row = await db.query.members.findFirst({
+    where: eq(members.id, id),
+    with: {
+      level: { columns: { name: true } },
+      pointAccount: { columns: { balance: true } },
+      wallet: { columns: { balance: true } },
+    },
+  });
+  if (!row) throw new HTTPException(404, { message: '会员不存在' });
+
+  const [pointAcc, wallet, recentPointRows, recentWalletRows, activeCouponCount, loginLogCount] =
+    await Promise.all([
+      ensurePointAccount(id),
+      ensureWallet(id),
+      db.select().from(memberPointTransactions)
+        .where(eq(memberPointTransactions.memberId, id))
+        .orderBy(desc(memberPointTransactions.id))
+        .limit(5),
+      db.select().from(memberWalletTransactions)
+        .where(eq(memberWalletTransactions.memberId, id))
+        .orderBy(desc(memberWalletTransactions.id))
+        .limit(5),
+      db.$count(memberCoupons, and(eq(memberCoupons.memberId, id), eq(memberCoupons.status, 'unused'))),
+      db.$count(memberLoginLogs, eq(memberLoginLogs.memberId, id)),
+    ]);
+
+  return {
+    member: mapMember(row, {
+      levelName: row.level?.name ?? null,
+      pointBalance: row.pointAccount?.balance ?? 0,
+      walletBalance: row.wallet?.balance ?? 0,
+    }),
+    points: mapPointAccount(pointAcc),
+    wallet: mapWallet(wallet),
+    recentPointTxs: recentPointRows.map((r) => mapPointTransaction(r)),
+    recentWalletTxs: recentWalletRows.map((r) => mapWalletTransaction(r)),
+    activeCouponCount,
+    loginLogCount,
+  };
 }
 
 // ─── 导出 ─────────────────────────────────────────────────────────────────────

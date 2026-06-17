@@ -179,3 +179,16 @@ export const MemberCouponDTO = z
     createdAt: z.string(),
   })
   .openapi('MemberCoupon');
+
+// ─── 会员概览（后台详情侧滑）─────────────────────────────────────────────────
+export const MemberOverviewDTO = z
+  .object({
+    member: MemberDTO,
+    points: MemberPointAccountDTO,
+    wallet: MemberWalletDTO,
+    recentPointTxs: z.array(MemberPointTransactionDTO),
+    recentWalletTxs: z.array(MemberWalletTransactionDTO),
+    activeCouponCount: z.number().int(),
+    loginLogCount: z.number().int(),
+  })
+  .openapi('MemberOverview');

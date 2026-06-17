@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Input, Select, Space, Modal, Form, Toast, Tag, Spin, Row, Col } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Space, Modal, Form, Toast, Tag, Spin, Row, Col, Dropdown, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, Plus, RotateCcw, Download, KeyRound } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, KeyRound, ChevronDown, Eye } from 'lucide-react';
 import type { Member, MemberLevel, PaginatedResponse } from '@zenith/shared';
 import { MEMBER_STATUS_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -12,6 +12,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+import { MemberDetailDrawer } from './MemberDetailDrawer';
 
 const STATUS_COLORS: Record<string, 'green' | 'grey' | 'red'> = { active: 'green', inactive: 'grey', banned: 'red' };
 const statusOptions = (['active', 'inactive', 'banned'] as const).map((v) => ({ value: v, label: MEMBER_STATUS_LABELS[v] }));
@@ -36,6 +37,15 @@ export default function MembersPage() {
   const [editing, setEditing] = useState<Member | null>(null);
   const [pwdVisible, setPwdVisible] = useState(false);
   const [pwdMember, setPwdMember] = useState<Member | null>(null);
+  // batch operations
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [batchStatusVisible, setBatchStatusVisible] = useState(false);
+  const [batchLevelVisible, setBatchLevelVisible] = useState(false);
+  const [batchStatus, setBatchStatus] = useState<string>('');
+  const [batchLevelId, setBatchLevelId] = useState<number | undefined>(undefined);
+  const [batchLoading, setBatchLoading] = useState(false);
+  // detail drawer
+  const [detailMemberId, setDetailMemberId] = useState<number | null>(null);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const ap = params ?? searchRef.current;
@@ -100,12 +110,48 @@ export default function MembersPage() {
     else throw new Error(res.message);
   };
 
+  // ── 批量操作 ──────────────────────────────────────────────────────────────
+  const handleBatchStatus = async () => {
+    if (!batchStatus) return;
+    setBatchLoading(true);
+    try {
+      const res = await request.put('/api/members/batch-status', { ids: selectedRowKeys, status: batchStatus });
+      if (res.code === 0) {
+        Toast.success(res.message ?? '已更新');
+        setBatchStatusVisible(false); setBatchStatus(''); setSelectedRowKeys([]);
+        void fetchData();
+      } else throw new Error(res.message);
+    } finally { setBatchLoading(false); }
+  };
+
+  const handleBatchLevel = async () => {
+    setBatchLoading(true);
+    try {
+      const res = await request.put('/api/members/batch-level', { ids: selectedRowKeys, levelId: batchLevelId ?? null });
+      if (res.code === 0) {
+        Toast.success(res.message ?? '已更新');
+        setBatchLevelVisible(false); setBatchLevelId(undefined); setSelectedRowKeys([]);
+        void fetchData();
+      } else throw new Error(res.message);
+    } finally { setBatchLoading(false); }
+  };
+
   const formInit = editing
     ? { nickname: editing.nickname, phone: editing.phone, email: editing.email, gender: editing.gender, levelId: editing.levelId, status: editing.status, remark: editing.remark }
     : { status: 'active' as const };
 
   const columns: ColumnProps<Member>[] = [
-    { title: '昵称', dataIndex: 'nickname', width: 140, render: renderEllipsis },
+    {
+      title: '昵称', dataIndex: 'nickname', width: 140,
+      render: (v: string, record: Member) => (
+        <Typography.Text
+          link onClick={() => setDetailMemberId(record.id)}
+          style={{ cursor: 'pointer' }}
+        >
+          {v}
+        </Typography.Text>
+      ),
+    },
     { title: '用户名', dataIndex: 'username', width: 120, render: (v: string | null) => v || '-' },
     { title: '手机号', dataIndex: 'phone', width: 130, render: (v: string | null) => v || '-' },
     { title: '邮箱', dataIndex: 'email', width: 180, render: renderEllipsis },
@@ -118,9 +164,10 @@ export default function MembersPage() {
       render: (v: string) => <Tag color={STATUS_COLORS[v]}>{MEMBER_STATUS_LABELS[v as keyof typeof MEMBER_STATUS_LABELS]}</Tag>,
     },
     {
-      title: '操作', fixed: 'right', width: 220,
+      title: '操作', fixed: 'right', width: 240,
       render: (_: unknown, record: Member) => (
         <Space>
+          <Button theme="borderless" size="small" icon={<Eye size={13} />} onClick={() => setDetailMemberId(record.id)}>详情</Button>
           {hasPermission('member:member:update') && <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>}
           {hasPermission('member:member:update') && <Button theme="borderless" size="small" onClick={() => openResetPwd(record)}>重置密码</Button>}
           {hasPermission('member:member:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(record)}>删除</Button>}
@@ -155,10 +202,35 @@ export default function MembersPage() {
         {hasPermission('member:member:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
       </SearchToolbar>
 
+      {/* 批量操作栏 */}
+      {selectedRowKeys.length > 0 && hasPermission('member:member:update') && (
+        <div style={{ padding: '8px 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, color: '#6b7280' }}>已选 <strong>{selectedRowKeys.length}</strong> 名会员</span>
+          <Dropdown
+            trigger="click"
+            render={
+              <Dropdown.Menu>
+                {statusOptions.map((s) => (
+                  <Dropdown.Item key={s.value} onClick={() => { setBatchStatus(s.value); setBatchStatusVisible(true); }}>
+                    更改为「{s.label}」
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            }
+          >
+            <Button size="small" type="primary" theme="light" icon={<ChevronDown size={13} />} iconPosition="right">批量更改状态</Button>
+          </Dropdown>
+          <Button size="small" type="primary" theme="light" onClick={() => setBatchLevelVisible(true)}>批量调整等级</Button>
+          <Button size="small" type="tertiary" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+        </div>
+      )}
+
       <ConfigurableTable bordered columns={columns} dataSource={data} loading={loading}
         onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small"
+        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) }}
         pagination={buildPagination(total, fetchData)} empty="暂无数据" />
 
+      {/* 编辑 / 新增 Modal */}
       <AppModal title={editing ? '编辑会员' : '新增会员'} visible={modalVisible} width={660}
         onCancel={() => { setModalVisible(false); setEditing(null); }} onOk={handleModalOk}>
         <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} allowEmpty
@@ -185,6 +257,7 @@ export default function MembersPage() {
         </Form>
       </AppModal>
 
+      {/* 重置密码 Modal */}
       <AppModal title="重置会员密码" visible={pwdVisible} width={480}
         onCancel={() => { setPwdVisible(false); setPwdMember(null); }} onOk={handleResetPwd}>
         <Spin spinning={false}>
@@ -194,6 +267,39 @@ export default function MembersPage() {
           </Form>
         </Spin>
       </AppModal>
+
+      {/* 批量更改状态确认 Modal */}
+      <Modal
+        title="批量更改状态"
+        visible={batchStatusVisible}
+        confirmLoading={batchLoading}
+        onOk={handleBatchStatus}
+        onCancel={() => { setBatchStatusVisible(false); setBatchStatus(''); }}
+      >
+        <p>确认将 <strong>{selectedRowKeys.length}</strong> 名会员状态更改为「{MEMBER_STATUS_LABELS[batchStatus as keyof typeof MEMBER_STATUS_LABELS]}」吗？</p>
+        {batchStatus !== 'active' && <p style={{ color: '#fa5151', fontSize: 13 }}>注意：非正常状态的会员将被强制下线。</p>}
+      </Modal>
+
+      {/* 批量调整等级 Modal */}
+      <Modal
+        title="批量调整等级"
+        visible={batchLevelVisible}
+        confirmLoading={batchLoading}
+        onOk={handleBatchLevel}
+        onCancel={() => { setBatchLevelVisible(false); setBatchLevelId(undefined); }}
+      >
+        <p>将 <strong>{selectedRowKeys.length}</strong> 名会员等级调整为：</p>
+        <Select
+          value={batchLevelId}
+          onChange={(v) => setBatchLevelId(v as number | undefined)}
+          optionList={[{ value: undefined, label: '无等级（清除）' }, ...levels.map((l) => ({ value: l.id, label: l.name }))]}
+          style={{ width: '100%', marginTop: 8 }}
+          placeholder="请选择等级"
+        />
+      </Modal>
+
+      {/* 会员详情侧滑 */}
+      <MemberDetailDrawer memberId={detailMemberId} onClose={() => setDetailMemberId(null)} />
     </div>
   );
 }

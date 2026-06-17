@@ -3,12 +3,13 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   ErrorResponse, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery, okExcel, excelStreamBody,
+  ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery, okExcel, excelStreamBody, BatchIdsBody,
 } from '../lib/openapi-schemas';
-import { MemberDTO } from '../lib/openapi-dtos';
+import { MemberDTO, MemberOverviewDTO } from '../lib/openapi-dtos';
 import {
-  listMembers, getMemberDetail, createMember, updateMember,
-  setMemberStatus, resetMemberPasswordByAdmin, deleteMember, exportMembers,
+  listMembers, getMemberDetail, getMemberOverview, createMember, updateMember,
+  setMemberStatus, batchSetMemberStatus, batchSetMemberLevel,
+  resetMemberPasswordByAdmin, deleteMember, exportMembers,
 } from '../services/admin-members.service';
 import { ensureMemberExists } from '../services/member-auth.service';
 
@@ -16,6 +17,9 @@ const membersRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const phoneRegex = /^1[3-9]\d{9}$/;
 const statusEnum = z.enum(['active', 'inactive', 'banned']);
+
+const batchStatusSchema = z.object({ ids: BatchIdsBody.shape.ids, status: statusEnum });
+const batchLevelSchema = z.object({ ids: BatchIdsBody.shape.ids, levelId: z.number().int().positive().nullable() });
 
 const listQuery = PaginationQuery.extend({
   keyword: z.string().optional(),
@@ -50,6 +54,50 @@ const updateMemberSchema = z.object({
 });
 const setStatusSchema = z.object({ status: statusEnum });
 const resetPwdSchema = z.object({ newPassword: z.string().min(6).max(64) });
+
+// ─── PUT /batch-status — 批量更改状态 ────────────────────────────────────────
+const batchStatusRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/batch-status', tags: ['会员管理'], summary: '批量更改会员状态',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:member:update', audit: { description: '批量更改会员状态', module: '会员管理' } })] as const,
+    request: { body: { content: jsonContent(batchStatusSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已更新') },
+  }),
+  handler: async (c) => {
+    const { ids, status } = c.req.valid('json');
+    const count = await batchSetMemberStatus(ids, status);
+    return c.json(okBody(null, `已更新 ${count} 名会员状态`), 200);
+  },
+});
+
+// ─── PUT /batch-level — 批量调整等级 ─────────────────────────────────────────
+const batchLevelRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/batch-level', tags: ['会员管理'], summary: '批量调整会员等级',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:member:update', audit: { description: '批量调整会员等级', module: '会员管理' } })] as const,
+    request: { body: { content: jsonContent(batchLevelSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已更新') },
+  }),
+  handler: async (c) => {
+    const { ids, levelId } = c.req.valid('json');
+    const count = await batchSetMemberLevel(ids, levelId);
+    return c.json(okBody(null, `已调整 ${count} 名会员等级`), 200);
+  },
+});
+
+// ─── GET /{id}/overview — 会员概览（详情侧滑）────────────────────────────────
+const overviewRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/overview', tags: ['会员管理'], summary: '会员概览（详情侧滑）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:member:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(MemberOverviewDTO, 'ok'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => c.json(okBody(await getMemberOverview(c.req.valid('param').id)), 200),
+});
 
 // ─── GET / — 会员列表 ────────────────────────────────────────────────────────
 const listRoute = defineOpenAPIRoute({
@@ -172,6 +220,7 @@ const deleteRoute_ = defineOpenAPIRoute({
 });
 
 membersRouter.openapiRoutes([
+  batchStatusRoute, batchLevelRoute, overviewRoute,
   listRoute, exportRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
 ] as const);
 

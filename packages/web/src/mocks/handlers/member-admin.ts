@@ -30,7 +30,22 @@ export const memberAdminHandlers = [
       headers: { 'Content-Type': 'text/csv' },
     }),
   ),
+  http.put('/api/members/batch-status', () => ok(null, '已更新状态')),
+  http.put('/api/members/batch-level', () => ok(null, '已调整等级')),
   http.get('/api/members', () => paginated(mockMembers.map(memberView))),
+  http.get('/api/members/:id/overview', ({ params }) => {
+    const m = mockMembers.find((x) => x.id === Number(params.id));
+    if (!m) return HttpResponse.json({ code: 404, message: '不存在', data: null }, { status: 404 });
+    return ok({
+      member: memberView(m),
+      points: mockMemberPointAccount,
+      wallet: mockMemberWallet,
+      recentPointTxs: mockMemberPointTxs.slice(0, 5),
+      recentWalletTxs: mockMemberWalletTxs.slice(0, 5),
+      activeCouponCount: 2,
+      loginLogCount: 8,
+    });
+  }),
   http.get('/api/members/:id', ({ params }) => {
     const m = mockMembers.find((x) => x.id === Number(params.id));
     return ok(m ? memberView(m) : null);
