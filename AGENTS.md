@@ -277,8 +277,8 @@ packages/web/src/mocks/
 │   ├── cron-jobs.ts              monitor.ts        dashboard.ts
 │   ├── login-logs.ts             operation-logs.ts sessions.ts
 │   ├── api-tokens.ts             cache.ts          db-backups.ts
-│   ├── email-config.ts           message-templates.ts
-│   ├── oauth.ts                  oauth-config.ts
+│   ├── email-config.ts           email-templates.ts    sms-configs.ts
+│   ├── sms-templates.ts          in-app-templates.ts   oauth-config.ts
 │   ├── regions.ts                tenants.ts        workflow.ts
 │   └── index.ts   # 汇总所有 handlers
 ├── utils/
@@ -289,7 +289,12 @@ packages/web/src/mocks/
 
 ### 维护规范
 
-- **新增业务模块时**：必须同步在 `data/` 中添加初始数据，并在 `handlers/` 中添加对应的 MSW handler，然后在 `handlers/index.ts` 中注册。
+- **新增业务模块时**：
+  1. 若模块有初始种子数据，**先**在 `packages/shared/src/seed-data.ts` 中声明 `SEED_XXXS` 常量
+  2. `packages/server/src/db/seed.ts` 中导入并使用该常量写入 DB（禁止在 seed.ts 内联写死数据）
+  3. `mocks/data/xxxs.ts` 中导入 `SEED_XXXS` 并展开使用（禁止重复定义静态数组）
+  4. 在 `mocks/handlers/` 中添加对应的 MSW handler，并在 `handlers/index.ts` 中注册
 - **修改 API 接口格式时**：对应的 handler 文件也必须同步更新。
+- **修改种子数据时**：只改 `shared/seed-data.ts` 一处，DB seed 和 MSW mock 自动同步。
 - 构建 Demo 站点：`npm run build:demo`（使用 `packages/web/.env.demo` 中的变量）。
 - GitHub Pages 部署由 `.github/workflows/pages.yml` 自动完成（推送到 master 分支触发，文档站与 Demo 统一部署）。

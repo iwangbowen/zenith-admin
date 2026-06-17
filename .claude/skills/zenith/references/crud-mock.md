@@ -24,41 +24,36 @@ packages/web/src/mocks/
 ## Step 10a：`packages/web/src/mocks/data/xxxs.ts`
 
 ```ts
+import { SEED_XXXS } from '@zenith/shared';  // 从共享种子数据导入，与 DB seed 保持一致
 import type { Xxx } from '@zenith/shared';
+import { mockDateTime } from '@/mocks/utils/date';
 
-const SEED_DATE = '2024-01-01 00:00:00';
-
-// 与 packages/server/src/db/seed.ts 中的种子数据对齐
+// 如 Xxx 类型有 mock 专属字段（如运行时计数），在此扩展
 export interface MockXxx extends Xxx {
-  // 如有 mock 专属字段，在此扩展（通常与 Xxx 一致）
+  // extraField?: number;  // 仅 demo 模式使用的额外字段
 }
 
-// 内存中的静态数据
-export const mockXxxs: MockXxx[] = [
-  {
-    id: 1,
-    name: '示例XXX-1',
-    description: '初始演示数据',
-    status: 'enabled',
-    createdAt: SEED_DATE,
-    updatedAt: SEED_DATE,
-  },
-  {
-    id: 2,
-    name: '示例XXX-2',
-    description: '初始演示数据',
-    status: 'enabled',
-    createdAt: SEED_DATE,
-    updatedAt: SEED_DATE,
-  },
-];
+// 从共享常量派生初始数据（禁止重复定义！）
+const now = mockDateTime();
+export const mockXxxs: MockXxx[] = SEED_XXXS.map((x) => ({
+  ...x,
+  // 如有 mock 专属字段，在此覆盖：
+  // extraField: 0,
+  createdAt: now,
+  updatedAt: now,
+}));
 
 // 自增 ID（内存）
-let nextXxxId = mockXxxs.length + 1;
+let nextXxxId = Math.max(...mockXxxs.map((x) => x.id)) + 1;
 export function getNextXxxId(): number {
   return nextXxxId++;
 }
 ```
+
+> **规则**：若种子数据已在 `packages/shared/src/seed-data.ts` 定义为 `SEED_XXXS`，
+> 则直接导入，**禁止**在 mock data 文件中重复写静态数组。
+> 若 demo 模式需要额外字段（如运行时计数 `memberCount`），用 `.map()` 展开后追加，不要整体复制。
+> 新增模块时，**先**在 `shared/seed-data.ts` 添加 `SEED_XXXS`，**再**在 mock data 中导入。
 
 ---
 
