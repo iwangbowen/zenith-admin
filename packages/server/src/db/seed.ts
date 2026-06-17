@@ -5,7 +5,7 @@ import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
-import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS } from '@zenith/shared';
+import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
 
@@ -376,43 +376,24 @@ async function seedRest() {
   logger.info('  ✔ Tags seeded (onConflictDoNothing)');
 
   // ── 数据脱敏规则 ──────────────────────────────────────────────────────────────
-  await db.insert(dataMaskConfigs).values([
-    {
-      entity: 'user', field: 'phone', label: '手机号', maskType: 'phone',
-      exemptRoleCodes: ['super_admin'], enabled: true, remark: '手机号脱敏，超管豁免',
-    },
-    {
-      entity: 'user', field: 'email', label: '邮箱', maskType: 'email',
-      exemptRoleCodes: ['super_admin'], enabled: true, remark: '邮箱脱敏，超管豁免',
-    },
-    {
-      entity: 'user', field: 'idCard', label: '身份证号', maskType: 'id_card',
-      exemptRoleCodes: ['super_admin'], enabled: false, remark: '身份证脱敏规则（示例，默认禁用）',
-    },
-  ]).onConflictDoNothing();
+  await db.insert(dataMaskConfigs).values(
+    SEED_DATA_MASK_CONFIGS.map(({ entity, field, label, maskType, exemptRoleCodes, enabled, remark }) => ({ entity, field, label, maskType, exemptRoleCodes, enabled, remark })),
+  ).onConflictDoNothing();
   logger.info('  ✔ Data mask configs seeded (onConflictDoNothing)');
 
   // ── 会员等级 ──────────────────────────────────────────────────
-  const existingLevels = await db.select({ id: memberLevels.id }).from(memberLevels).limit(1);
-  if (existingLevels.length === 0) {
-    await db.insert(memberLevels).values([
-      { name: '普通会员', level: 1, growthThreshold: 0, discount: 100, benefits: ['基础积分权益'], sort: 1, status: 'enabled' },
-      { name: '银卡会员', level: 2, growthThreshold: 1000, discount: 98, benefits: ['98 折优惠', '生日积分翻倍'], sort: 2, status: 'enabled' },
-      { name: '金卡会员', level: 3, growthThreshold: 5000, discount: 95, benefits: ['95 折优惠', '生日积分翻倍', '专属客服'], sort: 3, status: 'enabled' },
-      { name: '钻石会员', level: 4, growthThreshold: 20000, discount: 90, benefits: ['9 折优惠', '积分翻倍', '专属客服', '优先发货'], sort: 4, status: 'enabled' },
-    ]);
-    logger.info('  ✔ Member levels seeded');
-  }
+  await db.insert(memberLevels).values(
+    SEED_MEMBER_LEVELS.map(({ id, name, level, growthThreshold, discount, benefits, sort, status }) => ({ id, name, level, growthThreshold, discount, benefits, sort, status })),
+  ).onConflictDoNothing({ target: memberLevels.id });
+  await db.execute(sql`SELECT setval('member_levels_id_seq', GREATEST((SELECT MAX(id) FROM member_levels), 1))`);
+  logger.info('  ✔ Member levels seeded (onConflictDoNothing)');
 
   // ── 优惠券模板 ────────────────────────────────────────────────
-  const existingCoupons = await db.select({ id: coupons.id }).from(coupons).limit(1);
-  if (existingCoupons.length === 0) {
-    await db.insert(coupons).values([
-      { name: '新人满100减10', type: 'amount', faceValue: 1000, threshold: 10000, totalQuantity: 1000, perLimit: 1, validType: 'relative', validDays: 30, status: 'active', description: '新人专享满减券' },
-      { name: '全场9折券', type: 'percent', faceValue: 90, threshold: 0, maxDiscount: 5000, totalQuantity: 500, perLimit: 1, validType: 'relative', validDays: 15, status: 'active', description: '限时9折，最高减50元' },
-    ]);
-    logger.info('  ✔ Coupons seeded');
-  }
+  await db.insert(coupons).values(
+    SEED_COUPONS.map(({ id, name, type, faceValue, threshold, maxDiscount, totalQuantity, perLimit, validType, validDays, status, description }) => ({ id, name, type, faceValue, threshold, maxDiscount, totalQuantity, perLimit, validType, validDays, status, description })),
+  ).onConflictDoNothing({ target: coupons.id });
+  await db.execute(sql`SELECT setval('coupons_id_seq', GREATEST((SELECT MAX(id) FROM coupons), 1))`);
+  logger.info('  ✔ Coupons seeded (onConflictDoNothing)');
 
   // ── 演示会员（手机号 13800138000 / 密码 123456）────────────────────────
   const existingDemoMember = await db.select({ id: members.id }).from(members).where(eq(members.phone, '13800138000')).limit(1);

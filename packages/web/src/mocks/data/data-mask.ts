@@ -1,37 +1,11 @@
+import { SEED_DATA_MASK_CONFIGS } from '@zenith/shared';
 import type { DataMaskConfig, MaskType } from '@zenith/shared';
 import { mockDateTime } from '@/mocks/utils/date';
 
-let nextId = 3;
-export function getNextDataMaskId() { return nextId++; }
+export const mockDataMaskConfigs: DataMaskConfig[] = [...SEED_DATA_MASK_CONFIGS];
 
-export const mockDataMaskConfigs: DataMaskConfig[] = [
-  {
-    id: 1,
-    entity: 'user',
-    field: 'phone',
-    label: '手机号',
-    maskType: 'phone' as MaskType,
-    customRule: null,
-    exemptRoleCodes: ['super_admin'],
-    enabled: true,
-    remark: '手机号脱敏，超管豁免',
-    createdAt: '2024-01-01 00:00:00',
-    updatedAt: '2024-01-01 00:00:00',
-  },
-  {
-    id: 2,
-    entity: 'user',
-    field: 'email',
-    label: '邮箱',
-    maskType: 'email' as MaskType,
-    customRule: null,
-    exemptRoleCodes: ['super_admin'],
-    enabled: true,
-    remark: '邮箱脱敏，超管豁免',
-    createdAt: '2024-01-01 00:00:00',
-    updatedAt: '2024-01-01 00:00:00',
-  },
-];
+let nextId = SEED_DATA_MASK_CONFIGS.length + 1;
+export function getNextDataMaskId() { return nextId++; }
 
 export function createMockDataMaskConfig(body: Partial<DataMaskConfig>): DataMaskConfig {
   const now = mockDateTime();
