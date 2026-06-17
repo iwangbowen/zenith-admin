@@ -5,7 +5,7 @@ import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
-import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS } from '@zenith/shared';
+import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
 
@@ -290,43 +290,18 @@ async function seedRest() {
   ]).onConflictDoNothing({ target: tenants.code });
   logger.info('  ✔ Tenants seeded (onConflictDoNothing)');
 
-  // ─── 邮件模板示例数据 ───────────────────────────────────────────────────────
-  await db.insert(emailTemplates).values([
-    {
-      name: '欢迎注册邮件',
-      code: 'user_welcome_email',
-      subject: '欢迎加入 {{app_name}}',
-      content: '亲爱的 {{username}}，\n\n欢迎注册 {{app_name}}！\n您的账户已成功创建，请单击以下链接完成验证：\n{{verify_link}}\n\n此链接 24 小时内有效。',
-      variables: JSON.stringify({ username: '用户名', app_name: '应用名称', verify_link: '验证链接' }),
-      status: 'enabled',
-      remark: '新用户注册后发送的激活邮件',
-    },
-    {
-      name: '密码重置邮件',
-      code: 'user_reset_password_email',
-      subject: '重置您的密码',
-      content: '亲爱的 {{username}}，\n\n我们收到了您的密码重置申请。请单击以下链接重置密码：\n{{reset_link}}\n\n此链接 2 小时内有效。如果您未发起此请求，请忽略此邮件。',
-      variables: JSON.stringify({ username: '用户名', reset_link: '重置密码链接' }),
-      status: 'enabled',
-      remark: '用户密码重置流程所用模板',
-    },
-  ]).onConflictDoNothing({ target: emailTemplates.code });
+  // ─── 邮件模板示例数据（数据来源：@zenith/shared SEED_EMAIL_TEMPLATES）─────────────────────────
+  await db.insert(emailTemplates).values(
+    SEED_EMAIL_TEMPLATES.map(({ id, name, code, subject, content, variables, status, remark }) => ({ id, name, code, subject, content, variables, status, remark })),
+  ).onConflictDoNothing({ target: emailTemplates.code });
+  await db.execute(sql`SELECT setval('email_templates_id_seq', GREATEST((SELECT MAX(id) FROM email_templates), 1))`);
   logger.info('  ✔ Email templates seeded (onConflictDoNothing)');
 
-  // ─── 短信模板示例数据 ───────────────────────────────────────────────────────
-  await db.insert(smsTemplates).values([
-    {
-      name: '验证码短信',
-      code: 'user_verification_sms',
-      templateCode: 'SMS_DEMO_VERIFICATION',
-      signName: 'Zenith',
-      content: '【{{app_name}}】您的验证码为 {{code}}，{{expire_minutes}} 分钟内有效，请勿泄露。',
-      variables: JSON.stringify({ app_name: '应用名称', code: '验证码', expire_minutes: '有效分钟数' }),
-      provider: 'aliyun',
-      status: 'enabled',
-      remark: '短信验证码模板（需绑定实际厂商模板 ID）',
-    },
-  ]).onConflictDoNothing({ target: smsTemplates.code });
+  // ─── 短信模板示例数据（数据来源：@zenith/shared SEED_SMS_TEMPLATES）──────────────────────
+  await db.insert(smsTemplates).values(
+    SEED_SMS_TEMPLATES.map(({ id, name, code, templateCode, signName, content, variables, provider, status, remark }) => ({ id, name, code, templateCode, signName, content, variables, provider, status, remark })),
+  ).onConflictDoNothing({ target: smsTemplates.code });
+  await db.execute(sql`SELECT setval('sms_templates_id_seq', GREATEST((SELECT MAX(id) FROM sms_templates), 1))`);
   logger.info('  ✔ SMS templates seeded (onConflictDoNothing)');
 
   // ─── 短信服务商配置示例 ─────────────────────────────────────────────────────
@@ -348,19 +323,11 @@ async function seedRest() {
   }
   logger.info('  ✔ SMS configs seeded (skip if exists)');
 
-  // ─── 站内信模板示例数据 ─────────────────────────────────────────────────────
-  await db.insert(inAppTemplates).values([
-    {
-      name: '系统公告',
-      code: 'system_notice_in_app',
-      title: '系统公告：{{title}}',
-      content: '{{content}}',
-      type: 'info',
-      variables: JSON.stringify({ title: '公告标题', content: '公告内容' }),
-      status: 'enabled',
-      remark: '系统公告通知模板',
-    },
-  ]).onConflictDoNothing({ target: inAppTemplates.code });
+  // ─── 站内信模板示例数据（数据来源：@zenith/shared SEED_INAPP_TEMPLATES）─────────────────────
+  await db.insert(inAppTemplates).values(
+    SEED_INAPP_TEMPLATES.map(({ id, name, code, title, content, type, variables, status, remark }) => ({ id, name, code, title, content, type, variables, status, remark })),
+  ).onConflictDoNothing({ target: inAppTemplates.code });
+  await db.execute(sql`SELECT setval('in_app_templates_id_seq', GREATEST((SELECT MAX(id) FROM in_app_templates), 1))`);
   logger.info('  ✔ In-app templates seeded (onConflictDoNothing)');
 
   // ── 标签 ────────────────────────────────────────────────────────────────────
