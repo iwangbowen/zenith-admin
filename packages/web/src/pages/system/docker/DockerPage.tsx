@@ -29,7 +29,7 @@ import {
   Search,
   Info,
   Plus,
-  Trash2,
+  Trash2 as _Trash2,
   Download,
   MoreHorizontal,
 } from 'lucide-react';
@@ -444,7 +444,7 @@ function ImagesTab() {
       title: '操作', width: 100, fixed: 'right' as const,
       render: (_: unknown, r: ImageInfo) => (
         <Popconfirm title="确定删除此镜像？运行中的容器使用的镜像无法删除。" okType="danger" onConfirm={() => void handleRemove(r.id)}>
-          <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />}>删除</Button>
+          <Button size="small" theme="borderless" type="danger">删除</Button>
         </Popconfirm>
       ),
     },
