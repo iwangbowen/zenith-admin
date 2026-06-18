@@ -53,8 +53,6 @@ export interface TerminalPreferences {
   letterSpacing: number;
   /** 字体粗细，如 'normal'、'bold'、'600' */
   fontWeight: string;
-  /** 响铃方式：不响铃 / 闪屏 / 声音 */
-  bellStyle: 'none' | 'visual' | 'sound';
   /** 右键是否选词（false = 弹出浏览器菜单） */
   rightClickSelectsWord: boolean;
   /** 最小对比度（1–21，1 = 不限制） */
@@ -190,7 +188,6 @@ export const defaultPreferences: UserPreferences = {
     fastScrollSensitivity: 5,
     letterSpacing: 0,
     fontWeight: 'normal',
-    bellStyle: 'none' as const,
     rightClickSelectsWord: false,
     minimumContrastRatio: 1,
   },

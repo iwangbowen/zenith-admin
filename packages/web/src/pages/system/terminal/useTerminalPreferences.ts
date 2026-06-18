@@ -20,7 +20,6 @@ export const defaultTerminalPreferences: TerminalPreferences = {
   fastScrollSensitivity: 5,
   letterSpacing: 0,
   fontWeight: 'normal',
-  bellStyle: 'none',
   rightClickSelectsWord: false,
   minimumContrastRatio: 1,
 };

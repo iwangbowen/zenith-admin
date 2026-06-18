@@ -40,10 +40,8 @@ export interface SessionCreateOptions {
   fastScrollSensitivity?: number;
   /** 字母间距（px） */
   letterSpacing?: number;
-  /** 字体粗细 */
+  /** 字체粗细 */
   fontWeight?: string;
-  /** 响铃方式 */
-  bellStyle?: 'none' | 'visual' | 'sound';
   /** 右键是否选词 */
   rightClickSelectsWord?: boolean;
   /** 最小对比度 */
@@ -140,7 +138,6 @@ class TerminalSessionStore {
       fastScrollSensitivity: options.fastScrollSensitivity ?? 5,
       letterSpacing: options.letterSpacing ?? 0,
       fontWeight: (options.fontWeight ?? 'normal') as ITerminalOptions['fontWeight'],
-      bellStyle: options.bellStyle ?? 'none',
       rightClickSelectsWord: options.rightClickSelectsWord ?? false,
       minimumContrastRatio: options.minimumContrastRatio ?? 1,
     });
@@ -420,7 +417,6 @@ class TerminalSessionStore {
       fastScrollSensitivity?: number;
       letterSpacing?: number;
       fontWeight?: string;
-      bellStyle?: 'none' | 'visual' | 'sound';
       rightClickSelectsWord?: boolean;
       minimumContrastRatio?: number;
     },
@@ -437,7 +433,6 @@ class TerminalSessionStore {
     if (opts.fastScrollSensitivity !== undefined) session.term.options.fastScrollSensitivity = opts.fastScrollSensitivity;
     if (opts.letterSpacing !== undefined) session.term.options.letterSpacing = opts.letterSpacing;
     if (opts.fontWeight !== undefined) session.term.options.fontWeight = opts.fontWeight as ITerminalOptions['fontWeight'];
-    if (opts.bellStyle !== undefined) session.term.options.bellStyle = opts.bellStyle;
     if (opts.rightClickSelectsWord !== undefined) session.term.options.rightClickSelectsWord = opts.rightClickSelectsWord;
     if (opts.minimumContrastRatio !== undefined) session.term.options.minimumContrastRatio = opts.minimumContrastRatio;
     session.fitAddon.fit();

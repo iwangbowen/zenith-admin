@@ -43,7 +43,6 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
     fastScrollSensitivity: terminal.fastScrollSensitivity,
     letterSpacing: terminal.letterSpacing,
     fontWeight: terminal.fontWeight,
-    bellStyle: terminal.bellStyle,
     rightClickSelectsWord: terminal.rightClickSelectsWord,
     minimumContrastRatio: terminal.minimumContrastRatio,
   });
@@ -60,7 +59,6 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
     fastScrollSensitivity: terminal.fastScrollSensitivity,
     letterSpacing: terminal.letterSpacing,
     fontWeight: terminal.fontWeight,
-    bellStyle: terminal.bellStyle,
     rightClickSelectsWord: terminal.rightClickSelectsWord,
     minimumContrastRatio: terminal.minimumContrastRatio,
   };
@@ -162,7 +160,6 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
       fastScrollSensitivity: terminal.fastScrollSensitivity,
       letterSpacing: terminal.letterSpacing,
       fontWeight: terminal.fontWeight,
-      bellStyle: terminal.bellStyle,
       rightClickSelectsWord: terminal.rightClickSelectsWord,
       minimumContrastRatio: terminal.minimumContrastRatio,
     });
@@ -170,7 +167,7 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
     currentTheme,
     terminal.fontSize, terminal.fontFamily, terminal.lineHeight,
     terminal.cursorStyle, terminal.cursorBlink, terminal.copyOnSelect, terminal.fastScrollSensitivity,
-    terminal.letterSpacing, terminal.fontWeight, terminal.bellStyle,
+    terminal.letterSpacing, terminal.fontWeight,
     terminal.rightClickSelectsWord, terminal.minimumContrastRatio,
     sessionId,
   ]);

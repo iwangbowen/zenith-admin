@@ -234,21 +234,6 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
         </Select>
       </Field>
 
-      <Field label="响铃方式">
-        <Select
-          value={terminal.bellStyle ?? 'none'}
-          onChange={(v) => setTerminalPref({ bellStyle: (v as 'none' | 'visual' | 'sound') ?? 'none' })}
-          style={{ width: '100%' }}
-        >
-          <Select.Option value="none">不响铃（默认）</Select.Option>
-          <Select.Option value="visual">闪屏</Select.Option>
-          <Select.Option value="sound">声音</Select.Option>
-        </Select>
-        <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>
-          服务端输出 \a 时触发。声音需浏览器允许自动播放。
-        </Typography.Text>
-      </Field>
-
       <Field label="右键选词">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Switch
