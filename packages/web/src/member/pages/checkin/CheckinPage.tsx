@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
-import { Button, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Calendar, Table, Tag, Toast } from '@douyinfe/semi-ui';
 import type { MemberCheckin, MemberCheckinStatus, PaginatedResponse } from '@zenith/shared';
 import { CalendarCheck, Flame, Trophy } from 'lucide-react';
 import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 
-const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 const HISTORY_PAGE_SIZE = 10;
 
 interface CheckinResult {
@@ -67,21 +66,6 @@ export default function CheckinPage() {
   };
 
   const checkedDates = useMemo(() => new Set(status?.thisMonthDates ?? []), [status?.thisMonthDates]);
-  const calendarCells = useMemo(() => {
-    const today = dayjs();
-    const monthStart = today.startOf('month');
-    const daysInMonth = today.daysInMonth();
-    const leading = monthStart.day();
-    const items: Array<{ date: string; label: number; currentMonth: boolean }> = [];
-    for (let i = 0; i < leading; i += 1) {
-      items.push({ date: `blank-${i}`, label: 0, currentMonth: false });
-    }
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const date = today.date(day).format('YYYY-MM-DD');
-      items.push({ date, label: day, currentMonth: true });
-    }
-    return items;
-  }, []);
 
   return (
     <MemberPage title="每日签到">
@@ -140,50 +124,33 @@ export default function CheckinPage() {
         </div>
       </div>
 
-      <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, padding: 18, marginBottom: 20 }}>
-        <div className="mc-card-title" style={{ marginBottom: 12 }}>
+      <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+        <div className="mc-card-title" style={{ padding: '18px 18px 0' }}>
           本月签到日历
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8 }}>
-          {WEEK_LABELS.map((label) => (
-            <div key={label} style={{ textAlign: 'center', color: 'var(--m-text-secondary)', fontSize: 13 }}>
-              {label}
-            </div>
-          ))}
-          {calendarCells.map((cell) => {
-            if (!cell.currentMonth) {
-              return <div key={cell.date} style={{ minHeight: 66 }} />;
-            }
-            const checked = checkedDates.has(cell.date);
-            const today = cell.date === dayjs().format('YYYY-MM-DD');
+        <Calendar
+          mode="month"
+          displayValue={new Date()}
+          weekStartsOn={1}
+          height={360}
+          dateGridRender={(_, date) => {
+            const dateStr = dayjs(date).format('YYYY-MM-DD');
+            if (!checkedDates.has(dateStr)) return null;
             return (
-              <div
-                key={cell.date}
-                style={{
-                  minHeight: 66,
-                  borderRadius: 10,
-                  border: today ? '1px solid #07c160' : '1px solid var(--m-border)',
-                  background: checked ? 'rgba(7, 193, 96, 0.08)' : '#fff',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '10px 8px',
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>{cell.label}</span>
-                <span style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: checked ? '#07c160' : 'transparent',
-                  border: checked ? 'none' : '1px solid var(--m-border)',
-                }}
-                />
-              </div>
+              <div style={{
+                position: 'absolute',
+                bottom: 6,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#07c160',
+              }}
+              />
             );
-          })}
-        </div>
+          }}
+        />
       </div>
 
       <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, padding: 18 }}>
