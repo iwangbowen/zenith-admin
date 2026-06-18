@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Button, Form, Toast, Typography, Tag, Space, Popconfirm,
-  Select,
+  Select, Row, Col,
 } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus, Pencil, Trash2, Server, ChevronUp, ChevronDown } from 'lucide-react';
@@ -207,7 +207,7 @@ export default function SshProfilesManager({ onConnect }: Readonly<SshProfilesMa
         onCancel={() => setModalVisible(false)}
         footer={null}
         fullscreenable={false}
-        width={520}
+        width={680}
         style={{ top: '5vh' }}
         keepDOM={false}
       >
@@ -219,19 +219,26 @@ export default function SshProfilesManager({ onConnect }: Readonly<SshProfilesMa
           style={{ padding: '0 8px 8px' }}
         >
           <Form.Input field="name" label="名称" placeholder="我的服务器" rules={[{ required: true, message: '请输入连接名称' }]} />
-          <Form.Input field="host" label="主机地址" placeholder="192.168.1.1 或 example.com" rules={[{ required: true, message: '请输入主机地址' }]} />
-          <Form.InputNumber field="port" label="端口" min={1} max={65535} />
-          <Form.Input field="username" label="用户名" placeholder="root" rules={[{ required: true, message: '请输入用户名' }]} />
-          <Form.Select
-            field="authType"
-            label="认证方式"
-            onChange={(v) => setFormAuthType(v as SshAuthType)}
-          >
-            <Select.Option value="password">密码</Select.Option>
-            <Select.Option value="key_path">服务器私钥路径</Select.Option>
-            <Select.Option value="key_content">粘贴私钥内容</Select.Option>
-            <Select.Option value="agent">SSH Agent</Select.Option>
-          </Form.Select>
+          <Row gutter={16}>
+            <Col span={16}><Form.Input field="host" label="主机地址" placeholder="192.168.1.1 或 example.com" rules={[{ required: true, message: '请输入主机地址' }]} /></Col>
+            <Col span={8}><Form.InputNumber field="port" label="端口" min={1} max={65535} style={{ width: '100%' }} /></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}><Form.Input field="username" label="用户名" placeholder="root" rules={[{ required: true, message: '请输入用户名' }]} /></Col>
+            <Col span={12}>
+              <Form.Select
+                field="authType"
+                label="认证方式"
+                style={{ width: '100%' }}
+                onChange={(v) => setFormAuthType(v as SshAuthType)}
+              >
+                <Select.Option value="password">密码</Select.Option>
+                <Select.Option value="key_path">服务器私钥路径</Select.Option>
+                <Select.Option value="key_content">粘贴私钥内容</Select.Option>
+                <Select.Option value="agent">SSH Agent</Select.Option>
+              </Form.Select>
+            </Col>
+          </Row>
 
           {formAuthType === 'password' && (
             <Form.Input
@@ -242,10 +249,10 @@ export default function SshProfilesManager({ onConnect }: Readonly<SshProfilesMa
             />
           )}
           {formAuthType === 'key_path' && (
-            <>
-              <Form.Input field="keyPath" label="私钥路径" placeholder="~/.ssh/id_rsa" />
-              <Form.Input field="keyPassphrase" label="私钥口令" type="password" placeholder={editingProfile?.hasKeyPassphrase ? '（已设置）' : '无口令则留空'} />
-            </>
+            <Row gutter={16}>
+              <Col span={12}><Form.Input field="keyPath" label="私钥路径" placeholder="~/.ssh/id_rsa" /></Col>
+              <Col span={12}><Form.Input field="keyPassphrase" label="私钥口令" type="password" placeholder={editingProfile?.hasKeyPassphrase ? '（已设置）' : '无口令则留空'} /></Col>
+            </Row>
           )}
           {formAuthType === 'key_content' && (
             <>
