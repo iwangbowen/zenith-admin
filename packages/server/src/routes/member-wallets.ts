@@ -12,7 +12,7 @@ const walletsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const walletTypeEnum = z.enum(['recharge', 'consume', 'refund', 'adjust']);
 const txQuery = PaginationQuery.extend({
-  memberId: z.coerce.number().int().positive().optional(),
+  memberKeyword: z.string().optional(),
   type: walletTypeEnum.optional(),
 });
 const adjustSchema = z.object({

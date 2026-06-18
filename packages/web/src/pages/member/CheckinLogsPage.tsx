@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, DatePicker, InputNumber } from '@douyinfe/semi-ui';
+import { Button, DatePicker, Input } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
 import type { MemberCheckin, PaginatedResponse } from '@zenith/shared';
@@ -10,12 +10,12 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateForApi } from '@/utils/date';
 
 interface SearchParams {
-  memberId?: number;
+  memberKeyword?: string;
   dateRange: [Date, Date] | null;
 }
 
 const defaultSearch: SearchParams = {
-  memberId: undefined,
+  memberKeyword: undefined,
   dateRange: null,
 };
 
@@ -36,7 +36,7 @@ export default function CheckinLogsPage() {
       const q = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
-        ...(current.memberId ? { memberId: String(current.memberId) } : {}),
+        ...(current.memberKeyword ? { memberKeyword: current.memberKeyword } : {}),
         ...(dateStart ? { dateStart: formatDateForApi(dateStart) } : {}),
         ...(dateEnd ? { dateEnd: formatDateForApi(dateEnd) } : {}),
       }).toString();
@@ -67,12 +67,12 @@ export default function CheckinLogsPage() {
   return (
     <div className="page-container">
       <SearchToolbar>
-        <InputNumber
-          placeholder="会员ID"
-          min={1}
-          value={search.memberId}
-          style={{ width: 130 }}
-          onChange={(value) => setSearch((prev) => ({ ...prev, memberId: (value as number) || undefined }))}
+        <Input
+          placeholder="会员ID/昵称"
+          value={search.memberKeyword}
+          showClear
+          style={{ width: 160 }}
+          onChange={(value) => setSearch((prev) => ({ ...prev, memberKeyword: value || undefined }))}
         />
         <DatePicker
           type="dateRange"

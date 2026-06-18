@@ -12,7 +12,7 @@ const pointsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const pointTypeEnum = z.enum(['earn', 'redeem', 'expire', 'adjust', 'refund']);
 const txQuery = PaginationQuery.extend({
-  memberId: z.coerce.number().int().positive().optional(),
+  memberKeyword: z.string().optional(),
   type: pointTypeEnum.optional(),
 });
 const adjustSchema = z.object({

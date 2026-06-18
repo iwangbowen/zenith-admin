@@ -24,7 +24,7 @@ const listQuery = PaginationQuery.extend({
   type: couponTypeEnum.optional(),
 });
 const recordsQuery = PaginationQuery.extend({
-  memberId: z.coerce.number().int().positive().optional(),
+  memberKeyword: z.string().optional(),
   couponId: z.coerce.number().int().positive().optional(),
   status: memberCouponStatusEnum.optional(),
 });

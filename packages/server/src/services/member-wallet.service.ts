@@ -5,15 +5,16 @@
  * - rechargeWallet() 发起充值：调用支付中心 createPayment（bizType='member_recharge'）
  * - creditWalletOnRecharge() 由支付成功事件触发入账，按支付单号幂等
  */
-import { and, desc, eq, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
-import { memberWallets, memberWalletTransactions, paymentOrders } from '../db/schema';
+import { members, memberWallets, memberWalletTransactions, paymentOrders } from '../db/schema';
 import type { MemberWalletRow, MemberWalletTransactionRow } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
 import { currentMemberId } from '../lib/member-context';
 import { withOptimisticRetry, OptimisticLockError } from '../lib/optimistic';
 import { pageOffset } from '../lib/pagination';
+import { escapeLike } from '../lib/where-helpers';
 import logger from '../lib/logger';
 import { createPayment } from './payment.service';
 import type { WalletTxType, PaymentMethod } from '@zenith/shared';
@@ -202,6 +203,7 @@ export async function creditWalletOnRecharge(event: { bizId: string; orderNo: st
 // ─── 流水查询 ─────────────────────────────────────────────────────────────────
 export interface ListWalletTxQuery {
   memberId?: number;
+  memberKeyword?: string;
   type?: WalletTxType;
   page: number;
   pageSize: number;
@@ -209,7 +211,19 @@ export interface ListWalletTxQuery {
 
 export async function listWalletTransactions(q: ListWalletTxQuery) {
   const conds: SQL[] = [];
-  if (q.memberId) conds.push(eq(memberWalletTransactions.memberId, q.memberId));
+  if (q.memberId) {
+    conds.push(eq(memberWalletTransactions.memberId, q.memberId));
+  } else if (q.memberKeyword) {
+    const numId = /^\d+$/.test(q.memberKeyword) ? parseInt(q.memberKeyword, 10) : null;
+    if (numId) {
+      conds.push(eq(memberWalletTransactions.memberId, numId));
+    } else {
+      conds.push(inArray(
+        memberWalletTransactions.memberId,
+        db.select({ id: members.id }).from(members).where(ilike(members.nickname, `%${escapeLike(q.memberKeyword)}%`)),
+      ));
+    }
+  }
   if (q.type) conds.push(eq(memberWalletTransactions.type, q.type));
   const where = conds.length ? and(...conds) : undefined;
 

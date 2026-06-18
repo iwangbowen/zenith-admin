@@ -58,11 +58,15 @@ export const checkinHandlers = [
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page') ?? '1');
     const pageSize = Number(url.searchParams.get('pageSize') ?? '10');
-    const memberId = Number(url.searchParams.get('memberId') ?? '0');
+    const memberKeyword = url.searchParams.get('memberKeyword') ?? '';
     const dateStart = url.searchParams.get('dateStart');
     const dateEnd = url.searchParams.get('dateEnd');
     const filtered = memberCheckins.filter((item) => {
-      if (memberId && item.memberId !== memberId) return false;
+      if (memberKeyword) {
+        const numId = /^\d+$/.test(memberKeyword) ? Number(memberKeyword) : null;
+        if (numId) { if (item.memberId !== numId) return false; }
+        else if (!item.memberNickname?.toLowerCase().includes(memberKeyword.toLowerCase())) return false;
+      }
       if (dateStart && item.checkinDate < dateStart) return false;
       if (dateEnd && item.checkinDate > dateEnd) return false;
       return true;

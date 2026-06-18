@@ -14,7 +14,7 @@ import { listMemberCheckins } from '../services/member-checkin.service';
 const memberCheckinsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 const querySchema = PaginationQuery.extend({
-  memberId: z.coerce.number().int().positive().optional(),
+  memberKeyword: z.string().optional(),
   dateStart: z.string().optional().openapi({ param: { name: 'dateStart', in: 'query' }, example: '2026-06-01' }),
   dateEnd: z.string().optional().openapi({ param: { name: 'dateEnd', in: 'query' }, example: '2026-06-30' }),
 });

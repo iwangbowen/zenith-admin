@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, InputNumber, Select, Toast, Tag, Popconfirm } from '@douyinfe/semi-ui';
+import { Button, Input, InputNumber, Select, Toast, Tag, Popconfirm } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
 import type { MemberCoupon, MemberCouponStatus, PaginatedResponse } from '@zenith/shared';
@@ -14,7 +14,7 @@ import { renderEllipsis } from '../../utils/table-columns';
 const statusOptions = (Object.keys(MEMBER_COUPON_STATUS_LABELS) as MemberCouponStatus[]).map((v) => ({ value: v, label: MEMBER_COUPON_STATUS_LABELS[v] }));
 const STATUS_COLORS: Record<string, string> = { unused: 'blue', used: 'green', expired: 'grey', frozen: 'orange' };
 
-interface SearchParams { memberId?: number; couponId?: number; status?: string }
+interface SearchParams { memberKeyword?: string; couponId?: number; status?: string }
 
 export default function CouponRecordsPage() {
   const { hasPermission } = usePermission();
@@ -32,7 +32,7 @@ export default function CouponRecordsPage() {
     try {
       const q = new URLSearchParams({
         page: String(p), pageSize: String(ps),
-        ...(ap.memberId ? { memberId: String(ap.memberId) } : {}),
+        ...(ap.memberKeyword ? { memberKeyword: ap.memberKeyword } : {}),
         ...(ap.couponId ? { couponId: String(ap.couponId) } : {}),
         ...(ap.status ? { status: ap.status } : {}),
       }).toString();
@@ -77,8 +77,8 @@ export default function CouponRecordsPage() {
   return (
     <div className="page-container">
       <SearchToolbar>
-        <InputNumber placeholder="会员ID" value={search.memberId} min={1} style={{ width: 120 }}
-          onChange={(v) => setSearch((p) => ({ ...p, memberId: (v as number) || undefined }))} />
+        <Input placeholder="会员ID/昵称" value={search.memberKeyword} showClear style={{ width: 160 }}
+          onChange={(v) => setSearch((p) => ({ ...p, memberKeyword: v || undefined }))} />
         <InputNumber placeholder="优惠券ID" value={search.couponId} min={1} style={{ width: 120 }}
           onChange={(v) => setSearch((p) => ({ ...p, couponId: (v as number) || undefined }))} />
         <Select placeholder="全部状态" value={search.status} style={{ width: 130 }} showClear

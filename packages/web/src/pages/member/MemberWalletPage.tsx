@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, InputNumber, Select, Space, Form, Toast, Tag } from '@douyinfe/semi-ui';
+import { Button, Input, InputNumber, Select, Space, Form, Toast, Tag } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, WalletCards, Undo2 } from 'lucide-react';
@@ -17,7 +17,7 @@ const typeOptions = (Object.keys(WALLET_TX_TYPE_LABELS) as (keyof typeof WALLET_
 const TYPE_COLORS: Record<string, string> = { recharge: 'green', consume: 'orange', refund: 'cyan', adjust: 'blue' };
 const yuan = (fen: number) => (fen / 100).toFixed(2);
 
-interface SearchParams { memberId?: number; type?: string }
+interface SearchParams { memberKeyword?: string; type?: string }
 
 export default function MemberWalletPage() {
   const { hasPermission } = usePermission();
@@ -38,7 +38,7 @@ export default function MemberWalletPage() {
     try {
       const q = new URLSearchParams({
         page: String(p), pageSize: String(ps),
-        ...(ap.memberId ? { memberId: String(ap.memberId) } : {}),
+        ...(ap.memberKeyword ? { memberKeyword: ap.memberKeyword } : {}),
         ...(ap.type ? { type: ap.type } : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<MemberWalletTransaction>>(`/api/member-wallets/transactions?${q}`);
@@ -76,8 +76,8 @@ export default function MemberWalletPage() {
   return (
     <div className="page-container">
       <SearchToolbar>
-        <InputNumber placeholder="会员ID" value={search.memberId} min={1} style={{ width: 130 }}
-          onChange={(v) => setSearch((p) => ({ ...p, memberId: (v as number) || undefined }))} />
+        <Input placeholder="会员ID/昵称" value={search.memberKeyword} showClear style={{ width: 160 }}
+          onChange={(v) => setSearch((p) => ({ ...p, memberKeyword: v || undefined }))} />
         <Select placeholder="全部类型" value={search.type} style={{ width: 130 }} showClear
           onChange={(v) => setSearch((p) => ({ ...p, type: v as string | undefined }))} optionList={typeOptions} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>

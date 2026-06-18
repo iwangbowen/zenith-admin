@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { and, asc, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import {
@@ -13,7 +13,7 @@ import type { MemberCheckinRow } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
 import { currentMemberId } from '../lib/member-context';
 import { pageOffset } from '../lib/pagination';
-import { withPagination } from '../lib/where-helpers';
+import { escapeLike, withPagination } from '../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
 function mapMemberCheckin(row: MemberCheckinRow, memberNickname?: string | null) {
@@ -33,11 +33,22 @@ export async function listMemberCheckins(params: {
   page: number;
   pageSize: number;
   memberId?: number;
+  memberKeyword?: string;
   dateStart?: string;
   dateEnd?: string;
 }) {
   const conditions: SQL[] = [];
-  if (params.memberId) conditions.push(eq(memberCheckins.memberId, params.memberId));
+  if (params.memberId) {
+    conditions.push(eq(memberCheckins.memberId, params.memberId));
+  } else if (params.memberKeyword) {
+    const numId = /^\d+$/.test(params.memberKeyword) ? parseInt(params.memberKeyword, 10) : null;
+    if (numId) {
+      conditions.push(eq(memberCheckins.memberId, numId));
+    } else {
+      const subq = db.select({ id: members.id }).from(members).where(ilike(members.nickname, `%${escapeLike(params.memberKeyword)}%`));
+      conditions.push(inArray(memberCheckins.memberId, subq));
+    }
+  }
   if (params.dateStart) conditions.push(gte(memberCheckins.checkinDate, params.dateStart));
   if (params.dateEnd) conditions.push(lte(memberCheckins.checkinDate, params.dateEnd));
 

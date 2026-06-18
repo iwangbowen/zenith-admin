@@ -5,7 +5,7 @@
  * - 核销 redeemCoupon() 预留统一入口，供未来订单系统接入
  */
 import crypto from 'node:crypto';
-import { and, desc, eq, ilike, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { coupons, memberCoupons, members } from '../db/schema';
@@ -274,6 +274,7 @@ export async function getAvailableCoupons() {
 
 export interface ListMemberCouponsQuery {
   memberId?: number;
+  memberKeyword?: string;
   couponId?: number;
   status?: MemberCouponRow['status'];
   page: number;
@@ -283,7 +284,19 @@ export interface ListMemberCouponsQuery {
 /** 后台：领券记录分页 */
 export async function listMemberCoupons(q: ListMemberCouponsQuery) {
   const conds: SQL[] = [];
-  if (q.memberId) conds.push(eq(memberCoupons.memberId, q.memberId));
+  if (q.memberId) {
+    conds.push(eq(memberCoupons.memberId, q.memberId));
+  } else if (q.memberKeyword) {
+    const numId = /^\d+$/.test(q.memberKeyword) ? parseInt(q.memberKeyword, 10) : null;
+    if (numId) {
+      conds.push(eq(memberCoupons.memberId, numId));
+    } else {
+      conds.push(inArray(
+        memberCoupons.memberId,
+        db.select({ id: members.id }).from(members).where(ilike(members.nickname, `%${escapeLike(q.memberKeyword)}%`)),
+      ));
+    }
+  }
   if (q.couponId) conds.push(eq(memberCoupons.couponId, q.couponId));
   if (q.status) conds.push(eq(memberCoupons.status, q.status));
   const where = conds.length ? and(...conds) : undefined;
