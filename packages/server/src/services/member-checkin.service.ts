@@ -232,12 +232,16 @@ export async function doCheckin() {
   return { consecutiveDays, points, experience, checkinDate: todayStr };
 }
 
-export async function getMyCheckinHistory(params: { page: number; pageSize: number }) {
+export async function getMyCheckinHistory(params: { page: number; pageSize: number; dateStart?: string; dateEnd?: string }) {
   const memberId = currentMemberId();
+  const conds: SQL[] = [eq(memberCheckins.memberId, memberId)];
+  if (params.dateStart) conds.push(gte(memberCheckins.checkinDate, params.dateStart));
+  if (params.dateEnd) conds.push(lte(memberCheckins.checkinDate, params.dateEnd));
+  const where = and(...conds);
   const [total, rows] = await Promise.all([
-    db.$count(memberCheckins, eq(memberCheckins.memberId, memberId)),
+    db.$count(memberCheckins, where),
     db.select().from(memberCheckins)
-      .where(eq(memberCheckins.memberId, memberId))
+      .where(where)
       .orderBy(desc(memberCheckins.checkinDate))
       .limit(params.pageSize)
       .offset(pageOffset(params.page, params.pageSize)),

@@ -112,6 +112,13 @@ export const checkinHandlers = [
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page') ?? '1');
     const pageSize = Number(url.searchParams.get('pageSize') ?? '10');
-    return paginated(memberCheckins, page, pageSize);
+    const dateStart = url.searchParams.get('dateStart');
+    const dateEnd = url.searchParams.get('dateEnd');
+    const filtered = memberCheckins.filter((item) => {
+      if (dateStart && item.checkinDate < dateStart) return false;
+      if (dateEnd && item.checkinDate > dateEnd) return false;
+      return true;
+    });
+    return paginated(filtered, page, pageSize);
   }),
 ];

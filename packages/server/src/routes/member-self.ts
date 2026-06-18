@@ -190,7 +190,12 @@ const checkinHistoryRoute = defineOpenAPIRoute({
     method: 'get', path: '/checkin/history', tags: ['MemberSelf'], summary: '我的签到历史',
     security: [{ BearerAuth: [] }],
     middleware: [memberAuthMiddleware] as const,
-    request: { query: PaginationQuery },
+    request: {
+      query: PaginationQuery.extend({
+        dateStart: z.string().optional().openapi({ param: { name: 'dateStart', in: 'query' }, example: '2026-06-01' }),
+        dateEnd: z.string().optional().openapi({ param: { name: 'dateEnd', in: 'query' }, example: '2026-06-30' }),
+      }),
+    },
     responses: { ...commonErrorResponses, ...okPaginated(MemberCheckinDTO, '签到历史') },
   }),
   handler: async (c) => c.json(okBody(await getMyCheckinHistory(c.req.valid('query'))), 200),
