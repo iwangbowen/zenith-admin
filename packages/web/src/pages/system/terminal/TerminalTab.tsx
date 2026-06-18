@@ -41,6 +41,11 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
     copyOnSelect: terminal.copyOnSelect,
     rendererType: terminal.rendererType,
     fastScrollSensitivity: terminal.fastScrollSensitivity,
+    letterSpacing: terminal.letterSpacing,
+    fontWeight: terminal.fontWeight,
+    bellStyle: terminal.bellStyle,
+    rightClickSelectsWord: terminal.rightClickSelectsWord,
+    minimumContrastRatio: terminal.minimumContrastRatio,
   });
   initCfgRef.current = {
     theme: currentTheme,
@@ -53,6 +58,11 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
     copyOnSelect: terminal.copyOnSelect,
     rendererType: terminal.rendererType,
     fastScrollSensitivity: terminal.fastScrollSensitivity,
+    letterSpacing: terminal.letterSpacing,
+    fontWeight: terminal.fontWeight,
+    bellStyle: terminal.bellStyle,
+    rightClickSelectsWord: terminal.rightClickSelectsWord,
+    minimumContrastRatio: terminal.minimumContrastRatio,
   };
 
   // 搜索操作
@@ -150,11 +160,18 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
       cursorBlink: terminal.cursorBlink,
       copyOnSelect: terminal.copyOnSelect,
       fastScrollSensitivity: terminal.fastScrollSensitivity,
+      letterSpacing: terminal.letterSpacing,
+      fontWeight: terminal.fontWeight,
+      bellStyle: terminal.bellStyle,
+      rightClickSelectsWord: terminal.rightClickSelectsWord,
+      minimumContrastRatio: terminal.minimumContrastRatio,
     });
   }, [
     currentTheme,
     terminal.fontSize, terminal.fontFamily, terminal.lineHeight,
     terminal.cursorStyle, terminal.cursorBlink, terminal.copyOnSelect, terminal.fastScrollSensitivity,
+    terminal.letterSpacing, terminal.fontWeight, terminal.bellStyle,
+    terminal.rightClickSelectsWord, terminal.minimumContrastRatio,
     sessionId,
   ]);
 

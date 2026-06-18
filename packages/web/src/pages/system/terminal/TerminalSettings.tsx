@@ -208,6 +208,75 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
 
       <Divider margin="12px" />
 
+      <Field label="字母间距">
+        <InputNumber
+          value={terminal.letterSpacing ?? 0}
+          min={0}
+          max={8}
+          step={0.5}
+          onChange={(v) => setTerminalPref({ letterSpacing: Number(v) || 0 })}
+          style={{ width: '100%' }}
+          formatter={(v) => `${v} px`}
+          parser={(v) => (v ? v.replace(' px', '') : '')}
+        />
+      </Field>
+
+      <Field label="字体粗细">
+        <Select
+          value={terminal.fontWeight ?? 'normal'}
+          onChange={(v) => setTerminalPref({ fontWeight: typeof v === 'string' ? v : 'normal' })}
+          style={{ width: '100%' }}
+        >
+          <Select.Option value="normal">正常</Select.Option>
+          <Select.Option value="bold">粗体</Select.Option>
+          <Select.Option value="600">半粗（600）</Select.Option>
+          <Select.Option value="300">细体（300）</Select.Option>
+        </Select>
+      </Field>
+
+      <Field label="响铃方式">
+        <Select
+          value={terminal.bellStyle ?? 'none'}
+          onChange={(v) => setTerminalPref({ bellStyle: (v as 'none' | 'visual' | 'sound') ?? 'none' })}
+          style={{ width: '100%' }}
+        >
+          <Select.Option value="none">不响铃（默认）</Select.Option>
+          <Select.Option value="visual">闪屏</Select.Option>
+          <Select.Option value="sound">声音</Select.Option>
+        </Select>
+        <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>
+          服务端输出 \a 时触发。声音需浏览器允许自动播放。
+        </Typography.Text>
+      </Field>
+
+      <Field label="右键选词">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Switch
+            checked={terminal.rightClickSelectsWord ?? false}
+            onChange={(v) => setTerminalPref({ rightClickSelectsWord: v })}
+          />
+          <Typography.Text size="small" type="tertiary">开启后右键选中光标处单词，关闭则弹出浏览器菜单</Typography.Text>
+        </div>
+      </Field>
+
+      <Field label="最小对比度">
+        <InputNumber
+          value={terminal.minimumContrastRatio ?? 1}
+          min={1}
+          max={21}
+          step={1}
+          onChange={(v) => setTerminalPref({ minimumContrastRatio: Number(v) || 1 })}
+          style={{ width: '100%' }}
+          formatter={(v) => (Number(v) <= 1 ? `${v}（不限制）` : `${v}:1`)}
+          parser={(v) => (v ? v.replace(/（.*|\s*:1.*/, '') : '')}
+        />
+        <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>
+          强制前景色与背景色的对比度达标（WCAG AA = 4.5，AAA = 7）。
+        </Typography.Text>
+      </Field>
+
+      <Divider margin="12px" />
+
       <Button icon={<RotateCcw size={14} />} onClick={() => setTerminalPref({ ...defaultTerminalPreferences, favorites: terminal.favorites })} block>
         恢复默认（保留收藏）
       </Button>

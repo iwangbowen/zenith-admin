@@ -49,6 +49,16 @@ export interface TerminalPreferences {
   rendererType: 'canvas' | 'webgl';
   /** 按住 Alt 快速滚动时的行数倍率（默认 5） */
   fastScrollSensitivity: number;
+  /** 字母间距（px，默认 0） */
+  letterSpacing: number;
+  /** 字体粗细，如 'normal'、'bold'、'600' */
+  fontWeight: string;
+  /** 响铃方式：不响铃 / 闪屏 / 声音 */
+  bellStyle: 'none' | 'visual' | 'sound';
+  /** 右键是否选词（false = 弹出浏览器菜单） */
+  rightClickSelectsWord: boolean;
+  /** 最小对比度（1–21，1 = 不限制） */
+  minimumContrastRatio: number;
 }
 
 export interface UserPreferences {
