@@ -53,6 +53,11 @@ interface NetworkInfo {
   internal: boolean; created: string; containers: number;
 }
 interface VolumeInfo { name: string; driver: string; mountpoint: string; scope: string; created: string; labels: Record<string, string> }
+interface ImageRow {
+  id: string; name: string; isGroup: boolean; repoTags: string[];
+  size: number; created: number; containers: number; shortId: string;
+  versionCount?: number; children?: ImageRow[];
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -385,6 +390,52 @@ function ContainersTab() {
 
 // ─── Images Tab ───────────────────────────────────────────────────────────────
 
+function buildImageTree(images: ImageInfo[], keyword: string): ImageRow[] {
+  const groups: Record<string, ImageRow[]> = {};
+  for (const img of images) {
+    const validTags = img.repoTags.filter((t) => t !== '<none>:<none>');
+    let repoName = '<untagged>';
+    if (validTags.length > 0) {
+      const first = validTags[0];
+      const colon = first.lastIndexOf(':');
+      repoName = colon !== -1 ? first.slice(0, colon) : first;
+    }
+    if (!groups[repoName]) groups[repoName] = [];
+    groups[repoName].push({
+      id: img.id,
+      name: validTags.length > 0 ? validTags.join(', ') : '<none>',
+      isGroup: false, repoTags: img.repoTags,
+      size: img.size, created: img.created, containers: img.containers, shortId: img.shortId,
+    });
+  }
+  const kw = keyword.toLowerCase();
+  const rows: ImageRow[] = [];
+  for (const [repo, children] of Object.entries(groups)) {
+    const matched = kw
+      ? children.filter(
+          (c) => repo.toLowerCase().includes(kw) ||
+            c.repoTags.some((t) => t.toLowerCase().includes(kw)) ||
+            c.shortId.includes(kw),
+        )
+      : children;
+    if (matched.length === 0) continue;
+    rows.push({
+      id: `__img__${repo}`,
+      name: repo, isGroup: true, repoTags: [],
+      size: matched.reduce((s, c) => s + c.size, 0),
+      created: Math.max(...matched.map((c) => c.created)),
+      containers: matched.reduce((s, c) => s + c.containers, 0),
+      shortId: '', versionCount: matched.length,
+      children: matched,
+    });
+  }
+  return rows.sort((a, b) => {
+    if (a.name === '<untagged>') return 1;
+    if (b.name === '<untagged>') return -1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 function ImagesTab() {
   const [images, setImages] = useState<ImageInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -392,6 +443,7 @@ function ImagesTab() {
   const [pullVisible, setPullVisible] = useState(false);
   const [pullTag, setPullTag] = useState('');
   const [pulling, setPulling] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
 
   const fetchImages = useCallback(async () => {
     setLoading(true);
@@ -401,6 +453,21 @@ function ImagesTab() {
   }, []);
 
   useEffect(() => { void fetchImages(); }, [fetchImages]);
+
+  // Auto-expand all groups when images load
+  useEffect(() => {
+    const groupIds = [...new Set(images.map((img) => {
+      const validTags = img.repoTags.filter((t) => t !== '<none>:<none>');
+      if (validTags.length === 0) return '__img__<untagged>';
+      const first = validTags[0];
+      const colon = first.lastIndexOf(':');
+      return `__img__${colon !== -1 ? first.slice(0, colon) : first}`;
+    }))];
+    setExpandedKeys((prev) => {
+      const newIds = groupIds.filter((id) => !prev.includes(id));
+      return newIds.length > 0 ? [...prev, ...newIds] : prev;
+    });
+  }, [images]);
 
   const handleRemove = async (id: string) => {
     const res = await request.delete(`/api/docker/images/${id}`);
@@ -419,46 +486,106 @@ function ImagesTab() {
     }
   };
 
-  const filtered = keyword
-    ? images.filter((i) => i.repoTags.join(',').toLowerCase().includes(keyword.toLowerCase()) || i.shortId.includes(keyword))
-    : images;
+  const treeData = useMemo(() => buildImageTree(images, keyword), [images, keyword]);
 
-  const columns: ColumnProps<ImageInfo>[] = [
+  const allGroupIds = useMemo(() => treeData.map((r) => r.id), [treeData]);
+  const allExpanded = allGroupIds.length > 0 && allGroupIds.every((id) => expandedKeys.includes(id));
+  const toggleExpandAll = () => setExpandedKeys(allExpanded ? [] : allGroupIds);
+
+  const columns: ColumnProps<ImageRow>[] = [
     {
-      title: '镜像标签',
-      render: (_: unknown, r: ImageInfo) => (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {r.repoTags.length > 0
-            ? r.repoTags.map((t) => <Tag key={t} size="small" color="blue">{t}</Tag>)
-            : <Tag size="small" color="grey">&lt;none&gt;</Tag>
-          }
-        </div>
+      title: '仓库 / 标签',
+      render: (_: unknown, r: ImageRow) => {
+        if (r.isGroup) {
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Typography.Text strong>{r.name}</Typography.Text>
+              <Tag size="small" color="purple">{r.versionCount} 个版本</Tag>
+            </span>
+          );
+        }
+        const validTags = r.repoTags.filter((t) => t !== '<none>:<none>');
+        if (validTags.length === 0) return <Tag size="small" color="grey">&lt;none&gt;</Tag>;
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {validTags.map((t) => {
+              const colon = t.lastIndexOf(':');
+              const tag = colon !== -1 ? t.slice(colon) : t;
+              return <Tag key={t} size="small" color="blue">{tag}</Tag>;
+            })}
+          </div>
+        );
+      },
+    },
+    {
+      title: '镜像 ID', width: 140,
+      render: (_: unknown, r: ImageRow) => {
+        if (r.isGroup) return null;
+        return <code style={{ fontSize: 12 }}>{r.shortId}</code>;
+      },
+    },
+    {
+      title: '大小', dataIndex: 'size', width: 110,
+      sorter: (a?: ImageRow, b?: ImageRow) => (a?.size ?? 0) - (b?.size ?? 0),
+      render: (v: number, r: ImageRow) => (
+        r.isGroup
+          ? <Typography.Text type="tertiary" size="small">{formatBytes(v)}</Typography.Text>
+          : formatBytes(v)
       ),
     },
-    { title: '镜像 ID', dataIndex: 'shortId', width: 140, render: (v: string) => <code style={{ fontSize: 12 }}>{v}</code> },
-    { title: '大小', dataIndex: 'size', width: 110, sorter: (a, b) => (a?.size ?? 0) - (b?.size ?? 0), render: (v: number) => formatBytes(v) },
-    { title: '容器数', dataIndex: 'containers', width: 90, render: (v: number) => <Tag size="small" color={v > 0 ? 'green' : 'grey'}>{v}</Tag> },
-    { title: '创建时间', dataIndex: 'created', width: 180, render: (v: number) => formatDateTime(new Date(v * 1000)) },
+    {
+      title: '容器数', dataIndex: 'containers', width: 90,
+      render: (v: number) => <Tag size="small" color={v > 0 ? 'green' : 'grey'}>{v}</Tag>,
+    },
+    {
+      title: '创建时间', dataIndex: 'created', width: 180,
+      render: (v: number, r: ImageRow) => (
+        r.isGroup
+          ? <Typography.Text type="tertiary" size="small">{formatDateTime(new Date(v * 1000))}</Typography.Text>
+          : formatDateTime(new Date(v * 1000))
+      ),
+    },
     {
       title: '操作', width: 100, fixed: 'right' as const,
-      render: (_: unknown, r: ImageInfo) => (
-        <Popconfirm title="确定删除此镜像？运行中的容器使用的镜像无法删除。" okType="danger" onConfirm={() => void handleRemove(r.id)}>
-          <Button size="small" theme="borderless" type="danger">删除</Button>
-        </Popconfirm>
-      ),
+      render: (_: unknown, r: ImageRow) => {
+        if (r.isGroup) return null;
+        return (
+          <Popconfirm title="确定删除此镜像？运行中的容器使用的镜像无法删除。" okType="danger" onConfirm={() => void handleRemove(r.id)}>
+            <Button size="small" theme="borderless" type="danger">删除</Button>
+          </Popconfirm>
+        );
+      },
     },
   ];
 
   return (
     <>
       <SearchToolbar>
-        <Input prefix={<Search size={14} />} placeholder="搜索镜像标签 / ID" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
+        <Input prefix={<Search size={14} />} placeholder="搜索镜像名 / 标签 / ID" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
         <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchImages()}>刷新</Button>
+        {allGroupIds.length > 0 && (
+          <Button type="tertiary"
+            icon={allExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            onClick={toggleExpandAll}
+          >
+            {allExpanded ? '全部折叠' : '全部展开'}
+          </Button>
+        )}
         <Button type="primary" icon={<Download size={14} />} onClick={() => setPullVisible(true)}>拉取镜像</Button>
       </SearchToolbar>
-      <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
+      <ConfigurableTable bordered rowKey="id" dataSource={treeData} columns={columns} loading={loading}
         onRefresh={() => void fetchImages()} refreshLoading={loading}
-        empty="未检测到 Docker 镜像" pagination={false} />
+        empty="未检测到 Docker 镜像" pagination={false}
+        expandedRowKeys={expandedKeys}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onExpand={(expanded: boolean | undefined, record: any) =>
+          setExpandedKeys((prev) => {
+            const id = record?.id as string | undefined;
+            if (!id) return prev;
+            return expanded ? [...prev, id] : prev.filter((k) => k !== id);
+          })
+        }
+      />
 
       <Modal title="拉取镜像" visible={pullVisible} onCancel={() => { setPullVisible(false); setPullTag(''); }}
         onOk={() => void handlePull()} okText="开始拉取" okButtonProps={{ loading: pulling }} width={440}>
