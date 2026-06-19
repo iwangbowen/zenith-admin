@@ -2,7 +2,7 @@ import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
 import {
-  Banner, Button, Dropdown, Empty, Form, List, Modal, Popconfirm, SideSheet,
+  Banner, Button, Dropdown, Empty, Form, List, Popconfirm, SideSheet,
   Space, Spin, Tag, Toast, Tooltip, Typography,
 } from '@douyinfe/semi-ui';
 import {
