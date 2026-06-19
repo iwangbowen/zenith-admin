@@ -32,6 +32,7 @@ import { LockScreen } from '@/components/LockScreen';
 import { useLockScreen } from '@/hooks/useLockScreen';
 import { useFavoriteMenus } from '@/hooks/useFavoriteMenus';
 import { useRecentMenus } from '@/hooks/useRecentMenus';
+import { usePageTracker } from '@/hooks/usePageTracker';
 import './AdminLayout.css';
 
 // 主题图标
@@ -319,6 +320,13 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   const navigate = useNavigate();
   const location = useLocation();
   const { recents, clear: clearRecents, remove: removeRecent } = useRecentMenus(flatMenus, location.pathname);
+
+  // 全局页面浏览埋点：自动记录所有后台页面的 PV / 停留时长（无需逐页接入 usePageTracker）
+  const currentPageTitle = useMemo(
+    () => flatMenus.find((m) => m.path === location.pathname)?.title,
+    [flatMenus, location.pathname],
+  );
+  usePageTracker(currentPageTitle);
 
   // ─── Tabs 拖拽排序 ──────────────────────────────────────────────────────────
   const handleDragStart = useCallback((key: string) => {
