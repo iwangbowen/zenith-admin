@@ -1,7 +1,7 @@
 import { Tag, Timeline, Typography, Toast } from '@douyinfe/semi-ui';
 import { UserAvatar } from '@/components/UserAvatar';
-import { CheckCircle2, Clock, CornerUpLeft, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog } from 'lucide-react';
-import type { WorkflowTask } from '@zenith/shared';
+import { CheckCircle2, Clock, CornerUpLeft, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog, Send, type LucideIcon } from 'lucide-react';
+import type { WorkflowTask, WorkflowInstanceStatus } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
@@ -20,8 +20,44 @@ const EXT_DISPATCH_MAP: Record<string, { text: string; color: TagColor }> = {
   fallback:   { text: '已降级',    color: 'orange' },
 };
 
+/** 流程结束态 → 完成节点展示 */
+const FINISH_MAP: Partial<Record<WorkflowInstanceStatus, { text: string; color: TagColor; icon: LucideIcon; iconColor: string }>> = {
+  approved:  { text: '已通过', color: 'green',  icon: CheckCircle2, iconColor: 'var(--semi-color-success)' },
+  rejected:  { text: '已驳回', color: 'red',    icon: XCircle,      iconColor: 'var(--semi-color-danger)' },
+  withdrawn: { text: '已撤回', color: 'amber',  icon: RotateCcw,    iconColor: 'var(--semi-color-warning)' },
+  cancelled: { text: '已取消', color: 'grey',   icon: XCircle,      iconColor: 'var(--semi-color-tertiary)' },
+};
+
+/** 统一的时间线圆点 */
+function timelineDot(Icon: LucideIcon, iconColor: string) {
+  return (
+    <div style={{
+      width: 28,
+      height: 28,
+      borderRadius: '50%',
+      backgroundColor: `color-mix(in srgb, ${iconColor} 10%, transparent)`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    }}>
+      <Icon size={15} color={iconColor} />
+    </div>
+  );
+}
+
+interface ApprovalTimelineProps {
+  tasks: WorkflowTask[];
+  /** 发起人信息（用于顶部「发起申请」节点） */
+  initiator?: { name?: string | null; avatar?: string | null; submittedAt?: string | null };
+  /** 实例状态（终态时展示底部「流程结束」节点） */
+  instanceStatus?: WorkflowInstanceStatus;
+  /** 流程结束时间 */
+  finishedAt?: string | null;
+}
+
 /** 审批流时间线，使用 Semi Design Timeline 组件统一渲染 */
-export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTask[] }>) {
+export default function ApprovalTimeline({ tasks, initiator, instanceStatus, finishedAt }: Readonly<ApprovalTimelineProps>) {
   const sorted = [...tasks].sort((a, b) => a.id - b.id);
 
   // 为每个 rejected 任务定位"已回退至"的目标节点：取 id 严格大于当前任务、且非抄送节点的第一条后续任务
@@ -45,8 +81,27 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
     seenNodeKeys.add(t.nodeKey);
   }
 
+  const finish = instanceStatus ? FINISH_MAP[instanceStatus] : undefined;
+
   return (
     <Timeline style={{ paddingLeft: 4 }}>
+      {initiator && (
+        <Timeline.Item dot={timelineDot(Send, 'var(--semi-color-primary)')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Typography.Text strong style={{ fontSize: 13 }}>发起申请</Typography.Text>
+            <Tag color="blue" size="small">已提交</Tag>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <UserAvatar name={initiator.name ?? '?'} avatar={initiator.avatar} semiSize="extra-extra-small" size={20} />
+            <Typography.Text size="small" type="tertiary">{initiator.name ?? '发起人'}</Typography.Text>
+            {initiator.submittedAt && (
+              <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto' }}>
+                {formatDateTime(initiator.submittedAt)}
+              </Typography.Text>
+            )}
+          </div>
+        </Timeline.Item>
+      )}
       {tasks.map((task) => {
         const isApproved = task.status === 'approved';
         const isRejected = task.status === 'rejected';
@@ -68,7 +123,7 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
         else if (isCc) StatusIcon = Mail;
         else if (isRegenerated) StatusIcon = RotateCcw;
 
-        let actionText = '';
+        let actionText: string;
         if (isApproved && !isCc) actionText = '已同意';
         else if (isRejected) actionText = '已驳回';
         else if (isSkipped) actionText = '已跳过';
@@ -193,6 +248,19 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
           </Timeline.Item>
         );
       })}
+      {finish && (
+        <Timeline.Item dot={timelineDot(finish.icon, finish.iconColor)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Typography.Text strong style={{ fontSize: 13 }}>流程结束</Typography.Text>
+            <Tag color={finish.color} size="small">{finish.text}</Tag>
+            {finishedAt && (
+              <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto' }}>
+                {formatDateTime(finishedAt)}
+              </Typography.Text>
+            )}
+          </div>
+        </Timeline.Item>
+      )}
     </Timeline>
   );
 }

@@ -9,7 +9,8 @@ import { Banner, Typography } from '@douyinfe/semi-ui';
 import { CornerUpLeft } from 'lucide-react';
 import type { WorkflowTask } from '@zenith/shared';
 import FlowRenderer from '@/pages/workflow/designer/components/FlowRenderer';
-import type { FlowProcess, FlowNode, NodeRuntimeInfo } from '@/pages/workflow/designer/types';
+import type { FlowProcess, FlowNode } from '@/pages/workflow/designer/types';
+import { buildNodeRuntimeMap } from './workflow-runtime';
 import '@/pages/workflow/designer/styles/flow-designer.css';
 
 interface Props {
@@ -60,33 +61,7 @@ function computeReturnTracks(
   return tracks;
 }
 
-/** 按 nodeKey 聚合 tasks → 节点运行态（状态 + 处理人列表） */
-function buildRuntimeMap(tasks: WorkflowTask[]): Map<string, NodeRuntimeInfo> {
-  const byNode = new Map<string, WorkflowTask[]>();
-  for (const t of tasks) {
-    const arr = byNode.get(t.nodeKey) ?? [];
-    arr.push(t);
-    byNode.set(t.nodeKey, arr);
-  }
-  const map = new Map<string, NodeRuntimeInfo>();
-  for (const [nodeKey, group] of byNode) {
-    const sorted = [...group].sort((a, b) => a.id - b.id);
-    const approvers = sorted.map(t => ({
-      name: t.assigneeName ?? '未指定',
-      avatar: t.assigneeAvatar,
-      status: t.status,
-      actionAt: t.actionAt,
-      comment: t.comment,
-    }));
-    let status: NodeRuntimeInfo['status'] = 'skipped';
-    if (sorted.some(t => t.status === 'rejected')) status = 'rejected';
-    else if (sorted.some(t => t.status === 'pending')) status = 'pending';
-    else if (sorted.some(t => t.status === 'waiting')) status = 'waiting';
-    else if (sorted.some(t => t.status === 'approved')) status = 'approved';
-    map.set(nodeKey, { status, approvers });
-  }
-  return map;
-}
+/** 按 nodeKey 聚合 tasks → 节点运行态（状态 + 处理人列表）见 workflow-runtime.ts */
 
 /** 收集某节点子链上所有节点的运行态匹配键（node.key ?? node.id） */
 function collectDescendantKeys(node: FlowNode | undefined, acc: Set<string>): void {
@@ -146,7 +121,7 @@ export default function WorkflowGraphView({ flowData, tasks, height = 480 }: Rea
       return { runtimeMap: undefined, dimmedBranches: undefined };
     }
     return {
-      runtimeMap: buildRuntimeMap(tasks),
+      runtimeMap: buildNodeRuntimeMap(tasks),
       dimmedBranches: computeDimmedBranches(process, new Set(tasks.map(t => t.nodeKey))),
     };
   }, [process, tasks]);
