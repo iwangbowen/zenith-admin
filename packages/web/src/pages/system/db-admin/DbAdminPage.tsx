@@ -577,7 +577,7 @@ export default function DbAdminPage() {
   };
 
   const renderTableContextMenu = (t: TableItem) => {
-    const isWritable = !SYSTEM_SCHEMAS.has(t.schema) && !SYSTEM_TABLES.has(`${t.schema}.${t.name}`);
+    const isWritable = t.kind === 'table' && !SYSTEM_SCHEMAS.has(t.schema) && !SYSTEM_TABLES.has(`${t.schema}.${t.name}`);
     return (
       <Dropdown.Menu>
         <Dropdown.Item onClick={() => { handleSelectTable(t); setInnerTab('structure'); }}>
@@ -699,6 +699,7 @@ export default function DbAdminPage() {
   // ─── 表数据写入（INSERT / UPDATE / DELETE）─────────────────────────────────
   const isWritableTable = useMemo(() => {
     if (!selected) return false;
+    if (selected.kind !== 'table') return false;
     if (SYSTEM_SCHEMAS.has(selected.schema)) return false;
     if (SYSTEM_TABLES.has(`${selected.schema}.${selected.name}`)) return false;
     return true;
