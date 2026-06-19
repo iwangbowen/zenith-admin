@@ -551,7 +551,7 @@ export const SEED_WORKFLOW_FORMS: WorkflowForm[] = [
     schema: {
       fields: [
         { key: 'leaveType', label: '请假类型', type: 'select', required: true, options: ['年假', '病假', '事假', '陪产假', '婚假'] },
-        { key: 'leaveDates', label: '开始结束日期', type: 'dateRange', required: true, dateFormat: 'YYYY-MM-DD' },
+        { key: 'leaveDates', label: '开始结束日期', type: 'dateRange', required: true, dateFormat: 'yyyy-MM-dd' },
         { key: 'days', label: '请假天数', type: 'number', required: true, unit: '天', min: 0.5, precision: 1, daysFromKey: 'leaveDates' },
         { key: 'reason', label: '请假事由', type: 'textarea', required: true, maxLength: 500 },
       ],
@@ -575,7 +575,7 @@ export const SEED_WORKFLOW_FORMS: WorkflowForm[] = [
         { key: 'expenseType', label: '报销类型', type: 'select', required: true, options: ['差旅费', '交通费', '餐饮费', '办公用品', '其他'] },
         { key: 'amount', label: '报销金额', type: 'amount', required: true, currency: 'CNY', precision: 2, min: 0, unit: '元' },
         { key: 'totalAmount', label: '预计总金额', type: 'formula', formula: '{amount}', precision: 2, unit: '元', helpText: '用于金额条件审批判断' },
-        { key: 'occurDate', label: '发生日期', type: 'date', required: true, dateFormat: 'YYYY-MM-DD' },
+        { key: 'occurDate', label: '发生日期', type: 'date', required: true, dateFormat: 'yyyy-MM-dd' },
         { key: 'description', label: '费用说明', type: 'textarea', required: true, maxLength: 500 },
         { key: 'receipts', label: '票据附件', type: 'attachment', required: true, maxCount: 10, helpText: '请上传发票、行程单等凭证' },
       ],

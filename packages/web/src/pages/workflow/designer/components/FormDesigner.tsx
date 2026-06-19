@@ -100,7 +100,7 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
       break;
     case 'date':
     case 'dateRange':
-      field.dateFormat = 'YYYY-MM-DD';
+      field.dateFormat = 'yyyy-MM-dd';
       break;
     case 'time':
       field.timeFormat = 'HH:mm';

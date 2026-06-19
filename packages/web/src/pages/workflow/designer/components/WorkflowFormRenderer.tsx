@@ -8,7 +8,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, Eraser } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup } from '@zenith/shared';
-import { CURRENCY_OPTIONS } from '../form-types';
+import { CURRENCY_OPTIONS, toDateFnsToken } from '../form-types';
 import RegionSelect from '@/components/RegionSelect';
 import RichTextEditor from '@/components/RichTextEditor';
 import UserSelect from '@/components/UserSelect';
@@ -515,7 +515,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? `请选择${field.label}`}
           style={{ width: '100%' }}
-          format={field.dateFormat ?? 'yyyy-MM-dd'}
+          format={toDateFnsToken(field.dateFormat)}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -526,7 +526,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
         <Form.DatePicker
           field={field.key} label={field.label}
           type="dateRange" style={{ width: '100%' }}
-          format={field.dateFormat ?? 'yyyy-MM-dd'}
+          format={toDateFnsToken(field.dateFormat)}
           rules={rules} disabled={disabled}
           {...extraProps}
         />

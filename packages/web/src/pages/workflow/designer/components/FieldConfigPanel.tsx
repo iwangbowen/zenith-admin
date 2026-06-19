@@ -6,7 +6,7 @@ import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagIn
 import { Plus, Trash2 } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFieldVisibilityCondition, Dict, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, FORM_FIELD_TYPES } from '../form-types';
+import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, FORM_FIELD_TYPES, toDateFnsToken } from '../form-types';
 
 interface FieldConfigPanelProps {
   field: WorkflowFormField;
@@ -308,7 +308,7 @@ export default function FieldConfigPanel({
             <div className="fd-form-config__field">
               <Typography.Text strong size="small">日期格式</Typography.Text>
               <Select
-                value={field.dateFormat ?? 'YYYY-MM-DD'}
+                value={toDateFnsToken(field.dateFormat)}
                 onChange={(v) => onChange({ dateFormat: v as string })}
                 placeholder="请选择日期格式"
                 style={{ width: '100%' }}

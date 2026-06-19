@@ -130,12 +130,22 @@ export const CURRENCY_OPTIONS = [
   { value: 'JPY', label: '日元 (¥)' },
 ];
 
-// 日期格式选项
+// 日期格式选项（date-fns token：yyyy=年, MM=月, dd=日, HH=时, mm=分, ss=秒）
 export const DATE_FORMAT_OPTIONS = [
-  { value: 'YYYY-MM-DD',          label: '年-月-日' },
-  { value: 'YYYY-MM-DD HH:mm',    label: '年-月-日 时:分' },
-  { value: 'YYYY-MM-DD HH:mm:ss', label: '年-月-日 时:分:秒' },
+  { value: 'yyyy-MM-dd',          label: '年-月-日' },
+  { value: 'yyyy-MM-dd HH:mm',    label: '年-月-日 时:分' },
+  { value: 'yyyy-MM-dd HH:mm:ss', label: '年-月-日 时:分:秒' },
 ];
+
+/**
+ * 归一化为 date-fns 的格式 token。
+ * Semi DatePicker 的 format 直接交给 date-fns v2，YYYY/DD 为受保护 token 会抛错，
+ * 需转成 yyyy/dd。同时兼容历史保存的 moment/dayjs 风格（YYYY-MM-DD）。
+ */
+export function toDateFnsToken(fmt?: string): string {
+  if (!fmt) return 'yyyy-MM-dd';
+  return fmt.replace(/Y/g, 'y').replace(/D/g, 'd');
+}
 
 // 时间格式选项（time 字段）
 export const TIME_FORMAT_OPTIONS = [
