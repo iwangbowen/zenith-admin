@@ -18,15 +18,27 @@
 | 字段 | 说明 |
 | --- | --- |
 | `triggerType` | 见上表 |
-| `url` | webhook/callback 目标地址 |
-| `method` | HTTP 方法 |
+| `webhookUrl` | webhook/callback 目标地址 |
+| `httpMethod` | HTTP 方法（`GET` / `POST` / `PUT`） |
 | `headers` | 自定义请求头 |
-| `body` | 请求体模板（支持表单字段引用） |
+| `bodyTemplate` | 请求体模板（支持 <code v-pre>{{form.x}}</code> 占位） |
 | `fieldKeys` | `updateData / deleteData` 操作的字段 key 列表 |
 | `fieldValues` | `updateData` 每个字段的新值模板（支持 <code v-pre>{{form.x}}</code> 占位） |
 | `onFailure` | `'continue' \| 'retry' \| 'block'`：失败后行为 |
 | `maxRetries` | 最大重试次数（`onFailure === 'retry'` 生效） |
 | `timeoutMs` | 单次请求超时，默认 `10_000` |
+| `callbackSignMode` | `'none' \| 'hmacSha256'`：`callback` 类型回调验签模式，默认 `none` |
+| `callbackSecret` | `callbackSignMode === 'hmacSha256'` 时的 HMAC 密钥 |
+
+## 回调推进（callback 类型）
+
+`callback` 类型触发器会创建一个 `waiting` 任务并生成回调 ID，流程在此暂停，直到外部系统回调推进：
+
+```http
+POST /api/public/workflow/trigger-callback/:callbackId
+```
+
+当 `callbackSignMode === 'hmacSha256'` 时，回调请求需携带 `X-Zenith-Signature` 头（算法同事件订阅签名），服务端用 `callbackSecret` 校验。
 
 ## 执行记录
 

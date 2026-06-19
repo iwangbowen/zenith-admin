@@ -9,7 +9,7 @@
 | `name` | 订阅名称 |
 | `url` | 投递目标 URL |
 | `definitionId` | `null` = 订阅所有流程；非空 = 仅订阅指定流程定义 |
-| `events` | 订阅的事件类型数组（JSON）；可选所有 12 种事件 |
+| `events` | 订阅的事件类型数组（JSON）；可选全部 15 种事件 |
 | `signMode` | `hmacSha256 \| none` |
 | `secret` | HMAC 密钥 |
 | `headers` | 附加请求头 JSON |

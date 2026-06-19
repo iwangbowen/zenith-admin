@@ -18,6 +18,9 @@
 | task.rejected | 任务被拒绝时 | 记录驳回日志 |
 | task.skipped | 任务被跳过时 | 记录跳过原因 |
 | task.transferred | 任务被转交时 | 通知新审批人 |
+| task.addSigned | 加签产生新任务时（每个加签任务一次） | 通知被加签人 |
+| task.reduceSigned | 减签使任务变为已跳过时（每个被减签任务一次） | 通知相关人 |
+| task.urged | 任务被催办时 | 提醒审批人尽快处理 |
 
 ## 事件订阅方式
 

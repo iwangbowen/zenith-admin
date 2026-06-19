@@ -42,11 +42,20 @@
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:definition:list` | 查看流程定义列表 |
+| `workflow:definition:list` | 查看流程定义列表（流程分类、流程自动化也复用此读权限） |
 | `workflow:definition:create` | 创建流程定义 |
-| `workflow:definition:edit` | 编辑流程定义 |
+| `workflow:definition:edit` | 编辑流程定义（流程自动化的写操作也复用此权限） |
 | `workflow:definition:delete` | 删除流程定义 |
 | `workflow:definition:publish` | 发布/禁用流程定义 |
+
+### 表单库相关
+
+| 权限点 | 说明 |
+| --- | --- |
+| `workflow:form:list` | 查看表单库列表 |
+| `workflow:form:create` | 创建表单 |
+| `workflow:form:edit` | 编辑表单 |
+| `workflow:form:delete` | 删除表单 |
 
 ### 流程实例相关
 
@@ -55,27 +64,25 @@
 | `workflow:instance:list` | 查看我的申请列表和实例详情 |
 | `workflow:instance:create` | 发起流程申请（同时也是查看已发布流程列表的权限） |
 | `workflow:instance:monitor` | 查看全局流程实例列表（管理员权限） |
+| `workflow:instance:cancel` | 取消/终止流程实例（管理员） |
+| `workflow:instance:delete` | 删除流程实例（管理员） |
 
 ### 任务相关
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:task:handle` | 处理待审批任务（通过/驳回），同时也是查看待我审批列表的权限 |
+| `workflow:task:handle` | 处理待审批任务（通过/驳回等），同时也是查看待我审批列表的权限 |
 
-### 触发器执行相关
-
-| 权限点 | 说明 |
-| --- | --- |
-| `workflow:trigger:list` | 查看触发器执行记录 |
-
-### 事件订阅相关
+### 触发器与事件相关
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:event-subscription:list` | 查看事件订阅 |
+| `workflow:trigger-execution:view` | 查看触发器执行记录 |
+| `workflow:event-subscription:view` | 查看事件订阅 |
 | `workflow:event-subscription:create` | 创建事件订阅 |
 | `workflow:event-subscription:edit` | 编辑事件订阅 |
 | `workflow:event-subscription:delete` | 删除事件订阅 |
+| `workflow:event-delivery:view` | 查看事件投递记录 |
 
 ## 权限配置建议
 
@@ -90,8 +97,9 @@
 
 建议分配权限：
 - `workflow:definition:*` — 管理流程定义
+- `workflow:form:*` — 管理表单库
 - `workflow:instance:monitor` — 监控全局流程实例
-- `workflow:trigger:list` — 查看触发器执行记录
+- `workflow:trigger-execution:view` — 查看触发器执行记录
 - `workflow:event-subscription:*` — 管理事件订阅
 
 ### 系统管理员
