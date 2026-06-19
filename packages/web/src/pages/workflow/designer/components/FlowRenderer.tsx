@@ -88,6 +88,7 @@ export default function FlowRenderer({
         )}
 
         {!readOnly && <AddNodeButton onAdd={(type) => addAfter(node.id, type)} />}
+        {readOnly && <AddNodeButton onAdd={noop} readOnly />}
 
         {node.children && renderNodeChain(node.children, node.id)}
       </>
@@ -102,6 +103,7 @@ export default function FlowRenderer({
       />
 
       {!readOnly && <AddNodeButton onAdd={(type) => addAfter(process.initiator.id, type)} />}
+      {readOnly && <AddNodeButton onAdd={noop} readOnly />}
 
       {renderNodeChain(process.initiator.children, process.initiator.id)}
 

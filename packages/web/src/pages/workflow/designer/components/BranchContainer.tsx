@@ -208,6 +208,7 @@ export default function BranchContainer({
                 onAdd={(type) => onAddNodeInBranch(node.id, branch.id, type)}
               />
             )}
+            {readOnly && <AddNodeButton onAdd={() => { /* noop */ }} readOnly />}
 
             {renderChildren(branch.children, `branch-${branch.id}-${index}`)}
 

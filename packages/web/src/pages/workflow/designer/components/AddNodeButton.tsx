@@ -9,9 +9,11 @@ import type { FlowNodeType } from '../types';
 
 interface AddNodeButtonProps {
   onAdd: (type: FlowNodeType) => void;
+  /** 只读模式（实例详情）：只渲染竖向连接线，不显示「+」按钮与选择面板 */
+  readOnly?: boolean;
 }
 
-export default function AddNodeButton({ onAdd }: Readonly<AddNodeButtonProps>) {
+export default function AddNodeButton({ onAdd, readOnly = false }: Readonly<AddNodeButtonProps>) {
   const [visible, setVisible] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -31,6 +33,11 @@ export default function AddNodeButton({ onAdd }: Readonly<AddNodeButtonProps>) {
     setVisible(false);
     onAdd(info.type);
   };
+
+  // 只读模式：仅保留竖向连接线（::before），隐藏按钮与面板
+  if (readOnly) {
+    return <div className="fd-add-node-btn-wrap fd-add-node-btn-wrap--readonly" />;
+  }
 
   return (
     <div className="fd-add-node-btn-wrap" ref={wrapRef}>
