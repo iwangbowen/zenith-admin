@@ -107,6 +107,19 @@
   color: var(--semi-color-text-0);
   transition: all 0.15s;
   user-select: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fd-form-palette__item > svg {
+  flex-shrink: 0;
+}
+
+.fd-form-palette__item > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .fd-form-palette__item:hover {
@@ -534,4 +547,95 @@
 
 .fd-form-canvas__item[data-type="divider"] .fd-form-canvas__item-body {
   padding: 0 4px;
+}
+
+/* ─── 嵌套字段 chip（分栏列 / 分组内） ──────────────────────────────── */
+.fd-form-canvas__chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--semi-color-text-1);
+  cursor: grab;
+  user-select: none;
+}
+
+.fd-form-canvas__chip:hover {
+  border-color: var(--semi-color-primary-light-active);
+}
+
+.fd-form-canvas__chip--selected {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+}
+
+.fd-form-canvas__chip--drop {
+  border-top: 2px solid var(--semi-color-primary);
+}
+
+.fd-form-canvas__chip-icon {
+  color: var(--semi-color-text-2);
+  flex-shrink: 0;
+}
+
+.fd-form-canvas__chip-label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fd-form-canvas__chip-del {
+  display: none;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--semi-color-danger);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.fd-form-canvas__chip:hover .fd-form-canvas__chip-del {
+  display: flex;
+}
+
+/* ─── 拖放高亮 ──────────────────────────────────────────────────────── */
+.fd-form-canvas__drop-active {
+  border-color: var(--semi-color-primary) !important;
+  background: var(--semi-color-primary-light-default) !important;
+  box-shadow: inset 0 0 0 1px var(--semi-color-primary);
+}
+
+.fd-form-canvas--drop {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+/* 末尾追加区 */
+.fd-form-canvas__append {
+  margin: 8px 4px 4px;
+  padding: 12px;
+  border: 1px dashed var(--semi-color-border);
+  border-radius: 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--semi-color-text-3);
+  transition: all 0.15s;
+}
+
+.fd-form-canvas__append--drop {
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
 }

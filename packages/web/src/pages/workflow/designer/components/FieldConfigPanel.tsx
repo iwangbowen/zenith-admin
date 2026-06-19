@@ -6,7 +6,7 @@ import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagIn
 import { Plus, Trash2 } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFieldVisibilityCondition, Dict, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, FORM_FIELD_TYPES } from '../form-types';
+import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, FORM_FIELD_TYPES } from '../form-types';
 
 interface FieldConfigPanelProps {
   field: WorkflowFormField;
@@ -38,7 +38,7 @@ export default function FieldConfigPanel({
     f => f.key !== field.key && (f.type === 'select' || f.type === 'multiSelect' || f.type === 'number' || f.type === 'text')
   );
 
-  const hasOptions = field.type === 'select' || field.type === 'multiSelect' || field.type === 'radio' || field.type === 'checkbox';
+  const hasOptions = field.type === 'select' || field.type === 'multiSelect' || field.type === 'radio' || field.type === 'checkbox' || field.type === 'autoComplete';
   const supportsCascade = field.type === 'select' || field.type === 'multiSelect';
   const hasChildren = field.type === 'detail';
   const isDescription = field.type === 'description';
@@ -49,7 +49,7 @@ export default function FieldConfigPanel({
   const isFileType = field.type === 'attachment' || field.type === 'image';
   const isLayout = field.type === 'row' || field.type === 'divider' || field.type === 'group';
   const isText = field.type === 'text' || field.type === 'textarea';
-  const isFormatted = field.type === 'phone' || field.type === 'email' || field.type === 'idCard' || field.type === 'url';
+  const isFormatted = field.type === 'phone' || field.type === 'email' || field.type === 'idCard' || field.type === 'url' || field.type === 'password';
   const isRate = field.type === 'rate';
   const isFormula = field.type === 'formula';
   const isTime = field.type === 'time';
@@ -59,13 +59,17 @@ export default function FieldConfigPanel({
   const isSwitch = field.type === 'switch';
   const isSlider = field.type === 'slider';
   const isTags = field.type === 'tags';
+  const isPinCode = field.type === 'pinCode';
+  const isAutoComplete = field.type === 'autoComplete';
   const isUserSelect = field.type === 'userSelect';
   const isDeptSelect = field.type === 'deptSelect';
   const isDictSelect = field.type === 'dictSelect';
   const isSystemSelect = isUserSelect || isDeptSelect || isDictSelect;
-  const isSpecialInput = isTime || isRegion || isSignature || isRichText || isSwitch || isSlider || isTags || isSystemSelect;
+  const isSpecialInput = isTime || isRegion || isSignature || isRichText || isSwitch || isSlider || isTags || isPinCode || isSystemSelect;
   // 支持响应式列宽 / 只读 / 隐藏的普通输入字段（排除布局类与纯展示类）
   const supportsLayoutState = !isLayout && !isDescription && !isSerialNumber;
+  // 支持字段级标签覆盖（排除布局/分割线/纯展示）
+  const supportsLabelOverride = !isLayout && !isDescription;
   const showValidationTab = !isDescription && !isSerialNumber && !isLayout && !isFileType && field.type !== 'detail' && !isFormula && !isRate && !isDate && !isSpecialInput;
 
   return (
@@ -472,6 +476,27 @@ export default function FieldConfigPanel({
             </div>
           )}
 
+          {/* 验证码位数 */}
+          {isPinCode && (
+            <div className="fd-form-config__field">
+              <Typography.Text strong size="small">验证码位数</Typography.Text>
+              <InputNumber
+                value={field.maxCount ?? 6}
+                onChange={(v) => onChange({ maxCount: v === undefined || v === '' ? 6 : Number(v) })}
+                min={4}
+                max={8}
+                style={{ width: '100%' }}
+              />
+            </div>
+          )}
+
+          {/* 自动完成建议项提示 */}
+          {isAutoComplete && (
+            <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>
+              上方「选项」即为输入时的建议项，用户仍可自由输入其它值。
+            </Typography.Text>
+          )}
+
           {/* 明细子字段 */}
           {hasChildren && (
             <div className="fd-form-config__field">
@@ -519,6 +544,49 @@ export default function FieldConfigPanel({
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>
                   默认隐藏后，可在「显隐设置」中配置满足条件时再显示
                 </Typography.Text>
+              )}
+            </div>
+          )}
+
+          {/* --- 字段级标签设置（覆盖表单级） --- */}
+          {supportsLabelOverride && (
+            <div className="fd-form-config__section" style={{ borderTop: '1px solid var(--semi-color-border)', padding: '12px 0 0', marginTop: 12 }}>
+              <div className="fd-form-config__section-title">标签设置（覆盖表单级）</div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">标签位置</Typography.Text>
+                <Select
+                  value={field.labelPosition ?? ''}
+                  onChange={(v) => onChange({ labelPosition: (v as 'top' | 'left' | 'inset') || undefined })}
+                  placeholder="跟随表单设置"
+                  style={{ width: '100%' }}
+                  showClear
+                  optionList={[{ value: '', label: '跟随表单' }, ...LABEL_POSITION_OPTIONS]}
+                />
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">标签对齐</Typography.Text>
+                <Select
+                  value={field.labelAlign ?? ''}
+                  onChange={(v) => onChange({ labelAlign: (v as 'left' | 'right') || undefined })}
+                  placeholder="跟随表单设置"
+                  style={{ width: '100%' }}
+                  showClear
+                  optionList={[{ value: '', label: '跟随表单' }, ...LABEL_ALIGN_OPTIONS]}
+                />
+              </div>
+              {(field.labelPosition === 'left' || field.labelPosition === 'inset') && (
+                <div className="fd-form-config__field">
+                  <Typography.Text strong size="small">标签宽度</Typography.Text>
+                  <InputNumber
+                    value={field.labelWidth}
+                    onChange={(v) => onChange({ labelWidth: v === undefined || v === '' ? undefined : Number(v) })}
+                    min={40}
+                    max={400}
+                    suffix="px"
+                    placeholder="跟随表单"
+                    style={{ width: '100%' }}
+                  />
+                </div>
               )}
             </div>
           )}

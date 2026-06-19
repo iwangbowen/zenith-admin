@@ -153,6 +153,7 @@ export default function FormSelectorPanel({ formId, formName, onSelect }: Readon
                 fields={fields}
                 readOnly
                 labelPosition={selected.schema?.settings?.labelPosition ?? 'top'}
+                labelAlign={selected.schema?.settings?.labelAlign}
                 labelWidth={selected.schema?.settings?.labelWidth}
                 style={{ padding: '8px 4px' }}
               />

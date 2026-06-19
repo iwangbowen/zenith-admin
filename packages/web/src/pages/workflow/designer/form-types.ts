@@ -36,6 +36,9 @@ import {
   Users,
   Network,
   BookMarked,
+  KeyRound,
+  SquareAsterisk,
+  TextCursorInput,
   type LucideIcon,
 } from 'lucide-react';
 import type { WorkflowFormFieldType } from '@zenith/shared';
@@ -63,6 +66,7 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   // 选择控件
   { type: 'select',       label: '下拉单选', icon: CircleDot,     group: '选择控件', description: '下拉单选' },
   { type: 'multiSelect',  label: '下拉多选', icon: ListChecks,    group: '选择控件', description: '下拉多选' },
+  { type: 'autoComplete', label: '自动完成', icon: TextCursorInput, group: '选择控件', description: '带建议项的输入' },
   { type: 'radio',        label: '单选框组', icon: Circle,        group: '选择控件', description: '单选框（横向排列）' },
   { type: 'checkbox',     label: '复选框组', icon: SquareCheck,   group: '选择控件', description: '复选框（横向排列）' },
   { type: 'switch',       label: '开关',     icon: ToggleRight,   group: '选择控件', description: '是 / 否 开关' },
@@ -74,13 +78,15 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   { type: 'email',        label: '邮箱',     icon: Mail,          group: '格式化控件', description: '电子邮箱，含格式校验' },
   { type: 'idCard',       label: '身份证',   icon: IdCard,        group: '格式化控件', description: '身份证号，含格式校验' },
   { type: 'url',          label: '网址',     icon: LinkIcon,      group: '格式化控件', description: 'URL 链接' },
+  { type: 'password',     label: '密码',     icon: KeyRound,      group: '格式化控件', description: '密码输入（掩码）' },
+  { type: 'pinCode',      label: '验证码',   icon: SquareAsterisk, group: '格式化控件', description: '定长验证码 / PIN 码' },
   { type: 'rate',         label: '评分',     icon: Star,          group: '格式化控件', description: '星级评分' },
   { type: 'formula',      label: '公式',     icon: Sigma,         group: '格式化控件', description: '从其他字段自动计算' },
 
   // 系统组件（与当前系统集成）
-  { type: 'userSelect',   label: '用户选择器', icon: Users,       group: '系统组件', description: '选择系统用户（人员）' },
-  { type: 'deptSelect',   label: '部门选择器', icon: Network,     group: '系统组件', description: '选择组织部门' },
-  { type: 'dictSelect',   label: '字典选择器', icon: BookMarked,  group: '系统组件', description: '选择数据字典项' },
+  { type: 'userSelect',   label: '人员选择', icon: Users,         group: '系统组件', description: '选择系统用户（人员）' },
+  { type: 'deptSelect',   label: '部门选择', icon: Network,       group: '系统组件', description: '选择组织部门' },
+  { type: 'dictSelect',   label: '字典选择', icon: BookMarked,    group: '系统组件', description: '选择数据字典项' },
 
   // 高级控件
   { type: 'attachment',   label: '附件',     icon: Paperclip,     group: '高级控件', description: '上传附件' },
@@ -150,4 +156,17 @@ export const COLUMN_SPAN_OPTIONS = [
   { value: 12, label: '1/2' },
   { value: 8,  label: '1/3' },
   { value: 6,  label: '1/4' },
+];
+
+// 标签位置选项（表单级 / 字段级）
+export const LABEL_POSITION_OPTIONS = [
+  { value: 'top',   label: '顶部' },
+  { value: 'left',  label: '左侧' },
+  { value: 'inset', label: '内嵌' },
+];
+
+// 标签对齐选项（表单级 / 字段级）
+export const LABEL_ALIGN_OPTIONS = [
+  { value: 'left',  label: '左对齐' },
+  { value: 'right', label: '右对齐' },
 ];

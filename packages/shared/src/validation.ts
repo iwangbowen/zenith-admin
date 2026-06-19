@@ -700,9 +700,9 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
     label: z.string().min(1, '字段标签不能为空'),
     type: z.enum([
       'text', 'textarea', 'number', 'date', 'dateRange', 'time',
-      'select', 'multiSelect', 'radio', 'checkbox', 'switch', 'slider', 'tags',
+      'select', 'multiSelect', 'autoComplete', 'radio', 'checkbox', 'switch', 'slider', 'tags',
       'amount',
-      'phone', 'email', 'idCard', 'url', 'rate', 'formula',
+      'phone', 'email', 'idCard', 'url', 'password', 'pinCode', 'rate', 'formula',
       'attachment', 'image',
       'region', 'signature', 'richtext',
       'userSelect', 'deptSelect', 'dictSelect',
@@ -730,6 +730,9 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
     dictCode: z.string().optional(),
     multiple: z.boolean().optional(),
     sliderMarks: z.boolean().optional(),
+    labelPosition: z.enum(['top', 'left', 'inset']).optional(),
+    labelAlign: z.enum(['left', 'right']).optional(),
+    labelWidth: z.number().int().min(40).max(400).optional(),
     columnSpan: z.number().int().min(1).max(24).optional(),
     readOnly: z.boolean().optional(),
     hidden: z.boolean().optional(),
@@ -763,7 +766,8 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
 export const workflowFormSettingsSchema = z.object({
   description: z.string().max(500).optional(),
   submitButtonText: z.string().max(32).optional(),
-  labelPosition: z.enum(['top', 'left']).optional(),
+  labelPosition: z.enum(['top', 'left', 'inset']).optional(),
+  labelAlign: z.enum(['left', 'right']).optional(),
   labelWidth: z.number().int().min(40).max(400).optional(),
 });
 

@@ -1078,6 +1078,7 @@ export type WorkflowFormFieldType =
   | 'time'          // 时间
   | 'select'        // 单选下拉
   | 'multiSelect'   // 多选下拉
+  | 'autoComplete'  // 自动完成（带建议的输入）
   | 'radio'         // 单选框组
   | 'checkbox'      // 复选框组
   | 'switch'        // 开关
@@ -1088,6 +1089,8 @@ export type WorkflowFormFieldType =
   | 'email'         // 邮箱
   | 'idCard'        // 身份证
   | 'url'           // 网址
+  | 'password'      // 密码
+  | 'pinCode'       // PIN 码 / 验证码
   | 'rate'          // 评分
   | 'formula'       // 公式计算
   | 'attachment'    // 附件
@@ -1176,6 +1179,10 @@ export interface WorkflowFormField {
   multiple?: boolean;                   // userSelect/deptSelect/dictSelect：是否允许多选
   // slider 滑块
   sliderMarks?: boolean;                // 是否显示刻度标记
+  // 字段级标签设置（覆盖表单级 settings）
+  labelPosition?: 'top' | 'left' | 'inset';   // 字段级标签位置
+  labelAlign?: 'left' | 'right';               // 字段级标签对齐
+  labelWidth?: number;                          // 字段级标签宽度
 }
 
 // ─── 表单库 ─────────────────────────────────────────────────────────────────
@@ -1184,8 +1191,9 @@ export interface WorkflowFormField {
 export interface WorkflowFormSettings {
   description?: string;                 // 表单顶部说明
   submitButtonText?: string;            // 提交按钮文案
-  labelPosition?: 'top' | 'left';       // 标签位置
-  labelWidth?: number;                  // 左侧标签宽度（labelPosition='left' 时）
+  labelPosition?: 'top' | 'left' | 'inset';  // 标签位置
+  labelAlign?: 'left' | 'right';        // 标签对齐方式
+  labelWidth?: number;                  // 左侧标签宽度（labelPosition='left'/'inset' 时）
 }
 
 /** 表单 schema：字段 + 表单级设置 */

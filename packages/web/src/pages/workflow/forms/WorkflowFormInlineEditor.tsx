@@ -8,10 +8,11 @@ import {
   Button, Spin, Toast, Typography, Input, Select, TextArea,
   RadioGroup, Radio, InputNumber, SideSheet, Divider, Tooltip,
 } from '@douyinfe/semi-ui';
-import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2 } from 'lucide-react';
+import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy } from 'lucide-react';
 import type { WorkflowForm, WorkflowFormField, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS } from '../designer/form-types';
 import AppModal from '@/components/AppModal';
 import FormDesigner, { type FormHistoryControls } from '../designer/components/FormDesigner';
 import WorkflowFormRenderer from '../designer/components/WorkflowFormRenderer';
@@ -55,6 +56,7 @@ export default function WorkflowFormInlineEditor({
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewMode, setPreviewMode] = useState<'pc' | 'mobile'>('pc');
+  const [jsonVisible, setJsonVisible] = useState(false);
   const [history, setHistory] = useState<FormHistoryControls | null>(null);
 
   const handleHistoryChange = useCallback((c: FormHistoryControls) => setHistory(c), []);
@@ -116,6 +118,18 @@ export default function WorkflowFormInlineEditor({
   const updateSettings = (patch: Partial<WorkflowFormSettings>) =>
     setSettings(prev => ({ ...prev, ...patch }));
 
+  // 表单 schema 的 JSON（保存即此结构），供预览/复制
+  const schemaJson = useMemo(() => JSON.stringify({ fields, settings }, null, 2), [fields, settings]);
+
+  const copyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(schemaJson);
+      Toast.success('已复制 JSON');
+    } catch {
+      Toast.error('复制失败，请手动选择复制');
+    }
+  };
+
   const previewBody = useMemo(() => (
     <div>
       {settings.description && (
@@ -130,6 +144,7 @@ export default function WorkflowFormInlineEditor({
           <WorkflowFormRenderer
             fields={fields}
             labelPosition={settings.labelPosition ?? 'top'}
+            labelAlign={settings.labelAlign}
             labelWidth={settings.labelWidth}
           />
           <div style={{ marginTop: 16, textAlign: previewMode === 'mobile' ? 'center' : 'right' }}>
@@ -189,6 +204,7 @@ export default function WorkflowFormInlineEditor({
         <Divider layout="vertical" margin="6px" />
 
         <Button icon={<Settings size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setSettingsVisible(true)}>表单设置</Button>
+        <Button icon={<Braces size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setJsonVisible(true)}>JSON</Button>
         <Button icon={<Eye size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setPreviewVisible(true)}>预览</Button>
         <Button icon={<Save size={14} />} type="primary" size="small" loading={saving} onClick={() => void handleSave()}>保存</Button>
       </div>
@@ -274,21 +290,32 @@ export default function WorkflowFormInlineEditor({
               <RadioGroup
                 type="button"
                 value={settings.labelPosition ?? 'top'}
-                onChange={(e) => updateSettings({ labelPosition: e.target.value as 'top' | 'left' })}
+                onChange={(e) => updateSettings({ labelPosition: e.target.value as 'top' | 'left' | 'inset' })}
               >
-                <Radio value="top">顶部</Radio>
-                <Radio value="left">左侧</Radio>
+                {LABEL_POSITION_OPTIONS.map(o => <Radio key={o.value} value={o.value}>{o.label}</Radio>)}
               </RadioGroup>
             </div>
           </div>
-          {settings.labelPosition === 'left' && (
+          <div>
+            <Typography.Text strong size="small">标签对齐</Typography.Text>
+            <div style={{ marginTop: 4 }}>
+              <RadioGroup
+                type="button"
+                value={settings.labelAlign ?? 'left'}
+                onChange={(e) => updateSettings({ labelAlign: e.target.value as 'left' | 'right' })}
+              >
+                {LABEL_ALIGN_OPTIONS.map(o => <Radio key={o.value} value={o.value}>{o.label}</Radio>)}
+              </RadioGroup>
+            </div>
+          </div>
+          {(settings.labelPosition === 'left' || settings.labelPosition === 'inset') && (
             <div>
               <Typography.Text strong size="small">标签宽度</Typography.Text>
               <InputNumber
                 value={settings.labelWidth ?? 96}
                 onChange={(v) => updateSettings({ labelWidth: Number(v) || undefined })}
                 min={60}
-                max={200}
+                max={300}
                 suffix="px"
                 style={{ width: '100%', marginTop: 4 }}
               />
@@ -329,6 +356,36 @@ export default function WorkflowFormInlineEditor({
         ) : (
           <div style={{ padding: '4px 8px' }}>{previewBody}</div>
         )}
+      </AppModal>
+
+      {/* JSON 预览弹窗 */}
+      <AppModal
+        title={(
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 32 }}>
+            <span>表单 JSON</span>
+            <Button icon={<Copy size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => void copyJson()}>复制</Button>
+          </div>
+        )}
+        visible={jsonVisible}
+        onCancel={() => setJsonVisible(false)}
+        footer={<Button type="primary" onClick={() => setJsonVisible(false)}>关闭</Button>}
+        width={640}
+        bodyStyle={{ maxHeight: '70vh', overflow: 'auto' }}
+      >
+        <Typography.Paragraph type="tertiary" size="small" style={{ marginBottom: 8 }}>
+          表单保存为以下 JSON 结构（schema），可用于排查与外部对接。
+        </Typography.Paragraph>
+        <pre style={{
+          margin: 0,
+          padding: 12,
+          background: 'var(--semi-color-fill-0)',
+          borderRadius: 6,
+          fontSize: 12,
+          lineHeight: 1.6,
+          fontFamily: 'var(--semi-font-family-mono, monospace)',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-all',
+        }}>{schemaJson}</pre>
       </AppModal>
     </div>
   );

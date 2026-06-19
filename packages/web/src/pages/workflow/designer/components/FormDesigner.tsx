@@ -7,6 +7,7 @@ import { Button, Tooltip } from '@douyinfe/semi-ui';
 import { Undo2, Redo2 } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
+import { findField, updateField, removeField, insertField, insertAfterKey, isDescendant, isContainerType, type DropTarget } from '../form-tree';
 import FieldPalette from './FieldPalette';
 import FormCanvas from './FormCanvas';
 import FieldConfigPanel from './FieldConfigPanel';
@@ -156,6 +157,12 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
     case 'deptSelect':
       field.multiple = false;
       break;
+    case 'autoComplete':
+      field.options = ['建议1', '建议2', '建议3'];
+      break;
+    case 'pinCode':
+      field.maxCount = 6;
+      break;
     case 'formula':
       field.formula = '';
       field.precision = 2;
@@ -185,7 +192,7 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
   const historyRef = useRef<HistoryState>({ stack: [fields], pointer: 0, lastTag: null });
   const [, bumpHistory] = useState(0);
 
-  const selectedField = fields.find(f => f.key === selectedKey) ?? null;
+  const selectedField = findField(fields, selectedKey ?? '');
 
   // 统一提交变更：写入历史栈并通知父级。tag 相同的连续变更会被合并为一步（如连续编辑同一字段属性）
   const commit = useCallback((next: WorkflowFormField[], tag?: string) => {
@@ -247,48 +254,55 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
     onHistoryChange?.({ undo, redo, canUndo, canRedo });
   }, [onHistoryChange, undo, redo, canUndo, canRedo]);
 
-  // 点击左侧面板添加字段
+  // 点击左侧面板添加字段（追加到顶层末尾）
   const handleAddField = useCallback((type: WorkflowFormFieldType) => {
     const newField = createField(type);
     commit([...fields, newField]);
     setSelectedKey(newField.key);
   }, [fields, commit]);
 
-  // 从面板拖放到画布指定位置
-  const handleDropNew = useCallback((type: WorkflowFormFieldType, index: number) => {
+  // 从面板拖放到画布指定位置（支持顶层 / 分栏列 / 分组）
+  const handleDropNew = useCallback((type: WorkflowFormFieldType, target: DropTarget) => {
+    // 容器类控件（分栏/分组/明细）只能放在顶层，避免无限嵌套
+    if (isContainerType(type) && target.container !== 'root') return;
     const newField = createField(type);
-    const updated = [...fields];
-    updated.splice(index, 0, newField);
-    commit(updated);
+    commit(insertField(fields, target, newField));
     setSelectedKey(newField.key);
   }, [fields, commit]);
 
-  // 拖拽排序
-  const handleReorder = useCallback((reordered: WorkflowFormField[]) => {
-    commit(reordered);
-  }, [commit]);
+  // 移动已有字段到目标位置（跨容器拖拽 / 排序）
+  const handleMoveField = useCallback((moveKey: string, target: DropTarget) => {
+    if (target.beforeKey === moveKey) return; // 拖到自身之前 = 无操作
+    const moved = findField(fields, moveKey);
+    if (!moved) return;
+    if (isContainerType(moved.type) && target.container !== 'root') return; // 容器只能在顶层
+    if (target.container === 'col' && (target.rowKey === moveKey || isDescendant(fields, moveKey, target.rowKey))) return;
+    if (target.container === 'group' && (target.groupKey === moveKey || isDescendant(fields, moveKey, target.groupKey))) return;
+    const [next, rm] = removeField(fields, moveKey);
+    if (!rm) return;
+    commit(insertField(next, target, rm));
+    setSelectedKey(moveKey);
+  }, [fields, commit]);
 
-  // 删除字段
+  // 删除字段（任意层级）
   const handleRemove = useCallback((key: string) => {
-    commit(fields.filter(f => f.key !== key));
+    commit(removeField(fields, key)[0]);
     if (selectedKey === key) setSelectedKey(null);
   }, [fields, commit, selectedKey]);
 
-  // 复制字段（插入到原字段之后）
+  // 复制字段（插入到原字段之后，任意层级）
   const handleCopy = useCallback((key: string) => {
-    const index = fields.findIndex(f => f.key === key);
-    if (index < 0) return;
-    const cloned = cloneFieldWithNewKeys(fields[index]);
-    const updated = [...fields];
-    updated.splice(index + 1, 0, cloned);
-    commit(updated);
+    const target = findField(fields, key);
+    if (!target) return;
+    const cloned = cloneFieldWithNewKeys(target);
+    commit(insertAfterKey(fields, key, cloned));
     setSelectedKey(cloned.key);
   }, [fields, commit]);
 
-  // 修改字段属性（连续编辑同一字段合并为一步撤销）
+  // 修改字段属性（任意层级；连续编辑同一字段合并为一步撤销）
   const handleFieldChange = useCallback((updates: Partial<WorkflowFormField>) => {
     if (!selectedKey) return;
-    commit(fields.map(f => f.key === selectedKey ? { ...f, ...updates } : f), `edit:${selectedKey}`);
+    commit(updateField(fields, selectedKey, updates), `edit:${selectedKey}`);
   }, [fields, commit, selectedKey]);
 
   return (
@@ -334,7 +348,7 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
             fields={fields}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
-            onReorder={handleReorder}
+            onMoveField={handleMoveField}
             onRemove={handleRemove}
             onCopy={handleCopy}
             onDropNew={handleDropNew}

@@ -229,12 +229,13 @@ interface RendererProps {
   onValueChange?: (values: Record<string, unknown>) => void;
   readOnly?: boolean;
   style?: React.CSSProperties;
-  labelPosition?: 'top' | 'left';
+  labelPosition?: 'top' | 'left' | 'inset';
+  labelAlign?: 'left' | 'right';
   labelWidth?: number;
 }
 
 export default function WorkflowFormRenderer({
-  fields, initValues, getFormApi, onValueChange, readOnly, style, labelPosition = 'top', labelWidth,
+  fields, initValues, getFormApi, onValueChange, readOnly, style, labelPosition = 'top', labelAlign, labelWidth,
 }: Readonly<RendererProps>) {
   const formApiRef = useRef<FormApi | null>(null);
   const valuesRef = useRef<Record<string, unknown>>(initValues ?? {});
@@ -294,7 +295,8 @@ export default function WorkflowFormRenderer({
     <ValuesContext.Provider value={valuesState}>
       <Form
         labelPosition={labelPosition}
-        labelWidth={labelPosition === 'left' ? (labelWidth ?? 96) : undefined}
+        labelAlign={labelAlign}
+        labelWidth={labelPosition === 'left' || labelPosition === 'inset' ? (labelWidth ?? 96) : undefined}
         allowEmpty
         style={style}
         initValues={initValues}
@@ -332,7 +334,12 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
   if (field.max !== undefined) numberRules.push({ type: 'number', max: field.max, message: `不大于${field.max}` });
   const rules = baseRules.length > 0 ? baseRules : undefined;
   const helpText = field.helpText;
-  const extraProps = helpText ? { extraText: helpText } : {};
+  // 字段级标签覆盖（labelPosition/labelAlign/labelWidth），随 extraProps 透传至每个 Form 字段
+  const labelOverride: Record<string, unknown> = {};
+  if (field.labelPosition) labelOverride.labelPosition = field.labelPosition;
+  if (field.labelAlign) labelOverride.labelAlign = field.labelAlign;
+  if (field.labelWidth) labelOverride.labelWidth = field.labelWidth;
+  const extraProps = { ...(helpText ? { extraText: helpText } : {}), ...labelOverride };
   const unitSuffix = field.unit ? `（${field.unit}）` : '';
   const numberLabel = `${field.label}${unitSuffix}`;
   const disabled = readOnly || field.readOnly;
@@ -415,6 +422,40 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
         />
       );
 
+    case 'password':
+      return (
+        <Form.Input
+          field={field.key} label={field.label}
+          mode="password"
+          placeholder={field.placeholder ?? `请输入${field.label}`}
+          initValue={field.defaultValue} rules={rules} disabled={disabled}
+          {...extraProps}
+        />
+      );
+
+    case 'pinCode':
+      return (
+        <Form.PinCode
+          field={field.key} label={field.label}
+          count={field.maxCount ?? 6}
+          initValue={field.defaultValue}
+          rules={rules} disabled={disabled}
+          {...extraProps}
+        />
+      );
+
+    case 'autoComplete':
+      return (
+        <Form.AutoComplete
+          field={field.key} label={field.label}
+          data={field.options ?? []}
+          placeholder={field.placeholder ?? `请输入${field.label}`}
+          initValue={field.defaultValue}
+          style={{ width: '100%' }} rules={rules} disabled={disabled}
+          {...extraProps}
+        />
+      );
+
     case 'rate':
       return (
         <Form.Slot label={field.label} {...extraProps}>
@@ -476,6 +517,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           style={{ width: '100%' }}
           format={field.dateFormat ?? 'yyyy-MM-dd'}
           rules={rules} disabled={disabled}
+          {...extraProps}
         />
       );
 
@@ -486,6 +528,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           type="dateRange" style={{ width: '100%' }}
           format={field.dateFormat ?? 'yyyy-MM-dd'}
           rules={rules} disabled={disabled}
+          {...extraProps}
         />
       );
 
@@ -566,6 +609,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? `请选择${field.label}`}
           style={{ width: '100%' }} rules={rules} disabled={disabled}
+          {...extraProps}
         >
           {options.map(opt => (
             <Select.Option key={opt} value={opt}>{opt}</Select.Option>
@@ -585,6 +629,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? `请选择${field.label}`}
           multiple style={{ width: '100%' }} rules={rules} disabled={disabled}
+          {...extraProps}
         >
           {options.map(opt => (
             <Select.Option key={opt} value={opt}>{opt}</Select.Option>
