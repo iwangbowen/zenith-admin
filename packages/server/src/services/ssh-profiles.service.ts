@@ -18,6 +18,8 @@ export interface SshProfileInput {
   keyContent?: string | null;
   keyPassphrase?: string | null;
   envVars?: Record<string, string>;
+  groupName?: string | null;
+  tags?: string[];
   orderNum?: number;
 }
 
@@ -35,6 +37,8 @@ function mapRow(r: typeof sshProfiles.$inferSelect) {
     hasKeyContent: !!r.keyContentEncrypted,
     hasKeyPassphrase: !!r.keyPassphraseEncrypted,
     envVars: r.envVars ?? {},
+    groupName: r.groupName ?? null,
+    tags: r.tags ?? [],
     orderNum: r.orderNum,
     createdAt: formatDateTime(r.createdAt),
     updatedAt: formatDateTime(r.updatedAt),
@@ -74,6 +78,8 @@ export async function createSshProfile(userId: number, input: SshProfileInput) {
       keyContentEncrypted: encryptField(input.keyContent),
       keyPassphraseEncrypted: encryptField(input.keyPassphrase),
       envVars: input.envVars ?? {},
+      groupName: input.groupName ?? null,
+      tags: input.tags ?? [],
       orderNum: input.orderNum ?? 0,
     })
     .returning();
@@ -96,6 +102,8 @@ export async function updateSshProfile(id: number, userId: number, input: Partia
       ...(input.keyContent !== undefined && { keyContentEncrypted: encryptField(input.keyContent) }),
       ...(input.keyPassphrase !== undefined && { keyPassphraseEncrypted: encryptField(input.keyPassphrase) }),
       ...(input.envVars !== undefined && { envVars: input.envVars }),
+      ...(input.groupName !== undefined && { groupName: input.groupName }),
+      ...(input.tags !== undefined && { tags: input.tags }),
       ...(input.orderNum !== undefined && { orderNum: input.orderNum }),
     })
     .where(eq(sshProfiles.id, existing.id))

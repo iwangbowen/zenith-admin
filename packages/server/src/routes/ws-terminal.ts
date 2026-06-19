@@ -9,8 +9,28 @@ import { verifyToken } from '../lib/jwt';
 import type { JwtPayload } from '../middleware/auth';
 import { isTokenBlacklisted } from '../lib/session-manager';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
+import { getClientIp } from '../lib/request-helpers';
 import { listShells } from '../services/terminal-files.service';
 import { getSshConnectParams } from '../services/ssh-profiles.service';
+import {
+  type TerminalProcess,
+  type TerminalSession,
+  type TerminalKind,
+  getSession,
+  setSession,
+  clearIdleTimer,
+  appendOutput,
+  touchActivity,
+  setSize,
+  destroySession,
+  attachObserver,
+  detachObserver,
+  writeToSession,
+  getSessionMeta,
+} from '../lib/terminal-session-registry';
+
+/** 终端会话监控权限码 */
+const MONITOR_PERMISSION = 'system:terminal:monitor';
 
 /**
  * 根据前端选择的 shell id 解析实际可执行文件与启动参数。
@@ -63,57 +83,11 @@ function resolveShell(type: string | undefined): { file: string; args: string[] 
  * - 若客户端发送 terminal:close 消息，或 PTY 进程自行退出，则立即清理会话。
  */
 
-/** PTY 会话的输出缓冲区上限（字节），用于断线重连后回放 */
-const OUTPUT_BUFFER_MAX = 50 * 1024;
 /** PTY 进程无客户端连接时的最大保活时长（毫秒） */
 const PTY_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** 抽象终端进程接口，兼容本地 PTY 和 SSH 两种后端 */
-interface TerminalProcess {
-  write(data: string): void;
-  resize(cols: number, rows: number): void;
-  kill(): void;
-}
-
-interface PtySession {
-  process: TerminalProcess;
-  /** 当前连接的 WebSocket（无连接时为 null） */
-  currentWs: { send: (data: string) => void; close: (code: number, reason: string) => void } | null;
-  /** 近期输出缓冲，断线重连后回放 */
-  outputBuffer: string;
-  /** 进程保活计时器 */
-  idleTimer: ReturnType<typeof setTimeout> | null;
-  /** 会话归属用户，防止越权重连 */
-  userId: number;
-}
-
-/** 模块级 PTY 会话表（sessionId → PtySession） */
-const ptySessions = new Map<string, PtySession>();
-
-function appendBuffer(session: PtySession, data: string): void {
-  session.outputBuffer += data;
-  if (session.outputBuffer.length > OUTPUT_BUFFER_MAX) {
-    session.outputBuffer = session.outputBuffer.slice(-OUTPUT_BUFFER_MAX);
-  }
-}
-
-function clearIdleTimer(session: PtySession): void {
-  if (session.idleTimer !== null) {
-    clearTimeout(session.idleTimer);
-    session.idleTimer = null;
-  }
-}
-
-function destroySession(sessionId: string): void {
-  const s = ptySessions.get(sessionId);
-  if (!s) return;
-  clearIdleTimer(s);
-  try { s.process.kill(); } catch { /* ignore */ }
-  ptySessions.delete(sessionId);
-}
-
 type SshShellParams = {
-  getSession: () => PtySession;
+  getSession: () => TerminalSession;
   sessionId: string;
   envVars?: Record<string, string>;
 };
@@ -121,7 +95,7 @@ type SshShellParams = {
 function handleSshShell(
   stream: import('ssh2').ClientChannel,
   conn: import('ssh2').Client,
-  { getSession, sessionId, envVars }: SshShellParams,
+  { getSession: getSess, sessionId, envVars }: SshShellParams,
   resolve: (t: TerminalProcess) => void,
   _reject: (e: Error) => void,
 ): void {
@@ -130,15 +104,15 @@ function handleSshShell(
   }
   const onData = (data: Buffer) => {
     const text = data.toString('utf8');
-    const s = getSession();
-    appendBuffer(s, text);
+    const s = getSess();
+    appendOutput(s, text);
     try { s.currentWs?.send(JSON.stringify({ type: 'terminal:output', data: text })); } catch { /* ignore */ }
   };
   stream.on('data', onData);
   stream.stderr.on('data', onData);
   stream.on('close', () => {
     conn.end();
-    const s = getSession();
+    const s = getSess();
     try {
       s.currentWs?.send(JSON.stringify({ type: 'terminal:exit' }));
       s.currentWs?.close(1000, 'SSH session closed');
@@ -153,22 +127,23 @@ function handleSshShell(
 }
 
 /**
- * 建立 SSH shell 频道，返回 TerminalProcess 适配器。
+ * 建立 SSH shell 频道，返回 TerminalProcess 适配器与展示标签（user@host）。
  * 提取为独立函数以降低 ws-terminal onOpen 的嵌套深度。
  */
 async function createSshProcess(
   profileId: number,
   userId: number,
-  getSession: () => PtySession,
+  getSess: () => TerminalSession,
   sessionId: string,
-): Promise<TerminalProcess> {
+): Promise<{ process: TerminalProcess; label: string }> {
   const params = await getSshConnectParams(profileId, userId);
-  return new Promise<TerminalProcess>((resolve, reject) => {
+  const label = `${params.username}@${params.host}:${params.port}`;
+  const process = await new Promise<TerminalProcess>((resolve, reject) => {
     const conn = new SshClient();
     conn.on('ready', () => {
       conn.shell({ term: 'xterm-256color', cols: 80, rows: 24 }, (err, stream) => {
         if (err) { conn.end(); reject(err); return; }
-        handleSshShell(stream, conn, { getSession, sessionId, envVars: params.envVars }, resolve, reject);
+        handleSshShell(stream, conn, { getSession: getSess, sessionId, envVars: params.envVars }, resolve, reject);
       });
     });
     conn.on('error', reject);
@@ -183,6 +158,7 @@ async function createSshProcess(
       keepaliveInterval: 30000,
     });
   });
+  return { process, label };
 }
 
 export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  const wsApp = new Hono();
@@ -252,8 +228,8 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
             return;
           }
 
-          // ── 尝试重连已有 PTY 会话 ──
-          const existing = sessionId ? ptySessions.get(sessionId) : undefined;
+          // ── 尝试重连已有会话 ──
+          const existing = sessionId ? getSession(sessionId) : undefined;
           if (existing?.userId === payload.userId) {
             // 合法重连：附接到已有 PTY，回放缓冲区
             clearIdleTimer(existing);
@@ -265,22 +241,34 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
             return;
           }
 
-          // ── 创建新终端进程（本地 PTY 或 SSH） ──
+          // ── 创建新终端进程（本地 PTY / SSH / Docker） ──
           const isSsh = shellType?.startsWith('ssh:');
+          const isDocker = shellType?.startsWith('docker-exec:');
+          const kind: TerminalKind = isSsh ? 'ssh' : isDocker ? 'docker' : 'local';
+          const clientIp = getClientIp(c);
           // sessionRef 用于 createSshProcess 回调中懒引用 session（session 在 termProcess 之后才赋值）
-          const sessionRef: { current: PtySession | null } = { current: null };
+          const sessionRef: { current: TerminalSession | null } = { current: null };
 
           let termProcess: TerminalProcess;
+          let label: string;
           try {
             if (isSsh) {
               // ── SSH 连接 ──
               const profileId = Number(shellType!.slice(4));
               if (!profileId) throw new Error('无效的 SSH 配置 ID');
-              termProcess = await createSshProcess(profileId, payload.userId, () => sessionRef.current!, sessionId);
+              const ssh = await createSshProcess(profileId, payload.userId, () => sessionRef.current!, sessionId);
+              termProcess = ssh.process;
+              label = ssh.label;
             } else {
-              // ── 本地 PTY ──
+              // ── 本地 PTY / Docker exec ──
               const { file: shellFile, args: shellArgs } = resolveShell(shellType);
               const isWsl = shellType?.startsWith('wsl:');
+              if (isDocker) {
+                label = `docker:${shellType!.slice('docker-exec:'.length).slice(0, 12)}`;
+              } else {
+                const { shells } = listShells();
+                label = shells.find((s) => s.id === shellType)?.label ?? shellType ?? 'shell';
+              }
 
               // 解析工作目录：优先使用前端传入的 cwd（须为已存在目录），否则回退用户主目录
               // WSL 会话使用 Windows 用户主目录作为 cwd（让 WSL 在自身 home 启动；传 Windows 路径给 wsl.exe 是安全的）
@@ -302,7 +290,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
               });
 
               ptyProcess.onData((data) => {
-                appendBuffer(session, data);
+                appendOutput(session, data);
                 try { session.currentWs?.send(JSON.stringify({ type: 'terminal:output', data })); } catch { /* ignore */ }
               });
               ptyProcess.onExit(() => {
@@ -326,20 +314,32 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
             return;
           }
 
-          const session: PtySession = {
+          const now = Date.now();
+          const session: TerminalSession = {
+            sessionId,
             process: termProcess,
             currentWs: ws,
             outputBuffer: '',
             idleTimer: null,
             userId: payload.userId,
+            username: payload.username,
+            kind,
+            label,
+            clientIp,
+            startedAt: now,
+            lastActivityAt: now,
+            cols: 80,
+            rows: 24,
+            observers: new Set(),
+            takenOverBy: null,
           };
           sessionRef.current = session;
-          if (sessionId) ptySessions.set(sessionId, session);
+          if (sessionId) setSession(sessionId, session);
         },
 
         onMessage(evt, _ws) {
-          // 路由到对应 PTY 会话
-          const session = sessionId ? ptySessions.get(sessionId) : undefined;
+          // 路由到对应会话
+          const session = sessionId ? getSession(sessionId) : undefined;
           if (!session) return;
           try {
             const raw: unknown = typeof evt.data === 'string' ? JSON.parse(evt.data) : null;
@@ -348,8 +348,10 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
 
             if (msg.type === 'terminal:input' && typeof msg.data === 'string') {
               session.process.write(msg.data);
+              touchActivity(session);
             } else if (msg.type === 'terminal:resize' && msg.cols && msg.rows) {
               session.process.resize(Math.max(1, msg.cols), Math.max(1, msg.rows));
+              setSize(session, Math.max(1, msg.cols), Math.max(1, msg.rows));
             } else if (msg.type === 'terminal:close') {
               // 客户端明确要求关闭：立即销毁
               if (sessionId) destroySession(sessionId);
@@ -358,7 +360,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
         },
 
         onClose() {
-          const session = sessionId ? ptySessions.get(sessionId) : undefined;
+          const session = sessionId ? getSession(sessionId) : undefined;
           if (!session) return;
 
           // WS 断开时不立即 kill PTY：保活等待重连
@@ -366,6 +368,101 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
           session.idleTimer = setTimeout(() => {
             destroySession(sessionId);
           }, PTY_IDLE_TIMEOUT_MS);
+        },
+      };
+    }),
+  );
+
+  return wsApp;
+}
+
+/**
+ * Web 终端监控 WebSocket 路由（管理员）
+ *
+ * 端点：GET /api/ws/terminal-monitor?token=<accessToken>&sessionId=<id>&takeover=1
+ *
+ * - 权限：超管 或 `system:terminal:monitor`。
+ * - 作为 observer 实时镜像目标会话的输出（接入时回放输出缓冲）。
+ * - takeover=1 时允许管理员向目标会话注入输入（接管），由 writeToSession 标记 takenOverBy。
+ * - 监控端断开时自动移除 observer，不影响被监控会话本身。
+ */
+export function createWsTerminalMonitorRoute(upgradeWebSocket: UpgradeWebSocket) {
+  const wsApp = new Hono();
+
+  wsApp.get(
+    '/',
+    upgradeWebSocket(async (c) => {
+      const token = c.req.query('token');
+      const sessionId = c.req.query('sessionId') ?? '';
+      const allowTakeover = c.req.query('takeover') === '1';
+      let payload: JwtPayload | null = null;
+
+      if (token) {
+        try {
+          payload = await verifyToken<JwtPayload>(token);
+        } catch {
+          payload = null;
+        }
+      }
+
+      let observer: { send: (data: string) => void } | null = null;
+
+      return {
+        async onOpen(_evt, ws) {
+          if (!payload) {
+            ws.close(4001, 'Unauthorized');
+            return;
+          }
+          if (payload.jti) {
+            try {
+              if (await isTokenBlacklisted(payload.jti)) {
+                ws.close(4001, 'Session revoked');
+                return;
+              }
+            } catch { /* Redis 不可用时放行 */ }
+          }
+
+          // 权限校验：超管 或 system:terminal:monitor
+          if (!isSuperAdmin(payload.roles)) {
+            try {
+              const perms = await getUserPermissions(payload.userId);
+              if (!perms.includes(MONITOR_PERMISSION)) {
+                ws.close(4003, 'Forbidden');
+                return;
+              }
+            } catch {
+              ws.close(4003, 'Forbidden');
+              return;
+            }
+          }
+
+          const meta = getSessionMeta(sessionId);
+          if (!meta) {
+            ws.send(JSON.stringify({ type: 'monitor:not-found', message: '会话不存在或已结束' }));
+            ws.close(1000, 'Session not found');
+            return;
+          }
+
+          observer = { send: (data: string) => { try { ws.send(data); } catch { /* ignore */ } } };
+          const buffer = attachObserver(sessionId, observer);
+          ws.send(JSON.stringify({ type: 'monitor:attached', meta, takeover: allowTakeover }));
+          if (buffer) ws.send(JSON.stringify({ type: 'terminal:output', data: buffer }));
+        },
+
+        onMessage(evt, _ws) {
+          if (!payload || !allowTakeover) return;
+          try {
+            const raw: unknown = typeof evt.data === 'string' ? JSON.parse(evt.data) : null;
+            if (!raw || typeof raw !== 'object') return;
+            const msg = raw as { type: string; data?: string };
+            if (msg.type === 'terminal:input' && typeof msg.data === 'string') {
+              writeToSession(sessionId, msg.data, payload.userId);
+            }
+          } catch { /* ignore malformed */ }
+        },
+
+        onClose() {
+          if (observer) detachObserver(sessionId, observer);
         },
       };
     }),

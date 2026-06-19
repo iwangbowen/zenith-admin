@@ -39,10 +39,10 @@ function isImageFile(filePath: string): boolean {
 }
 
 /** 带鉴权获取图片 blob URL */
-async function fetchImageBlobUrl(filePath: string): Promise<string> {
+async function fetchImageBlobUrl(downloadUrl: string): Promise<string> {
   const token = localStorage.getItem(TOKEN_KEY) ?? '';
   const base = config.apiBaseUrl || '';
-  const url = `${base}/api/terminal-files/download?path=${encodeURIComponent(filePath)}`;
+  const url = `${base}${downloadUrl}`;
   const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const blob = await res.blob();
@@ -50,7 +50,7 @@ async function fetchImageBlobUrl(filePath: string): Promise<string> {
 }
 
 /** 图片预览面板 */
-function ImagePreview({ filePath }: { readonly filePath: string }) {
+function ImagePreview({ filePath, downloadUrl }: { readonly filePath: string; readonly downloadUrl: string }) {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
@@ -59,11 +59,11 @@ function ImagePreview({ filePath }: { readonly filePath: string }) {
     let revoke = '';
     setImgUrl(null);
     setError(false);
-    fetchImageBlobUrl(filePath)
+    fetchImageBlobUrl(downloadUrl)
       .then((url) => { revoke = url; setImgUrl(url); })
       .catch(() => setError(true));
     return () => { if (revoke) URL.revokeObjectURL(revoke); };
-  }, [filePath]);
+  }, [downloadUrl]);
 
   let body: React.ReactNode;
   if (error) {
@@ -101,10 +101,65 @@ function detectLanguage(filePath: string): string {
   return LANGUAGE_MAP[ext] ?? 'plaintext';
 }
 
+type FileKind = 'local' | 'docker' | 'sftp';
+
+interface FileRef {
+  kind: FileKind;
+  /** 用于显示与语言检测的真实路径 */
+  displayPath: string;
+  readOnly: boolean;
+  readUrl: string;
+  writeUrl: string | null;
+  downloadUrl: string;
+  buildWriteBody: (content: string) => Record<string, string>;
+}
+
+/** 解析文件引用：local 普通路径 / docker:// 容器只读 / sftp:// 远程可写 */
+function parseFileRef(filePath: string): FileRef {
+  if (filePath.startsWith('docker://')) {
+    const withoutScheme = filePath.slice('docker://'.length);
+    const slashIdx = withoutScheme.indexOf('/');
+    const containerId = slashIdx >= 0 ? withoutScheme.slice(0, slashIdx) : withoutScheme;
+    const containerPath = slashIdx >= 0 ? withoutScheme.slice(slashIdx) : '/';
+    return {
+      kind: 'docker',
+      displayPath: containerPath,
+      readOnly: true,
+      readUrl: `/api/docker/${containerId}/files/content?path=${encodeURIComponent(containerPath)}`,
+      writeUrl: null,
+      downloadUrl: '',
+      buildWriteBody: () => ({}),
+    };
+  }
+  if (filePath.startsWith('sftp://')) {
+    const withoutScheme = filePath.slice('sftp://'.length);
+    const slashIdx = withoutScheme.indexOf('/');
+    const profileId = slashIdx >= 0 ? withoutScheme.slice(0, slashIdx) : withoutScheme;
+    const remotePath = slashIdx >= 0 ? withoutScheme.slice(slashIdx) : '/';
+    return {
+      kind: 'sftp',
+      displayPath: remotePath,
+      readOnly: false,
+      readUrl: `/api/ssh-sftp/${profileId}/content?path=${encodeURIComponent(remotePath)}`,
+      writeUrl: `/api/ssh-sftp/${profileId}/content`,
+      downloadUrl: `/api/ssh-sftp/${profileId}/download?path=${encodeURIComponent(remotePath)}`,
+      buildWriteBody: (content) => ({ path: remotePath, content }),
+    };
+  }
+  return {
+    kind: 'local',
+    displayPath: filePath,
+    readOnly: false,
+    readUrl: `/api/terminal-files/content?path=${encodeURIComponent(filePath)}`,
+    writeUrl: '/api/terminal-files/content',
+    downloadUrl: `/api/terminal-files/download?path=${encodeURIComponent(filePath)}`,
+    buildWriteBody: (content) => ({ path: filePath, content }),
+  };
+}
+
 export default function EditorTab({ filePath, active, onDirtyChange }: EditorTabProps) {
-  // docker:// 前缀：容器内文件，只读模式
-  const isDockerFile = filePath.startsWith('docker://');
-  const isImg = !isDockerFile && isImageFile(filePath);
+  const fileRef = useMemo(() => parseFileRef(filePath), [filePath]);
+  const isImg = fileRef.kind !== 'docker' && isImageFile(fileRef.displayPath);
 
   const { isDark } = useThemeController();
   const { terminal } = useTerminalPreferences();
@@ -132,24 +187,12 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
     let cancelled = false;
     setLoading(true);
 
-    let fetchPromise: Promise<{ code: number; data?: FileContent | { content: string } | null }>;
-    if (isDockerFile) {
-      // docker://<containerId>/path/to/file
-      const withoutScheme = filePath.slice('docker://'.length);
-      const slashIdx = withoutScheme.indexOf('/');
-      const containerId = slashIdx >= 0 ? withoutScheme.slice(0, slashIdx) : withoutScheme;
-      const containerPath = slashIdx >= 0 ? withoutScheme.slice(slashIdx) : '/';
-      fetchPromise = request.get<{ content: string }>(
-        `/api/docker/${containerId}/files/content?path=${encodeURIComponent(containerPath)}`,
-      );
-    } else {
-      fetchPromise = request.get<FileContent>(`/api/terminal-files/content?path=${encodeURIComponent(filePath)}`);
-    }
-
-    fetchPromise
+    request
+      .get<FileContent | { content: string }>(fileRef.readUrl)
       .then((res) => {
         if (cancelled) return;
-        const text = res.code === 0 && res.data ? (res.data as FileContent).content ?? (res.data as { content: string }).content : '';
+        const data = res.code === 0 ? res.data : null;
+        const text = data && 'content' in data ? data.content ?? '' : '';
         savedRef.current = text;
         setContent(text);
         setDirty(false);
@@ -161,7 +204,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
     return () => {
       cancelled = true;
     };
-  }, [filePath, isImg, isDockerFile]);
+  }, [fileRef, isImg]);
 
   // 注册并应用自定义主题（与终端配色一致）
   useEffect(() => {
@@ -181,10 +224,10 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
 
   const handleSave = useCallback(async () => {
     const ed = editorRef.current;
-    if (!ed) return;
+    if (!ed || !fileRef.writeUrl) return;
     const value = ed.getValue();
     setSaving(true);
-    const res = await request.put<FileContent>('/api/terminal-files/content', { path: filePath, content: value });
+    const res = await request.put<FileContent>(fileRef.writeUrl, fileRef.buildWriteBody(value));
     setSaving(false);
     if (res.code === 0) {
       savedRef.current = value;
@@ -192,7 +235,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
       onDirtyChangeRef.current?.(false);
       Toast.success('已保存');
     }
-  }, [filePath]);
+  }, [fileRef]);
   const handleSaveRef = useRef(handleSave);
   handleSaveRef.current = handleSave;
 
@@ -216,7 +259,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
 
   // 图片文件：直接渲染预览，跳过 Monaco
   if (isImg) {
-    return <ImagePreview filePath={filePath} />;
+    return <ImagePreview filePath={fileRef.displayPath} downloadUrl={fileRef.downloadUrl} />;
   }
 
   return (
@@ -232,10 +275,10 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
         }}
       >
         <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ flex: 1 }}>
-          {filePath}
+          {fileRef.kind === 'sftp' ? `🌐 ${fileRef.displayPath}` : fileRef.displayPath}
           {dirty ? ' ●' : ''}
         </Typography.Text>
-        {!isDockerFile && (
+        {!fileRef.readOnly && (
           <Button
             size="small"
             theme="solid"
@@ -248,7 +291,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
             保存
           </Button>
         )}
-        {isDockerFile && (
+        {fileRef.readOnly && (
           <Typography.Text size="small" type="tertiary" style={{ marginLeft: 4 }}>只读</Typography.Text>
         )}
       </div>
@@ -260,7 +303,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
         ) : (
           <Editor
             height="100%"
-            language={detectLanguage(filePath)}
+            language={detectLanguage(fileRef.displayPath)}
             theme={themeName}
             defaultValue={content ?? ''}
             onChange={handleChange}
@@ -272,7 +315,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
               scrollBeyondLastLine: false,
               automaticLayout: true,
               tabSize: 2,
-              readOnly: isDockerFile,
+              readOnly: fileRef.readOnly,
             }}
           />
         )}

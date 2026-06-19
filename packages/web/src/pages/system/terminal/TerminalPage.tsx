@@ -6,15 +6,19 @@ import FileExplorer from './FileExplorer';
 import TerminalSettings from './TerminalSettings';
 import PaneTreeView from './PaneTreeView';
 import SshProfilesManager, { type SshProfile } from './SshProfilesManager';
+import SftpExplorer from './SftpExplorer';
 import DockerExplorer from './DockerExplorer';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { request } from '@/utils/request';
+import { TOKEN_KEY } from '@zenith/shared';
 import { getFileIcon, getShellIcon } from './fileIcons';
 import { terminalSessionStore } from './terminalSessionStore';
 import {
   closePane,
   collectLeaves,
+  collectAllIds,
   createLeaf,
+  ensurePaneCounterFloor,
   findLeaf,
   firstLeaf,
   splitPane,
@@ -42,6 +46,58 @@ let tabCounter = 0;
 function nextTabId(): string {
   tabCounter += 1;
   return `tab-${tabCounter}`;
+}
+
+// ─── 刷新恢复：将 Tab/分屏布局持久化到 localStorage ──────────────────────────────
+
+const LAYOUT_STORAGE_KEY = 'zenith_terminal_layout';
+
+interface PersistedLayout {
+  sessions: Session[];
+  activeId: string;
+}
+
+/** 按当前登录用户隔离布局存储，避免共享浏览器时跨用户串台 */
+function layoutStorageKey(): string {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      const payload = JSON.parse(atob(token.split('.')[1])) as { userId?: number };
+      if (payload?.userId) return `${LAYOUT_STORAGE_KEY}:${payload.userId}`;
+    }
+  } catch { /* ignore */ }
+  return LAYOUT_STORAGE_KEY;
+}
+
+function maxNumericSuffix(ids: string[]): number {
+  let max = 0;
+  for (const id of ids) {
+    const m = /-(\d+)$/.exec(id);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max;
+}
+
+/** 读取并校验持久化布局；同时把 id 计数器抬高到已恢复 id 之上，防止新建节点 id 冲突 */
+function loadPersistedLayout(): PersistedLayout | null {
+  if (IS_DEMO) return null;
+  try {
+    const raw = localStorage.getItem(layoutStorageKey());
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedLayout;
+    if (!Array.isArray(parsed.sessions) || parsed.sessions.length === 0) return null;
+    // 简单结构校验
+    for (const s of parsed.sessions) {
+      if (!s || typeof s.id !== 'string' || !s.root) return null;
+    }
+    const tabIds = parsed.sessions.map((s) => s.id);
+    const paneIds = parsed.sessions.flatMap((s) => collectAllIds(s.root));
+    tabCounter = Math.max(tabCounter, maxNumericSuffix(tabIds));
+    ensurePaneCounterFloor(maxNumericSuffix(paneIds));
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 /** 取 tab 当前聚焦的叶子（兜底取第一个叶子） */
@@ -73,11 +129,24 @@ export default function TerminalPage() {
   const { terminal, setTerminalPref } = useTerminalPreferences();
   const tabPosition = terminal.tabPosition ?? 'top';
   const tabCollapsed = terminal.tabCollapsed ?? false;
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeId, setActiveId] = useState('');
+  // 刷新恢复：首次渲染时从 localStorage 还原布局（并抬高 id 计数器）
+  const restoredRef = useRef<PersistedLayout | null>(null);
+  const [restoreDone] = useState(() => {
+    restoredRef.current = loadPersistedLayout();
+    return true;
+  });
+  void restoreDone;
+  const [sessions, setSessions] = useState<Session[]>(() => restoredRef.current?.sessions ?? []);
+  const [activeId, setActiveId] = useState<string>(() => {
+    const r = restoredRef.current;
+    if (!r) return '';
+    return r.sessions.some((s) => s.id === r.activeId) ? r.activeId : (r.sessions[0]?.id ?? '');
+  });
   const [showExplorer, setShowExplorer] = useState(false);
   const [showSshProfiles, setShowSshProfiles] = useState(false);
   const [showDocker, setShowDocker] = useState(false);
+  const [showSftp, setShowSftp] = useState(false);
+  const [sftpProfile, setSftpProfile] = useState<SshProfile | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [shells, setShells] = useState<ShellInfo[]>([]);
   const [serverDefaultShell, setServerDefaultShell] = useState('');
@@ -124,6 +193,18 @@ export default function TerminalPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shells.length, sessions.length]);
+
+  // 持久化 Tab/分屏布局，刷新后可恢复（终端面板由 stableSessionId 重连存活的 PTY）
+  useEffect(() => {
+    if (IS_DEMO) return;
+    try {
+      if (sessions.length === 0) {
+        localStorage.removeItem(layoutStorageKey());
+      } else {
+        localStorage.setItem(layoutStorageKey(), JSON.stringify({ sessions, activeId }));
+      }
+    } catch { /* 配额不足等忽略 */ }
+  }, [sessions, activeId]);
 
   const openEditor = useCallback((filePath: string) => {
     setSessions((prev) => {
@@ -191,6 +272,15 @@ export default function TerminalPage() {
     const tabId = nextTabId();
     setSessions((prev) => [...prev, { id: tabId, root: leaf, activePaneId: leaf.id }]);
     setActiveId(tabId);
+    setShowSshProfiles(false);
+  };
+
+  /** 打开远程 SFTP 文件面板（替换左侧其他面板） */
+  const openSftp = (profile: SshProfile) => {
+    setSftpProfile(profile);
+    setShowSftp(true);
+    setShowExplorer(false);
+    setShowDocker(false);
     setShowSshProfiles(false);
   };
 
@@ -378,7 +468,7 @@ export default function TerminalPage() {
           size="small"
           theme="borderless"
           type={showExplorer ? 'primary' : 'tertiary'}
-          onClick={() => { setShowExplorer((v) => !v); setShowSshProfiles(false); setShowDocker(false); }}
+          onClick={() => { setShowExplorer((v) => !v); setShowSshProfiles(false); setShowDocker(false); setShowSftp(false); }}
           style={{ margin: '0 2px 0 4px', flexShrink: 0, alignSelf: 'center' }}
         />
       </Tooltip>
@@ -388,7 +478,7 @@ export default function TerminalPage() {
           size="small"
           theme="borderless"
           type={showSshProfiles ? 'primary' : 'tertiary'}
-          onClick={() => { setShowSshProfiles((v) => !v); setShowExplorer(false); setShowDocker(false); }}
+          onClick={() => { setShowSshProfiles((v) => !v); setShowExplorer(false); setShowDocker(false); setShowSftp(false); }}
           style={{ marginRight: 2, flexShrink: 0, alignSelf: 'center' }}
         />
       </Tooltip>
@@ -398,7 +488,7 @@ export default function TerminalPage() {
           size="small"
           theme="borderless"
           type={showDocker ? 'primary' : 'tertiary'}
-          onClick={() => { setShowDocker((v) => !v); setShowExplorer(false); setShowSshProfiles(false); }}
+          onClick={() => { setShowDocker((v) => !v); setShowExplorer(false); setShowSshProfiles(false); setShowSftp(false); }}
           style={{ marginRight: 4, flexShrink: 0, alignSelf: 'center' }}
         />
       </Tooltip>
@@ -485,7 +575,7 @@ export default function TerminalPage() {
                 size="small"
                 theme="borderless"
                 type={showExplorer ? 'primary' : 'tertiary'}
-                onClick={() => { setShowExplorer((v) => !v); setShowSshProfiles(false); setShowDocker(false); }}
+                onClick={() => { setShowExplorer((v) => !v); setShowSshProfiles(false); setShowDocker(false); setShowSftp(false); }}
               />
             </Tooltip>
             <Tooltip content={showSshProfiles ? '隐藏 SSH 连接' : '管理 SSH 连接'}>
@@ -494,7 +584,7 @@ export default function TerminalPage() {
                 size="small"
                 theme="borderless"
                 type={showSshProfiles ? 'primary' : 'tertiary'}
-                onClick={() => { setShowSshProfiles((v) => !v); setShowExplorer(false); setShowDocker(false); }}
+                onClick={() => { setShowSshProfiles((v) => !v); setShowExplorer(false); setShowDocker(false); setShowSftp(false); }}
               />
             </Tooltip>
             <Tooltip content={showDocker ? '隐藏 Docker 容器' : '浏览 Docker 容器'}>
@@ -503,7 +593,7 @@ export default function TerminalPage() {
                 size="small"
                 theme="borderless"
                 type={showDocker ? 'primary' : 'tertiary'}
-                onClick={() => { setShowDocker((v) => !v); setShowExplorer(false); setShowSshProfiles(false); }}
+                onClick={() => { setShowDocker((v) => !v); setShowExplorer(false); setShowSshProfiles(false); setShowSftp(false); }}
               />
             </Tooltip>
             <div style={{ flex: 1 }} />
@@ -608,7 +698,12 @@ export default function TerminalPage() {
       )}
       {showSshProfiles && (
         <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <SshProfilesManager onConnect={handleSshConnect} />
+          <SshProfilesManager onConnect={handleSshConnect} onBrowseSftp={openSftp} />
+        </div>
+      )}
+      {showSftp && sftpProfile && (
+        <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <SftpExplorer key={sftpProfile.id} profile={sftpProfile} onOpenFile={openEditor} />
         </div>
       )}
       {showDocker && (

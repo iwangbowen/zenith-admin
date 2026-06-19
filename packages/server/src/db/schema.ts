@@ -2016,6 +2016,10 @@ export const sshProfiles = pgTable('ssh_profiles', {
   keyPassphraseEncrypted: text('key_passphrase_encrypted'),
   /** 连接后自动设置的环境变量 */
   envVars: jsonb('env_vars').$type<Record<string, string>>().notNull().default({}),
+  /** 所属分组名称（用于在 SSH 连接面板中按分组折叠展示，null 表示未分组） */
+  groupName: varchar('group_name', { length: 128 }),
+  /** 标签数组（用于筛选与标注，如 prod / staging / db） */
+  tags: jsonb('tags').$type<string[]>().notNull().default([]),
   /** 列表排序权重（数字越小越靠前） */
   orderNum: integer('order_num').notNull().default(0),
   createdAt: timestamp('created_at').defaultNow().notNull(),

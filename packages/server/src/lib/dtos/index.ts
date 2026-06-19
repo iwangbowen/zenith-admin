@@ -40,6 +40,8 @@ export * from './terminal-recordings';
 export * from './processes';
 export * from './analytics';
 export * from './ssh-profiles';
+export * from './ssh-sftp';
+export * from './terminal-sessions';
 export * from './frontend-errors';
 export * from './payment';
 export * from './member';

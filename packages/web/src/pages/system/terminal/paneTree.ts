@@ -40,6 +40,17 @@ export function nextPaneId(prefix = 'pane'): string {
   return `${prefix}-${paneCounter}`;
 }
 
+/** 恢复布局时调用：确保 paneCounter 大于已恢复节点 id 的最大数字后缀，避免新建节点 id 冲突 */
+export function ensurePaneCounterFloor(n: number): void {
+  if (n > paneCounter) paneCounter = n;
+}
+
+/** 收集子树中所有节点（leaf + split）的 id */
+export function collectAllIds(node: PaneNode): string[] {
+  if (node.type === 'leaf') return [node.id];
+  return [node.id, ...node.children.flatMap(collectAllIds)];
+}
+
 /** 创建一个叶子节点（未指定 id 时自动生成） */
 export function createLeaf(init: Omit<PaneLeaf, 'type' | 'id' | 'stableSessionId'> & { id?: string }): PaneLeaf {
   const id = init.id ?? nextPaneId();

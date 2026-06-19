@@ -20,6 +20,10 @@ export const SshProfileDTO = z
     /** 口令（仅返回是否已设置） */
     hasKeyPassphrase: z.boolean(),
     envVars: z.record(z.string(), z.string()),
+    /** 所属分组名称（null 表示未分组） */
+    groupName: z.string().nullable(),
+    /** 标签数组 */
+    tags: z.array(z.string()),
     orderNum: z.number().int(),
     createdAt: z.string(),
     updatedAt: z.string(),
