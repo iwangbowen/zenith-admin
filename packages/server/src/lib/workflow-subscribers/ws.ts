@@ -3,6 +3,7 @@
  */
 import { workflowEventBus } from '../workflow-event-bus';
 import { sendToUser } from '../ws-manager';
+import type { WorkflowInstanceStatus } from '@zenith/shared';
 
 export function registerWsWorkflowSubscriber(): void {
   workflowEventBus.on('task.created', (event) => {
@@ -37,7 +38,7 @@ export function registerWsWorkflowSubscriber(): void {
     }
   });
 
-  const pushInstanceFinished = (event: { instanceId: number; instance: { status: 'approved' | 'rejected' | 'withdrawn' | 'running' | 'draft'; title: string; initiatorId: number } }, status: 'approved' | 'rejected' | 'withdrawn') => {
+  const pushInstanceFinished = (event: { instanceId: number; instance: { status: WorkflowInstanceStatus; title: string; initiatorId: number } }, status: 'approved' | 'rejected' | 'withdrawn') => {
     sendToUser(event.instance.initiatorId, {
       type: 'workflow:instanceFinished',
       payload: {

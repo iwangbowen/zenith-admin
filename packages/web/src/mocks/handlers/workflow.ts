@@ -49,6 +49,13 @@ function resolveDefinitionFormFields(definition: WorkflowDefinition): WorkflowFo
   return cloneFormFields(form?.schema?.fields ?? null);
 }
 
+/** 从流程定义解析实例当前节点名称 */
+function resolveCurrentNodeName(inst: WorkflowInstance): string | null {
+  if (!inst.currentNodeKey) return null;
+  const def = mockWorkflowDefinitions.find((d) => d.id === inst.definitionId);
+  return def?.flowData?.nodes.find((n) => n.data.key === inst.currentNodeKey)?.data.label ?? null;
+}
+
 // 催办流水（内存）
 const mockWorkflowUrges: WorkflowTaskUrge[] = [];
 let urgeIdSeq = 1;
@@ -285,6 +292,7 @@ export const workflowHandlers = [
       approved:  mockWorkflowInstances.filter(i => i.status === 'approved').length,
       rejected:  mockWorkflowInstances.filter(i => i.status === 'rejected').length,
       withdrawn: mockWorkflowInstances.filter(i => i.status === 'withdrawn').length,
+      cancelled: mockWorkflowInstances.filter(i => i.status === 'cancelled').length,
     };
 
     let list = [...mockWorkflowInstances];
@@ -298,7 +306,7 @@ export const workflowHandlers = [
       .slice()
       .sort((a, b) => b.id - a.id)
       .slice((page - 1) * pageSize, page * pageSize)
-      .map(i => ({ ...i, tasks: undefined }));
+      .map(i => ({ ...i, currentNodeName: resolveCurrentNodeName(i), tasks: undefined }));
 
     return ok({ stats, list: paged, total, page, pageSize });
   }),
@@ -384,6 +392,41 @@ export const workflowHandlers = [
         t.actionAt = mockDateTime();
       });
     return ok(mockWorkflowInstances[idx]);
+  }),
+
+  // 取消流程实例（管理员强制终止）
+  http.post('/api/workflows/instances/:id/cancel', ({ params }) => {
+    const idx = mockWorkflowInstances.findIndex(i => i.id === Number(params.id));
+    if (idx === -1) return err('流程实例不存在', 404);
+    if (mockWorkflowInstances[idx].status !== 'running') return err('只能取消进行中的流程');
+    mockWorkflowInstances[idx] = {
+      ...mockWorkflowInstances[idx],
+      status: 'cancelled',
+      currentNodeKey: null,
+      updatedAt: mockDateTime(),
+    };
+    mockWorkflowTasks
+      .filter(t => t.instanceId === Number(params.id) && (t.status === 'pending' || t.status === 'waiting'))
+      .forEach(t => {
+        t.status = 'skipped';
+        t.actionAt = mockDateTime();
+      });
+    return ok(mockWorkflowInstances[idx]);
+  }),
+
+  // 删除流程实例（仅终态可删，级联删除任务）
+  http.delete('/api/workflows/instances/:id', ({ params }) => {
+    const id = Number(params.id);
+    const idx = mockWorkflowInstances.findIndex(i => i.id === id);
+    if (idx === -1) return err('流程实例不存在', 404);
+    if (mockWorkflowInstances[idx].status === 'running' || mockWorkflowInstances[idx].status === 'draft') {
+      return err('请先取消进行中的流程再删除');
+    }
+    mockWorkflowInstances.splice(idx, 1);
+    for (let i = mockWorkflowTasks.length - 1; i >= 0; i--) {
+      if (mockWorkflowTasks[i].instanceId === id) mockWorkflowTasks.splice(i, 1);
+    }
+    return ok(null);
   }),
 
   // ─── 审批任务 Handler ──────────────────────────────────────────────────────

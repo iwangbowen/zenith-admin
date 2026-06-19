@@ -13,7 +13,7 @@ import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowF
 import WorkflowGraphView from './WorkflowGraphView';
 import WorkflowNodeListView from './WorkflowNodeListView';
 
-type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'red';
+type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
 
 const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   draft: { text: '草稿', color: 'grey' },
@@ -21,6 +21,7 @@ const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   approved: { text: '已通过', color: 'green' },
   rejected: { text: '已驳回', color: 'red' },
   withdrawn: { text: '已撤回', color: 'orange' },
+  cancelled: { text: '已取消', color: 'purple' },
 };
 
 interface Props {

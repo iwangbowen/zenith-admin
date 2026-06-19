@@ -44,6 +44,7 @@ const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   approved: { text: '已通过', color: 'green' },
   rejected: { text: '已驳回', color: 'red' },
   withdrawn: { text: '已撤回', color: 'orange' },
+  cancelled: { text: '已取消', color: 'purple' },
 };
 
 function InstanceDetailDrawer({
