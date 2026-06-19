@@ -27,6 +27,19 @@ function getDefaultLabel(type: WorkflowFormFieldType): string {
   return info?.label ?? '字段';
 }
 
+// 深拷贝字段并为自身及所有嵌套子字段重新生成 key（用于复制字段）
+function cloneFieldWithNewKeys(field: WorkflowFormField): WorkflowFormField {
+  const copy: WorkflowFormField = structuredClone(field);
+  const reassign = (f: WorkflowFormField) => {
+    f.key = generateKey(f.type);
+    f.children?.forEach(reassign);
+    f.columns?.forEach(col => col.fields.forEach(reassign));
+  };
+  reassign(copy);
+  copy.label = field.label ? `${field.label} 副本` : copy.label;
+  return copy;
+}
+
 function createField(type: WorkflowFormFieldType): WorkflowFormField {
   const field: WorkflowFormField = {
     key: generateKey(type),
@@ -74,6 +87,12 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
     case 'date':
     case 'dateRange':
       field.dateFormat = 'YYYY-MM-DD';
+      break;
+    case 'time':
+      field.timeFormat = 'HH:mm';
+      break;
+    case 'region':
+      field.regionLevel = 'district';
       break;
     case 'attachment':
     case 'image':
@@ -151,6 +170,17 @@ export default function FormDesigner({ fields, onChange }: Readonly<FormDesigner
     if (selectedKey === key) setSelectedKey(null);
   }, [fields, onChange, selectedKey]);
 
+  // 复制字段（插入到原字段之后）
+  const handleCopy = useCallback((key: string) => {
+    const index = fields.findIndex(f => f.key === key);
+    if (index < 0) return;
+    const cloned = cloneFieldWithNewKeys(fields[index]);
+    const updated = [...fields];
+    updated.splice(index + 1, 0, cloned);
+    onChange(updated);
+    setSelectedKey(cloned.key);
+  }, [fields, onChange]);
+
   // 修改字段属性
   const handleFieldChange = useCallback((updates: Partial<WorkflowFormField>) => {
     if (!selectedKey) return;
@@ -172,6 +202,7 @@ export default function FormDesigner({ fields, onChange }: Readonly<FormDesigner
           onSelect={setSelectedKey}
           onReorder={handleReorder}
           onRemove={handleRemove}
+          onCopy={handleCopy}
           onDropNew={handleDropNew}
         />
       </div>

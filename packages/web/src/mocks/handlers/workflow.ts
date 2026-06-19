@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { WorkflowDefinition, WorkflowInstance, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowFormField, WorkflowInstance, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -10,6 +10,7 @@ import {
   getNextDefinitionId,
   getNextDefinitionVersionId,
 } from '@/mocks/data/workflow';
+import { mockWorkflowForms } from '@/mocks/data/workflow-forms';
 import { mockDateTime } from '@/mocks/utils/date';
 
 function ok<T>(data: T) {
@@ -18,6 +19,34 @@ function ok<T>(data: T) {
 
 function err(message: string, code = 400) {
   return HttpResponse.json({ code, message });
+}
+
+function cloneFormFields(fields: WorkflowFormField[] | null | undefined): WorkflowFormField[] | null {
+  return fields ? JSON.parse(JSON.stringify(fields)) as WorkflowFormField[] : null;
+}
+
+function resolveWorkflowDefinition(definition: WorkflowDefinition): WorkflowDefinition {
+  const form = definition.formId != null ? mockWorkflowForms.find((item) => item.id === definition.formId) : undefined;
+  return {
+    ...definition,
+    formName: form?.name ?? null,
+    formFields: cloneFormFields(form?.schema?.fields ?? null),
+    formSettings: form?.schema?.settings ?? null,
+  };
+}
+
+function resolveWorkflowDefinitionVersion(version: WorkflowDefinitionVersion): WorkflowDefinitionVersion {
+  const form = version.formId != null ? mockWorkflowForms.find((item) => item.id === version.formId) : undefined;
+  return {
+    ...version,
+    formName: form?.name ?? version.formName ?? null,
+    formFields: cloneFormFields(form?.schema?.fields ?? version.formFields ?? null),
+  };
+}
+
+function resolveDefinitionFormFields(definition: WorkflowDefinition): WorkflowFormField[] | null {
+  const form = definition.formId != null ? mockWorkflowForms.find((item) => item.id === definition.formId) : undefined;
+  return cloneFormFields(form?.schema?.fields ?? null);
 }
 
 // 催办流水（内存）
@@ -41,13 +70,13 @@ export const workflowHandlers = [
     if (status) list = list.filter(d => d.status === status);
 
     const total = list.length;
-    const paged = list.slice((page - 1) * pageSize, page * pageSize);
+    const paged = list.slice((page - 1) * pageSize, page * pageSize).map(resolveWorkflowDefinition);
     return ok({ list: paged, total, page, pageSize });
   }),
 
   // 获取已发布的流程定义列表（发起申请时使用）
   http.get('/api/workflows/definitions/published', () => {
-    const list = mockWorkflowDefinitions.filter(d => d.status === 'published');
+    const list = mockWorkflowDefinitions.filter(d => d.status === 'published').map(resolveWorkflowDefinition);
     return ok({ list, total: list.length, page: 1, pageSize: 100 });
   }),
 
@@ -55,7 +84,7 @@ export const workflowHandlers = [
   http.get('/api/workflows/definitions/:id', ({ params }) => {
     const def = mockWorkflowDefinitions.find(d => d.id === Number(params.id));
     if (!def) return err('流程定义不存在', 404);
-    return ok(def);
+    return ok(resolveWorkflowDefinition(def));
   }),
 
   // 创建流程定义
@@ -70,7 +99,8 @@ export const workflowHandlers = [
       initiatorScopeType: body.initiatorScopeType ?? 'all',
       initiatorScopeIds: body.initiatorScopeType === 'all' ? null : (body.initiatorScopeIds ?? []),
       flowData: body.flowData ?? null,
-      formFields: body.formFields ?? null,
+      formId: body.formId ?? null,
+      formFields: null,
       status: 'draft',
       version: 1,
       tenantId: 1,
@@ -80,7 +110,7 @@ export const workflowHandlers = [
       updatedAt: now,
     };
     mockWorkflowDefinitions.push(newDef);
-    return ok(newDef);
+    return ok(resolveWorkflowDefinition(newDef));
   }),
 
   // 更新流程定义
@@ -91,16 +121,20 @@ export const workflowHandlers = [
     const prev = mockWorkflowDefinitions[idx];
     // 已发布的流程保存后自动转为草稿
     const nextStatus = prev.status === 'published' && body.status === undefined ? 'draft' : prev.status;
-    const updated = {
+    const updated: WorkflowDefinition = {
       ...prev,
       ...body,
       id: prev.id,
+      formId: body.formId !== undefined ? body.formId : prev.formId,
+      formName: null,
+      formFields: null,
+      formSettings: null,
       status: nextStatus,
       version: prev.version,
       updatedAt: mockDateTime(),
     };
     mockWorkflowDefinitions[idx] = updated;
-    return ok(updated);
+    return ok(resolveWorkflowDefinition(updated));
   }),
 
   // 发布流程定义
@@ -119,7 +153,9 @@ export const workflowHandlers = [
       name: cur.name,
       description: cur.description,
       flowData: cur.flowData,
-      formFields: cur.formFields,
+      formId: cur.formId,
+      formName: resolveWorkflowDefinition(cur).formName,
+      formFields: resolveDefinitionFormFields(cur),
       publishedAt: now,
       publishedBy: 1,
       publishedByName: '张三',
@@ -131,7 +167,7 @@ export const workflowHandlers = [
       version: newVersion,
       updatedAt: now,
     };
-    return ok(mockWorkflowDefinitions[idx]);
+    return ok(resolveWorkflowDefinition(mockWorkflowDefinitions[idx]));
   }),
 
   // 禁用流程定义
@@ -143,7 +179,7 @@ export const workflowHandlers = [
       status: 'disabled',
       updatedAt: mockDateTime(),
     };
-    return ok(mockWorkflowDefinitions[idx]);
+    return ok(resolveWorkflowDefinition(mockWorkflowDefinitions[idx]));
   }),
 
   // 删除流程定义
@@ -160,7 +196,8 @@ export const workflowHandlers = [
     if (!mockWorkflowDefinitions.some(d => d.id === definitionId)) return err('流程定义不存在', 404);
     const list = mockWorkflowDefinitionVersions
       .filter(v => v.definitionId === definitionId)
-      .sort((a, b) => b.version - a.version);
+      .sort((a, b) => b.version - a.version)
+      .map(resolveWorkflowDefinitionVersion);
     return ok(list);
   }),
 
@@ -175,11 +212,14 @@ export const workflowHandlers = [
       name: ver.name,
       description: ver.description,
       flowData: ver.flowData,
-      formFields: ver.formFields,
+      formId: ver.formId,
+      formName: null,
+      formFields: null,
+      formSettings: null,
       status: 'draft',
       updatedAt: mockDateTime(),
     };
-    return ok(mockWorkflowDefinitions[idx]);
+    return ok(resolveWorkflowDefinition(mockWorkflowDefinitions[idx]));
   }),
 
   // ─── 流程实例 Handler ──────────────────────────────────────────────────────
@@ -308,6 +348,7 @@ export const workflowHandlers = [
       definitionName: def.name,
       title: body.title,
       formData: body.formData,
+      formSnapshot: resolveDefinitionFormFields(def),
       status: 'running',
       currentNodeKey: firstApproveNode?.data.key ?? null,
       initiatorId: 1,

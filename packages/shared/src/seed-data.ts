@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -198,9 +198,14 @@ export const SEED_MENUS: Menu[] = [
   { id: 234, parentId: 231, title: '删除流程',   name: undefined,                path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'workflow:definition:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 235, parentId: 231, title: '发布/禁用',  name: undefined,                path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'workflow:definition:publish',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 238, parentId: 231, title: '流程设计',   name: 'WorkflowDesigner',       path: '/workflow/designer',          component: 'workflow/definitions/WorkflowDesignerPage',      icon: undefined,           type: 'menu',      sort: 5,  status: 'enabled', visible: false, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 236, parentId: 230, title: '我的申请',   name: 'MyApplications',         path: '/workflow/applications',     component: 'workflow/instances/MyApplicationsPage',          icon: 'FilePlus2',         type: 'menu',      sort: 2,  status: 'enabled', visible: true,  permission: 'workflow:instance:create',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 237, parentId: 230, title: '待我审批',   name: 'PendingApprovals',       path: '/workflow/pending',          component: 'workflow/tasks/PendingApprovalsPage',            icon: 'ClipboardCheck',    type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'workflow:task:handle',          createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 239, parentId: 230, title: '流程监控',   name: 'WorkflowMonitor',         path: '/workflow/monitor',           component: 'workflow/monitor/WorkflowMonitorPage',            icon: 'BarChart2',         type: 'menu',      sort: 4,  status: 'enabled', visible: true,  permission: 'workflow:instance:monitor',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 466, parentId: 230, title: '表单库',     name: 'WorkflowForms',          path: '/workflow/forms',             component: 'workflow/forms/WorkflowFormsPage',               icon: 'LayoutList',        type: 'menu',      sort: 2,  status: 'enabled', visible: true,  permission: 'workflow:form:list',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 467, parentId: 466, title: '新建表单',   name: undefined,                path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'workflow:form:create',          createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 468, parentId: 466, title: '编辑表单',   name: undefined,                path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'workflow:form:edit',            createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 469, parentId: 466, title: '删除表单',   name: undefined,                path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'workflow:form:delete',          createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 470, parentId: 466, title: '表单设计',   name: 'WorkflowFormDesigner',   path: '/workflow/forms/designer',    component: 'workflow/forms/WorkflowFormDesignerPage',        icon: undefined,           type: 'menu',      sort: 4,  status: 'enabled', visible: false, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 236, parentId: 230, title: '我的申请',   name: 'MyApplications',         path: '/workflow/applications',     component: 'workflow/instances/MyApplicationsPage',          icon: 'FilePlus2',         type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'workflow:instance:create',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 237, parentId: 230, title: '待我审批',   name: 'PendingApprovals',       path: '/workflow/pending',          component: 'workflow/tasks/PendingApprovalsPage',            icon: 'ClipboardCheck',    type: 'menu',      sort: 4,  status: 'enabled', visible: true,  permission: 'workflow:task:handle',          createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 239, parentId: 230, title: '流程监控',   name: 'WorkflowMonitor',         path: '/workflow/monitor',           component: 'workflow/monitor/WorkflowMonitorPage',            icon: 'BarChart2',         type: 'menu',      sort: 5,  status: 'enabled', visible: true,  permission: 'workflow:instance:monitor',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 460, parentId: 230, title: '事件订阅',   name: 'WorkflowEventSubscriptions', path: '/workflow/event-subscriptions', component: 'workflow/event-subscriptions/WorkflowEventSubscriptionsPage', icon: 'Webhook', type: 'menu', sort: 6,  status: 'enabled', visible: true,  permission: 'workflow:event-subscription:view', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 461, parentId: 230, title: '触发器执行', name: 'WorkflowTriggerExecutions', path: '/workflow/trigger-executions', component: 'workflow/trigger-executions/WorkflowTriggerExecutionsPage', icon: 'Zap', type: 'menu', sort: 7,  status: 'enabled', visible: true,  permission: 'workflow:trigger-execution:view', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 462, parentId: 230, title: '流程自动化', name: 'WorkflowAutomations', path: '/workflow/automations', component: 'workflow/automations/WorkflowAutomationsPage', icon: 'Bot', type: 'menu', sort: 8,  status: 'enabled', visible: true,  permission: 'workflow:definition:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -528,6 +533,81 @@ export const SEED_CRON_JOBS: CronJob[] = [
     lastRunAt: null,
     lastRunStatus: null,
     lastRunMessage: null,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
+
+// ─── 工作流表单库 ───────────────────────────────────────────────────────────────
+
+export const SEED_WORKFLOW_FORMS: WorkflowForm[] = [
+  {
+    id: 1,
+    name: '请假申请表',
+    code: 'leave_request',
+    description: '员工请假申请通用表单，覆盖年假、病假、事假等场景',
+    categoryId: null,
+    schema: {
+      fields: [
+        { key: 'leaveType', label: '请假类型', type: 'select', required: true, options: ['年假', '病假', '事假', '陪产假', '婚假'] },
+        { key: 'leaveDates', label: '开始结束日期', type: 'dateRange', required: true, dateFormat: 'YYYY-MM-DD' },
+        { key: 'days', label: '请假天数', type: 'number', required: true, unit: '天', min: 0.5, precision: 1, daysFromKey: 'leaveDates' },
+        { key: 'reason', label: '请假事由', type: 'textarea', required: true, maxLength: 500 },
+      ],
+      settings: { description: '请如实填写请假时间与事由，提交后将进入主管审批。', submitButtonText: '提交请假申请', labelPosition: 'top' },
+    },
+    status: 'enabled',
+    tenantId: 1,
+    createdBy: 1,
+    createdByName: '张三',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+  {
+    id: 2,
+    name: '报销申请表',
+    code: 'expense_request',
+    description: '日常费用、差旅费用报销申请表',
+    categoryId: null,
+    schema: {
+      fields: [
+        { key: 'expenseType', label: '报销类型', type: 'select', required: true, options: ['差旅费', '交通费', '餐饮费', '办公用品', '其他'] },
+        { key: 'amount', label: '报销金额', type: 'amount', required: true, currency: 'CNY', precision: 2, min: 0, unit: '元' },
+        { key: 'totalAmount', label: '预计总金额', type: 'formula', formula: '{amount}', precision: 2, unit: '元', helpText: '用于金额条件审批判断' },
+        { key: 'occurDate', label: '发生日期', type: 'date', required: true, dateFormat: 'YYYY-MM-DD' },
+        { key: 'description', label: '费用说明', type: 'textarea', required: true, maxLength: 500 },
+        { key: 'receipts', label: '票据附件', type: 'attachment', required: true, maxCount: 10, helpText: '请上传发票、行程单等凭证' },
+      ],
+      settings: { description: '请确认票据真实有效，金额将按审批流程自动流转。', submitButtonText: '提交报销申请', labelPosition: 'top' },
+    },
+    status: 'enabled',
+    tenantId: 1,
+    createdBy: 1,
+    createdByName: '张三',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+  {
+    id: 3,
+    name: '采购申请表',
+    code: 'purchase_request',
+    description: '设备、物资采购审批表单',
+    categoryId: null,
+    schema: {
+      fields: [
+        { key: 'itemName', label: '采购物品', type: 'text', required: true, maxLength: 100 },
+        { key: 'quantity', label: '数量', type: 'number', required: true, min: 1, precision: 0, unit: '件' },
+        { key: 'estimatedCost', label: '预估金额', type: 'amount', required: true, currency: 'CNY', precision: 2, min: 0, unit: '元' },
+        { key: 'purpose', label: '用途说明', type: 'textarea', required: true, maxLength: 500 },
+        { key: 'attachments', label: '采购附件', type: 'attachment', maxCount: 5 },
+      ],
+      settings: { description: '请填写采购用途并上传报价单等附件。', submitButtonText: '提交采购申请', labelPosition: 'top' },
+    },
+    status: 'enabled',
+    tenantId: 1,
+    createdBy: 2,
+    createdByName: '李四',
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },

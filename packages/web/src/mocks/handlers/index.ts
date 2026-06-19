@@ -24,6 +24,7 @@ import { apiTokensHandlers } from './api-tokens';
 import { tenantsHandlers } from './tenants';
 import { cacheHandlers } from './cache';
 import { workflowHandlers } from './workflow';
+import { workflowFormsHandlers } from './workflow-forms';
 import { workflowAutomationsHandlers } from './workflow-automations';
 import { chatHandlers } from './chat';
 import { tagsHandlers } from './tags';
@@ -78,6 +79,7 @@ export const handlers = [
   ...tenantsHandlers,
   ...cacheHandlers,
   ...workflowHandlers,
+  ...workflowFormsHandlers,
   ...workflowAutomationsHandlers,
   ...chatHandlers,
   ...tagsHandlers,

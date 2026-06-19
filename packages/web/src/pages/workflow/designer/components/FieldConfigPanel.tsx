@@ -2,10 +2,10 @@
  * 右侧字段属性配置面板
  */
 import { useState } from 'react';
-import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput } from '@douyinfe/semi-ui';
+import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
-import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
-import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, FORM_FIELD_TYPES } from '../form-types';
+import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFieldVisibilityCondition } from '@zenith/shared';
+import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, FORM_FIELD_TYPES } from '../form-types';
 
 interface FieldConfigPanelProps {
   field: WorkflowFormField;
@@ -50,7 +50,14 @@ export default function FieldConfigPanel({
   const isFormatted = field.type === 'phone' || field.type === 'email' || field.type === 'idCard' || field.type === 'url';
   const isRate = field.type === 'rate';
   const isFormula = field.type === 'formula';
-  const showValidationTab = !isDescription && !isSerialNumber && !isLayout && !isFileType && field.type !== 'contact' && field.type !== 'department' && field.type !== 'detail' && !isFormula && !isRate && !isDate;
+  const isTime = field.type === 'time';
+  const isRegion = field.type === 'region';
+  const isSignature = field.type === 'signature';
+  const isRichText = field.type === 'richtext';
+  const isSpecialInput = isTime || isRegion || isSignature || isRichText;
+  // 支持响应式列宽 / 只读 / 隐藏的普通输入字段（排除布局类与纯展示类）
+  const supportsLayoutState = !isLayout && !isDescription && !isSerialNumber;
+  const showValidationTab = !isDescription && !isSerialNumber && !isLayout && !isFileType && field.type !== 'contact' && field.type !== 'department' && field.type !== 'detail' && !isFormula && !isRate && !isDate && !isSpecialInput;
 
   return (
     <div className="fd-form-config">
@@ -297,6 +304,34 @@ export default function FieldConfigPanel({
             </div>
           )}
 
+          {/* 时间格式 */}
+          {isTime && (
+            <div className="fd-form-config__field">
+              <Typography.Text strong size="small">时间格式</Typography.Text>
+              <Select
+                value={field.timeFormat ?? 'HH:mm'}
+                onChange={(v) => onChange({ timeFormat: v as string })}
+                placeholder="请选择时间格式"
+                style={{ width: '100%' }}
+                optionList={TIME_FORMAT_OPTIONS}
+              />
+            </div>
+          )}
+
+          {/* 省市区选择层级 */}
+          {isRegion && (
+            <div className="fd-form-config__field">
+              <Typography.Text strong size="small">选择层级</Typography.Text>
+              <Select
+                value={field.regionLevel ?? 'district'}
+                onChange={(v) => onChange({ regionLevel: v as 'province' | 'city' | 'district' })}
+                placeholder="请选择层级"
+                style={{ width: '100%' }}
+                optionList={REGION_LEVEL_OPTIONS}
+              />
+            </div>
+          )}
+
           {/* 附件/图片限制数 */}
           {isFileType && (
             <div className="fd-form-config__field">
@@ -345,6 +380,46 @@ export default function FieldConfigPanel({
                 items={field.children ?? []}
                 onChange={(children) => onChange({ children })}
               />
+            </div>
+          )}
+
+          {/* --- 布局与状态（响应式列宽 / 只读 / 隐藏） --- */}
+          {supportsLayoutState && (
+            <div className="fd-form-config__section" style={{ borderTop: '1px solid var(--semi-color-border)', padding: '12px 0 0', marginTop: 12 }}>
+              <div className="fd-form-config__section-title">布局与状态</div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">字段宽度</Typography.Text>
+                <Select
+                  value={field.columnSpan ?? 24}
+                  onChange={(v) => onChange({ columnSpan: Number(v) })}
+                  style={{ width: '100%' }}
+                  optionList={COLUMN_SPAN_OPTIONS}
+                />
+                <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+                  同一行内多个字段会按宽度自动并排（飞书风格）
+                </Typography.Text>
+              </div>
+              <div className="fd-form-config__field fd-form-config__field--inline">
+                <Typography.Text strong size="small">只读</Typography.Text>
+                <Switch
+                  checked={field.readOnly ?? false}
+                  onChange={(v) => onChange({ readOnly: v || undefined })}
+                  size="small"
+                />
+              </div>
+              <div className="fd-form-config__field fd-form-config__field--inline">
+                <Typography.Text strong size="small">默认隐藏</Typography.Text>
+                <Switch
+                  checked={field.hidden ?? false}
+                  onChange={(v) => onChange({ hidden: v || undefined })}
+                  size="small"
+                />
+              </div>
+              {field.hidden && (
+                <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>
+                  默认隐藏后，可在「显隐设置」中配置满足条件时再显示
+                </Typography.Text>
+              )}
             </div>
           )}
 
@@ -502,7 +577,7 @@ export default function FieldConfigPanel({
       {activeSection === 'visibility' && (
         <div className="fd-form-config__section">
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
-            当满足指定条件时，该字段才会显示
+            配置多条件组合（且 / 或），满足时显示该字段；规则优先级高于「默认隐藏」
           </Typography.Text>
 
           {conditionFields.length === 0 ? (
@@ -510,82 +585,140 @@ export default function FieldConfigPanel({
               暂无可作为条件的字段（需要先添加单选/多选/数字/文本类型字段）
             </Typography.Text>
           ) : (
-            <>
-              <div className="fd-form-config__field fd-form-config__field--inline">
-                <Typography.Text strong size="small">启用显隐条件</Typography.Text>
-                <Switch
-                  checked={!!field.visibilityCondition}
-                  onChange={(v) => {
-                    if (v) {
-                      onChange({
-                        visibilityCondition: {
-                          field: conditionFields[0].key,
-                          operator: 'eq',
-                          value: '',
-                        },
-                      });
-                    } else {
-                      onChange({ visibilityCondition: undefined });
-                    }
-                  }}
-                  size="small"
-                />
-              </div>
-
-              {field.visibilityCondition && (
-                <div className="fd-form-config__visibility">
-                  <div className="fd-form-config__field">
-                    <Typography.Text size="small">当字段</Typography.Text>
-                    <Select
-                      value={field.visibilityCondition.field}
-                      onChange={(v) =>
-                        onChange({
-                          visibilityCondition: { ...field.visibilityCondition!, field: v as string },
-                        })
-                      }
-                      placeholder="请选择字段"
-                      style={{ width: '100%' }}
-                      optionList={conditionFields.map(f => ({ value: f.key, label: f.label }))}
-                    />
-                  </div>
-                  <div className="fd-form-config__field">
-                    <Typography.Text size="small">条件</Typography.Text>
-                    <Select
-                      value={field.visibilityCondition.operator}
-                      onChange={(v) =>
-                        onChange({
-                          visibilityCondition: { ...field.visibilityCondition!, operator: v as 'eq' | 'neq' | 'in' | 'contains' },
-                        })
-                      }
-                      placeholder="请选择条件"
-                      style={{ width: '100%' }}
-                      optionList={[
-                        { value: 'eq', label: '等于' },
-                        { value: 'neq', label: '不等于' },
-                        { value: 'in', label: '包含在' },
-                        { value: 'contains', label: '包含' },
-                      ]}
-                    />
-                  </div>
-                  <div className="fd-form-config__field">
-                    <Typography.Text size="small">值</Typography.Text>
-                    <Input
-                      value={formatVisibilityValue(field.visibilityCondition.value)}
-                      onChange={(v) =>
-                        onChange({
-                          visibilityCondition: { ...field.visibilityCondition!, value: v },
-                        })
-                      }
-                      placeholder="条件值"
-                    />
-                  </div>
-                </div>
-              )}
-            </>
+            <VisibilityRulesEditor
+              field={field}
+              conditionFields={conditionFields}
+              onChange={onChange}
+            />
           )}
         </div>
       )}
     </div>
+  );
+}
+
+// ─── 显隐联动规则编辑器（多条件 and/or） ──────────────────────────────
+
+const VISIBILITY_OPERATORS = [
+  { value: 'eq', label: '等于' },
+  { value: 'neq', label: '不等于' },
+  { value: 'in', label: '包含在' },
+  { value: 'contains', label: '包含' },
+];
+
+function VisibilityRulesEditor({
+  field,
+  conditionFields,
+  onChange,
+}: Readonly<{
+  field: WorkflowFormField;
+  conditionFields: WorkflowFormField[];
+  onChange: (updates: Partial<WorkflowFormField>) => void;
+}>) {
+  const group = field.visibilityRules;
+  const enabled = !!group && (group.rules?.length ?? 0) > 0;
+  const newRule = (): WorkflowFieldVisibilityCondition => ({
+    field: conditionFields[0].key,
+    operator: 'eq',
+    value: '',
+  });
+
+  // 设置规则组时清除旧版单条件，避免冲突
+  const setGroup = (logic: 'and' | 'or', rules: WorkflowFieldVisibilityCondition[]) =>
+    onChange({ visibilityRules: { logic, rules }, visibilityCondition: undefined });
+
+  const toggle = (v: boolean) => {
+    if (v) setGroup('and', [newRule()]);
+    else onChange({ visibilityRules: undefined });
+  };
+
+  const updateRule = (index: number, patch: Partial<WorkflowFieldVisibilityCondition>) => {
+    if (!group) return;
+    setGroup(group.logic, group.rules.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  };
+
+  const addRule = () => {
+    if (!group) return;
+    setGroup(group.logic, [...group.rules, newRule()]);
+  };
+
+  const removeRule = (index: number) => {
+    if (!group) return;
+    const rules = group.rules.filter((_, i) => i !== index);
+    if (rules.length === 0) onChange({ visibilityRules: undefined });
+    else setGroup(group.logic, rules);
+  };
+
+  return (
+    <>
+      <div className="fd-form-config__field fd-form-config__field--inline">
+        <Typography.Text strong size="small">启用联动规则</Typography.Text>
+        <Switch checked={enabled} onChange={toggle} size="small" />
+      </div>
+
+      {enabled && group && (
+        <>
+          <div className="fd-form-config__field fd-form-config__field--inline">
+            <Typography.Text size="small">满足条件</Typography.Text>
+            <RadioGroup
+              type="button"
+              value={group.logic}
+              onChange={(e) => setGroup(e.target.value as 'and' | 'or', group.rules)}
+            >
+              <Radio value="and">全部（且）</Radio>
+              <Radio value="or">任一（或）</Radio>
+            </RadioGroup>
+          </div>
+
+          {group.rules.map((rule, index) => (
+            <div className="fd-form-config__visibility" key={`rule-${index}-${rule.field}`} style={{ position: 'relative' }}>
+              <div className="fd-form-config__field">
+                <Typography.Text size="small">当字段</Typography.Text>
+                <Select
+                  value={rule.field}
+                  onChange={(v) => updateRule(index, { field: v as string })}
+                  placeholder="请选择字段"
+                  style={{ width: '100%' }}
+                  optionList={conditionFields.map(f => ({ value: f.key, label: f.label }))}
+                />
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text size="small">条件</Typography.Text>
+                <Select
+                  value={rule.operator}
+                  onChange={(v) => updateRule(index, { operator: v as WorkflowFieldVisibilityCondition['operator'] })}
+                  placeholder="请选择条件"
+                  style={{ width: '100%' }}
+                  optionList={VISIBILITY_OPERATORS}
+                />
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text size="small">值</Typography.Text>
+                <Input
+                  value={formatVisibilityValue(rule.value)}
+                  onChange={(v) => updateRule(index, { value: v })}
+                  placeholder="条件值（多个值用英文逗号分隔表示「包含在」）"
+                />
+              </div>
+              {group.rules.length > 1 && (
+                <Button
+                  size="small"
+                  type="danger"
+                  theme="borderless"
+                  icon={<Trash2 size={12} />}
+                  onClick={() => removeRule(index)}
+                  style={{ position: 'absolute', top: 4, right: 0 }}
+                />
+              )}
+            </div>
+          ))}
+
+          <Button size="small" type="tertiary" icon={<Plus size={12} />} onClick={addRule} style={{ marginTop: 4 }}>
+            添加条件
+          </Button>
+        </>
+      )}
+    </>
   );
 }
 

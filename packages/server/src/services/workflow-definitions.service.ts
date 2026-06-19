@@ -1,17 +1,20 @@
-import { workflowDefinitions, workflowDefinitionVersions, users, userRoles } from '../db/schema';
+import { workflowDefinitions, workflowDefinitionVersions, workflowForms, users, userRoles } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
+import type { WorkflowFormSchema } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
 export function mapDefinition(
   row: typeof workflowDefinitions.$inferSelect & {
     category?: { name: string | null; color: string | null; icon: string | null } | null;
+    form?: { name: string | null; schema: unknown } | null;
   },
   createdByName?: string | null,
 ) {
   const initiatorScopeIds = Array.isArray(row.initiatorScopeIds)
     ? row.initiatorScopeIds.map(Number).filter((v) => Number.isInteger(v) && v > 0)
     : null;
+  const formSchema = (row.form?.schema ?? null) as WorkflowFormSchema | null;
   return {
     id: row.id,
     name: row.name,
@@ -23,7 +26,10 @@ export function mapDefinition(
     categoryColor: row.category?.color ?? null,
     categoryIcon: row.category?.icon ?? null,
     flowData: row.flowData,
-    formFields: row.formFields,
+    formId: row.formId ?? null,
+    formName: row.form?.name ?? null,
+    formFields: formSchema?.fields ?? null,
+    formSettings: formSchema?.settings ?? null,
     status: row.status,
     version: row.version,
     tenantId: row.tenantId,
@@ -38,7 +44,9 @@ export function mapDefinition(
 export function mapDefinitionVersion(
   row: typeof workflowDefinitionVersions.$inferSelect,
   publishedByName?: string | null,
+  form?: { name: string | null; schema: unknown } | null,
 ) {
+  const formSchema = (form?.schema ?? null) as WorkflowFormSchema | null;
   return {
     id: row.id,
     definitionId: row.definitionId,
@@ -46,7 +54,9 @@ export function mapDefinitionVersion(
     name: row.name,
     description: row.description,
     flowData: row.flowData,
-    formFields: row.formFields,
+    formId: row.formId ?? null,
+    formName: form?.name ?? null,
+    formFields: formSchema?.fields ?? null,
     publishedAt: formatDateTime(row.publishedAt),
     publishedBy: row.publishedBy ?? null,
     publishedByName: publishedByName ?? null,
@@ -55,7 +65,7 @@ export function mapDefinitionVersion(
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { eq, and, like, desc } from 'drizzle-orm';
+import { eq, and, like, desc, inArray } from 'drizzle-orm';
 import { escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
@@ -64,6 +74,7 @@ import { validateFlowData } from '../lib/workflow-engine';
 import type { WorkflowFlowData } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
+import { ensureFormExists } from './workflow-forms.service';
 
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
 type WorkflowInitiatorScopeType = 'all' | 'users' | 'departments' | 'roles';
@@ -104,6 +115,7 @@ export async function listDefinitions(query: { page?: number; pageSize?: number;
       with: {
         createdByUser: { columns: { nickname: true } },
         category: { columns: { name: true, color: true, icon: true } },
+        form: { columns: { name: true, schema: true } },
       },
       orderBy: desc(workflowDefinitions.id),
       limit: pageSize,
@@ -119,7 +131,11 @@ export async function listPublishedDefinitions() {
   const conditions = [eq(workflowDefinitions.status, 'published')];
   if (tc) conditions.push(tc);
   const [rows, me, roleRows] = await Promise.all([
-    db.select().from(workflowDefinitions).where(and(...conditions)).orderBy(desc(workflowDefinitions.updatedAt)),
+    db.query.workflowDefinitions.findMany({
+      where: and(...conditions),
+      with: { form: { columns: { name: true, schema: true } } },
+      orderBy: desc(workflowDefinitions.updatedAt),
+    }),
     db.select({ departmentId: users.departmentId }).from(users).where(eq(users.id, user.userId)).limit(1),
     db.select({ roleId: userRoles.roleId }).from(userRoles).where(eq(userRoles.userId, user.userId)),
   ]);
@@ -148,6 +164,7 @@ export async function getDefinition(id: number) {
     with: {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },
+      form: { columns: { name: true, schema: true } },
     },
   });
   if (!row) throw new HTTPException(404, { message: '流程定义不存在' });
@@ -155,11 +172,12 @@ export async function getDefinition(id: number) {
 }
 
 export async function createDefinition(data: {
-  name: string; description?: string | null; categoryId?: number | null; initiatorScopeType?: WorkflowInitiatorScopeType; initiatorScopeIds?: number[] | null; flowData?: unknown; formFields?: unknown; status?: WorkflowDefinitionStatus;
+  name: string; description?: string | null; categoryId?: number | null; initiatorScopeType?: WorkflowInitiatorScopeType; initiatorScopeIds?: number[] | null; flowData?: unknown; formId?: number | null; status?: WorkflowDefinitionStatus;
 }) {
   const user = currentUser();
   const scopeType = data.initiatorScopeType ?? 'all';
   const scopeIds = scopeType === 'all' ? null : normalizeScopeIds(data.initiatorScopeIds);
+  if (data.formId != null) await ensureFormExists(data.formId);
   const [row] = await db.insert(workflowDefinitions).values({
     name: data.name,
     description: data.description ?? null,
@@ -167,22 +185,23 @@ export async function createDefinition(data: {
     initiatorScopeType: scopeType,
     initiatorScopeIds: scopeIds,
     flowData: data.flowData ?? null,
-    formFields: data.formFields ?? null,
+    formId: data.formId ?? null,
     status: data.status ?? 'draft',
     tenantId: getCreateTenantId(user),
   }).returning();
-  return mapDefinition(row);
+  return getDefinition(row.id);
 }
 
 export async function updateDefinition(id: number, data: Partial<{
-  name: string; description: string | null; categoryId: number | null; initiatorScopeType: WorkflowInitiatorScopeType; initiatorScopeIds: number[] | null; flowData: unknown; formFields: unknown; status: WorkflowDefinitionStatus;
+  name: string; description: string | null; categoryId: number | null; initiatorScopeType: WorkflowInitiatorScopeType; initiatorScopeIds: number[] | null; flowData: unknown; formId: number | null; status: WorkflowDefinitionStatus;
 }>) {
   const where = findDefinition(id);
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
   if (!existing) throw new HTTPException(404, { message: '流程定义不存在' });
+  if (data.formId != null) await ensureFormExists(data.formId);
   const updateData: Record<string, unknown> = { ...data };
   if (data.flowData !== undefined) updateData.flowData = data.flowData;
-  if (data.formFields !== undefined) updateData.formFields = data.formFields;
+  if (data.formId !== undefined) updateData.formId = data.formId;
   if (data.initiatorScopeType !== undefined) {
     const scopeType = data.initiatorScopeType;
     updateData.initiatorScopeType = scopeType;
@@ -201,7 +220,7 @@ export async function updateDefinition(id: number, data: Partial<{
     .where(where)
     .returning();
   if (!updated) throw new HTTPException(404, { message: '流程定义不存在' });
-  return mapDefinition(updated);
+  return getDefinition(updated.id);
 }
 
 export async function publishDefinition(id: number) {
@@ -221,7 +240,7 @@ export async function publishDefinition(id: number) {
       name: existing.name,
       description: existing.description,
       flowData: existing.flowData,
-      formFields: existing.formFields,
+      formId: existing.formId,
       publishedBy: user?.userId ?? null,
       tenantId: existing.tenantId,
     });
@@ -232,7 +251,7 @@ export async function publishDefinition(id: number) {
       .returning();
     return u;
   });
-  return mapDefinition(updated);
+  return getDefinition(updated.id);
 }
 
 export async function listVersions(definitionId: number) {
@@ -244,7 +263,16 @@ export async function listVersions(definitionId: number) {
     with: { publishedByUser: { columns: { nickname: true } } },
     orderBy: desc(workflowDefinitionVersions.version),
   });
-  return rows.map(r => mapDefinitionVersion(r, r.publishedByUser?.nickname ?? null));
+  const formIds = [...new Set(rows.map((r) => r.formId).filter((v): v is number => v != null))];
+  const formMap = new Map<number, { name: string | null; schema: unknown }>();
+  if (formIds.length > 0) {
+    const forms = await db
+      .select({ id: workflowForms.id, name: workflowForms.name, schema: workflowForms.schema })
+      .from(workflowForms)
+      .where(inArray(workflowForms.id, formIds));
+    for (const f of forms) formMap.set(f.id, { name: f.name, schema: f.schema });
+  }
+  return rows.map(r => mapDefinitionVersion(r, r.publishedByUser?.nickname ?? null, r.formId != null ? formMap.get(r.formId) ?? null : null));
 }
 
 export async function restoreVersion(definitionId: number, versionId: number) {
@@ -259,10 +287,10 @@ export async function restoreVersion(definitionId: number, versionId: number) {
     name: ver.name,
     description: ver.description,
     flowData: ver.flowData,
-    formFields: ver.formFields,
+    formId: ver.formId,
     status: 'draft',
   }).where(where).returning();
-  return mapDefinition(updated);
+  return getDefinition(updated.id);
 }
 
 export async function disableDefinition(id: number) {
@@ -293,6 +321,7 @@ export async function getWorkflowDefinitionBeforeAudit(id: number) {
     with: {
       createdByUser: { columns: { nickname: true } },
       category: { columns: { name: true, color: true, icon: true } },
+      form: { columns: { name: true, schema: true } },
     },
   });
   if (!row) return null;

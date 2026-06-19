@@ -703,7 +703,8 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
       'select', 'multiSelect', 'amount',
       'phone', 'email', 'idCard', 'url', 'rate', 'formula',
       'attachment', 'image',
-      'contact', 'department', 'detail', 'description', 'serialNumber',
+      'contact', 'department', 'region', 'time', 'signature', 'richtext',
+      'detail', 'description', 'serialNumber',
       'row', 'divider', 'group',
     ]),
     required: z.boolean().optional(),
@@ -712,12 +713,21 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
     options: z.array(z.string()).optional(),
     defaultValue: z.unknown().optional(),
     visibilityCondition: workflowFieldVisibilityConditionSchema.optional(),
+    visibilityRules: z.object({
+      logic: z.enum(['and', 'or']),
+      rules: z.array(workflowFieldVisibilityConditionSchema),
+    }).optional(),
     children: z.array(workflowFormFieldSchema).optional(),
     precision: z.number().int().min(0).max(6).optional(),
     step: z.number().optional(),
     unit: z.string().optional(),
     currency: z.string().optional(),
     dateFormat: z.string().optional(),
+    timeFormat: z.string().optional(),
+    regionLevel: z.enum(['province', 'city', 'district']).optional(),
+    columnSpan: z.number().int().min(1).max(24).optional(),
+    readOnly: z.boolean().optional(),
+    hidden: z.boolean().optional(),
     maxCount: z.number().int().min(1).optional(),
     description: z.string().optional(),
     serialPrefix: z.string().optional(),
@@ -743,11 +753,39 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
   })
 );
 
+// ─── 表单库 ─────────────────────────────────────────────────────────────────
+
+export const workflowFormSettingsSchema = z.object({
+  description: z.string().max(500).optional(),
+  submitButtonText: z.string().max(32).optional(),
+  labelPosition: z.enum(['top', 'left']).optional(),
+  labelWidth: z.number().int().min(40).max(400).optional(),
+});
+
+export const workflowFormSchemaSchema = z.object({
+  fields: z.array(workflowFormFieldSchema).default([]),
+  settings: workflowFormSettingsSchema.optional(),
+});
+
+export const createWorkflowFormSchema = z.object({
+  name: z.string().min(1, '表单名称不能为空').max(64),
+  code: z.string().max(64).nullable().optional(),
+  description: z.string().max(500).nullable().optional(),
+  categoryId: z.number().int().positive().nullable().optional(),
+  schema: workflowFormSchemaSchema.nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+
+export const updateWorkflowFormSchema = createWorkflowFormSchema.partial();
+
+export type CreateWorkflowFormInput = z.infer<typeof createWorkflowFormSchema>;
+export type UpdateWorkflowFormInput = z.infer<typeof updateWorkflowFormSchema>;
+
 export const createWorkflowDefinitionSchema = z.object({
   name: z.string().min(1, '流程名称不能为空').max(64),
   description: z.string().max(500).nullable().optional(),
   flowData: z.record(z.string(), z.unknown()).nullable().optional(),
-  formFields: z.array(workflowFormFieldSchema).nullable().optional(),
+  formId: z.number().int().positive().nullable().optional(),
   status: z.enum(['draft', 'published', 'disabled']).default('draft'),
 });
 

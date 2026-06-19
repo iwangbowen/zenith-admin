@@ -48,6 +48,7 @@ export function mapInstance(
     categoryName: extras.categoryName ?? null,
     title: row.title,
     formData: row.formData,
+    formSnapshot: (row.formSnapshot ?? null) as WorkflowFormField[] | null,
     status: row.status,
     currentNodeKey: row.currentNodeKey,
     initiatorId: row.initiatorId,
@@ -70,10 +71,11 @@ import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { resolveAssigneeIds } from './workflow-assignee-resolver.service';
+import { resolveFormSnapshot } from './workflow-forms.service';
 import type { DbExecutor } from '../db/types';
 import { workflowEventBus } from '../lib/workflow-event-bus';
 import { randomBytes } from 'node:crypto';
@@ -287,6 +289,7 @@ async function spawnSubProcessChild(
   const parentFormData = (parentInst.formData ?? {}) as Record<string, unknown>;
   const childFormData = buildChildFormData(nodeCfg.subProcessFieldMapping, parentFormData);
   const childTitle = `${parentInst.title} / ${nodeCfg.label ?? nodeCfg.subProcessName ?? '子流程'}`;
+  const childFormSnapshot = await resolveFormSnapshot(def.formId);
   const initialResult = getInitialTasks(flowData, childFormData);
 
   const { instance: childInst, createdTasks } = await db.transaction(async (tx) => {
@@ -295,6 +298,7 @@ async function spawnSubProcessChild(
       definitionSnapshot: def,
       title: childTitle.slice(0, 128),
       formData: childFormData,
+      formSnapshot: childFormSnapshot?.fields ?? null,
       status: 'running',
       currentNodeKey: null,
       initiatorId: parentInst.initiatorId,
@@ -963,6 +967,7 @@ export async function createInstance(data: { definitionId: number; title: string
   const validation = validateFlowData(flowData);
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
   const formData: Record<string, unknown> = data.formData ?? {};
+  const formSnapshot = await resolveFormSnapshot(def.formId);
   const initialResult = getInitialTasks(flowData, formData);
   if (initialResult.tasksToCreate.length === 0 && !initialResult.finished && !initialResult.rejected) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
@@ -973,6 +978,7 @@ export async function createInstance(data: { definitionId: number; title: string
       definitionSnapshot: def,
       title: data.title,
       formData,
+      formSnapshot: formSnapshot?.fields ?? null,
       status: 'running',
       currentNodeKey: null,
       initiatorId: user.userId,

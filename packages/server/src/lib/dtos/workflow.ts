@@ -20,6 +20,25 @@ export const WorkflowCategoryDTO = z
   })
   .openapi('WorkflowCategory');
 
+export const WorkflowFormDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    code: z.string().nullable(),
+    description: z.string().nullable(),
+    categoryId: z.number().int().nullable(),
+    categoryName: z.string().nullable().optional(),
+    schema: z.unknown().nullable(),
+    status: z.enum(['enabled', 'disabled']),
+    usageCount: z.number().int().optional(),
+    tenantId: z.number().int().nullable(),
+    ...auditFields,
+    createdByName: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('WorkflowForm');
+
 export const WorkflowDefinitionDTO = z
   .object({
     id: z.number().int(),
@@ -32,7 +51,10 @@ export const WorkflowDefinitionDTO = z
     categoryColor: z.string().nullable().optional(),
     categoryIcon: z.string().nullable().optional(),
     flowData: z.unknown().nullable(),
+    formId: z.number().int().nullable(),
+    formName: z.string().nullable().optional(),
     formFields: z.unknown().nullable(),
+    formSettings: z.unknown().nullable().optional(),
     status: z.enum(['draft', 'published', 'disabled']),
     version: z.number().int(),
     tenantId: z.number().int().nullable(),
@@ -51,6 +73,8 @@ export const WorkflowDefinitionVersionDTO = z
     name: z.string(),
     description: z.string().nullable(),
     flowData: z.unknown().nullable(),
+    formId: z.number().int().nullable(),
+    formName: z.string().nullable().optional(),
     formFields: z.unknown().nullable(),
     publishedAt: z.string(),
     publishedBy: z.number().int().nullable(),
@@ -107,6 +131,7 @@ export const WorkflowInstanceDTO = z
     categoryName: z.string().nullable().optional(),
     title: z.string(),
     formData: z.unknown().nullable(),
+    formSnapshot: z.unknown().nullable().optional(),
     status: z.enum(['draft', 'running', 'approved', 'rejected', 'withdrawn']),
     currentNodeKey: z.string().nullable(),
     initiatorId: z.number().int(),
@@ -122,6 +147,7 @@ export const WorkflowInstanceDTO = z
 
 export const WorkflowInstanceListItemDTO = WorkflowInstanceDTO.omit({
   formData: true,
+  formSnapshot: true,
   tasks: true,
 }).extend({ pendingTaskId: z.number().int().optional() }).openapi('WorkflowInstanceListItem');
 

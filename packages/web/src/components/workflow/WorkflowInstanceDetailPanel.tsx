@@ -40,7 +40,8 @@ export default function WorkflowInstanceDetailPanel({
     return <Empty title="暂无数据" />;
   }
   const statusInfo = INSTANCE_STATUS_MAP[instance.status];
-  const formFields: WorkflowFormField[] = definition?.formFields ?? [];
+  // 历史实例渲染冻结快照（发起时绑定），不受表单后续修改影响；无快照时回退到当前表单
+  const formFields: WorkflowFormField[] = instance.formSnapshot ?? definition?.formFields ?? [];
   const hasFormFields = formFields.length > 0;
   const flowData = (definition?.flowData ?? null) as { process?: import('@/pages/workflow/designer/types').FlowProcess } | null;
 

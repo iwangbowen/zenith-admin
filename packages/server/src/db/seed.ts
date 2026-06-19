@@ -1,11 +1,11 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, workflowForms } from './schema';
 import bcrypt from 'bcryptjs';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
-import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS } from '@zenith/shared';
+import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_WORKFLOW_FORMS } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
 
@@ -348,6 +348,15 @@ async function seedRest() {
     { dayNumber: 7, points: 50, experience: 30, remark: '连续7天签到（周奖励）' },
   ]).onConflictDoNothing();
   logger.info('  ✔ Checkin rules seeded (onConflictDoNothing)');
+
+  // ── 流程表单库（数据来源：@zenith/shared SEED_WORKFLOW_FORMS）────────────────
+  // tenantId 留空（平台级），由超管可见；created_by/updated_by 由 db Proxy 注入。
+  await db.insert(workflowForms).values(
+    SEED_WORKFLOW_FORMS.map(({ id, name, code, description, categoryId, schema, status }) =>
+      ({ id, name, code, description, categoryId, schema, status })),
+  ).onConflictDoNothing({ target: workflowForms.id });
+  await db.execute(sql`SELECT setval('workflow_forms_id_seq', GREATEST((SELECT MAX(id) FROM workflow_forms), 1))`);
+  logger.info('  ✔ Workflow forms seeded (onConflictDoNothing)');
 
   // ── 演示会员（手机号 13800138000 / 密码 123456）────────────────────────
   const existingDemoMember = await db.select({ id: members.id }).from(members).where(eq(members.phone, '13800138000')).limit(1);

@@ -35,7 +35,7 @@ import FlowRenderer from './components/FlowRenderer';
 import NodeConfigDrawer from './components/NodeConfigDrawer';
 import ConditionEditor from './components/ConditionEditor';
 import RouteBranchEditor, { type RouteBranchEditorUpdates } from './components/RouteBranchEditor';
-import FormDesigner from './components/FormDesigner';
+import FormSelectorPanel from './components/FormSelectorPanel';
 import FormPreview from './components/FormPreview';
 import BasicInfoPanel from './components/BasicInfoPanel';
 import AdvancedSettingsPanel from './components/AdvancedSettingsPanel';
@@ -83,8 +83,10 @@ export default function WorkflowDesignerPage() {
   // 步骤导航：① 基础信息 → ② 表单设计 → ③ 流程设计 → ④ 更多设置
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
 
-  // 表单字段
+  // 表单字段（由所选表单派生，供下游节点配置/条件/权限使用）
   const [localFormFields, setLocalFormFields] = useState<WorkflowFormField[]>([]);
+  // 绑定的表单库表单 id
+  const [formId, setFormId] = useState<number | null>(null);
 
   // 预览
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -126,6 +128,7 @@ export default function WorkflowDesignerPage() {
           setMetaCategoryId(res.data.categoryId ?? null);
           setMetaInitiatorScopeType(res.data.initiatorScopeType ?? 'all');
           setMetaInitiatorScopeIds(res.data.initiatorScopeIds ?? []);
+          setFormId(res.data.formId ?? null);
           if (res.data.formFields) setLocalFormFields(res.data.formFields);
           const fd = res.data.flowData;
           if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
@@ -413,7 +416,7 @@ export default function WorkflowDesignerPage() {
         initiatorScopeType: meta.initiatorScopeType,
         initiatorScopeIds: meta.initiatorScopeIds,
         flowData,
-        formFields: localFormFields.length > 0 ? localFormFields : null,
+        formId,
       };
 
       let res;
@@ -592,12 +595,16 @@ export default function WorkflowDesignerPage() {
         />
       )}
 
-      {/* 步骤 ② 表单设计 */}
+      {/* 步骤 ② 表单 */}
       {currentStep === 2 && (
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <FormDesigner
-            fields={localFormFields}
-            onChange={setLocalFormFields}
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <FormSelectorPanel
+            formId={formId}
+            formName={definition?.formName}
+            onSelect={(form) => {
+              setFormId(form?.id ?? null);
+              setLocalFormFields(form?.schema?.fields ?? []);
+            }}
           />
         </div>
       )}

@@ -187,24 +187,40 @@
   margin-top: 2px;
 }
 
-.fd-form-canvas__item-delete {
+.fd-form-canvas__item-actions {
   display: none;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.fd-form-canvas__item-action {
+  display: flex;
   align-items: center;
   justify-content: center;
   padding: 4px;
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: var(--semi-color-danger);
+  color: var(--semi-color-text-2);
   cursor: pointer;
-  flex-shrink: 0;
+}
+
+.fd-form-canvas__item-action:hover {
+  background: var(--semi-color-fill-1);
+  color: var(--semi-color-text-0);
+}
+
+.fd-form-canvas__item-delete {
+  color: var(--semi-color-danger);
 }
 
 .fd-form-canvas__item-delete:hover {
   background: var(--semi-color-danger-light-default);
+  color: var(--semi-color-danger);
 }
 
-.fd-form-canvas__item:hover .fd-form-canvas__item-delete {
+.fd-form-canvas__item:hover .fd-form-canvas__item-actions {
   display: flex;
 }
 

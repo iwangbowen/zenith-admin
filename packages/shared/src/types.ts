@@ -1088,6 +1088,10 @@ export type WorkflowFormFieldType =
   | 'image'         // 图片
   | 'contact'       // 联系人（人员选择）
   | 'department'    // 部门选择
+  | 'region'        // 省市区联动
+  | 'time'          // 时间
+  | 'signature'     // 手写签名
+  | 'richtext'      // 富文本
   | 'detail'        // 明细/表格
   | 'description'   // 说明文字
   | 'serialNumber'  // 流水号
@@ -1100,6 +1104,12 @@ export interface WorkflowFieldVisibilityCondition {
   field: string;
   operator: 'eq' | 'neq' | 'in' | 'contains';
   value: unknown;
+}
+
+/** 字段级高级联动：多条件 and/or 组合显隐 */
+export interface WorkflowFieldVisibilityRuleGroup {
+  logic: 'and' | 'or';
+  rules: WorkflowFieldVisibilityCondition[];
 }
 
 export interface WorkflowFormFieldColumn {
@@ -1118,6 +1128,7 @@ export interface WorkflowFormField {
   options?: string[];              // select/multiSelect 的选项
   defaultValue?: unknown;
   visibilityCondition?: WorkflowFieldVisibilityCondition;
+  visibilityRules?: WorkflowFieldVisibilityRuleGroup;   // 高级联动：多条件 and/or 显隐
   children?: WorkflowFormField[];  // 明细子字段
   precision?: number;              // 数字/金额精度
   step?: number;                   // 数字步长
@@ -1146,6 +1157,51 @@ export interface WorkflowFormField {
   // Layout fields
   columns?: WorkflowFormFieldColumn[];  // for 'row' type
   title?: string;                       // for 'group' type header
+  // 响应式列宽（飞书风格自动并排）：24=整行, 12=半列, 8=三分之一, 6=四分之一
+  columnSpan?: number;
+  // 字段状态
+  readOnly?: boolean;                   // 只读（展示但不可编辑）
+  hidden?: boolean;                     // 默认隐藏
+  // 类型特定
+  timeFormat?: string;                  // time 字段时间格式（默认 HH:mm）
+  regionLevel?: 'province' | 'city' | 'district';  // region 字段选择层级深度
+}
+
+// ─── 表单库 ─────────────────────────────────────────────────────────────────
+
+/** 表单级设置 */
+export interface WorkflowFormSettings {
+  description?: string;                 // 表单顶部说明
+  submitButtonText?: string;            // 提交按钮文案
+  labelPosition?: 'top' | 'left';       // 标签位置
+  labelWidth?: number;                  // 左侧标签宽度（labelPosition='left' 时）
+}
+
+/** 表单 schema：字段 + 表单级设置 */
+export interface WorkflowFormSchema {
+  fields: WorkflowFormField[];
+  settings?: WorkflowFormSettings;
+}
+
+export type WorkflowFormStatus = 'enabled' | 'disabled';
+
+/** 表单库实体 */
+export interface WorkflowForm {
+  id: number;
+  name: string;
+  code: string | null;
+  description: string | null;
+  categoryId: number | null;
+  categoryName?: string | null;
+  schema: WorkflowFormSchema | null;
+  status: WorkflowFormStatus;
+  /** 被多少个流程定义引用（列表场景返回） */
+  usageCount?: number;
+  tenantId: number | null;
+  createdBy?: number | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WorkflowDefinition {
@@ -1161,7 +1217,13 @@ export interface WorkflowDefinition {
   categoryColor?: string | null;
   categoryIcon?: string | null;
   flowData: WorkflowFlowData | null;
+  /** 绑定的表单 ID（实时引用最新表单） */
+  formId: number | null;
+  formName?: string | null;
+  /** 由 formId 解析得到的表单字段（派生字段，设计/发起时使用最新表单内容） */
   formFields: WorkflowFormField[] | null;
+  /** 由 formId 解析得到的表单级设置（派生字段） */
+  formSettings?: WorkflowFormSettings | null;
   status: WorkflowDefinitionStatus;
   version: number;
   tenantId: number | null;
@@ -1191,6 +1253,8 @@ export interface WorkflowDefinitionVersion {
   name: string;
   description: string | null;
   flowData: WorkflowFlowData | null;
+  formId: number | null;
+  formName?: string | null;
   formFields: WorkflowFormField[] | null;
   publishedAt: string;
   publishedBy: number | null;
@@ -1278,6 +1342,8 @@ export interface WorkflowInstance {
   categoryName?: string | null;
   title: string;
   formData: Record<string, unknown> | null;
+  /** 发起时的表单结构快照（冻结历史，渲染只读/审批表单时使用） */
+  formSnapshot?: WorkflowFormField[] | null;
   status: WorkflowInstanceStatus;
   currentNodeKey: string | null;
   initiatorId: number;

@@ -2,13 +2,15 @@
  * 工作流表单渲染器 — 设计器预览和运行时（发起/审批）共用
  * 支持联动：公式实时计算、dateRange→天数、select 级联
  */
-import { createContext, useContext, useRef, useState } from 'react';
-import { Form, Select, Upload, Button, Tag, Typography, Row, Col, Divider, Rating } from '@douyinfe/semi-ui';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { Form, Select, Upload, Button, Tag, Typography, Row, Col, Divider, Rating, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Plus } from 'lucide-react';
+import { Plus, Eraser } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { WorkflowFormField, WorkflowFormFieldColumn } from '@zenith/shared';
+import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup } from '@zenith/shared';
 import { CURRENCY_OPTIONS } from '../form-types';
+import RegionSelect from '@/components/RegionSelect';
+import RichTextEditor from '@/components/RichTextEditor';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 const EMAIL_REGEX = /^[\w.+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
@@ -20,6 +22,121 @@ const ValuesContext = createContext<Record<string, unknown>>({});
 
 const getColumnKey = (parentKey: string, column: WorkflowFormFieldColumn) =>
   `${parentKey}-col-${column.span}-${column.fields.map(field => field.key).join('-') || 'empty'}`;
+
+// ─── 字段列宽（响应式并排） ──────────────────────────────────────────
+const LAYOUT_FULL_WIDTH_TYPES = new Set<string>(['row', 'divider', 'group', 'description', 'detail']);
+const VALID_COLUMN_SPANS = new Set([12, 8, 6]);
+function colSpanOf(field: WorkflowFormField): number {
+  if (LAYOUT_FULL_WIDTH_TYPES.has(field.type)) return 24;
+  return field.columnSpan && VALID_COLUMN_SPANS.has(field.columnSpan) ? field.columnSpan : 24;
+}
+
+// ─── 手写签名板 ─────────────────────────────────────────────────────
+interface SignaturePadProps {
+  value?: string;
+  onChange?: (value: string) => void;
+  disabled?: boolean;
+  width?: number;
+  height?: number;
+}
+
+function SignaturePad({ value, onChange, disabled, width = 360, height = 150 }: Readonly<SignaturePadProps>) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawing = useRef(false);
+  const lastExported = useRef<string | undefined>(undefined);
+
+  const getCtx = () => canvasRef.current?.getContext('2d') ?? null;
+
+  // 外部 value 变化时（如回显）绘制到画布
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = getCtx();
+    if (!canvas || !ctx) return;
+    if (value === lastExported.current) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (value) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.src = value;
+    }
+    lastExported.current = value;
+  }, [value]);
+
+  const pos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const handleDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (disabled) return;
+    drawing.current = true;
+    const ctx = getCtx();
+    if (!ctx) return;
+    const { x, y } = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    canvasRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  const handleMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawing.current || disabled) return;
+    const ctx = getCtx();
+    if (!ctx) return;
+    const { x, y } = pos(e);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = '#1d1d1d';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  };
+
+  const handleUp = () => {
+    if (!drawing.current) return;
+    drawing.current = false;
+    const dataUrl = canvasRef.current?.toDataURL('image/png');
+    lastExported.current = dataUrl;
+    onChange?.(dataUrl ?? '');
+  };
+
+  const handleClear = () => {
+    const canvas = canvasRef.current;
+    const ctx = getCtx();
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    lastExported.current = '';
+    onChange?.('');
+  };
+
+  return (
+    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 6 }}>
+      <canvas
+        ref={canvasRef}
+        width={width}
+        height={height}
+        style={{
+          border: '1px dashed var(--semi-color-border)',
+          borderRadius: 6,
+          background: 'var(--semi-color-bg-1)',
+          touchAction: 'none',
+          cursor: disabled ? 'not-allowed' : 'crosshair',
+          maxWidth: '100%',
+        }}
+        onPointerDown={handleDown}
+        onPointerMove={handleMove}
+        onPointerUp={handleUp}
+        onPointerLeave={handleUp}
+      />
+      {!disabled && (
+        <Button size="small" theme="borderless" icon={<Eraser size={12} />} onClick={handleClear} style={{ alignSelf: 'flex-start' }}>
+          清除
+        </Button>
+      )}
+    </div>
+  );
+}
+
+const FormRegion = withField(RegionSelect);
+const FormRichText = withField(RichTextEditor);
+const FormSignature = withField(SignaturePad);
 
 export function flattenFields(fields: WorkflowFormField[]): WorkflowFormField[] {
   const out: WorkflowFormField[] = [];
@@ -51,25 +168,52 @@ export function evalFormula(formula: string, values: Record<string, unknown>, pr
   }
 }
 
-export function isFieldVisible(field: WorkflowFormField, values: Record<string, unknown>): boolean {
-  const cond = field.visibilityCondition;
+const toComparableStr = (v: unknown): string => {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') return JSON.stringify(v);
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+};
+
+function evalCondition(cond: WorkflowFieldVisibilityCondition, values: Record<string, unknown>): boolean {
   if (!cond?.field) return true;
   const left = values[cond.field];
   const right = cond.value;
-  const toStr = (v: unknown): string => {
-    if (v === null || v === undefined) return '';
-    if (typeof v === 'object') return JSON.stringify(v);
-    if (typeof v === 'string') return v;
-    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-    return '';
-  };
   switch (cond.operator) {
-    case 'eq': return left === right || toStr(left) === toStr(right);
-    case 'neq': return left !== right && toStr(left) !== toStr(right);
-    case 'in': return Array.isArray(right) && right.map(toStr).includes(toStr(left));
-    case 'contains': return Array.isArray(left) && left.map(toStr).includes(toStr(right));
+    case 'eq': return left === right || toComparableStr(left) === toComparableStr(right);
+    case 'neq': return left !== right && toComparableStr(left) !== toComparableStr(right);
+    case 'in': {
+      const arr = Array.isArray(right)
+        ? right
+        : (typeof right === 'string' ? right.split(',').map(s => s.trim()).filter(Boolean) : []);
+      return arr.map(toComparableStr).includes(toComparableStr(left));
+    }
+    case 'contains': return Array.isArray(left) && left.map(toComparableStr).includes(toComparableStr(right));
     default: return true;
   }
+}
+
+function evalRuleGroup(group: WorkflowFieldVisibilityRuleGroup, values: Record<string, unknown>): boolean {
+  const rules = group.rules?.filter(r => r?.field) ?? [];
+  if (rules.length === 0) return true;
+  return group.logic === 'or'
+    ? rules.some(r => evalCondition(r, values))
+    : rules.every(r => evalCondition(r, values));
+}
+
+export function isFieldVisible(field: WorkflowFormField, values: Record<string, unknown>): boolean {
+  // 高级联动（多条件 and/or）优先，完全决定显隐
+  if (field.visibilityRules && (field.visibilityRules.rules?.length ?? 0) > 0) {
+    return evalRuleGroup(field.visibilityRules, values);
+  }
+  // 默认隐藏（无联动规则时始终隐藏）
+  if (field.hidden) return false;
+  // 兼容旧版单条件
+  if (field.visibilityCondition?.field) {
+    return evalCondition(field.visibilityCondition, values);
+  }
+  return true;
 }
 
 interface RendererProps {
@@ -79,10 +223,12 @@ interface RendererProps {
   onValueChange?: (values: Record<string, unknown>) => void;
   readOnly?: boolean;
   style?: React.CSSProperties;
+  labelPosition?: 'top' | 'left';
+  labelWidth?: number;
 }
 
 export default function WorkflowFormRenderer({
-  fields, initValues, getFormApi, onValueChange, readOnly, style,
+  fields, initValues, getFormApi, onValueChange, readOnly, style, labelPosition = 'top', labelWidth,
 }: Readonly<RendererProps>) {
   const formApiRef = useRef<FormApi | null>(null);
   const valuesRef = useRef<Record<string, unknown>>(initValues ?? {});
@@ -141,16 +287,23 @@ export default function WorkflowFormRenderer({
   return (
     <ValuesContext.Provider value={valuesState}>
       <Form
-        labelPosition="top"
+        labelPosition={labelPosition}
+        labelWidth={labelPosition === 'left' ? (labelWidth ?? 96) : undefined}
         allowEmpty
         style={style}
         initValues={initValues}
         getFormApi={(api) => { formApiRef.current = api; getFormApi?.(api); }}
         onValueChange={handleValueChange}
       >
-        {fields.map(field => (
-          isFieldVisible(field, valuesState) ? <FieldRenderer key={field.key} field={field} readOnly={readOnly} /> : null
-        ))}
+        <Row gutter={16}>
+          {fields.map(field => (
+            isFieldVisible(field, valuesState) ? (
+              <Col span={colSpanOf(field)} key={field.key}>
+                <FieldRenderer field={field} readOnly={readOnly} />
+              </Col>
+            ) : null
+          ))}
+        </Row>
       </Form>
     </ValuesContext.Provider>
   );
@@ -176,7 +329,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
   const extraProps = helpText ? { extraText: helpText } : {};
   const unitSuffix = field.unit ? `（${field.unit}）` : '';
   const numberLabel = `${field.label}${unitSuffix}`;
-  const disabled = readOnly;
+  const disabled = readOnly || field.readOnly;
 
   switch (field.type) {
     case 'text':
@@ -330,6 +483,72 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
         />
       );
 
+    case 'time':
+      return (
+        <Form.TimePicker
+          field={field.key} label={field.label}
+          placeholder={field.placeholder ?? `请选择${field.label}`}
+          style={{ width: '100%' }}
+          format={field.timeFormat ?? 'HH:mm'}
+          initValue={field.defaultValue}
+          rules={rules} disabled={disabled}
+          {...extraProps}
+        />
+      );
+
+    case 'region':
+      return (
+        <FormRegion
+          field={field.key} label={field.label}
+          placeholder={field.placeholder ?? '请选择省/市/区'}
+          initValue={field.defaultValue}
+          rules={rules} disabled={disabled}
+          style={{ width: '100%' }}
+          {...extraProps}
+        />
+      );
+
+    case 'signature':
+      if (disabled) {
+        const sig = (values[field.key] as string) ?? (field.defaultValue as string) ?? '';
+        return (
+          <Form.Slot label={field.label} {...extraProps}>
+            {sig
+              ? <img src={sig} alt="签名" style={{ maxWidth: '100%', maxHeight: 150, border: '1px solid var(--semi-color-border)', borderRadius: 6 }} />
+              : <Typography.Text type="tertiary">（未签名）</Typography.Text>}
+          </Form.Slot>
+        );
+      }
+      return (
+        <FormSignature
+          field={field.key} label={field.label}
+          initValue={field.defaultValue}
+          rules={rules}
+          {...extraProps}
+        />
+      );
+
+    case 'richtext':
+      if (disabled) {
+        const html = (values[field.key] as string) ?? (field.defaultValue as string) ?? '';
+        return (
+          <Form.Slot label={field.label} {...extraProps}>
+            {html
+              ? <div className="wf-richtext-readonly" dangerouslySetInnerHTML={{ __html: html }} />
+              : <Typography.Text type="tertiary">（无内容）</Typography.Text>}
+          </Form.Slot>
+        );
+      }
+      return (
+        <FormRichText
+          field={field.key} label={field.label}
+          initValue={field.defaultValue}
+          placeholder={field.placeholder ?? `请输入${field.label}`}
+          rules={rules}
+          {...extraProps}
+        />
+      );
+
     case 'select': {
       let options = field.options ?? [];
       if (field.optionsFrom) {
@@ -473,9 +692,15 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           }}>
             {field.title || field.label}
           </div>
-          {(field.children || []).map(childField => (
-            isFieldVisible(childField, values) ? <FieldRenderer key={childField.key} field={childField} readOnly={readOnly} /> : null
-          ))}
+          <Row gutter={16}>
+            {(field.children || []).map(childField => (
+              isFieldVisible(childField, values) ? (
+                <Col span={colSpanOf(childField)} key={childField.key}>
+                  <FieldRenderer field={childField} readOnly={readOnly} />
+                </Col>
+              ) : null
+            ))}
+          </Row>
         </div>
       );
 

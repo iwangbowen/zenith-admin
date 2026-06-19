@@ -10,6 +10,7 @@ export * from './logs';
 export * from './regions';
 export * from './tenants';
 export * from './workflow';
+export * from './workflow-forms';
 export * from './email-templates';
 export * from './email-send-logs';
 export * from './sms-configs';

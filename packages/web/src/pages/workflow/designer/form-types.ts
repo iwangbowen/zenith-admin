@@ -26,6 +26,10 @@ import {
   Link as LinkIcon,
   Star,
   Sigma,
+  MapPin,
+  Clock,
+  PenTool,
+  TextQuote,
   type LucideIcon,
 } from 'lucide-react';
 import type { WorkflowFormFieldType } from '@zenith/shared';
@@ -50,6 +54,7 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   { type: 'multiSelect',  label: '多选',     icon: ListChecks,    group: '基础控件', description: '多选下拉' },
   { type: 'date',         label: '日期',     icon: Calendar,      group: '基础控件', description: '日期选择' },
   { type: 'dateRange',    label: '日期区间', icon: CalendarRange,  group: '基础控件', description: '起止日期选择' },
+  { type: 'time',         label: '时间',     icon: Clock,         group: '基础控件', description: '时间选择' },
 
   // 格式化控件
   { type: 'phone',        label: '手机号',   icon: Phone,         group: '格式化控件', description: '手机号码，含格式校验' },
@@ -64,6 +69,9 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   { type: 'image',        label: '图片',     icon: ImageIcon,     group: '高级控件', description: '上传图片' },
   { type: 'contact',      label: '联系人',   icon: User,          group: '高级控件', description: '选择人员' },
   { type: 'department',   label: '部门',     icon: Building2,     group: '高级控件', description: '选择部门' },
+  { type: 'region',       label: '省市区',   icon: MapPin,        group: '高级控件', description: '省市区联动选择' },
+  { type: 'signature',    label: '手写签名', icon: PenTool,       group: '高级控件', description: '手写签名板' },
+  { type: 'richtext',     label: '富文本',   icon: TextQuote,     group: '高级控件', description: '富文本编辑器' },
   { type: 'detail',       label: '明细',     icon: Table,         group: '高级控件', description: '明细/表格，含子字段' },
 
   // 布局控件
@@ -105,4 +113,25 @@ export const DATE_FORMAT_OPTIONS = [
   { value: 'YYYY-MM-DD',          label: '年-月-日' },
   { value: 'YYYY-MM-DD HH:mm',    label: '年-月-日 时:分' },
   { value: 'YYYY-MM-DD HH:mm:ss', label: '年-月-日 时:分:秒' },
+];
+
+// 时间格式选项（time 字段）
+export const TIME_FORMAT_OPTIONS = [
+  { value: 'HH:mm',    label: '时:分' },
+  { value: 'HH:mm:ss', label: '时:分:秒' },
+];
+
+// 省市区选择层级（region 字段）
+export const REGION_LEVEL_OPTIONS = [
+  { value: 'province', label: '省' },
+  { value: 'city',     label: '省 / 市' },
+  { value: 'district', label: '省 / 市 / 区' },
+];
+
+// 字段列宽选项（响应式并排，飞书风格）
+export const COLUMN_SPAN_OPTIONS = [
+  { value: 24, label: '整行' },
+  { value: 12, label: '1/2' },
+  { value: 8,  label: '1/3' },
+  { value: 6,  label: '1/4' },
 ];

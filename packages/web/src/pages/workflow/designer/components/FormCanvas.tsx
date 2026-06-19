@@ -3,7 +3,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { Tag, Typography } from '@douyinfe/semi-ui';
-import { GripVertical, Trash2, Asterisk } from 'lucide-react';
+import { GripVertical, Trash2, Asterisk, Copy } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFormFieldType } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
 
@@ -16,6 +16,7 @@ interface FormCanvasProps {
   onSelect: (key: string | null) => void;
   onReorder: (fields: WorkflowFormField[]) => void;
   onRemove: (key: string) => void;
+  onCopy: (key: string) => void;
   onDropNew: (type: WorkflowFormFieldType, index: number) => void;
 }
 
@@ -25,6 +26,7 @@ export default function FormCanvas({
   onSelect,
   onReorder,
   onRemove,
+  onCopy,
   onDropNew,
 }: Readonly<FormCanvasProps>) {
 
@@ -261,17 +263,30 @@ export default function FormCanvas({
                 )}
               </div>
 
-              <button
-                type="button"
-                className="fd-form-canvas__item-delete"
-                title="删除字段"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemove(field.key);
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
+              <div className="fd-form-canvas__item-actions">
+                <button
+                  type="button"
+                  className="fd-form-canvas__item-action"
+                  title="复制字段"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCopy(field.key);
+                  }}
+                >
+                  <Copy size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="fd-form-canvas__item-action fd-form-canvas__item-delete"
+                  title="删除字段"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(field.key);
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
               </button>
           );
         })}
