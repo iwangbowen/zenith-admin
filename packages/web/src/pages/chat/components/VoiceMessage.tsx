@@ -13,6 +13,9 @@ function formatDuration(sec: number): string {
   return `${m}'${String(s).padStart(2, '0')}″`;
 }
 
+/** 装饰性声波条（稳定 key，避免索引 key） */
+const VOICE_BARS = Array.from({ length: 14 }, (_, i) => ({ id: `bar-${i}`, seed: i * 7 }));
+
 /** 语音消息气泡：播放/暂停 + 时长 + 简易声波 */
 export function VoiceMessage({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: boolean }>) {
   const asset = getMessageExtra(msg)?.asset ?? null;
@@ -85,12 +88,11 @@ export function VoiceMessage({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSel
         {playing ? <Pause size={16} /> : <Play size={16} />}
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, height: 18, opacity: loading ? 0.5 : 1 }}>
-        {Array.from({ length: 14 }).map((_, i) => {
-          const h = 4 + ((i * 7 + duration) % 12);
+        {VOICE_BARS.map((bar) => {
+          const h = 4 + ((bar.seed + duration) % 12);
           return (
             <span
-              // eslint-disable-next-line react/no-array-index-key
-              key={i}
+              key={bar.id}
               style={{ width: 2, height: h, borderRadius: 2, background: barColor, opacity: playing ? 0.9 : 0.55 }}
             />
           );
