@@ -100,19 +100,19 @@ export async function getPaymentTrend(days = 30): Promise<PaymentTrendPoint[]> {
 
   const PAID_STATUSES = ['success', 'refunding', 'refunded'] as const;
   const orderDay = sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${paymentOrders.paidAt}), 'YYYY-MM-DD')`;
-  const refundDay = sql<string>`to_char(timezone(${APP_TIME_ZONE}, coalesce(${paymentRefunds.refundedAt}, ${paymentRefunds.createdAt})), 'YYYY-MM-DD')`;
+  const refundDay = sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${paymentRefunds.refundedAt}), 'YYYY-MM-DD')`;
 
   const [orderRows, refundRows] = await Promise.all([
     db
       .select({ date: orderDay, amount: sql<number>`coalesce(sum(${paymentOrders.amount}),0)`, count: sql<number>`count(*)` })
       .from(paymentOrders)
       .where(mergeWhere(and(inArray(paymentOrders.status, [...PAID_STATUSES]), gte(paymentOrders.paidAt, start)), tc))
-      .groupBy(orderDay),
+      .groupBy(sql`1`),
     db
       .select({ date: refundDay, amount: sql<number>`coalesce(sum(${paymentRefunds.refundAmount}),0)` })
       .from(paymentRefunds)
-      .where(mergeWhere(and(eq(paymentRefunds.status, 'success'), gte(sql`coalesce(${paymentRefunds.refundedAt}, ${paymentRefunds.createdAt})`, start)), rtc))
-      .groupBy(refundDay),
+      .where(mergeWhere(and(eq(paymentRefunds.status, 'success'), gte(paymentRefunds.refundedAt, start)), rtc))
+      .groupBy(sql`1`),
   ]);
 
   const orderMap = new Map(orderRows.map((r) => [r.date, { amount: Number(r.amount), count: Number(r.count) }]));
