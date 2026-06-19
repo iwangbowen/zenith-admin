@@ -241,13 +241,17 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly
                     semiSize="extra-extra-small"
                     size={18}
                   />
-                  <span className="fd-node-card__rt-name" title={a.name}>{a.name || '未指定'}</span>
-                  <span className={`fd-node-card__rt-status fd-node-card__rt-status--${a.status}`}>
-                    {approverStatusLabel(node.type, a.status)}
-                  </span>
-                  {a.actionAt && (
-                    <span className="fd-node-card__rt-time">{formatDateTime(a.actionAt)}</span>
-                  )}
+                  <div className="fd-node-card__rt-info">
+                    <div className="fd-node-card__rt-line">
+                      <span className="fd-node-card__rt-name" title={a.name}>{a.name || '未指定'}</span>
+                      <span className={`fd-node-card__rt-status fd-node-card__rt-status--${a.status}`}>
+                        {approverStatusLabel(node.type, a.status)}
+                      </span>
+                    </div>
+                    {a.actionAt && (
+                      <span className="fd-node-card__rt-time">{formatDateTime(a.actionAt)}</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

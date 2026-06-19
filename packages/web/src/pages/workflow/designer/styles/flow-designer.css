@@ -373,7 +373,6 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 
 .fd-node-card--rt {
   cursor: default;
-  width: 240px;
 }
 
 /* 左侧状态色条 + 描边 */
@@ -404,19 +403,34 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 .fd-node-card__rt-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .fd-node-card__rt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.fd-node-card__rt-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fd-node-card__rt-line {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .fd-node-card__rt-name {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   color: var(--semi-color-text-0);
-  max-width: 78px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -437,8 +451,6 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 .fd-node-card__rt-status--skipped  { color: var(--semi-color-text-2); background: var(--semi-color-fill-1); }
 
 .fd-node-card__rt-time {
-  margin-left: auto;
-  flex-shrink: 0;
   font-size: 11px;
   color: var(--semi-color-text-2);
 }
@@ -508,10 +520,11 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   background: var(--fd-line-color, #cacaca);
 }
 
-/* 分支底部竖线 */
+/* 分支底部竖线 —— flex 撑满，使较矮分支的竖线也能连到汇聚横线 */
 .fd-branch-col-bottom-line {
   width: 2px;
-  height: 20px;
+  flex: 1 0 20px;
+  min-height: 20px;
   background: var(--fd-line-color, #cacaca);
 }
 
