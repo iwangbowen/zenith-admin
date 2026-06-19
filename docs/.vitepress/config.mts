@@ -39,6 +39,7 @@ export default defineConfig({
       { text: '产品', link: '/product/overview' },
       { text: '后端', link: '/backend/api-conventions' },
       { text: '工作流', link: '/workflow/' },
+      { text: '数据分析', link: '/analytics/' },
       { text: '前端', link: '/frontend/ui-conventions' },
       { text: 'Changelog', link: '/changelog/' },
     ],
@@ -128,6 +129,18 @@ export default defineConfig({
         ],
       },
       {
+        text: '数据分析',
+        collapsed: false,
+        items: [
+          { text: '总览', link: '/analytics/' },
+          { text: '埋点采集 SDK', link: '/analytics/tracking' },
+          { text: '行为分析', link: '/analytics/behavior' },
+          { text: '数据管理', link: '/analytics/data-management' },
+          { text: '错误监控', link: '/analytics/error-monitoring' },
+          { text: '架构与数据模型', link: '/analytics/architecture' },
+        ],
+      },
+      {
         text: '前端',
         collapsed: true,
         items: [
@@ -136,7 +149,6 @@ export default defineConfig({
           { text: '公共组件', link: '/frontend/components' },
           { text: '文件预览组件', link: '/frontend/file-preview' },
           { text: '路由与菜单', link: '/frontend/routing' },
-          { text: '用户行为埋点分析', link: '/frontend/user-analytics' },
         ],
       },
       {
