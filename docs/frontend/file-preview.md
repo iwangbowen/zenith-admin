@@ -163,7 +163,7 @@ rehypePlugins: [rehypeHighlight]  // 代码块语法高亮（highlight.js）
 
 **限制**：
 
-- 不支持 HTML 嵌入（`rehype-sanitize` 过滤）
+- 不启用 `rehype-raw`，Markdown 中的 HTML 按文本处理
 - 尾注需额外启用 `remark-footnotes` 插件（未预装）
 - 弹窗宽度 `min(900px, 92vw)`，高度 `90vh`，内容带最大宽 860px 居中
 
@@ -175,6 +175,20 @@ remark-gfm
 rehype-highlight
 highlight.js（rehype-highlight 的 peerDep）
 ```
+
+### 纯文本 / 代码
+
+纯文本（`text/plain`）和常见代码/配置 MIME 类型通过 `fetchProtectedFile(fileUrl)` 下载 Blob，再读取为 UTF-8 字符串，**懒加载** `MonacoPreviewPanel` 只读展示。组件会根据文件扩展名自动选择语言（如 `ts/tsx/js/jsx/json/html/css/md/py/go/rs/java/sh/yml/xml/sql` 等），支持语法高亮、折叠、行号和自动换行。
+
+`FilePreviewModal` 会将 MIME 为 `video/mp2t` 但文件名以 `.ts` / `.tsx` 结尾的文件按代码文件处理，避免 TypeScript 文件被误判为视频。
+
+### JSON
+
+JSON 文件（`application/json` / `text/json`）通过 `JsonPreviewPanel` 使用 Semi Design `JsonViewer` 只读展示，支持折叠/展开和语法高亮。JSON 解析失败时降级为等宽原始文本。
+
+### SVG
+
+SVG 文件（`image/svg+xml`）通过 `fetchProtectedFile(fileUrl)` 下载 Blob 后创建 Object URL，在 `AppModal` 内使用 `<img>` 居中展示。关闭预览时会主动释放 Object URL。
 
 ### Word（.docx）
 
@@ -309,10 +323,10 @@ jszip@^3.10.1
 
 ## 判断工具函数
 
-`packages/web/src/utils/file-utils.tsx` 提供六个辅助函数：
+`packages/web/src/utils/file-utils.tsx` 提供以下辅助函数：
 
 ```ts
-/** 判断是否支持预览（覆盖 image / audio / video / PDF / xlsx / csv / docx / markdown / text / zip） */
+/** 判断是否支持预览（覆盖 image / audio / video / PDF / xlsx / csv / docx / markdown / text / json / svg / code / zip） */
 canPreviewFile(mimeType: string | null | undefined): boolean
 
 /** 判断是否为可预览的表格（xlsx 或 csv） */
@@ -326,6 +340,15 @@ isMarkdownFile(mimeType?: string | null): boolean
 
 /** 判断是否为纯文本文件（仅内部使用） */
 isPlainTextFile(mimeType?: string | null): boolean
+
+/** 判断是否为 JSON 文件（仅内部使用） */
+isJsonFile(mimeType?: string | null): boolean
+
+/** 判断是否为 SVG 文件（仅内部使用） */
+isSvgFile(mimeType?: string | null): boolean
+
+/** 判断是否为代码/配置文件（仅内部使用） */
+isCodeFile(mimeType?: string | null): boolean
 
 /** 判断是否为 ZIP 压缩包（仅内部使用） */
 isZipFile(mimeType?: string | null): boolean
