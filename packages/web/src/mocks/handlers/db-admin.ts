@@ -558,4 +558,131 @@ export const dbAdminHandlers = [
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });
   }),
+
+  // ─── 运维：活动连接 ──────────────────────────────────────────────────────────
+  http.get(`${API}/api/db-admin/activity`, () => {
+    const now = mockDateTime();
+    return ok([
+      {
+        pid: 101, username: 'postgres', applicationName: 'zenith-admin', clientAddr: '172.18.0.1',
+        state: 'active', waitEventType: null, waitEvent: null, backendType: 'client backend',
+        query: 'SELECT * FROM pg_stat_activity WHERE datname = current_database()',
+        querySeconds: 0.03, xactSeconds: 0.03, backendSeconds: 1820,
+        queryStart: now, backendStart: now, blockedBy: [], isCurrent: true,
+      },
+      {
+        pid: 102, username: 'postgres', applicationName: 'zenith-admin', clientAddr: '172.18.0.1',
+        state: 'idle', waitEventType: 'Client', waitEvent: 'ClientRead', backendType: 'client backend',
+        query: 'SELECT id, username FROM users WHERE status = $1', querySeconds: 12.4, xactSeconds: null,
+        backendSeconds: 3600, queryStart: now, backendStart: now, blockedBy: [], isCurrent: false,
+      },
+      {
+        pid: 103, username: 'app', applicationName: 'worker', clientAddr: '172.18.0.5',
+        state: 'active', waitEventType: 'Lock', waitEvent: 'transactionid', backendType: 'client backend',
+        query: 'UPDATE operation_logs SET module = $1 WHERE id = $2', querySeconds: 45.8, xactSeconds: 46.0,
+        backendSeconds: 600, queryStart: now, backendStart: now, blockedBy: [104], isCurrent: false,
+      },
+      {
+        pid: 104, username: 'app', applicationName: 'worker', clientAddr: '172.18.0.6',
+        state: 'idle in transaction', waitEventType: null, waitEvent: null, backendType: 'client backend',
+        query: 'BEGIN', querySeconds: 60.1, xactSeconds: 62.0, backendSeconds: 700,
+        queryStart: now, backendStart: now, blockedBy: [], isCurrent: false,
+      },
+    ]);
+  }),
+
+  http.post(`${API}/api/db-admin/activity/:pid/cancel`, () => ok({ ok: true })),
+  http.post(`${API}/api/db-admin/activity/:pid/terminate`, () => ok({ ok: true })),
+
+  // ─── 运维：表维护 ────────────────────────────────────────────────────────────
+  http.get(`${API}/api/db-admin/maintenance/tables`, () => {
+    const now = mockDateTime();
+    return ok(tables.filter((t) => t.kind === 'table').map((t, i) => {
+      const live = t.rows.length;
+      const dead = Math.round(live * [0.28, 0.05, 0.12, 0.02, 0.01][i % 5]);
+      const total = live + dead;
+      const size = tableSize(t);
+      return {
+        schema: t.schema, name: t.name,
+        liveTuples: live, deadTuples: dead,
+        deadRatio: total > 0 ? Math.round((dead / total) * 10000) / 100 : 0,
+        sizeBytes: size, sizeText: prettySize(size),
+        lastVacuum: i % 3 === 0 ? now : null, lastAutovacuum: now,
+        lastAnalyze: i % 2 === 0 ? now : null, lastAutoanalyze: now,
+        vacuumCount: i, autovacuumCount: i * 3, analyzeCount: i, autoanalyzeCount: i * 2,
+      };
+    }).sort((a, b) => b.deadTuples - a.deadTuples));
+  }),
+
+  http.post(`${API}/api/db-admin/tables/:schema/:name/maintenance`, () => ok(null, '已执行')),
+  http.post(`${API}/api/db-admin/tables/:schema/:name/refresh`, () => ok(null, '已刷新')),
+
+  // ─── 运维：索引健康 ──────────────────────────────────────────────────────────
+  http.get(`${API}/api/db-admin/index-health`, () => {
+    return ok({
+      unused: [
+        { schema: 'public', table: 'operation_logs', index: 'idx_operation_logs_module', scans: 0, sizeBytes: 32768, sizeText: '32 kB', isUnique: false, isPrimary: false, columns: ['module'], definition: 'CREATE INDEX idx_operation_logs_module ON public.operation_logs USING btree (module)' },
+        { schema: 'public', table: 'users', index: 'idx_users_nickname', scans: 0, sizeBytes: 16384, sizeText: '16 kB', isUnique: false, isPrimary: false, columns: ['nickname'], definition: 'CREATE INDEX idx_users_nickname ON public.users USING btree (nickname)' },
+        { schema: 'public', table: 'menus', index: 'idx_menus_name', scans: 0, sizeBytes: 16384, sizeText: '16 kB', isUnique: true, isPrimary: false, columns: ['name'], definition: 'CREATE UNIQUE INDEX idx_menus_name ON public.menus USING btree (name)' },
+      ],
+      duplicate: [
+        {
+          schema: 'public', table: 'users', columns: ['email'],
+          indexes: [
+            { schema: 'public', table: 'users', index: 'users_email_key', scans: 1240, sizeBytes: 24576, sizeText: '24 kB', isUnique: true, isPrimary: false, columns: ['email'], definition: 'CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email)' },
+            { schema: 'public', table: 'users', index: 'idx_users_email', scans: 12, sizeBytes: 24576, sizeText: '24 kB', isUnique: false, isPrimary: false, columns: ['email'], definition: 'CREATE INDEX idx_users_email ON public.users USING btree (email)' },
+          ],
+        },
+      ],
+      totalIndexes: 38,
+      totalIndexBytes: 1572864,
+    });
+  }),
+
+  // ─── 对象浏览 ────────────────────────────────────────────────────────────────
+  http.get(`${API}/api/db-admin/objects`, () => {
+    return ok({
+      sequences: [
+        { schema: 'public', name: 'users_id_seq', dataType: 'bigint', startValue: '1', incrementBy: '1', lastValue: '42' },
+        { schema: 'public', name: 'roles_id_seq', dataType: 'bigint', startValue: '1', incrementBy: '1', lastValue: '4' },
+        { schema: 'public', name: 'menus_id_seq', dataType: 'bigint', startValue: '1', incrementBy: '1', lastValue: '18' },
+      ],
+      functions: [
+        { schema: 'public', name: 'set_updated_at', kind: 'function', language: 'plpgsql', args: '', result: 'trigger', definition: 'CREATE OR REPLACE FUNCTION public.set_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nBEGIN\n  NEW.updated_at = now();\n  RETURN NEW;\nEND;\n$function$\n' },
+        { schema: 'public', name: 'user_full_name', kind: 'function', language: 'sql', args: 'u users', result: 'text', definition: null },
+      ],
+      triggers: [
+        { schema: 'public', table: 'users', name: 'trg_users_updated_at', enabled: true, definition: 'CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION set_updated_at()' },
+      ],
+      enums: [
+        { schema: 'public', name: 'status', values: ['enabled', 'disabled'] },
+        { schema: 'public', name: 'menu_type', values: ['directory', 'menu', 'button'] },
+        { schema: 'public', name: 'data_scope', values: ['all', 'custom', 'dept_only', 'dept', 'self'] },
+      ],
+      extensions: [
+        { name: 'plpgsql', version: '1.0', schema: 'pg_catalog', comment: 'PL/pgSQL procedural language' },
+        { name: 'pg_trgm', version: '1.6', schema: 'public', comment: 'text similarity measurement' },
+      ],
+    });
+  }),
+
+  // ─── Drizzle Schema 漂移对照 ──────────────────────────────────────────────────
+  http.get(`${API}/api/db-admin/schema-drift`, () => {
+    return ok({
+      inSync: false,
+      expectedTables: 109,
+      actualTables: 110,
+      drifts: [
+        {
+          schema: 'public', table: 'users', status: 'column_diff',
+          columns: [
+            { column: 'avatar_url', issue: 'missing_in_db', expected: 'varchar(255)', actual: null },
+            { column: 'last_login_at', issue: 'type_mismatch', expected: 'timestamptz', actual: 'timestamp' },
+            { column: 'legacy_flag', issue: 'extra_in_db', expected: null, actual: 'boolean' },
+          ],
+        },
+        { schema: 'public', table: 'audit_archive', status: 'extra_in_db', columns: [] },
+      ],
+    });
+  }),
 ];

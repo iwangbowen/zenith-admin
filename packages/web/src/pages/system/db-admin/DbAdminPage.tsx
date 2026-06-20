@@ -34,6 +34,8 @@ import {
   MoreHorizontal,
   Search,
   Gauge,
+  Boxes,
+  Server,
 } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { TOKEN_KEY } from '@zenith/shared';
@@ -51,6 +53,8 @@ import { ErDiagram, type ErSchema } from './ErDiagram';
 import { buildInsertSql, buildUpdateSql, copyToClipboard, generateCreateTableDdl } from './sql-format';
 import { OverviewPanel, KindTag } from './OverviewPanel';
 import { SqlConsole, type SqlConsoleHandle } from './SqlConsole';
+import { OpsPanel } from './OpsPanel';
+import { ObjectsPanel } from './ObjectsPanel';
 
 async function copyRowSqlAndToast(sql: string, label: string) {
   const ok = await copyToClipboard(sql);
@@ -274,6 +278,7 @@ export default function DbAdminPage() {
   const canQuery = hasPermission('system:db-admin:query');
   const canExport = hasPermission('system:db-admin:export');
   const canWrite = hasPermission('system:db-admin:write');
+  const canMaintain = hasPermission('system:db-admin:maintain');
   const { isDark } = useThemeController();
   const monacoTheme = isDark ? 'vs-dark' : 'light';
 
@@ -576,6 +581,19 @@ export default function DbAdminPage() {
     }
   };
 
+  const handleRefreshMatview = async (t: TableItem) => {
+    const res = await request.post(
+      `/api/db-admin/tables/${encodeURIComponent(t.schema)}/${encodeURIComponent(t.name)}/refresh`,
+      {},
+    );
+    if (res.code === 0) {
+      Toast.success(`已刷新 ${fullName(t)}`);
+      if (selected?.schema === t.schema && selected?.name === t.name) refreshRows();
+    } else {
+      Toast.error(res.message ?? '刷新失败');
+    }
+  };
+
   const renderTableContextMenu = (t: TableItem) => {
     const isWritable = t.kind === 'table' && !SYSTEM_SCHEMAS.has(t.schema) && !SYSTEM_TABLES.has(`${t.schema}.${t.name}`);
     return (
@@ -589,6 +607,11 @@ export default function DbAdminPage() {
         <Dropdown.Item onClick={() => handleOpenInConsole(t)}>
           在控制台查询
         </Dropdown.Item>
+        {t.kind === 'matview' && canMaintain && (
+          <Dropdown.Item icon={<RefreshCw size={14} />} onClick={() => void handleRefreshMatview(t)}>
+            刷新物化视图
+          </Dropdown.Item>
+        )}
         {canExport && (
           <>
             <Dropdown.Divider />
@@ -1360,6 +1383,10 @@ export default function DbAdminPage() {
           </div>
         </TabPane>
 
+        <TabPane tab={<span><Boxes size={14} style={{ verticalAlign: -2, marginRight: 4 }} />对象</span>} itemKey="objects" style={{ height: '100%' }}>
+          <ObjectsPanel active={activeTab === 'objects'} />
+        </TabPane>
+
         <TabPane tab={<span><Play size={14} style={{ verticalAlign: -2, marginRight: 4 }} />SQL 控制台</span>} itemKey="console" style={{ height: '100%' }}>
           <div style={{ height: '100%', padding: 4 }}>
             <SqlConsole
@@ -1371,6 +1398,10 @@ export default function DbAdminPage() {
               monacoTheme={monacoTheme}
             />
           </div>
+        </TabPane>
+
+        <TabPane tab={<span><Server size={14} style={{ verticalAlign: -2, marginRight: 4 }} />运维</span>} itemKey="ops" style={{ height: '100%' }}>
+          <OpsPanel canMaintain={canMaintain} active={activeTab === 'ops'} />
         </TabPane>
 
         <TabPane tab={<span><History size={14} style={{ verticalAlign: -2, marginRight: 4 }} />查询历史</span>} itemKey="history" style={{ height: '100%', overflow: 'auto' }}>

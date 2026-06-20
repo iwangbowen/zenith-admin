@@ -170,3 +170,133 @@ export const DbQueryFavoriteDTO = z
     updatedAt: z.string(),
   })
   .openapi('DbQueryFavorite');
+
+// ─── 运维监控：活动连接 ─────────────────────────────────────────────────────────
+export const DbAdminActivityConnectionDTO = z
+  .object({
+    pid: z.number().int(),
+    username: z.string().nullable(),
+    applicationName: z.string().nullable(),
+    clientAddr: z.string().nullable(),
+    database: z.string().nullable(),
+    state: z.string().nullable(),
+    waitEventType: z.string().nullable(),
+    waitEvent: z.string().nullable(),
+    backendType: z.string().nullable(),
+    query: z.string().nullable(),
+    querySeconds: z.number().nullable(),
+    xactSeconds: z.number().nullable(),
+    backendSeconds: z.number().nullable(),
+    queryStart: z.string().nullable(),
+    backendStart: z.string().nullable(),
+    blockedBy: z.array(z.number().int()),
+    isCurrent: z.boolean(),
+  })
+  .openapi('DbAdminActivityConnection');
+
+// ─── 运维监控：表维护 ───────────────────────────────────────────────────────────
+export const DbAdminTableMaintenanceDTO = z
+  .object({
+    schema: z.string(),
+    name: z.string(),
+    liveTuples: z.number(),
+    deadTuples: z.number(),
+    deadRatio: z.number(),
+    sizeBytes: z.number(),
+    sizeText: z.string(),
+    lastVacuum: z.string().nullable(),
+    lastAutovacuum: z.string().nullable(),
+    lastAnalyze: z.string().nullable(),
+    lastAutoanalyze: z.string().nullable(),
+    vacuumCount: z.number(),
+    autovacuumCount: z.number(),
+    analyzeCount: z.number(),
+    autoanalyzeCount: z.number(),
+  })
+  .openapi('DbAdminTableMaintenance');
+
+// ─── 运维监控：索引健康 ─────────────────────────────────────────────────────────
+export const DbAdminIndexInfoDTO = z
+  .object({
+    schema: z.string(),
+    table: z.string(),
+    index: z.string(),
+    scans: z.number(),
+    sizeBytes: z.number(),
+    sizeText: z.string(),
+    isUnique: z.boolean(),
+    isPrimary: z.boolean(),
+    columns: z.array(z.string()),
+    definition: z.string(),
+  })
+  .openapi('DbAdminIndexInfo');
+
+export const DbAdminIndexHealthDTO = z
+  .object({
+    unused: z.array(DbAdminIndexInfoDTO),
+    duplicate: z.array(z.object({
+      schema: z.string(),
+      table: z.string(),
+      columns: z.array(z.string()),
+      indexes: z.array(DbAdminIndexInfoDTO),
+    })),
+    totalIndexes: z.number(),
+    totalIndexBytes: z.number(),
+  })
+  .openapi('DbAdminIndexHealth');
+
+// ─── 对象浏览 ───────────────────────────────────────────────────────────────────
+export const DbAdminObjectsDTO = z
+  .object({
+    sequences: z.array(z.object({
+      schema: z.string(), name: z.string(), dataType: z.string(),
+      startValue: z.string(), incrementBy: z.string(), lastValue: z.string().nullable(),
+    })),
+    functions: z.array(z.object({
+      schema: z.string(), name: z.string(), kind: z.string(), language: z.string(),
+      args: z.string(), result: z.string(), definition: z.string().nullable(),
+    })),
+    triggers: z.array(z.object({
+      schema: z.string(), table: z.string(), name: z.string(),
+      enabled: z.boolean(), definition: z.string(),
+    })),
+    enums: z.array(z.object({
+      schema: z.string(), name: z.string(), values: z.array(z.string()),
+    })),
+    extensions: z.array(z.object({
+      name: z.string(), version: z.string(), schema: z.string(), comment: z.string().nullable(),
+    })),
+  })
+  .openapi('DbAdminObjects');
+
+// ─── Drizzle Schema 漂移对照 ────────────────────────────────────────────────────
+export const DbAdminColumnDiffDTO = z
+  .object({
+    column: z.string(),
+    issue: z.enum(['missing_in_db', 'extra_in_db', 'type_mismatch', 'nullable_mismatch']),
+    expected: z.string().nullable(),
+    actual: z.string().nullable(),
+  })
+  .openapi('DbAdminColumnDiff');
+
+export const DbAdminTableDriftDTO = z
+  .object({
+    schema: z.string(),
+    table: z.string(),
+    status: z.enum(['missing_in_db', 'extra_in_db', 'column_diff']),
+    columns: z.array(DbAdminColumnDiffDTO),
+  })
+  .openapi('DbAdminTableDrift');
+
+export const DbAdminSchemaDriftDTO = z
+  .object({
+    inSync: z.boolean(),
+    expectedTables: z.number(),
+    actualTables: z.number(),
+    drifts: z.array(DbAdminTableDriftDTO),
+  })
+  .openapi('DbAdminSchemaDrift');
+
+export const DbAdminOpResultDTO = z
+  .object({ ok: z.boolean() })
+  .openapi('DbAdminOpResult');

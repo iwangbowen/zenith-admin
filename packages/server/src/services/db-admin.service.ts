@@ -83,13 +83,13 @@ export interface QueryResult {
 // ─── 工具：标识符白名单校验 ────────────────────────────────────────────────────
 const IDENT_PATTERN = /^[A-Za-z_]\w*$/;
 
-function assertIdent(value: string, label: string): void {
+export function assertIdent(value: string, label: string): void {
   if (!IDENT_PATTERN.test(value)) {
     throw new HTTPException(400, { message: `非法的${label}：${value}` });
   }
 }
 
-function quoteIdent(value: string): string {
+export function quoteIdent(value: string): string {
   return '"' + value.replaceAll('"', '""') + '"';
 }
 

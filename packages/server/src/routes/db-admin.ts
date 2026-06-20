@@ -22,6 +22,12 @@ import {
   DbAdminErSchemaDTO,
   DbAdminOverviewDTO,
   DbQueryFavoriteDTO,
+  DbAdminActivityConnectionDTO,
+  DbAdminTableMaintenanceDTO,
+  DbAdminIndexHealthDTO,
+  DbAdminObjectsDTO,
+  DbAdminSchemaDriftDTO,
+  DbAdminOpResultDTO,
 } from '../lib/openapi-dtos';
 import {
   listTables,
@@ -48,6 +54,18 @@ import {
   updateQueryFavorite,
   deleteQueryFavorite,
 } from '../services/db-admin.service';
+import {
+  getActiveConnections,
+  cancelBackend,
+  terminateBackend,
+  getTableMaintenance,
+  runTableMaintenance,
+  refreshMatview,
+  getIndexHealth,
+  listDbObjects,
+  getSchemaDrift,
+  type MaintenanceAction,
+} from '../services/db-admin-ops.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -526,5 +544,146 @@ const deleteFavoriteRoute = defineOpenAPIRoute({
 });
 
 router.openapiRoutes([listFavoritesRoute, createFavoriteRoute, updateFavoriteRoute, deleteFavoriteRoute] as const);
+
+// ─── 运维监控 / 对象浏览 / Schema 漂移 ───────────────────────────────────────────
+const PidParam = z.object({
+  pid: z.coerce.number().int().openapi({ param: { in: 'path', name: 'pid' }, example: 12345 }),
+});
+
+const activityRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/activity', tags: ['DbAdmin'], summary: '活动连接列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(DbAdminActivityConnectionDTO), '活动连接') },
+  }),
+  handler: async (c) => c.json(okBody(await getActiveConnections()), 200),
+});
+
+const cancelBackendRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/activity/{pid}/cancel', tags: ['DbAdmin'], summary: '取消查询',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:maintain',
+      audit: { description: '取消数据库查询', module: '数据库管理' },
+    })] as const,
+    request: { params: PidParam },
+    responses: { ...commonErrorResponses, ...ok(DbAdminOpResultDTO, '操作结果') },
+  }),
+  handler: async (c) => {
+    const { pid } = c.req.valid('param');
+    return c.json(okBody({ ok: await cancelBackend(pid) }), 200);
+  },
+});
+
+const terminateBackendRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/activity/{pid}/terminate', tags: ['DbAdmin'], summary: '终止连接',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:maintain',
+      audit: { description: '终止数据库连接', module: '数据库管理' },
+    })] as const,
+    request: { params: PidParam },
+    responses: { ...commonErrorResponses, ...ok(DbAdminOpResultDTO, '操作结果') },
+  }),
+  handler: async (c) => {
+    const { pid } = c.req.valid('param');
+    return c.json(okBody({ ok: await terminateBackend(pid) }), 200);
+  },
+});
+
+const maintenanceRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/maintenance/tables', tags: ['DbAdmin'], summary: '表维护统计',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(DbAdminTableMaintenanceDTO), '表维护统计') },
+  }),
+  handler: async (c) => c.json(okBody(await getTableMaintenance()), 200),
+});
+
+const runMaintenanceRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/tables/{schema}/{name}/maintenance', tags: ['DbAdmin'], summary: '执行表维护 (VACUUM/ANALYZE/REINDEX)',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:maintain',
+      audit: { description: '执行表维护', module: '数据库管理' },
+    })] as const,
+    request: {
+      params: TableNameParam,
+      body: { content: jsonContent(z.object({ action: z.enum(['vacuum', 'vacuum_analyze', 'analyze', 'reindex']) })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('已执行') },
+  }),
+  handler: async (c) => {
+    const { schema, name } = c.req.valid('param');
+    const { action } = c.req.valid('json');
+    await runTableMaintenance(schema, name, action as MaintenanceAction);
+    return c.json(okBody(null, '已执行'), 200);
+  },
+});
+
+const refreshMatviewRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/tables/{schema}/{name}/refresh', tags: ['DbAdmin'], summary: '刷新物化视图',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:maintain',
+      audit: { description: '刷新物化视图', module: '数据库管理' },
+    })] as const,
+    request: { params: TableNameParam },
+    responses: { ...commonErrorResponses, ...okMsg('已刷新') },
+  }),
+  handler: async (c) => {
+    const { schema, name } = c.req.valid('param');
+    await refreshMatview(schema, name);
+    return c.json(okBody(null, '已刷新'), 200);
+  },
+});
+
+const indexHealthRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/index-health', tags: ['DbAdmin'], summary: '索引健康',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    responses: { ...commonErrorResponses, ...ok(DbAdminIndexHealthDTO, '索引健康') },
+  }),
+  handler: async (c) => c.json(okBody(await getIndexHealth()), 200),
+});
+
+const objectsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/objects', tags: ['DbAdmin'], summary: '数据库对象（序列/函数/触发器/枚举/扩展）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    responses: { ...commonErrorResponses, ...ok(DbAdminObjectsDTO, '数据库对象') },
+  }),
+  handler: async (c) => c.json(okBody(await listDbObjects()), 200),
+});
+
+const schemaDriftRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/schema-drift', tags: ['DbAdmin'], summary: 'Drizzle Schema 漂移对照',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    responses: { ...commonErrorResponses, ...ok(DbAdminSchemaDriftDTO, 'Schema 漂移') },
+  }),
+  handler: async (c) => c.json(okBody(await getSchemaDrift()), 200),
+});
+
+router.openapiRoutes([
+  activityRoute,
+  cancelBackendRoute,
+  terminateBackendRoute,
+  maintenanceRoute,
+  runMaintenanceRoute,
+  refreshMatviewRoute,
+  indexHealthRoute,
+  objectsRoute,
+  schemaDriftRoute,
+] as const);
 
 export default router;
