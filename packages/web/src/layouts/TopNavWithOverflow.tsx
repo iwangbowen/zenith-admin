@@ -110,26 +110,37 @@ export function TopNavWithOverflow({
       setVisibleCount(items.length);
       return;
     }
-    const containerW = container.clientWidth;
+    // 可用宽度 = 容器宽度 - 实际可见 Nav 的左右内边距（padding:0 4px）
+    const realNav = container.querySelector<HTMLElement>('.admin-topnav__nav');
+    const navStyle = realNav ? getComputedStyle(realNav) : null;
+    const padX = navStyle
+      ? (Number.parseFloat(navStyle.paddingLeft) || 0) + (Number.parseFloat(navStyle.paddingRight) || 0)
+      : 0;
+    const containerW = container.clientWidth - padX;
+
     const moreEl = children[children.length - 1];
     const itemEls = children.slice(0, -1);
     const n = itemEls.length;
 
-    // 用相邻两项的间隙估算项间距（含 margin）
+    // 项间距：探测 Nav 与真实 Nav 使用相同 class，间距一致（gap: 4px）
     const r0 = children[0].getBoundingClientRect();
     const r1 = children[1].getBoundingClientRect();
     const gap = Math.max(0, Math.round(r1.left - r0.right));
+    const widths = itemEls.map((el) => el.getBoundingClientRect().width);
     const moreW = moreEl.getBoundingClientRect().width + gap;
 
+    // 先判断：全部项是否能在不显示「更多」的情况下放下（避免有空间却仍收纳）
+    const totalAll = widths.reduce((a, b) => a + b, 0) + Math.max(0, n - 1) * gap;
+    if (totalAll <= containerW) {
+      setVisibleCount(n);
+      return;
+    }
+
+    // 否则贪心：尽可能多放「可见项 + 更多」，为「更多」按钮预留空间
     let sum = 0;
     let count = 0;
     for (let i = 0; i < n; i++) {
-      const w = itemEls[i].getBoundingClientRect().width + (i > 0 ? gap : 0);
-      if (i === n - 1) {
-        // 最后一项无需为「更多」预留空间
-        if (sum + w <= containerW) count = n;
-        break;
-      }
+      const w = widths[i] + (i > 0 ? gap : 0);
       if (sum + w + moreW <= containerW) {
         sum += w;
         count++;
@@ -186,9 +197,10 @@ export function TopNavWithOverflow({
       role="navigation"
       aria-label={ariaLabel ?? '主导航'}
     >
-      {/* 隐藏探测：渲染全部项用于宽度测量 */}
+      {/* 隐藏探测：渲染全部项用于宽度测量。必须与真实 Nav 使用相同 class
+          （admin-topnav__nav），以保证项间距/内边距完全一致，避免测量误差导致过早收纳 */}
       <div ref={probeRef} className="admin-topnav__probe" aria-hidden="true">
-        <Nav mode="horizontal" items={probeItems} selectedKeys={[]} />
+        <Nav className="admin-topnav__nav" mode="horizontal" items={probeItems} selectedKeys={[]} />
       </div>
       {/* 实际显示项 + 溢出「更多」 */}
       <Nav
