@@ -395,6 +395,8 @@ export default function MyApplicationsPage() {
   const [editingDraft, setEditingDraft] = useState<WorkflowInstance | null>(null);
   const [dynamicFormInitValues, setDynamicFormInitValues] = useState<Record<string, unknown>>({});
   const [formKey, setFormKey] = useState(0);
+  const priorityFilterRef = useRef('');
+  priorityFilterRef.current = priorityFilter;
 
   const fetchList = useCallback(async (p = page, ps = pageSize, params?: { status: string }) => {
     const { status: activeStatus } = params ?? searchParamsRef.current;
@@ -404,6 +406,7 @@ export default function MyApplicationsPage() {
         page: String(p),
         pageSize: String(ps),
         ...(activeStatus ? { status: activeStatus } : {}),
+        ...(priorityFilterRef.current ? { priority: priorityFilterRef.current } : {}),
       }).toString();
       const res = await request.get<PaginatedResponse<WorkflowInstance>>(`/api/workflows/instances?${query}`);
       if (res.code === 0) {
@@ -420,6 +423,11 @@ export default function MyApplicationsPage() {
   }, [fetchList]);
 
   const loadDefinitions = async (): Promise<WorkflowDefinition[]> => {
+    if (userOptions.length === 0) {
+      void request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all').then((res) => {
+        if (res.code === 0 && res.data) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
+      });
+    }
     const res = await request.get<WorkflowDefinition[]>('/api/workflows/definitions/published');
     if (res.code === 0 && res.data) {
       setDefinitions(res.data);
