@@ -83,8 +83,10 @@
   gap: 4px;
 }
 
-/* 顶级项：胶囊式样式，flex 居中保证图标+文字垂直对齐（叶子项与目录标题一致）*/
-.admin-topbar__nav .semi-navigation-item,
+/* 顶级胶囊：仅作用于真正的可视项（叶子 item-normal、目录 sub-title），
+   不作用于 sub-wrap 容器，避免目录项「容器 padding + 标题 padding」双重内边距
+   导致目录项之间的视觉间距比叶子项大（顶部/混合模式间距统一为 4px）*/
+.admin-topbar__nav .semi-navigation-item-normal,
 .admin-topbar__nav .semi-navigation-sub-title {
   display: flex;
   align-items: center;
@@ -93,6 +95,15 @@
   border-radius: 6px;
   font-size: 13px;
   color: var(--color-sidebar-text);
+}
+
+/* 目录容器 sub-wrap 不承担胶囊内边距，仅作居中占位，使其紧贴内部 sub-title 胶囊；
+   保留 flex 居中以保证目录标题与叶子项垂直对齐 */
+.admin-topbar__nav .semi-navigation-sub-wrap {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0;
 }
 
 /* 统一项间距：清除 Semi 水平导航默认的不一致 margin（非末项 margin-right 比末项大），改用 list 的 gap */
@@ -111,7 +122,7 @@
 }
 
 /* 去除 Semi 水平导航选中项默认的底部指示条 */
-.admin-topbar__nav .semi-navigation-item::after,
+.admin-topbar__nav .semi-navigation-item-normal::after,
 .admin-topbar__nav .semi-navigation-sub-title::after {
   display: none;
 }
