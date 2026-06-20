@@ -250,6 +250,39 @@ export const filesHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: { ...mockSheetPreview, name: file.originalName } });
   }),
 
+  // 文件统计（必须放在 /api/files/:id 之前，防止 "stats" 被当成文件 ID）
+  http.get('/api/files/stats', () => {
+    const total = mockManagedFiles.length;
+    const totalSize = mockManagedFiles.reduce((s, f) => s + (f.size ?? 0), 0);
+    const imgExts = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp']);
+    const videoExts = new Set(['mp4', 'avi', 'mov', 'mkv', 'webm']);
+    const audioExts = new Set(['mp3', 'wav', 'ogg', 'flac', 'aac']);
+    const docExts = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md']);
+    const counts = { image: 0, video: 0, audio: 0, document: 0, other: 0 };
+    const sizes = { image: 0, video: 0, audio: 0, document: 0, other: 0 };
+    for (const f of mockManagedFiles) {
+      const ext = (f.extension ?? '').toLowerCase();
+      let cat: keyof typeof counts = 'other';
+      if (imgExts.has(ext)) cat = 'image';
+      else if (videoExts.has(ext)) cat = 'video';
+      else if (audioExts.has(ext)) cat = 'audio';
+      else if (docExts.has(ext)) cat = 'document';
+      counts[cat]++;
+      sizes[cat] += f.size ?? 0;
+    }
+    const typeLabels: Record<string, string> = { image: '图片', video: '视频', audio: '音频', document: '文档', other: '其他' };
+    const typeStats = Object.entries(counts).map(([type, count]) => ({ type, label: typeLabels[type] ?? type, count, size: sizes[type as keyof typeof sizes] }));
+    const data = {
+      summary: { totalFiles: total, totalSize, imageCount: counts.image, docCount: counts.document, videoCount: counts.video, audioCount: counts.audio, todayCount: 2, thisMonthCount: total },
+      typeStats,
+      providerStats: [{ provider: 'local', count: total, size: totalSize }],
+      monthlyStats: [{ month: '2026-01', count: 3 }, { month: '2026-02', count: total - 3 }],
+      uploaderStats: [{ username: 'Admin', count: total, size: totalSize }],
+      sizeRangeStats: [{ range: '< 1MB', count: total - 1 }, { range: '1-10MB', count: 1 }, { range: '> 10MB', count: 0 }],
+    };
+    return HttpResponse.json({ code: 0, message: 'ok', data });
+  }),
+
   // 获取单个文件详情
   http.get('/api/files/:id', ({ params }) => {
     const file = mockManagedFiles.find((f) => f.id === Number(params.id));
@@ -295,6 +328,12 @@ export const filesHandlers = [
     const total = filtered.length;
     const list = filtered.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+  }),
+
+  // 获取默认存储配置（必须在 /:id 之前注册，防止 "default" 被当成数字 ID）
+  http.get('/api/file-storage-configs/default', () => {
+    const config = mockFileStorageConfigs.find((c) => c.isDefault) ?? null;
+    return HttpResponse.json({ code: 0, message: 'ok', data: config });
   }),
 
   // 获取单个存储配置
