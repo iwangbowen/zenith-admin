@@ -17,12 +17,13 @@
 - 所有元素（搜索输入框、下拉筛选、查询/重置按钮、操作按钮）统一通过 `SearchToolbar` 组件排列
 - `SearchToolbar` 内部使用 `<Space wrap>` 包裹，子元素从左到右依次排列，按需换行
 - 按钮文案统一为：`查询`、`重置`、`新增`
-- 工具栏中所有功能性操作按钮（导出、全部展开/折叠等）统一使用 `type="primary"`，仅「重置」使用 `type="tertiary"`
+- 导出、导入、新增等主操作按钮使用 `type="primary"`，仅「重置」使用 `type="tertiary"`；批量删除、批量停用等危险操作按语义使用 `type="danger"` / `theme="light"`
 
 ### 表格
 
 - 数据表格必须使用 `ConfigurableTable` 组件（`@/components/ConfigurableTable`），并保持带边框属性：`bordered`
-- `ConfigurableTable` 在 `Table` 基础上内置了列显隐配置功能（右上角「列设置」下拉菜单），用户选择会持久化到 `localStorage`
+- `ConfigurableTable` 在 `Table` 基础上内置列显隐配置、刷新入口、表格尺寸、边框/斑马纹显示设置和全屏展示能力，用户选择会持久化到 `localStorage`
+- 列表页建议传入 `onRefresh` 和 `refreshLoading`，让表格右上角刷新按钮与当前加载状态一致
 - "操作"列必须右侧固定：`fixed: 'right'`
 - "状态"列必须放在"操作"列左侧（紧靠操作列），并同样添加 `fixed: 'right'`
 
@@ -44,7 +45,7 @@ const columns = [
 
 ### 操作列按钮
 
-- 使用纯文字无图标按钮
+- 直接展示的行操作使用纯文字无图标按钮；更多操作可收纳到 `Dropdown`，触发按钮同样使用 `theme="borderless"` + `size="small"`
 - `theme="borderless"`
 - `size="small"`
 - 删除按钮额外使用 `type="danger"`
@@ -121,14 +122,14 @@ const columns = [
 
 | 场景 | Modal 宽度 | Form 布局 |
 | ---- | ---------- | --------- |
-| 简单配置（字段少，包含 TextArea 等宿字段） | 480–520 | 单列 |
+| 简单配置（字段少，包含 TextArea 等字段） | 480–520 | 单列 |
 | 标准业务表单（有 3+ 对可并排的普通字段） | 660 | **双列** |
 | 复杂表单（多字段含特殊控件） | 720+ | 混合 |
 
 ### 表单必备属性
 
 - `labelPosition="left"`：实现 label 与输入框同行
-- `labelWidth`：按标签字数选取（≤3字→ 72，4-5字→ 90，♥6字→ 110+），同一 Form 内保持统一
+- `labelWidth`：按标签字数选取（≤3字→ 72，4-5字→ 90，≥6字→ 110+），同一 Form 内保持统一
 - `key={editingXxx?.id ?? 'new'}`：切换新增/编辑时强制重置 Form 内部状态
 
 ### 双列布局写法
@@ -178,10 +179,12 @@ const { hasPermission } = usePermission();
 分页统一使用 `Table` 内置 `pagination` 配置，不单独放置 `Pagination` 组件：
 
 ```tsx
-<Table
+<ConfigurableTable
   bordered
   dataSource={list}
   columns={columns}
+  onRefresh={() => void fetchList()}
+  refreshLoading={loading}
   pagination={{
     currentPage: page,
     pageSize,

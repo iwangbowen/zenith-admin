@@ -11,7 +11,7 @@
 | `analytics_settings` | 采集与保留配置（SDK 远程配置来源） |
 | `error_groups` | 错误分组（Issue，`fingerprint` 全局唯一索引） |
 | `error_events` | 单次错误事件（堆栈 / 面包屑 / 上下文 / 解析后 UA / HTTP 详情） |
-| `error_alert_rules` | 错误告警规则 |
+| `error_alert_rules` | 错误告警规则（条件、阈值、时间窗口、渠道、收件人、去抖时间） |
 | `source_maps` | 上传的 Source Map（堆栈还原，replace 语义维护） |
 
 > 修改这些表后需 `npm run db:generate && npm run db:migrate`，并在 `packages/shared/src/seed-data.ts` 同步菜单/权限。
@@ -27,6 +27,18 @@
 
 - 采集 / 错误上报端点使用 `optionalAuthMiddleware`，支持匿名上报；其余分析端点均在 `authMiddleware` + `guard()` 之后。
 - UA 解析复用 `ua-parser-js`，IP → 地域复用离线库 `node-ip2region`，无需外部服务。
+
+## 数据链路
+
+```text
+tracker.ts / error-reporter.ts
+  ↓ POST /api/analytics/events 或 POST /api/frontend-errors
+routes/analytics.ts / routes/frontend-errors.ts
+  ↓ Service 写入、UA/IP 解析、会话维护、错误指纹计算
+user_events / analytics_sessions / error_groups / error_events
+  ↓ 查询接口实时聚合，定时任务维护 analytics_daily_rollup 与保留清理
+packages/web/src/pages/analytics/*
+```
 
 ## 定时任务
 
@@ -51,6 +63,6 @@
 
 ## 多租户隔离
 
-- 所有业务数据按 `tenantId` 隔离；分析查询统一走 `tenantScope()`，错误分组 / 告警规则的存在性校验亦带租户范围。
+- 行为事件、会话、错误分组、错误事件、Source Map 与告警规则按 `tenantId` 隔离；分析查询和存在性校验使用 `tenantScope()`。
 - 错误指纹含 `tenantId` 因子，不同租户的相同错误分属不同 Issue。
 - 事件字典为平台级全局分类（事件名跨租户共享）。

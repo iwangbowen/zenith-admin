@@ -4,7 +4,7 @@
 
 ## 捕获范围
 
-全局兜底 `useGlobalErrorHandler`（`App` 中挂载一次）自动捕获并上报：
+全局兜底 `useGlobalErrorHandler`（`App` 中挂载一次）自动捕获并上报常见错误，也支持业务手动上报严重崩溃：
 
 | 类型 | 来源 |
 |------|------|
@@ -14,7 +14,7 @@
 | `console_error` | `console.error` 调用 |
 | `http_error` | 失败的 fetch/XHR 请求（5xx / 网络错误，由 SDK API 监控转报） |
 | `white_screen` | 加载后根节点长时间无内容的疑似白屏 |
-| `crash` | 严重崩溃 |
+| `crash` | 业务手动调用 `reportError('crash', ...)` 上报的严重崩溃 |
 
 每次上报携带最近 30 条**行为面包屑**（导航 / 点击 / 网络 / 控制台）用于还原现场。
 
@@ -23,7 +23,7 @@
 相同错误按**指纹**聚合为一个 `error_group`（Issue），每次发生记录为一条 `error_event`：
 
 - 指纹 = `hash(tenantId + errorType + 归一化 message + 顶层堆栈帧 + 来源文件)`，含租户因子保证全局唯一。
-- 列表 `GET /api/frontend-errors/groups` 支持按状态 / 类型 / 级别 / 关键词筛选。
+- 列表 `GET /api/frontend-errors/groups` 支持按状态 / 类型 / 级别 / 错误信息关键词筛选。
 - 概览 `GET /api/frontend-errors/overview` 提供错误种类、未解决数、总发生次数、影响用户、今日新增、趋势与 Top Issues。
 
 ## 详情
@@ -55,5 +55,5 @@
 
 - **条件**：新错误（`new_error`）/ 阈值（`threshold`）/ 激增（`spike`）。
 - 可按错误类型、级别过滤；设置阈值次数与时间窗口。
-- **通知渠道**：邮件 / Webhook / 站内。
+- **通知渠道**：邮件 / Webhook / 站内（记录 in-app 通知日志）。
 - 定时任务 `evaluateErrorAlerts`（每 5 分钟）评估规则，命中后去抖并推送，记录 `lastTriggeredAt`。

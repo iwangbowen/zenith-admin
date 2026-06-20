@@ -1,6 +1,6 @@
 # 行为分析
 
-行为分析页面（`/analytics/behavior`，权限 `analytics:view`）以 Tab 形式提供多维度的用户行为洞察，图表基于 `recharts`。
+行为分析页面（`/analytics/behavior`，权限 `analytics:view`）以 Tab 形式提供多维度的用户行为洞察，图表基于 `recharts`。多数统计接口支持 `days` / `limit` 查询，页面提供近 7 / 30 / 90 天切换；会话列表支持用户名与设备筛选，维度分布支持浏览器、操作系统、设备、地域、来源、引荐与页面维度。
 
 ## 概览
 
@@ -35,7 +35,7 @@
 
 ## 漏斗分析
 
-`POST /api/analytics/funnel` —— 自定义多步转化漏斗。每步可按 `pagePath` / `eventName` 等定义，返回各步用户数、整体转化率、步间转化率与流失数。
+`POST /api/analytics/funnel` —— 自定义多步转化漏斗。每步可按 `eventType` / `eventName` / `pagePath` / `elementKey` 定义，返回各步用户数、整体转化率、步间转化率与流失数。
 
 ```jsonc
 // 请求体示例
@@ -48,7 +48,7 @@
 
 ## 留存分析
 
-`GET /api/analytics/retention?days=N` —— 按首次访问日期分群的 cohort 留存热力表（Day0…DayN），单元格颜色深浅表示留存率。
+`GET /api/analytics/retention?days=N` —— 按首次访问日期分群的 cohort 留存热力表（Day0…最多 Day7），单元格颜色深浅表示留存率。
 
 ## 路径分析
 
@@ -56,13 +56,15 @@
 
 ## 用户行为时间线
 
+`GET /api/analytics/user-stats?days=N&limit=N` —— 用户排行：总事件、页面访问、访问页面数、功能使用、总停留与最近活跃时间。
+
 在「用户分析」Tab 点击某用户打开侧边栏，`GET /api/analytics/user-timeline?userId=X` 返回该用户完整事件序列（时间 + 事件 + 页面/功能），用于单用户行为回溯（轻量级 session replay）。
 
 ## 维度分布
 
 `GET /api/analytics/dimension?dimension=X` —— 按浏览器 / 操作系统 / 设备 / 地域 / 来源 / 引荐 / 页面分布，饼图 + 占比表。
 
-## Web Vitals 性能
+## Web Vitals 性能接口
 
 `GET /api/analytics/perf-stats` —— 各性能指标的样本数、均值、P75 / P90 / P99 及评级（good / needs-improvement / poor，按 Web Vitals 阈值）。
 
@@ -70,6 +72,6 @@
 
 - `GET /api/analytics/heatmap-pages` 列出有区域点击数据的页面与区域；
 - `GET /api/analytics/heatmap?pagePath=&componentArea=` 返回归一化坐标点；
-- 前端用 Canvas 绘制蓝→红渐变热点图。
+- 前端用 Canvas 绘制热点图。
 
 > 热力图依赖手动接入 `trackAreaClick`（见 [埋点采集 SDK](./tracking#手动埋点-api)）。

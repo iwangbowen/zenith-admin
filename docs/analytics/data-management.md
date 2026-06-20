@@ -1,6 +1,6 @@
 # 数据管理
 
-数据管理页面（`/analytics/data`，权限 `analytics:manage`）用于查阅原始埋点、治理事件字典、查看聚合并配置采集策略。
+数据管理页面（`/analytics/data`，权限 `analytics:manage`）用于查阅原始埋点、治理事件字典、查看聚合并配置采集与保留策略。
 
 ## 事件明细
 
@@ -13,12 +13,12 @@
 
 ### 导出与清理
 
-- 导出 Excel：`GET /api/analytics/events/export`；导出 CSV：`/export/csv`（权限 `analytics:export`）。
-- 清除数据：`DELETE /api/analytics/clean?days=N`（保留 N 天前删除，`days=0` 清空），同步清理过期会话。
+- 导出 Excel：`GET /api/analytics/events/export`；导出 CSV：`GET /api/analytics/events/export/csv`（权限 `analytics:export`），沿用事件列表筛选条件。
+- 清除数据：`DELETE /api/analytics/clean?days=N`（删除 N 天前数据，`days=0` 清空），同步清理会话。
 
 ## 事件字典（埋点治理）
 
-`GET /api/analytics/event-meta` —— 事件元数据管理，登记每个 `eventName` 的显示名、分类、描述、属性 schema 与状态（启用 / 废弃 / 屏蔽），并统计触发次数与首次/最近时间。
+`GET /api/analytics/event-meta` —— 事件元数据管理，登记每个 `eventName` 的显示名、分类、描述、属性 schema 与状态（启用 / 废弃 / 屏蔽），并统计触发次数与首次/最近时间；支持关键词、状态、分类筛选。
 
 - 采集时自动登记带显式 `eventName` 的事件（`touchEventMeta`）。
 - 支持手动 CRUD：`POST` / `PUT /{id}` / `DELETE /{id}`。
@@ -28,13 +28,13 @@
 
 `GET /api/analytics/rollup?days=N` —— 展示每日预聚合指标（PV / UV / 会话 / 事件 / 跳出会话 / 总停留时长），来自 `analytics_daily_rollup` 表。
 
-- 定时任务 `analyticsRollupDaily`（每日 01:00）自动重建昨日聚合。
+- 定时任务 `analyticsRollupDaily`（每日 01:00）自动重建最近 2 个完整自然日的聚合。
 - 可点击「重建聚合」手动触发 `POST /api/analytics/rollup/rebuild?days=N`。
 - 趋势查询默认实时计算；聚合表用于长周期 / 大数据量提速。
 
 ## 采集设置
 
-`GET` / `PUT /api/analytics/settings` —— SDK 远程配置的来源，可调整：
+`GET` / `PUT /api/analytics/settings` —— 采集与保留配置，可调整：
 
 | 配置 | 说明 |
 |------|------|

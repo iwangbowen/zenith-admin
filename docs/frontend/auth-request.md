@@ -12,6 +12,9 @@
 | `TOKEN_KEY` | `zenith_token` | Access Token |
 | `REFRESH_TOKEN_KEY` | `zenith_refresh_token` | Refresh Token，用于自动续期 |
 | `PREFERENCES_KEY` | `zenith_preferences` | 用户偏好设置（主题、布局等）|
+| `TABS_STORAGE_KEY` | `zenith_tabs` | 多标签页状态 |
+
+`useAuth` 初始化时读取 `TOKEN_KEY`，存在 token 时请求 `GET /api/auth/me` 获取当前用户与权限；登录和注册成功后写入 access token / refresh token，再刷新用户信息。退出登录时清理 token、偏好设置和标签页缓存，并以静默请求通知 `/api/auth/logout`。
 
 ## 请求封装
 
@@ -22,9 +25,11 @@
 主要职责：
 
 - 自动附加 Bearer Token
+- 非 `FormData` 请求自动设置 `Content-Type: application/json`
 - 统一处理接口响应
 - Access Token 过期时，自动用 Refresh Token 换取新 token 并重试
 - 在 401（无法续期）场景下跳转登录页
+- 支持 `silent` 静默错误提示、`skipAuth` 跳过 401 自动刷新、`postForm` 上传进度和 `download` 文件下载
 
 ## 与后端的协作方式
 
@@ -35,6 +40,26 @@
 ```http
 Authorization: Bearer <token>
 ```
+
+`FormData` 上传不手动设置 `Content-Type`，由浏览器自动补充 multipart boundary。
+
+### 401 刷新流程
+
+请求返回 401 时，请求封装会读取 `REFRESH_TOKEN_KEY` 并调用：
+
+```http
+POST /api/auth/refresh
+```
+
+请求体为：
+
+```json
+{
+  "refreshToken": "<refresh-token>"
+}
+```
+
+刷新成功后更新 `TOKEN_KEY` 中的 access token，并重试原请求；刷新失败或重试仍为 401 时，清理 `TOKEN_KEY` / `REFRESH_TOKEN_KEY` 并跳转到 `${BASE_URL}/login`。并发刷新由内部 `refreshing` Promise 复用，避免同时发起多次刷新请求。
 
 ### 响应读取
 
@@ -47,6 +72,8 @@ Authorization: Bearer <token>
   "data": {}
 }
 ```
+
+429 响应会读取 `Retry-After` 头并返回 `retryAfterSeconds`；503 响应会触发 `maintenance:enabled` 事件，用于展示维护模式覆盖层。
 
 ### 共享类型
 
@@ -102,6 +129,21 @@ VITE_WS_BASE_URL=wss://api.yourdomain.com
 :::
 
 > **注意**：`VITE_API_PROXY_TARGET` 不带 `VITE_` 前缀以外的特殊声明，Vite 不会将它注入到客户端 bundle 中（因为 `loadEnv` 在 `vite.config.ts` 中以非 `import.meta.env` 方式读取），后端地址不会泄露到生产包。
+
+## 会员端独立请求实例
+
+会员前台使用独立请求封装：
+
+`packages/web/src/member/utils/member-request.ts`
+
+会员 token 与后台管理员 token 隔离：
+
+| 常量 | Key | 说明 |
+|------|-----|------|
+| `MEMBER_TOKEN_KEY` | `zenith_member_token` | 会员 Access Token |
+| `MEMBER_REFRESH_TOKEN_KEY` | `zenith_member_refresh_token` | 会员 Refresh Token |
+
+`memberRequest` 携带会员 token；401 时调用 `POST /api/member/auth/refresh` 刷新，失败后清理会员 token 并跳转 `/member.html#/login`。会员端不要复用后台的 `request.ts`。
 
 ## 开发建议
 

@@ -15,6 +15,8 @@
 - 右上角内置「列设置」下拉菜单，用户可勾选/取消勾选各列的显示状态
 - 列显隐配置自动持久化到 `localStorage`（key 默认根据页面路径 + 列 key 自动生成）
 - 操作列（key/title 为 `action`/`actions`/`operation`/`operations`/`操作`）默认不可隐藏
+- 可选展示刷新按钮，并内置表格尺寸、边框/斑马纹显示设置和全屏展示按钮
+- 分页配置会自动补充 `showTotal`、`showSizeChanger` 和 `[10, 20, 50, 100]` 页大小选项
 - 完全透传 Semi Design `TableProps`，使用方式与 `<Table>` 一致
 
 ### ConfigurableTable 扩展 Props
@@ -25,6 +27,8 @@
 | `columnSettingsKey` | `string` | 自动生成 | 自定义 localStorage 存储 key |
 | `alwaysVisibleColumnKeys` | `string[]` | `[]` | 额外指定不可隐藏的列 key |
 | `columnSettingsLabel` | `string` | `'列设置'` | 列设置按钮文字 |
+| `onRefresh` | `() => void` | — | 传入后显示右上角刷新按钮 |
+| `refreshLoading` | `boolean` | `false` | 刷新按钮 loading 状态 |
 
 ### ConfigurableTable 使用示例
 
@@ -37,6 +41,8 @@ import ConfigurableTable from '@/components/ConfigurableTable';
   columns={columns}
   dataSource={data?.list ?? []}
   loading={loading}
+  onRefresh={() => void fetchList()}
+  refreshLoading={loading}
   rowKey="id"
   size="small"
   empty="暂无数据"
@@ -186,15 +192,15 @@ const [regionCodes, setRegionCodes] = useState<string[]>();
 
 ## 富文本编辑器（wangEditor）
 
-**使用场景**：仅用于**通知公告**的内容编辑，其他场景不建议使用富文本。
+**使用场景**：用于通知公告内容编辑和工作流表单富文本字段。
 
-通知公告编辑页使用 [wangEditor](https://www.wangeditor.com/) 作为富文本编辑器，支持：
+公共组件 `RichTextEditor` 使用 [wangEditor](https://www.wangeditor.com/) 作为富文本编辑器，支持：
 
 - 文字格式化（粗体、颜色、字号等）
 - 图片上传（通过 `POST /api/files/upload` 上传，自动插入编辑器）
 - 编辑器上传请求携带 `Authorization: Bearer <token>` 头
 
-**图片上传集成**：编辑器配置了自定义上传函数，上传成功后将返回的 URL 插入到编辑器内容中。相关配置在 `packages/web/src/pages/system/announcements/` 的公告编辑组件中实现。
+**图片上传集成**：编辑器配置了自定义上传函数，上传成功后将返回的 URL 插入到编辑器内容中。相关配置在 `packages/web/src/components/RichTextEditor.tsx` 中实现。
 
 ---
 
@@ -238,3 +244,76 @@ const { items, loading, getLabel } = useDictItems('common_status');
 // items: DictItem[]，每项包含 { value, label, color, ... }
 // getLabel('enabled') => '启用'
 ```
+
+---
+
+## 其他通用基础组件
+
+| 组件 | 文件位置 | 用途 |
+| --- | --- | --- |
+| `AppModal` | `packages/web/src/components/AppModal.tsx` | 带全屏/还原按钮的 Semi `Modal` 封装，表单弹窗和文件预览弹窗复用 |
+| `AppLogo` | `packages/web/src/components/AppLogo.tsx` | 应用 Logo，支持不同尺寸和样式 |
+| `AnnouncementDetailModal` | `packages/web/src/components/AnnouncementDetailModal.tsx` | 公告详情弹窗，支持加载态和上一条/下一条导航 |
+| `ApprovalTimeline` | `packages/web/src/components/ApprovalTimeline.tsx` | 审批流时间线，展示发起、审批任务和流程结束节点 |
+| `ColorPickerInput` | `packages/web/src/components/ColorPickerInput.tsx` | Semi `ColorPicker` 表单封装，值统一为颜色字符串 |
+| `CronBuilderModal` | `packages/web/src/components/CronBuilderModal.tsx` | 6 字段 Cron 表达式可视化编辑弹窗 |
+| `CronBuilderPopover` | `packages/web/src/components/CronBuilderPopover.tsx` | Cron 快速选择 Popover |
+| `IconPicker` | `packages/web/src/components/IconPicker.tsx` | lucide 图标选择器，用于菜单图标等配置 |
+| `PasswordStrengthMeter` | `packages/web/src/components/PasswordStrengthMeter.tsx` | 密码强度与策略达标提示 |
+| `SignaturePad` | `packages/web/src/components/SignaturePad.tsx` | Canvas 手写签名板，输出 PNG data URL |
+| `UserAvatar` | `packages/web/src/components/UserAvatar.tsx` | 用户头像展示，缺省头像按名称生成稳定色块 |
+| `Watermark` | `packages/web/src/components/Watermark.tsx` | 页面水印覆盖层 |
+
+## 业务选择与权限组件
+
+| 组件 | 文件位置 | 用途 |
+| --- | --- | --- |
+| `DepartmentSelect` | `packages/web/src/components/DepartmentSelect.tsx` | 从 `GET /api/departments` 拉取启用部门树，支持单选/多选 |
+| `DictSelect` | `packages/web/src/components/DictSelect.tsx` | 按 `dictCode` 拉取字典项，支持单选/多选 |
+| `UserSelect` | `packages/web/src/components/UserSelect.tsx` | 从 `GET /api/users/all` 拉取用户选项，支持单选/多选 |
+| `UserTransferSelect` | `packages/web/src/components/UserTransferSelect.tsx` | 用户穿梭选择器，支持按部门组织展示 |
+| `MenuPermissionPanel` | `packages/web/src/components/permissions/MenuPermissionPanel.tsx` | 菜单权限树面板，角色和用户授权场景复用 |
+| `DataScopePanel` | `packages/web/src/components/permissions/DataScopePanel.tsx` | 数据权限范围面板，角色和用户数据权限场景复用 |
+
+## 布局、导航与状态组件
+
+| 组件 | 文件位置 | 用途 |
+| --- | --- | --- |
+| `MasterDetailLayout` | `packages/web/src/components/MasterDetailLayout.tsx` | 主从分栏布局，支持拖拽宽度和本地持久化 |
+| `NavListPanel` | `packages/web/src/components/NavListPanel.tsx` | 带标题、搜索、加载、空状态和底部插槽的列表面板 |
+| `BreadcrumbMenuPopover` | `packages/web/src/components/BreadcrumbMenuPopover.tsx` | 面包屑中的菜单 Popover，支持目录层级跳转 |
+| `MenuSearchInput` | `packages/web/src/components/MenuSearchInput.tsx` | 菜单搜索入口，配合全局快捷键使用 |
+| `MenuCommandPalette` | `packages/web/src/components/MenuCommandPalette.tsx` | 菜单命令面板，支持搜索和快速跳转 |
+| `NProgress` | `packages/web/src/components/NProgress.tsx` | 顶部路由切换进度条 |
+| `PageErrorBoundary` | `packages/web/src/components/PageErrorBoundary.tsx` | 页面级错误边界和路由错误边界 |
+| `LockScreen` | `packages/web/src/components/LockScreen.tsx` | 后台锁屏界面，支持密码校验后解锁 |
+| `ForceChangePasswordModal` | `packages/web/src/components/ForceChangePasswordModal.tsx` | 强制修改密码弹窗 |
+| `MaintenanceOverlay` | `packages/web/src/components/MaintenanceOverlay.tsx` | 维护模式覆盖层 |
+| `QuickChatButton` | `packages/web/src/components/QuickChatButton.tsx` | 快捷聊天悬浮入口 |
+| `ElectronTitleBar` | `packages/web/src/components/ElectronTitleBar.tsx` | Electron 环境自定义标题栏 |
+
+## 文件与预览组件
+
+| 组件 | 文件位置 | 用途 |
+| --- | --- | --- |
+| `FileAttachment` | `packages/web/src/components/FileAttachment/index.tsx` | 附件上传/展示组件 |
+| `FilePreviewModal` | `packages/web/src/components/FilePreviewModal/index.tsx` | 全站统一文件预览弹窗 |
+| `DocxPreviewPanel` | `packages/web/src/components/DocxPreviewPanel.tsx` | Word `.docx` 只读预览 |
+| `ExcelPreviewPanel` | `packages/web/src/components/ExcelPreviewPanel.tsx` | Excel/CSV 的 Univer 只读预览 |
+| `JsonPreviewPanel` | `packages/web/src/components/JsonPreviewPanel.tsx` | JSON 只读预览 |
+| `MarkdownPreviewPanel` | `packages/web/src/components/MarkdownPreviewPanel.tsx` | Markdown 只读预览 |
+| `MonacoPreviewPanel` | `packages/web/src/components/MonacoPreviewPanel.tsx` | 代码和纯文本只读预览 |
+| `ZipPreviewPanel` | `packages/web/src/components/ZipPreviewPanel.tsx` | ZIP 目录树预览 |
+
+## 日志与工作流组件
+
+| 组件 | 文件位置 | 用途 |
+| --- | --- | --- |
+| `LoginLogsTable` | `packages/web/src/components/logs/LoginLogsTable.tsx` | 登录日志表格 |
+| `OperationLogsTable` | `packages/web/src/components/logs/OperationLogsTable.tsx` | 操作日志表格 |
+| `SavedViewsBar` | `packages/web/src/components/workflow/SavedViewsBar.tsx` | 列表筛选条件保存视图条 |
+| `WorkflowApproverPreview` | `packages/web/src/components/workflow/WorkflowApproverPreview.tsx` | 提交前审批链路预览 |
+| `WorkflowGraphView` | `packages/web/src/components/workflow/WorkflowGraphView.tsx` | 流程图只读预览 |
+| `WorkflowInstanceDetailPanel` | `packages/web/src/components/workflow/WorkflowInstanceDetailPanel.tsx` | 流程实例详情面板 |
+| `WorkflowInstanceDetailSheet` | `packages/web/src/components/workflow/WorkflowInstanceDetailSheet.tsx` | 流程实例详情抽屉 |
+| `WorkflowNodeListView` | `packages/web/src/components/workflow/WorkflowNodeListView.tsx` | 流程节点线性列表 |
