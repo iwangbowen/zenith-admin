@@ -192,18 +192,12 @@ function modeToSymbolic(mode: number) {
 /** 将 rwxr-xr-x 格式的权限字符串转为八进制字符串 */
 function permStringToOctal(perm?: string): string {
   if (!perm) return '';
-  const p = perm.replace(/^[dl\-]/, '').slice(0, 9);
+  const p = perm.replace(/^[dl-]/, '').slice(0, 9);
   const masks = [0o400, 0o200, 0o100, 0o040, 0o020, 0o010, 0o004, 0o002, 0o001];
   let mode = 0;
   for (let i = 0; i < 9 && i < p.length; i++) if (p[i] !== '-') mode |= masks[i];
   return modeToOctal(mode);
 }
-
-const CHMOD_ROWS = [
-  { label: '读 (r)', bits: [0o400, 0o040, 0o004] as const },
-  { label: '写 (w)', bits: [0o200, 0o020, 0o002] as const },
-  { label: '执行 (x)', bits: [0o100, 0o010, 0o001] as const },
-];
 
 interface ChmodEditorProps {
   readonly value: string;
@@ -330,7 +324,7 @@ function FolderPickerModal({ visible, title, initialPath, drives = [], onConfirm
             {pickerParent !== null && (
               <button
                 type="button"
-                onClick={() => void loadPickerDir(pickerParent!)}
+                onClick={() => void loadPickerDir(pickerParent)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 14px', background: 'none', border: 'none', borderBottom: '1px solid var(--semi-color-border)', cursor: 'pointer', color: 'var(--semi-color-text-2)', font: 'inherit', fontSize: 13 }}
               >
                 <Icon icon="mdi:arrow-up" width={15} height={15} />
@@ -427,9 +421,8 @@ function VirtualGrid({ entries, selectedPaths, onSelect, onOpen, onContextMenu }
 
   const rowCount = Math.ceil(entries.length / cols);
 
-  // 每行用实际组件渲染，高度由 DOM 决定。作为总高度的估算基准
+  // 每行用实际组件渲染，高度由 DOM 决定。作为虚拟滚动可视区估算基准
   const estimatedRowH = VG_CARD_H + VG_GAP;
-  const totalH = rowCount * estimatedRowH + VG_PAD * 2;
 
   const firstRow = Math.max(0, Math.floor((scrollTop - VG_PAD) / estimatedRowH) - VG_OVERSCAN);
   const lastRow  = Math.min(rowCount - 1, Math.ceil((scrollTop + size.h - VG_PAD) / estimatedRowH) + VG_OVERSCAN);
@@ -506,7 +499,6 @@ export default function FileManagerPage() {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
-  const [previewLoadingEntry, setPreviewLoadingEntry] = useState<string | null>(null);
   const previewBlobUrlsRef = useRef<string[]>([]);
   const previewSessionRef = useRef(0);
   // 文件夹选择器（移动/复制）
@@ -640,7 +632,6 @@ export default function FileManagerPage() {
         (e) => e.type !== 'dir' && NON_SVG_IMAGE_EXTS.has((e.name.split('.').pop() ?? '').toLowerCase()),
       );
       const clickedIndex = Math.max(0, imageEntries.findIndex((e) => e.path === entry.path));
-      setPreviewLoadingEntry(entry.path);
       previewSessionRef.current += 1;
       const mySession = previewSessionRef.current;
       const token = localStorage.getItem(TOKEN_KEY) ?? '';
@@ -681,8 +672,6 @@ export default function FileManagerPage() {
         });
       } catch (err) {
         Toast.error(err instanceof Error ? err.message : '图片加载失败');
-      } finally {
-        setPreviewLoadingEntry(null);
       }
     } else {
       const mimeType = getFileMimeType(entry.name);
@@ -692,7 +681,6 @@ export default function FileManagerPage() {
         Toast.warning('该文件不支持预览，请下载后查看');
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredEntries]);
 
   const handlePaste = async () => {
