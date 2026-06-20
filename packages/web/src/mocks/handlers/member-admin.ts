@@ -57,7 +57,7 @@ export const memberAdminHandlers = [
   http.delete('/api/members/:id', () => ok(null, '删除成功')),
 
   // ── 会员等级 ─────────────────────────────────────────────────────────────
-  http.get('/api/member-levels', () => paginated(mockMemberLevels)),
+  http.get('/api/member-levels', () => ok(mockMemberLevels)),
   http.get('/api/member-levels/:id', ({ params }) =>
     ok(mockMemberLevels.find((l) => l.id === Number(params.id)) ?? null),
   ),
