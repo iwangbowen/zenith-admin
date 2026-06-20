@@ -20,6 +20,9 @@ import {
   copyEntry,
   compressToZip,
   chmodEntry,
+  extractArchive,
+  computeChecksum,
+  searchFiles,
 } from '../services/terminal-files.service';
 
 /**
@@ -253,6 +256,51 @@ const chmodRoute = defineOpenAPIRoute({
   },
 });
 
+const extractRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/extract', tags: ['TerminalFiles'], summary: '解压压缩包（zip/tar/gz 等）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM, audit: { description: '文件管理器解压', module: '文件管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({
+      path: z.string().min(1),
+      destPath: z.string().optional(),
+    })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(TerminalFileEntryDTO, '解压成功') },
+  }),
+  handler: async (c) => {
+    const { path: archivePath, destPath } = c.req.valid('json');
+    return c.json(okBody(await extractArchive(archivePath, destPath), '解压成功'), 200);
+  },
+});
+
+const checksumRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/checksum', tags: ['TerminalFiles'], summary: '计算文件校验和',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
+    request: { query: z.object({ path: z.string().min(1), algo: z.enum(['md5', 'sha1', 'sha256']).default('sha256') }) },
+    responses: { ...commonErrorResponses, ...ok(z.object({ algo: z.string(), hash: z.string(), size: z.number() }), '校验和') },
+  }),
+  handler: async (c) => {
+    const { path: filePath, algo } = c.req.valid('query');
+    return c.json(okBody(await computeChecksum(filePath, algo)), 200);
+  },
+});
+
+const searchRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/search', tags: ['TerminalFiles'], summary: '递归搜索文件名',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: TERMINAL_PERM })] as const,
+    request: { query: z.object({ dir: z.string().min(1), keyword: z.string().min(1).max(128) }) },
+    responses: { ...commonErrorResponses, ...ok(z.array(TerminalFileEntryDTO), '搜索结果') },
+  }),
+  handler: async (c) => {
+    const { dir, keyword } = c.req.valid('query');
+    return c.json(okBody(await searchFiles(dir, keyword)), 200);
+  },
+});
+
 terminalFilesRouter.openapiRoutes([
   rootInfoRoute,
   listRoute,
@@ -268,6 +316,9 @@ terminalFilesRouter.openapiRoutes([
   copyEntryRoute,
   compressRoute,
   chmodRoute,
+  extractRoute,
+  checksumRoute,
+  searchRoute,
 ] as const);
 
 export default terminalFilesRouter;

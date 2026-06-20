@@ -31,6 +31,8 @@ export const ProcessInfoDTO = z
     priorityClass: z.string().nullable(),
     ports: z.string().nullable(),
     connections: z.array(ProcessNetConnDTO).nullable(),
+    cwd: z.string().nullable().optional(),
+    env: z.record(z.string(), z.string()).nullable().optional(),
   })
   .openapi('ProcessInfo');
 

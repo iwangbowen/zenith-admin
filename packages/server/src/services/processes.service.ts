@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { promises as fsp } from 'node:fs';
 import os from 'node:os';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../lib/datetime';
@@ -222,7 +223,10 @@ async function getProcessDetailUnix(pid: number): Promise<ProcessInfo> {
       if (!Number.isNaN(d.getTime())) startTime = formatDateTime(d);
     }
     const fullCmd = cmdResult.status === 'fulfilled' ? cmdResult.value.stdout.trim() : null;
-    const connections = await getConnectionsByPid(pid).catch(() => null);
+    const [connections, procExtra] = await Promise.all([
+      getConnectionsByPid(pid).catch(() => null),
+      readProcEnvCwd(pid),
+    ]);
     return {
       pid: Number.parseInt(pidStr, 10),
       ppid: Number.parseInt(ppidStr, 10) || 0,
@@ -239,11 +243,30 @@ async function getProcessDetailUnix(pid: number): Promise<ProcessInfo> {
       priorityClass: null,
       ports: portsCache?.get(Number.parseInt(pidStr, 10)) ?? null,
       connections,
+      cwd: procExtra.cwd,
+      env: procExtra.env,
     };
   } catch (err) {
     if (err instanceof HTTPException) throw err;
     throw new HTTPException(500, { message: `获取进程详情失败: ${String(err)}` });
   }
+}
+
+/** 读取进程的工作目录与环境变量（仅 Linux /proc；无权限时返回 null） */
+async function readProcEnvCwd(pid: number): Promise<{ env: Record<string, string> | null; cwd: string | null }> {
+  if (process.platform !== 'linux') return { env: null, cwd: null };
+  const env: Record<string, string> = {};
+  try {
+    const raw = await fsp.readFile(`/proc/${pid}/environ`, 'utf8');
+    for (const pair of raw.split('\0')) {
+      if (!pair) continue;
+      const i = pair.indexOf('=');
+      if (i > 0) env[pair.slice(0, i)] = pair.slice(i + 1);
+    }
+  } catch { /* 无权限或进程已退出 */ }
+  let cwd: string | null = null;
+  try { cwd = await fsp.readlink(`/proc/${pid}/cwd`); } catch { /* 无权限 */ }
+  return { env: Object.keys(env).length > 0 ? env : null, cwd };
 }
 
 async function getProcessDetailWindows(pid: number): Promise<ProcessInfo> {

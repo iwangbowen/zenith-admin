@@ -76,7 +76,8 @@ function parentPosix(p: string): string {
 
 type DialogState =
   | { mode: 'createFile' | 'createDir'; baseDir: string; value: string }
-  | { mode: 'rename'; baseDir: string; oldPath: string; value: string };
+  | { mode: 'rename'; baseDir: string; oldPath: string; value: string }
+  | { mode: 'chmod'; targetPath: string; value: string };
 
 export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps) {
   const [treeData, setTreeData] = useState<SftpNode[]>([]);
@@ -154,6 +155,11 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
       const to = joinPosix(dialog.baseDir, name);
       const res = await request.post(`${api}/rename`, { from: dialog.oldPath, to });
       if (res.code === 0) { Toast.success('已重命名'); setDialog(null); void reloadDir(dialog.baseDir); }
+    } else if (dialog.mode === 'chmod') {
+      const mode = Number.parseInt(name, 8);
+      if (Number.isNaN(mode)) { Toast.error('请输入有效的八进制权限值，如 755'); return; }
+      const res = await request.post(`${api}/chmod`, { path: dialog.targetPath, mode });
+      if (res.code === 0) { Toast.success('权限已修改'); setDialog(null); void reloadDir(parentPosix(dialog.targetPath)); }
     } else {
       const target = joinPosix(dialog.baseDir, name);
       const type = dialog.mode === 'createDir' ? 'dir' : 'file';
@@ -225,6 +231,7 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
         {isDir && <Dropdown.Item onClick={() => setDialog({ mode: 'createDir', baseDir, value: '' })}>新建文件夹</Dropdown.Item>}
         {isDir && <Dropdown.Item onClick={() => triggerUpload(baseDir)}>上传到此处</Dropdown.Item>}
         <Dropdown.Item onClick={() => setDialog({ mode: 'rename', baseDir: parentPosix(node.fullPath), oldPath: node.fullPath, value: node.label as string })}>重命名</Dropdown.Item>
+        <Dropdown.Item onClick={() => setDialog({ mode: 'chmod', targetPath: node.fullPath, value: '755' })}>修改权限</Dropdown.Item>
         <Dropdown.Item type="danger" onClick={() => void handleDelete(node)}>删除</Dropdown.Item>
       </Dropdown.Menu>
     );
@@ -295,7 +302,7 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
 
       {/* 新建 / 重命名对话框 */}
       <Modal
-        title={dialog?.mode === 'rename' ? '重命名' : dialog?.mode === 'createDir' ? '新建文件夹' : '新建文件'}
+        title={dialog?.mode === 'rename' ? '重命名' : dialog?.mode === 'chmod' ? '修改权限（八进制）' : dialog?.mode === 'createDir' ? '新建文件夹' : '新建文件'}
         visible={!!dialog}
         onCancel={() => setDialog(null)}
         onOk={() => void submitDialog()}
@@ -305,7 +312,7 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
         <Input
           value={dialog?.value ?? ''}
           autoFocus
-          placeholder="请输入名称"
+          placeholder={dialog?.mode === 'chmod' ? '如 755 / 644' : '请输入名称'}
           onChange={(v) => setDialog((d) => (d ? { ...d, value: v } : d))}
           onEnterPress={() => void submitDialog()}
         />

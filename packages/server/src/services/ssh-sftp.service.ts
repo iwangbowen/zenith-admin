@@ -236,6 +236,16 @@ export async function sftpDelete(userId: number, profileId: number, targetPath: 
   });
 }
 
+/** 修改远程文件/目录权限（chmod） */
+export async function sftpChmod(userId: number, profileId: number, targetPath: string, mode: number): Promise<void> {
+  if (!targetPath?.trim()) throw new HTTPException(400, { message: '缺少路径' });
+  const resolved = posixPath.resolve('/', targetPath);
+  await withSftp(userId, profileId, async (c) => {
+    if (!(await c.exists(resolved))) throw new HTTPException(404, { message: '路径不存在' });
+    await c.chmod(resolved, mode);
+  });
+}
+
 /** 重命名 / 移动远程文件或目录 */
 export async function sftpRename(
   userId: number,

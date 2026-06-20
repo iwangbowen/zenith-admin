@@ -22,6 +22,7 @@ import {
   sftpCreate,
   sftpDelete,
   sftpRename,
+  sftpChmod,
   sftpDownload,
   sftpUpload,
 } from '../services/ssh-sftp.service';
@@ -142,6 +143,22 @@ const deleteEntryRoute = defineOpenAPIRoute({
   },
 });
 
+const chmodEntryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/:profileId/chmod', tags: ['SshSftp'], summary: '修改远程文件/目录权限',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: 'SFTP 修改权限', module: 'Web 终端' } })] as const,
+    request: { params: ProfileIdParam, body: { content: jsonContent(z.object({ path: z.string().min(1), mode: z.number().int().min(0).max(0o7777) })), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('权限已修改') },
+  }),
+  handler: async (c) => {
+    const user = currentUser();
+    const { path: targetPath, mode } = c.req.valid('json');
+    await sftpChmod(user.userId, Number(c.req.valid('param').profileId), targetPath, mode);
+    return c.json(okBody(null, '权限已修改'), 200);
+  },
+});
+
 const downloadRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/:profileId/download', tags: ['SshSftp'], summary: '下载远程文件',
@@ -213,6 +230,7 @@ router.openapiRoutes([
   createEntryRoute,
   renameEntryRoute,
   deleteEntryRoute,
+  chmodEntryRoute,
   downloadRoute,
   uploadRoute,
 ] as const);

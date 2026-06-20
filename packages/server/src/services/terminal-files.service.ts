@@ -1,10 +1,13 @@
-import { promises as fs, createReadStream, existsSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { promises as fs, createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs';
+import { execFileSync, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { Readable } from 'node:stream';
 import * as os from 'node:os';
 import path from 'node:path';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../lib/datetime';
+
+const execFileAsync = promisify(execFile);
 
 /** 将 fs.stat().mode 转为 rwxr-xr-x 格式的权限字符串 */
 function modeToPermissionString(mode: number): string {
@@ -415,7 +418,7 @@ export async function compressToZip(paths: string[], destPath: string): Promise<
   await fs.mkdir(path.dirname(dst), { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
-    const outStream = require('node:fs').createWriteStream(dst);
+    const outStream = createWriteStream(dst);
     const archive = archiver('zip', { zlib: { level: 6 } });
     outStream.on('close', resolve);
     archive.on('error', reject);
@@ -444,6 +447,93 @@ export async function chmodEntry(filePath: string, mode: number): Promise<void> 
     const msg = err instanceof Error ? err.message : String(err);
     throw new HTTPException(400, { message: `chmod 失败: ${msg}` });
   }
+}
+
+const EXEC_OPTS = { timeout: 180_000, maxBuffer: 64 * 1024 * 1024 } as const;
+
+/**
+ * 解压压缩包。支持 zip / tar / tar.gz / tgz / tar.bz2 / tar.xz / 单文件 gz。
+ * 优先使用系统 tar（Windows bsdtar 同时支持 zip），Unix 下 zip 回退到 unzip。
+ * @param archivePath 压缩包路径
+ * @param destDir 解压目标目录（默认压缩包所在目录）
+ */
+export async function extractArchive(archivePath: string, destDir?: string): Promise<TerminalFileEntry> {
+  const src = path.resolve(archivePath);
+  const stat = await fs.stat(src).catch(() => null);
+  if (!stat || !stat.isFile()) throw new HTTPException(404, { message: '压缩文件不存在' });
+  const lower = src.toLowerCase();
+  const dst = destDir?.trim() ? path.resolve(destDir) : path.dirname(src);
+  await fs.mkdir(dst, { recursive: true });
+  const isWin = os.platform() === 'win32';
+
+  try {
+    if (lower.endsWith('.zip')) {
+      if (isWin) {
+        await execFileAsync('tar', ['-xf', src, '-C', dst], EXEC_OPTS);
+      } else {
+        try {
+          await execFileAsync('unzip', ['-o', src, '-d', dst], EXEC_OPTS);
+        } catch {
+          await execFileAsync('tar', ['-xf', src, '-C', dst], EXEC_OPTS);
+        }
+      }
+    } else if (lower.endsWith('.gz') && !lower.endsWith('.tar.gz') && !lower.endsWith('.tgz')) {
+      const zlib = await import('node:zlib');
+      const data = await fs.readFile(src);
+      const out = zlib.gunzipSync(data);
+      const outName = path.basename(src).replace(/\.gz$/i, '') || 'extracted';
+      await fs.writeFile(path.join(dst, outName), out);
+    } else {
+      // tar / tar.gz / tgz / tar.bz2 / tar.xz：tar 自动识别压缩格式
+      await execFileAsync('tar', ['-xf', src, '-C', dst], EXEC_OPTS);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HTTPException(400, { message: `解压失败: ${msg.slice(0, 200)}` });
+  }
+  return buildEntry(dst);
+}
+
+/** 计算文件校验和（md5 / sha1 / sha256），流式读取避免大文件占用内存 */
+export async function computeChecksum(filePath: string, algo: 'md5' | 'sha1' | 'sha256'): Promise<{ algo: string; hash: string; size: number }> {
+  const src = path.resolve(filePath);
+  const stat = await fs.stat(src).catch(() => null);
+  if (!stat || !stat.isFile()) throw new HTTPException(404, { message: '文件不存在' });
+  const crypto = await import('node:crypto');
+  const hash = crypto.createHash(algo);
+  await new Promise<void>((resolve, reject) => {
+    const s = createReadStream(src);
+    s.on('data', (chunk) => hash.update(chunk));
+    s.on('end', () => resolve());
+    s.on('error', reject);
+  });
+  return { algo, hash: hash.digest('hex'), size: stat.size };
+}
+
+/** 递归搜索文件名（广度优先，限制访问节点数与结果数防止过载） */
+export async function searchFiles(dir: string, keyword: string, maxResults = 200): Promise<TerminalFileEntry[]> {
+  const root = path.resolve(dir);
+  const kw = keyword.trim().toLowerCase();
+  if (!kw) return [];
+  const results: TerminalFileEntry[] = [];
+  const queue: string[] = [root];
+  let visited = 0;
+  const MAX_VISITED = 60_000;
+  while (queue.length > 0 && results.length < maxResults && visited < MAX_VISITED) {
+    const cur = queue.shift() as string;
+    let dirents;
+    try { dirents = await fs.readdir(cur, { withFileTypes: true }); } catch { continue; }
+    for (const d of dirents) {
+      visited += 1;
+      const full = path.join(cur, d.name);
+      if (d.name.toLowerCase().includes(kw)) {
+        try { results.push(await buildEntry(full)); } catch { /* skip */ }
+        if (results.length >= maxResults) break;
+      }
+      if (d.isDirectory()) queue.push(full);
+    }
+  }
+  return results;
 }
 
 /** 构建单个条目的 TerminalFileEntry（含权限信息） */

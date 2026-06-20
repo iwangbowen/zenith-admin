@@ -497,6 +497,10 @@ export default function FileManagerPage() {
   const ctxUploadDirRef = useRef('');
   const ctxUploadInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{ name: string; progress: number }[]>([]);
+  const [checksum, setChecksum] = useState<{ entry: FsEntry; algo: 'md5' | 'sha1' | 'sha256'; hash: string; size: number; loading: boolean } | null>(null);
+  const [searchKw, setSearchKw] = useState('');
+  const [searchResults, setSearchResults] = useState<FsEntry[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
   // 图片画廈预览
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -771,6 +775,34 @@ export default function FileManagerPage() {
 
   // ── 上下文菜单 ────────────────────────────────────────────────────────────
 
+  const isArchive = (name: string) => /\.(zip|tgz|tbz2?|txz|gz|tar|tar\.gz|tar\.bz2|tar\.xz)$/i.test(name);
+
+  const handleExtract = async (entry: FsEntry) => {
+    Toast.info({ content: '正在解压…', duration: 1 });
+    const res = await request.post('/api/terminal-files/extract', { path: entry.path });
+    if (res.code === 0) { Toast.success('解压成功'); refresh(); }
+  };
+
+  const fetchChecksum = async (entry: FsEntry, algo: 'md5' | 'sha1' | 'sha256') => {
+    setChecksum({ entry, algo, hash: '', size: entry.size, loading: true });
+    const res = await request.get<{ algo: string; hash: string; size: number }>(
+      `/api/terminal-files/checksum?path=${encodeURIComponent(entry.path)}&algo=${algo}`,
+    );
+    setChecksum({ entry, algo, hash: res.code === 0 && res.data ? res.data.hash : '计算失败', size: res.data?.size ?? entry.size, loading: false });
+  };
+
+  const runSearch = async () => {
+    const kw = searchKw.trim();
+    if (!kw) { setSearchResults(null); return; }
+    setSearching(true);
+    try {
+      const res = await request.get<FsEntry[]>(`/api/terminal-files/search?dir=${encodeURIComponent(currentPath)}&keyword=${encodeURIComponent(kw)}`);
+      setSearchResults(res.code === 0 && res.data ? res.data : []);
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const openCtxMenu = (e: React.MouseEvent, entry: FsEntry) => {
     e.preventDefault();
     setCtxEntry({ entry, x: e.clientX, y: e.clientY });
@@ -795,6 +827,8 @@ export default function FileManagerPage() {
       { label: '复制到…', fn: () => { setFolderPicker({ mode: 'copy', entries: [entry] }); closeCtxMenu(); } },
       { label: '移动到…', fn: () => { setFolderPicker({ mode: 'move', entries: [entry] }); closeCtxMenu(); } },
       { label: '压缩为 ZIP', fn: () => { setDialog({ mode: 'compress', selEntries: [entry], value: `${entry.name}.zip` }); closeCtxMenu(); } },
+      ...(entry.type !== 'dir' && isArchive(entry.name) ? [{ label: '解压到此处', fn: () => { void handleExtract(entry); closeCtxMenu(); } }] : []),
+      ...(entry.type !== 'dir' ? [{ label: '校验和', fn: () => { void fetchChecksum(entry, 'sha256'); closeCtxMenu(); } }] : []),
       { label: '修改权限', fn: () => { setDialog({ mode: 'chmod', entry, value: permStringToOctal(entry.permissions) }); closeCtxMenu(); } },
       ...(entry.type === 'dir' ? [{ label: '上传到此目录', fn: () => { ctxUploadDirRef.current = entry.path; ctxUploadInputRef.current?.click(); closeCtxMenu(); } }] : []),
       { label: '删除', fn: () => { Modal.confirm({ title: '确定删除此项吗？', okType: 'danger', onOk: () => handleDelete([entry.path]) }); closeCtxMenu(); }, danger: true },
@@ -853,6 +887,12 @@ export default function FileManagerPage() {
                 <Dropdown.Item onClick={() => setFolderPicker({ mode: 'copy', entries: [r] })}>复制到…</Dropdown.Item>
                 <Dropdown.Item onClick={() => setFolderPicker({ mode: 'move', entries: [r] })}>移动到…</Dropdown.Item>
                 <Dropdown.Item onClick={() => setDialog({ mode: 'compress', selEntries: [r], value: `${r.name}.zip` })}>压缩为 ZIP</Dropdown.Item>
+                {r.type !== 'dir' && isArchive(r.name) && (
+                  <Dropdown.Item onClick={() => void handleExtract(r)}>解压到此处</Dropdown.Item>
+                )}
+                {r.type !== 'dir' && (
+                  <Dropdown.Item onClick={() => void fetchChecksum(r, 'sha256')}>校验和</Dropdown.Item>
+                )}
                 <Dropdown.Item onClick={() => setDialog({ mode: 'chmod', entry: r, value: permStringToOctal(r.permissions) })}>修改权限</Dropdown.Item>
                 <Dropdown.Divider />
                 <Dropdown.Item
@@ -1003,6 +1043,16 @@ export default function FileManagerPage() {
                   showClear
                   size="small"
                   style={{ width: 160 }}
+                />
+                <Input
+                  prefix={<Search size={13} />}
+                  placeholder="深度搜索(回车)"
+                  value={searchKw}
+                  onChange={setSearchKw}
+                  onEnterPress={() => void runSearch()}
+                  showClear
+                  size="small"
+                  style={{ width: 150 }}
                 />
                 <Tooltip content="刷新">
                   <Button size="small" theme="borderless" type="tertiary" icon={<RotateCcw size={13} />} loading={loading} onClick={refresh} />
@@ -1180,6 +1230,66 @@ export default function FileManagerPage() {
             onConfirm={(destDir) => void handleFolderPickerConfirm(destDir)}
             onCancel={() => setFolderPicker(null)}
           />
+
+          {/* ── 文件校验和 ── */}
+          <Modal
+            title="文件校验和"
+            visible={!!checksum}
+            onCancel={() => setChecksum(null)}
+            footer={null}
+            closeOnEsc
+            width={560}
+          >
+            {checksum && (
+              <div>
+                <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
+                  {checksum.entry.name} · {formatSize(checksum.size)}
+                </Typography.Text>
+                <Space spacing={4} style={{ marginBottom: 12 }}>
+                  {(['md5', 'sha1', 'sha256'] as const).map((a) => (
+                    <Button key={a} size="small" theme={checksum.algo === a ? 'solid' : 'light'} type={checksum.algo === a ? 'primary' : 'tertiary'}
+                      onClick={() => void fetchChecksum(checksum.entry, a)}>{a.toUpperCase()}</Button>
+                  ))}
+                </Space>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Input readOnly value={checksum.loading ? '计算中…' : checksum.hash} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                  <Button size="small" disabled={checksum.loading || !checksum.hash} onClick={() => { void navigator.clipboard?.writeText(checksum.hash); Toast.success('已复制'); }}>复制</Button>
+                </div>
+              </div>
+            )}
+          </Modal>
+
+          {/* ── 深度搜索结果 ── */}
+          <Modal
+            title={`搜索结果${searchResults ? `（${searchResults.length}${searchResults.length >= 200 ? '+' : ''}）` : ''}`}
+            visible={searchResults !== null}
+            onCancel={() => setSearchResults(null)}
+            footer={null}
+            closeOnEsc
+            width={620}
+          >
+            <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
+              在 {currentPath || '/'} 下递归搜索「{searchKw}」{searching ? ' · 搜索中…' : ''}
+            </Typography.Text>
+            <div style={{ maxHeight: 420, overflow: 'auto' }}>
+              {(searchResults ?? []).length === 0 && !searching && (
+                <Typography.Text type="tertiary">未找到匹配项</Typography.Text>
+              )}
+              {(searchResults ?? []).map((r) => (
+                <div key={r.path} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 4px', borderBottom: '1px solid var(--semi-color-fill-1)' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13 }}>{r.type === 'dir' ? '📁' : '📄'} {r.name}</div>
+                    <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 420, display: 'block' }}>{r.path}</Typography.Text>
+                  </div>
+                  <Button size="small" theme="borderless" onClick={() => {
+                    const parent = r.path.replace(/[/\\][^/\\]*$/, '') || r.path;
+                    void navigateTo(r.type === 'dir' ? r.path : parent);
+                    setSearchResults(null);
+                  }}>前往</Button>
+                </div>
+              ))}
+            </div>
+          </Modal>
         </>
       }
     />

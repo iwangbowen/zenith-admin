@@ -571,6 +571,10 @@ export default function ProcessesPage() {
                     </Typography.Text>
                   ),
                 },
+                ...(detailProcess.cwd ? [{
+                  key: '工作目录',
+                  value: <Typography.Text copyable style={{ wordBreak: 'break-all' }}>{detailProcess.cwd}</Typography.Text>,
+                }] : []),
               ]}
             />
             {/* 网络连接 */}
@@ -597,6 +601,24 @@ export default function ProcessesPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {/* 环境变量（Linux /proc） */}
+            {detailProcess.env && Object.keys(detailProcess.env).length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <Typography.Title heading={6} style={{ marginBottom: 8 }}>环境变量（{Object.keys(detailProcess.env).length}）</Typography.Title>
+                <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--semi-color-border)', borderRadius: 4 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: 'monospace' }}>
+                    <tbody>
+                      {Object.entries(detailProcess.env).map(([k, v]) => (
+                        <tr key={k} style={{ borderBottom: '1px solid var(--semi-color-fill-1)' }}>
+                          <td style={{ padding: '3px 8px', color: 'var(--semi-color-primary)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{k}</td>
+                          <td style={{ padding: '3px 8px', wordBreak: 'break-all' }}>{v}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
             </>
