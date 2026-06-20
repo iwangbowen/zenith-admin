@@ -309,7 +309,7 @@ export default function RolesPage() {
     {
       title: '用户',
       dataIndex: 'userPreview',
-      width: 150,
+      width: 180,
       render: (_: unknown, record: Role) => {
         const preview = record.userPreview ?? [];
         const count = record.userCount ?? 0;
