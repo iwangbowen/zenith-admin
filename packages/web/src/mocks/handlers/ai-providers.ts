@@ -5,6 +5,11 @@ import type { AiProvider, AiProviderConfig } from '@zenith/shared';
 const store = [...mockAiProviders];
 
 export const aiProvidersHandlers = [
+  // 测试连接（Demo 模拟）
+  http.post('/api/ai/providers/test-connection', async () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: { success: true, message: '连接成功（Demo 模拟）' } });
+  }),
+
   // 列表
   http.get('/api/ai/providers', () => {
     return HttpResponse.json({ code: 0, message: 'ok', data: store });
