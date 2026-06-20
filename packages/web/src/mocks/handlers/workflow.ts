@@ -81,10 +81,10 @@ export const workflowHandlers = [
     return ok({ list: paged, total, page, pageSize });
   }),
 
-  // 获取已发布的流程定义列表（发起申请时使用）
+  // 获取已发布的流程定义列表（发起申请时使用，返回数组而非分页对象）
   http.get('/api/workflows/definitions/published', () => {
     const list = mockWorkflowDefinitions.filter(d => d.status === 'published').map(resolveWorkflowDefinition);
-    return ok({ list, total: list.length, page: 1, pageSize: 100 });
+    return ok(list);
   }),
 
   // 获取单个流程定义
