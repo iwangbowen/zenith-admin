@@ -9,7 +9,7 @@
 | 能力 | 说明 |
 |------|------|
 | 页面浏览 | `AdminLayout` 全局接入 `usePageTracker`，所有后台页面自动记录 `$pageview` 进入 + `$pageleave` 离开（含停留时长），标题取自菜单 |
-| 元素点击 | 全局捕获 `button` / `a` / `[role=button]` / `input[type=submit|button]` / `[data-track]` 点击，上报 `$autocapture`（按钮文案作为 `elementLabel`） |
+| 元素点击 | 全局捕获 `button` / `a` / `[role=button]` / `input[type="submit"]` / `input[type="button"]` / `[data-track]` 点击，上报 `$autocapture`（按钮文案作为 `elementLabel`） |
 | Web Vitals | 自动采集 `LCP` / `INP` / `CLS` / `FCP` / `TTFB`，上报为 `perf` 事件（`eventName=$web_vitals`） |
 | API 监控 | 拦截 `fetch` / `XHR`，记录慢请求（>2s）与 4xx/5xx，上报 `api_request`；5xx / 网络失败额外转为 `http_error` 错误上报 |
 

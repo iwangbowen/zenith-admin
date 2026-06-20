@@ -8,7 +8,7 @@
 | `analytics_sessions` | 会话聚合（时长 / 页数 / 入口出口页 / 是否跳出） |
 | `analytics_daily_rollup` | 每日预聚合指标（`tenantId` 非空默认 0，保证 upsert 唯一约束生效） |
 | `analytics_event_meta` | 事件字典 / 埋点元数据治理（事件名全局唯一） |
-| `analytics_settings` | 采集与保留配置（SDK 远程配置来源） |
+| `analytics_settings` | 采集、远程配置与保留策略 |
 | `error_groups` | 错误分组（Issue，`fingerprint` 全局唯一索引） |
 | `error_events` | 单次错误事件（堆栈 / 面包屑 / 上下文 / 解析后 UA / HTTP 详情） |
 | `error_alert_rules` | 错误告警规则（条件、阈值、时间窗口、渠道、收件人、去抖时间） |
@@ -44,7 +44,7 @@ packages/web/src/pages/analytics/*
 
 | Handler | 频率 | 作用 |
 |---------|------|------|
-| `analyticsRollupDaily` | 每日 01:00 | 重建昨日每日聚合 |
+| `analyticsRollupDaily` | 每日 01:00 | 重建最近 2 个完整自然日的每日聚合 |
 | `analyticsRetention` | 每日 02:00 | 按保留策略清理过期埋点 / 会话 / 错误 |
 | `evaluateErrorAlerts` | 每 5 分钟 | 评估错误告警规则并通知 |
 

@@ -56,4 +56,4 @@
 - **条件**：新错误（`new_error`）/ 阈值（`threshold`）/ 激增（`spike`）。
 - 可按错误类型、级别过滤；设置阈值次数与时间窗口。
 - **通知渠道**：邮件 / Webhook / 站内（记录 in-app 通知日志）。
-- 定时任务 `evaluateErrorAlerts`（每 5 分钟）评估规则，命中后去抖并推送，记录 `lastTriggeredAt`。
+- 定时任务 `evaluateErrorAlerts`（每 5 分钟）评估规则，命中后去抖并通知，记录 `lastTriggeredAt`。

@@ -40,12 +40,12 @@
 |------|------|
 | `enabled` | 采集总开关 |
 | `sampleRate` | 采样率 0–1 |
-| `trackPageviews` / `trackClicks` / `trackPerformance` / `trackErrors` / `trackApi` | 分项采集开关 |
+| `trackPageviews` / `trackClicks` / `trackPerformance` / `trackErrors` / `trackApi` | 采集项配置 |
 | `maskInputs` | 输入框脱敏 |
 | `respectDnt` | 尊重浏览器 Do Not Track |
 | `blacklistPaths` | 路径黑名单 |
 | `retentionDays` / `errorRetentionDays` | 埋点 / 错误数据保留天数 |
-| `sessionTimeoutMinutes` | 会话闲置超时 |
+| `sessionTimeoutMinutes` | 会话超时分钟配置 |
 
 ## 数据保留策略
 
