@@ -4,7 +4,7 @@ import {
   CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download, Pencil, Check, X as XIcon,
 } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
-import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
+import type { ChatMessage, ChatMessageExtra, ChatCardAction } from '@zenith/shared';
 import { getAssetMeta } from '../utils';
 import { UserAvatar } from '@/components/UserAvatar';
 import { MessageContent } from './MessageContent';
@@ -35,7 +35,7 @@ export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
   onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji,
-  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview, readReceipt,
+  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview, readReceipt, onCardAction,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -63,8 +63,13 @@ export function MessageBubble({
   isHighlighted?: boolean;
   onOpenFilePreview?: (msg: ChatMessage) => void;
   readReceipt?: MessageReadReceipt;
+  onCardAction?: (msg: ChatMessage, action: ChatCardAction) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
+  // 机器人/系统消息（senderId 为空）的展示身份取自 extra.bot
+  const botMeta = msg.senderId == null ? (msg.extra?.bot ?? null) : null;
+  const displayName = botMeta?.name ?? msg.senderName;
+  const displayAvatar = botMeta?.avatar ?? msg.senderAvatar;
   const [isHovered, setIsHovered] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [deleteConfirmPos, setDeleteConfirmPos] = useState<{ x: number; y: number } | null>(null);
@@ -321,7 +326,7 @@ export function MessageBubble({
           {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
         </div>
       )}
-      {!isSelf && <UserAvatar name={msg.senderName ?? '?'} avatar={msg.senderAvatar} size={32} />}
+      {!isSelf && <UserAvatar name={displayName ?? '?'} avatar={displayAvatar} size={32} />}
       <div // NOSONAR
         style={{ maxWidth: '65%', position: 'relative' }}
         onMouseEnter={() => setIsHovered(true)}
@@ -333,7 +338,7 @@ export function MessageBubble({
       >
         {!isSelf && (
           <Text type="tertiary" style={{ fontSize: 11, display: 'block', marginBottom: 2, marginLeft: 4 }}>
-            {msg.senderName}
+            {displayName}
           </Text>
         )}
         {msg.replyToId && (() => {
@@ -451,6 +456,7 @@ export function MessageBubble({
                   currentUserId={currentUserId}
                   onVote={onVote}
                   onOpenFilePreview={onOpenFilePreview}
+                  onCardAction={onCardAction}
                 />
               )}
             </div>

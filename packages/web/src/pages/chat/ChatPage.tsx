@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AppModal } from '@/components/AppModal';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover, Progress, Switch,
+  Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover, Progress, Switch, TextArea,
   List as SemiList,
 } from '@douyinfe/semi-ui';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
@@ -26,7 +26,7 @@ import FilePreviewModal from '@/components/FilePreviewModal';
 import type {
   ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
   ChatGroupMember, ChatMessageSearchItem, ChatMessageSearchResult, ChatMessageContext, ChatVoteData,
-  ChatReadState, ChatPresence,
+  ChatReadState, ChatPresence, ChatCardAction,
 } from '@zenith/shared';
 import {
   extractFirstUrl, getFileExtension, getAssetMeta, getMessageSummary, shouldDisplayMessageTime,
@@ -99,6 +99,7 @@ const getReplyPreviewText = (m: ChatMessage): string => {
   if (m.type === 'image') return '[图片]';
   if (m.type === 'file') return `[文件] ${getAssetMeta(m)?.name ?? ''}`;
   if (m.type === 'voice') return '[语音]';
+  if (m.type === 'card') return `[卡片] ${m.extra?.card?.title ?? ''}`.trim();
   return m.content;
 };
 const removeMessagesByIds = (ids: Set<number>) => (prev: ChatMessage[]) => prev.filter((m) => !ids.has(m.id));
@@ -150,6 +151,9 @@ export default function ChatPage({
 }: Readonly<ChatPageProps> = {}) {
   const isQuick = variant === 'quick';
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [cardRejectTask, setCardRejectTask] = useState<{ taskId: number; messageId: number } | null>(null);
+  const [cardRejectComment, setCardRejectComment] = useState('');
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -582,6 +586,50 @@ export default function ChatPage({
     setNotifySound(checked);
     setChatNotifyPrefs({ desktop: notifyDesktop, sound: checked });
   }, [notifyDesktop]);
+
+  // ── 卡片消息动作（工作流审批 / 链接）──
+  const markCardDoneLocal = (messageId: number, statusText: string) =>
+    (prev: ChatMessage[]) => prev.map((m) =>
+      m.id === messageId && m.extra?.card
+        ? { ...m, extra: { ...m.extra, card: { ...m.extra.card, status: 'done' as const, statusText } } }
+        : m);
+
+  const handleCardApprove = useCallback(async (messageId: number, taskId: number) => {
+    const res = await request.post(`/api/workflow/tasks/${taskId}/approve`, {});
+    if (res.code === 0) {
+      Toast.success('已同意');
+      setMessages(markCardDoneLocal(messageId, '已同意'));
+    } else {
+      Toast.error(res.message ?? '操作失败');
+    }
+  }, []);
+
+  const handleCardReject = useCallback(async () => {
+    if (!cardRejectTask) return;
+    const comment = cardRejectComment.trim();
+    if (!comment) { Toast.warning('请填写驳回理由'); return; }
+    const res = await request.post(`/api/workflow/tasks/${cardRejectTask.taskId}/reject`, { comment });
+    if (res.code === 0) {
+      Toast.success('已驳回');
+      setMessages(markCardDoneLocal(cardRejectTask.messageId, '已驳回'));
+      setCardRejectTask(null);
+      setCardRejectComment('');
+    } else {
+      Toast.error(res.message ?? '操作失败');
+    }
+  }, [cardRejectTask, cardRejectComment]);
+
+  const handleCardAction = useCallback((msg: ChatMessage, action: ChatCardAction) => {
+    if (action.action === 'workflow:approve' && action.taskId) {
+      void handleCardApprove(msg.id, action.taskId);
+    } else if (action.action === 'workflow:reject' && action.taskId) {
+      setCardRejectComment('');
+      setCardRejectTask({ taskId: action.taskId, messageId: msg.id });
+    } else if (action.action === 'link' && action.url) {
+      if (action.url.startsWith('/')) navigate(action.url);
+      else window.open(action.url, '_blank', 'noopener,noreferrer');
+    }
+  }, [handleCardApprove, navigate]);
 
   useEffect(() => {
     if (leftPaneMode === 'favorites') {
@@ -2674,6 +2722,7 @@ export default function ChatPage({
                             });
                           }}
                           readReceipt={computeReadReceipt(msg)}
+                          onCardAction={handleCardAction}
                         />
                       </div>
                     );
@@ -3358,6 +3407,26 @@ export default function ChatPage({
         onClose={() => setShowVoteModal(false)}
         onConfirm={handleCreateVote}
       />
+      <Modal
+        title="驳回审批"
+        visible={!!cardRejectTask}
+        onOk={() => { void handleCardReject(); }}
+        onCancel={() => { setCardRejectTask(null); setCardRejectComment(''); }}
+        okText="确认驳回"
+        cancelText="取消"
+        okButtonProps={{ type: 'danger' }}
+        closeOnEsc
+        width={420}
+      >
+        <TextArea
+          placeholder="请填写驳回理由"
+          value={cardRejectComment}
+          onChange={setCardRejectComment}
+          rows={3}
+          maxCount={500}
+          autosize
+        />
+      </Modal>
       {/* Reaction emoji picker — fixed overlay */}
       {reactionPickerVisible && reactionPickerAnchor && (
         <div

@@ -88,6 +88,8 @@ export const users = pgTable('users', {
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   gender: varchar('gender', { length: 20 }),
   status: statusEnum('status').notNull().default('enabled'),
+  /** 是否为机器人/系统账号（不可登录、不出现在可聊天用户搜索中） */
+  isBot: boolean('is_bot').notNull().default(false),
   preferences: jsonb('preferences'),
   /** 用户收藏的菜单 ID 列表（有序） */
   favoriteMenus: jsonb('favorite_menus').$type<number[]>(),
@@ -1634,7 +1636,7 @@ export const chatConversationMembers = pgTable('chat_conversation_members', {
 export type ChatConversationMemberRow = typeof chatConversationMembers.$inferSelect;
 
 // ─── 聊天消息表 ───────────────────────────────────────────────────────────────
-export const chatMessageTypeEnum = pgEnum('chat_message_type', ['text', 'image', 'file', 'system', 'forward', 'vote', 'voice']);
+export const chatMessageTypeEnum = pgEnum('chat_message_type', ['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card']);
 
 export const chatMessages = pgTable('chat_messages', {
   id: serial('id').primaryKey(),
@@ -1664,6 +1666,27 @@ export const chatMessageReactions = pgTable('chat_message_reactions', {
 ]);
 
 export type ChatMessageReactionRow = typeof chatMessageReactions.$inferSelect;
+
+// ─── 聊天入站 Webhook 机器人 ────────────────────────────────────────────────
+export const chatWebhooks = pgTable('chat_webhooks', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  avatar: varchar('avatar', { length: 256 }),
+  description: varchar('description', { length: 255 }),
+  /** 入站推送令牌（明文存储，随机生成） */
+  token: varchar('token', { length: 128 }).notNull().unique(),
+  /** 消息投递的目标会话 */
+  conversationId: integer('conversation_id').notNull().references(() => chatConversations.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(true),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  ...auditColumns(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type ChatWebhookRow = typeof chatWebhooks.$inferSelect;
+export type NewChatWebhook = typeof chatWebhooks.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 支付中心（Payment Center）
@@ -2094,6 +2117,11 @@ export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => 
 export const chatMessageReactionsRelations = relations(chatMessageReactions, ({ one }) => ({
   message: one(chatMessages, { fields: [chatMessageReactions.messageId], references: [chatMessages.id] }),
   user: one(users, { fields: [chatMessageReactions.userId], references: [users.id] }),
+}));
+
+export const chatWebhooksRelations = relations(chatWebhooks, ({ one }) => ({
+  conversation: one(chatConversations, { fields: [chatWebhooks.conversationId], references: [chatConversations.id] }),
+  tenant: one(tenants, { fields: [chatWebhooks.tenantId], references: [tenants.id] }),
 }));
 
 // ─── 通知模块 relations ─────────────────────────────────────────────────────

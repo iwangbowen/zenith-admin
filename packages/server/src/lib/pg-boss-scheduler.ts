@@ -5,15 +5,43 @@
  * 对外 API 与原 cron-scheduler.ts 保持一致，以最小化调用方改动。
  */
 import { PgBoss, type WorkHandler } from 'pg-boss';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '../db';
-import { cronJobs, cronJobLogs, dbBackups } from '../db/schema';
+import { cronJobs, cronJobLogs, dbBackups, users } from '../db/schema';
 import logger from './logger';
 import { cleanExpiredCaptchas } from './captcha';
 import { cleanExpiredSessions } from './session-manager';
 import { createPgDumpBackup, createDrizzleExportBackup } from './db-backup';
-import { formatFileTimestamp } from './datetime';
+import { formatFileTimestamp, formatDateTime } from './datetime';
 import { config } from '../config';
+import { notifyUsersWithCard } from '../services/chat-notify.service';
+import type { ChatCard } from '@zenith/shared';
+
+/** 定时任务失败 → 推送告警卡片给任务创建者（无则推给系统管理员） */
+async function pushCronFailureAlert(jobId: number, jobName: string, message: string): Promise<void> {
+  try {
+    const [job] = await db.select({ createdBy: cronJobs.createdBy }).from(cronJobs).where(eq(cronJobs.id, jobId)).limit(1);
+    let targetId = job?.createdBy ?? null;
+    if (!targetId) {
+      const [admin] = await db.select({ id: users.id }).from(users)
+        .where(and(eq(users.username, 'admin'), isNull(users.tenantId))).limit(1);
+      targetId = admin?.id ?? null;
+    }
+    if (!targetId) return;
+    const card: ChatCard = {
+      title: '定时任务执行失败',
+      text: `任务「${jobName}」执行失败，请及时排查`,
+      fields: [
+        { label: '错误信息', value: message.slice(0, 200) },
+        { label: '发生时间', value: formatDateTime(new Date()) },
+      ],
+      source: '系统告警',
+    };
+    await notifyUsersWithCard([targetId], card);
+  } catch (err) {
+    logger.error('[cron] 失败告警卡片推送异常', err);
+  }
+}
 import { CronExpressionParser } from 'cron-parser';
 
 // ─── 队列名工具 ───────────────────────────────────────────────────────────────
@@ -172,6 +200,7 @@ async function registerWorker(queue: string): Promise<void> {
         db.update(cronJobs).set({ lastRunAt: startedAt, lastRunStatus: 'fail', lastRunMessage: msg }).where(eq(cronJobs.id, jobId)),
         db.insert(cronJobLogs).values({ jobId, jobName, executionCount, startedAt, endedAt: new Date(), durationMs: 0, status: 'fail', output: msg }),
       ]);
+      void pushCronFailureAlert(jobId, jobName, msg);
       throw new Error(msg);
     }
 
@@ -192,6 +221,7 @@ async function registerWorker(queue: string): Promise<void> {
         db.update(cronJobLogs).set({ endedAt, durationMs, status: 'fail', output: errorMessage.slice(0, 2048) }).where(eq(cronJobLogs.id, logRow.id)),
       ]);
       logger.error(`Cron job ${jobId} (${jobName}) failed:`, err);
+      void pushCronFailureAlert(jobId, jobName, errorMessage);
       throw err;
     }
 

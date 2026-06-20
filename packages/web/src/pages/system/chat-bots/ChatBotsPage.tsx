@@ -1,0 +1,413 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Form, Input, Popconfirm, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { Copy, Plus, RotateCcw, Search } from 'lucide-react';
+import type { ChatConversation, ChatWebhook, PaginatedResponse } from '@zenith/shared';
+import { UserAvatar } from '@/components/UserAvatar';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import ConfigurableTable from '@/components/ConfigurableTable';
+import { AppModal } from '@/components/AppModal';
+import { usePagination } from '@/hooks/usePagination';
+import { usePermission } from '@/hooks/usePermission';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+
+const { Text } = Typography;
+
+interface BotFormValues {
+  name: string;
+  avatar?: string | null;
+  description?: string | null;
+  conversationId?: number;
+  enabled?: boolean;
+}
+
+function optionalText(value: string | null | undefined): string | null {
+  const text = value?.trim();
+  return text ? text : null;
+}
+
+function getAbsoluteWebhookUrl(webhookUrl: string): string {
+  if (!webhookUrl) return '';
+  if (/^https?:\/\//i.test(webhookUrl)) return webhookUrl;
+  if (globalThis.window === undefined) return webhookUrl;
+  return `${globalThis.window.location.origin}${webhookUrl.startsWith('/') ? webhookUrl : `/${webhookUrl}`}`;
+}
+
+function maskToken(token: string): string {
+  if (!token) return '—';
+  return `${token.slice(0, 12)}••••`;
+}
+
+async function copyText(text: string) {
+  if (!text) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    Toast.success('已复制');
+  } catch {
+    Toast.error('复制失败，请手动复制');
+  }
+}
+
+export default function ChatBotsPage() {
+  const { hasPermission } = usePermission();
+  const formApi = useRef<FormApi<BotFormValues> | null>(null);
+  const [data, setData] = useState<PaginatedResponse<ChatWebhook> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [keyword, setKeyword] = useState('');
+  const keywordRef = useRef(keyword);
+  keywordRef.current = keyword;
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingBot, setEditingBot] = useState<ChatWebhook | null>(null);
+  const [groupConversations, setGroupConversations] = useState<ChatConversation[]>([]);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [secretInfo, setSecretInfo] = useState<ChatWebhook | null>(null);
+
+  const fetchBots = useCallback(async (p = page, ps = pageSize, activeKeyword = keywordRef.current) => {
+    setLoading(true);
+    try {
+      const query = new URLSearchParams({
+        page: String(p),
+        pageSize: String(ps),
+        ...(activeKeyword.trim() ? { keyword: activeKeyword.trim() } : {}),
+      });
+      const res = await request.get<PaginatedResponse<ChatWebhook>>(`/api/chat-bots?${query.toString()}`);
+      if (res.code === 0) {
+        setData(res.data);
+        setPage(res.data.page);
+        setPageSize(res.data.pageSize);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, setPage, setPageSize]);
+
+  useEffect(() => {
+    void fetchBots();
+  }, [fetchBots]);
+
+  const loadGroupConversations = useCallback(async () => {
+    setConversationLoading(true);
+    try {
+      const res = await request.get<ChatConversation[]>('/api/chat/conversations');
+      if (res.code === 0) {
+        setGroupConversations(res.data.filter((item) => item.type === 'group'));
+      }
+    } finally {
+      setConversationLoading(false);
+    }
+  }, []);
+
+  const conversationOptions = useMemo(() => {
+    const options = groupConversations.map((conv) => ({
+      label: conv.name ?? '群聊',
+      value: conv.id,
+    }));
+    if (editingBot && !options.some((item) => item.value === editingBot.conversationId)) {
+      options.unshift({
+        label: editingBot.conversationName ?? `会话#${editingBot.conversationId}`,
+        value: editingBot.conversationId,
+      });
+    }
+    return options;
+  }, [editingBot, groupConversations]);
+
+  const formInitValues: BotFormValues = editingBot
+    ? {
+        name: editingBot.name,
+        avatar: editingBot.avatar,
+        description: editingBot.description,
+        conversationId: editingBot.conversationId,
+        enabled: editingBot.enabled,
+      }
+    : { name: '', avatar: null, description: null, enabled: true };
+
+  function handleSearch() {
+    setPage(1);
+    void fetchBots(1, pageSize, keyword);
+  }
+
+  function handleReset() {
+    setKeyword('');
+    setPage(1);
+    void fetchBots(1, pageSize, '');
+  }
+
+  function openCreateModal() {
+    setEditingBot(null);
+    setModalVisible(true);
+    void loadGroupConversations();
+  }
+
+  function openEditModal(row: ChatWebhook) {
+    setEditingBot(row);
+    setModalVisible(true);
+  }
+
+  function closeFormModal() {
+    setModalVisible(false);
+    setEditingBot(null);
+    formApi.current = null;
+  }
+
+  async function handleSubmit() {
+    if (!formApi.current) return;
+    let values: BotFormValues;
+    try {
+      values = await formApi.current.validate();
+    } catch {
+      return;
+    }
+
+    const name = values.name.trim();
+    const commonPayload = {
+      name,
+      avatar: optionalText(values.avatar),
+      description: optionalText(values.description),
+      enabled: values.enabled ?? true,
+    };
+
+    if (!editingBot && !values.conversationId) {
+      Toast.warning('请选择目标会话');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = editingBot
+        ? await request.patch<ChatWebhook>(`/api/chat-bots/${editingBot.id}`, commonPayload)
+        : await request.post<ChatWebhook>('/api/chat-bots', {
+            ...commonPayload,
+            conversationId: Number(values.conversationId),
+          });
+
+      if (res.code === 0) {
+        Toast.success(editingBot ? '更新成功' : '创建成功');
+        closeFormModal();
+        if (!editingBot) setSecretInfo(res.data);
+        void fetchBots();
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRegenerate(row: ChatWebhook) {
+    const res = await request.post<ChatWebhook>(`/api/chat-bots/${row.id}/regenerate-token`, {});
+    if (res.code === 0) {
+      Toast.success('令牌已重置');
+      setSecretInfo(res.data);
+      void fetchBots();
+    }
+  }
+
+  async function handleDelete(id: number) {
+    const res = await request.delete<null>(`/api/chat-bots/${id}`);
+    if (res.code === 0) {
+      Toast.success('删除成功');
+      void fetchBots();
+    }
+  }
+
+  const columns: ColumnProps<ChatWebhook>[] = [
+    {
+      title: '名称',
+      dataIndex: 'name',
+      width: 220,
+      ellipsis: { showTitle: false },
+      render: (_: unknown, row: ChatWebhook) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <UserAvatar name={row.name} avatar={row.avatar} semiSize="extra-small" size={24} />
+          <span className="table-cell-ellipsis" title={row.name}>{row.name}</span>
+        </div>
+      ),
+    },
+    {
+      title: '目标会话',
+      dataIndex: 'conversationName',
+      width: 180,
+      render: (_: unknown, row: ChatWebhook) => renderEllipsis(row.conversationName ?? `会话#${row.conversationId}`),
+    },
+    {
+      title: '描述',
+      dataIndex: 'description',
+      width: 220,
+      render: renderEllipsis,
+    },
+    {
+      title: 'Webhook 地址',
+      dataIndex: 'webhookUrl',
+      width: 360,
+      render: (_: unknown, row: ChatWebhook) => {
+        const url = getAbsoluteWebhookUrl(row.webhookUrl);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 260 }}>{url}</Text>
+            <Button theme="borderless" size="small" icon={<Copy size={14} />} onClick={() => void copyText(url)}>复制</Button>
+          </div>
+        );
+      },
+    },
+    {
+      title: '令牌',
+      dataIndex: 'token',
+      width: 220,
+      render: (token: string) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <Text code ellipsis={{ showTooltip: true }} style={{ maxWidth: 130 }}>{maskToken(token)}</Text>
+          <Button theme="borderless" size="small" icon={<Copy size={14} />} onClick={() => void copyText(token)}>复制</Button>
+        </div>
+      ),
+    },
+    {
+      title: '最近使用',
+      dataIndex: 'lastUsedAt',
+      width: 180,
+      render: (value: string | null) => value ? formatDateTime(value) : '—',
+    },
+    createdAtColumn as ColumnProps<ChatWebhook>,
+    {
+      title: '状态',
+      dataIndex: 'enabled',
+      width: 90,
+      fixed: 'right',
+      render: (enabled: boolean) => enabled ? <Tag color="green">启用</Tag> : <Tag color="grey">停用</Tag>,
+    },
+    {
+      title: '操作',
+      key: 'operation',
+      fixed: 'right',
+      width: 220,
+      render: (_: unknown, row: ChatWebhook) => (
+        <Space>
+          {hasPermission('chat:bot:update') && (
+            <Button theme="borderless" size="small" onClick={() => openEditModal(row)}>编辑</Button>
+          )}
+          {hasPermission('chat:bot:update') && (
+            <Popconfirm title="重置后旧地址立即失效，确认重置？" onConfirm={() => void handleRegenerate(row)}>
+              <Button theme="borderless" size="small">重置令牌</Button>
+            </Popconfirm>
+          )}
+          {hasPermission('chat:bot:delete') && (
+            <Popconfirm title="确定删除该机器人？" onConfirm={() => void handleDelete(row.id)}>
+              <Button theme="borderless" type="danger" size="small">删除</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <div className="page-container">
+      <SearchToolbar>
+        <Input
+          prefix={<Search size={14} />}
+          placeholder="搜索机器人名称"
+          value={keyword}
+          onChange={setKeyword}
+          onEnterPress={handleSearch}
+          style={{ width: 260 }}
+          showClear
+        />
+        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        {hasPermission('chat:bot:create') && (
+          <Button type="primary" icon={<Plus size={14} />} onClick={openCreateModal}>新增</Button>
+        )}
+      </SearchToolbar>
+
+      <ConfigurableTable
+        bordered
+        columns={columns}
+        dataSource={data?.list ?? []}
+        loading={loading}
+        onRefresh={() => void fetchBots()}
+        refreshLoading={loading}
+        pagination={buildPagination(data?.total ?? 0, fetchBots)}
+        rowKey="id"
+        size="small"
+        empty="暂无数据"
+      />
+
+      <AppModal
+        title={editingBot ? '编辑 Webhook 机器人' : '新增 Webhook 机器人'}
+        visible={modalVisible}
+        onCancel={closeFormModal}
+        onOk={handleSubmit}
+        okButtonProps={{ loading: submitting }}
+        width={520}
+        closeOnEsc
+      >
+        <Form<BotFormValues>
+          key={editingBot?.id ?? 'new-chat-bot'}
+          getFormApi={(api) => { formApi.current = api; }}
+          allowEmpty
+          initValues={formInitValues}
+          labelPosition="left"
+          labelWidth={90}
+        >
+          <Form.Input field="name" label="名称" placeholder="请输入机器人名称" rules={[{ required: true, message: '请输入机器人名称' }]} />
+          <Form.Select
+            field="conversationId"
+            label="目标会话"
+            placeholder="请选择目标群聊"
+            rules={[{ required: true, message: '请选择目标会话' }]}
+            optionList={conversationOptions}
+            loading={conversationLoading}
+            disabled={!!editingBot}
+            filter
+            style={{ width: '100%' }}
+          />
+          <Form.Input field="avatar" label="头像" placeholder="请输入头像 URL（可选）" />
+          <Form.TextArea field="description" label="描述" placeholder="请输入描述（可选）" autosize={{ minRows: 3, maxRows: 5 }} />
+          <Form.Switch field="enabled" label="状态" checkedText="启用" uncheckedText="停用" />
+        </Form>
+      </AppModal>
+
+      <AppModal
+        title="Webhook 机器人凭据"
+        visible={!!secretInfo}
+        onCancel={() => setSecretInfo(null)}
+        footer={null}
+        width={560}
+        closeOnEsc
+      >
+        {secretInfo && (
+          <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
+            <Text type="warning">请妥善保存，可随时在列表中复制。</Text>
+            <SecretLine label="Webhook 地址" value={getAbsoluteWebhookUrl(secretInfo.webhookUrl)} />
+            <SecretLine label="令牌" value={secretInfo.token} code />
+          </Space>
+        )}
+      </AppModal>
+    </div>
+  );
+}
+
+function SecretLine({ label, value, code }: { readonly label: string; readonly value: string; readonly code?: boolean }) {
+  return (
+    <div style={{ width: '100%' }}>
+      <div style={{ color: 'var(--semi-color-text-2)', fontSize: 13, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+        <Text code={code} ellipsis={{ showTooltip: true }} style={{ flex: 1 }}>{value}</Text>
+        <Button theme="borderless" size="small" icon={<Copy size={14} />} onClick={() => void copyText(value)}>复制</Button>
+      </div>
+    </div>
+  );
+}

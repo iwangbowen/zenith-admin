@@ -1,8 +1,9 @@
 import { Typography, List, Button } from '@douyinfe/semi-ui';
 import { getFileTypeIcon, formatFileSize, canPreviewFile } from '@/utils/file-utils';
 import { getMessageExtra, renderTextWithMentions } from '../utils';
-import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
+import type { ChatMessage, ChatMessageExtra, ChatCardAction } from '@zenith/shared';
 import { VoiceMessage } from './VoiceMessage';
+import { CardMessage } from './CardMessage';
 
 const { Text } = Typography;
 
@@ -20,7 +21,7 @@ function getForwardedItemPreview(item: ForwardedMessageItem): string {
 }
 
 export function MessageContent({
-  msg, isSelf, onOpenImage, onOpenForwardView, currentUserId, onVote, onOpenFilePreview,
+  msg, isSelf, onOpenImage, onOpenForwardView, currentUserId, onVote, onOpenFilePreview, onCardAction,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -29,6 +30,7 @@ export function MessageContent({
   currentUserId?: number | null;
   onVote?: (msg: ChatMessage, optionIds: string[]) => void;
   onOpenFilePreview?: (msg: ChatMessage) => void;
+  onCardAction?: (msg: ChatMessage, action: ChatCardAction) => void;
 }>) {
   const extra = getMessageExtra(msg);
   const asset = extra?.asset ?? null;
@@ -185,6 +187,10 @@ export function MessageContent({
 
   if (msg.type === 'voice') {
     return <VoiceMessage msg={msg} isSelf={isSelf} />;
+  }
+
+  if (msg.type === 'card') {
+    return <CardMessage msg={msg} onCardAction={onCardAction} />;
   }
 
   if (msg.type === 'vote') {

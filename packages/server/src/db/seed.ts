@@ -1,6 +1,7 @@
 import { db } from './index';
 import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, workflowForms } from './schema';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
@@ -41,6 +42,23 @@ async function seed() {
     });
   }
   logger.info('  ✔ Admin user seeded (skip if exists)');
+
+  // 系统机器人用户（工作流/告警/Webhook 卡片消息的发送者，不可登录、不出现在用户搜索）
+  const existingBot = await db.select({ id: users.id }).from(users)
+    .where(and(eq(users.username, 'zenith-assistant'), isNull(users.tenantId)))
+    .limit(1);
+  if (existingBot.length === 0) {
+    const botPwd = await bcrypt.hash(randomBytes(24).toString('hex'), 10);
+    await db.insert(users).values({
+      username: 'zenith-assistant',
+      nickname: 'Zenith 助手',
+      email: 'assistant@zenith.dev',
+      password: botPwd,
+      status: 'enabled',
+      isBot: true,
+    });
+  }
+  logger.info('  ✔ System bot user seeded (skip if exists)');
 
   const [adminRow] = await db.select({ id: users.id }).from(users)
     .where(and(eq(users.username, 'admin'), isNull(users.tenantId)))

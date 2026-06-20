@@ -30,6 +30,7 @@ import { workflowExtraHandlers } from './workflow-extra';
 import { workflowFormsHandlers } from './workflow-forms';
 import { workflowAutomationsHandlers } from './workflow-automations';
 import { chatHandlers } from './chat';
+import { chatBotsHandlers } from './chat-bots';
 import { tagsHandlers } from './tags';
 import { rateLimitHandlers } from './rate-limit';
 import { emailTemplatesHandlers } from './email-templates';
@@ -90,6 +91,7 @@ export const handlers = [
   ...workflowFormsHandlers,
   ...workflowAutomationsHandlers,
   ...chatHandlers,
+  ...chatBotsHandlers,
   ...tagsHandlers,
   ...rateLimitHandlers,
   ...emailTemplatesHandlers,

@@ -70,12 +70,44 @@ export const ChatAnnouncementHistoryDTO = z
 export const ChatForwardedItemDTO = z
   .object({
     senderName: z.string().nullable(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card']),
     content: z.string(),
     createdAt: z.string(),
     asset: ChatAssetMetaDTO.nullable().optional(),
   })
   .openapi('ChatForwardedItem');
+
+export const ChatCardFieldDTO = z
+  .object({ label: z.string(), value: z.string() })
+  .openapi('ChatCardField');
+
+export const ChatCardActionDTO = z
+  .object({
+    key: z.string(),
+    label: z.string(),
+    theme: z.enum(['primary', 'secondary', 'danger', 'tertiary']).optional(),
+    action: z.enum(['workflow:approve', 'workflow:reject', 'link', 'none']),
+    taskId: z.number().int().nullable().optional(),
+    url: z.string().nullable().optional(),
+    requireComment: z.boolean().optional(),
+  })
+  .openapi('ChatCardAction');
+
+export const ChatCardDTO = z
+  .object({
+    title: z.string(),
+    text: z.string().nullable().optional(),
+    fields: z.array(ChatCardFieldDTO).nullable().optional(),
+    actions: z.array(ChatCardActionDTO).nullable().optional(),
+    source: z.string().nullable().optional(),
+    status: z.enum(['pending', 'done']).nullable().optional(),
+    statusText: z.string().nullable().optional(),
+  })
+  .openapi('ChatCard');
+
+export const ChatBotMetaDTO = z
+  .object({ name: z.string(), avatar: z.string().nullable().optional() })
+  .openapi('ChatBotMeta');
 
 export const ChatVoteOptionDTO = z
   .object({
@@ -116,6 +148,8 @@ export const ChatMessageExtraDTO = z
     forwardSourceConvName: z.string().nullable().optional(),
     hiddenFor: z.array(z.number().int()).nullable().optional(),
     voteData: ChatVoteDataDTO.nullable().optional(),
+    card: ChatCardDTO.nullable().optional(),
+    bot: ChatBotMetaDTO.nullable().optional(),
   })
   .strict()
   .openapi('ChatMessageExtra');
@@ -135,7 +169,7 @@ export const ChatMessageDTO = z
     senderId: z.number().int().nullable(),
     senderName: z.string().nullable(),
     senderAvatar: z.string().nullable().optional(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card']),
     content: z.string(),
     replyToId: z.number().int().nullable().optional(),
     isRecalled: z.boolean(),
@@ -199,3 +233,20 @@ export const ChatPresenceDTO = z
     lastSeen: z.string().nullable(),
   })
   .openapi('ChatPresence');
+
+export const ChatWebhookDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    avatar: z.string().nullable(),
+    description: z.string().nullable(),
+    conversationId: z.number().int(),
+    conversationName: z.string().nullable(),
+    enabled: z.boolean(),
+    webhookUrl: z.string(),
+    token: z.string(),
+    lastUsedAt: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('ChatWebhook');

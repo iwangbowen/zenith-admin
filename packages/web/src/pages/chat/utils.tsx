@@ -59,6 +59,10 @@ export function getMessageSummary(msg: ChatMessage): string {
     return asset?.name ? `[文件] ${asset.name}` : '[文件]';
   }
   if (msg.type === 'voice') return '[语音]';
+  if (msg.type === 'card') {
+    const card = getMessageExtra(msg)?.card;
+    return card?.title ? `[卡片] ${card.title}` : '[卡片]';
+  }
   return msg.content;
 }
 

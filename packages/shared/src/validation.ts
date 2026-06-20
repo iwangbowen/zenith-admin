@@ -1092,10 +1092,40 @@ export const chatAnnouncementHistorySchema = z.object({
 
 export const chatForwardedItemSchema = z.object({
   senderName: z.string().max(100).nullable(),
-  type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice']),
+  type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice', 'card']),
   content: z.string().max(4096),
   createdAt: z.string(),
   asset: chatAssetMetaSchema.nullable().optional(),
+});
+
+export const chatCardFieldSchema = z.object({
+  label: z.string().max(60),
+  value: z.string().max(500),
+});
+
+export const chatCardActionSchema = z.object({
+  key: z.string().max(40),
+  label: z.string().max(40),
+  theme: z.enum(['primary', 'secondary', 'danger', 'tertiary']).optional(),
+  action: z.enum(['workflow:approve', 'workflow:reject', 'link', 'none']),
+  taskId: z.number().int().positive().nullable().optional(),
+  url: z.string().max(1024).nullable().optional(),
+  requireComment: z.boolean().optional(),
+});
+
+export const chatCardSchema = z.object({
+  title: z.string().min(1).max(120),
+  text: z.string().max(2000).nullable().optional(),
+  fields: z.array(chatCardFieldSchema).max(20).nullable().optional(),
+  actions: z.array(chatCardActionSchema).max(6).nullable().optional(),
+  source: z.string().max(40).nullable().optional(),
+  status: z.enum(['pending', 'done']).nullable().optional(),
+  statusText: z.string().max(60).nullable().optional(),
+});
+
+export const chatBotMetaSchema = z.object({
+  name: z.string().min(1).max(64),
+  avatar: z.string().max(256).nullable().optional(),
 });
 
 export const chatVoteOptionSchema = z.object({
@@ -1130,6 +1160,8 @@ export const chatMessageExtraSchema = z.object({
   forwardSourceConvName: z.string().max(100).nullable().optional(),
   hiddenFor: z.array(z.number().int()).nullable().optional(),
   voteData: chatVoteDataSchema.nullable().optional(),
+  card: chatCardSchema.nullable().optional(),
+  bot: chatBotMetaSchema.nullable().optional(),
 }).strict();
 
 export const sendChatMessageSchema = z.object({
@@ -1153,6 +1185,30 @@ export const forwardMessagesSchema = z.object({
 
 export type SendChatMessageInput = z.infer<typeof sendChatMessageSchema>;
 export type ForwardMessagesInput = z.infer<typeof forwardMessagesSchema>;
+
+// ── 聊天入站 Webhook 机器人 ──
+export const createChatWebhookSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(64),
+  avatar: z.string().max(256).nullable().optional(),
+  description: z.string().max(255).nullable().optional(),
+  conversationId: z.number().int().positive('请选择目标会话'),
+  enabled: z.boolean().default(true),
+});
+export const updateChatWebhookSchema = createChatWebhookSchema.partial().omit({ conversationId: true });
+
+export type CreateChatWebhookInput = z.infer<typeof createChatWebhookSchema>;
+export type UpdateChatWebhookInput = z.infer<typeof updateChatWebhookSchema>;
+
+/** 入站 Webhook 推送 body：文本或卡片 */
+export const chatWebhookPayloadSchema = z.object({
+  type: z.enum(['text', 'card']).default('text'),
+  text: z.string().max(4096).optional(),
+  card: chatCardSchema.optional(),
+}).refine((v) => (v.type === 'card' ? !!v.card : !!v.text), {
+  message: 'text 或 card 至少提供一个',
+});
+
+export type ChatWebhookPayloadInput = z.infer<typeof chatWebhookPayloadSchema>;
 
 // ─── AI 对话模块 ──────────────────────────────────────────────────────────────
 

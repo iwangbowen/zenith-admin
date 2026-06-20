@@ -2220,7 +2220,7 @@ export interface WorkflowTriggerExecution {
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export type ChatConversationType = 'direct' | 'group';
-export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward' | 'vote' | 'voice';
+export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward' | 'vote' | 'voice' | 'card';
 
 export interface ChatVoteOption {
   id: string;
@@ -2292,6 +2292,49 @@ export interface ChatReactionGroup {
   userIds: number[];
 }
 
+/** 卡片消息字段（键值对展示） */
+export interface ChatCardField {
+  label: string;
+  value: string;
+}
+
+/** 卡片消息动作按钮 */
+export interface ChatCardAction {
+  /** 动作唯一标识 */
+  key: string;
+  label: string;
+  /** 按钮样式 */
+  theme?: 'primary' | 'secondary' | 'danger' | 'tertiary';
+  /** 动作类型：调用工作流审批接口 / 打开链接 / 仅展示 */
+  action: 'workflow:approve' | 'workflow:reject' | 'link' | 'none';
+  /** workflow:* 动作关联的任务 ID */
+  taskId?: number | null;
+  /** link 动作的跳转地址（站内 path 或外链） */
+  url?: string | null;
+  /** 是否要求填写评论（如驳回） */
+  requireComment?: boolean;
+}
+
+/** 卡片消息内容（工作流审批 / 系统告警 / Webhook 推送） */
+export interface ChatCard {
+  title: string;
+  text?: string | null;
+  fields?: ChatCardField[] | null;
+  actions?: ChatCardAction[] | null;
+  /** 来源标识（如「工作流」「系统告警」「监控」） */
+  source?: string | null;
+  /** 卡片状态：pending 可操作，done 已处理（按钮置灰） */
+  status?: 'pending' | 'done' | null;
+  /** 已处理后的结果文案 */
+  statusText?: string | null;
+}
+
+/** 机器人/系统发送者身份（senderId 为 null 的消息携带） */
+export interface ChatBotMeta {
+  name: string;
+  avatar?: string | null;
+}
+
 export interface ChatMessageExtra {
   asset?: ChatAssetMeta | null;
   linkPreview?: ChatLinkPreview | null;
@@ -2303,6 +2346,8 @@ export interface ChatMessageExtra {
   forwardSourceConvName?: string | null;
   hiddenFor?: number[] | null;
   voteData?: ChatVoteData | null;
+  card?: ChatCard | null;
+  bot?: ChatBotMeta | null;
 }
 
 export interface ChatReplySnapshot {
@@ -2400,6 +2445,24 @@ export interface ChatPresence {
   online: boolean;
   /** 最近在线时间，online=true 时为 null */
   lastSeen: string | null;
+}
+
+/** 聊天入站 Webhook 机器人 */
+export interface ChatWebhook {
+  id: number;
+  name: string;
+  avatar: string | null;
+  description: string | null;
+  conversationId: number;
+  conversationName: string | null;
+  enabled: boolean;
+  /** 完整入站推送地址 */
+  webhookUrl: string;
+  /** 令牌（仅创建/重置时返回明文，列表中为脱敏） */
+  token: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── 通知模块（邮件 / 短信 / 站内信）─────────────────────────────────────────

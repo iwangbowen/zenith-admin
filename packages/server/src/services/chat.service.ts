@@ -11,7 +11,7 @@ import { pageOffset } from '../lib/pagination';
 import { httpGet } from '../lib/http-client';
 import { HTTPException } from 'hono/http-exception';
 import type {
-  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup, ChatVoteData, ChatReadState, ChatPresence,
+  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup, ChatVoteData, ChatReadState, ChatPresence, ChatMessageType,
 } from '@zenith/shared';
 
 const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
@@ -311,6 +311,7 @@ function buildMessageSearchSnippet(message: ChatMessage): string {
   if (message.type === 'image') return `[图片] ${message.extra?.asset?.name ?? ''}`.trim();
   if (message.type === 'file') return `[文件] ${message.extra?.asset?.name ?? ''}`.trim();
   if (message.type === 'voice') return '[语音]';
+  if (message.type === 'card') return `[卡片] ${message.extra?.card?.title ?? ''}`.trim();
   if (message.type === 'system') return `[系统] ${message.content}`;
   return message.content;
 }
@@ -1159,7 +1160,7 @@ export async function forwardMessages(input: ForwardMessagesInput): Promise<void
     for (const targetConvId of input.targetConversationIds) {
       for (const m of ordered) {
         if (m.isRecalled) continue;
-        if (m.type === 'system' || m.type === 'forward') continue;
+        if (m.type === 'system' || m.type === 'forward' || m.type === 'card') continue;
         const originalExtra = (m.extra as ChatMessageExtra | null) ?? null;
         const extra: ChatMessageExtra = {};
         if (originalExtra?.asset) extra.asset = originalExtra.asset;
@@ -1511,6 +1512,7 @@ export async function listChatUsers(keyword?: string) {
     .where(and(
       ne(users.id, me.userId),
       eq(users.status, 'enabled'),
+      eq(users.isBot, false),
       me.tenantId ? eq(users.tenantId, me.tenantId) : undefined,
       keyword
         ? or(
@@ -1936,4 +1938,110 @@ export async function searchGlobalMessages(
     pageSize: params.pageSize,
     conversationNames,
   };
+}
+
+// ─── 机器人 / 系统消息（无请求上下文，供事件订阅器与 Webhook 调用）─────────────
+
+export const SYSTEM_BOT_USERNAME = 'zenith-assistant';
+let cachedBotUserId: number | null = null;
+
+/** 系统机器人用户 ID（种子写入，缓存命中后不再查库） */
+export async function getSystemBotUserId(): Promise<number | null> {
+  if (cachedBotUserId != null) return cachedBotUserId;
+  const bot = await db.query.users.findFirst({
+    where: and(eq(users.isBot, true), eq(users.username, SYSTEM_BOT_USERNAME)),
+    columns: { id: true },
+  });
+  cachedBotUserId = bot?.id ?? null;
+  return cachedBotUserId;
+}
+
+/** 获取或创建「机器人 ↔ 用户」单聊会话，返回会话 ID（无上下文） */
+export async function ensureBotDirectConversation(botUserId: number, userId: number): Promise<number> {
+  const botConvRows = await db
+    .select({ conversationId: chatConversationMembers.conversationId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.userId, botUserId));
+  const botConvIds = botConvRows.map((r) => r.conversationId);
+
+  if (botConvIds.length > 0) {
+    const [existing] = await db
+      .select({ conversationId: chatConversationMembers.conversationId })
+      .from(chatConversationMembers)
+      .innerJoin(chatConversations, eq(chatConversationMembers.conversationId, chatConversations.id))
+      .where(and(
+        eq(chatConversationMembers.userId, userId),
+        inArray(chatConversationMembers.conversationId, botConvIds),
+        eq(chatConversations.type, 'direct'),
+      ))
+      .limit(1);
+    if (existing) return existing.conversationId;
+  }
+
+  const target = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { tenantId: true } });
+  const [conv] = await db.insert(chatConversations).values({ type: 'direct', tenantId: target?.tenantId ?? null }).returning();
+  await db.insert(chatConversationMembers).values([
+    { conversationId: conv.id, userId: botUserId },
+    { conversationId: conv.id, userId },
+  ]);
+  return conv.id;
+}
+
+/**
+ * 以机器人/系统身份向会话投递一条消息（无上下文、不校验成员）。
+ * senderId 为用户 ID 时显示该用户身份；为 null 时由 extra.bot 提供展示身份。
+ */
+export async function postBotMessage(
+  conversationId: number,
+  senderId: number | null,
+  input: { type: ChatMessageType; content: string; extra?: ChatMessageExtra | null },
+): Promise<ChatMessage> {
+  const [row] = await db.insert(chatMessages).values({
+    conversationId,
+    senderId,
+    type: input.type,
+    content: input.content,
+    extra: input.extra ?? null,
+  }).returning();
+
+  let sender: { id: number; nickname: string; avatar: string | null } | null = null;
+  if (senderId) {
+    const u = await db.query.users.findFirst({ where: eq(users.id, senderId), columns: { id: true, nickname: true, avatar: true } });
+    if (u) sender = { id: u.id, nickname: u.nickname, avatar: u.avatar ?? null };
+  }
+
+  const [, members] = await Promise.all([
+    db.update(chatConversations).set({ updatedAt: new Date() }).where(eq(chatConversations.id, conversationId)),
+    db
+      .select({ userId: chatConversationMembers.userId })
+      .from(chatConversationMembers)
+      .where(eq(chatConversationMembers.conversationId, conversationId)),
+  ]);
+
+  const msg = mapChatMessage(row, sender);
+  scheduleSendToUsers(members, { type: 'chat:message', payload: msg });
+  return msg;
+}
+
+/** 将某张卡片标记为已处理（置灰按钮 + 结果文案），并广播 chat:edit 实时更新 */
+export async function markCardMessageDone(messageId: number, statusText: string): Promise<void> {
+  const row = await db.query.chatMessages.findFirst({ where: eq(chatMessages.id, messageId) });
+  if (!row || row.type !== 'card') return;
+  const extra = (row.extra as ChatMessageExtra | null) ?? {};
+  if (!extra.card || extra.card.status === 'done') return;
+
+  const newExtra: ChatMessageExtra = { ...extra, card: { ...extra.card, status: 'done', statusText } };
+  const [updated] = await db.update(chatMessages).set({ extra: newExtra }).where(eq(chatMessages.id, messageId)).returning();
+
+  let sender: { id: number; nickname: string; avatar: string | null } | null = null;
+  if (updated.senderId) {
+    const u = await db.query.users.findFirst({ where: eq(users.id, updated.senderId), columns: { id: true, nickname: true, avatar: true } });
+    if (u) sender = { id: u.id, nickname: u.nickname, avatar: u.avatar ?? null };
+  }
+
+  const members = await db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, updated.conversationId));
+  scheduleSendToUsers(members, { type: 'chat:edit', payload: mapChatMessage(updated, sender) });
 }
