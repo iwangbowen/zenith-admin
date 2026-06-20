@@ -14,7 +14,7 @@
 
 - 右上角内置「列设置」下拉菜单，用户可勾选/取消勾选各列的显示状态
 - 列显隐配置自动持久化到 `localStorage`（key 默认根据页面路径 + 列 key 自动生成）
-- 操作列（key/title 为 `action`/`actions`/`operation`/`operations`/`操作`）默认不可隐藏
+- 操作列（key 为 `action`/`actions`/`operation`/`operations`/`operate`，或标题为 `操作`）默认不可隐藏
 - 可选展示刷新按钮，并内置表格尺寸、边框/斑马纹显示设置和全屏展示按钮
 - 分页配置会自动补充 `showTotal`、`showSizeChanger` 和 `[10, 20, 50, 100]` 页大小选项
 - 完全透传 Semi Design `TableProps`，使用方式与 `<Table>` 一致

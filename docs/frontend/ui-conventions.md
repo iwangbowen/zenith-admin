@@ -167,7 +167,7 @@ import { usePermission } from '../../hooks/usePermission';
 
 const { hasPermission } = usePermission();
 
-{hasPermission('user:create') && (
+{hasPermission('system:user:create') && (
   <Button onClick={openCreate}>新增</Button>
 )}
 ```

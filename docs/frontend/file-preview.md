@@ -10,7 +10,7 @@
 
 | 格式 | MIME 类型 | 渲染方式 | 需要 `fileId` |
 | --- | --- | --- | --- |
-| 图片 | `image/*` | 普通图片回退给调用方的 Semi Design `ImagePreview`；SVG 由弹窗内 `<img>` 渲染 | 否 |
+| 普通图片 | `image/*`（除 `image/svg+xml`） | 回退给调用方的 Semi Design `ImagePreview` | 否 |
 | PDF | `application/pdf` | `@embedpdf/react-pdf-viewer`（`PDFPreviewPanel`） | 否 |
 | 音频 | `audio/*` | Semi Design `AudioPlayer` | 否 |
 | 视频 | `video/*` | Semi Design `VideoPlayer` | 否 |
@@ -39,7 +39,7 @@
 | Prop | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `fileUrl` | `string` | ✅ | 文件访问 URL，通常为 `/api/files/{id}/content` |
-| `fileId` | `number` | Excel 预览时必填 | 托管文件 ID，用于请求后端 `/sheet-preview` 接口 |
+| `fileId` | `number` | 表格预览时必填 | 托管文件 ID，用于请求后端 `/sheet-preview` 接口 |
 | `fileName` | `string` | 否 | 文件名，显示在标题栏；默认 `'文件'` |
 | `mimeType` | `string \| null` | 否 | MIME 类型，决定走哪个渲染分支；为空时直接关闭 |
 | `visible` | `boolean` | ✅ | 控制弹窗显示/隐藏 |
