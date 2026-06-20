@@ -8,6 +8,10 @@ import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 const MOCK_TOKEN = 'mock-access-token-demo';
 const MOCK_REFRESH_TOKEN = 'mock-refresh-token-demo';
 
+// 偏好设置 & 收藏菜单 mock 状态（模块级可变，模拟服务端持久化）
+let mockPreferencesStore: Record<string, unknown> | null = null;
+let mockFavoriteMenusStore: number[] = [];
+
 /** 获取所有叶子菜单权限 */
 function getAllPermissions(): string[] {
   return mockMenus
@@ -175,6 +179,29 @@ export const authHandlers = [
       return HttpResponse.json({ code: 401, message: '密码错误', data: null }, { status: 401 });
     }
     return HttpResponse.json({ code: 0, message: '验证通过', data: null });
+  }),
+
+  // 获取偏好设置
+  http.get('/api/auth/preferences', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: mockPreferencesStore });
+  }),
+
+  // 保存偏好设置（整体替换，与服务端行为一致）
+  http.put('/api/auth/preferences', async ({ request }) => {
+    mockPreferencesStore = await request.json() as Record<string, unknown>;
+    return HttpResponse.json({ code: 0, message: '已保存', data: mockPreferencesStore });
+  }),
+
+  // 获取收藏菜单
+  http.get('/api/auth/favorite-menus', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: mockFavoriteMenusStore });
+  }),
+
+  // 更新收藏菜单
+  http.put('/api/auth/favorite-menus', async ({ request }) => {
+    const body = await request.json() as { menuIds: number[] };
+    mockFavoriteMenusStore = Array.isArray(body.menuIds) ? body.menuIds : [];
+    return HttpResponse.json({ code: 0, message: '已更新', data: mockFavoriteMenusStore });
   }),
 ];
 
