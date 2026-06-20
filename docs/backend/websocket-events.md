@@ -50,13 +50,33 @@
 | `chat:message` | 新消息送达 | `ChatMessage` |
 | `chat:edit` | 消息内容被编辑 | `ChatMessage` |
 | `chat:recall` | 消息被撤回 | `{ conversationId, messageId }` |
-| `chat:read` | 对方已读位移变更 | `{ conversationId, userId }` |
+| `chat:read` | 对方已读位移变更 | `{ conversationId, userId, readAt }` |
 | `chat:reaction` | 表情反应变更 | `{ conversationId, messageId, reactions }` |
 | `chat:typing` | 对方正在输入 | `{ conversationId, userId, nickname }` |
 | `chat:vote-update` | 投票数据变更 | `{ conversationId, messageId, voteData }` |
+| `chat:presence` | 用户上线/下线 | `{ userId, online, lastSeen }` |
 | `chat:member-join` | 群成员加入 | `{ conversationId, user }` |
 | `chat:member-leave` | 群成员退出 | `{ conversationId, userId }` |
 | `chat:group-update` | 群名称/公告变更 | `{ conversationId, name?, announcement? }` |
+
+### 音视频通话信令（rtc）
+
+WebRTC 通话（1v1 / 群语音 / 视频 / 屏幕共享）的信令复用本 WebSocket 端点中继，媒体走 P2P。服务端在 `packages/server/src/routes/ws.ts` 按以下规则转发：**`payload.to` 为定向用户（`sendToUser`），否则按 `conversationId` 广播给会话其他成员**；群通话房间状态由 `packages/server/src/lib/rtc-manager.ts` 维护。
+
+| 事件 | 触发场景 | Payload 摘要 |
+| --- | --- | --- |
+| `rtc:invite` | 发起通话邀请（1v1 定向 / 群广播） | `{ callId, conversationId, callType, mode, from, to?, conversationName? }` |
+| `rtc:accept` | 被叫接听（1v1） | `{ callId, to, from }` |
+| `rtc:reject` | 被叫拒绝 | `{ callId, to, reason? }` |
+| `rtc:busy` | 被叫忙线（已在通话中） | `{ callId, to }` |
+| `rtc:cancel` | 呼叫方在接通前取消 | `{ callId, conversationId, to? }` |
+| `rtc:join` | 加入群通话房间（服务端登记） | `{ callId, conversationId, from }` |
+| `rtc:room-participants` | 服务端回送房间现有成员（给加入者） | `{ callId, participants[] }` |
+| `rtc:leave` | 离开 / 挂断 | `{ callId, conversationId, from, to? }` |
+| `rtc:offer` / `rtc:answer` | SDP 协商 | `{ callId, to, from, sdp }` |
+| `rtc:ice` | ICE candidate 交换 | `{ callId, to, from, candidate }` |
+
+> 完整通话流程、拓扑（1v1 / mesh）、ICE 配置与排错见 [WebRTC 音视频通话](./webrtc-calls.md)。
 
 ## 前端分发
 

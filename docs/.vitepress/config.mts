@@ -107,6 +107,7 @@ export default defineConfig({
           { text: '定时任务', link: '/backend/cron-jobs' },
           { text: '维护模式', link: '/backend/maintenance-mode' },
           { text: 'WebSocket 事件清单', link: '/backend/websocket-events' },
+          { text: 'WebRTC 音视频通话', link: '/backend/webrtc-calls' },
           {
             text: '支付中心',
             collapsed: true,
