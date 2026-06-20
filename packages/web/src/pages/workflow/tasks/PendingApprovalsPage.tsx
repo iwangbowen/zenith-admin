@@ -548,7 +548,7 @@ export default function PendingApprovalsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 210,
       fixed: 'right',
       render: (_: unknown, record: PendingItem) => (
         <Space>
