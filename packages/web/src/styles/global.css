@@ -360,6 +360,12 @@ body {
 .page-container .semi-card-body {
   padding: 12px 16px !important;
 }
+
+/* 统一：page-container 下顶部 Tab 面板内容（搜索区/表格）与 tab bar 的间距。
+   仅命中作为 page-container 直接子节点的水平 Tabs，避开纵向 tabs、抽屉/弹窗及嵌套 tabs。 */
+.page-container > .semi-tabs > .semi-tabs-content:not(.semi-tabs-content-left) {
+  padding-top: 12px;
+}
 .page-header {
   display: flex;
   align-items: center;

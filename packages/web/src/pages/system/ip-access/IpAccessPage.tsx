@@ -299,12 +299,10 @@ export default function IpAccessPage() {
     <div className="page-container">
       <Tabs type="line">
         <TabPane tab="访问控制配置" itemKey="config">
-          <div style={{ paddingTop: 16 }}>{configContent}</div>
+          {configContent}
         </TabPane>
         <TabPane tab="拦截日志" itemKey="logs">
-          <div style={{ paddingTop: 16 }}>
-            <IpAccessLogsTab />
-          </div>
+          <IpAccessLogsTab />
         </TabPane>
       </Tabs>
     </div>

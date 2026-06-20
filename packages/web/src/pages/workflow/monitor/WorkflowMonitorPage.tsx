@@ -446,7 +446,7 @@ export default function WorkflowMonitorPage() {
       <Tabs type="line">
         <TabPane tab="实例监控" itemKey="list">
       {/* 统计卡片 */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, marginTop: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <StatCard label="全部" value={stats.total}     color="var(--semi-color-text-0)" onClick={() => handleStatCardClick('')}          active={searchParams.status === ''} />
         <StatCard label="审批中" value={stats.running}  color="var(--semi-color-primary)"        onClick={() => handleStatCardClick('running')}   active={searchParams.status === 'running'} />
         <StatCard label="已通过" value={stats.approved} color="#0dc87c"                          onClick={() => handleStatCardClick('approved')}  active={searchParams.status === 'approved'} />
@@ -514,9 +514,7 @@ export default function WorkflowMonitorPage() {
       />
         </TabPane>
         <TabPane tab="数据分析" itemKey="analytics">
-          <div style={{ marginTop: 12 }}>
-            <WorkflowAnalyticsView definitions={definitions} />
-          </div>
+          <WorkflowAnalyticsView definitions={definitions} />
         </TabPane>
       </Tabs>
 

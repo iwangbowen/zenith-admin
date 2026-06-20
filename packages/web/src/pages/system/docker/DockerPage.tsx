@@ -868,7 +868,7 @@ export default function DockerPage() {
 
   return (
     <div className="page-container">
-      <Tabs type="line" style={{ marginBottom: 0 }}>
+      <Tabs type="line">
         <TabPane tab="容器" itemKey="containers"><ContainersTab /></TabPane>
         <TabPane tab="镜像" itemKey="images"><ImagesTab /></TabPane>
         <TabPane tab="网络" itemKey="networks"><NetworksTab /></TabPane>

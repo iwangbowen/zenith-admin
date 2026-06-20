@@ -826,15 +826,8 @@ export default function AnalyticsDataPage() {
 
   return (
     <div className="page-container">
-      <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" style={{ marginBottom: 0 }}>
-        <TabPane tab="事件明细" itemKey="events" />
-        <TabPane tab="事件字典" itemKey="meta" />
-        <TabPane tab="数据聚合" itemKey="rollup" />
-        <TabPane tab="采集设置" itemKey="settings" />
-      </Tabs>
-
-      {activeTab === 'events' && (
-        <div style={{ paddingTop: 12 }}>
+      <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
+        <TabPane tab="事件明细" itemKey="events">
           <SearchToolbar>
             <Select
               placeholder="事件类型"
@@ -953,11 +946,8 @@ export default function AnalyticsDataPage() {
           >
             {renderEventDetail()}
           </SideSheet>
-        </div>
-      )}
-
-      {activeTab === 'meta' && (
-        <div style={{ paddingTop: 12 }}>
+        </TabPane>
+        <TabPane tab="事件字典" itemKey="meta">
           <SearchToolbar>
             <Input
               prefix={<Search size={14} />}
@@ -1046,11 +1036,8 @@ export default function AnalyticsDataPage() {
               />
             </Form>
           </Modal>
-        </div>
-      )}
-
-      {activeTab === 'rollup' && (
-        <div style={{ paddingTop: 12 }}>
+        </TabPane>
+        <TabPane tab="数据聚合" itemKey="rollup">
           <SearchToolbar>
             <Select value={rollupDays} onChange={handleRollupDaysChange} optionList={ROLLUP_DAY_OPTIONS} style={{ width: 130 }} />
             <Button type="primary" loading={rollupRebuilding} onClick={() => void handleRebuildRollup()}>重建聚合</Button>
@@ -1067,14 +1054,11 @@ export default function AnalyticsDataPage() {
             scroll={{ y: 560 }}
             empty="暂无数据"
           />
-        </div>
-      )}
-
-      {activeTab === 'settings' && (
-        <div style={{ paddingTop: 12 }}>
+        </TabPane>
+        <TabPane tab="采集设置" itemKey="settings">
           {renderSettings()}
-        </div>
-      )}
+        </TabPane>
+      </Tabs>
     </div>
   );
 }

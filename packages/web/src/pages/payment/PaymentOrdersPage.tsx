@@ -273,15 +273,8 @@ export default function PaymentOrdersPage() {
 
   return (
     <div className="page-container">
-      <Tabs activeKey={activeTab} onChange={(k) => setActiveTab(k as 'list' | 'stats')} type="line" style={{ marginBottom: 0 }}>
-        <TabPane tab="支付订单" itemKey="list" />
-        <TabPane tab="统计分析" itemKey="stats" />
-      </Tabs>
-
-      {activeTab === 'stats' && <div style={{ paddingTop: 8 }}><PaymentStatsPanel /></div>}
-
-      {activeTab === 'list' && (
-        <div style={{ paddingTop: 12 }}>
+      <Tabs activeKey={activeTab} onChange={(k) => setActiveTab(k as 'list' | 'stats')} type="line" lazyRender keepDOM={false}>
+        <TabPane tab="支付订单" itemKey="list">
           {stats && (
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
               <StatCard label="累计成功金额" value={yuan(stats.totalAmount)} />
@@ -323,8 +316,11 @@ export default function PaymentOrdersPage() {
             bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
             onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)}
           />
-        </div>
-      )}
+        </TabPane>
+        <TabPane tab="统计分析" itemKey="stats">
+          <PaymentStatsPanel />
+        </TabPane>
+      </Tabs>
 
       <AppModal title="订单详情" visible={!!detail} onCancel={() => setDetail(null)} footer={null} width={680} closeOnEsc>
         {detail && (

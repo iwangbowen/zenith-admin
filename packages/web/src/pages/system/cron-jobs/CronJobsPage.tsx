@@ -485,7 +485,6 @@ export default function CronJobsPage() {
     <div className="page-container">
       <Tabs type="line" lazyRender>
         <Tabs.TabPane tab="任务管理" itemKey="jobs">
-          <div style={{ paddingTop: 12 }}>
           <SearchToolbar>
           <Input
             prefix={<Search size={14} />}
@@ -542,12 +541,9 @@ export default function CronJobsPage() {
         pagination={buildPagination(total, fetchData)}
         empty="暂无数据"
       />
-          </div>
         </Tabs.TabPane>
         <Tabs.TabPane tab="执行概览" itemKey="dashboard">
-          <div style={{ paddingTop: 12 }}>
-            <CronJobDashboard jobs={data} />
-          </div>
+          <CronJobDashboard jobs={data} />
         </Tabs.TabPane>
       </Tabs>
 

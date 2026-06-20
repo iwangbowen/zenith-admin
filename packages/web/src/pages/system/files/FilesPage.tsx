@@ -586,9 +586,8 @@ export default function FilesPage() {
 
   return (
     <div className="page-container">
-      <Tabs defaultActiveKey="list" type="line" style={{ marginBottom: -1 }}>
+      <Tabs defaultActiveKey="list" type="line">
         <TabPane tab="文件列表" itemKey="list">
-          <div style={{ paddingTop: 12 }}>
       <SearchToolbar className="files-toolbar">
           <Input
             prefix={<Search size={14} />}
@@ -904,12 +903,9 @@ export default function FilesPage() {
           )}
         </>
       )}
-        </div>
         </TabPane>
         <TabPane tab="统计分析" itemKey="stats">
-          <div style={{ paddingTop: 12 }}>
-            <FileStatsPanel />
-          </div>
+          <FileStatsPanel />
         </TabPane>
       </Tabs>
     </div>

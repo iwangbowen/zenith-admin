@@ -155,13 +155,10 @@ export default function OperationLogsPage() {
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as 'list' | 'stats')}
         type="line"
-        style={{ marginBottom: 0 }}
+        lazyRender
+        keepDOM={false}
       >
-        <TabPane tab="日志列表" itemKey="list" />
-        <TabPane tab="统计分析" itemKey="stats" />
-      </Tabs>
-      {activeTab === 'list' && (
-        <>
+        <TabPane tab="日志列表" itemKey="list">
           <SearchToolbar>
               <Input
                 prefix={<Search size={14} />}
@@ -304,13 +301,11 @@ export default function OperationLogsPage() {
             scroll={{ x: 1600 }}
             pagination={buildPagination(total, fetchData)}
           />
-        </>
-      )}
-      {activeTab === 'stats' && (
-        <div style={{ paddingTop: 16 }}>
+        </TabPane>
+        <TabPane tab="统计分析" itemKey="stats">
           <OperationLogStatsPanel />
-        </div>
-      )}
+        </TabPane>
+      </Tabs>
       <AppModal
         title={`清除${clearMonths === 0 ? '全部' : clearLogsLabels[clearMonths] + '前的'}操作日志`}
         visible={clearModalVisible}

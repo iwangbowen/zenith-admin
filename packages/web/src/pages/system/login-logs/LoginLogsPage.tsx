@@ -115,8 +115,7 @@ export default function LoginLogsPage() {
     <div className="page-container">
       <Tabs type="line">
         <TabPane tab="日志列表" itemKey="list">
-          <div style={{ paddingTop: 12 }}>
-            <SearchToolbar>
+          <SearchToolbar>
           <Input
             prefix={<Search size={14} />}
             placeholder="请输入用户名"
@@ -192,12 +191,9 @@ export default function LoginLogsPage() {
             onRefresh={() => void fetchData()}
             pagination={buildPagination(total, fetchData)}
           />
-          </div>
         </TabPane>
         <TabPane tab="统计分析" itemKey="stats">
-          <div style={{ paddingTop: 12 }}>
-            <LoginLogStatsPanel />
-          </div>
+          <LoginLogStatsPanel />
         </TabPane>
       </Tabs>
       <AppModal
