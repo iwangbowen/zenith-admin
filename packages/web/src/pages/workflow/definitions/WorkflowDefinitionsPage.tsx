@@ -3,7 +3,7 @@ import { Button, Dropdown, Form, Input, Modal, Select, Space, Tag,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { GitCompare, LayoutTemplate, Plus, RotateCcw, Save, Search, Upload } from 'lucide-react';
+import { GitCompare, LayoutTemplate, MoreHorizontal, Plus, RotateCcw, Save, Search, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -350,7 +350,7 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 300,
+      width: 230,
       fixed: 'right',
       render: (_: unknown, record: WorkflowDefinition) => (
         <Space>
@@ -374,25 +374,6 @@ export default function WorkflowDefinitionsPage() {
               });
             }}>发布</Button>
           )}
-          {record.status === 'published' && hasPermission('workflow:definition:publish') && (
-            <Button theme="borderless" size="small" type="warning" onClick={() => {
-              Modal.confirm({
-                title: '确定禁用此流程？',
-                content: '禁用后该流程不可发起新申请，是否继续？',
-                okButtonProps: { type: 'danger', theme: 'solid' },
-                onOk: () => handleDisable(record),
-              });
-            }}>禁用</Button>
-          )}
-          {record.status === 'disabled' && hasPermission('workflow:definition:publish') && (
-            <Button theme="borderless" size="small" type="primary" onClick={() => {
-              Modal.confirm({
-                title: '确定启用此流程？',
-                content: '启用后该流程将恢复为已发布状态，可正常发起申请。',
-                onOk: () => handleEnable(record),
-              });
-            }}>启用</Button>
-          )}
           <Dropdown
             trigger="custom"
             visible={openMoreId === record.id}
@@ -400,6 +381,27 @@ export default function WorkflowDefinitionsPage() {
             position="bottomRight"
             render={
               <Dropdown.Menu>
+                {record.status === 'published' && hasPermission('workflow:definition:publish') && (
+                  <Dropdown.Item type="warning" onClick={() => {
+                    setOpenMoreId(null);
+                    Modal.confirm({
+                      title: '确定禁用此流程？',
+                      content: '禁用后该流程不可发起新申请，是否继续？',
+                      okButtonProps: { type: 'danger', theme: 'solid' },
+                      onOk: () => handleDisable(record),
+                    });
+                  }}>禁用</Dropdown.Item>
+                )}
+                {record.status === 'disabled' && hasPermission('workflow:definition:publish') && (
+                  <Dropdown.Item onClick={() => {
+                    setOpenMoreId(null);
+                    Modal.confirm({
+                      title: '确定启用此流程？',
+                      content: '启用后该流程将恢复为已发布状态，可正常发起申请。',
+                      onOk: () => handleEnable(record),
+                    });
+                  }}>启用</Dropdown.Item>
+                )}
                 <Dropdown.Item onClick={() => { setOpenMoreId(null); setHistoryTarget(record); }}>历史版本</Dropdown.Item>
                 <Dropdown.Item onClick={() => { void openDiffModal(record); }}>版本对比</Dropdown.Item>
                 {hasPermission('workflow:definition:create') && (
@@ -424,10 +426,10 @@ export default function WorkflowDefinitionsPage() {
             <Button
               theme="borderless"
               size="small"
+              icon={<MoreHorizontal size={16} />}
+              aria-label="更多操作"
               onClick={() => setOpenMoreId(openMoreId === record.id ? null : record.id)}
-            >
-              更多
-            </Button>
+            />
           </Dropdown>
         </Space>
       ),
