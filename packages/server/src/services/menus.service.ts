@@ -4,6 +4,8 @@ import { menus } from '../db/schema';
 import type { Menu } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
+import { getEffectiveTenantId } from '../lib/tenant';
+import { getTenantPackageMenuIdSet } from '../lib/tenant-package';
 import { isSuperAdmin, getUserMenuIds } from '../lib/permissions';
 import { formatDateTime } from '../lib/datetime';
 
@@ -106,7 +108,10 @@ export async function listUserMenuTree(): Promise<Menu[]> {
 
 export async function listMenuTree(): Promise<Menu[]> {
   const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
-  return buildMenuTree(list.map(mapMenu));
+  // 多租户：租户管理员（或平台超管切换至某租户视角）分配角色菜单时，可选范围限定在套餐白名单内。
+  const packageMenuIds = await getTenantPackageMenuIdSet(getEffectiveTenantId(currentUser()));
+  const filtered = packageMenuIds ? list.filter((m) => packageMenuIds.has(m.id)) : list;
+  return buildMenuTree(filtered.map(mapMenu));
 }
 
 export async function listMenusFlat(): Promise<Omit<Menu, 'children'>[]> {

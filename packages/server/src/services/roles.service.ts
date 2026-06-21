@@ -4,6 +4,7 @@ import { db } from '../db';
 import type { DbTransaction } from '../db/types';
 import { roles, roleMenus, roleDeptScopes, userRoles, users } from '../db/schema';
 import { clearUserPermissionCache } from '../lib/permissions';
+import { getTenantPackageMenuIdSet } from '../lib/tenant-package';
 import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
@@ -165,14 +166,20 @@ export async function deleteRole(id: number) {
   if (!deleted) throw new HTTPException(404, { message: '角色不存在' });
 }
 
-async function ensureRoleBelongsToTenant(id: number) {
+async function ensureRoleBelongsToTenant(id: number): Promise<number | null> {
   const user = currentUser();
-  const [role] = await db.select({ id: roles.id }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
+  const [role] = await db.select({ id: roles.id, tenantId: roles.tenantId }).from(roles).where(and(eq(roles.id, id), tenantCondition(roles, user))).limit(1);
   if (!role) throw new HTTPException(404, { message: '角色不存在' });
+  return role.tenantId;
 }
 
 export async function assignRoleMenus(id: number, menuIds: number[]) {
-  await ensureRoleBelongsToTenant(id);
+  const roleTenantId = await ensureRoleBelongsToTenant(id);
+  // 多租户：角色所属租户绑定套餐时，分配的菜单必须落在套餐白名单内。
+  const packageMenuIds = await getTenantPackageMenuIdSet(roleTenantId);
+  if (packageMenuIds && menuIds.some((mid) => !packageMenuIds.has(mid))) {
+    throw new HTTPException(400, { message: '所选菜单超出当前租户套餐范围，无法分配' });
+  }
   await db.transaction(async (tx) => {
     await tx.delete(roleMenus).where(eq(roleMenus.roleId, id));
     if (menuIds.length > 0) {

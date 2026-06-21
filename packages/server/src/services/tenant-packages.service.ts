@@ -6,6 +6,7 @@ import type { DbExecutor } from '../db/types';
 import { tenantPackages, tenantPackageMenus, type TenantPackageRow } from '../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
+import { clearUserPermissionCache } from '../lib/permissions';
 import { formatDateTime } from '../lib/datetime';
 
 export function mapTenantPackage(
@@ -124,6 +125,8 @@ export async function assignTenantPackageMenus(id: number, menuIds: number[]) {
   await db.transaction(async (tx) => {
     await setPackageMenus(tx, id, menuIds);
   });
+  // 套餐菜单变更会影响绑定该套餐的租户用户的有效菜单/权限，清空权限缓存使其即时生效。
+  clearUserPermissionCache();
 }
 
 export async function deleteTenantPackage(id: number) {

@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { users } from '../db/schema';
+import { getTenantPackageMenuIdSet } from './tenant-package';
 
 const SUPER_ADMIN_CODE = 'super_admin';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -42,7 +43,7 @@ export async function getUserMenuIds(userId: number): Promise<number[]> {
 async function fetchUserPermissionData(userId: number): Promise<{ permissions: string[]; menuIds: number[] }> {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
-    columns: {},
+    columns: { tenantId: true },
     with: {
       userRoles: {
         columns: {},
@@ -57,6 +58,7 @@ async function fetchUserPermissionData(userId: number): Promise<{ permissions: s
                     columns: {
                       id: true,
                       permission: true,
+                      visible: true,
                     },
                   },
                 },
@@ -72,6 +74,7 @@ async function fetchUserPermissionData(userId: number): Promise<{ permissions: s
             columns: {
               id: true,
               permission: true,
+              visible: true,
             },
           },
         },
@@ -85,7 +88,13 @@ async function fetchUserPermissionData(userId: number): Promise<{ permissions: s
 
   const roleMenuRows = user.userRoles.flatMap(({ role }) => role.roleMenus.map(({ menu }) => menu));
   const directMenuRows = user.userMenus.map(({ menu }) => menu);
-  const allMenuRows = [...roleMenuRows, ...directMenuRows];
+  let allMenuRows = [...roleMenuRows, ...directMenuRows];
+
+  // 多租户：将有效菜单/权限交集到租户套餐白名单内；保留不可见的内置工具菜单（个人中心/消息等），避免锁死。
+  const packageMenuIds = await getTenantPackageMenuIdSet(user.tenantId);
+  if (packageMenuIds) {
+    allMenuRows = allMenuRows.filter((menu) => packageMenuIds.has(menu.id) || !menu.visible);
+  }
 
   const menuIds = [...new Set(allMenuRows.map((menu) => menu.id))];
 
