@@ -4,6 +4,7 @@
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import DOMPurify from 'dompurify';
 import { Form, Select, Upload, Button, Tag, Typography, Row, Col, Divider, Rating, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, Eraser } from 'lucide-react';
@@ -670,7 +671,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
         return (
           <Form.Slot label={field.label} {...extraProps}>
             {html
-              ? <div className="wf-richtext-readonly" dangerouslySetInnerHTML={{ __html: html }} />
+              ? <div className="wf-richtext-readonly" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
               : <Typography.Text type="tertiary">（无内容）</Typography.Text>}
           </Form.Slot>
         );

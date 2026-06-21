@@ -78,9 +78,9 @@ export default function CcToMePage() {
     setDetailVisible(true);
     // 自动标记已读
     if (record.ccTaskId && !record.ccReadAt) {
-      void request.post(`/api/workflows/instances/cc/${record.ccTaskId}/read`, {}).then((res) => {
-        if (res.code === 0) void fetchList();
-      });
+      request.post(`/api/workflows/instances/cc/${record.ccTaskId}/read`, {})
+        .then((res) => { if (res.code === 0) void fetchList(); })
+        .catch(() => { /* 标记已读失败不影响查看 */ });
     }
   };
 
@@ -190,6 +190,7 @@ export default function CcToMePage() {
         onOk={() => void handleForward()}
         confirmLoading={forwardLoading}
         okText="确定转发"
+        closeOnEsc
       >
         <Typography.Text type="tertiary" size="small">将该流程抄送给指定成员（自动去重，已抄送的成员会被跳过）。</Typography.Text>
         <div style={{ marginTop: 12 }}>

@@ -19,6 +19,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
+import { usePermission } from '@/hooks/usePermission';
 
 type ScheduleStatus = WorkflowSchedule['status'];
 
@@ -67,6 +68,7 @@ function renderLastRunStatus(status: string | null, message: string | null) {
 
 export default function WorkflowSchedulesPage() {
   const formApi = useRef<FormApi<FormValues> | null>(null);
+  const { hasPermission } = usePermission();
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<WorkflowSchedule[]>([]);
   const [total, setTotal] = useState(0);
@@ -82,6 +84,10 @@ export default function WorkflowSchedulesPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowSchedule | null>(null);
   const [saving, setSaving] = useState(false);
+  const [runningId, setRunningId] = useState<number | null>(null);
+  const canCreate = hasPermission('workflow:schedule:create');
+  const canEdit = hasPermission('workflow:schedule:edit');
+  const canDelete = hasPermission('workflow:schedule:delete');
 
   const definitionOptions = useMemo(
     () => definitions.map((item) => ({ value: item.id, label: item.name })),
@@ -220,10 +226,15 @@ export default function WorkflowSchedulesPage() {
   };
 
   const handleRunOnce = async (row: WorkflowSchedule) => {
-    const res = await request.post<WorkflowSchedule>(`/api/workflows/schedules/${row.id}/run`);
-    if (res.code === 0) {
-      Toast.success(res.message || '已触发');
-      void fetchData();
+    setRunningId(row.id);
+    try {
+      const res = await request.post<WorkflowSchedule>(`/api/workflows/schedules/${row.id}/run`);
+      if (res.code === 0) {
+        Toast.success(res.message || '已触发');
+        void fetchData();
+      }
+    } finally {
+      setRunningId(null);
     }
   };
 
@@ -284,17 +295,29 @@ export default function WorkflowSchedulesPage() {
       fixed: 'right',
       render: (_value: unknown, record) => (
         <Space>
-          <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
-            编辑
-          </Button>
-          <Button theme="borderless" size="small" onClick={() => handleRunOnce(record)}>
-            立即执行
-          </Button>
-          <Popconfirm title="确定要删除该定时发起规则吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button theme="borderless" type="danger" size="small">
-              删除
+          {canEdit && (
+            <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
+              编辑
             </Button>
-          </Popconfirm>
+          )}
+          {canEdit && (
+            <Button
+              theme="borderless"
+              size="small"
+              loading={runningId === record.id}
+              disabled={runningId !== null}
+              onClick={() => handleRunOnce(record)}
+            >
+              立即执行
+            </Button>
+          )}
+          {canDelete && (
+            <Popconfirm title="确定要删除该定时发起规则吗？" onConfirm={() => handleDelete(record.id)}>
+              <Button theme="borderless" type="danger" size="small">
+                删除
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -330,9 +353,11 @@ export default function WorkflowSchedulesPage() {
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
           重置
         </Button>
-        <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-          新增
-        </Button>
+        {canCreate && (
+          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
+            新增
+          </Button>
+        )}
       </SearchToolbar>
 
       <ConfigurableTable<WorkflowSchedule>

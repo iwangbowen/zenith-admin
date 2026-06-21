@@ -27,7 +27,7 @@ const MY_TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   rejected: { text: '我已驳回', color: 'red' },
 };
 
-export default function CcToMePage() {
+export default function HandledPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();

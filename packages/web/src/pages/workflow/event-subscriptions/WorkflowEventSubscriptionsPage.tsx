@@ -37,6 +37,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
+import { usePermission } from '@/hooks/usePermission';
 
 const EVENT_OPTIONS: Array<{ value: WorkflowEventType; label: string }> = [
   { value: 'instance.created',   label: '实例创建' },
@@ -73,8 +74,15 @@ interface FormValues {
   enabled?: boolean;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
 export default function WorkflowEventSubscriptionsPage() {
+  const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
+  const editingRequestIdRef = useRef<number | null>(null);
+  const canManageEventSubscription = hasPermission('workflow:event-subscription:view');
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<WorkflowEventSubscription[]>([]);
   const [total, setTotal] = useState(0);
@@ -142,6 +150,7 @@ export default function WorkflowEventSubscriptionsPage() {
   };
 
   const openCreate = () => {
+    editingRequestIdRef.current = null;
     setEditing(null);
     setModalVisible(true);
     setTimeout(() => formApi.current?.setValues({
@@ -151,6 +160,8 @@ export default function WorkflowEventSubscriptionsPage() {
   };
 
   const openEdit = async (row: WorkflowEventSubscription) => {
+    const requestedId = row.id;
+    editingRequestIdRef.current = requestedId;
     setEditing(row);
     setModalVisible(true);
     setTimeout(() => formApi.current?.setValues({
@@ -165,30 +176,41 @@ export default function WorkflowEventSubscriptionsPage() {
       enabled: row.enabled,
     }), 0);
     setModalDetailLoading(true);
-    const res = await request.get<WorkflowEventSubscription>(`/api/workflows/event-subscriptions/${row.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditing(res.data);
-      setTimeout(() => formApi.current?.setValues({
-        name: res.data.name,
-        description: res.data.description ?? '',
-        definitionId: res.data.definitionId,
-        events: res.data.events,
-        url: res.data.url,
-        secret: '',
-        signMode: res.data.signMode,
-        headers: res.data.headers ? JSON.stringify(res.data.headers, null, 2) : '',
-        enabled: res.data.enabled,
-      }), 0);
-    } else {
-      Toast.error(res.message || '获取订阅信息失败');
+    try {
+      const res = await request.get<WorkflowEventSubscription>(`/api/workflows/event-subscriptions/${requestedId}`);
+      if (editingRequestIdRef.current !== requestedId) return;
+      if (res.code === 0 && res.data) {
+        setEditing(res.data);
+        setTimeout(() => formApi.current?.setValues({
+          name: res.data.name,
+          description: res.data.description ?? '',
+          definitionId: res.data.definitionId,
+          events: res.data.events,
+          url: res.data.url,
+          secret: '',
+          signMode: res.data.signMode,
+          headers: res.data.headers ? JSON.stringify(res.data.headers, null, 2) : '',
+          enabled: res.data.enabled,
+        }), 0);
+      } else {
+        Toast.error(res.message || '获取订阅信息失败');
+      }
+    } finally {
+      if (editingRequestIdRef.current === requestedId) setModalDetailLoading(false);
     }
   };
 
   const handleSubmit = async (vals: FormValues) => {
     let headers: Record<string, string> | null = null;
     if (vals.headers?.trim()) {
-      try { headers = JSON.parse(vals.headers); } catch { Toast.error('Headers 必须是合法 JSON'); return; }
+      try {
+        const parsed: unknown = JSON.parse(vals.headers);
+        if (!isPlainRecord(parsed) || Object.entries(parsed).some(([key, value]) => !key.trim() || typeof value !== 'string')) {
+          Toast.error('请输入合法的 JSON 对象');
+          return;
+        }
+        headers = parsed as Record<string, string>;
+      } catch { Toast.error('请输入合法的 JSON 对象'); return; }
     }
     const body = {
       name: vals.name,
@@ -281,20 +303,24 @@ export default function WorkflowEventSubscriptionsPage() {
       render: (v: string) => v === 'hmacSha256' ? <Tag color="green" size="small">HMAC</Tag> : <Tag size="small">无</Tag>,
     },
     {
-      title: '状态', dataIndex: 'enabled', width: 90,
-      render: (v: boolean, r) => <Switch checked={v} onChange={() => handleToggle(r)} />,
+      title: '状态', dataIndex: 'enabled', width: 90, fixed: 'right',
+      render: (v: boolean, r) => canManageEventSubscription
+        ? <Switch checked={v} onChange={() => handleToggle(r)} />
+        : (v ? <Tag color="green">启用</Tag> : <Tag color="grey">禁用</Tag>),
     },
     { title: '更新时间', dataIndex: 'updatedAt', width: 160, render: (v: string) => formatDateTime(v) },
     {
       title: '操作', dataIndex: 'op', width: 280, fixed: 'right',
       render: (_v, r) => (
         <Space>
-          <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>
+          {canManageEventSubscription && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
           <Button theme="borderless" size="small" onClick={() => openDeliveries(r)}>投递</Button>
-          <Button theme="borderless" size="small" onClick={() => handleViewSecret(r.id)}>密钥</Button>
-          <Popconfirm title="确定要删除该订阅吗？" onConfirm={() => handleDelete(r.id)}>
-            <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
+          {canManageEventSubscription && <Button theme="borderless" size="small" onClick={() => handleViewSecret(r.id)}>密钥</Button>}
+          {canManageEventSubscription && (
+            <Popconfirm title="确定要删除该订阅吗？" onConfirm={() => handleDelete(r.id)}>
+              <Button theme="borderless" type="danger" size="small">删除</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -307,7 +333,7 @@ export default function WorkflowEventSubscriptionsPage() {
       render: (v: string) => EVENT_LABEL_MAP[v] ?? v,
     },
     {
-      title: '状态', dataIndex: 'status', width: 90,
+      title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
       render: (v: string) => {
         const m = DELIVERY_STATUS_MAP[v] ?? { text: v, color: 'grey' as const };
         return <Tag color={m.color}>{m.text}</Tag>;
@@ -320,7 +346,7 @@ export default function WorkflowEventSubscriptionsPage() {
     { title: '时间', dataIndex: 'createdAt', width: 160, render: (v: string) => formatDateTime(v) },
     {
       title: '操作', dataIndex: 'op', width: 100, fixed: 'right',
-      render: (_v, r) => (r.status === 'failed' || r.status === 'retrying')
+      render: (_v, r) => canManageEventSubscription && (r.status === 'failed' || r.status === 'retrying')
         ? <Button theme="borderless" size="small" onClick={() => handleRetryDelivery(r.id)}>重试</Button>
         : null,
     },
@@ -357,7 +383,7 @@ export default function WorkflowEventSubscriptionsPage() {
         />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+        {canManageEventSubscription && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
       </SearchToolbar>
 
       <ConfigurableTable<WorkflowEventSubscription>
@@ -374,10 +400,11 @@ export default function WorkflowEventSubscriptionsPage() {
       <AppModal
         title={editing ? '编辑订阅' : '新增订阅'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
+        onCancel={() => { editingRequestIdRef.current = null; setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
         onOk={() => formApi.current?.submitForm()}
         confirmLoading={saving}
         okButtonProps={{ disabled: modalDetailLoading }}
+        closeOnEsc
         width={680}
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">

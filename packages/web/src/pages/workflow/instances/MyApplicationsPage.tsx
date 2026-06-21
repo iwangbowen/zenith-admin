@@ -63,7 +63,7 @@ const TASK_STATUS_TEXT: Record<string, string> = {
 const LAYOUT_ONLY_TYPES = new Set(['divider', 'description', 'group', 'row']);
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function buildPrintHtml(instance: WorkflowInstance): string {
@@ -100,7 +100,7 @@ function buildPrintHtml(instance: WorkflowInstance): string {
       <td style="padding:8px 12px;border:1px solid #ddd;">${TASK_STATUS_TEXT[t.status] ?? t.status}</td>
       <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(t.comment ?? '')}</td>
       <td style="padding:8px 12px;border:1px solid #ddd;">${t.actionAt ? formatDateTime(t.actionAt) : '—'}</td>
-      <td style="padding:8px 12px;border:1px solid #ddd;">${t.signature ? `<img src="${t.signature}" alt="签名" style="max-height:48px;" />` : '—'}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${t.signature ? `<img src="${escapeHtml(t.signature)}" alt="签名" style="max-height:48px;" />` : '—'}</td>
     </tr>`
   ).join('');
 
@@ -769,14 +769,14 @@ export default function MyApplicationsPage() {
   const applySheetFooter = editingDraft ? (
     <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
       <Button onClick={closeApply}>取消</Button>
-      <Button loading={savingDraft} onClick={() => void handleUpdateDraft()}>保存</Button>
-      <Button type="primary" loading={submitting} onClick={() => void handleSaveAndSubmitDraft()}>保存并提交</Button>
+      <Button loading={savingDraft} disabled={submitting} onClick={() => void handleUpdateDraft()}>保存</Button>
+      <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSaveAndSubmitDraft()}>保存并提交</Button>
     </Space>
   ) : (
     <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
       <Button onClick={closeApply}>取消</Button>
-      <Button loading={savingDraft} onClick={() => void handleSaveDraft()}>保存草稿</Button>
-      <Button type="primary" loading={submitting} onClick={() => void handleSubmitApply()}>提交</Button>
+      <Button loading={savingDraft} disabled={submitting} onClick={() => void handleSaveDraft()}>保存草稿</Button>
+      <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSubmitApply()}>提交</Button>
     </Space>
   );
 

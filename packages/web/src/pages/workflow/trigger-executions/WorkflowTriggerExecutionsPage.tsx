@@ -52,7 +52,7 @@ const STATUS_OPTIONS = [
 export default function WorkflowTriggerExecutionsPage() {
   const [list, setList] = useState<WorkflowTriggerExecution[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [loading, setLoading] = useState(false);
 
   interface SearchParams { status: WorkflowTriggerExecutionStatus | ''; instanceId: number | undefined; nodeKey: string }
@@ -128,6 +128,7 @@ export default function WorkflowTriggerExecutionsPage() {
       title: '状态',
       dataIndex: 'status',
       width: 100,
+      fixed: 'right',
       render: (v: WorkflowTriggerExecutionStatus) => {
         const meta = STATUS_MAP[v];
         return <Tag color={meta?.color ?? 'grey'} size="small">{meta?.label ?? v}</Tag>;

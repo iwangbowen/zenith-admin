@@ -39,6 +39,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
+import { usePermission } from '@/hooks/usePermission';
 
 const TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string; color: TagColor }> = [
   { value: 'created',   label: '流程发起时', color: 'blue' },
@@ -112,19 +113,23 @@ function createDefaultActionDraft(type: ActionType): ActionDraft {
 
 type JsonRecordParseResult = { ok: true; value: Record<string, string> } | { ok: false; message: string };
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
 function parseJsonStringRecord(json: string): JsonRecordParseResult {
   try {
     const parsed: unknown = JSON.parse(json);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { ok: false, message: 'JSON 格式不正确' };
+    if (!isPlainRecord(parsed)) {
+      return { ok: false, message: '请输入合法的 JSON 对象' };
     }
     const entries = Object.entries(parsed);
     if (entries.some(([key, value]) => !key.trim() || typeof value !== 'string')) {
-      return { ok: false, message: 'JSON 格式不正确' };
+      return { ok: false, message: '请输入合法的 JSON 对象' };
     }
     return { ok: true, value: Object.fromEntries(entries) as Record<string, string> };
   } catch {
-    return { ok: false, message: 'JSON 格式不正确' };
+    return { ok: false, message: '请输入合法的 JSON 对象' };
   }
 }
 
@@ -172,8 +177,9 @@ function draftToAction(d: ActionDraft): WorkflowAutomationAction | { __error: st
     if (!d.definitionId) return { __error: '动作「发起流程」缺少目标流程' };
     let formMapping: Record<string, string> | undefined;
     if (d.formMappingJson?.trim()) {
-      try { formMapping = JSON.parse(d.formMappingJson); }
-      catch { return { __error: '表单映射必须是合法 JSON 对象' }; }
+      const parsed = parseJsonStringRecord(d.formMappingJson);
+      if (!parsed.ok) return { __error: parsed.message };
+      formMapping = parsed.value;
     }
     return {
       type: 'startWorkflow',
@@ -187,8 +193,13 @@ function draftToAction(d: ActionDraft): WorkflowAutomationAction | { __error: st
     if (!d.content?.trim()) return { __error: '动作「站内信」内容不能为空' };
     let buttons: Array<{ text: string; url: string }> | undefined;
     if (d.buttonsJson?.trim()) {
-      try { buttons = JSON.parse(d.buttonsJson); }
-      catch { return { __error: '按钮配置必须是合法 JSON 数组' }; }
+      try {
+        const parsed: unknown = JSON.parse(d.buttonsJson);
+        if (!Array.isArray(parsed) || parsed.some((item) => !isPlainRecord(item))) {
+          return { __error: '按钮配置必须是合法 JSON 数组' };
+        }
+        buttons = parsed as Array<{ text: string; url: string }>;
+      } catch { return { __error: '按钮配置必须是合法 JSON 数组' }; }
     }
     const recipients = d.recipientsKind === 'users'
       ? { userIds: (d.recipientUserIds ?? '').split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0) }
@@ -232,7 +243,10 @@ function draftToAction(d: ActionDraft): WorkflowAutomationAction | { __error: st
 }
 
 export default function WorkflowAutomationsPage() {
+  const { hasPermission } = usePermission();
   const formApi = useRef<FormApi<FormValues> | null>(null);
+  const editingRequestIdRef = useRef<number | null>(null);
+  const canEditAutomation = hasPermission('workflow:definition:edit');
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<WorkflowAutomation[]>([]);
   const [total, setTotal] = useState(0);
@@ -288,6 +302,7 @@ export default function WorkflowAutomationsPage() {
   };
 
   const openCreate = () => {
+    editingRequestIdRef.current = null;
     setEditing(null);
     setActions([]);
     setModalVisible(true);
@@ -297,6 +312,8 @@ export default function WorkflowAutomationsPage() {
   };
 
   const openEdit = async (row: WorkflowAutomation) => {
+    const requestedId = row.id;
+    editingRequestIdRef.current = requestedId;
     setEditing(row);
     const drafts = row.actions.map(actionToDraft);
     setActions(drafts);
@@ -310,22 +327,26 @@ export default function WorkflowAutomationsPage() {
       actions: [],
     }), 0);
     setModalDetailLoading(true);
-    const res = await request.get<WorkflowAutomation>(`/api/workflows/automations/${row.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditing(res.data);
-      const newDrafts = res.data.actions.map(actionToDraft);
-      setActions(newDrafts);
-      setTimeout(() => formApi.current?.setValues({
-        definitionId: res.data.definitionId,
-        name: res.data.name,
-        trigger: res.data.trigger,
-        status: res.data.status,
-        sort: res.data.sort,
-        actions: [],
-      }), 0);
-    } else {
-      Toast.error(res.message || '获取自动化规则信息失败');
+    try {
+      const res = await request.get<WorkflowAutomation>(`/api/workflows/automations/${requestedId}`);
+      if (editingRequestIdRef.current !== requestedId) return;
+      if (res.code === 0 && res.data) {
+        setEditing(res.data);
+        const newDrafts = res.data.actions.map(actionToDraft);
+        setActions(newDrafts);
+        setTimeout(() => formApi.current?.setValues({
+          definitionId: res.data.definitionId,
+          name: res.data.name,
+          trigger: res.data.trigger,
+          status: res.data.status,
+          sort: res.data.sort,
+          actions: [],
+        }), 0);
+      } else {
+        Toast.error(res.message || '获取自动化规则信息失败');
+      }
+    } finally {
+      if (editingRequestIdRef.current === requestedId) setModalDetailLoading(false);
     }
   };
 
@@ -402,7 +423,7 @@ export default function WorkflowAutomationsPage() {
       render: (v: WorkflowAutomationAction[]) => v?.length ?? 0,
     },
     {
-      title: '状态', dataIndex: 'status', width: 90,
+      title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
       render: (v: string) => v === 'enabled' ? <Tag color="green">启用</Tag> : <Tag color="grey">禁用</Tag>,
     },
     { title: '排序', dataIndex: 'sort', width: 70 },
@@ -411,10 +432,12 @@ export default function WorkflowAutomationsPage() {
       title: '操作', dataIndex: 'op', width: 160, fixed: 'right',
       render: (_v, r) => (
         <Space>
-          <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>
-          <Popconfirm title="确定要删除该规则吗？" onConfirm={() => handleDelete(r.id)}>
-            <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
+          {canEditAutomation && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
+          {canEditAutomation && (
+            <Popconfirm title="确定要删除该规则吗？" onConfirm={() => handleDelete(r.id)}>
+              <Button theme="borderless" type="danger" size="small">删除</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -446,7 +469,7 @@ export default function WorkflowAutomationsPage() {
         />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+        {canEditAutomation && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
       </SearchToolbar>
 
       <ConfigurableTable<WorkflowAutomation>
@@ -463,7 +486,7 @@ export default function WorkflowAutomationsPage() {
       <AppModal
         title={editing ? '编辑自动化规则' : '新增自动化规则'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
+        onCancel={() => { editingRequestIdRef.current = null; setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
         onOk={() => formApi.current?.submitForm()}
         confirmLoading={saving}
         okButtonProps={{ disabled: modalDetailLoading }}

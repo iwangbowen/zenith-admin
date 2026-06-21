@@ -45,9 +45,11 @@ export default function WorkflowLaunchpadPage() {
 
   useEffect(() => {
     if (userOptions.length === 0) {
-      void request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all').then((res) => {
-        if (res.code === 0 && res.data) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
-      });
+      request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all')
+        .then((res) => {
+          if (res.code === 0 && res.data) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
+        })
+        .catch(() => { /* 抄送人选项加载失败不阻断发起 */ });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -204,8 +206,8 @@ export default function WorkflowLaunchpadPage() {
         footer={
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={closeApply}>取消</Button>
-            <Button loading={savingDraft} onClick={() => void handleSubmit(true)}>保存草稿</Button>
-            <Button type="primary" loading={submitting} onClick={() => void handleSubmit(false)}>提交</Button>
+            <Button loading={savingDraft} disabled={submitting} onClick={() => void handleSubmit(true)}>保存草稿</Button>
+            <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSubmit(false)}>提交</Button>
           </Space>
         }
       >
