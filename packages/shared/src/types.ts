@@ -15,9 +15,28 @@ export interface Tenant {
   maxUsers?: number | null;
   packageId?: number | null;
   packageName?: string | null;
+  userCount?: number;
   remark?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TenantStats {
+  id: number;
+  name: string;
+  code: string;
+  status: EntityStatus;
+  userCount: number;
+  maxUsers: number | null;
+  departmentCount: number;
+  roleCount: number;
+  positionCount: number;
+  packageId: number | null;
+  packageName: string | null;
+  packageMenuCount: number;
+  expireAt: string | null;
+  /** 距到期天数；null=永不过期，负数=已过期 */
+  daysToExpire: number | null;
 }
 
 export interface TenantPackage {

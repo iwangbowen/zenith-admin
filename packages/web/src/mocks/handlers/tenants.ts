@@ -11,6 +11,11 @@ function withPackageName(t: Tenant): Tenant {
   };
 }
 
+/** 稳定的演示用户数 */
+function mockUserCount(t: Tenant): number {
+  return ((t.id * 7) % 30) + 2;
+}
+
 export const tenantsHandlers = [
   // 租户列表（分页）
   http.get('/api/tenants', ({ request }) => {
@@ -28,9 +33,31 @@ export const tenantsHandlers = [
 
     const total = filtered.length;
     const start = (page - 1) * pageSize;
-    const list = filtered.slice(start, start + pageSize).map(withPackageName);
+    const list = filtered.slice(start, start + pageSize).map((t) => ({ ...withPackageName(t), userCount: mockUserCount(t) }));
 
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
+  }),
+
+  // 租户用量概览（必须在 /:id 之前不强制，但保持靠前）
+  http.get('/api/tenants/:id/stats', ({ params }) => {
+    const t = mockTenants.find((x) => x.id === Number(params.id));
+    if (!t) return HttpResponse.json({ code: 404, message: '租户不存在', data: null });
+    const pkg = t.packageId ? mockTenantPackages.find((p) => p.id === t.packageId) : null;
+    const expireAt = t.expireAt ?? null;
+    const daysToExpire = expireAt
+      ? Math.ceil((new Date(expireAt.replace(' ', 'T')).getTime() - Date.now()) / 86_400_000)
+      : null;
+    return HttpResponse.json({
+      code: 0,
+      message: 'ok',
+      data: {
+        id: t.id, name: t.name, code: t.code, status: t.status,
+        userCount: mockUserCount(t), maxUsers: t.maxUsers ?? null,
+        departmentCount: 4, roleCount: 3, positionCount: 5,
+        packageId: t.packageId ?? null, packageName: pkg?.name ?? null, packageMenuCount: pkg?.menuIds?.length ?? 0,
+        expireAt, daysToExpire,
+      },
+    });
   }),
 
   // 获取单个租户

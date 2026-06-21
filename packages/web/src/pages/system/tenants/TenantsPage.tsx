@@ -13,10 +13,14 @@ import {
   SplitButtonGroup,
   Dropdown,
   Switch,
+  SideSheet,
+  Progress,
+  Descriptions,
+  Tag,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, ChevronDown } from 'lucide-react';
-import type { Tenant } from '@zenith/shared';
+import type { Tenant, TenantStats } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
@@ -50,6 +54,10 @@ export default function TenantsPage() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [packageOptions, setPackageOptions] = useState<{ value: number; label: string }[]>([]);
+  const [statsVisible, setStatsVisible] = useState(false);
+  const [statsTenant, setStatsTenant] = useState<Tenant | null>(null);
+  const [stats, setStats] = useState<TenantStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const activeParams = params ?? searchParamsRef.current;
@@ -156,12 +164,45 @@ export default function TenantsPage() {
     }
   }, [fetchData]);
 
+  const openStats = async (tenant: Tenant) => {
+    setStatsTenant(tenant);
+    setStats(null);
+    setStatsVisible(true);
+    setStatsLoading(true);
+    try {
+      const res = await request.get<TenantStats>(`/api/tenants/${tenant.id}/stats`);
+      if (res.code === 0) setStats(res.data);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  function renderExpiry(days: number | null, expireAt: string | null) {
+    if (days === null) return '永不过期';
+    if (days < 0) return <Tag color="red">已过期 {-days} 天</Tag>;
+    if (days <= 7) return <Tag color="orange">剩 {days} 天</Tag>;
+    return <span>剩 {days} 天{expireAt ? `（${expireAt}）` : ''}</span>;
+  }
+
   const columns: ColumnProps<Tenant>[] = [
     { title: '租户名称', dataIndex: 'name', width: 160, render: renderEllipsis },
     { title: '租户编码', dataIndex: 'code', width: 140, render: renderEllipsis },
     { title: '联系人', dataIndex: 'contactName', width: 120, render: renderEllipsis },
     { title: '联系电话', dataIndex: 'contactPhone', width: 140, render: renderEllipsis },
-    { title: '最大用户数', dataIndex: 'maxUsers', width: 120, align: 'center', render: (v) => v ?? '不限' },
+    { title: '用户数', dataIndex: 'userCount', width: 150, render: (v: number | undefined, record: Tenant) => {
+        const used = v ?? 0;
+        const max = record.maxUsers;
+        if (max == null) return <span>{used} / 不限</span>;
+        const percent = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
+        const stroke = percent >= 100 ? 'var(--semi-color-danger)' : percent >= 80 ? 'var(--semi-color-warning)' : undefined;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 12 }}>{used} / {max}</span>
+            <Progress percent={percent} stroke={stroke} size="small" aria-label="用户数占用" />
+          </div>
+        );
+      },
+    },
     { title: '套餐', dataIndex: 'packageName', width: 140, render: (v) => renderEllipsis(v || '未分配') },
     {
       title: '到期时间',
@@ -189,10 +230,11 @@ export default function TenantsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 160,
+      width: 210,
       align: 'center',
       render: (_v, row) => (
         <Space>
+          <Button theme="borderless" size="small" onClick={() => void openStats(row)}>概览</Button>
           {hasPermission('system:tenant:update') && (
             <Button
               theme="borderless"
@@ -382,6 +424,53 @@ export default function TenantsPage() {
         </Form>
         </Spin>
       </AppModal>
+
+      <SideSheet
+        title={`租户概览 — ${statsTenant?.name ?? ''}`}
+        visible={statsVisible}
+        onCancel={() => setStatsVisible(false)}
+        width={420}
+      >
+        <Spin spinning={statsLoading} wrapperClassName="modal-spin-wrapper">
+          {stats ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <div style={{ marginBottom: 6, color: 'var(--semi-color-text-2)', fontSize: 13 }}>用户用量</div>
+                {stats.maxUsers == null ? (
+                  <div style={{ fontSize: 20, fontWeight: 600 }}>
+                    {stats.userCount}
+                    <span style={{ fontSize: 13, color: 'var(--semi-color-text-2)', fontWeight: 400 }}> / 不限</span>
+                  </div>
+                ) : (
+                  <>
+                    <Progress
+                      percent={stats.maxUsers > 0 ? Math.min(100, Math.round((stats.userCount / stats.maxUsers) * 100)) : 0}
+                      stroke={stats.userCount >= stats.maxUsers ? 'var(--semi-color-danger)' : stats.userCount / stats.maxUsers >= 0.8 ? 'var(--semi-color-warning)' : undefined}
+                      showInfo
+                      aria-label="用户用量"
+                    />
+                    <div style={{ marginTop: 4, fontSize: 13 }}>{stats.userCount} / {stats.maxUsers}</div>
+                  </>
+                )}
+              </div>
+              <Descriptions
+                row
+                size="small"
+                data={[
+                  { key: '状态', value: <Tag color={stats.status === 'enabled' ? 'green' : 'grey'}>{stats.status === 'enabled' ? '正常' : '停用'}</Tag> },
+                  { key: '租户编码', value: stats.code },
+                  { key: '所用套餐', value: stats.packageName ?? '未分配' },
+                  { key: '套餐菜单数', value: stats.packageMenuCount },
+                  { key: '部门数', value: stats.departmentCount },
+                  { key: '角色数', value: stats.roleCount },
+                  { key: '岗位数', value: stats.positionCount },
+                  { key: '到期', value: renderExpiry(stats.daysToExpire, stats.expireAt) },
+                ]}
+              />
+            </div>
+          ) : null}
+        </Spin>
+      </SideSheet>
     </div>
   );
 }

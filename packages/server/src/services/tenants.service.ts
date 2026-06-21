@@ -2,7 +2,7 @@ import { eq, like, and, ne, desc } from 'drizzle-orm';
 import { escapeLike } from '../lib/where-helpers';
 import { pageOffset } from '../lib/pagination';
 import { db } from '../db';
-import { tenants } from '../db/schema';
+import { tenants, users, departments, roles, positions, tenantPackageMenus } from '../db/schema';
 import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { clearUserPermissionCache } from '../lib/permissions';
@@ -41,11 +41,50 @@ export async function listTenants(q: ListTenantsQuery) {
       with: { package: { columns: { name: true } } },
     }),
   ]);
+  const userCounts = await Promise.all(rows.map((r) => db.$count(users, eq(users.tenantId, r.id))));
   return {
-    list: rows.map(({ package: pkg, ...row }) => mapTenant(row, pkg?.name ?? null)),
+    list: rows.map(({ package: pkg, ...row }, i) => ({ ...mapTenant(row, pkg?.name ?? null), userCount: userCounts[i] })),
     total,
     page,
     pageSize,
+  };
+}
+
+/** 单个租户的用量与统计概览 */
+export async function getTenantStats(id: number) {
+  const tenant = await db.query.tenants.findFirst({
+    where: eq(tenants.id, id),
+    with: { package: { columns: { name: true } } },
+  });
+  if (!tenant) throw new HTTPException(404, { message: '租户不存在' });
+
+  const [userCount, departmentCount, roleCount, positionCount, packageMenuCount] = await Promise.all([
+    db.$count(users, eq(users.tenantId, id)),
+    db.$count(departments, eq(departments.tenantId, id)),
+    db.$count(roles, eq(roles.tenantId, id)),
+    db.$count(positions, eq(positions.tenantId, id)),
+    tenant.packageId == null ? Promise.resolve(0) : db.$count(tenantPackageMenus, eq(tenantPackageMenus.packageId, tenant.packageId)),
+  ]);
+
+  const daysToExpire = tenant.expireAt
+    ? Math.ceil((tenant.expireAt.getTime() - Date.now()) / 86_400_000)
+    : null;
+
+  return {
+    id: tenant.id,
+    name: tenant.name,
+    code: tenant.code,
+    status: tenant.status,
+    userCount,
+    maxUsers: tenant.maxUsers ?? null,
+    departmentCount,
+    roleCount,
+    positionCount,
+    packageId: tenant.packageId ?? null,
+    packageName: tenant.package?.name ?? null,
+    packageMenuCount,
+    expireAt: formatNullableDateTime(tenant.expireAt),
+    daysToExpire,
   };
 }
 

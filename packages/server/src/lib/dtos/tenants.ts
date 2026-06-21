@@ -17,12 +17,32 @@ export const TenantDTO = z
     maxUsers: z.number().int().nullable().optional(),
     packageId: z.number().int().nullable().optional(),
     packageName: z.string().nullable().optional(),
+    userCount: z.number().int().optional().openapi({ description: '租户当前用户数（列表返回）' }),
     remark: z.string().nullable().optional(),
     ...auditFields,
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
   })
   .openapi('Tenant');
+
+export const TenantStatsDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    code: z.string(),
+    status: z.enum(['enabled', 'disabled']),
+    userCount: z.number().int(),
+    maxUsers: z.number().int().nullable(),
+    departmentCount: z.number().int(),
+    roleCount: z.number().int(),
+    positionCount: z.number().int(),
+    packageId: z.number().int().nullable(),
+    packageName: z.string().nullable(),
+    packageMenuCount: z.number().int(),
+    expireAt: z.string().nullable(),
+    daysToExpire: z.number().int().nullable().openapi({ description: '距到期天数；null=永不过期，负数=已过期' }),
+  })
+  .openapi('TenantStats');
 
 export const TenantPackageDTO = z
   .object({

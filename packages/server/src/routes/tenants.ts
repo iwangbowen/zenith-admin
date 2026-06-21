@@ -5,11 +5,12 @@ import { guard, setAuditBeforeData } from '../middleware/guard';
 import { isPlatformAdmin } from '../lib/tenant';
 import type { AppEnv } from '../lib/context';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
-import { TenantDTO } from '../lib/openapi-dtos';
+import { TenantDTO, TenantStatsDTO } from '../lib/openapi-dtos';
 import {
   listTenants,
   listAllTenants,
   getTenant,
+  getTenantStats,
   createTenant,
   updateTenant,
   deleteTenant,
@@ -151,6 +152,20 @@ const exportCsvRouteDef = defineOpenAPIRoute({
   },
 });
 
-tenantsRoute.openapiRoutes([listRoute, allRoute, exportRouteDef, exportCsvRouteDef, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
+const statsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/stats', tags: ['Tenants'], summary: '租户用量概览',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, platformAdminMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...ok(TenantStatsDTO, 'ok'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await getTenantStats(id)), 200);
+  },
+});
+
+tenantsRoute.openapiRoutes([listRoute, allRoute, exportRouteDef, exportCsvRouteDef, statsRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
 
 export default tenantsRoute;

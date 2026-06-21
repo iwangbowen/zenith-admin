@@ -6,6 +6,7 @@ import type { DbExecutor } from '../db/types';
 import { users, userRoles, roles, departments, positions, userPositions, userMenus, userDeptScopes } from '../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
+import { ensureTenantUserQuota, getTenantUserLimit } from '../lib/tenant-quota';
 import { pageOffset } from '../lib/pagination';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { escapeLike } from '../lib/where-helpers';
@@ -257,6 +258,8 @@ export async function createUser(data: CreateUserInput) {
   ]);
   if (dupUsername.length > 0) throw new HTTPException(400, { message: '用户名已存在' });
   if (dupEmail.length > 0) throw new HTTPException(400, { message: '邮箱已存在' });
+  // 多租户：校验租户用户数上限
+  await ensureTenantUserQuota(newTenantId);
   const hashedPassword = await bcrypt.hash(password, 10);
   try {
     const created = await db.transaction(async (tx) => {
@@ -555,6 +558,10 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
   const existingUsernames = new Set(existingUsersList.map((u) => u.username));
   const existingEmails = new Set(existingUsersList.map((u) => u.email));
 
+  // 多租户：租户用户数上限。existingUsersList.length 即当前租户用户数，success 为本批已插入数。
+  const importTenantId = getCreateTenantId(user);
+  const tenantUserLimit = await getTenantUserLimit(importTenantId);
+
   for (const row of dataRows) {
     const rowNum = row.number;
     const username = getCellText(row, 1);
@@ -597,6 +604,9 @@ export async function importUsers(file: File): Promise<ImportUsersResult> {
       const normalized = statusRaw.trim().toLowerCase();
       if (normalized === 'enabled' || normalized === 'disabled') status = normalized;
       else { errors.push({ row: rowNum, message: `状态值无效: ${statusRaw}（仅支持 enabled/disabled 或留空）` }); continue; }
+    }
+    if (tenantUserLimit != null && existingUsersList.length + success >= tenantUserLimit) {
+      errors.push({ row: rowNum, message: `超出租户用户数上限（${tenantUserLimit}），后续行已跳过` }); continue;
     }
     const hashedPassword = await bcrypt.hash(password, 10);
     try {
