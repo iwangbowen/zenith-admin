@@ -75,6 +75,30 @@ const mockCacheItems: MockCacheItem[] = [
 ];
 
 export const cacheHandlers = [
+  // Redis 概览统计
+  http.get('/api/cache/overview', () => {
+    const totalKeys = mockCacheItems.length;
+    return HttpResponse.json({
+      code: 0,
+      message: 'ok',
+      data: {
+        connected: true,
+        version: '7.2.4',
+        uptimeSeconds: 86_400 * 3 + 3600 * 5,
+        connectedClients: 4,
+        usedMemory: 2_345_678,
+        usedMemoryHuman: '2.24M',
+        maxMemory: 0,
+        memFragmentationRatio: 1.18,
+        keyspaceHits: 152_340,
+        keyspaceMisses: 4_210,
+        hitRate: 97.31,
+        totalKeys,
+        keyPrefix: 'zenith:',
+      },
+    });
+  }),
+
   // 列出缓存 key
   http.get('/api/cache', ({ request }) => {
     const url = new URL(request.url);
@@ -86,6 +110,62 @@ export const cacheHandlers = [
     }
 
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: list.length } });
+  }),
+
+  // 获取指定 key 的完整值
+  http.get('/api/cache/value', ({ request }) => {
+    const url = new URL(request.url);
+    const key = url.searchParams.get('key') ?? '';
+    const item = mockCacheItems.find((i) => i.key === key);
+    return HttpResponse.json({ code: 0, message: 'ok', data: item?.type === 'string' ? (item.value ?? null) : null });
+  }),
+
+  // 修改指定 key 的 TTL
+  http.put('/api/cache/ttl', async ({ request }) => {
+    const body = await request.json() as { key?: string; ttl?: number };
+    const item = mockCacheItems.find((i) => i.key === body?.key);
+    if (!item) {
+      return HttpResponse.json({ code: 404, message: 'key 不存在', data: null }, { status: 404 });
+    }
+    if (body.ttl === undefined || (body.ttl !== -1 && body.ttl <= 0)) {
+      return HttpResponse.json({ code: 400, message: 'TTL 必须为 -1（永久）或大于 0 的秒数', data: null }, { status: 400 });
+    }
+    item.ttl = body.ttl;
+    return HttpResponse.json({ code: 0, message: '修改成功', data: null });
+  }),
+
+  // 修改指定 key 的值（仅字符串）
+  http.put('/api/cache/value', async ({ request }) => {
+    const body = await request.json() as { key?: string; value?: string; ttl?: number };
+    const item = mockCacheItems.find((i) => i.key === body?.key);
+    if (!item) {
+      return HttpResponse.json({ code: 404, message: 'key 不存在', data: null }, { status: 404 });
+    }
+    if (item.type !== 'string') {
+      return HttpResponse.json({ code: 400, message: '仅支持编辑字符串类型的缓存', data: null }, { status: 400 });
+    }
+    item.value = body.value ?? '';
+    item.size = new TextEncoder().encode(item.value).length;
+    if (body.ttl !== undefined) item.ttl = body.ttl;
+    return HttpResponse.json({ code: 0, message: '修改成功', data: null });
+  }),
+
+  // 批量删除 key
+  http.delete('/api/cache/batch', async ({ request }) => {
+    const body = await request.json() as { keys?: string[] };
+    const keys = body?.keys;
+    if (!Array.isArray(keys) || keys.length === 0) {
+      return HttpResponse.json({ code: 400, message: '参数错误：缺少 keys', data: null }, { status: 400 });
+    }
+    let count = 0;
+    for (const key of keys) {
+      const index = mockCacheItems.findIndex((item) => item.key === key);
+      if (index !== -1) {
+        mockCacheItems.splice(index, 1);
+        count++;
+      }
+    }
+    return HttpResponse.json({ code: 0, message: `已删除 ${count} 条缓存`, data: { count } });
   }),
 
   // 删除指定分类下的所有 key

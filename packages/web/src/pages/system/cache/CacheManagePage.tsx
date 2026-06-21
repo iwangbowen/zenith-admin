@@ -5,15 +5,19 @@ import {
   Button,
   Dropdown,
   Input,
+  InputNumber,
   JsonViewer,
   Modal,
+  Radio,
+  RadioGroup,
   Space,
   Tag,
+  TextArea,
   Toast,
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Search, RotateCcw, RefreshCw, Trash2, MoreHorizontal } from 'lucide-react';
+import { Search, RotateCcw, RefreshCw, Trash2, MoreHorizontal, Pencil, Clock } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
@@ -37,6 +41,22 @@ interface CategoryRow {
   category: string;
   segment: string;
   count: number;
+}
+
+interface CacheOverview {
+  connected: boolean;
+  version: string;
+  uptimeSeconds: number;
+  connectedClients: number;
+  usedMemory: number;
+  usedMemoryHuman: string;
+  maxMemory: number;
+  memFragmentationRatio: number;
+  keyspaceHits: number;
+  keyspaceMisses: number;
+  hitRate: number;
+  totalKeys: number;
+  keyPrefix: string;
 }
 
 const TYPE_COLORS: Record<string, 'blue' | 'green' | 'orange' | 'purple' | 'cyan'> = {
@@ -72,9 +92,34 @@ function TtlBadge({ ttl }: Readonly<{ ttl: number }>) {
   return <Tag color={color} size="small">{text}</Tag>;
 }
 
+function formatUptime(seconds: number): string {
+  if (seconds <= 0) return '—';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}天 ${hours}小时`;
+  if (hours > 0) return `${hours}小时 ${minutes}分`;
+  return `${minutes}分`;
+}
+
+function OverviewStat({ label, value, tone }: Readonly<{ label: string; value: string; tone?: 'normal' | 'success' | 'warning' }>) {
+  const color =
+    tone === 'success' ? 'var(--semi-color-success)' :
+    tone === 'warning' ? 'var(--semi-color-warning)' :
+    'var(--semi-color-text-0)';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 88 }}>
+      <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{label}</span>
+      <span style={{ fontSize: 15, fontWeight: 600, color }}>{value}</span>
+    </div>
+  );
+}
+
 export default function CacheManagePage() {
   const { hasPermission } = usePermission();
   const { pageSize } = usePagination();
+  const canEdit = hasPermission('system:cache:update');
+  const canDelete = hasPermission('system:cache:delete');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<CacheItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<CategoryRow | null>(null);
@@ -83,10 +128,21 @@ export default function CacheManagePage() {
   const [viewingItem, setViewingItem] = useState<CacheItem | null>(null);
   const [fullValue, setFullValue] = useState<string | null>(null);
   const [fullValueLoading, setFullValueLoading] = useState(false);
+  const [overview, setOverview] = useState<CacheOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [editMode, setEditMode] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [savingValue, setSavingValue] = useState(false);
+  const [ttlEditItem, setTtlEditItem] = useState<CacheItem | null>(null);
+  const [ttlMode, setTtlMode] = useState<'persist' | 'custom'>('custom');
+  const [ttlSeconds, setTtlSeconds] = useState<number>(3600);
+  const [savingTtl, setSavingTtl] = useState(false);
 
   const openValueModal = async (item: CacheItem) => {
     setViewingItem(item);
     setFullValue(null);
+    setEditMode(false);
     setFullValueLoading(true);
     try {
       const res = await request.get<string | null>(`/api/cache/value?key=${encodeURIComponent(item.key)}`);
@@ -96,12 +152,23 @@ export default function CacheManagePage() {
     }
   };
 
+  const fetchOverview = useCallback(async () => {
+    setOverviewLoading(true);
+    try {
+      const res = await request.get<CacheOverview>('/api/cache/overview', { silent: true });
+      if (res.code === 0) setOverview(res.data);
+    } finally {
+      setOverviewLoading(false);
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await request.get<{ list: CacheItem[]; total: number }>('/api/cache');
       if (res.code === 0) {
         setData(res.data.list);
+        setSelectedKeys([]);
       }
     } finally {
       setLoading(false);
@@ -110,7 +177,13 @@ export default function CacheManagePage() {
 
   useEffect(() => {
     void fetchData();
-  }, [fetchData]);
+    void fetchOverview();
+  }, [fetchData, fetchOverview]);
+
+  const refreshAll = useCallback(() => {
+    void fetchData();
+    void fetchOverview();
+  }, [fetchData, fetchOverview]);
 
   // 按分类聚合
   const categoryRows: CategoryRow[] = (() => {
@@ -147,6 +220,11 @@ export default function CacheManagePage() {
     return matchCategory && matchKeyword;
   });
 
+  // 切换分类时清空批量选择
+  useEffect(() => {
+    setSelectedKeys([]);
+  }, [selectedCategory?.category]);
+
   const handleSearch = () => {
     setKeyword(searchInput);
     void fetchData();
@@ -167,7 +245,23 @@ export default function CacheManagePage() {
         const res = await request.delete<null>('/api/cache', { key: item.key });
         if (res.code === 0) {
           Toast.success('删除成功');
-          void fetchData();
+          refreshAll();
+        }
+      },
+    });
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedKeys.length === 0) return;
+    Modal.confirm({
+      title: `确定要删除选中的 ${selectedKeys.length} 个缓存键吗？`,
+      content: '操作不可撤销，请谨慎。',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        const res = await request.delete<{ count: number }>('/api/cache/batch', { keys: selectedKeys });
+        if (res.code === 0) {
+          Toast.success(`已删除 ${res.data?.count ?? 0} 条缓存`);
+          refreshAll();
         }
       },
     });
@@ -186,7 +280,7 @@ export default function CacheManagePage() {
           if (selectedCategory?.category === row.category) {
             setSelectedCategory(null);
           }
-          void fetchData();
+          refreshAll();
         }
       },
     });
@@ -202,10 +296,62 @@ export default function CacheManagePage() {
         if (res.code === 0) {
           Toast.success(`已清空 ${res.data?.count ?? 0} 条缓存`);
           setSelectedCategory(null);
-          void fetchData();
+          refreshAll();
         }
       },
     });
+  };
+
+  const openTtlEdit = (item: CacheItem) => {
+    setTtlEditItem(item);
+    if (item.ttl === -1) {
+      setTtlMode('persist');
+      setTtlSeconds(3600);
+    } else {
+      setTtlMode('custom');
+      setTtlSeconds(item.ttl > 0 ? item.ttl : 3600);
+    }
+  };
+
+  const handleSaveTtl = async () => {
+    if (!ttlEditItem) return;
+    const ttl = ttlMode === 'persist' ? -1 : ttlSeconds;
+    if (ttlMode === 'custom' && (!Number.isInteger(ttl) || ttl <= 0)) {
+      Toast.warning('请输入大于 0 的秒数');
+      return;
+    }
+    setSavingTtl(true);
+    try {
+      const res = await request.put<null>('/api/cache/ttl', { key: ttlEditItem.key, ttl });
+      if (res.code === 0) {
+        Toast.success('修改成功');
+        setTtlEditItem(null);
+        refreshAll();
+      }
+    } finally {
+      setSavingTtl(false);
+    }
+  };
+
+  const startEditValue = () => {
+    setEditValue(fullValue ?? viewingItem?.value ?? '');
+    setEditMode(true);
+  };
+
+  const handleSaveValue = async () => {
+    if (!viewingItem) return;
+    setSavingValue(true);
+    try {
+      const res = await request.put<null>('/api/cache/value', { key: viewingItem.key, value: editValue });
+      if (res.code === 0) {
+        Toast.success('修改成功');
+        setFullValue(editValue);
+        setEditMode(false);
+        refreshAll();
+      }
+    } finally {
+      setSavingValue(false);
+    }
   };
 
   const keyColumns: ColumnProps<CacheItem>[] = [
@@ -262,7 +408,7 @@ export default function CacheManagePage() {
     {
       title: '操作',
       fixed: 'right' as const,
-      width: 150,
+      width: 200,
       render: (_: unknown, record: CacheItem) => (
         <Space>
           {record.value != null && (
@@ -274,7 +420,16 @@ export default function CacheManagePage() {
               查看
             </Button>
           )}
-          {hasPermission('system:cache:delete') && (
+          {canEdit && (
+            <Button
+              theme="borderless"
+              size="small"
+              onClick={() => openTtlEdit(record)}
+            >
+              TTL
+            </Button>
+          )}
+          {canDelete && (
             <Button
               theme="borderless"
               type="danger"
@@ -301,12 +456,12 @@ export default function CacheManagePage() {
           clickToHide
           render={
             <Dropdown.Menu>
-              <Dropdown.Item onClick={() => void fetchData()}>
+              <Dropdown.Item onClick={refreshAll}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <RefreshCw size={14} /> 刷新
                 </span>
               </Dropdown.Item>
-              {hasPermission('system:cache:delete') && (
+              {canDelete && (
                 <Dropdown.Item type="danger" onClick={handleClearAll}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Trash2 size={14} /> 清空全部
@@ -337,7 +492,7 @@ export default function CacheManagePage() {
           }
           extraAlwaysVisible
           extra={
-            hasPermission('system:cache:delete') ? (
+            canDelete ? (
               <Button
                 theme="borderless"
                 type="danger"
@@ -370,7 +525,7 @@ export default function CacheManagePage() {
       <MasterDetailLayout.Body>
         {selectedCategory ? (
           <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <Input
                 prefix={<Search size={14} />}
                 placeholder="搜索 Key 名称"
@@ -382,6 +537,11 @@ export default function CacheManagePage() {
               />
               <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
               <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+              {canDelete && selectedKeys.length > 0 && (
+                <Button type="danger" theme="solid" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+                  批量删除 ({selectedKeys.length})
+                </Button>
+              )}
             </div>
             <ConfigurableTable<CacheItem>
               bordered
@@ -389,9 +549,13 @@ export default function CacheManagePage() {
               columns={keyColumns}
               dataSource={displayedItems}
               loading={loading}
-              onRefresh={fetchData}
+              onRefresh={refreshAll}
               refreshLoading={loading}
               rowKey="key"
+              rowSelection={canDelete ? {
+                selectedRowKeys: selectedKeys,
+                onChange: (keys?: (string | number)[]) => setSelectedKeys((keys ?? []).map(String)),
+              } : undefined}
               pagination={{ pageSize }}
               empty="该分类暂无缓存数据"
               scroll={{ x: 820 }}
@@ -419,6 +583,54 @@ export default function CacheManagePage() {
 
   return (
     <div className="page-container">
+      {overview && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 22, padding: '10px 16px', flexWrap: 'wrap',
+            background: 'var(--semi-color-bg-1)', border: '1px solid var(--semi-color-border)', borderRadius: 6,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 132 }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
+              background: overview.connected ? 'var(--semi-color-success)' : 'var(--semi-color-danger)',
+            }} />
+            <Typography.Text strong>Redis</Typography.Text>
+            <Tag color={overview.connected ? 'green' : 'red'} size="small">
+              {overview.connected ? '已连接' : '未连接'}
+            </Tag>
+            {overview.version && (
+              <Typography.Text type="tertiary" size="small">v{overview.version}</Typography.Text>
+            )}
+          </div>
+          <OverviewStat label="命名空间 Key" value={String(data.length)} />
+          <OverviewStat label="Redis 总 Key" value={String(overview.totalKeys)} />
+          <OverviewStat label="内存占用" value={overview.usedMemoryHuman || `${overview.usedMemory} B`} />
+          <OverviewStat
+            label="命中率"
+            value={`${overview.hitRate}%`}
+            tone={overview.hitRate >= 90 ? 'success' : overview.hitRate < 70 ? 'warning' : 'normal'}
+          />
+          <OverviewStat label="客户端连接" value={String(overview.connectedClients)} />
+          <OverviewStat label="运行时长" value={formatUptime(overview.uptimeSeconds)} />
+          <OverviewStat
+            label="内存碎片率"
+            value={overview.memFragmentationRatio ? overview.memFragmentationRatio.toFixed(2) : '—'}
+            tone={overview.memFragmentationRatio > 1.5 ? 'warning' : 'normal'}
+          />
+          <Button
+            type="tertiary"
+            theme="borderless"
+            style={{ marginLeft: 'auto' }}
+            icon={<RefreshCw size={14} className={overviewLoading ? 'spin' : ''} />}
+            aria-label="刷新概览"
+            title="刷新概览"
+            disabled={overviewLoading}
+            onClick={() => void fetchOverview()}
+          />
+        </div>
+      )}
+
       <MasterDetailLayout
         master={cacheMaster}
         detail={cacheDetail}
@@ -434,7 +646,7 @@ export default function CacheManagePage() {
       <AppModal
         title={
           <span>
-            查看缓存值
+            {editMode ? '编辑缓存值' : '查看缓存值'}
             {viewingItem && (
               <Typography.Text
                 type="secondary"
@@ -447,11 +659,30 @@ export default function CacheManagePage() {
           </span>
         }
         visible={viewingItem != null}
-        onCancel={() => { setViewingItem(null); setFullValue(null); }}
-        footer={null}
+        onCancel={() => { setViewingItem(null); setFullValue(null); setEditMode(false); }}
+        footer={
+          viewingItem && canEdit && viewingItem.type === 'string' ? (
+            editMode ? (
+              <Space>
+                <Button onClick={() => setEditMode(false)}>取消</Button>
+                <Button type="primary" theme="solid" loading={savingValue} onClick={() => void handleSaveValue()}>
+                  保存
+                </Button>
+              </Space>
+            ) : (
+              <Button
+                icon={<Pencil size={14} />}
+                onClick={startEditValue}
+                disabled={fullValueLoading}
+              >
+                编辑
+              </Button>
+            )
+          ) : null
+        }
         width={680}
       >
-        {viewingItem && (
+        {viewingItem && !editMode && (
           <JsonViewer
             key={viewingItem.key}
             value={(() => {
@@ -465,11 +696,65 @@ export default function CacheManagePage() {
             options={{ readOnly: true, autoWrap: true, formatOptions: { tabSize: 2, insertSpaces: true } }}
           />
         )}
+        {viewingItem && editMode && (
+          <TextArea
+            value={editValue}
+            onChange={setEditValue}
+            autosize={{ minRows: 12, maxRows: 18 }}
+            style={{ fontFamily: 'monospace', fontSize: 13 }}
+            placeholder="请输入缓存值（字符串）"
+          />
+        )}
         {fullValueLoading && (
           <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--semi-color-text-2)', fontSize: 13 }}>
             加载完整内容中…
           </div>
         )}
+      </AppModal>
+
+      <AppModal
+        title={
+          <span>
+            修改过期时间
+            {ttlEditItem && (
+              <Typography.Text
+                type="secondary"
+                size="small"
+                style={{ marginLeft: 8, fontWeight: 'normal', fontFamily: 'monospace' }}
+              >
+                {ttlEditItem.displayKey}
+              </Typography.Text>
+            )}
+          </span>
+        }
+        visible={ttlEditItem != null}
+        onCancel={() => setTtlEditItem(null)}
+        onOk={() => void handleSaveTtl()}
+        okButtonProps={{ loading: savingTtl }}
+        width={460}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0' }}>
+          <RadioGroup value={ttlMode} onChange={(e) => setTtlMode(e.target.value as 'persist' | 'custom')}>
+            <Radio value="custom">设置秒数</Radio>
+            <Radio value="persist">永久（不过期）</Radio>
+          </RadioGroup>
+          {ttlMode === 'custom' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Clock size={14} style={{ color: 'var(--semi-color-text-2)' }} />
+              <InputNumber
+                min={1}
+                step={60}
+                value={ttlSeconds}
+                onChange={(v) => setTtlSeconds(typeof v === 'number' ? v : Number(v) || 0)}
+                style={{ width: 200 }}
+                suffix="秒"
+              />
+              <Typography.Text type="tertiary" size="small">
+                ≈ {formatUptime(ttlSeconds)}
+              </Typography.Text>
+            </div>
+          )}
+        </div>
       </AppModal>
     </div>
   );
