@@ -57,6 +57,7 @@ import { maintenanceHandlers } from './maintenance';
 import { analyticsHandlers } from './analytics';
 import { frontendErrorsHandlers } from './frontend-errors';
 import { paymentHandlers } from './payment';
+import { paymentExtHandlers } from './payment-ext';
 import { memberFrontHandlers } from './member-front';
 import { memberAdminHandlers } from './member-admin';
 import { checkinHandlers } from './checkin';
@@ -125,6 +126,7 @@ export const handlers = [
   ...analyticsHandlers,
   ...frontendErrorsHandlers,
   ...paymentHandlers,
+  ...paymentExtHandlers,
   ...memberFrontHandlers,
   ...memberAdminHandlers,
   ...checkinHandlers,

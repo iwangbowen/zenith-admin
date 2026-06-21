@@ -48,6 +48,8 @@ import {
   listRefunds,
   getRefundDetail,
   refreshRefundById,
+  approveRefund,
+  rejectRefund,
   listNotifyLogs,
   testChannelConnectivity,
 } from '../services/payment.service';
@@ -115,6 +117,7 @@ const refundsQuery = z.object({
   keyword: z.string().optional(),
   channel: channelEnum.optional(),
   status: z.enum(['pending', 'processing', 'success', 'failed']).optional(),
+  approvalStatus: z.enum(['none', 'pending', 'approved', 'rejected']).optional(),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
 });
@@ -343,6 +346,32 @@ const refundQueryRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await refreshRefundById(c.req.valid('param').id), '已同步'), 200),
 });
 
+const refundApproveRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/refunds/{id}/approve', tags: ['支付中心'], summary: '审批通过退款并执行',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:refund:approve', audit: { description: '审批通过退款', module: '支付中心' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(z.object({ remark: z.string().max(256).optional() })), required: true } },
+    responses: { ...ok(PaymentRefundResultDTO, '审批通过'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await approveRefund(c.req.valid('param').id, c.req.valid('json').remark), '已审批通过'), 200),
+});
+
+const refundRejectRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/refunds/{id}/reject', tags: ['支付中心'], summary: '驳回退款',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:refund:approve', audit: { description: '驳回退款', module: '支付中心' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(z.object({ remark: z.string().min(1).max(256) })), required: true } },
+    responses: { ...okMsg('已驳回'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await rejectRefund(id, c.req.valid('json').remark);
+    return c.json(okBody(null, '已驳回'), 200);
+  },
+});
+
 // ─── 回调日志 ─────────────────────────────────────────────────────────────────────
 const logsListRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -446,6 +475,8 @@ paymentRouter.openapiRoutes([
   refundsExportCsvRoute,
   refundGetRoute,
   refundQueryRoute,
+  refundApproveRoute,
+  refundRejectRoute,
   logsListRoute,
 ] as const);
 

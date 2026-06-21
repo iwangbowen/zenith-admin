@@ -131,6 +131,12 @@ handlerRegistry.set('dispatchPaymentEvents', async () => {
   return `补投支付事件 ${count} 条`;
 });
 
+handlerRegistry.set('retryPaymentWebhooks', async () => {
+  const { retryPendingDeliveries } = await import('../services/payment-webhook.service');
+  const count = await retryPendingDeliveries();
+  return `重试支付 Webhook 投递 ${count} 条`;
+});
+
 handlerRegistry.set('analyticsRollupDaily', async (params) => {
   const { rebuildRollup } = await import('../services/analytics-rollup.service');
   const days = Number(params) || 2;

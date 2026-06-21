@@ -235,7 +235,7 @@ export const paymentHandlers = [
     const now = mockDateTime();
     const refund: PaymentRefund = {
       id: getNextPaymentRefundId(), refundNo, outRefundNo: refundNo, orderNo: order.orderNo, orderId: order.id, channelRefundNo: `5000${Date.now()}`,
-      channel: order.channel, refundAmount: body.refundAmount, totalAmount: order.amount, reason: body.reason ?? null, status: 'success',
+      channel: order.channel, refundAmount: body.refundAmount, totalAmount: order.amount, reason: body.reason ?? null, status: 'success', approvalStatus: 'none',
       operatorId: 1, refundedAt: now, errorMessage: null, createdAt: now, updatedAt: now,
     };
     mockPaymentRefunds.unshift(refund);

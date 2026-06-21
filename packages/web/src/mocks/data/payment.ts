@@ -30,10 +30,11 @@ let nextOrderId = 5;
 export const getNextPaymentOrderId = () => nextOrderId++;
 
 export const mockPaymentRefunds: PaymentRefund[] = [
-  { id: 1, refundNo: 'REF1700000000003', outRefundNo: 'REF1700000000003', orderNo: 'PAY1700000000003', orderId: 3, channelRefundNo: '50000012345', channel: 'wechat', refundAmount: 1900, totalAmount: 1900, reason: '用户申请退款', status: 'success', operatorId: 1, refundedAt: SEED, errorMessage: null, createdAt: SEED, updatedAt: SEED },
-  { id: 2, refundNo: 'REF1700000000004', outRefundNo: 'REF1700000000004', orderNo: 'PAY1700000000004', orderId: 4, channelRefundNo: null, channel: 'alipay', refundAmount: 3000, totalAmount: 8800, reason: '部分退款-差价补偿', status: 'processing', operatorId: 1, refundedAt: null, errorMessage: null, createdAt: SEED, updatedAt: SEED },
+  { id: 1, refundNo: 'REF1700000000003', outRefundNo: 'REF1700000000003', orderNo: 'PAY1700000000003', orderId: 3, channelRefundNo: '50000012345', channel: 'wechat', refundAmount: 1900, totalAmount: 1900, reason: '用户申请退款', status: 'success', approvalStatus: 'none', operatorId: 1, refundedAt: SEED, errorMessage: null, createdAt: SEED, updatedAt: SEED },
+  { id: 2, refundNo: 'REF1700000000004', outRefundNo: 'REF1700000000004', orderNo: 'PAY1700000000004', orderId: 4, channelRefundNo: null, channel: 'alipay', refundAmount: 3000, totalAmount: 8800, reason: '部分退款-差价补偿', status: 'processing', approvalStatus: 'none', operatorId: 1, refundedAt: null, errorMessage: null, createdAt: SEED, updatedAt: SEED },
+  { id: 3, refundNo: 'REF1700000000005', outRefundNo: 'REF1700000000005', orderNo: 'PAY1700000000001', orderId: 1, channelRefundNo: null, channel: 'wechat', refundAmount: 5000, totalAmount: 9900, reason: '大额退款（待审批演示）', status: 'pending', approvalStatus: 'pending', appliedById: 1, operatorId: 1, refundedAt: null, errorMessage: null, createdAt: SEED, updatedAt: SEED },
 ];
-let nextRefundId = 3;
+let nextRefundId = 4;
 export const getNextPaymentRefundId = () => nextRefundId++;
 
 export const mockPaymentLogs: PaymentNotifyLog[] = [

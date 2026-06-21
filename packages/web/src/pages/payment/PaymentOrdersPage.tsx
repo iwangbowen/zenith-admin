@@ -165,6 +165,11 @@ export default function PaymentOrdersPage() {
     const res = await request.post<PaymentOrder>(`/api/payment/orders/${record.id}/query`);
     if (res.code === 0) { Toast.success(`最新状态：${PAYMENT_ORDER_STATUS_LABELS[res.data.status]}`); void fetchList(); void fetchStats(); }
   }
+  async function handleSimulate(record: PaymentOrder) {
+    const res = await request.post<PaymentOrder>(`/api/payment/ops/orders/${record.id}/simulate-paid`, {});
+    if (res.code === 0) { Toast.success('已模拟支付成功'); void fetchList(); void fetchStats(); }
+    else Toast.error(res.message);
+  }
   function handleClose(record: PaymentOrder) {
     Modal.confirm({
       title: '确认关闭订单', content: `确认关闭订单 ${record.orderNo}？`,
@@ -246,12 +251,15 @@ export default function PaymentOrdersPage() {
       render: (v: PaymentOrderStatus) => <Tag color={STATUS_COLOR[v]}>{PAYMENT_ORDER_STATUS_LABELS[v]}</Tag>,
     },
     {
-      title: '操作', fixed: 'right', width: 200,
+      title: '操作', fixed: 'right', width: 250,
       render: (_: unknown, r: PaymentOrder) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => void openDetail(r)}>详情</Button>
           {hasPermission('payment:order:list') && (r.status === 'paying' || r.status === 'pending') && (
             <Button theme="borderless" size="small" onClick={() => handleQuery(r)}>查单</Button>
+          )}
+          {hasPermission('payment:ops:manage') && (r.status === 'paying' || r.status === 'pending') && (
+            <Button theme="borderless" size="small" type="warning" onClick={() => void handleSimulate(r)}>模拟支付</Button>
           )}
           {hasPermission('payment:order:close') && (r.status === 'paying' || r.status === 'pending') && (
             <Button theme="borderless" size="small" onClick={() => handleClose(r)}>关闭</Button>

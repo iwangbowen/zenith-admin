@@ -178,6 +178,11 @@ export function mapRefund(row: PaymentRefundRow): PaymentRefund {
     totalAmount: row.totalAmount,
     reason: row.reason ?? null,
     status: row.status,
+    approvalStatus: row.approvalStatus,
+    appliedById: row.appliedById ?? null,
+    approverId: row.approverId ?? null,
+    approvedAt: formatNullableDateTime(row.approvedAt),
+    approvalRemark: row.approvalRemark ?? null,
     operatorId: row.operatorId ?? null,
     refundedAt: formatNullableDateTime(row.refundedAt),
     errorMessage: row.errorMessage ?? null,
@@ -348,6 +353,40 @@ async function finalizeRefund(order: PaymentOrderRow, refundNo: string, refundAm
   setImmediate(() => { void processEvent(eventId); });
 }
 
+/** 执行渠道退款并落库（审批通过或免审批后调用）。失败时回滚订单状态并抛出。 */
+async function executeChannelRefund(
+  order: PaymentOrderRow,
+  refundRow: PaymentRefundRow,
+  config: PaymentChannelConfigRow,
+): Promise<{ refundNo: string; status: string }> {
+  try {
+    const ctx = buildAdapterContext(config);
+    assertNotifyUrl(ctx.notifyUrl);
+    const res = await getAdapter(order.channel).refund(ctx, order, refundRow);
+    await db
+      .update(paymentRefunds)
+      .set({ status: res.status, channelRefundNo: res.channelRefundNo ?? null, refundedAt: res.status === 'success' ? new Date() : null })
+      .where(eq(paymentRefunds.id, refundRow.id));
+
+    if (res.status === 'success') {
+      await finalizeRefund(order, refundRow.refundNo, refundRow.refundAmount);
+    } else if (res.status === 'failed') {
+      await db.update(paymentOrders).set({ status: 'success' }).where(and(eq(paymentOrders.id, order.id), eq(paymentOrders.status, 'refunding')));
+    }
+    return { refundNo: refundRow.refundNo, status: res.status };
+  } catch (err) {
+    await db.update(paymentRefunds).set({ status: 'failed', errorMessage: errMessage(err).slice(0, 500) }).where(eq(paymentRefunds.id, refundRow.id));
+    await db.update(paymentOrders).set({ status: 'success' }).where(and(eq(paymentOrders.id, order.id), eq(paymentOrders.status, 'refunding')));
+    throw err;
+  }
+}
+
+/** 退款审批金额阈值（分）；≥阈值需审批。0=不审批，由 PAYMENT_REFUND_APPROVAL_THRESHOLD 控制。 */
+function refundApprovalThreshold(): number {
+  const v = Number(process.env.PAYMENT_REFUND_APPROVAL_THRESHOLD || 0);
+  return Number.isFinite(v) && v > 0 ? Math.trunc(v) : 0;
+}
+
 export async function refund(input: CreateRefundInput & { operatorId?: number }): Promise<{ refundNo: string; status: string }> {
   const order = await getOrderRowByNo(input.orderNo);
   if (order.status !== 'success' && order.status !== 'refunding') {
@@ -358,12 +397,12 @@ export async function refund(input: CreateRefundInput & { operatorId?: number })
 
   const refundNo = genNo('REF');
   const operatorId = input.operatorId ?? currentUserOrNull()?.userId ?? null;
+  const threshold = refundApprovalThreshold();
+  const needApproval = threshold > 0 && input.refundAmount >= threshold;
 
   // ── 原子校验 + 插入（事务内 SELECT FOR UPDATE 防并发超退） ──────────────────
   const refundRow = await db.transaction(async (tx) => {
-    // 锁定订单行，阻塞同一订单的并发退款请求，直至本事务提交/回滚
     await tx.execute(sql`SELECT id FROM payment_orders WHERE id = ${order.id} FOR UPDATE`);
-    // 事务内重新计算已退/处理中总额
     const existing = await tx
       .select({ amount: paymentRefunds.refundAmount, status: paymentRefunds.status })
       .from(paymentRefunds)
@@ -384,34 +423,52 @@ export async function refund(input: CreateRefundInput & { operatorId?: number })
         totalAmount: order.amount,
         reason: input.reason ?? null,
         status: 'pending',
+        approvalStatus: needApproval ? 'pending' : 'none',
+        appliedById: operatorId,
         operatorId,
         tenantId: order.tenantId,
       })
       .returning();
-    await tx.update(paymentOrders).set({ status: 'refunding' }).where(eq(paymentOrders.id, order.id));
+    // 待审批退款不立即占用订单状态，避免长时间挂在 refunding；免审批才置 refunding
+    if (!needApproval) await tx.update(paymentOrders).set({ status: 'refunding' }).where(eq(paymentOrders.id, order.id));
     return row;
   });
 
-  try {
-    const ctx = buildAdapterContext(config);
-    assertNotifyUrl(ctx.notifyUrl);
-    const res = await getAdapter(order.channel).refund(ctx, order, refundRow);
-    await db
-      .update(paymentRefunds)
-      .set({ status: res.status, channelRefundNo: res.channelRefundNo ?? null, refundedAt: res.status === 'success' ? new Date() : null })
-      .where(eq(paymentRefunds.id, refundRow.id));
+  if (needApproval) return { refundNo, status: 'pending' };
+  return executeChannelRefund(order, refundRow, config);
+}
 
-    if (res.status === 'success') {
-      await finalizeRefund(order, refundNo, input.refundAmount);
-    } else if (res.status === 'failed') {
-      await db.update(paymentOrders).set({ status: 'success' }).where(eq(paymentOrders.id, order.id));
-    }
-    return { refundNo, status: res.status };
-  } catch (err) {
-    await db.update(paymentRefunds).set({ status: 'failed', errorMessage: errMessage(err).slice(0, 500) }).where(eq(paymentRefunds.id, refundRow.id));
-    await db.update(paymentOrders).set({ status: 'success' }).where(eq(paymentOrders.id, order.id));
-    throw err;
-  }
+/** 审批通过待审批退款单并执行渠道退款。 */
+export async function approveRefund(id: number, remark?: string): Promise<{ refundNo: string; status: string }> {
+  const user = currentUser();
+  const tc = tenantCondition(paymentRefunds, user);
+  const [refundRow] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
+  if (!refundRow) throw new HTTPException(404, { message: '退款记录不存在' });
+  if (refundRow.approvalStatus !== 'pending') throw new HTTPException(400, { message: '该退款单无需审批或已处理' });
+  const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, refundRow.orderNo)).limit(1);
+  if (!order) throw new HTTPException(404, { message: '原支付订单不存在' });
+  const config = await loadOrderConfig(order);
+  if (!config) throw new HTTPException(400, { message: '支付渠道配置不存在，无法退款' });
+
+  await db
+    .update(paymentRefunds)
+    .set({ approvalStatus: 'approved', approverId: user.userId, approvedAt: new Date(), approvalRemark: remark ?? null })
+    .where(eq(paymentRefunds.id, id));
+  await db.update(paymentOrders).set({ status: 'refunding' }).where(and(eq(paymentOrders.id, order.id), eq(paymentOrders.status, 'success')));
+  return executeChannelRefund(order, { ...refundRow, approvalStatus: 'approved' }, config);
+}
+
+/** 驳回待审批退款单（退款单置失败，订单不变）。 */
+export async function rejectRefund(id: number, remark: string): Promise<void> {
+  const user = currentUser();
+  const tc = tenantCondition(paymentRefunds, user);
+  const [refundRow] = await db.select({ id: paymentRefunds.id, approvalStatus: paymentRefunds.approvalStatus }).from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
+  if (!refundRow) throw new HTTPException(404, { message: '退款记录不存在' });
+  if (refundRow.approvalStatus !== 'pending') throw new HTTPException(400, { message: '该退款单无需审批或已处理' });
+  await db
+    .update(paymentRefunds)
+    .set({ approvalStatus: 'rejected', approverId: user.userId, approvedAt: new Date(), approvalRemark: remark, status: 'failed', errorMessage: '退款审批被驳回' })
+    .where(eq(paymentRefunds.id, id));
 }
 
 // ─── 异步回调处理 ───────────────────────────────────────────────────────────────
@@ -603,6 +660,7 @@ export interface ListRefundsQuery {
   pageSize?: number;
   keyword?: string;
   status?: 'pending' | 'processing' | 'success' | 'failed';
+  approvalStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   channel?: PaymentChannel;
   startTime?: string;
   endTime?: string;
@@ -614,6 +672,7 @@ export function buildRefundsWhere(q: ListRefundsQuery) {
     conditions.push(or(like(paymentRefunds.refundNo, `%${escapeLike(q.keyword)}%`), like(paymentRefunds.orderNo, `%${escapeLike(q.keyword)}%`)));
   }
   if (q.status) conditions.push(eq(paymentRefunds.status, q.status));
+  if (q.approvalStatus) conditions.push(eq(paymentRefunds.approvalStatus, q.approvalStatus));
   if (q.channel) conditions.push(eq(paymentRefunds.channel, q.channel));
   const startTime = parseDateTimeInput(q.startTime);
   const endTime = parseDateTimeInput(q.endTime);

@@ -258,3 +258,25 @@ export const PaymentLedgerEntryDTO = z
     createdAt: z.string(),
   })
   .openapi('PaymentLedgerEntry');
+
+export const PaymentLedgerSummaryDTO = z
+  .object({
+    inAmount: z.number().int(),
+    outAmount: z.number().int(),
+    netAmount: z.number().int(),
+    count: z.number().int(),
+  })
+  .openapi('PaymentLedgerSummary');
+
+export const PaymentOutboxEventDTO = z
+  .object({
+    id: z.number().int(),
+    type: z.string(),
+    orderNo: z.string(),
+    status: z.enum(['pending', 'done', 'failed']),
+    attempts: z.number().int(),
+    lastError: z.string().nullable().optional(),
+    createdAt: z.string(),
+    processedAt: z.string().nullable().optional(),
+  })
+  .openapi('PaymentOutboxEvent');
