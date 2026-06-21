@@ -1678,7 +1678,8 @@ export interface WorkflowAdvancedSettings {
   allowResubmit: boolean;
   notifyInitiator: boolean;
   autoApproveIfSameUser: boolean;
-  timeoutAction: 'none' | 'auto-approve' | 'auto-reject' | 'notify';
+  /** @deprecated 全局超时处理已废弃，请使用节点级 timeout 配置 */
+  timeoutAction?: 'none' | 'auto-approve' | 'auto-reject' | 'notify';
   /** 是否允许在实例下自由评论（默认 true） */
   allowComment?: boolean;
   /** 业务编号生成规则 */
@@ -2093,6 +2094,10 @@ export interface WorkflowInstance {
   serialNo?: string | null;
   /** 加急/优先级 */
   priority?: WorkflowInstancePriority;
+  /** 是否允许驳回后重新提交（来自流程定义高级设置，列表/详情用于控制按钮） */
+  allowResubmit?: boolean;
+  /** 是否允许流程中评论（来自流程定义高级设置） */
+  allowComment?: boolean;
   formData: Record<string, unknown> | null;
   /** 发起时的表单结构快照（冻结历史，渲染只读/审批表单时使用） */
   formSnapshot?: WorkflowFormField[] | null;

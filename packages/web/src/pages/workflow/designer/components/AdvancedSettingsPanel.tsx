@@ -45,12 +45,6 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
           <Form.Switch field="allowResubmit" label="允许驳回后重新提交" />
           <Form.Switch field="notifyInitiator" label="流程结束后通知发起人" />
           <Form.Switch field="autoApproveIfSameUser" label="相同审批人自动通过" />
-          <Form.Select field="timeoutAction" label="超时处理" style={{ width: '100%' }} placeholder="请选择超时处理方式">
-            <Select.Option value="none">不处理</Select.Option>
-            <Select.Option value="auto-approve">自动同意</Select.Option>
-            <Select.Option value="auto-reject">自动驳回</Select.Option>
-            <Select.Option value="notify">仅提醒</Select.Option>
-          </Form.Select>
           <Form.Switch field="allowComment" label="允许流程中评论" />
 
           {/* 业务编号 / 流水号 */}

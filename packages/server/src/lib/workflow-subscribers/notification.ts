@@ -23,6 +23,7 @@ import logger from '../logger';
 interface NotifyContext {
   label: string;
   channels: WorkflowNotifyChannels | undefined;
+  notifyInitiator: boolean;
 }
 
 async function loadNotifyContext(instanceId: number): Promise<NotifyContext> {
@@ -31,10 +32,10 @@ async function loadNotifyContext(instanceId: number): Promise<NotifyContext> {
     .from(workflowInstances)
     .where(eq(workflowInstances.id, instanceId))
     .limit(1);
-  if (!row) return { label: `#${instanceId}`, channels: undefined };
+  if (!row) return { label: `#${instanceId}`, channels: undefined, notifyInitiator: true };
   const label = row.serialNo ? `${row.title}（${row.serialNo}）` : row.title;
-  const channels = (row.snapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings?.notifyChannels;
-  return { label, channels };
+  const settings = (row.snapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings;
+  return { label, channels: settings?.notifyChannels, notifyInitiator: settings?.notifyInitiator !== false };
 }
 
 async function insertMessage(input: {
@@ -162,8 +163,9 @@ export function registerNotificationWorkflowSubscriber(): void {
       withdrawn: { title: '流程已撤回', content: `你发起的流程「${label}」已撤回`, type: 'warning' as const },
     };
     const m = map[status];
+    const { channels, notifyInitiator: shouldNotify } = await loadNotifyContext(event.instanceId);
+    if (!shouldNotify) return;
     await insertMessage({ userId: inst.initiatorId, title: m.title, content: m.content, type: m.type, tenantId: event.tenantId });
-    const { channels } = await loadNotifyContext(event.instanceId);
     await notifyExternalChannels(inst.initiatorId, channels, `【${m.title}】${label}`, m.content, { title: label, status: m.title });
   };
 

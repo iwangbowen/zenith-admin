@@ -51,6 +51,7 @@ export function mapInstance(
     ccReadAt?: Date | string | null;
   } = {},
 ) {
+  const snapshotSettings = (row.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings;
   return {
     id: row.id,
     definitionId: row.definitionId,
@@ -60,6 +61,8 @@ export function mapInstance(
     title: row.title,
     serialNo: row.serialNo ?? null,
     priority: (row.priority ?? 'normal') as import('@zenith/shared').WorkflowInstancePriority,
+    allowResubmit: snapshotSettings?.allowResubmit !== false,
+    allowComment: snapshotSettings?.allowComment !== false,
     formData: row.formData,
     formSnapshot: (row.formSnapshot ?? null) as WorkflowFormField[] | null,
     status: row.status,
@@ -839,17 +842,23 @@ async function expandTasksToRows(
       continue;
     }
 
-    if (t.nodeType === 'trigger' && t.nodeConfig.triggerConfig?.triggerType === 'callback') {
-      rows.push({
-        instanceId: ctx.instanceId,
-        nodeKey: t.nodeKey,
-        nodeName: t.nodeName,
-        nodeType: 'trigger',
-        assigneeId: null,
-        status: 'waiting' as const,
-        externalCallbackId: randomBytes(16).toString('hex'),
-      });
-      continue;
+    if (t.nodeType === 'trigger') {
+      const tcfg = t.nodeConfig.triggerConfig;
+      const isCallback = tcfg?.triggerType === 'callback';
+      const isBlocking = tcfg?.onFailure === 'block';
+      if (isCallback || isBlocking) {
+        rows.push({
+          instanceId: ctx.instanceId,
+          nodeKey: t.nodeKey,
+          nodeName: t.nodeName,
+          nodeType: 'trigger',
+          assigneeId: null,
+          status: 'waiting' as const,
+          ...(isCallback ? { externalCallbackId: randomBytes(16).toString('hex') } : {}),
+        });
+        continue;
+      }
+      // 非阻塞触发器（continue/retry）：落到下方通用自动节点路径，由订阅者异步执行
     }
 
     if (t.nodeType === 'subProcess' && t.nodeConfig.subProcessWaitChild !== false) {
@@ -2914,6 +2923,10 @@ export async function resubmitInstance(id: number) {
   if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以重新提交' });
   if (inst.status !== 'rejected' && inst.status !== 'withdrawn') {
     throw new HTTPException(400, { message: '只有已驳回或已撤回的申请可重新提交' });
+  }
+  const resubmitSettings = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData?.settings;
+  if (resubmitSettings?.allowResubmit === false) {
+    throw new HTTPException(400, { message: '该流程不允许重新提交' });
   }
   return createInstance({
     definitionId: inst.definitionId,

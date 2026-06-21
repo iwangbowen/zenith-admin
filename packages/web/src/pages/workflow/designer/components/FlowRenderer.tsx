@@ -26,6 +26,8 @@ interface FlowRendererProps {
   nodeRuntime?: Map<string, NodeRuntimeInfo>;
   /** 运行态：未被实际命中的分支 id 集合（用于置灰未走的分支） */
   dimmedBranchIds?: Set<string>;
+  /** 运行态：实例状态（用于 start/end 节点状态标识） */
+  instanceStatus?: string;
 }
 
 const noop = () => { /* noop */ };
@@ -45,6 +47,7 @@ export default function FlowRenderer({
   readOnly = false,
   nodeRuntime,
   dimmedBranchIds,
+  instanceStatus,
 }: Readonly<FlowRendererProps>) {
 
   const editNode = onEditNode ?? noop;
@@ -100,6 +103,7 @@ export default function FlowRenderer({
       <InitiatorNode
         node={process.initiator}
         onEdit={editNode}
+        started={readOnly && !!nodeRuntime}
       />
 
       {!readOnly && <AddNodeButton onAdd={(type) => addAfter(process.initiator.id, type)} />}
@@ -107,7 +111,7 @@ export default function FlowRenderer({
 
       {renderNodeChain(process.initiator.children, process.initiator.id)}
 
-      <EndNode />
+      <EndNode status={readOnly && nodeRuntime ? instanceStatus : undefined} />
     </div>
   );
 }

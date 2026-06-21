@@ -14,6 +14,7 @@ import { db } from '../../db';
 import { workflowInstances, workflowTasks } from '../../db/schema';
 import { workflowEventBus } from '../workflow-event-bus';
 import { insertTriggerExecution } from '../../services/workflow-trigger-executions.service';
+import { approveTaskCore } from '../../services/workflow-instances.service';
 import { httpRequest } from '../http-client';
 import logger from '../logger';
 import type {
@@ -137,39 +138,33 @@ async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: st
 
   const formData = (inst.formData ?? {}) as Record<string, unknown>;
   const triggerType: WorkflowTriggerType = cfg.triggerType;
+  const onFailure = cfg.onFailure ?? 'continue';
 
-  let result: Awaited<ReturnType<typeof executeHttpTrigger>>;
-  if (triggerType === 'webhook' || triggerType === 'callback') {
-    const extras: Record<string, string> = {};
-    if (triggerType === 'callback' && task?.externalCallbackId) {
-      const base = (process.env.PUBLIC_BASE_URL ?? '').replace(/\/+$/, '');
-      extras.callbackUrl = `${base}/api/public/workflow/trigger-callback/${task.externalCallbackId}`;
-      extras.callbackId = task.externalCallbackId;
+  const runOnce = async (): Promise<Awaited<ReturnType<typeof executeHttpTrigger>>> => {
+    if (triggerType === 'webhook' || triggerType === 'callback') {
+      const extras: Record<string, string> = {};
+      if (triggerType === 'callback' && task?.externalCallbackId) {
+        const base = (process.env.PUBLIC_BASE_URL ?? '').replace(/\/+$/, '');
+        extras.callbackUrl = `${base}/api/public/workflow/trigger-callback/${task.externalCallbackId}`;
+        extras.callbackId = task.externalCallbackId;
+      }
+      return executeHttpTrigger(cfg, formData, extras);
     }
-    result = await executeHttpTrigger(cfg, formData, extras);
-  } else if (triggerType === 'updateData' || triggerType === 'deleteData') {
-    const m = await executeDataMutation(cfg, instanceId, formData);
-    result = {
-      status: m.status,
-      responseStatus: null,
-      responseBody: m.responseBody,
-      errorMessage: m.errorMessage,
-      durationMs: m.durationMs,
-      requestUrl: '',
-      requestMethod: triggerType,
-      requestBody: m.requestBody,
-    };
-  } else {
-    result = {
-      status: 'failed',
-      responseStatus: null,
-      responseBody: null,
-      errorMessage: `未知触发器类型 ${triggerType as string}`,
-      durationMs: 0,
-      requestUrl: '',
-      requestMethod: '',
-      requestBody: null,
-    };
+    if (triggerType === 'updateData' || triggerType === 'deleteData') {
+      const m = await executeDataMutation(cfg, instanceId, formData);
+      return { status: m.status, responseStatus: null, responseBody: m.responseBody, errorMessage: m.errorMessage, durationMs: m.durationMs, requestUrl: '', requestMethod: triggerType, requestBody: m.requestBody };
+    }
+    return { status: 'failed', responseStatus: null, responseBody: null, errorMessage: `未知触发器类型 ${triggerType as string}`, durationMs: 0, requestUrl: '', requestMethod: '', requestBody: null };
+  };
+
+  // 失败重试：continue 不重试；retry/block 按 maxRetries 重试（含首次共 maxRetries+1 次）
+  const maxAttempts = onFailure === 'continue' ? 1 : Math.min(11, Math.max(1, (cfg.maxRetries ?? 0) + 1));
+  let result = await runOnce();
+  let attempt = 1;
+  while (result.status !== 'success' && attempt < maxAttempts) {
+    await new Promise((r) => setTimeout(r, Math.min(5000, 500 * attempt)));
+    attempt += 1;
+    result = await runOnce();
   }
 
   await insertTriggerExecution({
@@ -179,7 +174,7 @@ async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: st
     nodeName,
     triggerType,
     status: result.status === 'success' ? 'success' : 'failed',
-    attempt: 1,
+    attempt,
     requestUrl: result.requestUrl || null,
     requestMethod: result.requestMethod || null,
     requestBody: result.requestBody,
@@ -189,6 +184,15 @@ async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: st
     durationMs: result.durationMs,
     tenantId: inst.tenantId ?? null,
   });
+
+  // onFailure='block'（非 callback）：触发器生成阻塞 waiting 任务，成功才推进，失败保持阻塞等待人工处理
+  if (onFailure === 'block' && triggerType !== 'callback' && task && task.status === 'waiting') {
+    if (result.status === 'success') {
+      await approveTaskCore(task, inst, '触发器执行成功，自动推进', { userId: 0, name: 'trigger:block' });
+    } else {
+      logger.warn('[trigger-subscriber] 阻塞触发器执行失败，流程已阻塞，等待人工处理', { instanceId, nodeKey, attempt, error: result.errorMessage });
+    }
+  }
 }
 
 export function registerTriggerWorkflowSubscriber(): void {

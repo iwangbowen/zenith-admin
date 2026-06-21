@@ -17,6 +17,8 @@ interface Props {
   flowData: { process?: unknown } | null | undefined;
   tasks?: WorkflowTask[];
   height?: number | string;
+  /** 实例状态（用于 start/end 节点运行态标识） */
+  instanceStatus?: string;
 }
 
 interface ReturnTrack {
@@ -93,7 +95,7 @@ function computeDimmedBranches(process: FlowProcess, taskNodeKeys: Set<string>):
   return dimmed;
 }
 
-export default function WorkflowGraphView({ flowData, tasks, height = 480 }: Readonly<Props>) {
+export default function WorkflowGraphView({ flowData, tasks, height = 480, instanceStatus }: Readonly<Props>) {
   const scopeId = useId().replaceAll(':', '');
   const scopeClass = `fd-graph-scope-${scopeId}`;
   const process = flowData?.process as FlowProcess | undefined;
@@ -183,7 +185,7 @@ export default function WorkflowGraphView({ flowData, tasks, height = 480 }: Rea
           borderRadius: 8,
         }}
       >
-        <FlowRenderer process={process} readOnly nodeRuntime={runtimeMap} dimmedBranchIds={dimmedBranches} />
+        <FlowRenderer process={process} readOnly nodeRuntime={runtimeMap} dimmedBranchIds={dimmedBranches} instanceStatus={instanceStatus} />
       </div>
     </div>
   );

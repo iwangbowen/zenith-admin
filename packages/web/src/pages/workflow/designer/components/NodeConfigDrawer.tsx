@@ -317,6 +317,9 @@ export default function NodeConfigDrawer({
                   emptyAssignToIds={props.emptyAssignToIds as number[] | undefined}
                   sameInitiatorStrategy={(props.sameInitiatorStrategy as SameInitiatorStrategy) ?? 'selfApprove'}
                   deduplicateStrategy={(props.deduplicateStrategy as DeduplicateStrategy) ?? 'autoSkip'}
+                  returnMode={(props.returnMode as 'reexecute' | 'backToOrigin') ?? 'reexecute'}
+                  catchAction={props.catchAction as 'toAdmin' | 'notify' | 'terminate' | undefined}
+                  catchNotifyUserIds={props.catchNotifyUserIds as number[] | undefined}
                   timeout={props.timeout as TimeoutConfig | undefined}
                   users={users}
                   roles={roles}

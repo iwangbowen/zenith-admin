@@ -80,6 +80,10 @@ export function registerChatWorkflowSubscriber(): void {
     event: { instanceId: number; instance: { initiatorId: number; title: string; serialNo?: string | null } },
   ) => {
     const inst = event.instance;
+    const [snapRow] = await db.select({ snapshot: workflowInstances.definitionSnapshot })
+      .from(workflowInstances).where(eq(workflowInstances.id, event.instanceId)).limit(1);
+    const notify = (snapRow?.snapshot as { flowData?: { settings?: { notifyInitiator?: boolean } } } | null)?.flowData?.settings?.notifyInitiator;
+    if (notify === false) return;
     const label = inst.serialNo ? `${inst.title}（${inst.serialNo}）` : inst.title;
     const map = {
       approved: { title: '审批通过', text: `你发起的流程「${label}」已审批通过`, statusText: '已通过' },

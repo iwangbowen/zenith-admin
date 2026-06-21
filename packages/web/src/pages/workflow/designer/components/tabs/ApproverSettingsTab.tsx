@@ -66,6 +66,7 @@ interface ApproverSettingsTabProps {
   deduplicateStrategy?: DeduplicateStrategy;
   returnMode?: 'reexecute' | 'backToOrigin';
   catchAction?: 'toAdmin' | 'notify' | 'terminate';
+  catchNotifyUserIds?: number[];
   timeout?: TimeoutConfig;
   users: UserOption[];
   roles: RoleOption[];
@@ -111,6 +112,7 @@ export default function ApproverSettingsTab({
   deduplicateStrategy = 'autoSkip',
   returnMode = 'reexecute',
   catchAction,
+  catchNotifyUserIds,
   timeout,
   users,
   roles,
@@ -603,6 +605,7 @@ export default function ApproverSettingsTab({
               deduplicateStrategy={deduplicateStrategy}
               returnMode={returnMode}
               catchAction={catchAction}
+              catchNotifyUserIds={catchNotifyUserIds}
               timeout={timeout}
               users={users}
               onChange={onChange}

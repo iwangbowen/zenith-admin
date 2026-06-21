@@ -106,31 +106,37 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
           ))}
         </div>
       )}
-      <div style={{ borderTop: '1px solid var(--semi-color-border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <TextArea
-          value={content}
-          onChange={setContent}
-          placeholder="发表评论，与流程相关人员沟通…"
-          autosize={{ minRows: 2, maxRows: 5 }}
-          maxCount={2000}
-        />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
-          <Select
-            multiple
-            filter
-            placeholder="提醒谁（@提及）"
-            value={mentions}
-            onChange={(v) => setMentions((v as number[]) ?? [])}
-            optionList={mentionOptions}
-            maxTagCount={3}
-            style={{ flex: 1, minWidth: 0 }}
-            showClear
-          />
-          <Button theme="solid" type="primary" icon={<Send size={14} />} loading={submitting} onClick={submit}>
-            发送
-          </Button>
+      {instance.allowComment === false ? (
+        <div style={{ borderTop: '1px solid var(--semi-color-border)', paddingTop: 12, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+          该流程已关闭评论
         </div>
-      </div>
+      ) : (
+        <div style={{ borderTop: '1px solid var(--semi-color-border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <TextArea
+            value={content}
+            onChange={setContent}
+            placeholder="发表评论，与流程相关人员沟通…"
+            autosize={{ minRows: 2, maxRows: 5 }}
+            maxCount={2000}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+            <Select
+              multiple
+              filter
+              placeholder="提醒谁（@提及）"
+              value={mentions}
+              onChange={(v) => setMentions((v as number[]) ?? [])}
+              optionList={mentionOptions}
+              maxTagCount={3}
+              style={{ flex: 1, minWidth: 0 }}
+              showClear
+            />
+            <Button theme="solid" type="primary" icon={<Send size={14} />} loading={submitting} onClick={submit}>
+              发送
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -257,7 +263,7 @@ export default function WorkflowInstanceDetailPanel({
       <Tabs type="line" style={{ marginTop: 8 }}>
         <TabPane tab="表单内容" itemKey="form">{renderFormData()}</TabPane>
         <TabPane tab="流程图" itemKey="graph">
-          <WorkflowGraphView flowData={flowData} tasks={instance.tasks ?? []} />
+          <WorkflowGraphView flowData={flowData} tasks={instance.tasks ?? []} instanceStatus={instance.status} />
         </TabPane>
         <TabPane tab="节点列表" itemKey="nodes">
           <WorkflowNodeListView flowData={flowData} tasks={instance.tasks ?? []} />

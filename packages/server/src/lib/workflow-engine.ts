@@ -669,6 +669,23 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
         errors.push(`子流程"${node.data.label}"为多实例模式但未指定循环数据源字段`);
       }
     }
+    if (gwType === 'delay') {
+      if (node.data.delayType === 'toDate') {
+        if (!node.data.targetDate) {
+          errors.push(`延时节点"${node.data.label}"未指定目标日期字段`);
+        }
+      } else if (!(typeof node.data.delayValue === 'number' && node.data.delayValue > 0)) {
+        errors.push(`延时节点"${node.data.label}"未设置有效的延时时长`);
+      }
+    }
+    if (gwType === 'ccNode') {
+      const hasAssignee = node.data.assigneeType
+        || (Array.isArray(node.data.assigneeIds) && node.data.assigneeIds.length > 0)
+        || typeof node.data.assigneeId === 'number';
+      if (!hasAssignee) {
+        errors.push(`抄送节点"${node.data.label}"未配置抄送人`);
+      }
+    }
   }
 
   // 检查所有节点是否可达

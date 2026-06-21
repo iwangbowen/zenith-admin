@@ -747,9 +747,11 @@ export default function MyApplicationsPage() {
           return (
             <Space>
               <Button theme="borderless" size="small" onClick={() => openDetail(record.id)}>详情</Button>
-              <Popconfirm title="将生成新草稿，确定要重新提交吗？" onConfirm={() => void handleResubmit(record.id)}>
-                <Button theme="borderless" size="small">重新提交</Button>
-              </Popconfirm>
+              {record.allowResubmit !== false && (
+                <Popconfirm title="将生成新草稿，确定要重新提交吗？" onConfirm={() => void handleResubmit(record.id)}>
+                  <Button theme="borderless" size="small">重新提交</Button>
+                </Popconfirm>
+              )}
             </Space>
           );
         }

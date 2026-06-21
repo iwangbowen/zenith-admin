@@ -7,9 +7,10 @@ import type { FlowNode, FieldPermission } from '../types';
 interface InitiatorNodeProps {
   node: FlowNode;
   onEdit: (node: FlowNode) => void;
+  started?: boolean;
 }
 
-export default function InitiatorNode({ node, onEdit }: Readonly<InitiatorNodeProps>) {
+export default function InitiatorNode({ node, onEdit, started }: Readonly<InitiatorNodeProps>) {
   const desc = node.props.initiatorDesc as string || '所有人';
 
   // 表单权限摘要
@@ -36,6 +37,7 @@ export default function InitiatorNode({ node, onEdit }: Readonly<InitiatorNodePr
         <div className="fd-node-card__header" style={{ background: '#ff943e' }}>
           <span className="fd-node-card__header-icon"><User size={14} /></span>
           <span className="fd-node-card__header-title">{node.name}</span>
+          {started && <span className="fd-node-card__header-status" style={{ marginLeft: 'auto', fontSize: 12 }}>已发起</span>}
         </div>
         <div className="fd-node-card__body">
           <div className="fd-node-card__body-content">

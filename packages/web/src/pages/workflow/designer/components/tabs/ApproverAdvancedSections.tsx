@@ -34,6 +34,7 @@ interface ApproverAdvancedSectionsProps {
   deduplicateStrategy?: DeduplicateStrategy;
   returnMode?: 'reexecute' | 'backToOrigin';
   catchAction?: 'toAdmin' | 'notify' | 'terminate';
+  catchNotifyUserIds?: number[];
   timeout?: TimeoutConfig;
   users: UserOption[];
   onChange: (updates: Record<string, unknown>) => void;
@@ -99,6 +100,7 @@ export default function ApproverAdvancedSections({
   deduplicateStrategy = 'autoSkip',
   returnMode = 'reexecute',
   catchAction,
+  catchNotifyUserIds,
   timeout,
   users,
   onChange,
@@ -324,6 +326,20 @@ export default function ApproverAdvancedSections({
         <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>
           启用后，当审批人解析为空时优先执行此异常处理。
         </Typography.Text>
+        {catchAction === 'notify' && (
+          <div style={{ marginTop: 8 }}>
+            <div className="fd-field-label">通知人</div>
+            <Select
+              multiple
+              filter
+              style={{ width: '100%' }}
+              placeholder="请选择异常通知人"
+              value={catchNotifyUserIds ?? []}
+              onChange={(v) => onChange({ catchNotifyUserIds: (v as number[]) ?? [] })}
+              optionList={users.map((u) => ({ value: u.id, label: u.nickname }))}
+            />
+          </div>
+        )}
       </div>
 
       {/* ─── 审批人与提交人为同一人时 ─────────────────────────── */}
