@@ -188,7 +188,7 @@ export default function WorkflowLaunchPage() {
               <WorkflowGraphView flowData={def.flowData} />
             </TabPane>
             <TabPane tab="节点详情" itemKey="nodes">
-              <WorkflowNodeListView flowData={def.flowData} />
+              <WorkflowNodeListView flowData={def.flowData} initiator={user ? { name: user.nickname, avatar: user.avatar } : undefined} />
             </TabPane>
           </Tabs>
         </div>

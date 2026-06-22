@@ -283,7 +283,11 @@ export default function WorkflowInstanceDetailPanel({
           <WorkflowGraphView flowData={flowData} tasks={instance.tasks ?? []} instanceStatus={instance.status} />
         </TabPane>
         <TabPane tab="节点列表" itemKey="nodes">
-          <WorkflowNodeListView flowData={flowData} tasks={instance.tasks ?? []} />
+          <WorkflowNodeListView
+            flowData={flowData}
+            tasks={instance.tasks ?? []}
+            initiator={{ name: instance.initiatorName, avatar: instance.initiatorAvatar, submittedAt: instance.createdAt }}
+          />
         </TabPane>
         <TabPane tab="审批记录" itemKey="approvals">
           <ApprovalTimeline

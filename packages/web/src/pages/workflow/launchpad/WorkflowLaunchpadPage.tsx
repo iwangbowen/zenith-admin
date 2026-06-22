@@ -330,7 +330,7 @@ export default function WorkflowLaunchpadPage() {
                 <WorkflowGraphView flowData={selectedDef.flowData} />
               </TabPane>
               <TabPane tab="节点详情" itemKey="nodes">
-                <WorkflowNodeListView flowData={selectedDef.flowData} />
+                <WorkflowNodeListView flowData={selectedDef.flowData} initiator={user ? { name: user.nickname, avatar: user.avatar } : undefined} />
               </TabPane>
             </Tabs>
           </div>
