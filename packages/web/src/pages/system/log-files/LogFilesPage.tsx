@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button, Input, Tag, Space, Modal, Toast, Spin, Typography, Dropdown } from '@douyinfe/semi-ui';
 import { buildSearchMatchMap, findMatchRanges } from './logFilesSearch';
-import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2, Search, MoreHorizontal } from 'lucide-react';
+import { RefreshCw, FileText, Activity, StopCircle, Download, Trash2, Search, ListOrdered, MoreHorizontal } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { request } from '@/utils/request';
@@ -29,6 +29,7 @@ export default function LogFilesPage() {
   const [lines, setLines] = useState<string[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
   const [tailing, setTailing] = useState(false);
+  const [showLineNumbers, setShowLineNumbers] = useState(true);
   const tailAbortRef = useRef<AbortController | null>(null);
   const preRef = useRef<HTMLPreElement | null>(null);
   const lineRefs = useRef<Array<HTMLSpanElement | null>>([]);
@@ -88,6 +89,7 @@ export default function LogFilesPage() {
   const normalizedContentKeyword = contentKeyword.trim();
   const hasContentSearch = normalizedContentKeyword.length > 0;
   const searchMatches = useMemo(() => buildSearchMatchMap(lines, normalizedContentKeyword), [lines, normalizedContentKeyword]);
+  const lineNumberDigits = Math.max(2, String(lines.length).length);
 
   const jumpToMatch = useCallback((direction: -1 | 1) => {
     if (searchMatches.length === 0) return;
@@ -392,6 +394,15 @@ export default function LogFilesPage() {
                   <Button size="small" theme="borderless" onClick={handleContentSearchReset}>
                     重置
                   </Button>
+                  <Button
+                    size="small"
+                    theme={showLineNumbers ? 'light' : 'borderless'}
+                    type={showLineNumbers ? 'primary' : 'tertiary'}
+                    icon={<ListOrdered size={13} />}
+                    onClick={() => setShowLineNumbers((v) => !v)}
+                  >
+                    行号
+                  </Button>
                   {hasPermission('system:log:files') && (
                     <Button size="small" theme="borderless" icon={<RefreshCw size={13} />}
                       onClick={() => void loadContent(selected)}>刷新</Button>
@@ -433,27 +444,44 @@ export default function LogFilesPage() {
                 {lines.length === 0 ? (
                   <Typography.Text type="tertiary" style={{ fontFamily: 'inherit' }}>{hasContentSearch ? '（未找到匹配日志内容）' : '（文件为空）'}</Typography.Text>
                 ) : (
-                  lines.map((line, index) => (
-                    <span
-                      key={`${selected.name}-${index}`}
-                      ref={(node) => {
-                        lineRefs.current[index] = node;
-                      }}
-                      style={{
-                        display: 'block',
-                        background: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index
-                          ? 'var(--semi-color-primary-light-default)'
-                          : 'transparent',
-                        borderLeft: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index
-                          ? '3px solid var(--semi-color-primary)'
-                          : '3px solid transparent',
-                        paddingLeft: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index ? 6 : 0,
-                        borderRadius: 4,
-                      }}
-                    >
-                      {renderHighlightedLine(line)}
-                    </span>
-                  ))
+                  lines.map((line, index) => {
+                    const isActiveMatchLine = searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index;
+                    return (
+                      <span
+                        key={`${selected.name}-${index}`}
+                        ref={(node) => {
+                          lineRefs.current[index] = node;
+                        }}
+                        style={{
+                          display: 'flex',
+                          background: isActiveMatchLine ? 'var(--semi-color-primary-light-default)' : 'transparent',
+                          borderLeft: isActiveMatchLine ? '3px solid var(--semi-color-primary)' : '3px solid transparent',
+                          paddingLeft: isActiveMatchLine ? 6 : 0,
+                          borderRadius: 4,
+                        }}
+                      >
+                        {showLineNumbers && (
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              flexShrink: 0,
+                              width: `${lineNumberDigits}ch`,
+                              marginRight: 12,
+                              textAlign: 'right',
+                              color: 'var(--semi-color-text-2)',
+                              userSelect: 'none',
+                              whiteSpace: 'pre',
+                            }}
+                          >
+                            {index + 1}
+                          </span>
+                        )}
+                        <span style={{ flex: 1, minWidth: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                          {renderHighlightedLine(line)}
+                        </span>
+                      </span>
+                    );
+                  })
                 )}
               </pre>
             )}
