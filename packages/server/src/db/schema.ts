@@ -2895,6 +2895,27 @@ export const maintenanceMode = pgTable('maintenance_mode', {
 export type MaintenanceModeRow = typeof maintenanceMode.$inferSelect;
 export type NewMaintenanceMode = typeof maintenanceMode.$inferInsert;
 
+// ─── 维护记录（每次「开启→关闭」为一条维护时段）─────────────────────────────
+export const maintenanceLogs = pgTable('maintenance_logs', {
+  id: serial('id').primaryKey(),
+  message: varchar('message', { length: 512 }).notNull(),
+  estimatedEndAt: timestamp('estimated_end_at'),
+  startedAt: timestamp('started_at').notNull(),
+  startedById: integer('started_by_id'),
+  startedByName: varchar('started_by_name', { length: 64 }),
+  endedAt: timestamp('ended_at'),
+  endedById: integer('ended_by_id'),
+  endedByName: varchar('ended_by_name', { length: 64 }),
+  durationSeconds: integer('duration_seconds'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('maintenance_logs_started_at_idx').on(t.startedAt),
+  index('maintenance_logs_ended_at_idx').on(t.endedAt),
+]);
+
+export type MaintenanceLogRow = typeof maintenanceLogs.$inferSelect;
+export type NewMaintenanceLog = typeof maintenanceLogs.$inferInsert;
+
 // ─── 终端录屏表 ─────────────────────────────────────────────────────────
 /** 终端 session 录屏事件：[timeOffset(秒), type('o'|’i'), data] */
 export type RecordingEvent = [number, 'o' | 'i', string];

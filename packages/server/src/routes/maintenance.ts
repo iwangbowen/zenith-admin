@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { validationHook, ok, okBody, okMsg, commonErrorResponses } from '../lib/openapi-schemas';
-import { MaintenanceStatusDTO } from '../lib/openapi-dtos';
-import { getMaintenanceStatus, updateMaintenanceStatus } from '../services/maintenance.service';
+import { validationHook, ok, okPaginated, okBody, commonErrorResponses, PaginationQuery } from '../lib/openapi-schemas';
+import { MaintenanceStatusDTO, MaintenanceLogDTO } from '../lib/openapi-dtos';
+import { getMaintenanceStatus, updateMaintenanceStatus, listMaintenanceLogs } from '../services/maintenance.service';
 
 const maintenanceRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -59,6 +59,25 @@ const updateRoute = defineOpenAPIRoute({
   },
 });
 
-maintenanceRouter.openapiRoutes([statusRoute, getRoute, updateRoute] as const);
+// ── GET /api/maintenance/logs — Admin ─────────────────────────────────────
+const logsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/logs',
+    tags: ['维护模式'],
+    summary: '维护记录分页查询',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:maintenance:manage' })] as const,
+    request: {
+      query: PaginationQuery.extend({
+        status: z.enum(['ongoing', 'completed']).optional(),
+      }),
+    },
+    responses: { ...okPaginated(MaintenanceLogDTO, '维护记录列表'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await listMaintenanceLogs(c.req.valid('query'))), 200),
+});
+
+maintenanceRouter.openapiRoutes([statusRoute, getRoute, updateRoute, logsRoute] as const);
 
 export default maintenanceRouter;

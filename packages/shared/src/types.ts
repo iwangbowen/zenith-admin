@@ -366,6 +366,22 @@ export interface LoginLog {
   createdAt: string;
 }
 
+// ─── Maintenance Logs ────────────────────────────────────
+export type MaintenanceLogStatus = 'ongoing' | 'completed';
+
+export interface MaintenanceLog {
+  id: number;
+  message: string;
+  estimatedEndAt: string | null;
+  startedAt: string | null;
+  startedByName: string | null;
+  endedAt: string | null;
+  endedByName: string | null;
+  durationSeconds: number | null;
+  status: MaintenanceLogStatus;
+  createdAt: string;
+}
+
 // ─── IP Access Logs ──────────────────────────────────────
 export interface IpAccessLog {
   id: number;
