@@ -31,6 +31,32 @@ interface BosStreamClient {
   generatePresignedUrl(bucket: string, key: string, timestamp: number, expirationInSeconds: number): string;
 }
 
+interface OssMultipartClient {
+  initMultipartUpload(name: string, options?: { mime?: string }): Promise<{ uploadId?: string }>;
+  _uploadPart(name: string, uploadId: string, partNo: number, data: { size: number; stream: Readable }): Promise<{ etag?: string }>;
+  completeMultipartUpload(name: string, uploadId: string, parts: Array<{ number: number; etag: string }>): Promise<unknown>;
+  abortMultipartUpload(name: string, uploadId: string): Promise<unknown>;
+}
+
+interface ObsMultipartResult<T> {
+  CommonMsg?: { Status?: number; Code?: string; Message?: string };
+  InterfaceResult?: T;
+}
+
+interface ObsMultipartClient extends ObsClientType {
+  initiateMultipartUpload(params: Record<string, unknown>): Promise<ObsMultipartResult<{ UploadId?: string }>>;
+  uploadPart(params: Record<string, unknown>): Promise<ObsMultipartResult<{ ETag?: string }>>;
+  completeMultipartUpload(params: Record<string, unknown>): Promise<ObsMultipartResult<unknown>>;
+  abortMultipartUpload(params: Record<string, unknown>): Promise<ObsMultipartResult<unknown>>;
+}
+
+interface BosMultipartClient extends BosStreamClient {
+  initiateMultipartUpload(bucket: string, key: string, options?: Record<string, unknown>): Promise<{ body?: { uploadId?: string } }>;
+  uploadPartFromDataUrl(bucket: string, key: string, uploadId: string, partNumber: number, partSize: number, dataUrl: string): Promise<{ http_headers?: { etag?: string } }>;
+  completeMultipartUpload(bucket: string, key: string, uploadId: string, parts: Array<{ PartNumber: number; ETag: string }>): Promise<unknown>;
+  abortMultipartUpload(bucket: string, key: string, uploadId: string): Promise<unknown>;
+}
+
 function trimSlash(value?: string | null) {
   return value?.replaceAll(/^\/+|\/+$/g, '') ?? '';
 }
@@ -329,8 +355,12 @@ export interface MultipartUploadPart {
 export interface MultipartDriver {
   init(config: FileStorageConfigRow, objectKey: string, mimeType?: string): Promise<string>;
   uploadPart(config: FileStorageConfigRow, objectKey: string, uploadId: string, partNumber: number, body: Buffer): Promise<string>;
-  complete(config: FileStorageConfigRow, objectKey: string, uploadId: string, parts: MultipartUploadPart[]): Promise<void>;
+  complete(config: FileStorageConfigRow, objectKey: string, uploadId: string, parts: MultipartUploadPart[], mimeType?: string): Promise<void>;
   abort(config: FileStorageConfigRow, objectKey: string, uploadId: string): Promise<void>;
+}
+
+function sortMultipartParts(parts: MultipartUploadPart[]) {
+  return [...parts].sort((a, b) => a.partNumber - b.partNumber);
 }
 
 const s3MultipartDriver: MultipartDriver = {
@@ -363,7 +393,7 @@ const s3MultipartDriver: MultipartDriver = {
       Bucket: config.s3Bucket!,
       Key: objectKey,
       UploadId: uploadId,
-      MultipartUpload: { Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })) },
+      MultipartUpload: { Parts: sortMultipartParts(parts).map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })) },
     }));
   },
   async abort(config, objectKey, uploadId) {
@@ -376,15 +406,216 @@ const s3MultipartDriver: MultipartDriver = {
   },
 };
 
+const ossMultipartDriver: MultipartDriver = {
+  async init(config, objectKey, mimeType) {
+    const client = createOssClient(config) as unknown as OssMultipartClient;
+    const res = await client.initMultipartUpload(objectKey, mimeType ? { mime: mimeType } : undefined);
+    if (!res.uploadId) throw new Error('OSS 初始化分片上传失败：未返回 uploadId');
+    return res.uploadId;
+  },
+  async uploadPart(config, objectKey, uploadId, partNumber, body) {
+    const client = createOssClient(config) as unknown as OssMultipartClient;
+    const res = await client._uploadPart(objectKey, uploadId, partNumber, {
+      size: body.length,
+      stream: Readable.from(body),
+    });
+    if (!res.etag) throw new Error('OSS 分片上传失败：未返回 ETag');
+    return res.etag;
+  },
+  async complete(config, objectKey, uploadId, parts) {
+    const client = createOssClient(config) as unknown as OssMultipartClient;
+    await client.completeMultipartUpload(
+      objectKey,
+      uploadId,
+      sortMultipartParts(parts).map((p) => ({ number: p.partNumber, etag: p.etag })),
+    );
+  },
+  async abort(config, objectKey, uploadId) {
+    const client = createOssClient(config) as unknown as OssMultipartClient;
+    await client.abortMultipartUpload(objectKey, uploadId);
+  },
+};
+
+const cosMultipartDriver: MultipartDriver = {
+  async init(config, objectKey, mimeType) {
+    const cos = createCosClient(config);
+    const res = await cos.multipartInit({
+      Bucket: config.cosBucket!,
+      Region: config.cosRegion!,
+      Key: objectKey,
+      ...(mimeType ? { ContentType: mimeType } : {}),
+    });
+    if (!res.UploadId) throw new Error('COS 初始化分片上传失败：未返回 UploadId');
+    return res.UploadId;
+  },
+  async uploadPart(config, objectKey, uploadId, partNumber, body) {
+    const cos = createCosClient(config);
+    const res = await cos.multipartUpload({
+      Bucket: config.cosBucket!,
+      Region: config.cosRegion!,
+      Key: objectKey,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+      Body: body,
+      ContentLength: body.length,
+    });
+    if (!res.ETag) throw new Error('COS 分片上传失败：未返回 ETag');
+    return res.ETag;
+  },
+  async complete(config, objectKey, uploadId, parts) {
+    const cos = createCosClient(config);
+    await cos.multipartComplete({
+      Bucket: config.cosBucket!,
+      Region: config.cosRegion!,
+      Key: objectKey,
+      UploadId: uploadId,
+      Parts: sortMultipartParts(parts).map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
+    });
+  },
+  async abort(config, objectKey, uploadId) {
+    const cos = createCosClient(config);
+    await cos.multipartAbort({
+      Bucket: config.cosBucket!,
+      Region: config.cosRegion!,
+      Key: objectKey,
+      UploadId: uploadId,
+    });
+  },
+};
+
+function assertObsOk<T>(result: ObsMultipartResult<T>, action: string): T {
+  const status = result.CommonMsg?.Status ?? 0;
+  if (status >= 300) {
+    throw new Error(`OBS ${action} 失败: ${result.CommonMsg?.Code ?? status} ${result.CommonMsg?.Message ?? ''}`.trim());
+  }
+  if (!result.InterfaceResult) throw new Error(`OBS ${action} 失败：未返回结果`);
+  return result.InterfaceResult;
+}
+
+const obsMultipartDriver: MultipartDriver = {
+  async init(config, objectKey, mimeType) {
+    const obs = createObsClient(config) as ObsMultipartClient;
+    const result = assertObsOk(await obs.initiateMultipartUpload({
+      Bucket: config.obsBucket!,
+      Key: objectKey,
+      ...(mimeType ? { ContentType: mimeType } : {}),
+    }), '初始化分片上传');
+    if (!result.UploadId) throw new Error('OBS 初始化分片上传失败：未返回 UploadId');
+    return result.UploadId;
+  },
+  async uploadPart(config, objectKey, uploadId, partNumber, body) {
+    const obs = createObsClient(config) as ObsMultipartClient;
+    const result = assertObsOk(await obs.uploadPart({
+      Bucket: config.obsBucket!,
+      Key: objectKey,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+      Body: body,
+    }), '上传分片');
+    if (!result.ETag) throw new Error('OBS 分片上传失败：未返回 ETag');
+    return result.ETag;
+  },
+  async complete(config, objectKey, uploadId, parts) {
+    const obs = createObsClient(config) as ObsMultipartClient;
+    assertObsOk(await obs.completeMultipartUpload({
+      Bucket: config.obsBucket!,
+      Key: objectKey,
+      UploadId: uploadId,
+      Parts: sortMultipartParts(parts).map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
+    }), '完成分片上传');
+  },
+  async abort(config, objectKey, uploadId) {
+    const obs = createObsClient(config) as ObsMultipartClient;
+    assertObsOk(await obs.abortMultipartUpload({
+      Bucket: config.obsBucket!,
+      Key: objectKey,
+      UploadId: uploadId,
+    }), '中止分片上传');
+  },
+};
+
+function makeAzureBlockId(partNumber: number): string {
+  return Buffer.from(String(partNumber).padStart(6, '0')).toString('base64');
+}
+
+const azureMultipartDriver: MultipartDriver = {
+  async init(_config, objectKey) {
+    return objectKey;
+  },
+  async uploadPart(config, objectKey, _uploadId, partNumber, body) {
+    const containerClient = createAzureBlobClient(config);
+    const blockId = makeAzureBlockId(partNumber);
+    await containerClient.getBlockBlobClient(objectKey).stageBlock(blockId, body, body.length);
+    return blockId;
+  },
+  async complete(config, objectKey, _uploadId, parts, mimeType) {
+    const containerClient = createAzureBlobClient(config);
+    await containerClient.getBlockBlobClient(objectKey).commitBlockList(
+      sortMultipartParts(parts).map((p) => p.etag),
+      { blobHTTPHeaders: { blobContentType: mimeType ?? 'application/octet-stream' } },
+    );
+  },
+  async abort() {
+    // Azure staged blocks have no explicit abort API; uncommitted blocks expire automatically.
+  },
+};
+
+const bosMultipartDriver: MultipartDriver = {
+  async init(config, objectKey, mimeType) {
+    const client = createBosClient(config) as unknown as BosMultipartClient;
+    const res = await client.initiateMultipartUpload(config.bosBucket!, objectKey, {
+      headers: { 'Content-Type': mimeType ?? 'application/octet-stream' },
+    });
+    if (!res.body?.uploadId) throw new Error('BOS 初始化分片上传失败：未返回 uploadId');
+    return res.body.uploadId;
+  },
+  async uploadPart(config, objectKey, uploadId, partNumber, body) {
+    const client = createBosClient(config) as unknown as BosMultipartClient;
+    const res = await client.uploadPartFromDataUrl(
+      config.bosBucket!,
+      objectKey,
+      uploadId,
+      partNumber,
+      body.length,
+      body.toString('base64'),
+    );
+    if (!res.http_headers?.etag) throw new Error('BOS 分片上传失败：未返回 ETag');
+    return res.http_headers.etag;
+  },
+  async complete(config, objectKey, uploadId, parts) {
+    const client = createBosClient(config) as unknown as BosMultipartClient;
+    await client.completeMultipartUpload(
+      config.bosBucket!,
+      objectKey,
+      uploadId,
+      sortMultipartParts(parts).map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
+    );
+  },
+  async abort(config, objectKey, uploadId) {
+    const client = createBosClient(config) as unknown as BosMultipartClient;
+    await client.abortMultipartUpload(config.bosBucket!, objectKey, uploadId);
+  },
+};
+
 /**
  * 返回指定 provider 的原生 multipart 驱动；返回 null 表示该 provider 走本地暂存 + 流式合并路径。
- * 当前已接入：s3（含 MinIO / Cloudflare R2 等 S3 兼容存储）。
- * oss / cos / obs / azure / kodo / bos 暂走暂存路径，可按本驱动接口逐个补全。
+ * 当前已接入：oss / s3 / cos / obs / azure / bos。
+ * kodo 的 Node SDK 不暴露可外部控制的 uploadId/part/etag，仍走本地暂存 + 流式合并路径。
  */
 export function getMultipartDriver(provider: FileStorageConfigRow['provider']): MultipartDriver | null {
   switch (provider) {
+    case 'oss':
+      return ossMultipartDriver;
     case 's3':
       return s3MultipartDriver;
+    case 'cos':
+      return cosMultipartDriver;
+    case 'obs':
+      return obsMultipartDriver;
+    case 'azure':
+      return azureMultipartDriver;
+    case 'bos':
+      return bosMultipartDriver;
     default:
       return null;
   }

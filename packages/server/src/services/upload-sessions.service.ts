@@ -177,7 +177,7 @@ export async function completeChunkUpload(uploadId: string) {
       .where(eq(uploadChunks.uploadSessionId, session.id))
       .orderBy(asc(uploadChunks.index));
     const parts = chunkRows.map((r) => ({ partNumber: r.index + 1, etag: r.etag ?? '' }));
-    await driver.complete(config, session.objectKey, session.multipartUploadId, parts);
+    await driver.complete(config, session.objectKey, session.multipartUploadId, parts, session.mimeType ?? undefined);
   } else {
     // 本地暂存：首片真实类型校验 + 按序流式合并上传
     const head = await fs.readFile(chunkPath(uploadId, 0));
