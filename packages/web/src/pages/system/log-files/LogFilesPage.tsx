@@ -434,27 +434,25 @@ export default function LogFilesPage() {
                   <Typography.Text type="tertiary" style={{ fontFamily: 'inherit' }}>{hasContentSearch ? '（未找到匹配日志内容）' : '（文件为空）'}</Typography.Text>
                 ) : (
                   lines.map((line, index) => (
-                    <React.Fragment key={`${selected.name}-${index}`}>
-                      <span
-                        ref={(node) => {
-                          lineRefs.current[index] = node;
-                        }}
-                        style={{
-                          display: 'block',
-                          background: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index
-                            ? 'var(--semi-color-primary-light-default)'
-                            : 'transparent',
-                          borderLeft: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index
-                            ? '3px solid var(--semi-color-primary)'
-                            : '3px solid transparent',
-                          paddingLeft: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index ? 6 : 0,
-                          borderRadius: 4,
-                        }}
-                      >
-                        {renderHighlightedLine(line)}
-                      </span>
-                      {index < lines.length - 1 ? '\n' : null}
-                    </React.Fragment>
+                    <span
+                      key={`${selected.name}-${index}`}
+                      ref={(node) => {
+                        lineRefs.current[index] = node;
+                      }}
+                      style={{
+                        display: 'block',
+                        background: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index
+                          ? 'var(--semi-color-primary-light-default)'
+                          : 'transparent',
+                        borderLeft: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index
+                          ? '3px solid var(--semi-color-primary)'
+                          : '3px solid transparent',
+                        paddingLeft: searchMatches.some((match) => match.lineIndex === index) && searchMatches[activeMatchIndex]?.lineIndex === index ? 6 : 0,
+                        borderRadius: 4,
+                      }}
+                    >
+                      {renderHighlightedLine(line)}
+                    </span>
                   ))
                 )}
               </pre>

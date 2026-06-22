@@ -28,7 +28,7 @@ export function resolveLogPath(filename: string): string | null {
 
 /** 读取普通文本文件最后 N 行 */
 function normalizeLogLines(content: string): string[] {
-  return content.split('\n').filter(l => l.trim() !== '');
+  return content.split(/\r?\n/).filter(l => l.trim() !== '');
 }
 
 function filterLogLines(lines: string[], keyword?: string): string[] {
@@ -73,7 +73,7 @@ export async function watchTail(
         fs.readSync(fd, buf, 0, newBytes, position);
         fs.closeSync(fd);
         position = stat.size;
-        const newLines = buf.toString('utf-8').split('\n').filter(l => l.trim() !== '');
+        const newLines = buf.toString('utf-8').split(/\r?\n/).filter(l => l.trim() !== '');
         if (newLines.length > 0) {
           void onLines(newLines, position);
         }
