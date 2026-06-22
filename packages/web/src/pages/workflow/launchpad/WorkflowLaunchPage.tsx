@@ -6,7 +6,7 @@
  */
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Banner, Button, Form, Space, Spin, Tabs, TabPane, Toast, Typography, Empty } from '@douyinfe/semi-ui';
+import { Banner, Button, Col, Form, Row, Space, Spin, Tabs, TabPane, Toast, Typography, Empty } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import dayjs from 'dayjs';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared';
@@ -184,17 +184,23 @@ export default function WorkflowLaunchPage() {
           placeholder="自动生成，可手动修改"
           rules={[{ required: true, message: '请填写申请标题' }]}
         />
-        <Form.Select field="priority" label="优先级" style={{ width: '100%' }} initValue="normal" optionList={WORKFLOW_PRIORITY_OPTIONS} />
-        <Form.Select
-          field="ccUserIds"
-          label="抄送人"
-          placeholder="可选，提交后立即抄送给所选成员"
-          multiple
-          filter
-          showClear
-          style={{ width: '100%' }}
-          optionList={userOptions}
-        />
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Select field="priority" label="优先级" style={{ width: '100%' }} initValue="normal" optionList={WORKFLOW_PRIORITY_OPTIONS} />
+          </Col>
+          <Col span={16}>
+            <Form.Select
+              field="ccUserIds"
+              label="抄送人"
+              placeholder="可选，提交后立即抄送给所选成员"
+              multiple
+              filter
+              showClear
+              style={{ width: '100%' }}
+              optionList={userOptions}
+            />
+          </Col>
+        </Row>
       </Form>
 
       {def && (
