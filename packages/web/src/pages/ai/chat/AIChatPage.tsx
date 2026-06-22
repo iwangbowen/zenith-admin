@@ -301,9 +301,13 @@ export default function AIChatPage() {
       return;
     }
     setMsgsLoading(true);
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined;
     void request.get<AiMessage[]>(`/api/ai/conversations/${activeConvId}/messages`).then((res) => {
       setMessages((res.data ?? []).map(convertApiMessage));
+      // 打开 / 切换对话后定位到最新一条消息
+      scrollTimer = setTimeout(() => dialogueRef.current?.scrollToBottom(false), 120);
     }).catch(() => {}).finally(() => setMsgsLoading(false));
+    return () => { if (scrollTimer) clearTimeout(scrollTimer); };
   }, [activeConvId]);
 
   // AIChatInput 内置上传按钮的拦截处理：选择 PDF 后上传到系统文件服务
