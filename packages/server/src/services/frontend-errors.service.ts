@@ -7,7 +7,7 @@ import type { FrontendErrorType, ErrorLevel, UpdateErrorGroupInput, SourceMapUpl
 import { currentUserOrNull } from '../lib/context';
 import { tenantScope, getCreateTenantId } from '../lib/tenant';
 import { mergeWhere, escapeLike } from '../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, formatDate } from '../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatDate, APP_TIME_ZONE } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { parseClientEnv, computeErrorFingerprint, startOfDaysAgo, clampDays, clampLimit } from '../lib/analytics-helpers';
 import { symbolicateStack } from '../lib/source-map-symbolicate';
@@ -183,10 +183,10 @@ export async function getGroupDetail(id: number) {
 
   const [trendRows, browserRows, osRows, recent, affected] = await Promise.all([
     db
-      .select({ date: sql<string>`to_char(date_trunc('day', ${errorEvents.createdAt}), 'YYYY-MM-DD')`, count: sql<number>`COUNT(*)::int` })
+      .select({ date: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${errorEvents.createdAt}), 'YYYY-MM-DD')`, count: sql<number>`COUNT(*)::int` })
       .from(errorEvents)
       .where(and(eq(errorEvents.groupId, id), gte(errorEvents.createdAt, start)))
-      .groupBy(sql`date_trunc('day', ${errorEvents.createdAt})`),
+      .groupBy(sql`1`),
     db.select({ name: errorEvents.browser, value: sql<number>`COUNT(*)::int` }).from(errorEvents).where(eq(errorEvents.groupId, id)).groupBy(errorEvents.browser).orderBy(sql`COUNT(*) DESC`).limit(6),
     db.select({ name: errorEvents.os, value: sql<number>`COUNT(*)::int` }).from(errorEvents).where(eq(errorEvents.groupId, id)).groupBy(errorEvents.os).orderBy(sql`COUNT(*) DESC`).limit(6),
     db.select().from(errorEvents).where(eq(errorEvents.groupId, id)).orderBy(desc(errorEvents.createdAt)).limit(20),
@@ -292,10 +292,10 @@ export async function getErrorOverview(daysRaw: unknown) {
     db.select({ errorType: errorGroups.errorType, groups: sql<number>`COUNT(*)::int`, occurrences: sql<number>`COALESCE(SUM(${errorGroups.count}),0)::bigint` }).from(errorGroups).where(recentGroups).groupBy(errorGroups.errorType),
     db.select({ level: errorGroups.level, groups: sql<number>`COUNT(*)::int`, occurrences: sql<number>`COALESCE(SUM(${errorGroups.count}),0)::bigint` }).from(errorGroups).where(recentGroups).groupBy(errorGroups.level),
     db
-      .select({ date: sql<string>`to_char(date_trunc('day', ${errorEvents.createdAt}), 'YYYY-MM-DD')`, occurrences: sql<number>`COUNT(*)::int`, groups: countDistinct(errorEvents.groupId) })
+      .select({ date: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${errorEvents.createdAt}), 'YYYY-MM-DD')`, occurrences: sql<number>`COUNT(*)::int`, groups: countDistinct(errorEvents.groupId) })
       .from(errorEvents)
       .where(mergeWhere(gte(errorEvents.createdAt, start), eScope))
-      .groupBy(sql`date_trunc('day', ${errorEvents.createdAt})`),
+      .groupBy(sql`1`),
     db.select({ n: countDistinct(errorEvents.userId) }).from(errorEvents).where(mergeWhere(gte(errorEvents.createdAt, start), eScope)),
     db.select().from(errorGroups).where(mergeWhere(and(eq(errorGroups.status, 'unresolved'), gte(errorGroups.lastSeenAt, start)), gScope)).orderBy(desc(errorGroups.count)).limit(10),
     db.select({ n: sql<number>`COUNT(*)::int` }).from(errorGroups).where(mergeWhere(gte(errorGroups.firstSeenAt, todayStart), gScope)),

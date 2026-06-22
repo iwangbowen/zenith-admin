@@ -2,6 +2,7 @@ import { and, gte, lt, sql, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { userEvents, analyticsSessions, analyticsDailyRollup, analyticsSettings, errorEvents, errorGroups } from '../db/schema';
 import { clampDays } from '../lib/analytics-helpers';
+import { APP_TIME_ZONE, formatDate } from '../lib/datetime';
 
 interface RollupRow { tenantId: number; statDate: string; metric: string; value: number }
 
@@ -16,7 +17,7 @@ export async function rebuildRollup(daysRaw: unknown): Promise<number> {
   const eventRows = await db
     .select({
       tenantId: sql<number>`COALESCE(${userEvents.tenantId}, 0)`,
-      statDate: sql<string>`to_char(date_trunc('day', ${userEvents.createdAt}), 'YYYY-MM-DD')`,
+      statDate: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')`,
       pv: sql<number>`COUNT(*) FILTER (WHERE ${userEvents.eventType} = 'page_view')::int`,
       uv: sql<number>`COUNT(DISTINCT ${userEvents.distinctId})::int`,
       events: sql<number>`COUNT(*)::int`,
@@ -24,18 +25,18 @@ export async function rebuildRollup(daysRaw: unknown): Promise<number> {
     })
     .from(userEvents)
     .where(and(gte(userEvents.createdAt, start), lt(userEvents.createdAt, todayStart)))
-    .groupBy(sql`COALESCE(${userEvents.tenantId}, 0)`, sql`date_trunc('day', ${userEvents.createdAt})`);
+    .groupBy(sql`1, 2`);
 
   const sessionRows = await db
     .select({
       tenantId: sql<number>`COALESCE(${analyticsSessions.tenantId}, 0)`,
-      statDate: sql<string>`to_char(date_trunc('day', ${analyticsSessions.startedAt}), 'YYYY-MM-DD')`,
+      statDate: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${analyticsSessions.startedAt}), 'YYYY-MM-DD')`,
       bounce: sql<number>`COUNT(*) FILTER (WHERE ${analyticsSessions.isBounce})::int`,
       dwell: sql<number>`COALESCE(SUM(${analyticsSessions.durationMs}), 0)::bigint`,
     })
     .from(analyticsSessions)
     .where(and(gte(analyticsSessions.startedAt, start), lt(analyticsSessions.startedAt, todayStart)))
-    .groupBy(sql`COALESCE(${analyticsSessions.tenantId}, 0)`, sql`date_trunc('day', ${analyticsSessions.startedAt})`);
+    .groupBy(sql`1, 2`);
 
   const upserts: RollupRow[] = [];
   for (const r of eventRows) {
@@ -83,7 +84,7 @@ export async function getRollupSummary(daysRaw: unknown): Promise<RollupSummaryI
   todayStart.setHours(0, 0, 0, 0);
   const start = new Date(todayStart);
   start.setDate(start.getDate() - days);
-  const startStr = start.toISOString().slice(0, 10);
+  const startStr = formatDate(start);
 
   const rows = await db
     .select({ statDate: analyticsDailyRollup.statDate, metric: analyticsDailyRollup.metric, value: analyticsDailyRollup.value })

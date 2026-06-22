@@ -6,7 +6,7 @@ import type { TrackEventInput, UserBehaviorEventType } from '@zenith/shared';
 import { currentUserOrNull } from '../lib/context';
 import { tenantScope, getCreateTenantId } from '../lib/tenant';
 import { mergeWhere, escapeLike } from '../lib/where-helpers';
-import { formatNullableDateTime, formatDateTime, formatDate } from '../lib/datetime';
+import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo } from '../lib/analytics-helpers';
 import { touchEventMeta } from './analytics-event-meta.service';
@@ -251,7 +251,7 @@ export async function getTrends(daysRaw: unknown) {
 
   const rows = await db
     .select({
-      day: sql<string>`to_char(date_trunc('day', ${userEvents.createdAt}), 'YYYY-MM-DD')`,
+      day: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')`,
       pv: sql<number>`COUNT(*) FILTER (WHERE ${userEvents.eventType} = 'page_view')::int`,
       uv: countDistinct(userEvents.distinctId),
       sessions: countDistinct(userEvents.sessionId),
@@ -259,8 +259,8 @@ export async function getTrends(daysRaw: unknown) {
     })
     .from(userEvents)
     .where(where)
-    .groupBy(sql`date_trunc('day', ${userEvents.createdAt})`)
-    .orderBy(sql`date_trunc('day', ${userEvents.createdAt})`);
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
 
   const byDay = new Map(rows.map((r) => [r.day, r]));
   const dates = dateAxis(days);
@@ -550,10 +550,10 @@ export async function getRetention(daysRaw: unknown) {
   const where = mergeWhere(and(gte(userEvents.createdAt, start), isNotNull(userEvents.distinctId)), tenantScope(userEvents));
 
   const rows = await db
-    .select({ distinctId: userEvents.distinctId, day: sql<string>`to_char(date_trunc('day', ${userEvents.createdAt}), 'YYYY-MM-DD')` })
+    .select({ distinctId: userEvents.distinctId, day: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'YYYY-MM-DD')` })
     .from(userEvents)
     .where(where)
-    .groupBy(userEvents.distinctId, sql`date_trunc('day', ${userEvents.createdAt})`);
+    .groupBy(sql`1, 2`);
 
   const userDays = new Map<string, Set<string>>();
   for (const r of rows) {
@@ -569,14 +569,12 @@ export async function getRetention(daysRaw: unknown) {
   const maxPeriods = Math.min(days, 8);
   const periods = Array.from({ length: maxPeriods }, (_, i) => i);
 
-  const cohorts = axis.map((cohortDate) => {
+  const cohorts = axis.map((cohortDate, ci) => {
     const cohortUsers = [...firstDayOf.entries()].filter(([, d]) => d === cohortDate).map(([u]) => u);
     const size = cohortUsers.length;
     const values = periods.map((p) => {
-      const target = new Date(cohortDate);
-      target.setDate(target.getDate() + p);
-      const targetStr = formatDate(target);
-      if (axis.indexOf(targetStr) === -1) return null;
+      const targetStr = axis[ci + p];
+      if (targetStr === undefined) return null;
       if (size === 0) return 0;
       const active = cohortUsers.filter((u) => userDays.get(u)?.has(targetStr)).length;
       return Math.round((active / size) * 1000) / 10;
@@ -806,11 +804,11 @@ export async function getRealtime() {
       .orderBy(desc(userEvents.createdAt))
       .limit(20),
     db
-      .select({ minute: sql<string>`to_char(date_trunc('minute', ${userEvents.createdAt}), 'HH24:MI')`, events: sql<number>`COUNT(*)::int` })
+      .select({ minute: sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${userEvents.createdAt}), 'HH24:MI')`, events: sql<number>`COUNT(*)::int` })
       .from(userEvents)
       .where(mergeWhere(gte(userEvents.createdAt, last30), tenantScope(userEvents)))
-      .groupBy(sql`date_trunc('minute', ${userEvents.createdAt})`)
-      .orderBy(sql`date_trunc('minute', ${userEvents.createdAt})`),
+      .groupBy(sql`1`)
+      .orderBy(sql`min(${userEvents.createdAt})`),
   ]);
 
   return {

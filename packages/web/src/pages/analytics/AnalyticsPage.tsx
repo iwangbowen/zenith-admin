@@ -1013,8 +1013,9 @@ function HeatmapCanvas({ data }: Readonly<{ data: HeatmapData | null }>) {
 
     const maxValue = Math.max(1, ...data.points.map((point) => point.value));
     data.points.forEach((point) => {
-      const x = point.x <= 1 ? point.x * width : (point.x / 800) * width;
-      const y = point.y <= 1 ? point.y * height : (point.y / 360) * height;
+      // 坐标为区域内百分比（0-100），与采集端 trackAreaClick、后端聚合、Mock 保持一致
+      const x = (point.x / 100) * width;
+      const y = (point.y / 100) * height;
       const intensity = Math.max(0.12, Math.min(1, point.value / maxValue));
       const radius = 22 + 44 * intensity;
       const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
