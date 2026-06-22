@@ -59,6 +59,21 @@ function renderTitle(template: string | null | undefined, fallback: string): str
     .replace(/\{\{\s*date\s*\}\}/g, formatDate(now));
 }
 
+async function ensureScheduleDefinitionLaunchable(definitionId: number): Promise<void> {
+  const tc = tenantCondition(workflowDefinitions, currentUser());
+  const conds = [eq(workflowDefinitions.id, definitionId)];
+  if (tc) conds.push(tc);
+  const [def] = await db
+    .select({ id: workflowDefinitions.id, formType: workflowDefinitions.formType })
+    .from(workflowDefinitions)
+    .where(and(...conds))
+    .limit(1);
+  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  if (def.formType === 'external') {
+    throw new HTTPException(400, { message: '业务系统主导流程不能配置定时发起，请由业务模块按业务规则发起' });
+  }
+}
+
 export async function listSchedules(query: { page?: number; pageSize?: number; definitionId?: number; status?: string }) {
   const user = currentUser();
   const { page = 1, pageSize = 20, definitionId, status } = query;
@@ -95,6 +110,7 @@ async function loadScheduleWithNames(id: number): Promise<WorkflowSchedule> {
 
 export async function createSchedule(input: CreateWorkflowScheduleInput): Promise<WorkflowSchedule> {
   const user = currentUser();
+  await ensureScheduleDefinitionLaunchable(input.definitionId);
   if (computeNextRun(input.cronExpression) === null) {
     throw new HTTPException(400, { message: 'cron 表达式无效' });
   }
@@ -119,7 +135,10 @@ export async function updateSchedule(id: number, input: UpdateWorkflowScheduleIn
   const [existing] = await db.select().from(workflowSchedules).where(and(...conds)).limit(1);
   if (!existing) throw new HTTPException(404, { message: '定时规则不存在' });
   const patch: Partial<typeof workflowSchedules.$inferInsert> = {};
-  if (input.definitionId !== undefined) patch.definitionId = input.definitionId;
+  if (input.definitionId !== undefined) {
+    await ensureScheduleDefinitionLaunchable(input.definitionId);
+    patch.definitionId = input.definitionId;
+  }
   if (input.name !== undefined) patch.name = input.name;
   if (input.initiatorId !== undefined) patch.initiatorId = input.initiatorId;
   if (input.titleTemplate !== undefined) patch.titleTemplate = input.titleTemplate ?? null;

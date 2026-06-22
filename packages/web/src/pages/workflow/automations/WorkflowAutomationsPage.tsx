@@ -405,6 +405,10 @@ export default function WorkflowAutomationsPage() {
     () => defs.map((d) => ({ value: d.id, label: d.name })),
     [defs],
   );
+  const launchableDefOptions = useMemo(
+    () => defs.filter((d) => d.formType !== 'external').map((d) => ({ value: d.id, label: d.name })),
+    [defs],
+  );
 
   const columns: ColumnProps<WorkflowAutomation>[] = [
     { title: 'ID', dataIndex: 'id', width: 70 },
@@ -451,7 +455,7 @@ export default function WorkflowAutomationsPage() {
           value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
           onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
           showClear style={{ width: 220 }}
-          optionList={defOptions}
+          optionList={launchableDefOptions}
         />
         <Select
           placeholder="触发时机"

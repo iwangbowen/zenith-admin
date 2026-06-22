@@ -63,6 +63,21 @@ async function ensureDefinitionExists(definitionId: number) {
   return row;
 }
 
+async function ensureStartWorkflowActionTarget(definitionId: number) {
+  const def = await ensureDefinitionExists(definitionId);
+  if (def.formType === 'external') {
+    throw new HTTPException(400, { message: '自动化「发起流程」动作不能选择业务系统主导流程，请由业务模块发起该类流程' });
+  }
+}
+
+async function validateAutomationActions(actions: WorkflowAutomationActionConfig[]) {
+  for (const action of actions) {
+    if (action.type === 'startWorkflow') {
+      await ensureStartWorkflowActionTarget(action.definitionId);
+    }
+  }
+}
+
 export interface ListWorkflowAutomationsQuery {
   definitionId?: number;
   trigger?: WorkflowAutomationTrigger;
@@ -112,6 +127,7 @@ export interface CreateWorkflowAutomationInput {
 
 export async function createWorkflowAutomation(input: CreateWorkflowAutomationInput) {
   await ensureDefinitionExists(input.definitionId);
+  await validateAutomationActions(input.actions);
   const [row] = await db.insert(workflowAutomations).values({
     definitionId: input.definitionId,
     name: input.name,
@@ -136,6 +152,7 @@ export async function updateWorkflowAutomation(id: number, input: UpdateWorkflow
   if (input.name !== undefined) patch.name = input.name;
   if (input.trigger !== undefined) patch.trigger = input.trigger;
   if (input.actions !== undefined) patch.actions = input.actions;
+  if (input.actions !== undefined) await validateAutomationActions(input.actions);
   if (input.status !== undefined) patch.status = input.status;
   if (input.sort !== undefined) patch.sort = input.sort;
   const [row] = await db.update(workflowAutomations).set(patch).where(eq(workflowAutomations.id, id)).returning();
