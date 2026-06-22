@@ -915,7 +915,7 @@ function UsersTab() {
               {timeline.items.map((item) => (
                 <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr)', gap: 12, position: 'relative' }}>
                   <Typography.Text type="tertiary" size="small">{formatDateTime(item.createdAt)}</Typography.Text>
-                  <div style={{ borderLeft: '2px solid var(--semi-color-primary-light-default)', paddingLeft: 12 }}>
+                  <div>
                     <Tag color="blue">{item.eventType}</Tag>
                     <Typography.Text strong style={{ marginLeft: 8 }}>{item.eventName || item.elementLabel || item.pageTitle || item.pagePath}</Typography.Text>
                     <div><Typography.Text type="tertiary" size="small">{item.componentArea || '页面'} · {item.pagePath} · {msToReadable(item.durationMs)}</Typography.Text></div>
