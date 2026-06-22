@@ -52,6 +52,7 @@ export default function LeavePage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<BizLeave | null>(null);
   const [saving, setSaving] = useState(false);
+  const [submittingApproval, setSubmittingApproval] = useState(false);
   const formApi = useRef<FormApi | null>(null);
 
   const fetchList = useCallback(async (p = page, ps = pageSize) => {
@@ -90,27 +91,56 @@ export default function LeavePage() {
     }, 0);
   };
 
-  const handleSubmit = async () => {
-    if (!formApi.current) return;
+  const collectPayload = async () => {
+    if (!formApi.current) return null;
     let values: Record<string, unknown>;
     try { values = await formApi.current.validate() as Record<string, unknown>; } catch { return; }
     const range = values.dateRange as [Date, Date] | undefined;
-    if (!range || range.length !== 2) { Toast.error('请选择请假日期'); return; }
-    const payload = {
-      leaveType: values.leaveType,
+    if (!range || range.length !== 2) { Toast.error('请选择请假日期'); return null; }
+    return {
+      leaveType: String(values.leaveType ?? ''),
       startDate: formatDateForApi(range[0]),
       endDate: formatDateForApi(range[1]),
-      days: values.days,
+      days: Number(values.days),
       reason: (values.reason as string) || null,
     };
+  };
+
+  const saveLeave = async (payload: Awaited<ReturnType<typeof collectPayload>>) => {
+    if (!payload) return null;
+    const res = editing
+      ? await request.put<BizLeave>(`/api/biz/leaves/${editing.id}`, payload)
+      : await request.post<BizLeave>('/api/biz/leaves', payload);
+    return res.code === 0 ? res.data : null;
+  };
+
+  const handleSubmit = async () => {
+    const payload = await collectPayload();
+    if (!payload) return;
     setSaving(true);
     try {
-      const res = editing
-        ? await request.put(`/api/biz/leaves/${editing.id}`, payload)
-        : await request.post('/api/biz/leaves', payload);
-      if (res.code === 0) { Toast.success('保存成功'); setModalVisible(false); void fetchList(); }
+      const saved = await saveLeave(payload);
+      if (saved) { Toast.success('保存成功'); setModalVisible(false); void fetchList(); }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSubmitFromModal = async () => {
+    const payload = await collectPayload();
+    if (!payload) return;
+    setSubmittingApproval(true);
+    try {
+      const saved = await saveLeave(payload);
+      if (!saved) return;
+      const res = await request.post<BizLeave>(`/api/biz/leaves/${saved.id}/submit`, {});
+      if (res.code === 0) {
+        Toast.success('已提交审批');
+        setModalVisible(false);
+        void fetchList();
+      }
+    } finally {
+      setSubmittingApproval(false);
     }
   };
 
@@ -203,8 +233,13 @@ export default function LeavePage() {
         title={editing ? '编辑请假单' : '新建请假单'}
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
-        onOk={() => void handleSubmit()}
-        confirmLoading={saving}
+        footer={(
+          <Space>
+            <Button onClick={() => setModalVisible(false)}>取消</Button>
+            <Button loading={saving} disabled={submittingApproval} onClick={() => void handleSubmit()}>保存草稿</Button>
+            <Button type="primary" loading={submittingApproval} disabled={saving} onClick={() => void handleSubmitFromModal()}>提交审批</Button>
+          </Space>
+        )}
         closeOnEsc
         width={520}
       >
@@ -215,7 +250,7 @@ export default function LeavePage() {
           <Form.TextArea field="reason" label="事由" autosize rows={2} maxCount={500} />
         </Form>
         <Typography.Text type="tertiary" size="small">
-          <Send size={12} style={{ verticalAlign: -2, marginRight: 4 }} />保存为草稿后，可在列表中「提交审批」发起请假审批流程。
+          <Send size={12} style={{ verticalAlign: -2, marginRight: 4 }} />可保存为草稿稍后提交，也可直接「提交审批」发起请假审批流程。
         </Typography.Text>
       </Modal>
     </div>
