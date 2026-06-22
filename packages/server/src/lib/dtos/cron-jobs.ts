@@ -48,7 +48,28 @@ export const CronJobStatsPerJobDTO = z.object({
   successCount: z.number().int(),
   failCount: z.number().int(),
   successRate: z.number(),
+  avgDurationMs: z.number().int().nullable(),
+  lastRunStatus: z.enum(['success', 'fail', 'running']).nullable(),
+  lastRunAt: z.string().nullable(),
 }).openapi('CronJobStatsPerJob');
+
+export const CronJobDailyStatDTO = z.object({
+  date: z.string().openapi({ example: '2026-06-22' }),
+  total: z.number().int(),
+  successCount: z.number().int(),
+  failCount: z.number().int(),
+}).openapi('CronJobDailyStat');
+
+export const CronJobRecentLogDTO = z.object({
+  id: z.number().int(),
+  jobId: z.number().int(),
+  jobName: z.string(),
+  status: z.enum(['success', 'fail', 'running']),
+  durationMs: z.number().int().nullable(),
+  startedAt: z.string(),
+  executionCount: z.number().int(),
+  output: z.string().nullable(),
+}).openapi('CronJobRecentLog');
 
 export const CronJobStatsDTO = z.object({
   totalJobs: z.number().int(),
@@ -57,5 +78,8 @@ export const CronJobStatsDTO = z.object({
   todayRuns: z.number().int(),
   todaySuccesses: z.number().int(),
   todayFails: z.number().int(),
+  todayAvgDurationMs: z.number().int().nullable(),
   perJob: z.array(CronJobStatsPerJobDTO),
+  dailyStats: z.array(CronJobDailyStatDTO),
+  recentLogs: z.array(CronJobRecentLogDTO),
 }).openapi('CronJobStats');

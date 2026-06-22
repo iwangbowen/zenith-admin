@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
-import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '@/mocks/utils/date';
 import type { CronJob } from '@zenith/shared';
 
 export const cronJobsHandlers = [
@@ -63,6 +63,8 @@ export const cronJobsHandlers = [
 
   // 任务执行统计
   http.get('/api/cron-jobs/stats', () => {
+    const statuses: Array<'success' | 'fail' | 'running'> = ['success', 'success', 'success', 'fail', 'running'];
+
     const perJob = mockCronJobs.map((job, i) => {
       const totalRuns = 20 + (i * 7 % 80);
       const successCount = Math.floor(totalRuns * (0.7 + (i * 3 % 30) / 100));
@@ -70,15 +72,51 @@ export const cronJobsHandlers = [
       return {
         jobId: job.id, jobName: job.name, totalRuns, successCount, failCount,
         successRate: Math.round((successCount / totalRuns) * 100),
+        avgDurationMs: 800 + (i * 137 % 2600),
+        lastRunStatus: job.lastRunStatus ?? (failCount > successCount ? 'fail' : 'success'),
+        lastRunAt: job.lastRunAt ?? mockDateTimeOffset(-(i + 1) * 1800000),
       };
     });
+
+    // 近 14 天趋势（确定性生成）
+    const dailyStats = Array.from({ length: 14 }, (_, idx) => {
+      const offset = idx - 13;
+      const total = 12 + ((idx * 5 + 3) % 22);
+      const failCount = (idx * 3) % 5;
+      return { date: mockDateOffset(offset), total, successCount: total - failCount, failCount };
+    });
+
+    // 最近 12 条执行记录
+    const recentLogs = Array.from({ length: 12 }, (_, j) => {
+      const job = mockCronJobs[j % mockCronJobs.length];
+      const status = statuses[j % statuses.length];
+      let output: string;
+      if (status === 'fail') output = 'Error: Connection timeout after 30000ms';
+      else if (status === 'running') output = '任务执行中…';
+      else output = `任务「${job.name}」执行成功，处理 ${100 + j * 13} 条记录`;
+      return {
+        id: j + 1,
+        jobId: job.id,
+        jobName: job.name,
+        status,
+        durationMs: status === 'running' ? null : 600 + (j * 211 % 3200),
+        startedAt: mockDateTimeOffset(-(j + 1) * 900000),
+        executionCount: 1 + (j % 3),
+        output,
+      };
+    });
+
     return HttpResponse.json({
       code: 0, message: 'ok',
       data: {
         totalJobs: mockCronJobs.length,
         enabledJobs: mockCronJobs.filter(j => j.status === 'enabled').length,
+        runningJobs: 1,
         todayRuns: 24, todaySuccesses: 21, todayFails: 3,
+        todayAvgDurationMs: 1450,
         perJob,
+        dailyStats,
+        recentLogs,
       },
     });
   }),

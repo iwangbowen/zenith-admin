@@ -1097,7 +1097,48 @@ export interface CronJob {
   updatedAt: string;
 }
 
-// ─── 在线用户 ──────────────────────────────────────────────
+export interface CronJobStatsPerJob {
+  jobId: number;
+  jobName: string;
+  totalRuns: number;
+  successCount: number;
+  failCount: number;
+  successRate: number;
+  avgDurationMs: number | null;
+  lastRunStatus: CronRunStatus | null;
+  lastRunAt: string | null;
+}
+
+export interface CronJobDailyStat {
+  date: string;
+  total: number;
+  successCount: number;
+  failCount: number;
+}
+
+export interface CronJobRecentLog {
+  id: number;
+  jobId: number;
+  jobName: string;
+  status: CronRunStatus;
+  durationMs: number | null;
+  startedAt: string;
+  executionCount: number;
+  output: string | null;
+}
+
+export interface CronJobStats {
+  totalJobs: number;
+  enabledJobs: number;
+  runningJobs: number;
+  todayRuns: number;
+  todaySuccesses: number;
+  todayFails: number;
+  todayAvgDurationMs: number | null;
+  perJob: CronJobStatsPerJob[];
+  dailyStats: CronJobDailyStat[];
+  recentLogs: CronJobRecentLog[];
+}
 export interface OnlineUser {
   tokenId: string;
   userId: number;

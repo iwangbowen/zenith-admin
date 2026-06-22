@@ -164,21 +164,67 @@ export async function clearCronJobLogs(months: number, jobId?: number) {
 }
 
 export async function getCronJobStats() {
-  const [allJobs, [summaryRow], perJobRows] = await Promise.all([
-    db.select({ id: cronJobs.id, status: cronJobs.status }).from(cronJobs),
+  const [allJobs, [summaryRow], perJobAggRows, dailyRows, recentRows] = await Promise.all([
+    db.select({
+      id: cronJobs.id,
+      name: cronJobs.name,
+      status: cronJobs.status,
+      lastRunStatus: cronJobs.lastRunStatus,
+      lastRunAt: cronJobs.lastRunAt,
+    }).from(cronJobs),
     db.select({
       todayRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE) AS int)`,
       todaySuccesses: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE AND ${cronJobLogs.status} = 'success') AS int)`,
       todayFails: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE AND ${cronJobLogs.status} = 'fail') AS int)`,
+      todayAvgDurationMs: sql<number | null>`CAST(ROUND(AVG(${cronJobLogs.durationMs}) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE)) AS int)`,
     }).from(cronJobLogs),
     db.select({
       jobId: cronJobLogs.jobId,
-      jobName: cronJobLogs.jobName,
       totalRuns: sql<number>`CAST(COUNT(*) AS int)`,
       successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'success') AS int)`,
       failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'fail') AS int)`,
-    }).from(cronJobLogs).groupBy(cronJobLogs.jobId, cronJobLogs.jobName).orderBy(sql`COUNT(*) DESC`),
+      avgDurationMs: sql<number | null>`CAST(ROUND(AVG(${cronJobLogs.durationMs})) AS int)`,
+    }).from(cronJobLogs).groupBy(cronJobLogs.jobId),
+    db.select({
+      date: sql<string>`to_char(date(${cronJobLogs.startedAt}), 'YYYY-MM-DD')`,
+      total: sql<number>`CAST(COUNT(*) AS int)`,
+      successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'success') AS int)`,
+      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'fail') AS int)`,
+    }).from(cronJobLogs)
+      .where(sql`${cronJobLogs.startedAt} >= CURRENT_DATE - INTERVAL '13 days'`)
+      .groupBy(sql`date(${cronJobLogs.startedAt})`)
+      .orderBy(sql`date(${cronJobLogs.startedAt})`),
+    db.select({
+      id: cronJobLogs.id,
+      jobId: cronJobLogs.jobId,
+      jobName: cronJobLogs.jobName,
+      status: cronJobLogs.status,
+      durationMs: cronJobLogs.durationMs,
+      startedAt: cronJobLogs.startedAt,
+      executionCount: cronJobLogs.executionCount,
+      output: cronJobLogs.output,
+    }).from(cronJobLogs).orderBy(desc(cronJobLogs.startedAt)).limit(12),
   ]);
+
+  const aggMap = new Map(perJobAggRows.map(r => [r.jobId, r]));
+  const perJob = allJobs
+    .map(job => {
+      const agg = aggMap.get(job.id);
+      const total = Number(agg?.totalRuns ?? 0);
+      const success = Number(agg?.successCount ?? 0);
+      return {
+        jobId: job.id,
+        jobName: job.name,
+        totalRuns: total,
+        successCount: success,
+        failCount: Number(agg?.failCount ?? 0),
+        successRate: total > 0 ? Math.round((success / total) * 100) : 0,
+        avgDurationMs: agg?.avgDurationMs == null ? null : Number(agg.avgDurationMs),
+        lastRunStatus: job.lastRunStatus,
+        lastRunAt: formatNullableDateTime(job.lastRunAt),
+      };
+    })
+    .sort((a, b) => b.totalRuns - a.totalRuns);
 
   return {
     totalJobs: allJobs.length,
@@ -187,17 +233,23 @@ export async function getCronJobStats() {
     todayRuns: Number(summaryRow?.todayRuns ?? 0),
     todaySuccesses: Number(summaryRow?.todaySuccesses ?? 0),
     todayFails: Number(summaryRow?.todayFails ?? 0),
-    perJob: perJobRows.map(row => {
-      const total = Number(row.totalRuns);
-      const success = Number(row.successCount);
-      return {
-        jobId: row.jobId,
-        jobName: row.jobName,
-        totalRuns: total,
-        successCount: success,
-        failCount: Number(row.failCount),
-        successRate: total > 0 ? Math.round((success / total) * 100) : 0,
-      };
-    }),
+    todayAvgDurationMs: summaryRow?.todayAvgDurationMs == null ? null : Number(summaryRow.todayAvgDurationMs),
+    perJob,
+    dailyStats: dailyRows.map(r => ({
+      date: r.date,
+      total: Number(r.total),
+      successCount: Number(r.successCount),
+      failCount: Number(r.failCount),
+    })),
+    recentLogs: recentRows.map(r => ({
+      id: r.id,
+      jobId: r.jobId,
+      jobName: r.jobName,
+      status: r.status,
+      durationMs: r.durationMs,
+      startedAt: formatDateTime(r.startedAt),
+      executionCount: r.executionCount,
+      output: r.output,
+    })),
   };
 }
