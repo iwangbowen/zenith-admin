@@ -17,7 +17,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Plus, Search, RotateCcw, Download, ChevronDown } from 'lucide-react';
+import { Plus, Search, RotateCcw, Download, ChevronDown, MoreHorizontal, PlugZap } from 'lucide-react';
 import type {
   CreateFileStorageConfigInput,
   FileStorageConfig,
@@ -222,6 +222,7 @@ export default function FileStorageConfigsPage() {
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [modalTestLoading, setModalTestLoading] = useState(false);
   const [testingConfigId, setTestingConfigId] = useState<number | null>(null);
+  const [openMoreId, setOpenMoreId] = useState<number | null>(null);
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
   const [formIsDefault, setFormIsDefault] = useState(false);
   const [browsingConfig, setBrowsingConfig] = useState<FileStorageConfig | null>(null);
@@ -482,15 +483,15 @@ export default function FileStorageConfigsPage() {
     {
       title: '操作',
       fixed: 'right',
-      width: 380,
+      width: 260,
       align: 'center',
-      render: (_: unknown, record: FileStorageConfig) => (
+      render: (_: unknown, record: FileStorageConfig) => {
+        const canTest = hasPermission('system:file:config');
+        const canDelete = hasPermission('system:file:config:delete');
+        return (
         <Space>
           {hasPermission('system:file:list') && <Button theme="borderless" size="small" onClick={() => setBrowsingConfig(record)}>
             浏览
-          </Button>}
-          {hasPermission('system:file:config') && <Button theme="borderless" size="small" loading={testingConfigId === record.id} onClick={() => void handleTestSaved(record)}>
-            测试
           </Button>}
           {hasPermission('system:file:config:default') && <Button theme="borderless" size="small" onClick={() => handleSetDefault(record)} disabled={record.isDefault || record.status !== 'enabled'}>
             设为默认
@@ -498,19 +499,50 @@ export default function FileStorageConfigsPage() {
           {hasPermission('system:file:config:update') && <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
             编辑
           </Button>}
-          {hasPermission('system:file:config:delete') && <Button
-            theme="borderless" size="small" type="danger" disabled={record.isDefault}
-            onClick={() => {
-              Modal.confirm({
-                title: '确认删除此文件服务配置？',
-                content: '若已绑定文件记录，后端会阻止删除。',
-                okButtonProps: { type: 'danger', theme: 'solid' },
-                onOk: () => handleDelete(record),
-              });
-            }}
-          >删除</Button>}
+          {(canTest || canDelete) && (
+            <Dropdown
+              trigger="custom"
+              visible={openMoreId === record.id}
+              onClickOutSide={() => setOpenMoreId(null)}
+              position="bottomRight"
+              render={
+                <Dropdown.Menu>
+                  {canTest && (
+                    <Dropdown.Item onClick={() => { setOpenMoreId(null); void handleTestSaved(record); }}>
+                      测试连接
+                    </Dropdown.Item>
+                  )}
+                  {canDelete && (
+                    <Dropdown.Item
+                      type="danger"
+                      disabled={record.isDefault}
+                      onClick={() => {
+                        setOpenMoreId(null);
+                        Modal.confirm({
+                          title: '确认删除此文件服务配置？',
+                          content: '若已绑定文件记录，后端会阻止删除。',
+                          okButtonProps: { type: 'danger', theme: 'solid' },
+                          onOk: () => handleDelete(record),
+                        });
+                      }}
+                    >删除</Dropdown.Item>
+                  )}
+                </Dropdown.Menu>
+              }
+            >
+              <Button
+                theme="borderless"
+                size="small"
+                icon={<MoreHorizontal size={16} />}
+                aria-label="更多操作"
+                loading={testingConfigId === record.id}
+                onClick={() => setOpenMoreId(openMoreId === record.id ? null : record.id)}
+              />
+            </Dropdown>
+          )}
         </Space>
-      ),
+        );
+      },
     },
   ];
 
@@ -651,7 +683,7 @@ export default function FileStorageConfigsPage() {
           <div className="storage-config-form-header">
             <Text strong>配置选项</Text>
             <div className="storage-config-default-switch">
-              <Button size="small" type="tertiary" loading={modalTestLoading} disabled={modalDetailLoading} onClick={() => void handleModalTest()}>
+              <Button type="primary" theme="light" icon={<PlugZap size={14} />} loading={modalTestLoading} disabled={modalDetailLoading} onClick={() => void handleModalTest()}>
                 测试连接
               </Button>
               <span>设为默认服务</span>
