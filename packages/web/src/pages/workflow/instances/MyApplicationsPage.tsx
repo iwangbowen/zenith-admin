@@ -834,7 +834,7 @@ export default function MyApplicationsPage() {
         title={applySheetTitle}
         visible={applyVisible}
         onCancel={closeApply}
-        width={720}
+        size="large"
         bodyStyle={{ padding: 16 }}
         footer={applySheetFooter}
       >
