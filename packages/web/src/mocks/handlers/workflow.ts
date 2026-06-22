@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowFormField, WorkflowInstance, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -25,6 +25,10 @@ function cloneFormFields(fields: WorkflowFormField[] | null | undefined): Workfl
   return fields ? JSON.parse(JSON.stringify(fields)) as WorkflowFormField[] : null;
 }
 
+function isBusinessFormType(formType: WorkflowDefinition['formType'] | undefined) {
+  return formType === 'custom' || formType === 'external';
+}
+
 function resolveWorkflowDefinition(definition: WorkflowDefinition): WorkflowDefinition {
   const form = definition.formId != null ? mockWorkflowForms.find((item) => item.id === definition.formId) : undefined;
   return {
@@ -47,6 +51,58 @@ function resolveWorkflowDefinitionVersion(version: WorkflowDefinitionVersion): W
 function resolveDefinitionFormFields(definition: WorkflowDefinition): WorkflowFormField[] | null {
   const form = definition.formId != null ? mockWorkflowForms.find((item) => item.id === definition.formId) : undefined;
   return cloneFormFields(form?.schema?.fields ?? null);
+}
+
+function resolveDefinitionFormSnapshot(definition: WorkflowDefinition): WorkflowInstanceFormSnapshot | null {
+  if (definition.formType === 'designer') {
+    const form = definition.formId != null ? mockWorkflowForms.find((item) => item.id === definition.formId) : undefined;
+    if (!form) return null;
+    return {
+      formType: 'designer',
+      formId: definition.formId ?? null,
+      formName: form.name,
+      fields: cloneFormFields(form.schema?.fields ?? null) ?? [],
+      settings: form.schema?.settings ?? null,
+      customForm: null,
+    };
+  }
+  return {
+    formType: definition.formType,
+    formId: null,
+    formName: null,
+    fields: [],
+    settings: null,
+    customForm: definition.customForm,
+  };
+}
+
+function withDefinitionSnapshot(instance: WorkflowInstance): WorkflowInstance {
+  const def = mockWorkflowDefinitions.find((item) => item.id === instance.definitionId);
+  if (!def) return instance;
+  const formSnapshot = instance.formSnapshot ?? resolveDefinitionFormSnapshot(def);
+  return {
+    ...instance,
+    formSnapshot,
+    definitionSnapshot: {
+      id: def.id,
+      name: def.name,
+      description: def.description,
+      categoryId: def.categoryId,
+      categoryName: def.categoryName ?? null,
+      categoryColor: def.categoryColor ?? null,
+      categoryIcon: def.categoryIcon ?? null,
+      flowData: def.flowData,
+      formId: def.formId,
+      formName: resolveWorkflowDefinition(def).formName ?? null,
+      formFields: resolveWorkflowDefinition(def).formFields ?? null,
+      formSettings: resolveWorkflowDefinition(def).formSettings ?? null,
+      formType: def.formType,
+      customForm: def.customForm,
+      status: def.status,
+      version: def.version,
+      tenantId: def.tenantId,
+    },
+  };
 }
 
 /** 从流程定义解析实例当前节点名称 */
@@ -83,7 +139,7 @@ export const workflowHandlers = [
 
   // 获取已发布的流程定义列表（发起申请时使用，返回数组而非分页对象）
   http.get('/api/workflows/definitions/published', () => {
-    const list = mockWorkflowDefinitions.filter(d => d.status === 'published').map(resolveWorkflowDefinition);
+    const list = mockWorkflowDefinitions.filter(d => d.status === 'published' && d.formType !== 'external').map(resolveWorkflowDefinition);
     return ok(list);
   }),
 
@@ -106,10 +162,10 @@ export const workflowHandlers = [
       initiatorScopeType: body.initiatorScopeType ?? 'all',
       initiatorScopeIds: body.initiatorScopeType === 'all' ? null : (body.initiatorScopeIds ?? []),
       flowData: body.flowData ?? null,
-      formId: body.formType === 'custom' ? null : (body.formId ?? null),
+      formId: isBusinessFormType(body.formType) ? null : (body.formId ?? null),
       formFields: null,
       formType: body.formType ?? 'designer',
-      customForm: body.formType === 'custom' ? (body.customForm ?? null) : null,
+      customForm: isBusinessFormType(body.formType) ? (body.customForm ?? null) : null,
       status: 'draft',
       version: 1,
       tenantId: 1,
@@ -130,14 +186,18 @@ export const workflowHandlers = [
     const prev = mockWorkflowDefinitions[idx];
     // 已发布的流程保存后自动转为草稿
     const nextStatus = prev.status === 'published' && body.status === undefined ? 'draft' : prev.status;
+    const nextFormType = body.formType ?? prev.formType;
     const updated: WorkflowDefinition = {
       ...prev,
       ...body,
       id: prev.id,
-      formId: body.formId !== undefined ? body.formId : prev.formId,
+      formId: isBusinessFormType(nextFormType) ? null : (body.formId !== undefined ? body.formId : prev.formId),
       formName: null,
       formFields: null,
       formSettings: null,
+      customForm: isBusinessFormType(nextFormType)
+        ? (body.customForm !== undefined ? body.customForm ?? null : prev.customForm)
+        : null,
       status: nextStatus,
       version: prev.version,
       updatedAt: mockDateTime(),
@@ -200,6 +260,9 @@ export const workflowHandlers = [
     const cur = mockWorkflowDefinitions[idx];
     if (cur.formType === 'custom' && !cur.customForm?.createComponent?.trim()) {
       return err('请先在「表单」步骤配置自定义业务表单的创建页组件路径');
+    }
+    if (cur.formType === 'external' && !cur.customForm?.viewComponent?.trim()) {
+      return err('请先在「表单」步骤配置业务系统主导流程的审批查看页组件路径');
     }
     const newVersion = cur.version + 1;
     const now = mockDateTime();
@@ -286,6 +349,8 @@ export const workflowHandlers = [
       description: ver.description,
       flowData: ver.flowData,
       formId: ver.formId,
+      formType: ver.formType,
+      customForm: ver.customForm,
       formName: null,
       formFields: null,
       formSettings: null,
@@ -387,7 +452,7 @@ export const workflowHandlers = [
     const childInstances = mockWorkflowInstances
       .filter(i => i.parentInstanceId === inst.id)
       .map(c => ({ id: c.id, title: c.title, status: c.status, parentTaskNodeKey: null, createdAt: c.createdAt }));
-    return ok({ ...inst, tasks, childInstances });
+    return ok({ ...withDefinitionSnapshot(inst), tasks, childInstances });
   }),
 
   // 发起流程申请（支持保存草稿 asDraft）
@@ -396,6 +461,7 @@ export const workflowHandlers = [
     const def = mockWorkflowDefinitions.find(d => d.id === body.definitionId);
     if (!def) return err('流程定义不存在');
     if (def.status !== 'published') return err('该流程未发布，无法发起申请');
+    if (def.formType === 'external') return err('业务系统主导流程请从对应业务模块发起');
 
     const now = mockDateTime();
     const instanceId = getNextInstanceId();
@@ -436,7 +502,7 @@ export const workflowHandlers = [
       serialNo,
       priority: body.priority ?? 'normal',
       formData: body.formData,
-      formSnapshot: resolveDefinitionFormFields(def),
+      formSnapshot: resolveDefinitionFormSnapshot(def),
       status: isDraft ? 'draft' : 'running',
       currentNodeKey: isDraft ? null : (firstApproveNode?.data.key ?? null),
       initiatorId: 1,

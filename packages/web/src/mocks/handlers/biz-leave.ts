@@ -1,6 +1,13 @@
 import { http, HttpResponse } from 'msw';
-import type { BizLeave } from '@zenith/shared';
-import { mockBizLeaves, getNextLeaveId, getNextLeaveInstanceId } from '@/mocks/data/biz-leave';
+import type { BizLeave, WorkflowInstance, WorkflowTask } from '@zenith/shared';
+import { mockBizLeaves, getNextLeaveId } from '@/mocks/data/biz-leave';
+import {
+  getNextInstanceId,
+  getNextTaskId,
+  mockWorkflowDefinitions,
+  mockWorkflowInstances,
+  mockWorkflowTasks,
+} from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
 
 export const bizLeaveHandlers = [
@@ -31,10 +38,66 @@ export const bizLeaveHandlers = [
     const leave = mockBizLeaves.find((l) => l.id === Number(params.id));
     if (!leave) return HttpResponse.json({ code: 404, message: '请假单不存在', data: null });
     if (leave.status !== 'draft') return HttpResponse.json({ code: 400, message: '该请假单已提交，无法重复提交', data: null });
+    const def = mockWorkflowDefinitions.find((item) => item.name === '请假审批' && item.formType === 'external' && item.status === 'published');
+    if (!def) return HttpResponse.json({ code: 400, message: '未找到已发布的「请假审批」业务系统主导流程定义', data: null });
+    const now = mockDateTime();
+    const instanceId = getNextInstanceId();
+    const firstApproveNode = def.flowData?.nodes.find((node) => node.data.type === 'approve');
+    const tasks: WorkflowTask[] = firstApproveNode ? [{
+      id: getNextTaskId(),
+      instanceId,
+      nodeKey: firstApproveNode.data.key,
+      nodeName: firstApproveNode.data.label,
+      nodeType: 'approve',
+      assigneeId: firstApproveNode.data.assigneeId ?? null,
+      assigneeName: firstApproveNode.data.assigneeName ?? null,
+      assigneeAvatar: null,
+      status: 'pending',
+      comment: null,
+      actionAt: null,
+      createdAt: now,
+    }] : [];
+    const instance: WorkflowInstance = {
+      id: instanceId,
+      definitionId: def.id,
+      definitionName: def.name,
+      title: `请假申请 - ${leave.applicantName ?? '管理员'} - ${leave.startDate}`,
+      formData: { days: leave.days, leaveType: leave.leaveType },
+      formSnapshot: { formType: 'external', formId: null, formName: null, fields: [], settings: null, customForm: def.customForm },
+      definitionSnapshot: {
+        id: def.id,
+        name: def.name,
+        description: def.description,
+        categoryId: def.categoryId,
+        flowData: def.flowData,
+        formId: null,
+        formName: null,
+        formFields: [],
+        formSettings: null,
+        formType: 'external',
+        customForm: def.customForm,
+        status: def.status,
+        version: def.version,
+        tenantId: def.tenantId,
+      },
+      status: 'running',
+      currentNodeKey: firstApproveNode?.data.key ?? null,
+      initiatorId: leave.applicantId ?? 1,
+      initiatorName: leave.applicantName ?? '管理员',
+      initiatorAvatar: null,
+      tenantId: leave.tenantId,
+      bizType: 'biz_leave',
+      bizId: String(leave.id),
+      tasks,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockWorkflowInstances.push(instance);
+    mockWorkflowTasks.push(...tasks);
     leave.status = 'pending';
-    leave.workflowInstanceId = getNextLeaveInstanceId();
+    leave.workflowInstanceId = instanceId;
     leave.workflowStatus = 'running';
-    leave.updatedAt = mockDateTime();
+    leave.updatedAt = now;
     return HttpResponse.json({ code: 0, message: '已提交审批', data: leave });
   }),
 
