@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import type {
   WorkflowComment, WorkflowQuickPhrase, WorkflowDelegation, WorkflowAnalytics,
   WorkflowInstanceStatus, WorkflowOverdueTask, WorkflowTemplate, WorkflowTaskConsult,
-  WorkflowInstance,
+  WorkflowDefinition, WorkflowInstance,
 } from '@zenith/shared';
 import { SEED_WORKFLOW_TEMPLATES } from '@zenith/shared';
 import { mockWorkflowInstances, mockWorkflowTasks, getNextInstanceId, getNextDefinitionId } from '@/mocks/data/workflow';
@@ -258,13 +258,16 @@ export const workflowExtraHandlers = [
       description: src.description ?? null,
       categoryName: src.categoryName ?? null,
       flowData: src.flowData ?? null,
+      formType: src.formType,
+      customForm: src.customForm,
       form: src.formFields ? { name: `${src.name}表单`, description: null, schema: { fields: src.formFields, settings: src.formSettings ?? {} } } : null,
       exportedAt: mockDateTime(),
       schemaVersion: 1,
     });
   }),
   http.post('/api/workflows/definitions/import', async ({ request }) => {
-    const body = await request.json() as { name: string; description?: string | null; categoryName?: string | null; flowData?: unknown; form?: { schema?: { fields?: unknown[] } } | null };
+    const body = await request.json() as { name: string; description?: string | null; categoryName?: string | null; flowData?: unknown; formType?: WorkflowDefinition['formType']; customForm?: WorkflowDefinition['customForm']; form?: { schema?: { fields?: unknown[] } } | null };
+    const formType = body.formType ?? 'designer';
     const now = mockDateTime();
     const def = {
       ...(mockWorkflowDefinitions[0] ?? {}),
@@ -274,7 +277,10 @@ export const workflowExtraHandlers = [
       status: 'draft' as const,
       version: 0,
       flowData: body.flowData ?? null,
-      formFields: body.form?.schema?.fields ?? null,
+      formId: formType === 'designer' ? (mockWorkflowDefinitions[0]?.formId ?? null) : null,
+      formFields: formType === 'designer' ? body.form?.schema?.fields ?? null : null,
+      formType,
+      customForm: formType === 'designer' ? null : body.customForm ?? null,
       createdAt: now,
       updatedAt: now,
     };
