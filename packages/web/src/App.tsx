@@ -28,6 +28,8 @@ const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage')
 const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
 const OAuth2AuthorizePage = React.lazy(() => import('@/pages/oauth2/OAuth2AuthorizePage'));
 const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
+const WorkflowLaunchPage = React.lazy(() => import('@/pages/workflow/launchpad/WorkflowLaunchPage'));
+const WorkflowInstancePage = React.lazy(() => import('@/pages/workflow/instances/WorkflowInstancePage'));
 
 const routeFallback = <div style={{ padding: 24 }}><span className="page-loading__dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--semi-color-primary)' }} /></div>;
 
@@ -175,6 +177,8 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
         <Route path="announcements" element={<Suspense fallback={routeFallback}><AnnouncementsPage /></Suspense>} />
         <Route path="inbox" element={<Suspense fallback={routeFallback}><InboxPage /></Suspense>} />
         <Route path="workflow/designer/:id" element={<Suspense fallback={routeFallback}><WorkflowDesignerPage /></Suspense>} />
+        <Route path="workflow/launch/:definitionId" element={<Suspense fallback={routeFallback}><WorkflowLaunchPage /></Suspense>} />
+        <Route path="workflow/instance/:id" element={<Suspense fallback={routeFallback}><WorkflowInstancePage /></Suspense>} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
         <Route path="forbidden" element={<Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
 

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, Empty, Form, Input, Space, SideSheet, Spin, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
+import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { RotateCcw, Search, Send } from 'lucide-react';
+import { ExternalLink, RotateCcw, Search, Send } from 'lucide-react';
 import type { WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,6 +20,7 @@ const UNCATEGORIZED = -1;
 
 export default function WorkflowLaunchpadPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { categories } = useWorkflowCategories();
   const [loading, setLoading] = useState(false);
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
@@ -210,11 +212,24 @@ export default function WorkflowLaunchpadPage() {
         width={720}
         bodyStyle={{ padding: 16 }}
         footer={
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={closeApply}>取消</Button>
-            <Button loading={savingDraft} disabled={submitting} onClick={() => void handleSubmit(true)}>保存草稿</Button>
-            <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSubmit(false)}>提交</Button>
-          </Space>
+          <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Button
+              theme="borderless"
+              icon={<ExternalLink size={14} />}
+              onClick={() => {
+                if (!selectedDef) return;
+                const icon = selectedDef.customForm?.icon ?? selectedDef.categoryIcon ?? 'Send';
+                navigate(`/workflow/launch/${selectedDef.id}`, { state: { tabTitle: `发起：${selectedDef.name}`, tabIcon: icon } });
+              }}
+            >
+              在新页签打开
+            </Button>
+            <Space>
+              <Button onClick={closeApply}>取消</Button>
+              <Button loading={savingDraft} disabled={submitting} onClick={() => void handleSubmit(true)}>保存草稿</Button>
+              <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSubmit(false)}>提交</Button>
+            </Space>
+          </div>
         }
       >
         <Form getFormApi={(api) => { formApi.current = api; }}>

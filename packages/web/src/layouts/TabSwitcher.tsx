@@ -120,9 +120,9 @@ export function TabSwitcher({ tabs, activeKey, onNavigate, onClose, pathIconMap 
                   onClick={() => { onNavigate(tab.key); setVisible(false); }}
                   main={
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                      {pathIconMap?.[tab.key] && (
+                      {(tab.icon ?? pathIconMap?.[tab.key]) && (
                         <span style={{ display: 'inline-flex', flexShrink: 0, opacity: 0.6 }}>
-                          {renderLucideIcon(pathIconMap[tab.key], 13)}
+                          {renderLucideIcon((tab.icon ?? pathIconMap?.[tab.key])!, 13)}
                         </span>
                       )}
                       <Typography.Text

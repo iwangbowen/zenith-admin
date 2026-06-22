@@ -17,7 +17,8 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import dayjs from 'dayjs';
-import { FileInput, Megaphone, Plus, RotateCcw, Search, Undo2 } from 'lucide-react';
+import { FileInput, ExternalLink, Megaphone, Plus, RotateCcw, Search, Undo2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { WorkflowDefinition, WorkflowInstance, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
@@ -166,6 +167,7 @@ function InstanceDetailDrawer({
   const [data, setData] = useState<WorkflowInstance | null>(null);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [viewId, setViewId] = useState<number | null>(instanceId);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (visible) setViewId(instanceId);
@@ -272,9 +274,19 @@ function InstanceDetailDrawer({
   };
 
   const printAction = data ? (
-    <Button theme="borderless" size="small" onClick={handlePrint}>
-      打印 / 保存 PDF
-    </Button>
+    <Space>
+      <Button
+        theme="borderless"
+        size="small"
+        icon={<ExternalLink size={13} />}
+        onClick={() => { onClose(); navigate(`/workflow/instance/${viewId}`, { state: { tabTitle: data.title } }); }}
+      >
+        在新页签打开
+      </Button>
+      <Button theme="borderless" size="small" onClick={handlePrint}>
+        打印 / 保存 PDF
+      </Button>
+    </Space>
   ) : null;
 
   return (

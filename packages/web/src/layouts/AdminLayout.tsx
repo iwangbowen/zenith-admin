@@ -14,6 +14,7 @@ import { usePreferences, type NavLayout, type TableSizePreference, type RouteAni
 import { THEME_COLOR_PRESETS, getThemeColorVars } from '@/lib/theme-color';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTabsStore } from '@/hooks/useTabsStore';
+import { TabsMetaContext } from '@/hooks/useTabMeta';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -276,7 +277,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
 
   // 每次 App 会话只弹一次：见过一次后不再重复
   const evictToastShownRef = useRef(false);
-  const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs, pinTab, unpinTab } = useTabsStore(
+  const { tabs, activeKey, setActiveKey, addTab, setTabMeta, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs, pinTab, unpinTab } = useTabsStore(
     preferences.tabsMaxCount,
     (evicted) => {
       if (evictToastShownRef.current) return;
@@ -822,10 +823,17 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   // Sync current route to tabs
   useEffect(() => {
     if (preferences.enableTabs) {
-      const title = resolveTitle(location.pathname);
-      addTab(location.pathname, title);
+      // 整页路由（非菜单页面）可通过导航 state 携带标题/图标，避免标签页闪现原始路径
+      const navState = location.state as { tabTitle?: string; tabIcon?: string } | null;
+      const title = navState?.tabTitle || resolveTitle(location.pathname);
+      addTab(location.pathname, title, navState?.tabIcon);
     }
-  }, [location.pathname, preferences.enableTabs, resolveTitle, addTab]);
+  }, [location.pathname, location.state, preferences.enableTabs, resolveTitle, addTab]);
+
+  const tabsMetaValue = useMemo(
+    () => ({ enabled: !!preferences.enableTabs, setTabMeta }),
+    [preferences.enableTabs, setTabMeta],
+  );
 
   // Track entering tabs (new tab added since last render)
   useEffect(() => {
@@ -1761,8 +1769,8 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                       onMouseDown={(e) => { if (e.button === 1 && tab.closable) { e.preventDefault(); handleTabClose(tab.key); } }}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleTabChange(tab.key); }}
                     >
-                      {preferences.showTabIcon && pathIconMap[tab.key] && (
-                        <span className="admin-tab-item__icon">{renderLucideIcon(pathIconMap[tab.key], 14)}</span>
+                      {preferences.showTabIcon && (tab.icon ?? pathIconMap[tab.key]) && (
+                        <span className="admin-tab-item__icon">{renderLucideIcon((tab.icon ?? pathIconMap[tab.key])!, 14)}</span>
                       )}
                       <span className="admin-tab-item__text" title={tab.title}>{tab.title}</span>
                       {tab.pinned && (
@@ -1795,15 +1803,17 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
           )}
           <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
             <RouteErrorBoundary>
-              <div
-                key={outletRefreshKey}
-                style={{ height: '100%' }}
-                className={preferences.routeAnimation && preferences.routeAnimation !== 'none'
-                  ? `route-anim--${preferences.routeAnimation}`
-                  : undefined}
-              >
-                <Outlet key={outletRefreshKey} />
-              </div>
+              <TabsMetaContext.Provider value={tabsMetaValue}>
+                <div
+                  key={outletRefreshKey}
+                  style={{ height: '100%' }}
+                  className={preferences.routeAnimation && preferences.routeAnimation !== 'none'
+                    ? `route-anim--${preferences.routeAnimation}`
+                    : undefined}
+                >
+                  <Outlet key={outletRefreshKey} />
+                </div>
+              </TabsMetaContext.Provider>
             </RouteErrorBoundary>
             {(preferences.showBackTop ?? true) && (
               <BackTop

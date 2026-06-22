@@ -7,6 +7,8 @@ export interface TabItem {
   closable: boolean;
   pinned?: boolean;
   lastUsedAt?: number;
+  /** 多页签图标（lucide 图标名）；非菜单路由（如工作流业务表单整页）由页面动态写入 */
+  icon?: string;
 }
 
 const HOME_TAB: TabItem = { key: '/', title: '首页', closable: false };
@@ -92,14 +94,14 @@ export function useTabsStore(
     return closables[0].i;
   }
 
-  const addTab = useCallback((key: string, title: string) => {
+  const addTab = useCallback((key: string, title: string, icon?: string) => {
     // 使用 stateRef 读取最新状态，以便在超限时调用 onEvict 回调
     const prev = stateRef.current.tabs;
     if (prev.some((t) => t.key === key)) {
       setActiveKey(key);
       return;
     }
-    const newTab = { key, title, closable: true, lastUsedAt: Date.now() };
+    const newTab: TabItem = { key, title, closable: true, lastUsedAt: Date.now(), ...(icon ? { icon } : {}) };
     let next: TabItem[];
     if (insertPolicyRef.current === 'insert-next') {
       const currentKey = stateRef.current.activeKey;
@@ -143,6 +145,21 @@ export function useTabsStore(
   const activateTab = useCallback((key: string) => {
     setTabs((prev) => prev.map((t) => t.key === key ? { ...t, lastUsedAt: Date.now() } : t));
     setActiveKey(key);
+  }, []);
+
+  // 动态更新某个标签页的标题/图标（非菜单路由由页面加载数据后回写）
+  const setTabMeta = useCallback((key: string, meta: { title?: string; icon?: string }) => {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.key === key);
+      if (idx < 0) return prev;
+      const t = prev[idx];
+      const nextTitle = meta.title ?? t.title;
+      const nextIcon = meta.icon ?? t.icon;
+      if (nextTitle === t.title && nextIcon === t.icon) return prev;
+      const next = [...prev];
+      next[idx] = { ...t, title: nextTitle, icon: nextIcon };
+      return next;
+    });
   }, []);
 
   const removeTab = useCallback((key: string) => {
@@ -220,5 +237,5 @@ export function useTabsStore(
     setTabs((prev) => sortTabs(prev.map((t) => t.key === key ? { ...t, pinned: false, closable: true } : t)));
   }, []);
 
-  return { tabs, activeKey, setActiveKey: activateTab, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs, pinTab, unpinTab };
+  return { tabs, activeKey, setActiveKey: activateTab, addTab, setTabMeta, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs, pinTab, unpinTab };
 }
