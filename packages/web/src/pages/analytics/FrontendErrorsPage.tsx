@@ -817,6 +817,15 @@ export default function FrontendErrorsPage() {
       render: (_value, record) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 230 }}>{record.pageUrl || '–'}</Text>,
     },
     { title: '时间', dataIndex: 'createdAt', width: 180, render: (value) => formatDateTime(String(value)) },
+    {
+      title: '操作',
+      key: 'operation',
+      width: 90,
+      fixed: 'right',
+      render: (_value, record) => (
+        <Button theme="borderless" size="small" onClick={() => setEventDetail(record)}>详情</Button>
+      ),
+    },
   ], []);
 
   const sourceMapColumns = useMemo<ColumnProps<SourceMapItem>[]>(() => [
@@ -1115,12 +1124,6 @@ export default function FrontendErrorsPage() {
             style={{ width: '100%' }}
             scroll={{ x: '100%' }}
             empty="暂无错误事件"
-            onRow={(record) => ({
-              onClick: () => {
-                if (record) setEventDetail(record);
-              },
-              style: { cursor: 'pointer' },
-            })}
           />
         </TabPane>
 
@@ -1330,27 +1333,29 @@ export default function FrontendErrorsPage() {
         closeOnEsc
       >
         {eventDetail && (
-          <Space vertical align="start" style={{ width: '100%' }}>
-            <Descriptions
-              align="plain"
-              data={[
-                { key: '类型', value: ERROR_TYPE_CONFIG[eventDetail.errorType]?.label ?? eventDetail.errorType },
-                { key: '级别', value: LEVEL_CONFIG[eventDetail.level]?.label ?? eventDetail.level },
-                { key: '用户', value: eventDetail.username || '匿名' },
-                { key: '浏览器/系统', value: `${eventDetail.browser || '未知'} ${eventDetail.browserVersion || ''} / ${eventDetail.os || '未知'}` },
-                { key: '页面', value: eventDetail.pageUrl || '–' },
-                { key: '时间', value: formatDateTime(eventDetail.createdAt) },
-              ]}
-            />
-            <Title heading={6}>错误信息</Title>
-            <Paragraph copyable>{eventDetail.message}</Paragraph>
-            <Title heading={6}>Stack</Title>
-            <TextBlock>{eventDetail.stack || '暂无堆栈'}</TextBlock>
-            <Title heading={6}>Breadcrumbs</Title>
-            <BreadcrumbTimeline breadcrumbs={eventDetail.breadcrumbs} />
-            <Title heading={6}>Context</Title>
-            <TextBlock>{safeJson(eventDetail.context)}</TextBlock>
-          </Space>
+          <div style={{ height: '70vh', overflowY: 'auto', paddingRight: 4 }}>
+            <Space vertical align="start" style={{ width: '100%' }}>
+              <Descriptions
+                align="plain"
+                data={[
+                  { key: '类型', value: ERROR_TYPE_CONFIG[eventDetail.errorType]?.label ?? eventDetail.errorType },
+                  { key: '级别', value: LEVEL_CONFIG[eventDetail.level]?.label ?? eventDetail.level },
+                  { key: '用户', value: eventDetail.username || '匿名' },
+                  { key: '浏览器/系统', value: `${eventDetail.browser || '未知'} ${eventDetail.browserVersion || ''} / ${eventDetail.os || '未知'}` },
+                  { key: '页面', value: eventDetail.pageUrl || '–' },
+                  { key: '时间', value: formatDateTime(eventDetail.createdAt) },
+                ]}
+              />
+              <Title heading={6}>错误信息</Title>
+              <Paragraph copyable>{eventDetail.message}</Paragraph>
+              <Title heading={6}>Stack</Title>
+              <TextBlock>{eventDetail.stack || '暂无堆栈'}</TextBlock>
+              <Title heading={6}>Breadcrumbs</Title>
+              <BreadcrumbTimeline breadcrumbs={eventDetail.breadcrumbs} />
+              <Title heading={6}>Context</Title>
+              <TextBlock>{safeJson(eventDetail.context)}</TextBlock>
+            </Space>
+          </div>
         )}
       </Modal>
 
