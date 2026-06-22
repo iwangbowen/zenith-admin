@@ -843,6 +843,7 @@ export type UpdateWorkflowFormInput = z.infer<typeof updateWorkflowFormSchema>;
 export const workflowFormTypeSchema = z.enum(['designer', 'custom', 'external']);
 
 export const workflowCustomFormVariableSchema = z.object({
+  id: z.string().optional(),
   key: z.string().min(1).max(64),
   label: z.string().min(1).max(64),
   type: z.enum(['string', 'number', 'boolean', 'date', 'user', 'dept']),

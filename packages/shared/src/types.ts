@@ -1936,6 +1936,8 @@ export type WorkflowFormType = 'designer' | 'custom' | 'external';
 
 /** 自定义业务表单暴露给流程的变量声明（驱动条件分支 / 按字段指定审批人） */
 export interface WorkflowCustomFormVariable {
+  /** 前端渲染用唯一标识（不持久化） */
+  id?: string;
   /** 变量 key（业务页提交时写入 formData 的字段名） */
   key: string;
   /** 显示名称 */

@@ -1,4 +1,4 @@
-import { workflowDefinitions, workflowDefinitionVersions, workflowForms, workflowCategories, users, userRoles } from '../db/schema';
+import { workflowDefinitions, workflowDefinitionVersions, workflowForms, workflowCategories, workflowInstances, users, userRoles } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
 import type { WorkflowFormSchema, WorkflowCustomFormConfig, WorkflowFormType } from '@zenith/shared';
 
@@ -498,6 +498,10 @@ export async function deleteDefinition(id: number) {
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
   if (!existing) throw new HTTPException(404, { message: '流程定义不存在' });
   if (existing.status === 'published') throw new HTTPException(400, { message: '已发布的流程不能删除，请先禁用' });
+  const instanceCount = await db.$count(workflowInstances, eq(workflowInstances.definitionId, id));
+  if (instanceCount > 0) {
+    throw new HTTPException(400, { message: `该流程已存在 ${instanceCount} 条发起实例，无法删除（如需停止发起请使用「禁用」）` });
+  }
   await db.delete(workflowDefinitions).where(where);
 }
 

@@ -52,12 +52,13 @@ export default function CustomFormConfigPanel({ value, onChange, formType = 'cus
 
   const patch = (p: Partial<WorkflowCustomFormConfig>) => onChange({ ...config, ...p });
 
-  const updateVariable = (idx: number, p: Partial<WorkflowCustomFormVariable>) => {
-    const next = variables.map((v, i) => (i === idx ? { ...v, ...p } : v));
+  const variableKey = (v: WorkflowCustomFormVariable) => v.id ?? String(v.key);
+  const updateVariable = (key: string, p: Partial<WorkflowCustomFormVariable>) => {
+    const next = variables.map((v) => (variableKey(v) === key ? { ...v, ...p } : v));
     patch({ variables: next });
   };
-  const addVariable = () => patch({ variables: [...variables, { key: '', label: '', type: 'string' }] });
-  const removeVariable = (idx: number) => patch({ variables: variables.filter((_, i) => i !== idx) });
+  const addVariable = () => patch({ variables: [...variables, { id: crypto.randomUUID(), key: '', label: '', type: 'string' }] });
+  const removeVariable = (key: string) => patch({ variables: variables.filter((v) => variableKey(v) !== key) });
 
   const labelStyle: React.CSSProperties = { display: 'block', marginBottom: 6 };
 
@@ -119,35 +120,38 @@ export default function CustomFormConfigPanel({ value, onChange, formType = 'cus
           <Typography.Text type="tertiary" size="small">暂无变量，点击「添加变量」声明。</Typography.Text>
         ) : (
           <Space vertical align="start" style={{ width: '100%' }} spacing={8}>
-            {variables.map((v, idx) => (
-              <Space key={idx} align="center" style={{ width: '100%' }}>
-                <Input
-                  value={v.key}
-                  onChange={(val) => updateVariable(idx, { key: val })}
-                  placeholder="变量 key（英文）"
-                  style={{ width: 200 }}
-                />
-                <Input
-                  value={v.label}
-                  onChange={(val) => updateVariable(idx, { label: val })}
-                  placeholder="显示名称"
-                  style={{ width: 180 }}
-                />
-                <Select
-                  value={v.type}
-                  onChange={(val) => updateVariable(idx, { type: val as WorkflowCustomFormVariable['type'] })}
-                  optionList={VARIABLE_TYPE_OPTIONS}
-                  style={{ width: 110 }}
-                />
-                <Button
-                  type="danger"
-                  theme="borderless"
-                  size="small"
-                  icon={<Trash2 size={14} />}
-                  onClick={() => removeVariable(idx)}
-                />
-              </Space>
-            ))}
+            {variables.map((v) => {
+              const varId = v.id ?? String(v.key);
+              return (
+                <Space key={varId} align="center" style={{ width: '100%' }}>
+                  <Input
+                    value={v.key}
+                    onChange={(val) => updateVariable(varId, { key: val })}
+                    placeholder="变量 key（英文）"
+                    style={{ width: 200 }}
+                  />
+                  <Input
+                    value={v.label}
+                    onChange={(val) => updateVariable(varId, { label: val })}
+                    placeholder="显示名称"
+                    style={{ width: 180 }}
+                  />
+                  <Select
+                    value={v.type}
+                    onChange={(val) => updateVariable(varId, { type: val as WorkflowCustomFormVariable['type'] })}
+                    optionList={VARIABLE_TYPE_OPTIONS}
+                    style={{ width: 110 }}
+                  />
+                  <Button
+                    type="danger"
+                    theme="borderless"
+                    size="small"
+                    icon={<Trash2 size={14} />}
+                    onClick={() => removeVariable(varId)}
+                  />
+                </Space>
+              );
+            })}
           </Space>
         )}
       </div>

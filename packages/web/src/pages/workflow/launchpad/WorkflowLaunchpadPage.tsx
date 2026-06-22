@@ -176,21 +176,21 @@ export default function WorkflowLaunchpadPage() {
               <List
                 grid={{ gutter: 12, xs: 24, sm: 12, md: 8, lg: 6, xl: 6, xxl: 4 }}
                 dataSource={group.defs}
+                split={false}
                 renderItem={(def) => (
-                  <List.Item style={{ padding: '0 0 12px', height: '100%' }}>
+                  <List.Item style={{ padding: '0 0 12px' }}>
                     <div
                       role="button"
                       tabIndex={0}
                       onClick={() => openApply(def)}
                       onKeyDown={(e) => { if (e.key === 'Enter') openApply(def); }}
-                      style={{ cursor: 'pointer', height: '100%' }}
+                      style={{ cursor: 'pointer' }}
                     >
                       <Card
                         shadows="hover"
                         bodyStyle={{ padding: 16 }}
-                        style={{ height: '100%' }}
                       >
-                        <Space spacing={12} align="start" style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%' }}>
                           <div
                             style={{
                               width: 40, height: 40, borderRadius: 8, flexShrink: 0,
@@ -212,7 +212,7 @@ export default function WorkflowLaunchpadPage() {
                               {def.description || '点击发起该流程'}
                             </Typography.Paragraph>
                           </div>
-                        </Space>
+                        </div>
                       </Card>
                     </div>
                   </List.Item>
