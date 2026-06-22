@@ -692,9 +692,9 @@ export default function FileStorageConfigsPage() {
                   <Form.Input
                     field="ossAccessKeySecret"
                     label="AccessKey Secret"
-                    placeholder="请输入 AccessKey Secret"
+                    placeholder={editingConfig ? '留空表示不修改' : '请输入 AccessKey Secret'}
                     type="password"
-                    rules={[{ required: true, message: '请输入 AccessKey Secret' }]}
+                    rules={editingConfig ? [] : [{ required: true, message: '请输入 AccessKey Secret' }]}
                   />
                 </Col>
               </Row>
@@ -726,9 +726,9 @@ export default function FileStorageConfigsPage() {
                   <Form.Input
                     field="s3SecretAccessKey"
                     label="Secret Access Key"
-                    placeholder="请输入 Secret Access Key"
+                    placeholder={editingConfig ? '留空表示不修改' : '请输入 Secret Access Key'}
                     type="password"
-                    rules={[{ required: true, message: '请输入 Secret Access Key' }]}
+                    rules={editingConfig ? [] : [{ required: true, message: '请输入 Secret Access Key' }]}
                   />
                 </Col>
               </Row>
@@ -756,9 +756,9 @@ export default function FileStorageConfigsPage() {
                   <Form.Input
                     field="cosSecretKey"
                     label="SecretKey"
-                    placeholder="请输入 SecretKey"
+                    placeholder={editingConfig ? '留空表示不修改' : '请输入 SecretKey'}
                     type="password"
-                    rules={[{ required: true, message: '请输入 SecretKey' }]}
+                    rules={editingConfig ? [] : [{ required: true, message: '请输入 SecretKey' }]}
                   />
                 </Col>
               </Row>
@@ -784,7 +784,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input field="obsSecretAccessKey" label="Secret Access Key" placeholder="请输入 Secret Access Key" type="password" rules={[{ required: true, message: '请输入 Secret Access Key' }]} />
+                  <Form.Input field="obsSecretAccessKey" label="Secret Access Key" placeholder={editingConfig ? '留空表示不修改' : '请输入 Secret Access Key'} type="password" rules={editingConfig ? [] : [{ required: true, message: '请输入 Secret Access Key' }]} />
                 </Col>
               </Row>
             </>
@@ -812,7 +812,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input field="kodoSecretKey" label="Secret Key" placeholder="请输入 Secret Key" type="password" rules={[{ required: true, message: '请输入 Secret Key' }]} />
+                  <Form.Input field="kodoSecretKey" label="Secret Key" placeholder={editingConfig ? '留空表示不修改' : '请输入 Secret Key'} type="password" rules={editingConfig ? [] : [{ required: true, message: '请输入 Secret Key' }]} />
                 </Col>
               </Row>
             </>
@@ -837,7 +837,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input field="bosSecretAccessKey" label="Secret Access Key" placeholder="请输入 Secret Key" type="password" rules={[{ required: true, message: '请输入 Secret Access Key' }]} />
+                  <Form.Input field="bosSecretAccessKey" label="Secret Access Key" placeholder={editingConfig ? '留空表示不修改' : '请输入 Secret Key'} type="password" rules={editingConfig ? [] : [{ required: true, message: '请输入 Secret Access Key' }]} />
                 </Col>
               </Row>
             </>
@@ -855,7 +855,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input field="azureAccountKey" label="Account Key" placeholder="存储账户密钥" type="password" rules={[{ required: true, message: '请输入 Account Key' }]} />
+                  <Form.Input field="azureAccountKey" label="Account Key" placeholder={editingConfig ? '留空表示不修改' : '存储账户密钥'} type="password" rules={editingConfig ? [] : [{ required: true, message: '请输入 Account Key' }]} />
                 </Col>
               </Row>
               <Row gutter={16}>
@@ -881,7 +881,7 @@ export default function FileStorageConfigsPage() {
                   <Form.Input field="sftpUsername" label="用户名" placeholder="登录用户名" rules={[{ required: true, message: '请输入用户名' }]} />
                 </Col>
                 <Col span={12}>
-                  <Form.Input field="sftpPassword" label="密码" placeholder="密码或私钥二选一" type="password" />
+                  <Form.Input field="sftpPassword" label="密码" placeholder={editingConfig ? '留空表示不修改' : '密码或私钥二选一'} type="password" />
                 </Col>
               </Row>
               <Row gutter={16}>
@@ -896,7 +896,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.TextArea field="sftpPrivateKey" label="SSH 私钥（可选）" placeholder="如果使用私钥登录，请将 PEM 内容粘贴至此" rows={4} />
+                  <Form.TextArea field="sftpPrivateKey" label="SSH 私钥（可选）" placeholder={editingConfig ? '留空表示不修改' : '如果使用私钥登录，请将 PEM 内容粘贴至此'} rows={4} />
                 </Col>
               </Row>
             </>

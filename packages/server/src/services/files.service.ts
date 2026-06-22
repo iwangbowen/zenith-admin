@@ -96,7 +96,7 @@ export async function getSheetPreview(id: number) {
 }
 
 export async function listManagedFiles(query: {
-  page?: number; pageSize?: number; keyword?: string; provider?: 'local' | 'oss' | 's3' | 'cos';
+  page?: number; pageSize?: number; keyword?: string; provider?: 'local' | 'oss' | 's3' | 'cos' | 'obs' | 'kodo' | 'bos' | 'azure' | 'sftp';
   fileType?: 'image' | 'video' | 'audio' | 'document'; startTime?: string; endTime?: string;
 }) {
   const user = currentUser();

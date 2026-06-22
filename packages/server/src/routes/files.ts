@@ -115,7 +115,7 @@ const listRoute = defineOpenAPIRoute({
     request: {
       query: PaginationQuery.extend({
         keyword: z.string().optional(),
-        provider: z.enum(['local', 'oss', 's3', 'cos']).optional(),
+        provider: z.enum(['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']).optional(),
         fileType: z.enum(['image', 'video', 'audio', 'document']).optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),

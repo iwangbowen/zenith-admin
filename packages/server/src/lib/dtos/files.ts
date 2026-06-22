@@ -13,21 +13,44 @@ export const FileStorageConfigDTO = z
     isDefault: z.boolean(),
     basePath: z.string().nullable().optional(),
     localRootPath: z.string().nullable().optional(),
+    // 阿里云 OSS（不含 AccessKeySecret）
     ossRegion: z.string().nullable().optional(),
     ossEndpoint: z.string().nullable().optional(),
     ossBucket: z.string().nullable().optional(),
     ossAccessKeyId: z.string().nullable().optional(),
-    ossAccessKeySecret: z.string().nullable().optional(),
+    // S3 兼容存储（不含 SecretAccessKey）
     s3Region: z.string().nullable().optional(),
     s3Endpoint: z.string().nullable().optional(),
     s3Bucket: z.string().nullable().optional(),
     s3AccessKeyId: z.string().nullable().optional(),
-    s3SecretAccessKey: z.string().nullable().optional(),
     s3ForcePathStyle: z.boolean().nullable().optional(),
+    // 腾讯云 COS（不含 SecretKey）
     cosRegion: z.string().nullable().optional(),
     cosBucket: z.string().nullable().optional(),
     cosSecretId: z.string().nullable().optional(),
-    cosSecretKey: z.string().nullable().optional(),
+    // 华为云 OBS（不含 SecretAccessKey）
+    obsEndpoint: z.string().nullable().optional(),
+    obsBucket: z.string().nullable().optional(),
+    obsAccessKeyId: z.string().nullable().optional(),
+    // 七牛云 Kodo（不含 SecretKey）
+    kodoAccessKey: z.string().nullable().optional(),
+    kodoBucket: z.string().nullable().optional(),
+    kodoRegion: z.string().nullable().optional(),
+    kodoEndpoint: z.string().nullable().optional(),
+    // 百度云 BOS（不含 SecretAccessKey）
+    bosEndpoint: z.string().nullable().optional(),
+    bosBucket: z.string().nullable().optional(),
+    bosAccessKeyId: z.string().nullable().optional(),
+    // Azure Blob（不含 AccountKey）
+    azureAccountName: z.string().nullable().optional(),
+    azureContainerName: z.string().nullable().optional(),
+    azureEndpoint: z.string().nullable().optional(),
+    // SFTP（不含 Password / PrivateKey）
+    sftpHost: z.string().nullable().optional(),
+    sftpPort: z.number().int().nullable().optional(),
+    sftpUsername: z.string().nullable().optional(),
+    sftpRootPath: z.string().nullable().optional(),
+    sftpBaseUrl: z.string().nullable().optional(),
     remark: z.string().nullable().optional(),
     ...auditFields,
     createdAt: z.string(),

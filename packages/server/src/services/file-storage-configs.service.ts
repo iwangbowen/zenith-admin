@@ -8,27 +8,34 @@ type StorageInput = z.infer<typeof createFileStorageConfigSchema>;
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
+/** 需要脱敏的密钥字段：列表/详情一律不返回，编辑时前端留空即保留原值（write-only） */
+export const STORAGE_SECRET_FIELDS = [
+  'ossAccessKeySecret',
+  's3SecretAccessKey',
+  'cosSecretKey',
+  'obsSecretAccessKey',
+  'kodoSecretKey',
+  'bosSecretAccessKey',
+  'azureAccountKey',
+  'sftpPassword',
+  'sftpPrivateKey',
+] as const;
+
 export function mapFileStorageConfig(row: typeof fileStorageConfigs.$inferSelect) {
+  const {
+    ossAccessKeySecret: _ossSecret,
+    s3SecretAccessKey: _s3Secret,
+    cosSecretKey: _cosSecret,
+    obsSecretAccessKey: _obsSecret,
+    kodoSecretKey: _kodoSecret,
+    bosSecretAccessKey: _bosSecret,
+    azureAccountKey: _azureKey,
+    sftpPassword: _sftpPwd,
+    sftpPrivateKey: _sftpKey,
+    ...safe
+  } = row;
   return {
-    ...row,
-    basePath: row.basePath ?? null,
-    localRootPath: row.localRootPath ?? null,
-    ossRegion: row.ossRegion ?? null,
-    ossEndpoint: row.ossEndpoint ?? null,
-    ossBucket: row.ossBucket ?? null,
-    ossAccessKeyId: row.ossAccessKeyId ?? null,
-    ossAccessKeySecret: row.ossAccessKeySecret ?? null,
-    s3Region: row.s3Region ?? null,
-    s3Endpoint: row.s3Endpoint ?? null,
-    s3Bucket: row.s3Bucket ?? null,
-    s3AccessKeyId: row.s3AccessKeyId ?? null,
-    s3SecretAccessKey: row.s3SecretAccessKey ?? null,
-    s3ForcePathStyle: row.s3ForcePathStyle ?? null,
-    cosRegion: row.cosRegion ?? null,
-    cosBucket: row.cosBucket ?? null,
-    cosSecretId: row.cosSecretId ?? null,
-    cosSecretKey: row.cosSecretKey ?? null,
-    remark: row.remark ?? null,
+    ...safe,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
@@ -36,44 +43,89 @@ export function mapFileStorageConfig(row: typeof fileStorageConfigs.$inferSelect
 
 // ─── 多态存储配置解包 ─────────────────────────────────────────────────────────
 
+/** 所有 provider 专属字段的空基线，确保切换 provider 时清空无关字段 */
+const EMPTY_PROVIDER_FIELDS = {
+  localRootPath: null,
+  ossRegion: null, ossEndpoint: null, ossBucket: null, ossAccessKeyId: null, ossAccessKeySecret: null,
+  s3Region: null, s3Endpoint: null, s3Bucket: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3ForcePathStyle: null,
+  cosRegion: null, cosBucket: null, cosSecretId: null, cosSecretKey: null,
+  obsEndpoint: null, obsBucket: null, obsAccessKeyId: null, obsSecretAccessKey: null,
+  kodoAccessKey: null, kodoSecretKey: null, kodoBucket: null, kodoRegion: null, kodoEndpoint: null,
+  bosEndpoint: null, bosBucket: null, bosAccessKeyId: null, bosSecretAccessKey: null,
+  azureAccountName: null, azureAccountKey: null, azureContainerName: null, azureEndpoint: null,
+  sftpHost: null, sftpPort: null, sftpUsername: null, sftpPassword: null, sftpPrivateKey: null, sftpRootPath: null, sftpBaseUrl: null,
+};
+
 export function toStoragePayload(input: StorageInput) {
-  const common = {
+  const base = {
     name: input.name,
     provider: input.provider,
     status: input.status,
     isDefault: input.isDefault,
     basePath: input.basePath ?? null,
     remark: input.remark ?? null,
+    ...EMPTY_PROVIDER_FIELDS,
   };
-  const nullS3 = { s3Region: null, s3Endpoint: null, s3Bucket: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3ForcePathStyle: null };
-  const nullCos = { cosRegion: null, cosBucket: null, cosSecretId: null, cosSecretKey: null };
-  const nullOss = { ossRegion: null, ossEndpoint: null, ossBucket: null, ossAccessKeyId: null, ossAccessKeySecret: null };
 
-  if (input.provider === 'local') {
-    return { ...common, localRootPath: input.localRootPath ?? null, ...nullOss, ...nullS3, ...nullCos };
+  switch (input.provider) {
+    case 'local':
+      return { ...base, localRootPath: input.localRootPath ?? null };
+    case 'oss':
+      return {
+        ...base,
+        ossRegion: input.ossRegion ?? null, ossEndpoint: input.ossEndpoint ?? null,
+        ossBucket: input.ossBucket ?? null, ossAccessKeyId: input.ossAccessKeyId ?? null,
+        ossAccessKeySecret: input.ossAccessKeySecret ?? null,
+      };
+    case 's3':
+      return {
+        ...base,
+        s3Region: input.s3Region ?? null, s3Endpoint: input.s3Endpoint ?? null,
+        s3Bucket: input.s3Bucket ?? null, s3AccessKeyId: input.s3AccessKeyId ?? null,
+        s3SecretAccessKey: input.s3SecretAccessKey ?? null, s3ForcePathStyle: input.s3ForcePathStyle ?? null,
+      };
+    case 'cos':
+      return {
+        ...base,
+        cosRegion: input.cosRegion ?? null, cosBucket: input.cosBucket ?? null,
+        cosSecretId: input.cosSecretId ?? null, cosSecretKey: input.cosSecretKey ?? null,
+      };
+    case 'obs':
+      return {
+        ...base,
+        obsEndpoint: input.obsEndpoint ?? null, obsBucket: input.obsBucket ?? null,
+        obsAccessKeyId: input.obsAccessKeyId ?? null, obsSecretAccessKey: input.obsSecretAccessKey ?? null,
+      };
+    case 'kodo':
+      return {
+        ...base,
+        kodoAccessKey: input.kodoAccessKey ?? null, kodoSecretKey: input.kodoSecretKey ?? null,
+        kodoBucket: input.kodoBucket ?? null, kodoRegion: input.kodoRegion ?? null,
+        kodoEndpoint: input.kodoEndpoint ?? null,
+      };
+    case 'bos':
+      return {
+        ...base,
+        bosEndpoint: input.bosEndpoint ?? null, bosBucket: input.bosBucket ?? null,
+        bosAccessKeyId: input.bosAccessKeyId ?? null, bosSecretAccessKey: input.bosSecretAccessKey ?? null,
+      };
+    case 'azure':
+      return {
+        ...base,
+        azureAccountName: input.azureAccountName ?? null, azureAccountKey: input.azureAccountKey ?? null,
+        azureContainerName: input.azureContainerName ?? null, azureEndpoint: input.azureEndpoint ?? null,
+      };
+    case 'sftp':
+      return {
+        ...base,
+        sftpHost: input.sftpHost ?? null, sftpPort: input.sftpPort ?? null,
+        sftpUsername: input.sftpUsername ?? null, sftpPassword: input.sftpPassword ?? null,
+        sftpPrivateKey: input.sftpPrivateKey ?? null, sftpRootPath: input.sftpRootPath ?? null,
+        sftpBaseUrl: input.sftpBaseUrl ?? null,
+      };
+    default:
+      return base;
   }
-  if (input.provider === 'oss') {
-    return {
-      ...common, localRootPath: null,
-      ossRegion: input.ossRegion ?? null, ossEndpoint: input.ossEndpoint ?? null,
-      ossBucket: input.ossBucket ?? null, ossAccessKeyId: input.ossAccessKeyId ?? null,
-      ossAccessKeySecret: input.ossAccessKeySecret ?? null, ...nullS3, ...nullCos,
-    };
-  }
-  if (input.provider === 's3') {
-    return {
-      ...common, localRootPath: null, ...nullOss,
-      s3Region: input.s3Region ?? null, s3Endpoint: input.s3Endpoint ?? null,
-      s3Bucket: input.s3Bucket ?? null, s3AccessKeyId: input.s3AccessKeyId ?? null,
-      s3SecretAccessKey: input.s3SecretAccessKey ?? null, s3ForcePathStyle: input.s3ForcePathStyle ?? null,
-      ...nullCos,
-    };
-  }
-  return {
-    ...common, localRootPath: null, ...nullOss, ...nullS3,
-    cosRegion: input.cosRegion ?? null, cosBucket: input.cosBucket ?? null,
-    cosSecretId: input.cosSecretId ?? null, cosSecretKey: input.cosSecretKey ?? null,
-  };
 }
 
 // ─── 清除默认标记 ─────────────────────────────────────────────────────────────
@@ -133,11 +185,16 @@ export async function updateFileStorageConfig(id: number, data: Partial<StorageI
   const [current] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   if (!current) throw new HTTPException(404, { message: '文件配置不存在' });
   if (current.isDefault && data.status === 'disabled') throw new HTTPException(400, { message: '默认文件服务不能被禁用，请先切换默认服务' });
+  // 合并原配置与入参；密钥字段留空表示不修改，沿用数据库原值（write-only）
+  const merged = { ...current, ...data } as Record<string, unknown>;
+  for (const field of STORAGE_SECRET_FIELDS) {
+    if (!data[field]) merged[field] = current[field];
+  }
   const updated = await db.transaction(async (tx) => {
     if (data.isDefault) await clearDefaultFlag(tx);
     const [row] = await tx
       .update(fileStorageConfigs)
-      .set({ ...toStoragePayload({ ...current, ...data } as StorageInput) })
+      .set({ ...toStoragePayload(merged as StorageInput) })
       .where(eq(fileStorageConfigs.id, id))
       .returning();
     return row;

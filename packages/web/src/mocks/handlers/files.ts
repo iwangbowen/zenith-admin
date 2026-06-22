@@ -167,6 +167,19 @@ function buildBrowseResult(storageConfigId: number, path: string): StorageBrowse
   return { folders, files: levelFiles, currentPath, basePath };
 }
 
+const STORAGE_SECRET_FIELDS = [
+  'ossAccessKeySecret', 's3SecretAccessKey', 'cosSecretKey',
+  'obsSecretAccessKey', 'kodoSecretKey', 'bosSecretAccessKey',
+  'azureAccountKey', 'sftpPassword', 'sftpPrivateKey',
+] as const;
+
+/** 模拟后端：列表/详情一律不返回密钥字段 */
+function stripStorageSecrets(config: FileStorageConfig): FileStorageConfig {
+  const clone = { ...config };
+  for (const field of STORAGE_SECRET_FIELDS) delete clone[field];
+  return clone;
+}
+
 export const filesHandlers = [
   // 文件列表（分页）
   http.get('/api/files', ({ request }) => {
@@ -326,21 +339,21 @@ export const filesHandlers = [
       return true;
     });
     const total = filtered.length;
-    const list = filtered.slice((page - 1) * pageSize, page * pageSize);
+    const list = filtered.slice((page - 1) * pageSize, page * pageSize).map(stripStorageSecrets);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
   }),
 
   // 获取默认存储配置（必须在 /:id 之前注册，防止 "default" 被当成数字 ID）
   http.get('/api/file-storage-configs/default', () => {
     const config = mockFileStorageConfigs.find((c) => c.isDefault) ?? null;
-    return HttpResponse.json({ code: 0, message: 'ok', data: config });
+    return HttpResponse.json({ code: 0, message: 'ok', data: config ? stripStorageSecrets(config) : null });
   }),
 
   // 获取单个存储配置
   http.get('/api/file-storage-configs/:id', ({ params }) => {
     const config = mockFileStorageConfigs.find((c) => c.id === Number(params.id));
     if (!config) return HttpResponse.json({ code: 404, message: '存储配置不存在', data: null });
-    return HttpResponse.json({ code: 0, message: 'ok', data: config });
+    return HttpResponse.json({ code: 0, message: 'ok', data: stripStorageSecrets(config) });
   }),
 
   // 新增存储配置
@@ -357,7 +370,7 @@ export const filesHandlers = [
       updatedAt: mockDateTime(),
     };
     mockFileStorageConfigs.push(newConfig);
-    return HttpResponse.json({ code: 0, message: '新增成功', data: newConfig });
+    return HttpResponse.json({ code: 0, message: '新增成功', data: stripStorageSecrets(newConfig) });
   }),
 
   // 更新存储配置
@@ -365,8 +378,12 @@ export const filesHandlers = [
     const config = mockFileStorageConfigs.find((c) => c.id === Number(params.id));
     if (!config) return HttpResponse.json({ code: 404, message: '存储配置不存在', data: null });
     const body = await request.json() as Partial<FileStorageConfig>;
+    // 密钥留空表示不修改，删除空密钥字段后再合并（write-only）
+    for (const field of STORAGE_SECRET_FIELDS) {
+      if (!body[field]) delete body[field];
+    }
     Object.assign(config, body, { updatedAt: mockDateTime() });
-    return HttpResponse.json({ code: 0, message: '更新成功', data: config });
+    return HttpResponse.json({ code: 0, message: '更新成功', data: stripStorageSecrets(config) });
   }),
 
   // 删除存储配置
