@@ -62,7 +62,7 @@ export default function CustomFormConfigPanel({ value, onChange, formType = 'cus
   const labelStyle: React.CSSProperties = { display: 'block', marginBottom: 6 };
 
   return (
-    <div style={{ maxWidth: 720, padding: '4px 2px' }}>
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: '4px 2px' }}>
       <Banner
         type="info"
         bordered
