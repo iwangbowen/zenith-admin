@@ -342,7 +342,7 @@ export const createAnnouncementSchema = z.object({
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(announcementRecipientSchema).optional().default([]),
   publishTime: dateTimeStringSchema.optional().nullable(),
-  fileIds: z.array(z.number().int()).optional().default([]),
+  fileIds: z.array(z.string().uuid()).optional().default([]),
 });
 
 export const updateAnnouncementSchema = z.object({
@@ -354,7 +354,7 @@ export const updateAnnouncementSchema = z.object({
   targetType: z.enum(['all', 'specific']).optional(),
   recipients: z.array(announcementRecipientSchema).optional(),
   publishTime: dateTimeStringSchema.optional().nullable(),
-  fileIds: z.array(z.number().int()).optional(),
+  fileIds: z.array(z.string().uuid()).optional(),
 });
 
 export type CreateAnnouncementInput = z.infer<typeof createAnnouncementSchema>;

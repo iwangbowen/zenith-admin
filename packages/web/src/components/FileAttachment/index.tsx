@@ -30,9 +30,9 @@ const UPLOAD_PENDING_STATUSES = new Set(['wait', 'validating', 'uploading']);
 /** 附件项（与后端 AnnouncementAttachment 兼容） */
 export interface AttachmentItem {
   id: number;
-  fileId: number;
+  fileId: string;
   file: {
-    id: number;
+    id: string;
     originalName: string;
     size: number;
     mimeType: string | null;
@@ -74,7 +74,7 @@ interface FileAttachmentProps {
 }
 
 type ManagedFileResponse = {
-  id: number;
+  id: string;
   url: string;
   originalName: string;
   size: number;
@@ -99,12 +99,12 @@ function toUploadFileItem(item: AttachmentItem): FileItem {
 function isAttachmentFileItem(item: FileItem | RenderFileItemProps | null | undefined): item is FileItem & AttachmentItem {
   if (!item) return false;
   const maybeAttachment = item as Partial<AttachmentItem>;
-  return typeof maybeAttachment.fileId === 'number' && maybeAttachment.file?.originalName != null;
+  return typeof maybeAttachment.fileId === 'string' && maybeAttachment.file?.originalName != null;
 }
 
 function toAttachmentFromManagedFile(file: ManagedFileResponse, sortOrder: number): AttachmentItem {
   return {
-    id: -file.id,
+    id: -Date.now(),
     fileId: file.id,
     file: {
       id: file.id,
@@ -154,7 +154,7 @@ export default function FileAttachment({
   // 文件预览状态
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewFile, setPreviewFile] = useState<{
-    id: number;
+    id: string;
     url: string;
     name: string;
     mimeType: string | null;

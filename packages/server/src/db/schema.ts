@@ -1,5 +1,6 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, bigint, boolean, primaryKey, unique, text, uniqueIndex, index, jsonb, smallint, real, date, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, bigint, boolean, primaryKey, unique, text, uniqueIndex, index, jsonb, smallint, real, date, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
 
 export const statusEnum = pgEnum('status', ['enabled', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -338,7 +339,7 @@ export type NewFileStorageConfig = typeof fileStorageConfigs.$inferInsert;
 
 // ─── 文件记录表 ──────────────────────────────────────────────────────────────
 export const managedFiles = pgTable('managed_files', {
-  id: serial('id').primaryKey(),
+  id: pgUuid('id').primaryKey().$defaultFn(() => uuidv7()),
   storageConfigId: integer('storage_config_id').notNull().references(() => fileStorageConfigs.id, { onDelete: 'restrict' }),
   storageName: varchar('storage_name', { length: 64 }).notNull(),
   provider: fileStorageProviderEnum('provider').notNull(),
@@ -830,7 +831,7 @@ export const businessFiles = pgTable('business_files', {
   id: serial('id').primaryKey(),
   businessType: businessTypeEnum('business_type').notNull(),
   businessId: integer('business_id').notNull(),
-  fileId: integer('file_id').notNull().references(() => managedFiles.id, { onDelete: 'cascade' }),
+  fileId: pgUuid('file_id').notNull().references(() => managedFiles.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 256 }),
   category: varchar('category', { length: 64 }),
   sortOrder: smallint('sort_order').default(0),
@@ -992,7 +993,7 @@ export const dbBackups = pgTable('db_backups', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 128 }).notNull(),
   type: backupTypeEnum('type').notNull(),
-  fileId: integer('file_id').references(() => managedFiles.id, { onDelete: 'set null' }),
+  fileId: pgUuid('file_id').references(() => managedFiles.id, { onDelete: 'set null' }),
   fileSize: integer('file_size'),
   status: backupStatusEnum('status').notNull().default('pending'),
   tables: text('tables'),

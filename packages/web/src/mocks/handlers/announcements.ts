@@ -4,15 +4,15 @@ import { mockManagedFiles } from '@/mocks/handlers/files';
 import { mockDateTime } from '@/mocks/utils/date';
 import type { Announcement, AnnouncementAttachment } from '@zenith/shared';
 
-type AnnouncementPayload = Partial<Announcement> & { fileIds?: number[] };
+type AnnouncementPayload = Partial<Announcement> & { fileIds?: string[] };
 
-function buildAnnouncementAttachments(fileIds: number[] = []): AnnouncementAttachment[] {
+function buildAnnouncementAttachments(fileIds: string[] = []): AnnouncementAttachment[] {
   return fileIds
     .map((fileId, index) => {
       const file = mockManagedFiles.find((f) => f.id === fileId);
       if (!file) return null;
       return {
-        id: fileId,
+        id: Date.now() + index,
         fileId,
         file: {
           id: file.id,

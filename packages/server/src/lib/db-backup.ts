@@ -45,7 +45,7 @@ export async function createPgDumpBackup(backupId: number): Promise<void> {
 
     // 上传到文件存储
     const storageCfg = await getDefaultStorageConfig();
-    let fileId: number | null = null;
+    let fileId: string | null = null;
 
     if (storageCfg) {
       const fileBuffer = await fs.readFile(filePath);
@@ -130,7 +130,7 @@ export async function createDrizzleExportBackup(backupId: number, tables?: strin
 
     const stat = await fs.stat(filePath);
     const storageCfg = await getDefaultStorageConfig();
-    let fileId: number | null = null;
+    let fileId: string | null = null;
 
     if (storageCfg) {
       const fileBuffer = await fs.readFile(filePath);

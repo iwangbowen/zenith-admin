@@ -64,9 +64,9 @@ export async function saveRecipients(
 
 export interface AnnouncementAttachment {
   id: number;
-  fileId: number;
+  fileId: string;
   file: {
-    id: number;
+    id: string;
     originalName: string;
     size: number;
     mimeType: string | null;
@@ -80,7 +80,7 @@ export interface AnnouncementAttachment {
 async function saveAnnouncementAttachments(
   executor: DbExecutor,
   announcementId: number,
-  fileIds: number[],
+  fileIds: string[],
 ) {
   const user = currentUser();
   // 删除旧关联
@@ -477,7 +477,7 @@ export interface CreateAnnouncementInput {
   targetType: 'all' | 'specific';
   recipients?: Array<{ recipientType: 'user' | 'role' | 'dept'; recipientId: number }>;
   publishTime?: string | null;
-  fileIds?: number[];
+  fileIds?: string[];
 }
 
 export async function createAnnouncement(data: CreateAnnouncementInput) {

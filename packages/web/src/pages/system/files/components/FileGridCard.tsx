@@ -8,7 +8,7 @@ export interface FileGridCardProps {
   file: ManagedFile;
   selected: boolean;
   canSelect: boolean;
-  onSelect: (id: number, checked: boolean) => void;
+  onSelect: (id: string, checked: boolean) => void;
   onPreview: (file: ManagedFile) => void;
   onDownload: (file: ManagedFile) => void;
   onDelete: (file: ManagedFile) => void;

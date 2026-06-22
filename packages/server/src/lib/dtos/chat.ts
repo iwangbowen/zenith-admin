@@ -42,7 +42,7 @@ export const ChatAssetMetaDTO = z
     size: z.number().int(),
     mimeType: z.string().nullable(),
     extension: z.string().nullable(),
-    fileId: z.number().int().nullable().optional(),
+    fileId: z.string().uuid().nullable().optional(),
     width: z.number().int().nullable().optional(),
     height: z.number().int().nullable().optional(),
     thumbnailUrl: z.string().max(2048).nullable().optional(),

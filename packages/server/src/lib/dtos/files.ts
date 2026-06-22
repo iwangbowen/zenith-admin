@@ -80,7 +80,7 @@ export const FileStatsDTO = z
 
 export const ManagedFileDTO = z
   .object({
-    id: z.number().int(),
+    id: z.string().uuid(),
     storageConfigId: z.number().int(),
     storageName: z.string(),
     provider: z.enum(['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']),

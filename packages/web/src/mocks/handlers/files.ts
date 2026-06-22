@@ -3,9 +3,15 @@ import { mockFileStorageConfigs } from '@/mocks/data/system';
 import { mockDateTime } from '@/mocks/utils/date';
 import type { FolderEntry, ManagedFile, FileStorageConfig, StorageBrowseResult } from '@zenith/shared';
 
+function mockUuidV7() {
+  const timeHex = Date.now().toString(16).padStart(12, '0').slice(-12);
+  const rand = () => Math.floor(Math.random() * 0xffff).toString(16).padStart(4, '0');
+  return `${timeHex.slice(0, 8)}-${timeHex.slice(8, 12)}-7${rand().slice(1)}-${((8 + Math.floor(Math.random() * 4)).toString(16) + rand().slice(1))}-${rand()}${rand()}${rand()}`;
+}
+
 export const mockManagedFiles: ManagedFile[] = [
   {
-    id: 1,
+    id: '018f6f8a-0001-7000-8000-000000000001',
     storageConfigId: 1,
     storageName: '本地磁盘',
     provider: 'local',
@@ -20,7 +26,7 @@ export const mockManagedFiles: ManagedFile[] = [
     updatedAt: '2026-01-10 10:00:00',
   },
   {
-    id: 2,
+    id: '018f6f8a-0002-7000-8000-000000000002',
     storageConfigId: 1,
     storageName: '本地磁盘',
     provider: 'local',
@@ -29,13 +35,13 @@ export const mockManagedFiles: ManagedFile[] = [
     size: 512000,
     mimeType: 'application/pdf',
     extension: 'pdf',
-    url: '/api/files/2/content',
+    url: '/api/files/018f6f8a-0002-7000-8000-000000000002/content',
     uploaderName: 'Admin',
     createdAt: '2026-01-15 14:30:00',
     updatedAt: '2026-01-15 14:30:00',
   },
   {
-    id: 3,
+    id: '018f6f8a-0003-7000-8000-000000000003',
     storageConfigId: 1,
     storageName: '本地磁盘',
     provider: 'local',
@@ -44,13 +50,13 @@ export const mockManagedFiles: ManagedFile[] = [
     size: 10240000,
     mimeType: 'video/mp4',
     extension: 'mp4',
-    url: '/api/files/3/content',
+    url: '/api/files/018f6f8a-0003-7000-8000-000000000003/content',
     uploaderName: 'Admin',
     createdAt: '2026-02-05 09:00:00',
     updatedAt: '2026-02-05 09:00:00',
   },
   {
-    id: 4,
+    id: '018f6f8a-0004-7000-8000-000000000004',
     storageConfigId: 1,
     storageName: '本地磁盘',
     provider: 'local',
@@ -65,7 +71,7 @@ export const mockManagedFiles: ManagedFile[] = [
     updatedAt: '2026-02-10 11:00:00',
   },
   {
-    id: 5,
+    id: '018f6f8a-0005-7000-8000-000000000005',
     storageConfigId: 1,
     storageName: '本地磁盘',
     provider: 'local',
@@ -74,13 +80,13 @@ export const mockManagedFiles: ManagedFile[] = [
     size: 81920,
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     extension: 'xlsx',
-    url: '/api/files/5/content',
+    url: '/api/files/018f6f8a-0005-7000-8000-000000000005/content',
     uploaderName: 'Admin',
     createdAt: '2026-03-01 08:00:00',
     updatedAt: '2026-03-01 08:00:00',
   },
   {
-    id: 6,
+    id: '018f6f8a-0006-7000-8000-000000000006',
     storageConfigId: 1,
     storageName: '本地磁盘',
     provider: 'local',
@@ -96,7 +102,6 @@ export const mockManagedFiles: ManagedFile[] = [
   },
 ];
 
-let nextFileId = mockManagedFiles.length + 1;
 
 // demo 模式下的静态 Excel 预览数据（Univer IWorkbookData 子集）
 const mockSheetPreview = {
@@ -224,7 +229,7 @@ export const filesHandlers = [
     const files = formData.getAll('file') as File[];
     const uploadedFiles: ManagedFile[] = files.map((file) => {
       const uploaded: ManagedFile = {
-        id: nextFileId++,
+        id: mockUuidV7(),
         storageConfigId: 1,
         storageName: '本地磁盘',
         provider: 'local',
@@ -250,7 +255,7 @@ export const filesHandlers = [
     const file = formData.get('file') as File | null;
     if (!file) return HttpResponse.json({ code: 400, message: '请选择要上传的文件', data: null });
     const uploaded: ManagedFile = {
-      id: nextFileId++,
+      id: mockUuidV7(),
       storageConfigId: 1,
       storageName: '本地磁盘',
       provider: 'local',
@@ -298,7 +303,7 @@ export const filesHandlers = [
     if (!session) return HttpResponse.json({ code: 404, message: '上传会话不存在', data: null });
     session.status = 'completed';
     const uploaded: ManagedFile = {
-      id: nextFileId++, storageConfigId: 1, storageName: '本地磁盘', provider: 'local',
+      id: mockUuidV7(), storageConfigId: 1, storageName: '本地磁盘', provider: 'local',
       originalName: session.fileName, objectKey: `uploads/${Date.now()}-${session.fileName}`,
       size: session.fileSize, mimeType: session.mimeType ?? 'application/octet-stream',
       extension: session.fileName.split('.').pop() ?? '',
@@ -328,7 +333,7 @@ export const filesHandlers = [
 
   // 获取 Excel 表格预览数据（必须放在 /api/files/:id 之前）
   http.get('/api/files/:id/sheet-preview', ({ params }) => {
-    const file = mockManagedFiles.find((f) => f.id === Number(params.id));
+    const file = mockManagedFiles.find((f) => f.id === String(params.id));
     if (!file) return HttpResponse.json({ code: 404, message: '文件不存在', data: null });
     return HttpResponse.json({ code: 0, message: 'ok', data: { ...mockSheetPreview, name: file.originalName } });
   }),
@@ -368,14 +373,14 @@ export const filesHandlers = [
 
   // 获取单个文件详情
   http.get('/api/files/:id', ({ params }) => {
-    const file = mockManagedFiles.find((f) => f.id === Number(params.id));
+    const file = mockManagedFiles.find((f) => f.id === String(params.id));
     if (!file) return HttpResponse.json({ code: 404, message: '文件不存在', data: null });
     return HttpResponse.json({ code: 0, message: 'ok', data: file });
   }),
 
   // 删除文件
   http.delete('/api/files/:id', ({ params }) => {
-    const index = mockManagedFiles.findIndex((f) => f.id === Number(params.id));
+    const index = mockManagedFiles.findIndex((f) => f.id === String(params.id));
     if (index === -1) return HttpResponse.json({ code: 404, message: '文件不存在', data: null });
     mockManagedFiles.splice(index, 1);
     return HttpResponse.json({ code: 0, message: '删除成功', data: null });
@@ -387,7 +392,7 @@ export const filesHandlers = [
     const { ids } = body;
     let count = 0;
     for (const id of ids) {
-      const index = mockManagedFiles.findIndex((f) => f.id === id);
+      const index = mockManagedFiles.findIndex((f) => f.id === String(id));
       if (index !== -1) {
         mockManagedFiles.splice(index, 1);
         count++;

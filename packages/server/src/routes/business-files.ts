@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okBody } from '../lib/openapi-schemas';
+import { validationHook, commonErrorResponses, ok, okMsg, okBody } from '../lib/openapi-schemas';
 import { BusinessFileDTO } from '../lib/openapi-dtos';
 import { listBusinessFiles, removeBusinessFile, type BusinessFileType } from '../services/business-files.service';
 
@@ -36,7 +36,7 @@ const removeRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:delete' })] as const,
     request: {
-      params: BusinessTypeParam.extend({ fileId: z.coerce.number().int().openapi({ example: 1 }) }),
+      params: BusinessTypeParam.extend({ fileId: z.string().uuid().openapi({ example: '018f6f8a-5f76-7d8c-9a1b-2c3d4e5f6789' }) }),
     },
     responses: { ...commonErrorResponses, ...okMsg('移除成功') },
   }),

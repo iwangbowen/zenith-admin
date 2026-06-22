@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, BatchIdsBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, errBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO, StorageBrowseResultDTO, FileStatsDTO, SheetPreviewDTO, UploadSessionInitDTO, UploadChunkResultDTO, UploadSessionStatusDTO } from '../lib/openapi-dtos';
 import { initChunkUploadSchema, completeChunkUploadSchema } from '@zenith/shared';
 import {
@@ -11,6 +11,14 @@ import { initChunkUpload, uploadChunk, completeChunkUpload, getUploadStatus, abo
 import { readStoredFile } from '../lib/file-storage';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
+
+const FileIdParam = z.object({
+  id: z.string().uuid().openapi({ param: { name: 'id', in: 'path' }, example: '018f6f8a-5f76-7d8c-9a1b-2c3d4e5f6789' }),
+});
+
+const FileBatchIdsBody = z.object({
+  ids: z.array(z.string().uuid()).min(1),
+});
 
 /**
  * 可安全内联渲染的 MIME 类型白名单。
@@ -59,7 +67,7 @@ function parseRangeHeader(rangeHeader: string | undefined, size: number): { star
 const contentRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/{id}/content', tags: ['Files'], summary: '公开访问文件内容',
-    request: { params: IdParam },
+    request: { params: FileIdParam },
     responses: {
       ...commonErrorResponses,
       200: { content: { 'application/octet-stream': { schema: z.string() } }, description: '文件内容' },
@@ -136,7 +144,7 @@ const getOneRoute = defineOpenAPIRoute({
     method: 'get', path: '/{id}', tags: ['Files'], summary: '获取文件详情',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:list' })] as const,
-    request: { params: IdParam },
+    request: { params: FileIdParam },
     responses: {
       ...commonErrorResponses,
       ...ok(ManagedFileDTO, '文件详情'),
@@ -151,7 +159,7 @@ const sheetPreviewRoute = defineOpenAPIRoute({
     method: 'get', path: '/{id}/sheet-preview', tags: ['Files'], summary: '获取 Excel 表格预览数据',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:list' })] as const,
-    request: { params: IdParam },
+    request: { params: FileIdParam },
     responses: {
       ...commonErrorResponses,
       ...ok(SheetPreviewDTO, 'Excel 预览数据'),
@@ -227,7 +235,7 @@ const deleteRoute = defineOpenAPIRoute({
     method: 'delete', path: '/{id}', tags: ['Files'], summary: '删除文件',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:delete', audit: { description: '删除文件', module: '文件管理', recordBody: false } })] as const,
-    request: { params: IdParam },
+    request: { params: FileIdParam },
     responses: {
       ...commonErrorResponses,
       ...okMsg('删除成功'),
@@ -248,7 +256,7 @@ const batchDeleteRoute = defineOpenAPIRoute({
     method: 'delete', path: '/batch', tags: ['Files'], summary: '批量删除文件',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:delete', audit: { description: '批量删除文件', module: '文件管理', recordBody: false } })] as const,
-    request: { body: { content: jsonContent(BatchIdsBody), required: true } },
+    request: { body: { content: jsonContent(FileBatchIdsBody), required: true } },
     responses: {
       ...commonErrorResponses,
       ...okMsg('删除成功'),
@@ -393,7 +401,7 @@ filesRouter.openapiRoutes([contentRoute, sheetPreviewRoute, statsRoute, listRout
 // 非 OpenAPI 路由：批量下载打包为 zip 流式响应
 filesRouter.post('/batch-download', authMiddleware, guard({ permission: 'system:file:list' }), async (c) => {
   const body = await c.req.json<{ ids?: unknown }>().catch(() => ({ ids: [] }));
-  const ids = Array.isArray(body?.ids) ? (body.ids as unknown[]).map(Number).filter((n) => Number.isFinite(n) && n > 0) : [];
+  const ids = Array.isArray(body?.ids) ? (body.ids as unknown[]).filter((n): n is string => typeof n === 'string') : [];
   const { stream, filename } = await batchDownloadFilesAsZip(ids);
   return new Response(stream, {
     headers: {

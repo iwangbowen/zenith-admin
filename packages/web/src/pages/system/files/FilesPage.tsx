@@ -151,15 +151,15 @@ export default function FilesPage() {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
-  const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
-  const [filePreview, setFilePreview] = useState<{ id: number; url: string; name: string; mimeType: string } | null>(null);
-  const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [filePreview, setFilePreview] = useState<{ id: string; url: string; name: string; mimeType: string } | null>(null);
+  const [downloadLoadingId, setDownloadLoadingId] = useState<string | null>(null);
   // previewBlobUrlsRef: index-aligned with image list, tracks created blob URLs for cleanup
   const previewBlobUrlsRef = useRef<string[]>([]);
   // previewSessionRef: increments each time a new preview session starts, used to cancel stale bg loads
   const previewSessionRef = useRef(0);
   const [defaultConfig, setDefaultConfig] = useState<FileStorageConfig | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
@@ -176,7 +176,7 @@ export default function FilesPage() {
     void fetchFiles(1, newPageSize);
   };
 
-  const handleGridSelect = (id: number, checked: boolean) => {
+  const handleGridSelect = (id: string, checked: boolean) => {
     setSelectedRowKeys((prev) =>
       checked ? [...prev, id] : prev.filter((k) => k !== id),
     );
@@ -821,7 +821,7 @@ export default function FilesPage() {
           rowKey="id"
           rowSelection={hasPermission('system:file:delete') ? {
             selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys as (string | number)[]).map(Number)),
+            onChange: (keys) => setSelectedRowKeys((keys ?? []).map(String)),
           } : undefined}
           loading={loading}
           onRefresh={() => void fetchFiles()}

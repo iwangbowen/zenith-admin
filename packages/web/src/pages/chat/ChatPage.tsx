@@ -245,7 +245,7 @@ export default function ChatPage({
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
-  const [filePreview, setFilePreview] = useState<{ fileId?: number; url: string; name: string; mimeType: string } | null>(null);
+  const [filePreview, setFilePreview] = useState<{ fileId?: string; url: string; name: string; mimeType: string } | null>(null);
 
   const handleMediaFilePreview = useCallback((item: ChatMessage) => {
     const asset = item.extra?.asset;
@@ -779,7 +779,7 @@ export default function ChatPage({
     if (!activeConvId) return false;
     const fd = new FormData();
     fd.append('file', file);
-    const uploadRes = await request.postForm<{ id: number; url: string; originalName: string; size: number }>('/api/files/upload-one', fd, { onProgress });
+    const uploadRes = await request.postForm<{ id: string; url: string; originalName: string; size: number }>('/api/files/upload-one', fd, { onProgress });
     if (uploadRes.code !== 0 || !uploadRes.data) return false;
     const { id: fileId, url, originalName, size } = uploadRes.data;
     const asset: ChatAssetMeta = {
@@ -841,7 +841,7 @@ export default function ChatPage({
     const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });
     const fd = new FormData();
     fd.append('file', file);
-    const uploadRes = await request.postForm<{ id: number; url: string; originalName: string; size: number }>('/api/files/upload-one', fd);
+    const uploadRes = await request.postForm<{ id: string; url: string; originalName: string; size: number }>('/api/files/upload-one', fd);
     if (uploadRes.code !== 0 || !uploadRes.data) { Toast.error('语音上传失败'); return; }
     const { id: fileId, url, size } = uploadRes.data;
     const asset: ChatAssetMeta = {

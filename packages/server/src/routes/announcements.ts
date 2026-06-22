@@ -30,7 +30,7 @@ const createAnnouncementSchema = z.object({
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(announcementRecipientSchema).optional().default([]),
   publishTime: dateTimeStringSchema.optional().nullable(),
-  fileIds: z.array(z.number().int()).optional().default([]),
+  fileIds: z.array(z.string().uuid()).optional().default([]),
 });
 const updateAnnouncementSchema = z.object({
   title: z.string().min(1).max(128).optional(),
@@ -41,7 +41,7 @@ const updateAnnouncementSchema = z.object({
   targetType: z.enum(['all', 'specific']).optional(),
   recipients: z.array(announcementRecipientSchema).optional(),
   publishTime: dateTimeStringSchema.optional().nullable(),
-  fileIds: z.array(z.number().int()).optional(),
+  fileIds: z.array(z.string().uuid()).optional(),
 });
 
 const publishedRoute = defineOpenAPIRoute({

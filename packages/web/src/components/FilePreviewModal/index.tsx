@@ -27,7 +27,7 @@ const MonacoPreviewPanel = lazy(() => import('@/components/MonacoPreviewPanel'))
 interface FilePreviewModalProps {
   fileUrl: string;
   /** 文件 ID。预览 Excel 表格时必须传入，其他类型可不传 */
-  fileId?: number;
+  fileId?: string;
   fileName?: string;
   mimeType?: string | null;
   visible: boolean;

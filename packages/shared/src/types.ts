@@ -298,7 +298,7 @@ export interface FileStorageConfig {
 }
 
 export interface ManagedFile {
-  id: number;
+  id: string;
   storageConfigId: number;
   storageName: string;
   provider: FileStorageProvider;
@@ -1048,9 +1048,9 @@ export interface AnnouncementReadStats {
 
 export interface AnnouncementAttachment {
   id: number;
-  fileId: number;
+  fileId: string;
   file: {
-    id: number;
+    id: string;
     originalName: string;
     size: number;
     mimeType: string | null;
@@ -1282,7 +1282,7 @@ export interface DbBackup {
   id: number;
   name: string;
   type: BackupType;
-  fileId: number | null;
+  fileId: string | null;
   fileSize: number | null;
   status: BackupStatus;
   tables: string | null;
@@ -2491,7 +2491,7 @@ export interface ChatAssetMeta {
   mimeType: string | null;
   extension: string | null;
   /** 托管文件 ID，用于服务端预览接口认证（可选，虚拟消息不填） */
-  fileId?: number | null;
+  fileId?: string | null;
   width?: number | null;
   height?: number | null;
   thumbnailUrl?: string | null;

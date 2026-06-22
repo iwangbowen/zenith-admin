@@ -63,6 +63,7 @@
 		"svg-captcha": "^1.4.0",
 		"tencentcloud-sdk-nodejs-sms": "^4.1.240",
 		"ua-parser-js": "^2.0.10",
+		"uuid": "^14.0.1",
 		"winston": "^3.19.0",
 		"winston-daily-rotate-file": "^5.0.0",
 		"zod": "^4.4.3"

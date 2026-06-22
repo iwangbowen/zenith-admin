@@ -102,7 +102,7 @@ export default function AnnouncementsPage() {
   const userSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 附件相关状态
-  const [attachmentFileIds, setAttachmentFileIds] = useState<number[]>([]);
+  const [attachmentFileIds, setAttachmentFileIds] = useState<string[]>([]);
   const [uploadedAttachments, setUploadedAttachments] = useState<AnnouncementAttachment[]>([]);
 
   const { items: typeItems } = useDictItems('announcement_type');

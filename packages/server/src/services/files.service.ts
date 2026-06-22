@@ -44,7 +44,7 @@ function ensureSpreadsheetPreviewable(mimeType: string | null, extension: string
   }
 }
 
-export async function getStoredFileForRead(id: number) {
+export async function getStoredFileForRead(id: string) {
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
   if (!file) throw new HTTPException(404, { message: '文件不存在' });
   const [storageConfig] = await db
@@ -56,13 +56,13 @@ export async function getStoredFileForRead(id: number) {
   return { file, storageConfig };
 }
 
-export async function readFileContent(id: number) {
+export async function readFileContent(id: string) {
   const { file, storageConfig } = await getStoredFileForRead(id);
   return readStoredFile(file, storageConfig);
 }
 
 /** 读取 .xlsx 文件并转换为 Univer 只读预览数据 */
-export async function getSheetPreview(id: number) {
+export async function getSheetPreview(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
@@ -146,7 +146,7 @@ export async function listManagedFiles(query: {
   const finalWhere = mergeWhere(where, tc);
   const [count, paginated] = await Promise.all([
     db.$count(managedFiles, finalWhere),
-    withPagination(db.select().from(managedFiles).where(finalWhere).orderBy(desc(managedFiles.id)).$dynamic(), page, pageSize),
+    withPagination(db.select().from(managedFiles).where(finalWhere).orderBy(desc(managedFiles.createdAt)).$dynamic(), page, pageSize),
   ]);
   const uploaderIds = [...new Set(paginated.map((f) => f.createdBy).filter((id): id is number => id != null))];
   const uploaderMap = new Map<number, string>();
@@ -241,7 +241,7 @@ export async function uploadManagedFile(file: File) {
   return mapManagedFile(created);
 }
 
-export async function batchDeleteFiles(ids: number[]) {
+export async function batchDeleteFiles(ids: string[]) {
   if (ids.length === 0) return 0;
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
@@ -261,7 +261,7 @@ export async function batchDeleteFiles(ids: number[]) {
   return files.length;
 }
 
-export async function deleteManagedFile(id: number) {
+export async function deleteManagedFile(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
@@ -278,7 +278,7 @@ export async function deleteManagedFile(id: number) {
   await db.delete(managedFiles).where(where);
 }
 
-export async function getManagedFile(id: number) {
+export async function getManagedFile(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
@@ -293,7 +293,7 @@ export async function getManagedFile(id: number) {
   };
 }
 
-export async function getManagedFileBeforeAudit(id: number) {
+export async function getManagedFileBeforeAudit(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const where = tc ? and(eq(managedFiles.id, id), tc) : eq(managedFiles.id, id);
@@ -308,7 +308,7 @@ function deduplicateEntryName(name: string, count: number): string {
   return `${name.slice(0, lastDot)}_${count}${name.slice(lastDot)}`;
 }
 
-export async function batchDownloadFilesAsZip(ids: number[]): Promise<{ stream: ReadableStream; filename: string }> {
+export async function batchDownloadFilesAsZip(ids: string[]): Promise<{ stream: ReadableStream; filename: string }> {
   if (ids.length === 0) throw new HTTPException(400, { message: '请选择要下载的文件' });
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
@@ -437,7 +437,7 @@ export async function exportManagedFiles(): Promise<{ stream: ReadableStream; fi
     .select()
     .from(managedFiles)
     .where(tenantCondition(managedFiles, user))
-    .orderBy(desc(managedFiles.id));
+    .orderBy(desc(managedFiles.createdAt));
   const stream = await streamToExcel(
     [
       { header: 'ID', key: 'id', width: 8 },

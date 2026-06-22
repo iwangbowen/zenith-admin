@@ -183,7 +183,7 @@ async function sftpOperation<T>(config: FileStorageConfigRow, fn: (client: SftpC
   }
 }
 
-export function buildManagedFileUrl(fileId: number) {
+export function buildManagedFileUrl(fileId: string) {
   return `/api/files/${fileId}/content`;
 }
 

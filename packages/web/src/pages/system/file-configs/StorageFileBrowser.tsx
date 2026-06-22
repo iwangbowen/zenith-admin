@@ -55,9 +55,9 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
-  const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
-  const [filePreview, setFilePreview] = useState<{ id: number; url: string; name: string; mimeType: string } | null>(null);
-  const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [filePreview, setFilePreview] = useState<{ id: string; url: string; name: string; mimeType: string } | null>(null);
+  const [downloadLoadingId, setDownloadLoadingId] = useState<string | null>(null);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
   const [detailFileLoading, setDetailFileLoading] = useState(false);
   const previewBlobUrlsRef = useRef<string[]>([]);

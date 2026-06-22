@@ -63,8 +63,8 @@ export async function saveBusinessFiles(
   executor: DbExecutor,
   businessType: BusinessFileType,
   businessId: number,
-  fileIds: number[],
-  categories?: Record<number, string | null>,
+  fileIds: string[],
+  categories?: Record<string, string | null>,
 ) {
   const user = currentUser();
   // 删除旧关联
@@ -111,7 +111,7 @@ export async function saveBusinessFiles(
 /**
  * 移除单个附件关联
  */
-export async function removeBusinessFile(businessType: BusinessFileType, businessId: number, fileId: number) {
+export async function removeBusinessFile(businessType: BusinessFileType, businessId: number, fileId: string) {
   const user = currentUser();
   const result = await db
     .delete(businessFiles)
