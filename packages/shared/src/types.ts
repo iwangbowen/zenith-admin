@@ -1926,6 +1926,7 @@ export interface WorkflowForm {
   usageCount?: number;
   tenantId: number | null;
   createdBy?: number | null;
+  updatedBy?: number | null;
   createdByName?: string | null;
   createdAt: string;
   updatedAt: string;

@@ -1,12 +1,13 @@
 /**
  * 右侧字段属性配置面板
  */
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFieldVisibilityCondition, Dict, PaginatedResponse, WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, FORM_FIELD_TYPES, toDateFnsToken } from '../form-types';
+import { evalFormula } from './WorkflowFormRenderer';
 
 interface FieldConfigPanelProps {
   field: WorkflowFormField;
@@ -24,6 +25,45 @@ function formatVisibilityValue(value: unknown): string {
   return '';
 }
 
+function regexError(pattern?: string): string | null {
+  if (!pattern) return null;
+  try {
+    new RegExp(pattern);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : '正则表达式无效';
+  }
+}
+
+function formulaError(formula: string | undefined, fields: WorkflowFormField[], currentKey: string): string | null {
+  const expr = formula?.trim();
+  if (!expr) return null;
+  const refs = Array.from(expr.matchAll(/\{([^}]+)\}/g), (match) => match[1]?.trim())
+    .filter((key): key is string => Boolean(key));
+  const keys = new Set(fields.map((field) => field.key));
+  const unknown = refs.filter((key) => key !== currentKey && !keys.has(key));
+  if (unknown.length > 0) return `引用字段不存在：${unknown.join('、')}`;
+  const sampleValues = Object.fromEntries(refs.map((key) => [key, 1]));
+  return evalFormula(expr, sampleValues, 2) === null ? '公式表达式无效，仅支持字段引用、数字、+ - * / 与括号' : null;
+}
+
+function createsCascadeCycle(fieldKey: string, sourceKey: string, fields: WorkflowFormField[]): boolean {
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+  const visited = new Set<string>([fieldKey]);
+  let cursor: string | undefined = sourceKey;
+  while (cursor) {
+    if (visited.has(cursor)) return true;
+    visited.add(cursor);
+    cursor = byKey.get(cursor)?.optionsFrom?.sourceKey;
+  }
+  return false;
+}
+
+function createLocalFieldKey(type: WorkflowFormFieldType): string {
+  const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
+  return `${type}_${Date.now()}_${random.replace(/-/g, '').slice(0, 8)}`;
+}
+
 export default function FieldConfigPanel({
   field,
   allFields,
@@ -32,11 +72,12 @@ export default function FieldConfigPanel({
 
   const [activeSection, setActiveSection] = useState<'basic' | 'validation' | 'visibility'>('basic');
   const fieldInfo = FORM_FIELD_TYPES.find(t => t.type === field.type);
+  const flatFields = useMemo(() => collectFlat(allFields), [allFields]);
 
   // 可用作条件依赖的字段（select/multiSelect 类型，且不是当前字段）
-  const conditionFields = allFields.filter(
+  const conditionFields = useMemo(() => flatFields.filter(
     f => f.key !== field.key && (f.type === 'select' || f.type === 'multiSelect' || f.type === 'number' || f.type === 'text')
-  );
+  ), [flatFields, field.key]);
 
   const hasOptions = field.type === 'select' || field.type === 'multiSelect' || field.type === 'radio' || field.type === 'checkbox' || field.type === 'autoComplete';
   const supportsCascade = field.type === 'select' || field.type === 'multiSelect';
@@ -73,6 +114,15 @@ export default function FieldConfigPanel({
   // 支持字段级标签覆盖（排除布局/分割线/纯展示）
   const supportsLabelOverride = !isLayout && !isDescription;
   const showValidationTab = !isDescription && !isSerialNumber && !isLayout && !isFileType && field.type !== 'detail' && !isFormula && !isRate && !isDate && !isSpecialInput;
+  const duplicateKey = flatFields.filter(f => f.key === field.key).length > 1;
+  const patternError = regexError(field.pattern);
+  const textRangeError = field.minLength !== undefined && field.maxLength !== undefined && field.minLength > field.maxLength
+    ? '最小长度不能大于最大长度'
+    : null;
+  const numberRangeError = field.min !== undefined && field.max !== undefined && field.min > field.max
+    ? '最小值不能大于最大值'
+    : null;
+  const formulaValidationError = isFormula ? formulaError(field.formula, flatFields, field.key) : null;
 
   return (
     <div className="fd-form-config">
@@ -125,6 +175,11 @@ export default function FieldConfigPanel({
               placeholder="字段名称"
             />
           </div>
+          {duplicateKey && (
+            <Typography.Text type="danger" size="small" style={{ display: 'block', marginBottom: 12 }}>
+              字段 key 重复，运行时取值和联动可能异常，请复制字段或重新添加以生成唯一 key。
+            </Typography.Text>
+          )}
 
           {/* 占位文字（非说明文字、流水号、布局类型、开关、滑块） */}
           {!isDescription && !isSerialNumber && !isLayout && !isSwitch && !isSlider && (
@@ -269,6 +324,11 @@ export default function FieldConfigPanel({
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
                   支持 + - * / 与括号，运行时会从其他字段自动计算
                 </Typography.Text>
+                {formulaValidationError && (
+                  <Typography.Text type="danger" size="small" style={{ display: 'block', marginTop: 4 }}>
+                    {formulaValidationError}
+                  </Typography.Text>
+                )}
               </div>
               <div className="fd-form-config__field">
                 <Typography.Text strong size="small">结果小数位</Typography.Text>
@@ -378,6 +438,11 @@ export default function FieldConfigPanel({
                   style={{ width: '100%' }}
                 />
               </div>
+              {field.min !== undefined && field.max !== undefined && field.min > field.max && (
+                <Typography.Text type="danger" size="small" style={{ display: 'block', marginBottom: 12 }}>
+                  滑块最小值不能大于最大值
+                </Typography.Text>
+              )}
               <div className="fd-form-config__field">
                 <Typography.Text strong size="small">步长</Typography.Text>
                 <InputNumber
@@ -726,6 +791,11 @@ export default function FieldConfigPanel({
                   style={{ width: '100%' }}
                 />
               </div>
+              {textRangeError && (
+                <Typography.Text type="danger" size="small" style={{ display: 'block', marginBottom: 12 }}>
+                  {textRangeError}
+                </Typography.Text>
+              )}
             </>
           )}
           {isAmountOrNumber && (
@@ -748,6 +818,11 @@ export default function FieldConfigPanel({
                   style={{ width: '100%' }}
                 />
               </div>
+              {numberRangeError && (
+                <Typography.Text type="danger" size="small" style={{ display: 'block', marginBottom: 12 }}>
+                  {numberRangeError}
+                </Typography.Text>
+              )}
             </>
           )}
           {/* 正则校验（仅 text 类型显式可配；格式化控件已内置） */}
@@ -760,6 +835,11 @@ export default function FieldConfigPanel({
                   onChange={(v) => onChange({ pattern: v || undefined })}
                   placeholder="如 ^[A-Z0-9]+$"
                 />
+                {patternError && (
+                  <Typography.Text type="danger" size="small" style={{ display: 'block', marginTop: 4 }}>
+                    {patternError}
+                  </Typography.Text>
+                )}
               </div>
               <div className="fd-form-config__field">
                 <Typography.Text strong size="small">校验失败提示</Typography.Text>
@@ -1015,6 +1095,9 @@ function OptionsEditor({
   options,
   onChange,
 }: Readonly<{ options: string[]; onChange: (opts: string[]) => void }>) {
+  const normalizedOptions = options.map((opt) => opt.trim()).filter(Boolean);
+  const hasDuplicate = new Set(normalizedOptions).size !== normalizedOptions.length;
+  const hasEmpty = options.some((opt) => !opt.trim());
   return (
     <div className="fd-options-editor">
       {options.map((opt, i) => (
@@ -1046,6 +1129,12 @@ function OptionsEditor({
       >
         添加选项
       </Button>
+      {(hasEmpty || hasDuplicate) && (
+        <Typography.Text type="warning" size="small">
+          {hasEmpty ? '存在空选项，运行时不会有明确显示；' : ''}
+          {hasDuplicate ? '存在重复选项，建议去重。' : ''}
+        </Typography.Text>
+      )}
     </div>
   );
 }
@@ -1065,7 +1154,7 @@ function DetailChildrenEditor({
   onChange,
 }: Readonly<{ items: WorkflowFormField[]; onChange: (fields: WorkflowFormField[]) => void }>) {
   const addChild = () => {
-    const key = `child_${Date.now()}`;
+    const key = createLocalFieldKey('text');
     onChange([
       ...items,
       { key, label: `列${items.length + 1}`, type: 'text' },
@@ -1179,6 +1268,9 @@ function DateRangeLinkageEditor({
       <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
         选定后，此字段会根据日期范围自动填入「结束-开始+1」天数并禁用手填
       </Typography.Text>
+      <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+        若结束日期早于开始日期，运行时会自动清空计算结果，避免产生负数天数。
+      </Typography.Text>
     </div>
   );
 }
@@ -1192,19 +1284,22 @@ function CascadeEditor({
   allFields: WorkflowFormField[];
   onChange: (updates: Partial<WorkflowFormField>) => void;
 }>) {
-  const parentCandidates = collectFlat(allFields).filter(
+  const flatFields = collectFlat(allFields);
+  const parentCandidates = flatFields.filter(
     f => (f.type === 'select') && f.key !== field.key && (f.options?.length ?? 0) > 0,
   );
   if (parentCandidates.length === 0) return null;
 
   const current = field.optionsFrom;
   const parent = current ? parentCandidates.find(f => f.key === current.sourceKey) : null;
+  const currentCreatesCycle = current ? createsCascadeCycle(field.key, current.sourceKey, flatFields) : false;
 
   const setParent = (sourceKey: string | undefined) => {
     if (!sourceKey) {
       onChange({ optionsFrom: undefined });
       return;
     }
+    if (createsCascadeCycle(field.key, sourceKey, flatFields)) return;
     const pf = parentCandidates.find(f => f.key === sourceKey);
     const mapping: Record<string, string[]> = {};
     for (const opt of pf?.options ?? []) mapping[opt] = current?.mapping[opt] ?? [];
@@ -1227,9 +1322,17 @@ function CascadeEditor({
         showClear
         optionList={[
           { value: '', label: '不级联' },
-          ...parentCandidates.map(f => ({ value: f.key, label: f.label })),
+          ...parentCandidates.map(f => {
+            const disabled = createsCascadeCycle(field.key, f.key, flatFields);
+            return { value: f.key, label: disabled ? `${f.label}（会形成循环）` : f.label, disabled };
+          }),
         ]}
       />
+      {currentCreatesCycle && (
+        <Typography.Text type="danger" size="small" style={{ display: 'block', marginTop: 6 }}>
+          当前级联依赖形成循环，请切换父字段或清空级联配置。
+        </Typography.Text>
+      )}
       {current && parent && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {(parent.options ?? []).map(opt => (
@@ -1247,6 +1350,19 @@ function CascadeEditor({
           <Typography.Text type="tertiary" size="small">
             为每个父选项配置可见的子选项；父值变化时已选的子值会被自动清空
           </Typography.Text>
+          {Object.entries(current.mapping).some(([, opts]) => opts.length > 0) && (
+            <div className="fd-form-config__cascade-preview">
+              <Typography.Text strong size="small">级联预览</Typography.Text>
+              {Object.entries(current.mapping).map(([parentValue, opts]) => (
+                <div key={parentValue} className="fd-form-config__cascade-preview-row">
+                  <span>{parentValue}</span>
+                  <Typography.Text type="tertiary" size="small">
+                    {opts.length > 0 ? opts.join('、') : '未配置子选项'}
+                  </Typography.Text>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,7 +1,9 @@
 /**
  * 左侧控件面板 — 点击添加字段到表单
  */
-import { Typography } from '@douyinfe/semi-ui';
+import { useMemo, useState } from 'react';
+import { Input, Typography } from '@douyinfe/semi-ui';
+import { Search } from 'lucide-react';
 import { FORM_FIELD_TYPE_GROUPS, type FormFieldTypeInfo } from '../form-types';
 
 interface FieldPaletteProps {
@@ -9,9 +11,33 @@ interface FieldPaletteProps {
 }
 
 export default function FieldPalette({ onAddField }: Readonly<FieldPaletteProps>) {
+  const [keyword, setKeyword] = useState('');
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  const groups = useMemo(() => {
+    if (!normalizedKeyword) return FORM_FIELD_TYPE_GROUPS;
+    return FORM_FIELD_TYPE_GROUPS
+      .map((group) => ({
+        ...group,
+        types: group.types.filter((info) =>
+          info.label.toLowerCase().includes(normalizedKeyword)
+          || info.type.toLowerCase().includes(normalizedKeyword)
+          || (info.description ?? '').toLowerCase().includes(normalizedKeyword),
+        ),
+      }))
+      .filter((group) => group.types.length > 0);
+  }, [normalizedKeyword]);
+
   return (
     <div className="fd-form-palette">
-      {FORM_FIELD_TYPE_GROUPS.map(group => (
+      <Input
+        prefix={<Search size={14} />}
+        placeholder="搜索控件"
+        value={keyword}
+        onChange={setKeyword}
+        showClear
+        className="fd-form-palette__search"
+      />
+      {groups.map(group => (
         <div key={group.label} className="fd-form-palette__group">
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>
             {group.label}
@@ -37,6 +63,9 @@ export default function FieldPalette({ onAddField }: Readonly<FieldPaletteProps>
           </div>
         </div>
       ))}
+      {groups.length === 0 && (
+        <Typography.Text type="tertiary" size="small">未找到匹配控件</Typography.Text>
+      )}
     </div>
   );
 }

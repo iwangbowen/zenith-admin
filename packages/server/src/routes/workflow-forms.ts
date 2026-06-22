@@ -6,6 +6,7 @@ import {
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
 import { WorkflowFormDTO } from '../lib/openapi-dtos';
+import { createWorkflowFormSchema, updateWorkflowFormSchema } from '@zenith/shared';
 import {
   listWorkflowForms,
   listEnabledWorkflowForms,
@@ -16,16 +17,6 @@ import {
 } from '../services/workflow-forms.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
-
-const createSchema = z.object({
-  name: z.string().min(1).max(64),
-  code: z.string().max(64).nullable().optional(),
-  description: z.string().max(500).nullable().optional(),
-  categoryId: z.number().int().nullable().optional(),
-  schema: z.looseObject({}).nullable().optional(),
-  status: z.enum(['enabled', 'disabled']).default('enabled'),
-});
-const updateSchema = createSchema.partial();
 
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -64,7 +55,7 @@ const createRouteDef = defineOpenAPIRoute({
     method: 'post', path: '/', tags: ['WorkflowForms'], summary: '创建表单',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:form:create', audit: { description: '创建表单', module: '工作流管理' } })] as const,
-    request: { body: { content: jsonContent(createSchema), required: true } },
+    request: { body: { content: jsonContent(createWorkflowFormSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(WorkflowFormDTO, '创建成功') },
   }),
   handler: async (c) => c.json(okBody(await createWorkflowForm(c.req.valid('json')), '创建成功'), 200),
@@ -75,7 +66,7 @@ const updateRoute = defineOpenAPIRoute({
     method: 'put', path: '/{id}', tags: ['WorkflowForms'], summary: '更新表单',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:form:edit', audit: { description: '更新表单', module: '工作流管理' } })] as const,
-    request: { params: IdParam, body: { content: jsonContent(updateSchema), required: true } },
+    request: { params: IdParam, body: { content: jsonContent(updateWorkflowFormSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(WorkflowFormDTO, '更新成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   }),
   handler: async (c) => {

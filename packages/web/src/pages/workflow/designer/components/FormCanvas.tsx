@@ -3,7 +3,7 @@
  * 支持：从控件面板拖入 / 字段排序 / 跨容器移动（顶层 ↔ 分栏列 ↔ 分组）/ 选中 / 复制 / 删除。
  */
 import { useCallback, useState } from 'react';
-import { Tag, Typography } from '@douyinfe/semi-ui';
+import { Popconfirm, Tag, Typography } from '@douyinfe/semi-ui';
 import { GripVertical, Trash2, Asterisk, Copy } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
@@ -17,9 +17,17 @@ interface FormCanvasProps {
   onRemove: (key: string) => void;
   onCopy: (key: string) => void;
   onDropNew: (type: WorkflowFormFieldType, target: DropTarget) => void;
+  highlightedKeys?: ReadonlySet<string>;
 }
 
 const getFieldInfo = (type: WorkflowFormFieldType) => FORM_FIELD_TYPES.find(t => t.type === type);
+
+const hasNestedFields = (field: WorkflowFormField) =>
+  (field.children?.length ?? 0) > 0
+  || (field.columns?.some((column) => column.fields.length > 0) ?? false);
+
+const deleteTitle = (field: WorkflowFormField) =>
+  hasNestedFields(field) ? `删除「${field.label}」及其内部字段？` : `删除字段「${field.label}」？`;
 
 function readPayload(e: React.DragEvent): { type?: WorkflowFormFieldType; moveKey?: string } {
   const type = e.dataTransfer.getData('fieldType');
@@ -40,6 +48,7 @@ export default function FormCanvas({
   onRemove,
   onCopy,
   onDropNew,
+  highlightedKeys,
 }: Readonly<FormCanvasProps>) {
   // 当前高亮的拖放区标识（如 'root:before:<key>' / 'col:<rowKey>:<i>' / 'group:<key>'）
   const [hint, setHint] = useState<string | null>(null);
@@ -83,6 +92,7 @@ export default function FormCanvas({
         className={[
           'fd-form-canvas__chip',
           selectedKey === field.key && 'fd-form-canvas__chip--selected',
+          highlightedKeys?.has(field.key) && 'fd-form-canvas__chip--highlighted',
           hint === id && 'fd-form-canvas__chip--drop',
         ].filter(Boolean).join(' ')}
         draggable
@@ -98,14 +108,16 @@ export default function FormCanvas({
           {field.required && <Asterisk size={9} style={{ color: 'var(--semi-color-danger)' }} />}
           {field.label}
         </span>
-        <button
-          type="button"
-          className="fd-form-canvas__chip-del"
-          title="删除字段"
-          onClick={(e) => { e.stopPropagation(); onRemove(field.key); }}
-        >
-          <Trash2 size={12} />
-        </button>
+        <Popconfirm title={deleteTitle(field)} okText="删除" cancelText="取消" onConfirm={() => onRemove(field.key)}>
+          <button
+            type="button"
+            className="fd-form-canvas__chip-del"
+            title="删除字段"
+            onClick={(e) => { e.stopPropagation(); }}
+          >
+            <Trash2 size={12} />
+          </button>
+        </Popconfirm>
       </div>
     );
   };
@@ -182,6 +194,7 @@ export default function FormCanvas({
         className={[
           'fd-form-canvas__item',
           isSelected && 'fd-form-canvas__item--selected',
+          highlightedKeys?.has(field.key) && 'fd-form-canvas__item--highlighted',
           hint === beforeId && 'fd-form-canvas__item--drop-target',
         ].filter(Boolean).join(' ')}
         draggable
@@ -223,10 +236,12 @@ export default function FormCanvas({
             onClick={(e) => { e.stopPropagation(); onCopy(field.key); }}>
             <Copy size={14} />
           </button>
-          <button type="button" className="fd-form-canvas__item-action fd-form-canvas__item-delete" title="删除字段"
-            onClick={(e) => { e.stopPropagation(); onRemove(field.key); }}>
-            <Trash2 size={14} />
-          </button>
+          <Popconfirm title={deleteTitle(field)} okText="删除" cancelText="取消" onConfirm={() => onRemove(field.key)}>
+            <button type="button" className="fd-form-canvas__item-action fd-form-canvas__item-delete" title="删除字段"
+              onClick={(e) => { e.stopPropagation(); }}>
+              <Trash2 size={14} />
+            </button>
+          </Popconfirm>
         </div>
       </div>
     );

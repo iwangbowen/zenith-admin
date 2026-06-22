@@ -2,9 +2,9 @@
  * 表单设计器主组件
  * 三栏布局：左侧控件面板 | 中间画布预览 | 右侧属性配置
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Tooltip } from '@douyinfe/semi-ui';
-import { Undo2, Redo2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Input, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Search, Undo2, Redo2 } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
 import { findField, updateField, removeField, insertField, insertAfterKey, isDescendant, isContainerType, type DropTarget } from '../form-tree';
@@ -33,7 +33,8 @@ let fieldCounter = 0;
 
 function generateKey(type: WorkflowFormFieldType): string {
   fieldCounter++;
-  return `${type}_${Date.now()}_${fieldCounter}`;
+  const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10);
+  return `${type}_${Date.now()}_${fieldCounter}_${random.replace(/-/g, '').slice(0, 8)}`;
 }
 
 function getDefaultLabel(type: WorkflowFormFieldType): string {
@@ -54,6 +55,16 @@ function cloneFieldWithNewKeys(field: WorkflowFormField): WorkflowFormField {
   return copy;
 }
 
+function collectFields(fields: WorkflowFormField[]): WorkflowFormField[] {
+  const out: WorkflowFormField[] = [];
+  for (const field of fields) {
+    out.push(field);
+    field.columns?.forEach((column) => out.push(...collectFields(column.fields)));
+    if (field.children) out.push(...collectFields(field.children));
+  }
+  return out;
+}
+
 function createField(type: WorkflowFormFieldType): WorkflowFormField {
   const field: WorkflowFormField = {
     key: generateKey(type),
@@ -65,7 +76,7 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
   switch (type) {
     case 'row':
       return {
-        key: `field_${Date.now()}`,
+        key: field.key,
         label: '分栏',
         type: 'row',
         columns: [
@@ -75,13 +86,13 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
       };
     case 'divider':
       return {
-        key: `field_${Date.now()}`,
+        key: field.key,
         label: '分割线',
         type: 'divider',
       };
     case 'group':
       return {
-        key: `field_${Date.now()}`,
+        key: field.key,
         label: '分组',
         type: 'group',
         title: '分组标题',
@@ -114,7 +125,7 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
       break;
     case 'description':
       return {
-        key: `field_${Date.now()}`,
+        key: field.key,
         label: '说明文字',
         type: 'description',
         description: '请在此处填写说明文字...',
@@ -174,8 +185,8 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
       break;
     case 'detail':
       field.children = [
-        { key: `child_${Date.now()}_1`, label: '列1', type: 'text' },
-        { key: `child_${Date.now()}_2`, label: '列2', type: 'number' },
+        { key: generateKey('text'), label: '列1', type: 'text' },
+        { key: generateKey('number'), label: '列2', type: 'number' },
       ];
       break;
   }
@@ -193,11 +204,28 @@ const MAX_HISTORY = 100;
 
 export default function FormDesigner({ fields, onChange, showToolbar = true, onHistoryChange }: Readonly<FormDesignerProps>) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [fieldKeyword, setFieldKeyword] = useState('');
   // 撤销/重做历史栈（快照为不可变字段数组，所有变更走 commit 统一入栈）
   const historyRef = useRef<HistoryState>({ stack: [fields], pointer: 0, lastTag: null });
   const [, bumpHistory] = useState(0);
 
   const selectedField = findField(fields, selectedKey ?? '');
+  const flatFields = useMemo(() => collectFields(fields), [fields]);
+  const normalizedFieldKeyword = fieldKeyword.trim().toLowerCase();
+  const matchingFieldKeys = useMemo(() => new Set(
+    normalizedFieldKeyword
+      ? flatFields
+        .filter((field) =>
+          field.label.toLowerCase().includes(normalizedFieldKeyword)
+          || field.key.toLowerCase().includes(normalizedFieldKeyword)
+          || field.type.toLowerCase().includes(normalizedFieldKeyword),
+        )
+        .map((field) => field.key)
+      : [],
+  ), [flatFields, normalizedFieldKeyword]);
+  const duplicateLabelCount = selectedField
+    ? flatFields.filter((field) => field.key !== selectedField.key && field.label === selectedField.label).length
+    : 0;
 
   // 统一提交变更：写入历史栈并通知父级。tag 相同的连续变更会被合并为一步（如连续编辑同一字段属性）
   const commit = useCallback((next: WorkflowFormField[], tag?: string) => {
@@ -310,6 +338,15 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
     commit(updateField(fields, selectedKey, updates), `edit:${selectedKey}`);
   }, [fields, commit, selectedKey]);
 
+  const focusFirstMatchedField = useCallback(() => {
+    const first = matchingFieldKeys.values().next().value as string | undefined;
+    if (!first) return;
+    setSelectedKey(first);
+    window.requestAnimationFrame(() => {
+      document.querySelector(`[data-field-key="${CSS.escape(first)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }, [matchingFieldKeys]);
+
   return (
     <div className="fd-form-designer-shell">
       {/* 顶部工具栏：撤销 / 重做（由外部工具栏接管时隐藏） */}
@@ -340,6 +377,21 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
           <span className="fd-form-designer__toolbar-hint">点击或拖拽左侧控件添加字段 · Ctrl+Z 撤销 / Ctrl+Shift+Z 重做</span>
         </div>
       )}
+      <div className="fd-form-designer__searchbar">
+        <Input
+          prefix={<Search size={14} />}
+          placeholder="搜索字段名称 / key / 类型"
+          value={fieldKeyword}
+          onChange={setFieldKeyword}
+          onEnterPress={focusFirstMatchedField}
+          showClear
+        />
+        {normalizedFieldKeyword && (
+          <Typography.Text type="tertiary" size="small">
+            {matchingFieldKeys.size > 0 ? `匹配 ${matchingFieldKeys.size} 个字段，回车定位` : '未找到字段'}
+          </Typography.Text>
+        )}
+      </div>
 
       <div className="fd-form-designer">
         {/* 左侧：控件面板 */}
@@ -357,17 +409,25 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
             onRemove={handleRemove}
             onCopy={handleCopy}
             onDropNew={handleDropNew}
+            highlightedKeys={matchingFieldKeys}
           />
         </div>
 
         {/* 右侧：属性配置 */}
         <div className="fd-form-designer__config">
           {selectedField ? (
-            <FieldConfigPanel
-              field={selectedField}
-              allFields={fields}
-              onChange={handleFieldChange}
-            />
+            <>
+              {duplicateLabelCount > 0 && (
+                <div className="fd-form-designer__field-warning">
+                  当前表单已有 {duplicateLabelCount} 个同名字段，建议调整名称以便审批条件和报表识别。
+                </div>
+              )}
+              <FieldConfigPanel
+                field={selectedField}
+                allFields={fields}
+                onChange={handleFieldChange}
+              />
+            </>
           ) : (
             <div className="fd-form-designer__config-empty">
               <span>点击左侧字段进行配置</span>

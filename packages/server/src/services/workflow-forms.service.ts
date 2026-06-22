@@ -8,7 +8,7 @@ import { escapeLike } from '../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { pageOffset } from '../lib/pagination';
 import { formatDateTime } from '../lib/datetime';
-import type { WorkflowFormField, WorkflowFormSchema, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
+import type { CreateWorkflowFormInput, UpdateWorkflowFormInput, WorkflowFormField, WorkflowFormSchema, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
 import type { DbExecutor } from '../db/types';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -138,15 +138,6 @@ export async function getWorkflowForm(id: number) {
   return mapForm(row, usage);
 }
 
-export interface CreateWorkflowFormInput {
-  name: string;
-  code?: string | null;
-  description?: string | null;
-  categoryId?: number | null;
-  schema?: Record<string, unknown> | null;
-  status?: WorkflowFormStatus;
-}
-
 export async function createWorkflowForm(input: CreateWorkflowFormInput) {
   try {
     const [row] = await db.insert(workflowForms).values({
@@ -163,8 +154,6 @@ export async function createWorkflowForm(input: CreateWorkflowFormInput) {
     rethrowPgUniqueViolation(err, '表单编码已存在');
   }
 }
-
-export type UpdateWorkflowFormInput = Partial<CreateWorkflowFormInput>;
 
 export async function updateWorkflowForm(id: number, input: UpdateWorkflowFormInput) {
   await ensureFormExists(id);

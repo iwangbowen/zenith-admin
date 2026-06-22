@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { WorkflowForm } from '@zenith/shared';
+import { createWorkflowFormSchema, updateWorkflowFormSchema, type WorkflowForm } from '@zenith/shared';
 import { mockWorkflowForms, getNextWorkflowFormId } from '@/mocks/data/workflow-forms';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -20,17 +20,21 @@ function withUsage(form: WorkflowForm): WorkflowForm {
   return { ...form, usageCount: usageCount(form.id) };
 }
 
+function validationErrorMessage(error: { issues: Array<{ message: string }> }) {
+  return error.issues[0]?.message ?? '参数错误';
+}
+
 export const workflowFormsHandlers = [
   http.get('/api/workflows/forms', ({ request }) => {
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page')) || 1;
-    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
-    const keyword = url.searchParams.get('keyword') ?? '';
+    const pageSize = Number(url.searchParams.get('pageSize')) || 20;
+    const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase();
     const status = url.searchParams.get('status') ?? '';
     const categoryId = url.searchParams.get('categoryId');
 
     let list = [...mockWorkflowForms];
-    if (keyword) list = list.filter((form) => form.name.includes(keyword) || (form.code ?? '').includes(keyword));
+    if (keyword) list = list.filter((form) => form.name.toLowerCase().includes(keyword));
     if (status) list = list.filter((form) => form.status === status);
     if (categoryId) list = list.filter((form) => form.categoryId === Number(categoryId));
 
@@ -55,8 +59,11 @@ export const workflowFormsHandlers = [
   }),
 
   http.post('/api/workflows/forms', async ({ request }) => {
-    const body = await request.json() as Partial<WorkflowForm>;
-    if (body.code && mockWorkflowForms.some((form) => form.code === body.code)) {
+    const parsed = createWorkflowFormSchema.safeParse(await request.json());
+    if (!parsed.success) return fail(validationErrorMessage(parsed.error), 400);
+    const body = parsed.data;
+    const tenantId = 1;
+    if (body.code && mockWorkflowForms.some((form) => form.tenantId === tenantId && form.code === body.code)) {
       return fail('表单编码已存在', 400);
     }
     const now = mockDateTime();
@@ -66,12 +73,13 @@ export const workflowFormsHandlers = [
       code: body.code ?? null,
       description: body.description ?? null,
       categoryId: body.categoryId ?? null,
-      categoryName: body.categoryName ?? null,
+      categoryName: null,
       schema: body.schema ?? { fields: [] },
       status: body.status ?? 'enabled',
       usageCount: 0,
-      tenantId: 1,
+      tenantId,
       createdBy: 1,
+      updatedBy: 1,
       createdByName: '张三',
       createdAt: now,
       updatedAt: now,
@@ -83,8 +91,10 @@ export const workflowFormsHandlers = [
   http.put('/api/workflows/forms/:id', async ({ params, request }) => {
     const form = mockWorkflowForms.find((item) => item.id === Number(params.id));
     if (!form) return fail('表单不存在', 404);
-    const body = await request.json() as Partial<WorkflowForm>;
-    if (body.code && body.code !== form.code && mockWorkflowForms.some((item) => item.code === body.code)) {
+    const parsed = updateWorkflowFormSchema.safeParse(await request.json());
+    if (!parsed.success) return fail(validationErrorMessage(parsed.error), 400);
+    const body = parsed.data;
+    if (body.code && body.code !== form.code && mockWorkflowForms.some((item) => item.tenantId === form.tenantId && item.code === body.code)) {
       return fail('表单编码已存在', 400);
     }
     Object.assign(form, {
@@ -92,9 +102,9 @@ export const workflowFormsHandlers = [
       code: body.code !== undefined ? body.code : form.code,
       description: body.description !== undefined ? body.description : form.description,
       categoryId: body.categoryId !== undefined ? body.categoryId : form.categoryId,
-      categoryName: body.categoryName !== undefined ? body.categoryName : form.categoryName,
       schema: body.schema !== undefined ? body.schema : form.schema,
       status: body.status ?? form.status,
+      updatedBy: 1,
       updatedAt: mockDateTime(),
     });
     return ok(withUsage(form));

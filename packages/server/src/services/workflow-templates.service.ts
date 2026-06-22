@@ -102,7 +102,7 @@ export async function cloneTemplateToDefinition(templateId: number, input: { nam
   let formId: number | null = null;
   const formSchema = tpl.formSchema as WorkflowFormSchema | null;
   if (formSchema && Array.isArray(formSchema.fields) && formSchema.fields.length > 0) {
-    const form = await createWorkflowForm({ name: `${tpl.name}表单`, schema: formSchema as unknown as Record<string, unknown> });
+    const form = await createWorkflowForm({ name: `${tpl.name}表单`, schema: formSchema });
     formId = form.id;
   }
   return createDefinition({

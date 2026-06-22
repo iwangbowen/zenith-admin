@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { WorkflowFormField } from './types';
 
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const dateTimeStringSchema = z.string().regex(DATE_TIME_PATTERN, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss');
@@ -743,7 +744,7 @@ export const workflowFieldVisibilityConditionSchema = z.object({
   value: z.unknown(),
 });
 
-export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
+export const workflowFormFieldSchema: z.ZodType<WorkflowFormField> = z.lazy(() =>
   z.object({
     key: z.string().min(1, '字段 key 不能为空'),
     label: z.string().min(1, '字段标签不能为空'),
@@ -837,8 +838,8 @@ export const createWorkflowFormSchema = z.object({
 
 export const updateWorkflowFormSchema = createWorkflowFormSchema.partial();
 
-export type CreateWorkflowFormInput = z.infer<typeof createWorkflowFormSchema>;
-export type UpdateWorkflowFormInput = z.infer<typeof updateWorkflowFormSchema>;
+export type CreateWorkflowFormInput = z.input<typeof createWorkflowFormSchema>;
+export type UpdateWorkflowFormInput = z.input<typeof updateWorkflowFormSchema>;
 
 export const workflowFormTypeSchema = z.enum(['designer', 'custom', 'external']);
 

@@ -2,10 +2,10 @@
  * 工作流表单渲染器 — 设计器预览和运行时（发起/审批）共用
  * 支持联动：公式实时计算、dateRange→天数、select 级联
  */
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import DOMPurify from 'dompurify';
-import { Form, Select, Upload, Button, Tag, Typography, Row, Col, Divider, Rating, withField } from '@douyinfe/semi-ui';
+import { Form, Select, Upload, Button, Tag, Typography, Row, Col, Divider, Rating, Toast, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, Eraser } from 'lucide-react';
 import dayjs from 'dayjs';
@@ -110,10 +110,27 @@ function RelationSelect({
       .map((id) => ({ value: id, label: `审批单 #${id}` })),
   ];
 
+  const selectValue = multiple ? selectedIds : (selectedIds[0] ?? undefined);
+  const handleChange = (nextValue: unknown) => {
+    if (multiple) {
+      const values = Array.isArray(nextValue)
+        ? nextValue.map(Number).filter((id) => Number.isFinite(id))
+        : [];
+      onChange?.(values.length > 0 ? values : undefined);
+      return;
+    }
+    if (nextValue === undefined || nextValue === null || nextValue === '') {
+      onChange?.(undefined);
+      return;
+    }
+    const id = Number(nextValue);
+    onChange?.(Number.isFinite(id) ? id : undefined);
+  };
+
   return (
     <Select
-      value={value as never}
-      onChange={(v) => onChange?.(v as number | number[] | undefined)}
+      value={selectValue}
+      onChange={handleChange}
       multiple={multiple}
       filter
       remote
@@ -253,13 +270,21 @@ export function evalFormula(formula: string, values: Record<string, unknown>, pr
   });
   if (!SAFE_EXPR_REGEX.test(replaced)) return null;
   try {
-    // eslint-disable-next-line no-new-func
     const result = new Function(`"use strict"; return (${replaced});`)() as number;
     if (!Number.isFinite(result)) return null;
     return Number(result.toFixed(precision));
   } catch {
     return null;
   }
+}
+
+function getCascadeAllowedOptions(field: WorkflowFormField, values: Record<string, unknown>): string[] {
+  if (!field.optionsFrom) return field.options ?? [];
+  const parentValue = values[field.optionsFrom.sourceKey];
+  if (Array.isArray(parentValue)) {
+    return Array.from(new Set(parentValue.flatMap((value) => field.optionsFrom?.mapping[String(value)] ?? [])));
+  }
+  return parentValue === undefined || parentValue === null ? [] : (field.optionsFrom.mapping[String(parentValue)] ?? []);
 }
 
 const toComparableStr = (v: unknown): string => {
@@ -329,10 +354,10 @@ export default function WorkflowFormRenderer({
   const valuesRef = useRef<Record<string, unknown>>(initValues ?? {});
   const [valuesState, setValuesState] = useState<Record<string, unknown>>(initValues ?? {});
 
-  const all = flattenFields(fields);
-  const formulaFields = all.filter(f => f.type === 'formula' && f.formula);
-  const dayFields = all.filter(f => f.daysFromKey && (f.type === 'number' || f.type === 'amount'));
-  const cascadeFields = all.filter(f => f.optionsFrom);
+  const all = useMemo(() => flattenFields(fields), [fields]);
+  const formulaFields = useMemo(() => all.filter(f => f.type === 'formula' && f.formula), [all]);
+  const dayFields = useMemo(() => all.filter(f => f.daysFromKey && (f.type === 'number' || f.type === 'amount')), [all]);
+  const cascadeFields = useMemo(() => all.filter(f => f.optionsFrom), [all]);
 
   const handleValueChange = (next: Record<string, unknown>) => {
     valuesRef.current = next;
@@ -343,8 +368,11 @@ export default function WorkflowFormRenderer({
       for (const f of formulaFields) {
         if (!f.formula) continue;
         const result = evalFormula(f.formula, next, f.precision ?? 2);
-        const display = result === null ? '当前不可计算' : `${result}${f.unit ?? ''}`;
-        if (next[f.key] !== display) api.setValue(f.key, display);
+        if (result !== null && next[f.key] !== result) {
+          api.setValue(f.key, result);
+        } else if (result === null && next[f.key] !== undefined) {
+          api.setValue(f.key, undefined);
+        }
       }
       // 日期范围 → 天数
       for (const f of dayFields) {
@@ -355,24 +383,31 @@ export default function WorkflowFormRenderer({
           const end = dayjs(range[1] as string | Date);
           if (start.isValid() && end.isValid()) {
             const days = end.diff(start, 'day') + 1;
-            if (Number.isFinite(days) && next[f.key] !== days) {
+            if (Number.isFinite(days) && days >= 0 && next[f.key] !== days) {
               api.setValue(f.key, days);
+            } else if ((!Number.isFinite(days) || days < 0) && next[f.key] !== undefined) {
+              api.setValue(f.key, undefined);
             }
           }
+        } else if (next[f.key] !== undefined) {
+          api.setValue(f.key, undefined);
         }
       }
       // 级联：父值变化后过滤已失效的子值
       for (const f of cascadeFields) {
         if (!f.optionsFrom) continue;
-        const pv = next[f.optionsFrom.sourceKey];
-        const allowed = typeof pv === 'string' ? (f.optionsFrom.mapping[pv] ?? []) : [];
+        const allowed = getCascadeAllowedOptions(f, next);
         const cur = next[f.key];
         if (cur === undefined || cur === null || cur === '') continue;
         if (Array.isArray(cur)) {
           const filtered = cur.filter(v => allowed.includes(String(v)));
-          if (filtered.length !== cur.length) api.setValue(f.key, filtered);
+          if (filtered.length !== cur.length) {
+            api.setValue(f.key, filtered);
+            Toast.info(`${f.label}已按父字段选项自动调整`);
+          }
         } else if (typeof cur === 'string' && !allowed.includes(cur)) {
           api.setValue(f.key, undefined);
+          Toast.info(`${f.label}已清空，当前父字段下该选项不可用`);
         }
       }
     }
@@ -555,7 +590,8 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
       return (
         <Form.Input
           field={field.key} label={numberLabel} disabled
-          initValue="请填写依赖字段后自动计算"
+          initValue={field.defaultValue}
+          placeholder="请填写依赖字段后自动计算"
           extraText={field.formula ? `公式：${field.formula}` : helpText}
         />
       );
@@ -687,11 +723,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
       );
 
     case 'select': {
-      let options = field.options ?? [];
-      if (field.optionsFrom) {
-        const pv = values[field.optionsFrom.sourceKey];
-        options = typeof pv === 'string' ? (field.optionsFrom.mapping[pv] ?? []) : [];
-      }
+      const options = getCascadeAllowedOptions(field, values);
       return (
         <Form.Select
           field={field.key} label={field.label}
@@ -707,11 +739,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
     }
 
     case 'multiSelect': {
-      let options = field.options ?? [];
-      if (field.optionsFrom) {
-        const pv = values[field.optionsFrom.sourceKey];
-        options = typeof pv === 'string' ? (field.optionsFrom.mapping[pv] ?? []) : [];
-      }
+      const options = getCascadeAllowedOptions(field, values);
       return (
         <Form.Select
           field={field.key} label={field.label}
@@ -727,11 +755,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
     }
 
     case 'radio': {
-      let options = field.options ?? [];
-      if (field.optionsFrom) {
-        const pv = values[field.optionsFrom.sourceKey];
-        options = typeof pv === 'string' ? (field.optionsFrom.mapping[pv] ?? []) : [];
-      }
+      const options = getCascadeAllowedOptions(field, values);
       return (
         <Form.RadioGroup
           field={field.key} label={field.label}
@@ -743,11 +767,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
     }
 
     case 'checkbox': {
-      let options = field.options ?? [];
-      if (field.optionsFrom) {
-        const pv = values[field.optionsFrom.sourceKey];
-        options = typeof pv === 'string' ? (field.optionsFrom.mapping[pv] ?? []) : [];
-      }
+      const options = getCascadeAllowedOptions(field, values);
       return (
         <Form.CheckboxGroup
           field={field.key} label={field.label}

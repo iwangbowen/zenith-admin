@@ -1291,7 +1291,7 @@ export const workflowCategories = pgTable('workflow_categories', {
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
-}, (t) => [unique('workflow_categories_code_uniq').on(t.code)]);
+}, (t) => [unique('workflow_categories_code_uniq').on(t.tenantId, t.code)]);
 
 export type WorkflowCategoryRow = typeof workflowCategories.$inferSelect;
 export type NewWorkflowCategory = typeof workflowCategories.$inferInsert;
@@ -1309,7 +1309,7 @@ export const workflowForms = pgTable('workflow_forms', {
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
-}, (t) => [unique('workflow_forms_code_uniq').on(t.code)]);
+}, (t) => [unique('workflow_forms_code_uniq').on(t.tenantId, t.code)]);
 
 export type WorkflowFormRow = typeof workflowForms.$inferSelect;
 export type NewWorkflowForm = typeof workflowForms.$inferInsert;
