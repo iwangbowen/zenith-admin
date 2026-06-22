@@ -6,7 +6,7 @@
  */
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Form, Space, Spin, Tabs, TabPane, Toast, Typography, Empty } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Tabs, TabPane, Toast, Typography, Empty } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import dayjs from 'dayjs';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared';
@@ -125,80 +125,88 @@ export default function WorkflowLaunchPage() {
   }
 
   return (
-    <div className="page-container" style={{ padding: 16, maxWidth: 880, margin: '0 auto' }}>
+    <div className="page-container" style={{ padding: 16, maxWidth: 1200, margin: '0 auto' }}>
       <Typography.Title heading={5} style={{ marginTop: 0, marginBottom: 16 }}>
         {def ? `发起：${def.name}` : '发起申请'}
       </Typography.Title>
 
-      <Form getFormApi={(api) => { formApi.current = api; }}>
-        <Form.Input
-          field="title"
-          label="申请标题"
-          placeholder="自动生成，可手动修改"
-          rules={[{ required: true, message: '请填写申请标题' }]}
-        />
-        <Form.Select field="priority" label="优先级" style={{ width: '100%' }} initValue="normal" optionList={WORKFLOW_PRIORITY_OPTIONS} />
-        <Form.Select
-          field="ccUserIds"
-          label="抄送人"
-          placeholder="可选，提交后立即抄送给所选成员"
-          multiple
-          filter
-          showClear
-          style={{ width: '100%' }}
-          optionList={userOptions}
-        />
-      </Form>
-
-      {def && (
-        <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 12 }}>
-          <Tabs type="line" defaultActiveKey="form">
-            <TabPane tab="填写表单" itemKey="form">
-              {def.formType === 'custom' ? (
-                <BusinessFormHost
-                  key={`biz-${def.id}`}
-                  customForm={def.customForm}
-                  mode="create"
-                  container="tab"
-                  definitionId={def.id}
-                  getFormApi={(api) => { businessFormApi.current = api; }}
-                />
-              ) : def.formFields && def.formFields.length > 0 ? (
-                <WorkflowFormRenderer
-                  key={`form-${def.id}`}
-                  fields={def.formFields}
-                  initValues={{}}
-                  getFormApi={(api) => { dynamicFormApi.current = api; }}
-                />
-              ) : (
-                <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>
-              )}
-            </TabPane>
-            <TabPane tab="审批链路" itemKey="chain">
-              <WorkflowApproverPreview
-                definitionId={def.id}
-                getFormData={() => (
-                  def.formType === 'custom'
-                    ? (businessFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
-                    : (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* 主区：表单页签，突出填写 */}
+        <div style={{ flex: '1 1 560px', minWidth: 0 }}>
+          {def && (
+            <Tabs type="line" defaultActiveKey="form">
+              <TabPane tab="填写表单" itemKey="form">
+                {def.formType === 'custom' ? (
+                  <BusinessFormHost
+                    key={`biz-${def.id}`}
+                    customForm={def.customForm}
+                    mode="create"
+                    container="tab"
+                    definitionId={def.id}
+                    getFormApi={(api) => { businessFormApi.current = api; }}
+                  />
+                ) : def.formFields && def.formFields.length > 0 ? (
+                  <WorkflowFormRenderer
+                    key={`form-${def.id}`}
+                    fields={def.formFields}
+                    initValues={{}}
+                    getFormApi={(api) => { dynamicFormApi.current = api; }}
+                  />
+                ) : (
+                  <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>
                 )}
-              />
-            </TabPane>
-            <TabPane tab="流程图预览" itemKey="graph">
-              <WorkflowGraphView flowData={def.flowData} />
-            </TabPane>
-            <TabPane tab="节点详情" itemKey="nodes">
-              <WorkflowNodeListView flowData={def.flowData} initiator={user ? { name: user.nickname, avatar: user.avatar } : undefined} />
-            </TabPane>
-          </Tabs>
+              </TabPane>
+              <TabPane tab="审批链路" itemKey="chain">
+                <WorkflowApproverPreview
+                  definitionId={def.id}
+                  getFormData={() => (
+                    def.formType === 'custom'
+                      ? (businessFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
+                      : (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
+                  )}
+                />
+              </TabPane>
+              <TabPane tab="流程图预览" itemKey="graph">
+                <WorkflowGraphView flowData={def.flowData} />
+              </TabPane>
+              <TabPane tab="节点详情" itemKey="nodes">
+                <WorkflowNodeListView flowData={def.flowData} initiator={user ? { name: user.nickname, avatar: user.avatar } : undefined} />
+              </TabPane>
+            </Tabs>
+          )}
         </div>
-      )}
 
-      <Space style={{ marginTop: 20, width: '100%', justifyContent: 'flex-end' }}>
-        <Button onClick={() => navigate('/workflow/launchpad')}>取消</Button>
-        <Button loading={savingDraft} disabled={submitting} onClick={() => void handleSubmit(true)}>保存草稿</Button>
-        <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSubmit(false)}>提交</Button>
-      </Space>
+        {/* 右侧栏：基本信息 + 操作，吸顶跟随 */}
+        <div style={{ flex: '0 0 320px', width: 320, position: 'sticky', top: 16, alignSelf: 'flex-start' }}>
+          <div style={{ border: '1px solid var(--semi-color-border)', borderRadius: 6, padding: 16, background: 'var(--semi-color-bg-1)' }}>
+            <Typography.Title heading={6} style={{ marginTop: 0, marginBottom: 12 }}>基本信息</Typography.Title>
+            <Form getFormApi={(api) => { formApi.current = api; }}>
+              <Form.Input
+                field="title"
+                label="申请标题"
+                placeholder="自动生成，可手动修改"
+                rules={[{ required: true, message: '请填写申请标题' }]}
+              />
+              <Form.Select field="priority" label="优先级" style={{ width: '100%' }} initValue="normal" optionList={WORKFLOW_PRIORITY_OPTIONS} />
+              <Form.Select
+                field="ccUserIds"
+                label="抄送人"
+                placeholder="可选，提交后立即抄送给所选成员"
+                multiple
+                filter
+                showClear
+                style={{ width: '100%' }}
+                optionList={userOptions}
+              />
+            </Form>
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Button type="primary" block loading={submitting} disabled={savingDraft} onClick={() => void handleSubmit(false)}>提交</Button>
+              <Button block loading={savingDraft} disabled={submitting} onClick={() => void handleSubmit(true)}>保存草稿</Button>
+              <Button block theme="borderless" onClick={() => navigate('/workflow/launchpad')}>取消</Button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
