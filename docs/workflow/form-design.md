@@ -43,7 +43,7 @@
 
 发起工作台与「我的申请」详情均通过 `BusinessFormHost` 承载业务页面：发起时取 `getFormApi().validate()` 的返回值作为实例 `formData` 提交；查看时把实例 `formData` 作为 `value` 传入并只读渲染。可参考示例页 `packages/web/src/pages/biz/demo/DemoBusinessForm.tsx`。
 
-> 自定义业务表单的数据对引擎是**不透明**的（`formSnapshot` 为空），仅声明的变量参与条件分支/审批人计算，因此业务页需保证提交数据包含这些变量 key。
+> 自定义业务表单的数据对引擎是**不透明**的（实例只冻结组件配置与变量声明，不冻结设计器字段），仅声明的变量参与条件分支/审批人计算，因此业务页需保证提交数据包含这些变量 key。
 
 ## 设计器布局
 

@@ -37,14 +37,16 @@ export interface StartWorkflowForBizInput {
 
 /** 业务保存数据后发起并关联工作流实例 */
 export async function startWorkflowForBiz(input: StartWorkflowForBizInput) {
+  const bizType = input.bizType.trim();
+  const bizId = String(input.bizId).trim();
   return createInstance(
     {
       definitionId: input.definitionId,
       title: input.title,
       formData: input.variables ?? {},
       priority: input.priority,
-      bizType: input.bizType,
-      bizId: String(input.bizId),
+      bizType,
+      bizId,
     },
     input.caller,
   );

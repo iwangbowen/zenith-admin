@@ -3139,6 +3139,9 @@ export async function resubmitInstance(id: number) {
   if (resubmitSettings?.allowResubmit === false) {
     throw new HTTPException(400, { message: '该流程不允许重新提交' });
   }
+  if (inst.bizType && inst.bizId) {
+    throw new HTTPException(400, { message: '业务系统主导流程请在对应业务模块中重新提交' });
+  }
   return createInstance({
     definitionId: inst.definitionId,
     title: inst.title,

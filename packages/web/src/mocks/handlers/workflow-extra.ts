@@ -418,9 +418,27 @@ export const workflowExtraHandlers = [
   // ── 流程模板 ──
   http.get('/api/workflows/templates', () => ok(mockTemplates)),
   http.post('/api/workflows/templates/save-as', async ({ request }) => {
-    const body = await request.json() as { name: string; description?: string; icon?: string; color?: string };
+    const body = await request.json() as { definitionId?: number; name: string; description?: string; icon?: string; color?: string };
+    const src = body.definitionId ? mockWorkflowDefinitions.find((item) => item.id === body.definitionId) : undefined;
+    if (src && src.formType !== 'designer') {
+      return err('模板库暂仅支持表单库设计器流程；自定义业务表单或业务系统主导流程请使用复制流程或导出导入复用');
+    }
     const now = mockDateTime();
-    const tpl: WorkflowTemplate = { id: nextTemplateId++, name: body.name, code: null, description: body.description ?? null, categoryName: null, icon: body.icon ?? null, color: body.color ?? null, flowData: mockWorkflowDefinitions[0]?.flowData ?? null, formSchema: null, sort: 0, builtin: false, createdAt: now, updatedAt: now };
+    const tpl: WorkflowTemplate = {
+      id: nextTemplateId++,
+      name: body.name,
+      code: null,
+      description: body.description ?? src?.description ?? null,
+      categoryName: src?.categoryName ?? null,
+      icon: body.icon ?? src?.customForm?.icon ?? null,
+      color: body.color ?? null,
+      flowData: src?.flowData ?? mockWorkflowDefinitions[0]?.flowData ?? null,
+      formSchema: src?.formFields ? { fields: src.formFields, settings: src.formSettings ?? {} } : null,
+      sort: 0,
+      builtin: false,
+      createdAt: now,
+      updatedAt: now,
+    };
     mockTemplates.push(tpl);
     return ok(tpl, '已保存为模板');
   }),

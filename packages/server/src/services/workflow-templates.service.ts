@@ -122,6 +122,9 @@ export async function saveAsTemplate(input: SaveAsTemplateInput): Promise<Workfl
   if (tc) conds.push(tc);
   const [def] = await db.select().from(workflowDefinitions).where(and(...conds)).limit(1);
   if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+  if (def.formType !== 'designer') {
+    throw new HTTPException(400, { message: '模板库暂仅支持表单库设计器流程；自定义业务表单或业务系统主导流程请使用复制流程或导出导入复用' });
+  }
   let formSchema: unknown = null;
   if (def.formId) {
     const [form] = await db.select({ schema: workflowForms.schema }).from(workflowForms).where(eq(workflowForms.id, def.formId)).limit(1);
