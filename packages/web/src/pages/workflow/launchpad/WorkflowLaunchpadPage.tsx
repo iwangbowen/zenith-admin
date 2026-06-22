@@ -113,7 +113,7 @@ export default function WorkflowLaunchpadPage() {
         }
         formData = await businessFormApi.current.validate();
       } else if (dynamicFormApi.current && selectedDef.formFields && selectedDef.formFields.length > 0) {
-        formData = await dynamicFormApi.current.validate() as Record<string, unknown>;
+        formData = await dynamicFormApi.current.validate();
       }
       return { values, formData };
     } catch {
@@ -148,6 +148,98 @@ export default function WorkflowLaunchpadPage() {
   const handleSearch = () => setActiveKeyword(keyword);
   const handleReset = () => { setKeyword(''); setActiveKeyword(''); };
 
+  const renderDefinitionCard = (def: WorkflowDefinition) => (
+    <button
+      type="button"
+      onClick={() => openApply(def)}
+      style={{
+        display: 'block', width: '100%', padding: 0, border: 'none',
+        background: 'transparent', textAlign: 'left', cursor: 'pointer',
+        font: 'inherit', color: 'inherit',
+      }}
+    >
+      <Card shadows="hover" bodyStyle={{ padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%' }}>
+          <div
+            style={{
+              width: 40, height: 40, borderRadius: 8, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: def.categoryColor ?? 'var(--semi-color-primary-light-default)',
+              color: '#fff',
+            }}
+          >
+            <Send size={20} />
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{def.name}</Typography.Text>
+            <Typography.Paragraph
+              type="tertiary"
+              size="small"
+              ellipsis={{ rows: 2, showTooltip: true }}
+              style={{ marginTop: 4, marginBottom: 0, minHeight: 36, lineHeight: '18px' }}
+            >
+              {def.description || '点击发起该流程'}
+            </Typography.Paragraph>
+          </div>
+        </div>
+      </Card>
+    </button>
+  );
+
+  const renderContent = () => {
+    if (loading) {
+      return <div style={{ textAlign: 'center', padding: 60 }}><Spin /></div>;
+    }
+    if (grouped.length === 0) {
+      return <Empty title="暂无可发起的流程" description="请联系管理员发布流程定义" style={{ padding: 60 }} />;
+    }
+    return (
+      <div style={{ padding: '4px 0 16px' }}>
+        {grouped.map((group) => (
+          <div key={group.categoryId} style={{ marginBottom: 24 }}>
+            <Typography.Title heading={6} style={{ margin: '8px 0 12px' }}>{group.categoryName}</Typography.Title>
+            <List
+              grid={{ gutter: 12, xs: 24, sm: 12, md: 8, lg: 6, xl: 6, xxl: 4 }}
+              dataSource={group.defs}
+              split={false}
+              renderItem={(def) => (
+                <List.Item style={{ padding: '0 0 12px', display: 'block' }}>
+                  {renderDefinitionCard(def)}
+                </List.Item>
+              )}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderFormTab = (def: WorkflowDefinition) => {
+    if (def.formType === 'custom') {
+      return (
+        <BusinessFormHost
+          key={`biz-${formKey}-${def.id}`}
+          customForm={def.customForm}
+          mode="create"
+          container="sheet"
+          definitionId={def.id}
+          getFormApi={(api) => { businessFormApi.current = api; }}
+        />
+      );
+    }
+    if (def.formFields && def.formFields.length > 0) {
+      return (
+        <WorkflowFormRenderer
+          key={`form-${formKey}-${def.id}`}
+          fields={def.formFields}
+          initValues={{}}
+          getFormApi={(api) => { dynamicFormApi.current = api; }}
+        />
+      );
+    }
+    return <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>;
+  };
+
   return (
     <div className="page-container">
       <SearchToolbar>
@@ -164,64 +256,7 @@ export default function WorkflowLaunchpadPage() {
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
       </SearchToolbar>
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60 }}><Spin /></div>
-      ) : grouped.length === 0 ? (
-        <Empty title="暂无可发起的流程" description="请联系管理员发布流程定义" style={{ padding: 60 }} />
-      ) : (
-        <div style={{ padding: '4px 0 16px' }}>
-          {grouped.map((group) => (
-            <div key={group.categoryId} style={{ marginBottom: 24 }}>
-              <Typography.Title heading={6} style={{ margin: '8px 0 12px' }}>{group.categoryName}</Typography.Title>
-              <List
-                grid={{ gutter: 12, xs: 24, sm: 12, md: 8, lg: 6, xl: 6, xxl: 4 }}
-                dataSource={group.defs}
-                split={false}
-                renderItem={(def) => (
-                  <List.Item style={{ padding: '0 0 12px', display: 'block' }}>
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openApply(def)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') openApply(def); }}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <Card
-                        shadows="hover"
-                        bodyStyle={{ padding: 16 }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%' }}>
-                          <div
-                            style={{
-                              width: 40, height: 40, borderRadius: 8, flexShrink: 0,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              background: def.categoryColor ?? 'var(--semi-color-primary-light-default)',
-                              color: '#fff',
-                            }}
-                          >
-                            <Send size={20} />
-                          </div>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{def.name}</Typography.Text>
-                            <Typography.Paragraph
-                              type="tertiary"
-                              size="small"
-                              ellipsis={{ rows: 2, showTooltip: true }}
-                              style={{ marginTop: 4, marginBottom: 0, minHeight: 36, lineHeight: '18px' }}
-                            >
-                              {def.description || '点击发起该流程'}
-                            </Typography.Paragraph>
-                          </div>
-                        </div>
-                      </Card>
-                    </div>
-                  </List.Item>
-                )}
-              />
-            </div>
-          ))}
-        </div>
-      )}
+      {renderContent()}
 
       <SideSheet
         title={selectedDef ? `发起：${selectedDef.name}` : '发起申请'}
@@ -279,25 +314,7 @@ export default function WorkflowLaunchpadPage() {
           <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 12 }}>
             <Tabs type="line" defaultActiveKey="form">
               <TabPane tab="填写表单" itemKey="form">
-                {selectedDef.formType === 'custom' ? (
-                  <BusinessFormHost
-                    key={`biz-${formKey}-${selectedDef.id}`}
-                    customForm={selectedDef.customForm}
-                    mode="create"
-                    container="sheet"
-                    definitionId={selectedDef.id}
-                    getFormApi={(api) => { businessFormApi.current = api; }}
-                  />
-                ) : selectedDef.formFields && selectedDef.formFields.length > 0 ? (
-                  <WorkflowFormRenderer
-                    key={`form-${formKey}-${selectedDef.id}`}
-                    fields={selectedDef.formFields}
-                    initValues={{}}
-                    getFormApi={(api) => { dynamicFormApi.current = api; }}
-                  />
-                ) : (
-                  <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>
-                )}
+                {renderFormTab(selectedDef)}
               </TabPane>
               <TabPane tab="审批链路" itemKey="chain">
                 <WorkflowApproverPreview
