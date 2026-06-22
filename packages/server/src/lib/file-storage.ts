@@ -1,5 +1,5 @@
 import OSS from 'ali-oss';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from '@aws-sdk/client-s3';
 import COS from 'cos-nodejs-sdk-v5';
 import * as qiniu from 'qiniu';
 import BosClient from '@baiducloud/sdk';
@@ -316,6 +316,79 @@ export function buildUploadObjectKey(fileName: string, basePath?: string | null)
 }
 
 export { extractBucketName };
+
+// ─── 云原生分片上传（multipart）驱动 ────────────────────────────────────────────
+
+export interface MultipartUploadPart {
+  /** 分片号，从 1 计 */
+  partNumber: number;
+  etag: string;
+}
+
+/** 各对象存储原生 multipart 的统一抽象；返回 null 的 provider 走本地暂存合并路径 */
+export interface MultipartDriver {
+  init(config: FileStorageConfigRow, objectKey: string, mimeType?: string): Promise<string>;
+  uploadPart(config: FileStorageConfigRow, objectKey: string, uploadId: string, partNumber: number, body: Buffer): Promise<string>;
+  complete(config: FileStorageConfigRow, objectKey: string, uploadId: string, parts: MultipartUploadPart[]): Promise<void>;
+  abort(config: FileStorageConfigRow, objectKey: string, uploadId: string): Promise<void>;
+}
+
+const s3MultipartDriver: MultipartDriver = {
+  async init(config, objectKey, mimeType) {
+    const client = createS3Client(config);
+    const res = await client.send(new CreateMultipartUploadCommand({
+      Bucket: config.s3Bucket!,
+      Key: objectKey,
+      ...(mimeType ? { ContentType: mimeType } : {}),
+    }));
+    if (!res.UploadId) throw new Error('S3 初始化分片上传失败：未返回 UploadId');
+    return res.UploadId;
+  },
+  async uploadPart(config, objectKey, uploadId, partNumber, body) {
+    const client = createS3Client(config);
+    const res = await client.send(new UploadPartCommand({
+      Bucket: config.s3Bucket!,
+      Key: objectKey,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+      Body: body,
+      ContentLength: body.length,
+    }));
+    if (!res.ETag) throw new Error('S3 分片上传失败：未返回 ETag');
+    return res.ETag;
+  },
+  async complete(config, objectKey, uploadId, parts) {
+    const client = createS3Client(config);
+    await client.send(new CompleteMultipartUploadCommand({
+      Bucket: config.s3Bucket!,
+      Key: objectKey,
+      UploadId: uploadId,
+      MultipartUpload: { Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })) },
+    }));
+  },
+  async abort(config, objectKey, uploadId) {
+    const client = createS3Client(config);
+    await client.send(new AbortMultipartUploadCommand({
+      Bucket: config.s3Bucket!,
+      Key: objectKey,
+      UploadId: uploadId,
+    }));
+  },
+};
+
+/**
+ * 返回指定 provider 的原生 multipart 驱动；返回 null 表示该 provider 走本地暂存 + 流式合并路径。
+ * 当前已接入：s3（含 MinIO / Cloudflare R2 等 S3 兼容存储）。
+ * oss / cos / obs / azure / kodo / bos 暂走暂存路径，可按本驱动接口逐个补全。
+ */
+export function getMultipartDriver(provider: FileStorageConfigRow['provider']): MultipartDriver | null {
+  switch (provider) {
+    case 's3':
+      return s3MultipartDriver;
+    default:
+      return null;
+  }
+}
 
 export async function readStoredFile(file: ManagedFileRow, config: FileStorageConfigRow) {
   const effectiveConfig = withFileBucket(file, config);

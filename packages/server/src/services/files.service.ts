@@ -44,7 +44,7 @@ function ensureSpreadsheetPreviewable(mimeType: string | null, extension: string
   }
 }
 
-export async function readFileContent(id: number) {
+export async function getStoredFileForRead(id: number) {
   const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
   if (!file) throw new HTTPException(404, { message: '文件不存在' });
   const [storageConfig] = await db
@@ -53,6 +53,11 @@ export async function readFileContent(id: number) {
     .where(eq(fileStorageConfigs.id, file.storageConfigId))
     .limit(1);
   if (!storageConfig) throw new HTTPException(404, { message: '文件存储配置不存在' });
+  return { file, storageConfig };
+}
+
+export async function readFileContent(id: number) {
+  const { file, storageConfig } = await getStoredFileForRead(id);
   return readStoredFile(file, storageConfig);
 }
 

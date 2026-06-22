@@ -8,7 +8,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { InitChunkUploadInput } from '@zenith/shared';
 import { db } from '../db';
 import { uploadSessions, uploadChunks, managedFiles, fileStorageConfigs } from '../db/schema';
-import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName } from '../lib/file-storage';
+import { buildUploadObjectKey, uploadObjectByConfig, extractBucketName, getMultipartDriver } from '../lib/file-storage';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { getConfigNumber } from '../lib/system-config';
@@ -60,6 +60,12 @@ async function dirSize(dir: string): Promise<number> {
   }
 }
 
+async function getSessionConfig(storageConfigId: number) {
+  const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, storageConfigId)).limit(1);
+  if (!config) throw new HTTPException(400, { message: '存储配置不存在' });
+  return config;
+}
+
 export async function initChunkUpload(input: InitChunkUploadInput) {
   const user = currentUser();
   await assertUploadSizeAllowed(input.fileSize);
@@ -75,6 +81,12 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
   const totalChunks = Math.max(1, Math.ceil(input.fileSize / input.chunkSize));
   const uploadId = randomUUID();
 
+  // 云原生 multipart：先在云端初始化拿到 multipartUploadId；否则走本地暂存
+  const driver = getMultipartDriver(defaultConfig.provider);
+  const multipartUploadId = driver
+    ? await driver.init(defaultConfig, objectKey, input.mimeType ?? undefined)
+    : null;
+
   await db.insert(uploadSessions).values({
     uploadId,
     fileName: input.fileName,
@@ -86,9 +98,10 @@ export async function initChunkUpload(input: InitChunkUploadInput) {
     provider: defaultConfig.provider,
     objectKey,
     bucketName: extractBucketName(defaultConfig),
+    multipartUploadId,
     tenantId: getCreateTenantId(user),
   });
-  await fs.mkdir(sessionTempDir(uploadId), { recursive: true });
+  if (!driver) await fs.mkdir(sessionTempDir(uploadId), { recursive: true });
 
   return { uploadId, chunkSize: input.chunkSize, totalChunks, received: [] as number[] };
 }
@@ -100,7 +113,21 @@ export async function uploadChunk(uploadId: string, index: number, chunk: File) 
     throw new HTTPException(400, { message: '分片序号越界' });
   }
 
-  // 流式写入临时分片文件，不整片进内存
+  const driver = getMultipartDriver(session.provider);
+  if (driver && session.multipartUploadId) {
+    // 云原生 multipart：分片直传云端，记录 ETag（首片做真实类型校验，快速失败）
+    const body = Buffer.from(await chunk.arrayBuffer());
+    if (index === 0) await assertUploadTypeAllowed(body.subarray(0, 4100), session.mimeType ?? '');
+    const config = await getSessionConfig(session.storageConfigId);
+    const etag = await driver.uploadPart(config, session.objectKey, session.multipartUploadId, index + 1, body);
+    await db
+      .insert(uploadChunks)
+      .values({ uploadSessionId: session.id, index, size: body.length, etag })
+      .onConflictDoUpdate({ target: [uploadChunks.uploadSessionId, uploadChunks.index], set: { size: body.length, etag } });
+    return { index, received: await getReceivedIndices(session.id) };
+  }
+
+  // 本地暂存：流式写入临时分片文件，不整片进内存
   const dest = chunkPath(uploadId, index);
   await fs.mkdir(path.dirname(dest), { recursive: true });
   await pipeline(Readable.fromWeb(chunk.stream() as Parameters<typeof Readable.fromWeb>[0]), createWriteStream(dest));
@@ -139,21 +166,30 @@ export async function completeChunkUpload(uploadId: string) {
     throw new HTTPException(400, { message: `分片不完整：已接收 ${received.length}/${session.totalChunks}` });
   }
 
-  // 真实类型校验：读取首片前 4100 字节
-  const head = await fs.readFile(chunkPath(uploadId, 0));
-  await assertUploadTypeAllowed(head.subarray(0, 4100), session.mimeType ?? '');
+  const config = await getSessionConfig(session.storageConfigId);
+  const driver = getMultipartDriver(session.provider);
 
-  const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, session.storageConfigId)).limit(1);
-  if (!config) throw new HTTPException(400, { message: '存储配置不存在' });
-
-  // 合并分片并流式上传到存储
-  const mergedStream = Readable.from(mergedChunkStream(uploadId, session.totalChunks));
-  await uploadObjectByConfig(config, {
-    objectKey: session.objectKey,
-    stream: mergedStream,
-    size: session.fileSize,
-    mimeType: session.mimeType ?? undefined,
-  });
+  if (driver && session.multipartUploadId) {
+    // 云原生 multipart：用各分片 ETag 完成合并（类型校验已在首片上传时完成）
+    const chunkRows = await db
+      .select()
+      .from(uploadChunks)
+      .where(eq(uploadChunks.uploadSessionId, session.id))
+      .orderBy(asc(uploadChunks.index));
+    const parts = chunkRows.map((r) => ({ partNumber: r.index + 1, etag: r.etag ?? '' }));
+    await driver.complete(config, session.objectKey, session.multipartUploadId, parts);
+  } else {
+    // 本地暂存：首片真实类型校验 + 按序流式合并上传
+    const head = await fs.readFile(chunkPath(uploadId, 0));
+    await assertUploadTypeAllowed(head.subarray(0, 4100), session.mimeType ?? '');
+    const mergedStream = Readable.from(mergedChunkStream(uploadId, session.totalChunks));
+    await uploadObjectByConfig(config, {
+      objectKey: session.objectKey,
+      stream: mergedStream,
+      size: session.fileSize,
+      mimeType: session.mimeType ?? undefined,
+    });
+  }
 
   const extension = path.extname(session.fileName).replace('.', '').toLowerCase() || null;
   const [created] = await db
@@ -180,6 +216,11 @@ export async function completeChunkUpload(uploadId: string) {
 
 export async function abortChunkUpload(uploadId: string) {
   const session = await ensureSession(uploadId);
+  const driver = getMultipartDriver(session.provider);
+  if (driver && session.multipartUploadId) {
+    const config = await getSessionConfig(session.storageConfigId);
+    await driver.abort(config, session.objectKey, session.multipartUploadId).catch(() => { /* 忽略云端中止失败 */ });
+  }
   await db.update(uploadSessions).set({ status: 'aborted' }).where(eq(uploadSessions.id, session.id));
   await cleanupSession(uploadId);
 }
@@ -194,12 +235,23 @@ export async function cleanupStaleUploadSessions(): Promise<{ staleSessions: num
   const cutoff = new Date(Date.now() - ttlHours * 3600 * 1000);
   let freedBytes = 0;
 
-  // 1. 过期会话：先删临时目录，再删 DB 行（外键级联删除 upload_chunks）
+  // 1. 过期会话：中止云端 multipart（如有）→ 删临时目录 → 删 DB 行（级联删 upload_chunks）
   const stale = await db
-    .select({ uploadId: uploadSessions.uploadId })
+    .select({
+      uploadId: uploadSessions.uploadId,
+      provider: uploadSessions.provider,
+      multipartUploadId: uploadSessions.multipartUploadId,
+      objectKey: uploadSessions.objectKey,
+      storageConfigId: uploadSessions.storageConfigId,
+    })
     .from(uploadSessions)
     .where(lt(uploadSessions.createdAt, cutoff));
   for (const s of stale) {
+    const driver = getMultipartDriver(s.provider);
+    if (driver && s.multipartUploadId) {
+      const [config] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, s.storageConfigId)).limit(1);
+      if (config) await driver.abort(config, s.objectKey, s.multipartUploadId).catch(() => { /* 忽略云端中止失败 */ });
+    }
     freedBytes += await dirSize(sessionTempDir(s.uploadId));
     await cleanupSession(s.uploadId);
   }

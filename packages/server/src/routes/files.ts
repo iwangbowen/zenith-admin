@@ -5,9 +5,10 @@ import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErro
 import { ManagedFileDTO, StorageBrowseResultDTO, FileStatsDTO, SheetPreviewDTO, UploadSessionInitDTO, UploadChunkResultDTO, UploadSessionStatusDTO } from '../lib/openapi-dtos';
 import { initChunkUploadSchema, completeChunkUploadSchema } from '@zenith/shared';
 import {
-  readFileContent, listManagedFiles, getManagedFile, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, getManagedFileBeforeAudit, batchDownloadFilesAsZip, browseStorageFiles, getFileStats, getSheetPreview,
+  getStoredFileForRead, listManagedFiles, getManagedFile, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, getManagedFileBeforeAudit, batchDownloadFilesAsZip, browseStorageFiles, getFileStats, getSheetPreview,
 } from '../services/files.service';
 import { initChunkUpload, uploadChunk, completeChunkUpload, getUploadStatus, abortChunkUpload } from '../services/upload-sessions.service';
+import { readStoredFile } from '../lib/file-storage';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -41,12 +42,30 @@ const contentRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const storedFile = await readFileContent(id);
+    const { file, storageConfig } = await getStoredFileForRead(id);
+    // 内容按 id 不可变（objectKey 上传时固定），用强 ETag + createdAt 支持条件请求缓存
+    const etag = `"f${file.id}-${file.size}"`;
+    const lastModifiedMs = Math.floor(file.createdAt.getTime() / 1000) * 1000;
+    const cacheHeaders: Record<string, string> = {
+      ETag: etag,
+      'Last-Modified': new Date(lastModifiedMs).toUTCString(),
+      'Cache-Control': 'private, max-age=3600',
+    };
+    const ifNoneMatch = c.req.header('if-none-match');
+    const ifModifiedSince = c.req.header('if-modified-since');
+    const notModified = ifNoneMatch
+      ? ifNoneMatch.split(',').some((t) => t.trim() === etag)
+      : !!ifModifiedSince && new Date(ifModifiedSince).getTime() >= lastModifiedMs;
+    if (notModified) {
+      return new Response(null, { status: 304, headers: cacheHeaders });
+    }
+    const storedFile = await readStoredFile(file, storageConfig);
     return new Response(storedFile.stream, {
       headers: {
         'Content-Type': storedFile.contentType,
         'Content-Disposition': resolveContentDisposition(storedFile.contentType, storedFile.fileName),
         'X-Content-Type-Options': 'nosniff',
+        ...cacheHeaders,
       },
     });
   },
