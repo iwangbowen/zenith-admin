@@ -139,6 +139,7 @@ export default defineConfig({
           { text: '总览', link: '/workflow/' },
           { text: '流程设计器', link: '/workflow/designer' },
           { text: '表单设计', link: '/workflow/form-design' },
+          { text: '业务模块接入', link: '/workflow/business-integration' },
           { text: '节点配置', link: '/workflow/node-config' },
           { text: '节点类型', link: '/workflow/node-types' },
           { text: '审批方式与驳回策略', link: '/workflow/approval' },

@@ -31,6 +31,9 @@
 - **行级锁与乐观并发控制**：增强审批与任务处理逻辑，防止并发操作导致状态不一致
 - **流程实例设置**：新增允许重新提交与评论的设置
 - **流程实例评论功能**：在工作流实例中添加评论功能
+- **自定义业务表单**：流程定义新增 `formType=custom`，可绑定用户在 `src/pages` 下自写的 React 页面承载发起填写与查看（创建/查看按 `mode` 区分），数据存入流程 `formData`，并支持声明流程变量驱动条件分支
+- **业务系统接入（external）**：流程定义新增 `formType=external`，业务模块自存数据后通过 `startWorkflowForBiz` 以 businessKey（`bizType`+`bizId`）关联工作流，流程终态经事件订阅回写业务状态；提供桥 SDK（`startWorkflowForBiz`/`onWorkflowResult`/`getWorkflowStatusByBiz`）及「请假」最小 Demo
+- **流程整页多页签**：发起与流程详情支持以独立多页签整页打开（`/workflow/launch/:id`、`/workflow/instance/:id`）并带图标
 
 #### 会员管理
 
