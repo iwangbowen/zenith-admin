@@ -10,5 +10,6 @@ packages/server/logs/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
 **/storage/local/
+**/storage/tmp/
 **/coverage/
 .claude/settings.local.json
