@@ -1112,7 +1112,8 @@ export default function FrontendErrorsPage() {
             onRefresh={() => void fetchEvents()}
             refreshLoading={eventsLoading}
             pagination={buildEventPagination(events?.total ?? 0, fetchEvents)}
-            scroll={{ x: 1250 }}
+            style={{ width: '100%' }}
+            scroll={{ x: '100%' }}
             empty="暂无错误事件"
             onRow={(record) => ({
               onClick: () => {
