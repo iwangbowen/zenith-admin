@@ -407,83 +407,85 @@ export default function WorkflowDefinitionsPage() {
       key: 'action',
       width: 170,
       fixed: 'right',
-      render: (_: unknown, record: WorkflowDefinition) => (
-        <Space>
-          <Button theme="borderless" size="small" onClick={() => navigate(`/workflow/designer/${record.id}`)}>
-            设计
-          </Button>
-          {record.status === 'draft' && hasPermission('workflow:definition:publish') && (
-            <Button theme="borderless" size="small" type="primary" onClick={() => {
+      render: (_: unknown, record: WorkflowDefinition) => {
+        const canPublish = record.status === 'draft' && hasPermission('workflow:definition:publish');
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: '44px 44px 28px', alignItems: 'center', columnGap: 8 }}>
+            <Button theme="borderless" size="small" onClick={() => navigate(`/workflow/designer/${record.id}`)}>
+              设计
+            </Button>
+            <Button theme="borderless" size="small" type="primary" disabled={!canPublish} onClick={() => {
+              if (!canPublish) return;
               Modal.confirm({
                 title: '确定发布此流程？',
                 content: '发布后不可删除，请确认流程配置正确。',
                 onOk: () => handlePublish(record),
               });
             }}>发布</Button>
-          )}
-          <Dropdown
-            trigger="custom"
-            visible={openMoreId === record.id}
-            onClickOutSide={() => setOpenMoreId(null)}
-            position="bottomRight"
-            render={
-              <Dropdown.Menu>
-                {hasPermission('workflow:definition:create') && (
-                  <Dropdown.Item onClick={() => { setOpenMoreId(null); void handleDuplicate(record); }}>复制</Dropdown.Item>
-                )}
-                <Dropdown.Item onClick={() => { setOpenMoreId(null); void handleExport(record); }}>导出</Dropdown.Item>
-                {record.status === 'published' && hasPermission('workflow:definition:publish') && (
-                  <Dropdown.Item type="warning" onClick={() => {
-                    setOpenMoreId(null);
-                    Modal.confirm({
-                      title: '确定禁用此流程？',
-                      content: '禁用后该流程不可发起新申请，是否继续？',
-                      okButtonProps: { type: 'danger', theme: 'solid' },
-                      onOk: () => handleDisable(record),
-                    });
-                  }}>禁用</Dropdown.Item>
-                )}
-                {record.status === 'disabled' && hasPermission('workflow:definition:publish') && (
-                  <Dropdown.Item onClick={() => {
-                    setOpenMoreId(null);
-                    Modal.confirm({
-                      title: '确定启用此流程？',
-                      content: '启用后该流程将恢复为已发布状态，可正常发起申请。',
-                      onOk: () => handleEnable(record),
-                    });
-                  }}>启用</Dropdown.Item>
-                )}
-                <Dropdown.Item onClick={() => { setOpenMoreId(null); setHistoryTarget(record); }}>历史版本</Dropdown.Item>
-                <Dropdown.Item onClick={() => { void openDiffModal(record); }}>版本对比</Dropdown.Item>
-                {hasPermission('workflow:definition:create') && (
-                  <Dropdown.Item onClick={() => { setOpenMoreId(null); setSaveAsTarget(record); }}>另存为模板</Dropdown.Item>
-                )}
-                {record.status !== 'published' && hasPermission('workflow:definition:delete') && (
-                  <Dropdown.Item
-                    type="danger"
-                    onClick={() => {
+            <Dropdown
+              trigger="custom"
+              visible={openMoreId === record.id}
+              onClickOutSide={() => setOpenMoreId(null)}
+              position="bottomRight"
+              render={
+                <Dropdown.Menu>
+                  {hasPermission('workflow:definition:create') && (
+                    <Dropdown.Item onClick={() => { setOpenMoreId(null); void handleDuplicate(record); }}>复制</Dropdown.Item>
+                  )}
+                  <Dropdown.Item onClick={() => { setOpenMoreId(null); void handleExport(record); }}>导出</Dropdown.Item>
+                  {record.status === 'published' && hasPermission('workflow:definition:publish') && (
+                    <Dropdown.Item type="warning" onClick={() => {
                       setOpenMoreId(null);
                       Modal.confirm({
-                        title: '确定要删除该流程吗？',
+                        title: '确定禁用此流程？',
+                        content: '禁用后该流程不可发起新申请，是否继续？',
                         okButtonProps: { type: 'danger', theme: 'solid' },
-                        onOk: () => handleDelete(record.id),
+                        onOk: () => handleDisable(record),
                       });
-                    }}
-                  >删除</Dropdown.Item>
-                )}
-              </Dropdown.Menu>
-            }
-          >
-            <Button
-              theme="borderless"
-              size="small"
-              icon={<MoreHorizontal size={16} />}
-              aria-label="更多操作"
-              onClick={() => setOpenMoreId(openMoreId === record.id ? null : record.id)}
-            />
-          </Dropdown>
-        </Space>
-      ),
+                    }}>禁用</Dropdown.Item>
+                  )}
+                  {record.status === 'disabled' && hasPermission('workflow:definition:publish') && (
+                    <Dropdown.Item onClick={() => {
+                      setOpenMoreId(null);
+                      Modal.confirm({
+                        title: '确定启用此流程？',
+                        content: '启用后该流程将恢复为已发布状态，可正常发起申请。',
+                        onOk: () => handleEnable(record),
+                      });
+                    }}>启用</Dropdown.Item>
+                  )}
+                  <Dropdown.Item onClick={() => { setOpenMoreId(null); setHistoryTarget(record); }}>历史版本</Dropdown.Item>
+                  <Dropdown.Item onClick={() => { void openDiffModal(record); }}>版本对比</Dropdown.Item>
+                  {hasPermission('workflow:definition:create') && (
+                    <Dropdown.Item onClick={() => { setOpenMoreId(null); setSaveAsTarget(record); }}>另存为模板</Dropdown.Item>
+                  )}
+                  {record.status !== 'published' && hasPermission('workflow:definition:delete') && (
+                    <Dropdown.Item
+                      type="danger"
+                      onClick={() => {
+                        setOpenMoreId(null);
+                        Modal.confirm({
+                          title: '确定要删除该流程吗？',
+                          okButtonProps: { type: 'danger', theme: 'solid' },
+                          onOk: () => handleDelete(record.id),
+                        });
+                      }}
+                    >删除</Dropdown.Item>
+                  )}
+                </Dropdown.Menu>
+              }
+            >
+              <Button
+                theme="borderless"
+                size="small"
+                icon={<MoreHorizontal size={16} />}
+                aria-label="更多操作"
+                onClick={() => setOpenMoreId(openMoreId === record.id ? null : record.id)}
+              />
+            </Dropdown>
+          </div>
+        );
+      },
     },
   ];
 
