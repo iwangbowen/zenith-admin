@@ -336,11 +336,7 @@ function DwellTab() {
 
   const rows = useMemo<PageStatsRow[]>(() => (data?.items ?? []).map((item) => ({ ...item, id: item.pagePath })), [data]);
   const maxAvg = useMemo(() => Math.max(1, ...rows.map((item) => item.avgMs ?? 0)), [rows]);
-  const avgDwell = useMemo(() => {
-    const totalVisits = data?.totalVisits ?? 0;
-    if (!totalVisits) return null;
-    return Math.round(rows.reduce((sum, item) => sum + (item.avgMs ?? 0) * item.visits, 0) / totalVisits);
-  }, [data?.totalVisits, rows]);
+  const avgDwell = data?.avgDwellMs ?? null;
 
   const columns: ColumnProps<PageStatsRow>[] = [
     {

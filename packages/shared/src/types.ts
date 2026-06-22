@@ -518,6 +518,7 @@ export interface PageStatItem {
 export interface PageStats {
   items: PageStatItem[];
   totalVisits: number;
+  avgDwellMs: number | null;
 }
 
 export interface FeatureStatItem {

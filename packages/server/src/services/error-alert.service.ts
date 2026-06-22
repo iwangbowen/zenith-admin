@@ -1,4 +1,4 @@
-import { and, eq, gte, desc, sql, isNull } from 'drizzle-orm';
+import { and, eq, gte, lt, desc, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { errorAlertRules, errorEvents, errorGroups } from '../db/schema';
@@ -106,7 +106,7 @@ async function dispatchAlert(rule: ErrorAlertRuleRow, detail: string): Promise<v
   const channels = rule.channels ?? [];
   await Promise.allSettled([
     ...(channels.includes('webhook') && rule.webhookUrl
-      ? [httpPost(rule.webhookUrl, { type: 'error_alert', rule: rule.name, detail, condition: rule.condition, timestamp: new Date().toISOString() }, { timeout: 8000 })]
+      ? [httpPost(rule.webhookUrl, { type: 'error_alert', rule: rule.name, detail, condition: rule.condition, timestamp: formatDateTime(new Date()) }, { timeout: 8000 })]
       : []),
     ...(channels.includes('email')
       ? (rule.recipients ?? []).filter((r) => r.includes('@')).map((to) => sendMail(to, subject, html))
@@ -152,7 +152,7 @@ export async function evaluateAlerts(): Promise<{ evaluated: number; triggered: 
     } else if (rule.condition === 'spike') {
       const prevStart = new Date(now - rule.windowMinutes * 2 * 60_000);
       const cur = await db.$count(errorEvents, evWhere);
-      const prevConds = [gte(errorEvents.createdAt, prevStart), sql`${errorEvents.createdAt} < ${windowStart.toISOString()}::timestamptz`];
+      const prevConds = [gte(errorEvents.createdAt, prevStart), lt(errorEvents.createdAt, windowStart)];
       if (rule.errorType) prevConds.push(eq(errorEvents.errorType, rule.errorType));
       if (rule.level) prevConds.push(eq(errorEvents.level, rule.level));
       if (tId != null) prevConds.push(eq(errorEvents.tenantId, tId)); else prevConds.push(isNull(errorEvents.tenantId));

@@ -99,7 +99,7 @@ export const PageStatItemDTO = z
   .openapi('PageStatItem');
 
 export const PageStatsDTO = z
-  .object({ items: z.array(PageStatItemDTO), totalVisits: z.number().int() })
+  .object({ items: z.array(PageStatItemDTO), totalVisits: z.number().int(), avgDwellMs: z.number().int().nullable() })
   .openapi('PageStats');
 
 // ─── 功能使用 ─────────────────────────────────────────────────────────────────

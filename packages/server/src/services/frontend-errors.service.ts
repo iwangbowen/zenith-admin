@@ -7,7 +7,7 @@ import type { FrontendErrorType, ErrorLevel, UpdateErrorGroupInput, SourceMapUpl
 import { currentUserOrNull } from '../lib/context';
 import { tenantScope, getCreateTenantId } from '../lib/tenant';
 import { mergeWhere, escapeLike } from '../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, formatDate, APP_TIME_ZONE } from '../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatDate, APP_TIME_ZONE, parseDateRangeStart } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { parseClientEnv, computeErrorFingerprint, startOfDaysAgo, clampDays, clampLimit } from '../lib/analytics-helpers';
 import { symbolicateStack } from '../lib/source-map-symbolicate';
@@ -69,6 +69,14 @@ export function mapEvent(row: ErrorEventRow) {
     httpUrl: row.httpUrl,
     createdAt: formatDateTime(row.createdAt),
   };
+}
+
+const DAY_MS = 86_400_000;
+
+function dateAxis(days: number): string[] {
+  const todayStart = parseDateRangeStart(formatDate(new Date())) ?? new Date();
+  const firstDay = todayStart.getTime() - (days - 1) * DAY_MS;
+  return Array.from({ length: days }, (_, index) => formatDate(new Date(firstDay + index * DAY_MS)));
 }
 
 // ─── 上报 ─────────────────────────────────────────────────────────────────────
@@ -211,13 +219,7 @@ export async function getGroupDetail(id: number) {
   }
 
   // 趋势补轴
-  const axis: string[] = [];
-  const today = new Date();
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    axis.push(formatDate(d));
-  }
+  const axis = dateAxis(14);
   const trendMap = new Map(trendRows.map((r) => [r.date, Number(r.count)]));
 
   return {
@@ -274,8 +276,7 @@ export async function deleteGroups(ids: number[]) {
 export async function getErrorOverview(daysRaw: unknown) {
   const days = clampDays(daysRaw, 30);
   const start = startOfDaysAgo(days);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const todayStart = parseDateRangeStart(formatDate(new Date())) ?? new Date();
   const gScope = tenantScope(errorGroups);
   const eScope = tenantScope(errorEvents);
   const recentGroups = mergeWhere(gte(errorGroups.lastSeenAt, start), gScope);
@@ -301,13 +302,7 @@ export async function getErrorOverview(daysRaw: unknown) {
     db.select({ n: sql<number>`COUNT(*)::int` }).from(errorGroups).where(mergeWhere(gte(errorGroups.firstSeenAt, todayStart), gScope)),
   ]);
 
-  const axis: string[] = [];
-  const today = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    axis.push(formatDate(d));
-  }
+  const axis = dateAxis(days);
   const trendMap = new Map(trendRows.map((r) => [r.date, r]));
 
   return {

@@ -19,6 +19,7 @@ function rand(min: number, max: number): number { return Math.floor(min + Math.r
 // ─── 静态基础数据 ─────────────────────────────────────────────────────────────
 const MOCK_PAGES: PageStats = {
   totalVisits: 2847,
+  avgDwellMs: 58400,
   items: [
     { pagePath: '/users', pageTitle: '用户管理', visits: 532, avgMs: 68400, medianMs: 45200, p90Ms: 142000 },
     { pagePath: '/roles', pageTitle: '角色管理', visits: 384, avgMs: 52100, medianMs: 38700, p90Ms: 118000 },

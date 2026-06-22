@@ -2,17 +2,21 @@ import { and, gte, lt, sql, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { userEvents, analyticsSessions, analyticsDailyRollup, analyticsSettings, errorEvents, errorGroups } from '../db/schema';
 import { clampDays } from '../lib/analytics-helpers';
-import { APP_TIME_ZONE, formatDate } from '../lib/datetime';
+import { APP_TIME_ZONE, formatDate, parseDateRangeStart } from '../lib/datetime';
 
 interface RollupRow { tenantId: number; statDate: string; metric: string; value: number }
+
+const DAY_MS = 86_400_000;
+
+function appTodayStart(): Date {
+  return parseDateRangeStart(formatDate(new Date())) ?? new Date();
+}
 
 /** 重建最近 days 个完整自然日的每日聚合（overall 维度）。 */
 export async function rebuildRollup(daysRaw: unknown): Promise<number> {
   const days = clampDays(daysRaw, 30, 730);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const start = new Date(todayStart);
-  start.setDate(start.getDate() - days);
+  const todayStart = appTodayStart();
+  const start = new Date(todayStart.getTime() - days * DAY_MS);
 
   const eventRows = await db
     .select({
@@ -60,7 +64,7 @@ export async function rebuildRollup(daysRaw: unknown): Promise<number> {
       .values({ tenantId: u.tenantId, statDate: u.statDate, metric: u.metric, dimType: 'overall', dimValue: '', value: u.value })
       .onConflictDoUpdate({
         target: [analyticsDailyRollup.tenantId, analyticsDailyRollup.statDate, analyticsDailyRollup.metric, analyticsDailyRollup.dimType, analyticsDailyRollup.dimValue],
-        set: { value: u.value, updatedAt: new Date() },
+        set: { value: u.value },
       });
   }
 
@@ -80,10 +84,8 @@ export interface RollupSummaryItem {
 /** 读取每日聚合（供数据管理「数据聚合」面板展示）。 */
 export async function getRollupSummary(daysRaw: unknown): Promise<RollupSummaryItem[]> {
   const days = clampDays(daysRaw, 30, 730);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const start = new Date(todayStart);
-  start.setDate(start.getDate() - days);
+  const todayStart = appTodayStart();
+  const start = new Date(todayStart.getTime() - days * DAY_MS);
   const startStr = formatDate(start);
 
   const rows = await db

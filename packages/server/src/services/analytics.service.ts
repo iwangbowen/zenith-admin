@@ -1,12 +1,12 @@
-import { and, eq, gte, lt, isNotNull, sql, countDistinct, desc, like } from 'drizzle-orm';
-import type { PgColumn } from 'drizzle-orm/pg-core';
+import { and, eq, gte, lt, isNotNull, sql, countDistinct, desc, like, notExists } from 'drizzle-orm';
+import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { db } from '../db';
 import { userEvents, analyticsSessions } from '../db/schema';
 import type { TrackEventInput, UserBehaviorEventType } from '@zenith/shared';
 import { currentUserOrNull } from '../lib/context';
 import { tenantScope, getCreateTenantId } from '../lib/tenant';
 import { mergeWhere, escapeLike } from '../lib/where-helpers';
-import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE } from '../lib/datetime';
+import { formatNullableDateTime, formatDateTime, formatDate, APP_TIME_ZONE, parseDateRangeStart } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { parseClientEnv, lookupIpGeo, clampDays, clampLimit, startOfDaysAgo } from '../lib/analytics-helpers';
 import { touchEventMeta } from './analytics-event-meta.service';
@@ -157,6 +157,7 @@ export async function getOverview(daysRaw: unknown) {
   const now = new Date();
   const start = startOfDaysAgo(days);
   const prevStart = startOfDaysAgo(days * 2);
+  const priorUserEvents = alias(userEvents, 'prior_user_events');
 
   const evScope = (s: Date, e: Date) =>
     mergeWhere(and(gte(userEvents.createdAt, s), lt(userEvents.createdAt, e)), tenantScope(userEvents));
@@ -196,7 +197,17 @@ export async function getOverview(daysRaw: unknown) {
         mergeWhere(
           and(
             gte(userEvents.createdAt, start),
-            sql`${userEvents.distinctId} NOT IN (SELECT DISTINCT distinct_id FROM user_events WHERE created_at < ${start.toISOString()}::timestamptz AND distinct_id IS NOT NULL)`,
+            isNotNull(userEvents.distinctId),
+            notExists(
+              db
+                .select({ one: sql`1` })
+                .from(priorUserEvents)
+                .where(and(
+                  lt(priorUserEvents.createdAt, start),
+                  eq(priorUserEvents.distinctId, userEvents.distinctId),
+                  sql`${priorUserEvents.tenantId} IS NOT DISTINCT FROM ${userEvents.tenantId}`,
+                )),
+            ),
           ),
           tenantScope(userEvents),
         ),
@@ -233,13 +244,14 @@ export async function getOverview(daysRaw: unknown) {
   };
 }
 
+const DAY_MS = 86_400_000;
+
 function dateAxis(days: number): string[] {
   const arr: string[] = [];
-  const today = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    arr.push(formatDate(d));
+  const todayStart = parseDateRangeStart(formatDate(new Date())) ?? new Date();
+  const firstDay = todayStart.getTime() - (days - 1) * DAY_MS;
+  for (let i = 0; i < days; i++) {
+    arr.push(formatDate(new Date(firstDay + i * DAY_MS)));
   }
   return arr;
 }
@@ -291,20 +303,29 @@ export async function getPageStats(q: PageStatsQuery) {
     tenantScope(userEvents),
   );
 
-  const rows = await db
-    .select({
-      pagePath: userEvents.pagePath,
-      pageTitle: sql<string | null>`MAX(${userEvents.pageTitle})`,
-      visits: sql<number>`COUNT(*)::integer`,
-      avgMs: sql<number | null>`ROUND(AVG(${userEvents.durationMs}))::integer`,
-      medianMs: sql<number | null>`(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${userEvents.durationMs}))::integer`,
-      p90Ms: sql<number | null>`(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY ${userEvents.durationMs}))::integer`,
-    })
-    .from(userEvents)
-    .where(where)
-    .groupBy(userEvents.pagePath)
-    .orderBy(sql`COUNT(*) DESC`)
-    .limit(limit);
+  const [rows, totals] = await Promise.all([
+    db
+      .select({
+        pagePath: userEvents.pagePath,
+        pageTitle: sql<string | null>`MAX(${userEvents.pageTitle})`,
+        visits: sql<number>`COUNT(*)::integer`,
+        avgMs: sql<number | null>`ROUND(AVG(${userEvents.durationMs}))::integer`,
+        medianMs: sql<number | null>`(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${userEvents.durationMs}))::integer`,
+        p90Ms: sql<number | null>`(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY ${userEvents.durationMs}))::integer`,
+      })
+      .from(userEvents)
+      .where(where)
+      .groupBy(userEvents.pagePath)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(limit),
+    db
+      .select({
+        totalVisits: sql<number>`COUNT(*)::int`,
+        avgDwellMs: sql<number | null>`ROUND(AVG(${userEvents.durationMs}))::int`,
+      })
+      .from(userEvents)
+      .where(where),
+  ]);
 
   const items = rows.map((r) => ({
     pagePath: r.pagePath,
@@ -314,7 +335,11 @@ export async function getPageStats(q: PageStatsQuery) {
     medianMs: r.medianMs == null ? null : Number(r.medianMs),
     p90Ms: r.p90Ms == null ? null : Number(r.p90Ms),
   }));
-  return { items, totalVisits: items.reduce((s, i) => s + i.visits, 0) };
+  return {
+    items,
+    totalVisits: Number(totals[0]?.totalVisits ?? 0),
+    avgDwellMs: totals[0]?.avgDwellMs == null ? null : Number(totals[0].avgDwellMs),
+  };
 }
 
 export interface FeatureStatsQuery { days?: number; limit?: number; pagePath?: string }
@@ -326,19 +351,22 @@ export async function getFeatureStats(q: FeatureStatsQuery) {
   if (q.pagePath) conditions.push(eq(userEvents.pagePath, q.pagePath));
   const where = mergeWhere(and(...conditions), tenantScope(userEvents));
 
-  const rows = await db
-    .select({
-      pagePath: userEvents.pagePath,
-      elementKey: sql<string>`MAX(${userEvents.elementKey})`,
-      elementLabel: sql<string | null>`MAX(${userEvents.elementLabel})`,
-      componentArea: sql<string | null>`MAX(${userEvents.componentArea})`,
-      count: sql<number>`COUNT(*)::integer`,
-    })
-    .from(userEvents)
-    .where(where)
-    .groupBy(userEvents.pagePath, userEvents.elementKey)
-    .orderBy(sql`COUNT(*) DESC`)
-    .limit(limit);
+  const [rows, totalEvents] = await Promise.all([
+    db
+      .select({
+        pagePath: userEvents.pagePath,
+        elementKey: sql<string>`MAX(${userEvents.elementKey})`,
+        elementLabel: sql<string | null>`MAX(${userEvents.elementLabel})`,
+        componentArea: sql<string | null>`MAX(${userEvents.componentArea})`,
+        count: sql<number>`COUNT(*)::integer`,
+      })
+      .from(userEvents)
+      .where(where)
+      .groupBy(userEvents.pagePath, userEvents.elementKey)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(limit),
+    db.$count(userEvents, where),
+  ]);
 
   const items = rows.map((r) => ({
     pagePath: r.pagePath,
@@ -347,7 +375,7 @@ export async function getFeatureStats(q: FeatureStatsQuery) {
     componentArea: r.componentArea,
     count: Number(r.count),
   }));
-  return { items, totalEvents: items.reduce((s, i) => s + i.count, 0) };
+  return { items, totalEvents };
 }
 
 export interface HeatmapQuery { pagePath: string; componentArea: string; days?: number }
@@ -414,22 +442,30 @@ export async function getUserStats(q: UserStatsQuery) {
   const start = startOfDaysAgo(days);
   const where = mergeWhere(gte(userEvents.createdAt, start), tenantScope(userEvents));
 
-  const rows = await db
-    .select({
-      userId: userEvents.userId,
-      username: userEvents.username,
-      totalEvents: sql<number>`COUNT(*)::integer`,
-      pageViews: sql<number>`SUM(CASE WHEN ${userEvents.eventType} = 'page_view' THEN 1 ELSE 0 END)::integer`,
-      uniquePages: countDistinct(userEvents.pagePath),
-      featureUses: sql<number>`SUM(CASE WHEN ${userEvents.eventType} = 'feature_use' THEN 1 ELSE 0 END)::integer`,
-      totalDwellMs: sql<number | null>`SUM(CASE WHEN ${userEvents.eventType} = 'page_leave' THEN ${userEvents.durationMs} ELSE NULL END)::bigint`,
-      lastActiveAt: sql<Date | null>`MAX(${userEvents.createdAt})`,
-    })
-    .from(userEvents)
-    .where(where)
-    .groupBy(userEvents.userId, userEvents.username)
-    .orderBy(sql`COUNT(*) DESC`)
-    .limit(limit);
+  const [rows, totalRows] = await Promise.all([
+    db
+      .select({
+        userId: userEvents.userId,
+        username: userEvents.username,
+        totalEvents: sql<number>`COUNT(*)::integer`,
+        pageViews: sql<number>`SUM(CASE WHEN ${userEvents.eventType} = 'page_view' THEN 1 ELSE 0 END)::integer`,
+        uniquePages: countDistinct(userEvents.pagePath),
+        featureUses: sql<number>`SUM(CASE WHEN ${userEvents.eventType} = 'feature_use' THEN 1 ELSE 0 END)::integer`,
+        totalDwellMs: sql<number | null>`SUM(CASE WHEN ${userEvents.eventType} = 'page_leave' THEN ${userEvents.durationMs} ELSE NULL END)::bigint`,
+        lastActiveAt: sql<Date | null>`MAX(${userEvents.createdAt})`,
+      })
+      .from(userEvents)
+      .where(where)
+      .groupBy(userEvents.userId, userEvents.username)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(limit),
+    db
+      .select({
+        total: sql<number>`COUNT(DISTINCT (COALESCE(${userEvents.userId}::text, 'anonymous') || ':' || COALESCE(${userEvents.username}, '')))::int`,
+      })
+      .from(userEvents)
+      .where(where),
+  ]);
 
   const items = rows.map((r) => ({
     userId: r.userId,
@@ -441,7 +477,7 @@ export async function getUserStats(q: UserStatsQuery) {
     totalDwellMs: r.totalDwellMs == null ? null : Number(r.totalDwellMs),
     lastActiveAt: formatNullableDateTime(r.lastActiveAt),
   }));
-  return { items, totalUsers: items.length };
+  return { items, totalUsers: Number(totalRows[0]?.total ?? 0) };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -718,15 +754,17 @@ export async function getDimensionBreakdown(input: { days?: number; dimension: s
   if (onlyPv) conditions.push(eq(userEvents.eventType, 'page_view'));
   const where = mergeWhere(and(...conditions), tenantScope(userEvents));
 
-  const rows = await db
-    .select({ name: sql<string | null>`${col}`, value: sql<number>`COUNT(*)::int` })
-    .from(userEvents)
-    .where(where)
-    .groupBy(col)
-    .orderBy(sql`COUNT(*) DESC`)
-    .limit(limit);
+  const [rows, total] = await Promise.all([
+    db
+      .select({ name: sql<string | null>`${col}`, value: sql<number>`COUNT(*)::int` })
+      .from(userEvents)
+      .where(where)
+      .groupBy(col)
+      .orderBy(sql`COUNT(*) DESC`)
+      .limit(limit),
+    db.$count(userEvents, where),
+  ]);
 
-  const total = rows.reduce((s, r) => s + Number(r.value), 0);
   const items = rows.map((r) => ({
     name: r.name ?? (dimension === 'referrer' || dimension === 'source' ? '直接访问' : '未知'),
     value: Number(r.value),
