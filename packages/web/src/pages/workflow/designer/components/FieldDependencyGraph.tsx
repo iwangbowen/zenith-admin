@@ -9,6 +9,7 @@ import {
   Position,
   useNodesState,
   useEdgesState,
+  useUpdateNodeInternals,
   ReactFlowProvider,
   type Node as RFNode,
   type Edge as RFEdge,
@@ -139,12 +140,17 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
 
   const [nodes, setNodes, onNodesChange] = useNodesState<RFNode>(laidOutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<RFEdge>(baseEdges);
+  const updateNodeInternals = useUpdateNodeInternals();
 
   useEffect(() => {
     setNodes(laidOutNodes);
     setEdges(baseEdges);
     setSelectedId(null);
-  }, [laidOutNodes, baseEdges, setNodes, setEdges]);
+    // 节点固定尺寸后强制重新测量 handle 位置，修复 handleBounds 缓存过期导致的连线端点偏移
+    const ids = laidOutNodes.map((n) => n.id);
+    const raf = requestAnimationFrame(() => updateNodeInternals(ids));
+    return () => cancelAnimationFrame(raf);
+  }, [laidOutNodes, baseEdges, setNodes, setEdges, updateNodeInternals]);
 
   useEffect(() => {
     if (!selectedId) {
