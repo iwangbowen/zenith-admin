@@ -206,15 +206,18 @@ function InstanceDetailDrawer({
   const handlePrint = () => {
     if (!data) return;
     const html = buildPrintHtml(data);
-    const win = window.open('', '_blank', 'width=900,height=700');
-    if (!win) {
-      Toast.warning('请允许浏览器弹出窗口以打印');
-      return;
-    }
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 300);
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    iframe.srcdoc = html;
+    iframe.onload = () => {
+      const cw = iframe.contentWindow;
+      if (!cw) { iframe.remove(); return; }
+      cw.addEventListener('afterprint', () => iframe.remove(), { once: true });
+      cw.focus();
+      cw.print();
+    };
+    document.body.appendChild(iframe);
   };
 
   const [urgeVisible, setUrgeVisible] = useState(false);
