@@ -220,68 +220,57 @@ export default function MpMenuPage() {
       <Spin spinning={loading}>
         <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
-          {/* ── 手机预览 ── */}
+          {/* ── 手机预览（无边框风格，适配主题） ── */}
           <div style={{
-            width: 300,
+            width: 280,
             flexShrink: 0,
-            background: '#e2e2e2',
-            borderRadius: 44,
-            padding: '16px 10px 14px',
-            boxShadow: '0 2px 16px rgba(0,0,0,0.18), 0 0 0 2px #c8c8c8',
+            borderRadius: 20,
+            overflow: 'hidden',
+            border: '1px solid var(--semi-color-border)',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.1)',
           }}>
-            {/* 顶部装饰：摄像头 + 听筒 */}
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 8, height: 8, background: '#b8b8b8', borderRadius: '50%' }} />
-              <div style={{ width: 52, height: 6, background: '#b8b8b8', borderRadius: 3 }} />
-              <div style={{ width: 8, height: 8, background: '#b8b8b8', borderRadius: '50%' }} />
-            </div>
-
-            {/* 屏幕 */}
+            {/* 屏幕内容 */}
             <div style={{
-              borderRadius: 20,
-              overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              height: 492,
-              background: '#ededed',
-              border: '1px solid #c4c4c4',
+              height: 500,
             }}>
               {/* 状态栏 */}
               <div style={{
-                background: '#ededed',
+                background: 'var(--semi-color-fill-0)',
                 padding: '5px 14px 4px',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 fontSize: 10,
-                color: '#666',
-                borderBottom: '1px solid #d8d8d8',
+                color: 'var(--semi-color-text-2)',
+                borderBottom: '1px solid var(--semi-color-border)',
               }}>
                 <span>••••• WeChat ☆</span>
-                <span style={{ fontWeight: 600, color: '#333' }}>1:21 AM</span>
+                <span style={{ fontWeight: 600, color: 'var(--semi-color-text-0)' }}>1:21 AM</span>
                 <span>100% ▮</span>
               </div>
 
               {/* 微信顶部导航 */}
               <div style={{
-                background: '#ededed',
-                borderBottom: '1px solid #d4d4d4',
+                background: 'var(--semi-color-fill-0)',
+                borderBottom: '1px solid var(--semi-color-border)',
                 padding: '9px 12px',
                 display: 'flex',
                 alignItems: 'center',
               }}>
-                <span style={{ color: '#576B95', fontSize: 13 }}>‹ 返回</span>
-                <span style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: 600, color: '#191919' }}>
+                <span style={{ color: 'var(--semi-color-primary)', fontSize: 13 }}>‹ 返回</span>
+                <span style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: 600, color: 'var(--semi-color-text-0)' }}>
                   {currentAccountName}
                 </span>
-                <span style={{ color: '#576B95', fontSize: 16 }}>⊙</span>
+                <span style={{ color: 'var(--semi-color-primary)', fontSize: 16 }}>⊙</span>
               </div>
 
               {/* 聊天内容区（含子菜单弹出层） */}
-              <div style={{ flex: 1, background: '#ededed', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ flex: 1, background: 'var(--semi-color-fill-1)', position: 'relative', overflow: 'hidden' }}>
                 {activeL1 !== null && (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                    <div style={{ background: '#f5f5f5', borderTop: '1px solid #d4d4d4', maxHeight: 280, overflowY: 'auto' }}>
+                    <div style={{ background: 'var(--semi-color-bg-2)', borderTop: '1px solid var(--semi-color-border)', maxHeight: 280, overflowY: 'auto' }}>
                       {activeSubs.map((sub) => {
                         const subL2 = buttons[activeL1]?.sub_button?.indexOf(sub) ?? -1;
                         const isActive = selected?.l1 === activeL1 && selected?.l2 === subL2;
@@ -299,10 +288,10 @@ export default function MpMenuPage() {
                               cursor: 'pointer',
                               borderTop: 'none',
                               borderRight: 'none',
-                              borderBottom: '1px solid #ebebeb',
-                              borderLeft: `3px solid ${isActive ? '#07c160' : 'transparent'}`,
-                              background: isActive ? '#e8f7e8' : '#fff',
-                              color: isActive ? '#07c160' : '#191919',
+                              borderBottom: '1px solid var(--semi-color-border)',
+                              borderLeft: `3px solid ${isActive ? 'var(--semi-color-primary)' : 'transparent'}`,
+                              background: isActive ? 'var(--semi-color-primary-light-default)' : 'var(--semi-color-bg-1)',
+                              color: isActive ? 'var(--semi-color-primary)' : 'var(--semi-color-text-0)',
                               fontWeight: isActive ? 600 : 400,
                               fontFamily: 'inherit',
                               transition: 'background 0.12s',
@@ -323,10 +312,10 @@ export default function MpMenuPage() {
                             padding: '10px 16px',
                             fontSize: 12,
                             cursor: 'pointer',
-                            color: '#07c160',
-                            background: '#f9f9f9',
+                            color: 'var(--semi-color-primary)',
+                            background: 'var(--semi-color-bg-2)',
                             border: 'none',
-                            borderTop: activeSubs.length > 0 ? '1px dashed #ddd' : 'none',
+                            borderTop: activeSubs.length > 0 ? '1px dashed var(--semi-color-border)' : 'none',
                             gap: 4,
                             fontFamily: 'inherit',
                           }}
@@ -341,7 +330,7 @@ export default function MpMenuPage() {
               </div>
 
               {/* 底部菜单栏 */}
-              <div style={{ background: '#f5f5f5', borderTop: '1px solid #d4d4d4', display: 'flex', minHeight: 48 }}>
+              <div style={{ background: 'var(--semi-color-bg-1)', borderTop: '1px solid var(--semi-color-border)', display: 'flex', minHeight: 48 }}>
                 {buttons.map((btn, l1) => {
                   const isHighlighted = selected?.l1 === l1 || activeL1 === l1;
                   return (
@@ -359,9 +348,9 @@ export default function MpMenuPage() {
                         fontSize: 12,
                         cursor: 'pointer',
                         border: 'none',
-                        borderRight: (l1 < buttons.length - 1 || buttons.length < 3) ? '1px solid #d4d4d4' : 'none',
-                        background: isHighlighted ? 'rgba(7,193,96,0.07)' : 'transparent',
-                        color: isHighlighted ? '#07c160' : '#191919',
+                        borderRight: (l1 < buttons.length - 1 || buttons.length < 3) ? '1px solid var(--semi-color-border)' : 'none',
+                        background: isHighlighted ? 'var(--semi-color-primary-light-default)' : 'transparent',
+                        color: isHighlighted ? 'var(--semi-color-primary)' : 'var(--semi-color-text-0)',
                         fontWeight: isHighlighted ? 600 : 400,
                         minWidth: 0,
                         gap: 2,
@@ -390,7 +379,7 @@ export default function MpMenuPage() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      color: '#aaa',
+                      color: 'var(--semi-color-text-2)',
                       background: 'transparent',
                       border: 'none',
                       fontSize: 24,
@@ -405,24 +394,25 @@ export default function MpMenuPage() {
               </div>
             </div>
 
-            {/* 底部操作按钮 */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, padding: '0 2px' }}>
+            {/* 底部操作按钮（嵌入手机底部） */}
+            <div style={{ display: 'flex', gap: 0, borderTop: '1px solid var(--semi-color-border)' }}>
               <button
                 type="button"
                 disabled={!currentId || actionBusy}
                 onClick={() => void (can('mp:menu:publish') ? doPublish() : doSave())}
                 style={{
                   flex: 1,
-                  padding: '9px 4px',
-                  background: (!currentId || actionBusy) ? '#b0b0b0' : '#07c160',
-                  color: '#fff',
+                  padding: '11px 4px',
+                  background: (!currentId || actionBusy) ? 'var(--semi-color-disabled-bg)' : 'var(--semi-color-primary)',
+                  color: (!currentId || actionBusy) ? 'var(--semi-color-disabled-text)' : '#fff',
                   border: 'none',
-                  borderRadius: 20,
+                  borderRight: '1px solid var(--semi-color-border)',
                   cursor: (!currentId || actionBusy) ? 'not-allowed' : 'pointer',
                   fontSize: 12,
                   fontWeight: 500,
                   whiteSpace: 'nowrap',
                   fontFamily: 'inherit',
+                  transition: 'background 0.15s',
                 }}
               >
                 {actionBusy ? '处理中…' : '保存并发布菜单'}
@@ -432,11 +422,10 @@ export default function MpMenuPage() {
                 onClick={doClear}
                 style={{
                   flex: 1,
-                  padding: '9px 4px',
-                  background: '#e64340',
+                  padding: '11px 4px',
+                  background: 'var(--semi-color-danger)',
                   color: '#fff',
                   border: 'none',
-                  borderRadius: 20,
                   cursor: 'pointer',
                   fontSize: 12,
                   fontWeight: 500,
