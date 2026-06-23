@@ -111,6 +111,8 @@ export default function PendingApprovalsPage() {
   const [quickPhrases, setQuickPhrases] = useState<WorkflowQuickPhrase[]>([]);
   const [phraseManageVisible, setPhraseManageVisible] = useState(false);
   const [newPhrase, setNewPhrase] = useState('');
+  const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null);
+  const [editingPhraseContent, setEditingPhraseContent] = useState('');
   // 协办（T3-5）
   const [consultVisible, setConsultVisible] = useState(false);
   const [consultTaskId, setConsultTaskId] = useState<number | null>(null);
@@ -218,6 +220,24 @@ export default function PendingApprovalsPage() {
     const res = await request.delete(`/api/workflows/quick-phrases/${id}`);
     if (res.code === 0) void loadQuickPhrases();
     else Toast.error(res.message || '删除失败');
+  };
+
+  const startEditPhrase = (p: WorkflowQuickPhrase) => {
+    setEditingPhraseId(p.id);
+    setEditingPhraseContent(p.content);
+  };
+
+  const cancelEditPhrase = () => {
+    setEditingPhraseId(null);
+    setEditingPhraseContent('');
+  };
+
+  const handleUpdatePhrase = async (id: number) => {
+    const text = editingPhraseContent.trim();
+    if (!text) return;
+    const res = await request.put(`/api/workflows/quick-phrases/${id}`, { content: text });
+    if (res.code === 0) { cancelEditPhrase(); void loadQuickPhrases(); }
+    else Toast.error(res.message || '更新失败');
   };
 
   const handleBatch = async () => {
@@ -985,7 +1005,7 @@ export default function PendingApprovalsPage() {
       <AppModal
         title="管理审批常用语"
         visible={phraseManageVisible}
-        onCancel={() => setPhraseManageVisible(false)}
+        onCancel={() => { setPhraseManageVisible(false); cancelEditPhrase(); }}
         footer={null}
         style={{ width: 480 }}
       >        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -1003,14 +1023,36 @@ export default function PendingApprovalsPage() {
           {quickPhrases.length === 0 && <Typography.Text type="tertiary">暂无常用语，添加后可在审批时一键填入。</Typography.Text>}
           {quickPhrases.map((p) => (
             <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px', border: '1px solid var(--semi-color-border)', borderRadius: 6 }}>
-              <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{p.content}</Typography.Text>
-              {p.userId === null
-                ? <Tag size="small" color="grey">系统预置</Tag>
-                : (
-                  <Popconfirm title="删除该常用语？" onConfirm={() => void handleDeletePhrase(p.id)}>
-                    <Button theme="borderless" type="danger" size="small">删除</Button>
-                  </Popconfirm>
-                )}
+              {editingPhraseId === p.id ? (
+                <>
+                  <Input
+                    value={editingPhraseContent}
+                    onChange={setEditingPhraseContent}
+                    onEnterPress={() => void handleUpdatePhrase(p.id)}
+                    maxLength={255}
+                    showClear
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <Space spacing={4}>
+                    <Button theme="borderless" type="primary" size="small" onClick={() => void handleUpdatePhrase(p.id)}>保存</Button>
+                    <Button theme="borderless" size="small" onClick={cancelEditPhrase}>取消</Button>
+                  </Space>
+                </>
+              ) : (
+                <>
+                  <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{p.content}</Typography.Text>
+                  {p.userId === null
+                    ? <Tag size="small" color="grey">系统预置</Tag>
+                    : (
+                      <Space spacing={4}>
+                        <Button theme="borderless" size="small" onClick={() => startEditPhrase(p)}>编辑</Button>
+                        <Popconfirm title="删除该常用语？" onConfirm={() => void handleDeletePhrase(p.id)}>
+                          <Button theme="borderless" type="danger" size="small">删除</Button>
+                        </Popconfirm>
+                      </Space>
+                    )}
+                </>
+              )}
             </div>
           ))}
         </div>
