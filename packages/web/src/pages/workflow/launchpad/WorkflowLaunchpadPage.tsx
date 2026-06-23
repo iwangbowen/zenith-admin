@@ -120,7 +120,7 @@ export default function WorkflowLaunchpadPage() {
             style={{
               width: 40, height: 40, borderRadius: 8, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: def.categoryColor ?? 'var(--semi-color-primary-light-default)',
+              background: def.categoryColor ?? 'var(--semi-color-primary)',
               color: '#fff',
             }}
           >
