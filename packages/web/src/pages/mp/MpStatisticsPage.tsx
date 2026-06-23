@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Spin, Banner, Typography } from '@douyinfe/semi-ui';
+import { Spin, Banner, Typography, Skeleton, Card } from '@douyinfe/semi-ui';
 import { Users, UserCheck, UserMinus, Tags, Image, FileText, MessageSquare, Reply } from 'lucide-react';
 import type { MpStats } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -45,8 +45,37 @@ export default function MpStatisticsPage() {
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <Spin spinning={loading}>
-        {/* 指标卡片 */}
+      <Spin spinning={loading && !!stats}>
+        {(loading && !stats) ? (
+          <Skeleton
+            loading
+            active
+            placeholder={
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+                  {Array.from({ length: 8 }, (_, i) => `sk-stat-${i}`).map((key) => (
+                    <div key={key} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: 16, background: 'var(--semi-color-bg-1)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <Skeleton.Avatar style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <Skeleton.Title style={{ width: '60%', marginBottom: 8 }} />
+                        <Skeleton.Paragraph rows={1} style={{ width: '40%' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+                  {Array.from({ length: 2 }, (_, i) => `sk-trend-${i}`).map((key) => (
+                    <Card key={key} style={{ borderRadius: 8 }} bodyStyle={{ padding: 16 }}>
+                      <Skeleton.Title style={{ width: '40%', marginBottom: 12 }} />
+                      <Skeleton.Image style={{ width: '100%', height: 180 }} />
+                    </Card>
+                  ))}
+                </div>
+              </>
+            }
+          >{null}</Skeleton>
+        ) : (
+          <>{/* 指标卡片 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
           {CARD_DEFS.map((c) => (
             <div key={c.key} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: 16, background: 'var(--semi-color-bg-1)', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -86,12 +115,14 @@ export default function MpStatisticsPage() {
             </div>
           </TrendCard>
         </div>
+          </>
+        )}
       </Spin>
     </div>
   );
 }
 
-function TrendCard({ title, children }: { title: string; children: React.ReactNode }) {
+function TrendCard({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
     <div style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: 16, background: 'var(--semi-color-bg-1)' }}>
       <Typography.Text strong>{title}</Typography.Text>
@@ -100,7 +131,7 @@ function TrendCard({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-function Bar({ label, value, ratio, color }: { label: string; value: number; ratio: number; color: string }) {
+function Bar({ label, value, ratio, color }: Readonly<{ label: string; value: number; ratio: number; color: string }>) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
       <span style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>{value}</span>
