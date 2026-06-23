@@ -123,6 +123,11 @@ export default function FieldConfigPanel({
   // 字段标识(key) 本地草稿：失焦/回车时校验并提交重命名
   const [keyDraft, setKeyDraft] = useState(field.key);
   useEffect(() => { setKeyDraft(field.key); }, [field.key]);
+
+  // select 选项来源模式（静态/远程）：以显式状态跟踪，避免「无可用数据源时切换不生效」
+  const [isRemoteSource, setIsRemoteSource] = useState(field.dataSourceId != null);
+  // 切换字段时按该字段是否绑定数据源重置（同字段内的切换保持本地状态）
+  useEffect(() => { setIsRemoteSource(field.dataSourceId != null); }, [field.key, field.dataSourceId]);
   const otherKeys = useMemo(() => new Set(flatFields.filter(f => f.key !== field.key).map(f => f.key)), [flatFields, field.key]);
   const keyError = (() => {
     if (keyDraft === field.key) return null;
@@ -365,11 +370,11 @@ export default function FieldConfigPanel({
 
           {/* 选项来源（select）：静态选项 / 远程数据源 */}
           {field.type === 'select' && (
-            <DataSourceSourceEditor field={field} onChange={onChange} />
+            <DataSourceSourceEditor field={field} remote={isRemoteSource} onRemoteChange={setIsRemoteSource} onChange={onChange} />
           )}
 
           {/* 选项列表（select/multiSelect/...，远程数据源时隐藏） */}
-          {hasOptions && !field.dataSourceId && (
+          {hasOptions && !isRemoteSource && (
             <div className="fd-form-config__field">
               <Typography.Text strong size="small">选项</Typography.Text>
               <OptionsEditor
@@ -380,7 +385,7 @@ export default function FieldConfigPanel({
           )}
 
           {/* 级联：选项依赖父字段（远程数据源时不可用） */}
-          {supportsCascade && !field.dataSourceId && (
+          {supportsCascade && !isRemoteSource && (
             <CascadeEditor
               field={field}
               allFields={allFields}
@@ -389,7 +394,7 @@ export default function FieldConfigPanel({
           )}
 
           {/* 联动赋值：选择某选项时自动填充其它字段（远程数据源时不可用） */}
-          {field.type === 'select' && !field.dataSourceId && (
+          {field.type === 'select' && !isRemoteSource && (
             <AutoFillEditor
               field={field}
               allFields={allFields}
@@ -1593,13 +1598,14 @@ function DateRangeLinkageEditor({
 // ─── select 选项来源：静态 / 远程数据源 ───────────────────────────────
 
 function DataSourceSourceEditor({
-  field, onChange,
+  field, remote, onRemoteChange, onChange,
 }: Readonly<{
   field: WorkflowFormField;
+  remote: boolean;
+  onRemoteChange: (remote: boolean) => void;
   onChange: (updates: Partial<WorkflowFormField>) => void;
 }>) {
   const [sources, setSources] = useState<Array<{ id: number; name: string }>>([]);
-  const useRemote = field.dataSourceId != null;
 
   useEffect(() => {
     request.get<PaginatedResponse<WorkflowDataSource>>('/api/workflows/data-sources?page=1&pageSize=100&status=enabled', { silent: true })
@@ -1613,23 +1619,29 @@ function DataSourceSourceEditor({
       <div style={{ marginTop: 4 }}>
         <RadioGroup
           type="button"
-          value={useRemote ? 'remote' : 'static'}
+          value={remote ? 'remote' : 'static'}
           onChange={(e) => {
-            if (e.target.value === 'remote') onChange({ dataSourceId: sources[0]?.id, options: undefined, optionsFrom: undefined, autoFill: undefined });
-            else onChange({ dataSourceId: undefined });
+            if (e.target.value === 'remote') {
+              onRemoteChange(true);
+              onChange({ options: undefined, optionsFrom: undefined, autoFill: undefined, ...(sources[0] ? { dataSourceId: sources[0].id } : {}) });
+            } else {
+              onRemoteChange(false);
+              onChange({ dataSourceId: undefined });
+            }
           }}
         >
           <Radio value="static">静态选项</Radio>
           <Radio value="remote">远程数据源</Radio>
         </RadioGroup>
       </div>
-      {useRemote && (
+      {remote && (
         <Select
           value={field.dataSourceId}
           onChange={(v) => onChange({ dataSourceId: (v as number) ?? undefined })}
           placeholder={sources.length ? '选择数据源' : '暂无启用的数据源，请先在「远程数据源」登记'}
           style={{ width: '100%', marginTop: 6 }}
           optionList={sources.map((s) => ({ value: s.id, label: s.name }))}
+          showClear
         />
       )}
     </div>
