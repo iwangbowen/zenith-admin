@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Button, Input, Modal, Select, Space, Tag, Toast, Tabs, TabPane, Banner, Typography, TextArea } from '@douyinfe/semi-ui';
 import { RotateCcw, Search, RefreshCw } from 'lucide-react';
 import type { PaginatedResponse, MpMessageTemplate, MpTemplateSendLog } from '@zenith/shared';
