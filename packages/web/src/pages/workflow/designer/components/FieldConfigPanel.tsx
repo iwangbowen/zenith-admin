@@ -2,8 +2,9 @@
  * 右侧字段属性配置面板
  */
 import { useMemo, useState, useEffect } from 'react';
-import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput, RadioGroup, Radio } from '@douyinfe/semi-ui';
-import { Plus, Trash2 } from 'lucide-react';
+import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput, RadioGroup, Radio, Tooltip } from '@douyinfe/semi-ui';
+import { Plus, Trash2, Wand2 } from 'lucide-react';
+import { pinyin } from 'pinyin-pro';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFieldVisibilityCondition, Dict, PaginatedResponse, WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, FORM_FIELD_TYPES, toDateFnsToken } from '../form-types';
@@ -18,6 +19,32 @@ interface FieldConfigPanelProps {
 }
 
 const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+// 根据字段名称生成可读 key：中文转拼音（无声调），非中文连续保留，输出 camelCase
+function slugifyToKey(label: string, fallbackType: string): string {
+  const source = (label ?? '').trim();
+  const py = source
+    ? pinyin(source, { toneType: 'none', type: 'string', nonZh: 'consecutive', v: true })
+    : '';
+  const parts = py.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  let key = parts
+    .map((p, i) => (i === 0 ? p.toLowerCase() : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()))
+    .join('');
+  // 必须以字母开头
+  if (!FIELD_KEY_PATTERN.test(key)) {
+    const suffix = key ? key.charAt(0).toUpperCase() + key.slice(1) : '';
+    key = `${fallbackType}${suffix}`;
+  }
+  return key || fallbackType || 'field';
+}
+
+// 追加数字后缀确保唯一
+function uniqueKey(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}${n}`)) n += 1;
+  return `${base}${n}`;
+}
 
 function formatVisibilityValue(value: unknown): string {
   if (typeof value === 'string') {
@@ -94,6 +121,12 @@ export default function FieldConfigPanel({
     if (keyDraft === field.key) return;
     if (keyError) { setKeyDraft(field.key); return; }
     onRenameKey?.(keyDraft);
+  };
+  // 根据名称一键生成唯一 key
+  const generateKey = () => {
+    const next = uniqueKey(slugifyToKey(field.label, field.type), otherKeys);
+    setKeyDraft(next);
+    onRenameKey?.(next);
   };
 
   // 可用作条件依赖的字段（具备明确可比较值的类型，且不是当前字段）
@@ -216,6 +249,18 @@ export default function FieldConfigPanel({
                 onEnterPress={commitKey}
                 placeholder="字母开头，仅含字母/数字/下划线"
                 validateStatus={keyError ? 'error' : 'default'}
+                suffix={(
+                  <Tooltip content={field.label.trim() ? '根据名称生成 key' : '请先填写名称'}>
+                    <Button
+                      icon={<Wand2 size={13} />}
+                      size="small" theme="borderless" type="tertiary"
+                      disabled={!field.label.trim()}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={generateKey}
+                      aria-label="根据名称生成 key"
+                    />
+                  </Tooltip>
+                )}
               />
               {keyError ? (
                 <Typography.Text type="danger" size="small">{keyError}</Typography.Text>
