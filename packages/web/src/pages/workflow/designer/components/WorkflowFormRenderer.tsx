@@ -5,14 +5,12 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import DOMPurify from 'dompurify';
-import { Form, Select, Upload, Button, Typography, Row, Col, Divider, Rating, Toast, withField, Input, InputNumber, DatePicker } from '@douyinfe/semi-ui';
+import { Form, Select, Button, Typography, Row, Col, Divider, Rating, Toast, withField, Input, InputNumber, DatePicker } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, Eraser, Trash2 } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup, WorkflowRelationOption } from '@zenith/shared';
-import { TOKEN_KEY } from '@zenith/shared';
 import { CURRENCY_OPTIONS, toDateFnsToken } from '../form-types';
-import { config } from '@/config';
 import { request } from '@/utils/request';
 import { guessMimeTypeFromName } from '@/utils/file-utils';
 import FileAttachment, { type AttachmentItem } from '@/components/FileAttachment';
@@ -257,14 +255,6 @@ const FormRating = withField(Rating);
 // ─── 附件 / 图片上传（接入 Form，存 {name,url,size} 数组） ──────────────
 interface UploadedFileValue { name: string; url: string; size?: number }
 
-interface UploadFileItem {
-  name: string;
-  status?: string;
-  url?: string;
-  size?: string | number;
-  response?: unknown;
-}
-
 interface FileUploadInputProps {
   value?: UploadedFileValue[];
   onChange?: (value: UploadedFileValue[]) => void;
@@ -273,64 +263,48 @@ interface FileUploadInputProps {
   limit?: number;
 }
 
+function fileToAttachment(f: UploadedFileValue, i: number): AttachmentItem {
+  const dot = f.name?.lastIndexOf('.') ?? -1;
+  return {
+    id: i + 1,
+    fileId: f.url,
+    file: {
+      id: f.url,
+      originalName: f.name,
+      size: Number(f.size ?? 0),
+      mimeType: guessMimeTypeFromName(f.name),
+      extension: dot >= 0 ? f.name.slice(dot + 1) : null,
+      url: f.url,
+    },
+    sortOrder: i,
+    createdAt: '',
+  };
+}
+
 function FileUploadInput({ value, onChange, disabled, isImage, limit }: Readonly<FileUploadInputProps>) {
   const files = Array.isArray(value) ? value : [];
+  const attachments = files.map(fileToAttachment);
 
   if (disabled) {
     if (files.length === 0) return <Typography.Text type="tertiary">（无附件）</Typography.Text>;
-    const attachments: AttachmentItem[] = files.map((f, i) => {
-      const dot = f.name?.lastIndexOf('.') ?? -1;
-      return {
-        id: i + 1,
-        fileId: f.url,
-        file: {
-          id: f.url,
-          originalName: f.name,
-          size: Number(f.size ?? 0),
-          mimeType: guessMimeTypeFromName(f.name),
-          extension: dot >= 0 ? f.name.slice(dot + 1) : null,
-          url: f.url,
-        },
-        sortOrder: i,
-        createdAt: '',
-      };
-    });
     return <FileAttachment mode="view" value={attachments} showTitle={false} />;
   }
 
-  const defaultFileList = files.map((f, i) => ({ uid: `${i}-${f.url}`, name: f.name, status: 'success' as const, url: f.url, size: String(f.size ?? '') }));
-
-  const handleChange = ({ fileList }: { fileList: UploadFileItem[] }) => {
-    const next = fileList
-      .filter((f) => f.status === 'success' || f.status === undefined)
-      .map((f) => {
-        const resp = f.response as { data?: { url?: string; originalName?: string; size?: number } } | undefined;
-        const sz = resp?.data?.size ?? f.size;
-        return {
-          name: resp?.data?.originalName ?? f.name,
-          url: resp?.data?.url ?? f.url ?? '',
-          size: sz === undefined ? undefined : Number(sz),
-        };
-      })
-      .filter((f) => f.url);
-    onChange?.(next);
-  };
-
   return (
-    <Upload
-      action={`${config.apiBaseUrl}/api/files/upload-one`}
-      headers={{ Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }}
-      name="file"
-      listType={isImage ? 'picture' : 'list'}
+    <FileAttachment
+      mode="edit"
+      value={attachments}
+      showTitle={false}
+      multiple={limit !== 1}
+      limit={limit ?? 0}
       accept={isImage ? 'image/*' : undefined}
-      limit={limit}
-      defaultFileList={defaultFileList}
-      onChange={handleChange}
-    >
-      <Button icon={<Plus size={14} />} theme="light" disabled={disabled}>
-        {isImage ? '上传图片' : '上传文件'}
-      </Button>
-    </Upload>
+      uploadTip={isImage ? '上传图片' : '上传文件'}
+      onChange={(items) => onChange?.(items.map((a) => ({
+        name: a.file.originalName,
+        url: a.file.url,
+        size: a.file.size,
+      })))}
+    />
   );
 }
 
