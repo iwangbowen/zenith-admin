@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { Switch, Space, Typography, Empty } from '@douyinfe/semi-ui';
+import { Switch, Space, Typography, Empty, Spin } from '@douyinfe/semi-ui';
 import type { WorkflowFormField } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
 import { buildFieldDependencyGraph, DEP_KIND_COLOR, type DepKind } from '../form-graph';
@@ -87,6 +87,12 @@ function layoutWithDagre(nodes: RFNode[], edges: RFEdge[]): RFNode[] {
 function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormField[] }>) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hideIsolated, setHideIsolated] = useState(true);
+  // 等弹窗进场动画结束再挂载 ReactFlow：避免在缩放动画中测量 handle 位置导致连线偏移
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), 320);
+    return () => clearTimeout(t);
+  }, []);
 
   const graph = useMemo(() => buildFieldDependencyGraph(fields), [fields]);
 
@@ -146,11 +152,15 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
     setNodes(laidOutNodes);
     setEdges(baseEdges);
     setSelectedId(null);
-    // 节点固定尺寸后强制重新测量 handle 位置，修复 handleBounds 缓存过期导致的连线端点偏移
+  }, [laidOutNodes, baseEdges, setNodes, setEdges]);
+
+  // 弹窗动画结束（ready）后强制重新测量 handle 位置，修复动画期间测量导致的 handleBounds 缓存偏移
+  useEffect(() => {
+    if (!ready) return;
     const ids = laidOutNodes.map((n) => n.id);
     const raf = requestAnimationFrame(() => updateNodeInternals(ids));
     return () => cancelAnimationFrame(raf);
-  }, [laidOutNodes, baseEdges, setNodes, setEdges, updateNodeInternals]);
+  }, [ready, laidOutNodes, updateNodeInternals]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -202,24 +212,30 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
         </div>
         <Typography.Text type="tertiary" size="small" style={{ marginLeft: 'auto' }}>箭头：驱动方 → 被影响方；点击节点高亮相关</Typography.Text>
       </div>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={handleNodeClick}
-        onPaneClick={handlePaneClick}
-        fitView
-        fitViewOptions={{ padding: 0.15 }}
-        minZoom={0.1}
-        maxZoom={2}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background />
-        <Controls />
-        <MiniMap pannable zoomable />
-      </ReactFlow>
+      {ready ? (
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          onPaneClick={handlePaneClick}
+          fitView
+          fitViewOptions={{ padding: 0.15 }}
+          minZoom={0.1}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background />
+          <Controls />
+          <MiniMap pannable zoomable />
+        </ReactFlow>
+      ) : (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Spin size="large" />
+        </div>
+      )}
     </div>
   );
 }
