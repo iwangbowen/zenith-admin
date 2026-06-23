@@ -1,11 +1,13 @@
 import { http, HttpResponse } from 'msw';
-import { mockPaymentOrders } from '@/mocks/data/payment';
-import { mockDateTime } from '@/mocks/utils/date';
-import { PAYMENT_CHANNEL_LABELS, SEED_PAYMENT_METHOD_CONFIGS } from '@zenith/shared';
+import { PAYMENT_MOCK_SEED_TIME, getNextPaymentOrderId, mockPaymentOrders } from '@/mocks/data/payment';
+import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_CHANNEL, SEED_PAYMENT_METHOD_CONFIGS } from '@zenith/shared';
 import type {
+  CreatePaymentResult,
   PaymentChannel,
   PaymentFeeRule,
   PaymentLink,
+  PaymentLinkPublic,
   PaymentLinkStatus,
   PaymentMethod,
   PaymentMethodConfig,
@@ -18,7 +20,7 @@ import type {
   PaymentSharingReceiver,
 } from '@zenith/shared';
 
-const SEED = '2024-01-01 09:00:00';
+const SEED = PAYMENT_MOCK_SEED_TIME;
 const ok = (data: unknown, message = 'ok') => HttpResponse.json({ code: 0, message, data });
 const notFound = (message = '不存在') => HttpResponse.json({ code: 404, message, data: null });
 const badRequest = (message: string) => HttpResponse.json({ code: 400, message, data: null });
@@ -252,6 +254,54 @@ const linkHandlers = [
     if (i === -1) return notFound('支付链接不存在');
     links.splice(i, 1);
     return ok(null, '删除成功');
+  }),
+  http.get('/api/public/payment/link/:token', ({ params }) => {
+    const l = links.find((x) => x.token === String(params.token));
+    if (!l) return notFound('支付链接不存在或已删除');
+    const data: PaymentLinkPublic = {
+      token: l.token,
+      subject: l.subject,
+      amount: l.amount,
+      payMethod: l.payMethod,
+      bizType: l.bizType,
+      status: computeLinkStatus(l),
+      expiredAt: l.expiredAt,
+      remainingUses: l.maxUses != null ? Math.max(0, l.maxUses - l.usedCount) : null,
+    };
+    return ok(data);
+  }),
+  http.post('/api/public/payment/link/:token/pay', async ({ params, request }) => {
+    const l = links.find((x) => x.token === String(params.token));
+    if (!l) return notFound('支付链接不存在或已删除');
+    const status = computeLinkStatus(l);
+    if (status === 'disabled') return badRequest('该支付链接已停用');
+    if (status === 'expired') return badRequest('该支付链接已过期或已达使用上限');
+    const body = (await request.json()) as { amount?: number; payMethod?: PaymentMethod; openId?: string };
+    const amount = l.amount ?? body.amount;
+    if (!amount || amount <= 0) return badRequest('请输入有效的支付金额');
+    const payMethod = l.payMethod ?? body.payMethod;
+    if (!payMethod) return badRequest('请选择支付方式');
+    if (!['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap'].includes(payMethod)) return badRequest('该支付方式暂不支持在公开收款页发起');
+    if (l.maxUses != null && l.usedCount >= l.maxUses) return badRequest('该支付链接已过期或已达使用上限');
+    l.usedCount += 1;
+    l.updatedAt = mockDateTime();
+    const channel = PAYMENT_METHOD_CHANNEL[payMethod];
+    const orderNo = `PAY${Date.now()}`;
+    const now = mockDateTime();
+    mockPaymentOrders.unshift({
+      id: getNextPaymentOrderId(), orderNo, outTradeNo: orderNo, channelTradeNo: null, bizType: l.bizType, bizId: l.linkNo,
+      subject: l.subject, body: null, amount, currency: 'CNY', channel, channelConfigId: channel === 'wechat' ? 1 : 2,
+      payMethod, status: 'paying', userId: null, openId: body.openId ?? null, clientIp: '127.0.0.1', departmentId: null,
+      paidAmount: null, paidAt: null, expiredAt: mockDateTimeOffset(30 * 60 * 1000), errorMessage: null, createdAt: now, updatedAt: now,
+    });
+    const payParams: CreatePaymentResult = {
+      orderNo,
+      channel,
+      payMethod,
+      codeUrl: channel === 'wechat' ? `weixin://wxpay/bizpayurl?pr=${orderNo}` : undefined,
+      payUrl: channel === 'alipay' ? `https://openapi.alipaydev.com/gateway.do?out_trade_no=${orderNo}` : undefined,
+    };
+    return ok({ orderNo, payParams }, '下单成功');
   }),
 ];
 

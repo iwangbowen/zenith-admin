@@ -66,19 +66,30 @@ interface ChannelRecord {
   status: string;
 }
 
+const CHANNEL_BILL_STATUSES = new Set(['success', 'succeeded', 'paid', 'closed', 'failed', 'refund', 'refunded', 'processing']);
+const MAX_BILL_AMOUNT = 999_999_999_999;
+
 /** 解析渠道对账单 CSV：每行 `订单号,渠道交易号,金额(分),状态`。跳过表头与空行。 */
 export function parseChannelBill(text: string): ChannelRecord[] {
   const out: ChannelRecord[] = [];
-  for (const raw of text.split(/\r?\n/)) {
+  for (const [index, raw] of text.split(/\r?\n/).entries()) {
     const line = raw.trim();
     if (!line) continue;
     const cols = line.split(',').map((c) => c.trim());
-    if (cols.length < 3) continue;
+    const lineNo = index + 1;
+    if (cols.length < 3) throw new HTTPException(400, { message: `渠道账单第 ${lineNo} 行字段不足` });
     const orderNo = cols[0];
     if (!orderNo || /^(订单号|order_?no|out_?trade_?no)$/i.test(orderNo)) continue;
+    if (!/^\d+$/.test(cols[2])) throw new HTTPException(400, { message: `渠道账单第 ${lineNo} 行金额必须为整数分` });
     const amount = Number(cols[2]);
-    if (!Number.isFinite(amount)) continue;
-    out.push({ orderNo, channelTradeNo: cols[1] || undefined, amount: Math.round(amount), status: cols[3] ?? 'success' });
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount > MAX_BILL_AMOUNT) {
+      throw new HTTPException(400, { message: `渠道账单第 ${lineNo} 行金额超出有效范围` });
+    }
+    const status = (cols[3] || 'success').trim();
+    if (!CHANNEL_BILL_STATUSES.has(status.toLowerCase())) {
+      throw new HTTPException(400, { message: `渠道账单第 ${lineNo} 行状态无效：${status}` });
+    }
+    out.push({ orderNo, channelTradeNo: cols[1] || undefined, amount, status });
   }
   return out;
 }

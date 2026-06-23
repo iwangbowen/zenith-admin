@@ -120,7 +120,9 @@ export async function generateSettlement(input: GenerateSettlementInput): Promis
   const grossAmount = Number(orderAgg?.gross ?? 0);
   const feeAmount = Number(orderAgg?.fee ?? 0);
   const refundAmount = Number(refundAgg?.refund ?? 0);
-  const netAmount = grossAmount - feeAmount - refundAmount;
+  const rawNetAmount = grossAmount - feeAmount - refundAmount;
+  const netAmount = Math.max(0, rawNetAmount);
+  const remark = [input.remark, rawNetAmount < 0 ? `账期净额为负（${rawNetAmount} 分），本批次按 0 分结算` : undefined].filter(Boolean).join('；') || null;
 
   const [row] = await db
     .insert(paymentSettlementBatches)
@@ -135,7 +137,7 @@ export async function generateSettlement(input: GenerateSettlementInput): Promis
       feeAmount,
       refundAmount,
       netAmount,
-      remark: input.remark ?? null,
+      remark,
       tenantId,
     })
     .returning();

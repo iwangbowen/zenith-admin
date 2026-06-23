@@ -3,7 +3,7 @@
  * 后台生成可分享的收款链接（固定/用户填写金额，可限次/限时），
  * 公开端点按 token 展示并下单（复用 payment.service.createPayment）。
  */
-import { and, desc, eq, like, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, like, lt, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomBytes, randomInt } from 'node:crypto';
 import { db } from '../db';
@@ -15,6 +15,8 @@ import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../l
 import { createPayment } from './payment.service';
 import type { CreatePaymentLinkInput, UpdatePaymentLinkInput } from '@zenith/shared';
 import type { CreatePaymentResult, PaymentLink, PaymentLinkPublic, PaymentLinkStatus, PaymentMethod } from '@zenith/shared';
+
+const PUBLIC_LINK_PAY_METHODS = new Set<PaymentMethod>(['wechat_native', 'wechat_h5', 'alipay_page', 'alipay_wap']);
 
 function genLinkNo(): string {
   return `LINK${Date.now()}${randomInt(1000, 9999)}`;
@@ -175,23 +177,44 @@ export async function payByLink(token: string, input: PayByLinkInput): Promise<{
   }
   const payMethod = row.payMethod ?? input.payMethod;
   if (!payMethod) throw new HTTPException(400, { message: '请选择支付方式' });
+  if (!PUBLIC_LINK_PAY_METHODS.has(payMethod)) {
+    throw new HTTPException(400, { message: '该支付方式暂不支持在公开收款页发起' });
+  }
 
-  const result = await createPayment({
-    bizType: row.bizType,
-    bizId: row.linkNo,
-    subject: row.subject,
-    amount,
-    payMethod,
-    openId: input.openId,
-    expireMinutes: 30,
-    clientIp: input.clientIp,
-  });
-
-  // 原子自增使用次数（带上限二次校验，防并发超用）
-  await db
+  const [reserved] = await db
     .update(paymentLinks)
     .set({ usedCount: sql`${paymentLinks.usedCount} + 1` })
-    .where(and(eq(paymentLinks.id, row.id), row.maxUses != null ? lt(paymentLinks.usedCount, row.maxUses) : undefined));
+    .where(
+      and(
+        eq(paymentLinks.id, row.id),
+        eq(paymentLinks.status, 'active'),
+        or(isNull(paymentLinks.expiredAt), gt(paymentLinks.expiredAt, new Date())),
+        row.maxUses != null ? lt(paymentLinks.usedCount, row.maxUses) : undefined,
+      ),
+    )
+    .returning({ id: paymentLinks.id });
 
-  return result;
+  if (!reserved) {
+    throw new HTTPException(400, { message: '该支付链接已过期或已达使用上限' });
+  }
+
+  try {
+    return await createPayment({
+      bizType: row.bizType,
+      bizId: row.linkNo,
+      subject: row.subject,
+      amount,
+      payMethod,
+      openId: input.openId,
+      expireMinutes: 30,
+      clientIp: input.clientIp,
+      tenantId: row.tenantId,
+    });
+  } catch (err) {
+    await db
+      .update(paymentLinks)
+      .set({ usedCount: sql`${paymentLinks.usedCount} - 1` })
+      .where(and(eq(paymentLinks.id, row.id), gt(paymentLinks.usedCount, 0)));
+    throw err;
+  }
 }

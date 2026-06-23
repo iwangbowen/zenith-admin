@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
+import { PAYMENT_MOCK_SEED_TIME, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
 import { mockDateTime } from '@/mocks/utils/date';
 import type {
   PaymentChannel,
@@ -12,7 +12,7 @@ import type {
   PaymentOutboxEvent,
 } from '@zenith/shared';
 
-const SEED = '2024-01-01 09:00:00';
+const SEED = PAYMENT_MOCK_SEED_TIME;
 
 function paginate<T>(list: T[], url: URL) {
   const page = Number(url.searchParams.get('page')) || 1;

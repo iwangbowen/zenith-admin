@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CSSProperties } from 'react';
-import { Button, DatePicker, Input, Row, Col, Select, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, DatePicker, Input, Row, Col, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -142,6 +142,16 @@ export default function PaymentLedgerPage() {
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch} disabled={!canView}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset} disabled={!canView}>重置</Button>
       </SearchToolbar>
+
+      {!canView && (
+        <Banner
+          type="warning"
+          bordered
+          closeIcon={null}
+          description="当前账号缺少「payment:ledger:list」权限，无法查看资金台账。"
+          style={{ marginBottom: 12 }}
+        />
+      )}
 
       <ConfigurableTable
         bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"

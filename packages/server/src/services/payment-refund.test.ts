@@ -13,14 +13,14 @@ describe('calcLockedRefundAmount', () => {
     expect(calcLockedRefundAmount([])).toBe(0);
   });
 
-  it('只统计 success + processing 状态，跳过 pending/failed', () => {
+  it('统计 pending + processing + success 状态，跳过 failed', () => {
     const refunds: RefundLike[] = [
       { amount: 1000, status: 'success' },
       { amount: 500, status: 'processing' },
-      { amount: 200, status: 'pending' },   // 不计
+      { amount: 200, status: 'pending' },
       { amount: 300, status: 'failed' },    // 不计
     ];
-    expect(calcLockedRefundAmount(refunds)).toBe(1500);
+    expect(calcLockedRefundAmount(refunds)).toBe(1700);
   });
 
   it('全部为 failed 时返回 0', () => {
@@ -85,6 +85,12 @@ describe('退款可退余额 - 业务层边界', () => {
     const refunds: RefundLike[] = [{ amount: 5000, status: 'processing' }];
     expect(canRefund(refunds, 5000)).toBe(false); // 5000 + 5000 > 9900
     expect(canRefund(refunds, 4900)).toBe(true);  // 5000 + 4900 = 9900 ≤ 9900
+  });
+
+  it('pending 审批中的退款计入锁定额，防止多笔待审批退款超退', () => {
+    const refunds: RefundLike[] = [{ amount: 8000, status: 'pending' }];
+    expect(canRefund(refunds, 2000)).toBe(false);
+    expect(canRefund(refunds, 1900)).toBe(true);
   });
 
   it('failed 退款不影响可退余额（可重新申请）', () => {

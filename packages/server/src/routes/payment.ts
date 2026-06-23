@@ -41,9 +41,11 @@ import {
 import {
   listOrders,
   getOrderDetail,
+  getOrderDetailByNo,
   createPayment,
   refreshOrderById,
   closeOrderById,
+  listOrderRefunds,
   refund,
   listRefunds,
   getRefundDetail,
@@ -273,6 +275,32 @@ const orderGetRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getOrderDetail(c.req.valid('param').id)), 200),
 });
 
+const OrderNoParam = z.object({
+  orderNo: z.string().min(1).max(64).openapi({ param: { name: 'orderNo', in: 'path' }, example: 'PAY1700000000001' }),
+});
+
+const orderGetByNoRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/orders/by-no/{orderNo}', tags: ['支付中心'], summary: '按订单号查询支付订单详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:order:list' })] as const,
+    request: { params: OrderNoParam },
+    responses: { ...ok(PaymentOrderDTO, '订单详情'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await getOrderDetailByNo(c.req.valid('param').orderNo)), 200),
+});
+
+const orderRefundsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/orders/{id}/refunds', tags: ['支付中心'], summary: '支付订单关联退款',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:order:list' }), guard({ permission: ['payment:refund:list', 'payment:order:refund'] })] as const,
+    request: { params: IdParam },
+    responses: { ...ok(z.array(PaymentRefundDTO), '订单关联退款'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await listOrderRefunds(c.req.valid('param').id)), 200),
+});
+
 const orderQueryRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/orders/{id}/query', tags: ['支付中心'], summary: '主动查询并同步订单状态',
@@ -466,7 +494,9 @@ paymentRouter.openapiRoutes([
   orderCreateRoute,
   ordersExportRoute,
   ordersExportCsvRoute,
+  orderGetByNoRoute,
   orderGetRoute,
+  orderRefundsRoute,
   orderQueryRoute,
   orderCloseRoute,
   refundCreateRoute,

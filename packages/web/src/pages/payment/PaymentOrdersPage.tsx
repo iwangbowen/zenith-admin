@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Card, DatePicker, Dropdown, Form, Input, InputNumber, Select, Space, SplitButtonGroup, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions, Table } from '@douyinfe/semi-ui';
+import { Button, Card, DatePicker, Dropdown, Form, Input, InputNumber, Select, Space, SplitButtonGroup, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus, Download, ChevronDown } from 'lucide-react';
@@ -48,6 +48,7 @@ function StatCard({ label, value }: Readonly<{ label: string; value: string }>) 
 
 export default function PaymentOrdersPage() {
   const { hasPermission } = usePermission();
+  const canViewRefunds = hasPermission('payment:refund:list') || hasPermission('payment:order:refund');
   const refundFormApi = useRef<FormApi | null>(null);
 
   const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
@@ -121,7 +122,7 @@ export default function PaymentOrdersPage() {
     let stopped = false;
     const poll = async () => {
       if (stopped) return;
-      const res = await request.get<PaymentOrder>(`/api/payment/orders/${orderNo}`);
+      const res = await request.get<PaymentOrder>(`/api/payment/orders/by-no/${encodeURIComponent(orderNo)}`);
       if (stopped) return;
       if (res.code === 0) {
         const { status } = res.data;
@@ -148,17 +149,16 @@ export default function PaymentOrdersPage() {
   function handleSearch() { setPage(1); void fetchList(1, pageSize); }
   function handleReset() { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); }
 
-  async function fetchOrderRefunds(orderNo: string): Promise<PaymentRefund[]> {
-    const res = await request.get<PaginatedResponse<PaymentRefund>>(
-      `/api/payment/refunds?keyword=${encodeURIComponent(orderNo)}&pageSize=100`,
-    );
-    return res.code === 0 ? res.data.list.filter((r) => r.orderNo === orderNo) : [];
+  async function fetchOrderRefunds(orderId: number): Promise<PaymentRefund[]> {
+    if (!canViewRefunds) return [];
+    const res = await request.get<PaymentRefund[]>(`/api/payment/orders/${orderId}/refunds`);
+    return res.code === 0 ? res.data : [];
   }
 
   async function openDetail(order: PaymentOrder) {
     setDetail(order);
     setDetailRefunds([]);
-    setDetailRefunds(await fetchOrderRefunds(order.orderNo));
+    setDetailRefunds(await fetchOrderRefunds(order.id));
   }
 
   async function handleQuery(record: PaymentOrder) {
@@ -182,12 +182,17 @@ export default function PaymentOrdersPage() {
 
   async function openRefundModal(order: PaymentOrder) {
     setRefundedAmount(0);
-    setRefundTarget(order);
-    const refunds = await fetchOrderRefunds(order.orderNo);
+    const refunds = await fetchOrderRefunds(order.id);
     const locked = refunds
-      .filter((r) => r.status === 'success' || r.status === 'processing')
+      .filter((r) => r.status === 'pending' || r.status === 'processing' || r.status === 'success')
       .reduce((s, r) => s + r.refundAmount, 0);
+    if (order.amount - locked <= 0) {
+      Toast.warning('该订单暂无可退余额');
+      setRefundTarget(null);
+      return;
+    }
     setRefundedAmount(locked);
+    setRefundTarget(order);
   }
 
   async function submitRefund() {
@@ -224,11 +229,15 @@ export default function PaymentOrdersPage() {
     if (!api) return;
     let values: { subject: string; amount: number; bizType: string; bizId: string; payMethod: PaymentMethod; openId?: string };
     try { values = await api.validate(); } catch { throw new Error('validation'); }
+    if (values.payMethod === 'wechat_jsapi' && !values.openId?.trim()) {
+      Toast.error('微信 JSAPI 支付需要填写 OpenID');
+      return;
+    }
     setCreateSubmitting(true);
     try {
       const res = await request.post<{ orderNo: string; payParams: CreatePaymentResult }>('/api/payment/orders', {
         bizType: values.bizType, bizId: values.bizId, subject: values.subject,
-        amount: Math.round(values.amount * 100), payMethod: values.payMethod, openId: values.openId,
+        amount: Math.round(values.amount * 100), payMethod: values.payMethod, openId: values.openId?.trim() || undefined,
       });
       if (res.code === 0) { Toast.success('下单成功'); setCreateVisible(false); setPayResult(res.data.payParams); void fetchList(); void fetchStats(); }
       else throw new Error(res.message);
@@ -373,7 +382,16 @@ export default function PaymentOrdersPage() {
             {detailRefunds.length > 0 && (
               <>
                 <Typography.Title heading={6} style={{ marginTop: 8, marginBottom: 8 }}>关联退款（{detailRefunds.length}）</Typography.Title>
-                <Table bordered columns={detailRefundColumns} dataSource={detailRefunds} rowKey="id" size="small" pagination={false} />
+                <ConfigurableTable
+                  bordered
+                  columns={detailRefundColumns}
+                  dataSource={detailRefunds}
+                  rowKey="id"
+                  size="small"
+                  pagination={false}
+                  onRefresh={() => { if (detail) void fetchOrderRefunds(detail.id).then(setDetailRefunds); }}
+                  refreshLoading={false}
+                />
               </>
             )}
           </>

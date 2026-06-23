@@ -5,7 +5,7 @@
  * 内部负责：解析渠道配置、解密密钥组装 AdapterContext、订单状态机、事务落库、
  * 回调验签后处理、发支付事件。所有渠道差异封装在适配器内，业务层无感知。
  */
-import { and, desc, eq, gte, like, lte, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, like, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../db';
@@ -20,6 +20,7 @@ import {
   type PaymentOrderRow,
   type PaymentRefundRow,
 } from '../db/schema';
+import { config } from '../config';
 import { currentUser, currentUserOrNull } from '../lib/context';
 import { getCreateTenantId, tenantCondition } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
@@ -79,8 +80,8 @@ export function buildAdapterContext(config: PaymentChannelConfigRow): AdapterCon
   return { config, secrets, notifyUrl: resolveNotifyUrl(config.channel, config) };
 }
 
-async function resolveChannelConfig(channel: PaymentChannel, channelConfigId?: number): Promise<PaymentChannelConfigRow> {
-  const tc = currentUserOrNull() ? tenantCondition(paymentChannelConfigs, currentUser()) : undefined;
+async function resolveChannelConfig(channel: PaymentChannel, channelConfigId?: number, tenantId?: number | null): Promise<PaymentChannelConfigRow> {
+  const tc = channelConfigTenantCondition(tenantId) ?? (currentUserOrNull() ? tenantCondition(paymentChannelConfigs, currentUser()) : undefined);
   if (channelConfigId) {
     const [row] = await db.select().from(paymentChannelConfigs).where(and(eq(paymentChannelConfigs.id, channelConfigId), tc)).limit(1);
     if (!row) throw new HTTPException(404, { message: '支付渠道配置不存在' });
@@ -114,6 +115,23 @@ async function getOrderRowByNo(orderNo: string): Promise<PaymentOrderRow> {
   const [row] = await db.select().from(paymentOrders).where(and(eq(paymentOrders.orderNo, orderNo), tc)).limit(1);
   if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
   return row;
+}
+
+function channelConfigTenantCondition(tenantId: number | null | undefined) {
+  if (tenantId === undefined || !config.multiTenantMode) return undefined;
+  return tenantId === null ? isNull(paymentChannelConfigs.tenantId) : eq(paymentChannelConfigs.tenantId, tenantId);
+}
+
+async function buildOrderIdWhere(id: number) {
+  const user = currentUser();
+  const scope = await getDataScopeCondition({ currentUserId: user.userId, deptColumn: paymentOrders.departmentId, ownerColumn: paymentOrders.createdBy });
+  return mergeWhere(mergeWhere(eq(paymentOrders.id, id), tenantCondition(paymentOrders, user)), scope);
+}
+
+async function buildOrderNoWhere(orderNo: string) {
+  const user = currentUser();
+  const scope = await getDataScopeCondition({ currentUserId: user.userId, deptColumn: paymentOrders.departmentId, ownerColumn: paymentOrders.createdBy });
+  return mergeWhere(mergeWhere(eq(paymentOrders.orderNo, orderNo), tenantCondition(paymentOrders, user)), scope);
 }
 
 function buildEventPayload(type: PaymentEventType, order: PaymentOrderRow, extra?: { refundNo?: string; refundAmount?: number }): Omit<PaymentEvent, 'eventId' | 'occurredAt'> {
@@ -211,12 +229,20 @@ export function mapNotifyLog(row: PaymentNotifyLogRow): PaymentNotifyLog {
 
 // ─── 下单 ─────────────────────────────────────────────────────────────────────
 
-export async function createPayment(input: CreatePaymentInput & { clientIp?: string }): Promise<{ orderNo: string; payParams: CreatePaymentResult }> {
+interface InternalCreatePaymentInput extends CreatePaymentInput {
+  clientIp?: string;
+  tenantId?: number | null;
+}
+
+export async function createPayment(input: InternalCreatePaymentInput): Promise<{ orderNo: string; payParams: CreatePaymentResult }> {
   const channel = PAYMENT_METHOD_CHANNEL[input.payMethod];
-  const config = await resolveChannelConfig(channel, input.channelConfigId);
+  if (input.payMethod === 'wechat_jsapi' && !input.openId?.trim()) {
+    throw new HTTPException(400, { message: '微信 JSAPI 支付必须提供 OpenID' });
+  }
+  const config = await resolveChannelConfig(channel, input.channelConfigId, input.tenantId);
 
   const user = currentUserOrNull();
-  const tenantId = user ? getCreateTenantId(user) : null;
+  const tenantId = input.tenantId !== undefined ? input.tenantId : user ? getCreateTenantId(user) : null;
   let departmentId: number | null = null;
   if (user) {
     const [creator] = await db.select({ departmentId: users.departmentId }).from(users).where(eq(users.id, user.userId)).limit(1);
@@ -641,24 +667,38 @@ export async function listOrders(q: ListOrdersQuery) {
 }
 
 export async function getOrderDetail(id: number): Promise<PaymentOrder> {
-  const tc = tenantCondition(paymentOrders, currentUser());
-  const [row] = await db.select().from(paymentOrders).where(and(eq(paymentOrders.id, id), tc)).limit(1);
+  const [row] = await db.select().from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
+  return mapOrder(row);
+}
+
+export async function getOrderDetailByNo(orderNo: string): Promise<PaymentOrder> {
+  const [row] = await db.select().from(paymentOrders).where(await buildOrderNoWhere(orderNo)).limit(1);
   if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
   return mapOrder(row);
 }
 
 export async function refreshOrderById(id: number): Promise<PaymentOrder> {
-  const tc = tenantCondition(paymentOrders, currentUser());
-  const [row] = await db.select().from(paymentOrders).where(and(eq(paymentOrders.id, id), tc)).limit(1);
+  const [row] = await db.select().from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
   if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
   return mapOrder(await syncOrderStatus(row));
 }
 
 export async function closeOrderById(id: number): Promise<void> {
-  const tc = tenantCondition(paymentOrders, currentUser());
-  const [row] = await db.select({ orderNo: paymentOrders.orderNo }).from(paymentOrders).where(and(eq(paymentOrders.id, id), tc)).limit(1);
+  const [row] = await db.select({ orderNo: paymentOrders.orderNo }).from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
   if (!row) throw new HTTPException(404, { message: '支付订单不存在' });
   await closePayment(row.orderNo);
+}
+
+export async function listOrderRefunds(orderId: number): Promise<PaymentRefund[]> {
+  const [order] = await db.select({ id: paymentOrders.id }).from(paymentOrders).where(await buildOrderIdWhere(orderId)).limit(1);
+  if (!order) throw new HTTPException(404, { message: '支付订单不存在' });
+  const rows = await db
+    .select()
+    .from(paymentRefunds)
+    .where(and(eq(paymentRefunds.orderId, order.id), tenantCondition(paymentRefunds, currentUser())))
+    .orderBy(desc(paymentRefunds.id));
+  return rows.map(mapRefund);
 }
 
 export interface ListRefundsQuery {
@@ -779,12 +819,12 @@ export async function listNotifyLogs(q: ListNotifyLogsQuery) {
 // ─── 纯函数：可供单测直接导入 ──────────────────────────────────────────────────
 
 /**
- * 计算指定退款记录列表中的"已锁定退款总额"（状态为 success 或 processing 的退款）。
+ * 计算指定退款记录列表中的"已锁定退款总额"（待审批/处理中/成功均占用可退余额）。
  * 纯函数，无副作用，可独立单测。
  */
 export function calcLockedRefundAmount(refunds: Array<{ amount: number; status: string }>): number {
   return refunds
-    .filter((r) => r.status === 'success' || r.status === 'processing')
+    .filter((r) => r.status === 'pending' || r.status === 'processing' || r.status === 'success')
     .reduce((s, r) => s + r.amount, 0);
 }
 

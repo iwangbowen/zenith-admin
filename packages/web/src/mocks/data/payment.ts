@@ -1,6 +1,7 @@
 import type { PaymentChannelConfig, PaymentOrder, PaymentRefund, PaymentNotifyLog } from '@zenith/shared';
 
-const SEED = '2024-01-01 00:00:00';
+export const PAYMENT_MOCK_SEED_TIME = '2024-01-01 00:00:00';
+const SEED = PAYMENT_MOCK_SEED_TIME;
 
 export const mockPaymentChannels: PaymentChannelConfig[] = [
   {

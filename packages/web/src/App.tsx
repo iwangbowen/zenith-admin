@@ -27,6 +27,7 @@ const NotFoundPage = React.lazy(() => import('@/pages/not-found/NotFoundPage'));
 const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage'));
 const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
 const OAuth2AuthorizePage = React.lazy(() => import('@/pages/oauth2/OAuth2AuthorizePage'));
+const PaymentLinkPublicPage = React.lazy(() => import('@/pages/payment/PaymentLinkPublicPage'));
 const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
 const WorkflowLaunchPage = React.lazy(() => import('@/pages/workflow/launchpad/WorkflowLaunchPage'));
 const WorkflowInstancePage = React.lazy(() => import('@/pages/workflow/instances/WorkflowInstancePage'));
@@ -165,6 +166,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
   return (
     <PermissionContext.Provider value={permissions}>
       <Routes>
+        <Route path="/public/payment/link/:token" element={<Suspense fallback={routeFallback}><PaymentLinkPublicPage /></Suspense>} />
         {/* OAuth2 同意授权页（独立页面，不在 AdminLayout 内）*/}
         <Route path="/oauth2/authorize" element={<Suspense fallback={routeFallback}><OAuth2AuthorizePage /></Suspense>} />
         {/* 已登录用户访问认证页 → 重定向，避免落入 AdminLayout catch-all 404 并作为标签页出现 */}
@@ -296,6 +298,7 @@ export default function App() {
               <Route path="/reset-password" element={<Suspense fallback={routeFallback}><ResetPasswordPage /></Suspense>} />
               <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
               <Route path="/oauth2/authorize" element={<Suspense fallback={routeFallback}><OAuth2AuthorizePage /></Suspense>} />
+              <Route path="/public/payment/link/:token" element={<Suspense fallback={routeFallback}><PaymentLinkPublicPage /></Suspense>} />
               <Route path="*" element={<RedirectToLogin />} />
             </Routes>
           </PageErrorBoundary>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CSSProperties } from 'react';
-import { Button, DatePicker, Row, Col, Select, Spin } from '@douyinfe/semi-ui';
+import { Banner, Button, DatePicker, Row, Col, Select, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Search, RotateCcw } from 'lucide-react';
@@ -88,6 +88,16 @@ export default function PaymentReportsPage() {
         <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchSummary()} disabled={!canView}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset} disabled={!canView}>重置</Button>
       </SearchToolbar>
+
+      {!canView && (
+        <Banner
+          type="warning"
+          bordered
+          closeIcon={null}
+          description="当前账号缺少「payment:report:view」权限，无法查看财务报表。"
+          style={{ marginBottom: 12 }}
+        />
+      )}
 
       <Spin spinning={loading}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

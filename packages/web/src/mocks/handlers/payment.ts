@@ -203,9 +203,19 @@ export const paymentHandlers = [
   }),
   http.get('/api/payment/orders/export', () => new HttpResponse('\uFEFF订单号,金额(元)\nPAY1700000000001,99.00\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8' } })),
   http.get('/api/payment/orders/export/csv', () => new HttpResponse('\uFEFF订单号,金额(元)\nPAY1700000000001,99.00\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8' } })),
+  http.get('/api/payment/orders/by-no/:orderNo', ({ params }) => {
+    const o = mockPaymentOrders.find((x) => x.orderNo === String(params.orderNo));
+    return o ? HttpResponse.json({ code: 0, message: 'ok', data: o }) : HttpResponse.json({ code: 404, message: '不存在', data: null });
+  }),
   http.get('/api/payment/orders/:id', ({ params }) => {
     const o = mockPaymentOrders.find((x) => x.id === Number(params.id));
     return o ? HttpResponse.json({ code: 0, message: 'ok', data: o }) : HttpResponse.json({ code: 404, message: '不存在', data: null });
+  }),
+  http.get('/api/payment/orders/:id/refunds', ({ params }) => {
+    const order = mockPaymentOrders.find((x) => x.id === Number(params.id));
+    if (!order) return HttpResponse.json({ code: 404, message: '订单不存在', data: null });
+    const refunds = mockPaymentRefunds.filter((r) => r.orderId === order.id).sort((a, b) => b.id - a.id);
+    return HttpResponse.json({ code: 0, message: 'ok', data: refunds });
   }),
   http.post('/api/payment/orders/:id/query', ({ params }) => {
     const o = mockPaymentOrders.find((x) => x.id === Number(params.id));

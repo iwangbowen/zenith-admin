@@ -20,7 +20,10 @@ const methodOptions = Object.entries(PAYMENT_METHOD_LABELS).map(([value, label])
 const LINK_STATUS_COLOR = { active: 'green', disabled: 'grey', expired: 'red' } as const satisfies Record<PaymentLinkStatus, string>;
 
 function publicUrl(token: string): string {
-  return `${window.location.origin}/api/public/payment/link/${token}`;
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const publicPath = `/public/payment/link/${token}`;
+  if (import.meta.env.VITE_ELECTRON === 'true') return `${window.location.origin}${base}/#${publicPath}`;
+  return `${window.location.origin}${base}${publicPath}`;
 }
 
 interface SearchParams { keyword: string; status: string; }
@@ -40,6 +43,7 @@ interface LinkFormValues {
 export default function PaymentLinksPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
+  const qrContainerRef = useRef<HTMLDivElement | null>(null);
   const [data, setData] = useState<PaginatedResponse<PaymentLink> | null>(null);
   const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
@@ -134,6 +138,33 @@ export default function PaymentLinksPage() {
     if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
   }
 
+  async function copyPublicLink(link: PaymentLink) {
+    try {
+      await navigator.clipboard.writeText(publicUrl(link.token));
+      Toast.success('链接已复制');
+    } catch {
+      Toast.error('复制失败，请手动复制链接');
+    }
+  }
+
+  function downloadQrCode() {
+    if (!qrLink) return;
+    const svg = qrContainerRef.current?.querySelector('svg');
+    if (!svg) {
+      Toast.error('二维码未生成');
+      return;
+    }
+    const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${qrLink.linkNo}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   const columns: ColumnProps<PaymentLink>[] = [
     { title: '标题', dataIndex: 'subject', width: 180, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v}</Typography.Text> },
     { title: '金额', dataIndex: 'amount', width: 110, render: (v: number | null) => yuan(v) },
@@ -196,14 +227,15 @@ export default function PaymentLinksPage() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '8px 0' }}>
             <Typography.Title heading={6}>{qrLink.subject}</Typography.Title>
             <Typography.Text strong style={{ fontSize: 18, color: '#10b981' }}>{yuan(qrLink.amount)}</Typography.Text>
-            <div style={{ padding: 12, background: '#fff', borderRadius: 8 }}>
+            <div ref={qrContainerRef} style={{ padding: 12, background: '#fff', borderRadius: 8 }}>
               <QRCodeSVG value={publicUrl(qrLink.token)} size={200} level="M" />
             </div>
             <Input value={publicUrl(qrLink.token)} readonly style={{ width: '100%' }} />
-            <Button
-              size="small"
-              onClick={() => { void navigator.clipboard?.writeText(publicUrl(qrLink.token)); Toast.success('链接已复制'); }}
-            >复制链接</Button>
+            <Space>
+              <Button size="small" onClick={() => { void copyPublicLink(qrLink); }}>复制链接</Button>
+              <Button size="small" onClick={downloadQrCode}>下载二维码</Button>
+              <Button size="small" onClick={() => window.open(publicUrl(qrLink.token), '_blank', 'noopener')}>打开链接</Button>
+            </Space>
           </div>
         )}
       </AppModal>

@@ -143,7 +143,23 @@ export default function PaymentSettlementsPage() {
       <AppModal title="生成结算批次" visible={genVisible} onOk={handleGenerate} onCancel={() => setGenVisible(false)} okButtonProps={{ loading: submitting }} width={520} closeOnEsc>
         <Form key={genVisible ? 'gen' : 'closed'} getFormApi={(api) => { formApi.current = api; }} initValues={{ channel: 'wechat' }} labelPosition="left" labelWidth={90}>
           <Form.Select field="channel" label="渠道" style={{ width: '100%' }} optionList={channelOptions} rules={[{ required: true, message: '请选择渠道' }]} />
-          <Form.DatePicker field="period" label="账期" type="dateRange" style={{ width: '100%' }} rules={[{ required: true, message: '请选择账期' }]} />
+          <Form.DatePicker
+            field="period"
+            label="账期"
+            type="dateRange"
+            style={{ width: '100%' }}
+            rules={[
+              { required: true, message: '请选择账期' },
+              {
+                validator: (_rule: unknown, value: unknown) => {
+                  if (!Array.isArray(value) || value.length !== 2) return false;
+                  const [start, end] = value as [Date, Date];
+                  return start <= end;
+                },
+                message: '账期开始不能晚于结束',
+              },
+            ]}
+          />
           <Form.TextArea field="remark" label="备注" autosize rows={1} placeholder="可选" />
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginLeft: 90 }}>将聚合该渠道账期内成功订单，净额 = 收款 - 手续费 - 退款</Typography.Text>
         </Form>
