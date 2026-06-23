@@ -2,7 +2,7 @@ import { Tag, Timeline, Typography, Toast } from '@douyinfe/semi-ui';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CheckCircle2, Clock, CornerUpLeft, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog, Send, type LucideIcon } from 'lucide-react';
 import type { WorkflowTask, WorkflowInstanceStatus } from '@zenith/shared';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime, formatDurationBetween } from '@/utils/date';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -130,6 +130,11 @@ export default function ApprovalTimeline({ tasks, initiator, instanceStatus, fin
         else if (isCc && isApproved) actionText = '已抄送';
         else actionText = '待处理';
 
+        // 节点耗时：从任务生成（节点激活）到处理完成，仅对已同意/已驳回的处理节点展示
+        const duration = (isApproved || isRejected) && task.actionAt
+          ? formatDurationBetween(task.createdAt, task.actionAt)
+          : '';
+
         const dot = (
           <div style={{
             width: 28,
@@ -157,6 +162,15 @@ export default function ApprovalTimeline({ tasks, initiator, instanceStatus, fin
               )}
               {isRegenerated && (
                 <Tag color="orange" size="small" style={{ flexShrink: 0 }}>重新审批</Tag>
+              )}
+              {duration && (
+                <Typography.Text
+                  size="small"
+                  type="quaternary"
+                  style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+                >
+                  <Clock size={12} />耗时 {duration}
+                </Typography.Text>
               )}
             </div>
 

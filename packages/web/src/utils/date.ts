@@ -69,3 +69,28 @@ export function formatConvTime(date: DateInput): string {
   if (d.isSame(now, 'year')) return d.format('MM-DD HH:mm');
   return d.format('YYYY-MM-DD');
 }
+
+/**
+ * 计算两个时间点之间的耗时，返回中文人类可读字符串（如「2小时11分」「5分钟」「45秒」）。
+ * 入参为空 / 非法 / 结束早于开始时返回空串。
+ */
+export function formatDurationBetween(start: DateInput, end: DateInput): string {
+  if (!start || !end) return '';
+  const s = dayjs(typeof start === 'string' ? start.replace(' ', 'T') : start);
+  const e = dayjs(typeof end === 'string' ? end.replace(' ', 'T') : end);
+  if (!s.isValid() || !e.isValid()) return '';
+  const ms = e.diff(s);
+  if (ms < 0) return '';
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) return `${totalSec}秒`;
+  const totalMin = Math.floor(totalSec / 60);
+  if (totalMin < 60) return `${totalMin}分钟`;
+  const totalHour = Math.floor(totalMin / 60);
+  if (totalHour < 24) {
+    const min = totalMin % 60;
+    return min > 0 ? `${totalHour}小时${min}分` : `${totalHour}小时`;
+  }
+  const day = Math.floor(totalHour / 24);
+  const hour = totalHour % 24;
+  return hour > 0 ? `${day}天${hour}小时` : `${day}天`;
+}

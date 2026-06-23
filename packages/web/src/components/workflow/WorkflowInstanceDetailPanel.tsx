@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import {
   Descriptions, Empty, Spin, Tabs, TabPane, Tag, Typography, Button,
-  Avatar, TextArea, Select, Toast, Popconfirm,
+  Avatar, TextArea, Select, Toast, Popconfirm, Divider,
 } from '@douyinfe/semi-ui';
 import { CornerUpLeft, Send, Undo2 } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowInstance, WorkflowComment, WorkflowTaskConsult } from '@zenith/shared';
@@ -296,8 +296,9 @@ export default function WorkflowInstanceDetailPanel({
         <TabPane tab="表单内容" itemKey="form">{renderFormData()}</TabPane>
         <TabPane tab="流程图" itemKey="graph">
           <WorkflowGraphView flowData={flowData} tasks={instance.tasks ?? []} instanceStatus={instance.status} />
-        </TabPane>
-        <TabPane tab="节点列表" itemKey="nodes">
+          <Divider align="left" margin="16px">
+            <Typography.Text type="tertiary" size="small">节点列表</Typography.Text>
+          </Divider>
           <WorkflowNodeListView
             flowData={flowData}
             tasks={instance.tasks ?? []}
