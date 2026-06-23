@@ -4,8 +4,10 @@ import { Col, Form, Row, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { AppModal } from '@/components/AppModal';
 import ColorPickerInput from '@/components/ColorPickerInput';
+import IconPicker from '@/components/IconPicker';
 
 const FormColorPicker = withField(ColorPickerInput);
+const FormIconPicker = withField(IconPicker);
 
 export interface WorkflowTemplateFormValues extends Record<string, unknown> {
   name?: string;
@@ -96,7 +98,7 @@ export default function WorkflowTemplateFormModal({
             </>
           )}
           <Col span={12}>
-            <Form.Input field="icon" label="图标" placeholder="选填，lucide 图标名" />
+            <FormIconPicker field="icon" label="图标" />
           </Col>
           <Col span={12}>
             <FormColorPicker field="color" label="颜色" />
