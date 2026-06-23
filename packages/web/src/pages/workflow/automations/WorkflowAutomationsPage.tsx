@@ -498,7 +498,7 @@ export default function WorkflowAutomationsPage() {
         width={780}
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
-        <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} labelPosition="left" labelWidth={80}>
+        <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} labelPosition="left" labelWidth={96}>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Input field="name" label="规则名称" maxLength={64} rules={[{ required: true, message: '请输入规则名称' }]} />
