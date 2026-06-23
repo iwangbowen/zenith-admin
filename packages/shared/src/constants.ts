@@ -22,6 +22,15 @@ export const WORKFLOW_TASK_STATUSES = ['pending', 'approved', 'rejected', 'skipp
 export const WORKFLOW_NODE_TYPES = ['start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode'] as const;
 export const WORKFLOW_CONDITION_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains'] as const;
 
+/** 流程表单类型：designer=表单库可视化设计器，custom=用户自定义业务页面，external=业务系统主导（businessKey 关联） */
+export const WORKFLOW_FORM_TYPES = ['designer', 'custom', 'external'] as const;
+export type WorkflowFormType = typeof WORKFLOW_FORM_TYPES[number];
+export const WORKFLOW_FORM_TYPE_LABELS: Record<WorkflowFormType, string> = {
+  designer: '表单库设计器',
+  custom: '自定义业务表单',
+  external: '业务系统主导',
+};
+
 // OAuth2 服务端常量
 export const OAUTH2_GRANT_TYPES = ['authorization_code', 'client_credentials', 'implicit', 'refresh_token'] as const;
 export type OAuth2GrantType = typeof OAUTH2_GRANT_TYPES[number];

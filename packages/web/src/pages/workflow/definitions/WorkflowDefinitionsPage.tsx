@@ -5,7 +5,8 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Ban, CircleCheck, GitCompare, LayoutTemplate, MoreHorizontal, Plus, RotateCcw, Save, Search, Trash2, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, PaginatedResponse } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, PaginatedResponse, WorkflowFormType } from '@zenith/shared';
+import { WORKFLOW_FORM_TYPE_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -25,6 +26,12 @@ const STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   draft: { text: '草稿', color: 'grey' },
   published: { text: '已发布', color: 'green' },
   disabled: { text: '已禁用', color: 'red' },
+};
+
+const FORM_TYPE_COLOR: Record<WorkflowFormType, TagColor> = {
+  designer: 'blue',
+  custom: 'purple',
+  external: 'orange',
 };
 
 interface SearchParams {
@@ -367,6 +374,14 @@ export default function WorkflowDefinitionsPage() {
           </span>
         );
       },
+    },
+    {
+      title: '表单类型',
+      dataIndex: 'formType',
+      width: 130,
+      render: (v: WorkflowFormType) => (
+        <Tag color={FORM_TYPE_COLOR[v] ?? 'grey'}>{WORKFLOW_FORM_TYPE_LABELS[v] ?? v}</Tag>
+      ),
     },
     {
       title: '描述',

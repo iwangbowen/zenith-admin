@@ -6,6 +6,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared';
+import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
 
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
@@ -673,9 +674,9 @@ export default function WorkflowDesignerPage() {
               value={formType}
               onChange={(e) => setFormType((e.target as HTMLInputElement).value as WorkflowFormType)}
             >
-              <Radio value="designer">表单库设计器</Radio>
-              <Radio value="custom">自定义业务表单</Radio>
-              <Radio value="external">业务系统主导</Radio>
+              {WORKFLOW_FORM_TYPES.map((t) => (
+                <Radio key={t} value={t}>{WORKFLOW_FORM_TYPE_LABELS[t]}</Radio>
+              ))}
             </RadioGroup>
           </div>
           {formType === 'designer' ? (
