@@ -411,7 +411,7 @@ export default function WorkflowEventSubscriptionsPage() {
         width={680}
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
-        <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} allowEmpty labelPosition="left" labelWidth={96}>
+        <Form<FormValues> getFormApi={(api) => (formApi.current = api)} onSubmit={handleSubmit} allowEmpty labelPosition="left" labelWidth={110}>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Input field="name" label="名称" maxLength={64} rules={[{ required: true, message: '请输入名称' }]} />
