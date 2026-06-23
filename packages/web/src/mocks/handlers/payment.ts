@@ -9,15 +9,10 @@ import {
   mockPaymentLogs,
 } from '@/mocks/data/payment';
 import { mockDateTime, mockDateTimeOffset, mockDate } from '@/mocks/utils/date';
+import { paginate } from '@/mocks/utils/handlers';
 import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared';
 import type { PaymentChannelConfig, PaymentMethod, PaymentOrder, PaymentRefund } from '@zenith/shared';
 import { recordMockPaymentSucceeded, recordMockRefundSucceeded } from './payment-ext';
-
-function paginate<T>(list: T[], url: URL) {
-  const page = Number(url.searchParams.get('page')) || 1;
-  const pageSize = Number(url.searchParams.get('pageSize')) || 10;
-  return { list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize };
-}
 
 export const paymentHandlers = [
   // ── 统计 ──

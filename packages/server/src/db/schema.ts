@@ -3506,3 +3506,31 @@ export const monitorAlertRulesRelations = relations(monitorAlertRules, ({ many }
 export const monitorAlertEventsRelations = relations(monitorAlertEvents, ({ one }) => ({
   rule: one(monitorAlertRules, { fields: [monitorAlertEvents.ruleId], references: [monitorAlertRules.id] }),
 }));
+
+// ─── SSL 证书 ──────────────────────────────────────────────────────────────
+export const sslCertTypeEnum = pgEnum('ssl_cert_type', ['self_signed', 'uploaded', 'letsencrypt']);
+export const sslCertStatusEnum = pgEnum('ssl_cert_status', ['valid', 'expiring', 'expired', 'invalid']);
+
+export const sslCertificates = pgTable('ssl_certificates', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 128 }).notNull(),
+  domain: varchar('domain', { length: 256 }).notNull(),
+  type: sslCertTypeEnum('type').notNull().default('self_signed'),
+  certPath: varchar('cert_path', { length: 512 }),
+  keyPath: varchar('key_path', { length: 512 }),
+  certContent: text('cert_content'),
+  keyContent: text('key_content'),
+  issuer: varchar('issuer', { length: 256 }),
+  subject: varchar('subject', { length: 256 }),
+  validFrom: timestamp('valid_from', { withTimezone: true }),
+  validTo: timestamp('valid_to', { withTimezone: true }),
+  fingerprint: varchar('fingerprint', { length: 128 }),
+  serialNumber: varchar('serial_number', { length: 128 }),
+  status: sslCertStatusEnum('status').notNull().default('valid'),
+  autoRenew: boolean('auto_renew').notNull().default(false),
+  ...auditColumns(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+export type SslCertificateRow = typeof sslCertificates.$inferSelect;
+export type NewSslCertificate = typeof sslCertificates.$inferInsert;

@@ -12,6 +12,7 @@ import { filesHandlers } from './files';
 import { cronJobsHandlers } from './cron-jobs';
 import { monitorHandlers } from './monitor';
 import { monitorAlertsHandlers } from './monitor-alerts';
+import { sslCertificatesHandlers } from './ssl-certificates';
 import { loginLogsHandlers } from './login-logs';
 import { operationLogsHandlers } from './operation-logs';
 import { sessionsHandlers } from './sessions';
@@ -69,6 +70,8 @@ import { checkinHandlers } from './checkin';
 import { terminalSessionsHandlers } from './terminal-sessions';
 import { terminalFilesHandlers } from './terminal-files';
 import { portsHandlers } from './ports';
+import { nginxSitesHandlers } from './nginx-sites';
+import { firewallHandlers } from './firewall';
 import { fallbackHandlers } from './fallback';
 
 export const handlers = [
@@ -86,6 +89,7 @@ export const handlers = [
   ...cronJobsHandlers,
   ...monitorHandlers,
   ...monitorAlertsHandlers,
+  ...sslCertificatesHandlers,
   ...loginLogsHandlers,
   ...operationLogsHandlers,
   ...sessionsHandlers,
@@ -143,6 +147,8 @@ export const handlers = [
   ...terminalSessionsHandlers,
   ...terminalFilesHandlers,
   ...portsHandlers,
+  ...nginxSitesHandlers,
+  ...firewallHandlers,
   // 兜底 handler 必须放在最后：拦截所有未实现的 /api/* 请求，避免 dev:demo 下被代理到后端返回 401 跳转登录页
   ...fallbackHandlers,
 ];

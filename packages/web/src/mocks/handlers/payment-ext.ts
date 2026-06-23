@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { PAYMENT_MOCK_SEED_TIME, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
 import { mockDateTime } from '@/mocks/utils/date';
+import { ok, notFound, paginate } from '@/mocks/utils/handlers';
 import type {
   PaymentChannel,
   PaymentReconBatch,
@@ -14,13 +15,6 @@ import type {
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
 
-function paginate<T>(list: T[], url: URL) {
-  const page = Number(url.searchParams.get('page')) || 1;
-  const pageSize = Number(url.searchParams.get('pageSize')) || 10;
-  return { list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize };
-}
-const ok = (data: unknown, message = 'ok') => HttpResponse.json({ code: 0, message, data });
-const notFound = (message = '不存在') => HttpResponse.json({ code: 404, message, data: null });
 const yuanToCent = (n: number) => Math.round(n);
 
 // ─── 对账中心 ───────────────────────────────────────────────────────────────

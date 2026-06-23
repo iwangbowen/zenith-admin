@@ -135,7 +135,8 @@ export async function updateEndpoint(id: number, input: Partial<UpsertEndpointIn
 
 export async function deleteEndpoint(id: number): Promise<void> {
   await ensureEndpoint(id);
-  await db.delete(paymentWebhookEndpoints).where(eq(paymentWebhookEndpoints.id, id));
+  const tc = tenantCondition(paymentWebhookEndpoints, currentUser());
+  await db.delete(paymentWebhookEndpoints).where(and(eq(paymentWebhookEndpoints.id, id), tc));
 }
 
 // ─── 投递日志 ───────────────────────────────────────────────────────────────

@@ -1949,3 +1949,22 @@ export const updateBizLeaveSchema = createBizLeaveSchema.partial();
 
 export type CreateBizLeaveInput = z.infer<typeof createBizLeaveSchema>;
 export type UpdateBizLeaveInput = z.infer<typeof updateBizLeaveSchema>;
+
+export const generateSelfSignedCertSchema = z.object({
+  name: z.string().min(1).max(128),
+  domain: z.string().min(1).max(256),
+  days: z.number().int().min(1).max(3650).default(365),
+  country: z.string().length(2).default('CN').optional(),
+  organization: z.string().max(64).default('Organization').optional(),
+  outputDir: z.string().max(500).optional(),
+});
+
+export const uploadCertSchema = z.object({
+  name: z.string().min(1).max(128),
+  domain: z.string().min(1).max(256),
+  certContent: z.string().min(1),
+  keyContent: z.string().min(1),
+});
+
+export type GenerateSelfSignedCertSchemaInput = z.infer<typeof generateSelfSignedCertSchema>;
+export type UploadCertSchemaInput = z.infer<typeof uploadCertSchema>;

@@ -415,8 +415,8 @@ async function finalizeRefund(order: PaymentOrderRow, refundNo: string, refundAm
       .select({ amount: paymentRefunds.refundAmount, status: paymentRefunds.status })
       .from(paymentRefunds)
       .where(eq(paymentRefunds.orderId, order.id));
-    const successTotal = rows.filter((r) => r.status === 'success').reduce((s, r) => s + r.amount, 0);
-    const newStatus: PaymentOrderStatus = successTotal >= order.amount ? 'refunded' : 'success';
+    const successTotal = rows.filter((r) => r.status === 'success').reduce((s, r) => s + BigInt(r.amount), 0n);
+    const newStatus: PaymentOrderStatus = successTotal >= BigInt(order.amount) ? 'refunded' : 'success';
     await tx.update(paymentOrders).set({ status: newStatus }).where(eq(paymentOrders.id, order.id));
     return recordEvent(tx, { type: 'refund.succeeded', orderNo: order.orderNo, tenantId: order.tenantId, payload: buildEventPayload('refund.succeeded', order, { refundNo, refundAmount }) });
   });

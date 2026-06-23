@@ -3893,3 +3893,38 @@ export interface MakeupCheckinResult {
   costPoints: number;
   consecutiveDays: number;
 }
+
+export interface SslCertificate {
+  id: number;
+  name: string;
+  domain: string;
+  type: 'self_signed' | 'uploaded' | 'letsencrypt';
+  certPath: string | null;
+  keyPath: string | null;
+  issuer: string | null;
+  subject: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  fingerprint: string | null;
+  serialNumber: string | null;
+  status: 'valid' | 'expiring' | 'expired' | 'invalid';
+  autoRenew: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateSelfSignedCertInput {
+  name: string;
+  domain: string;
+  days?: number;
+  country?: string;
+  organization?: string;
+  outputDir?: string;
+}
+
+export interface UploadCertInput {
+  name: string;
+  domain: string;
+  certContent: string;
+  keyContent: string;
+}

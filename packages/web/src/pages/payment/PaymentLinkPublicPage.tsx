@@ -12,6 +12,10 @@ const publicPayMethods: PaymentMethod[] = ['wechat_native', 'wechat_h5', 'alipay
 const methodOptions = publicPayMethods.map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] }));
 const LINK_STATUS_COLOR = { active: 'green', disabled: 'grey', expired: 'red' } as const satisfies Record<PaymentLinkStatus, string>;
 
+function paymentLinkApi(token: string) {
+  return `/api/public/payment/link/${encodeURIComponent(token)}`;
+}
+
 interface PayFormValues {
   amountYuan?: number;
   payMethod?: PaymentMethod;
@@ -29,7 +33,7 @@ export default function PaymentLinkPublicPage() {
     let cancelled = false;
     setLoading(true);
     request
-      .get<PaymentLinkPublic>(`/api/public/payment/link/${encodeURIComponent(token)}`, { skipAuth: true, silent: true })
+      .get<PaymentLinkPublic>(paymentLinkApi(token), { skipAuth: true, silent: true })
       .then((res) => {
         if (cancelled) return;
         if (res.code === 0) setLink(res.data);
@@ -63,7 +67,7 @@ export default function PaymentLinkPublicPage() {
     setSubmitting(true);
     try {
       const res = await request.post<{ orderNo: string; payParams: CreatePaymentResult }>(
-        `/api/public/payment/link/${encodeURIComponent(token)}/pay`,
+        `${paymentLinkApi(token)}/pay`,
         {
           amount: link.amount == null ? amount : undefined,
           payMethod: link.payMethod == null ? payMethod : undefined,

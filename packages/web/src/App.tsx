@@ -31,6 +31,9 @@ const PaymentLinkPublicPage = React.lazy(() => import('@/pages/payment/PaymentLi
 const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
 const WorkflowLaunchPage = React.lazy(() => import('@/pages/workflow/launchpad/WorkflowLaunchPage'));
 const WorkflowInstancePage = React.lazy(() => import('@/pages/workflow/instances/WorkflowInstancePage'));
+const FirewallPage = React.lazy(() => import('@/pages/system/firewall/FirewallPage'));
+const NginxSitesPage = React.lazy(() => import('@/pages/system/nginx-sites/NginxSitesPage'));
+const SslCertificatesPage = React.lazy(() => import('@/pages/system/ssl-certificates/SslCertificatesPage'));
 
 const routeFallback = <div style={{ padding: 24 }}><span className="page-loading__dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--semi-color-primary)' }} /></div>;
 
@@ -45,7 +48,7 @@ const PageLoadingDots = () => (
 );
 
 /** 固定路由路径，不通过菜单动态加载 */
-const FIXED_ROUTES = new Set(['/profile', '/announcements', '/inbox']);
+const FIXED_ROUTES = new Set(['/profile', '/announcements', '/inbox', '/system/firewall', '/system/nginx-sites']);
 
 /** 未登录时保存来源路径并跳转登录 */
 function RedirectToLogin() {
@@ -181,6 +184,9 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
         <Route path="workflow/designer/:id" element={<Suspense fallback={routeFallback}><WorkflowDesignerPage /></Suspense>} />
         <Route path="workflow/launch/:definitionId" element={<Suspense fallback={routeFallback}><WorkflowLaunchPage /></Suspense>} />
         <Route path="workflow/instance/:id" element={<Suspense fallback={routeFallback}><WorkflowInstancePage /></Suspense>} />
+        <Route path="system/ssl-certificates" element={<Suspense fallback={routeFallback}><SslCertificatesPage /></Suspense>} />
+        <Route path="system/firewall" element={permissions.includes('*') || permissions.includes('system:firewall:view') ? <Suspense fallback={routeFallback}><FirewallPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
+        <Route path="system/nginx-sites" element={permissions.includes('*') || permissions.includes('system:nginx:view') ? <Suspense fallback={routeFallback}><NginxSitesPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
         <Route path="users" element={<Navigate to="/system/users" replace />} />
         <Route path="forbidden" element={<Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
 
