@@ -82,7 +82,32 @@ export default function MemberDashboardPage() {
   }, []);
 
   if (loading) {
-    return <div className="page-container"><Skeleton placeholder={<Skeleton.Paragraph rows={8} />} loading active /></div>;
+    const skeletonPlaceholder = (
+      <div className="page-container">
+        {/* 统计卡片骨架 */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} style={{ flex: '1 1 200px', minWidth: 180, background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 10, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
+              <Skeleton.Avatar style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Skeleton.Title style={{ width: '60%', marginBottom: 8 }} />
+                <Skeleton.Paragraph rows={1} style={{ width: '80%', marginBottom: 0 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* 图表卡片骨架 */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} style={{ flex: '1 1 460px', minWidth: 360, background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 10, padding: 16 }}>
+              <Skeleton.Title style={{ width: 140, marginBottom: 16 }} />
+              <Skeleton.Image style={{ width: '100%', height: 260, borderRadius: 6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+    return <Skeleton loading active placeholder={skeletonPlaceholder}>{null}</Skeleton>;
   }
 
   return (
