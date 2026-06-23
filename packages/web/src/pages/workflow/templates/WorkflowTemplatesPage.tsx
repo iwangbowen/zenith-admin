@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Form, Input, Popconfirm, Space, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Popconfirm, Row, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { LayoutTemplate, RotateCcw, Search } from 'lucide-react';
@@ -174,7 +174,7 @@ export default function WorkflowTemplatesPage() {
     {
       title: '操作',
       dataIndex: 'op',
-      width: 200,
+      width: 240,
       fixed: 'right',
       render: (_v: unknown, record: WorkflowTemplate) => (
         <Space>
@@ -246,7 +246,7 @@ export default function WorkflowTemplatesPage() {
         onOk={() => formApi.current?.submitForm()}
         confirmLoading={saving}
         okText="保存"
-        width={480}
+        width={680}
       >
         <Form<FormValues>
           key={editing?.id ?? 'edit'}
@@ -264,18 +264,32 @@ export default function WorkflowTemplatesPage() {
             sort: editing?.sort ?? 0,
           }}
         >
-          <Form.Input
-            field="name"
-            label="模板名称"
-            placeholder="请输入模板名称"
-            rules={[{ required: true, message: '请输入模板名称' }]}
-          />
-          <Form.Input field="code" label="模板编码" placeholder="选填，唯一标识" />
-          <Form.Input field="categoryName" label="分类" placeholder="选填" />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input
+                field="name"
+                label="模板名称"
+                placeholder="请输入模板名称"
+                rules={[{ required: true, message: '请输入模板名称' }]}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="code" label="模板编码" placeholder="选填，唯一标识" />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="categoryName" label="分类" placeholder="选填" />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="icon" label="图标" placeholder="选填，lucide 图标名" />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="color" label="颜色" placeholder="选填，如 #1677ff" />
+            </Col>
+          </Row>
           <Form.TextArea field="description" label="描述" placeholder="选填" autosize rows={2} />
-          <Form.Input field="icon" label="图标" placeholder="选填，lucide 图标名" />
-          <Form.Input field="color" label="颜色" placeholder="选填，如 #1677ff" />
-          <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
         </Form>
       </AppModal>
     </div>
