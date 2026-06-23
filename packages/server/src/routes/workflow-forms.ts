@@ -12,6 +12,7 @@ import {
   listEnabledWorkflowForms,
   getWorkflowForm,
   createWorkflowForm,
+  duplicateWorkflowForm,
   updateWorkflowForm,
   deleteWorkflowForm,
 } from '../services/workflow-forms.service';
@@ -61,6 +62,17 @@ const createRouteDef = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await createWorkflowForm(c.req.valid('json')), '创建成功'), 200),
 });
 
+const duplicateRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/duplicate', tags: ['WorkflowForms'], summary: '复制表单',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:form:create', audit: { description: '复制表单', module: '工作流管理' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(WorkflowFormDTO, '复制成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => c.json(okBody(await duplicateWorkflowForm(c.req.valid('param').id), '已复制为新表单'), 200),
+});
+
 const updateRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}', tags: ['WorkflowForms'], summary: '更新表单',
@@ -91,6 +103,6 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, allRoute, getRoute, createRouteDef, updateRoute, deleteRoute] as const);
+router.openapiRoutes([listRoute, allRoute, getRoute, createRouteDef, duplicateRoute, updateRoute, deleteRoute] as const);
 
 export default router;

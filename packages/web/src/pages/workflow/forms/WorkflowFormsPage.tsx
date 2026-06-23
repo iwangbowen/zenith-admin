@@ -114,6 +114,16 @@ export default function WorkflowFormsPage() {
     Toast.error(res.message || '删除失败');
   };
 
+  const handleDuplicate = async (id: number) => {
+    const res = await request.post<WorkflowForm>(`/api/workflows/forms/${id}/duplicate`, {}, { silent: true });
+    if (res.code === 0) {
+      Toast.success('复制成功');
+      void fetchList();
+      return;
+    }
+    Toast.error(res.message || '复制失败');
+  };
+
   const columns: ColumnProps<WorkflowForm>[] = [
     {
       title: '表单名称',
@@ -171,7 +181,7 @@ export default function WorkflowFormsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 140,
+      width: 180,
       fixed: 'right',
       render: (_value: unknown, record: WorkflowForm) => (
         <Space>
@@ -182,6 +192,15 @@ export default function WorkflowFormsPage() {
               onClick={() => navigate(`/workflow/forms/designer?id=${record.id}`)}
             >
               编辑
+            </Button>
+          )}
+          {hasPermission('workflow:form:create') && (
+            <Button
+              theme="borderless"
+              size="small"
+              onClick={() => void handleDuplicate(record.id)}
+            >
+              复制
             </Button>
           )}
           {hasPermission('workflow:form:delete') && (

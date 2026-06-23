@@ -155,6 +155,21 @@ export async function createWorkflowForm(input: CreateWorkflowFormInput) {
   }
 }
 
+/** 复制表单：以源表单为模板创建新表单，名称追加「副本」，标识置空避免唯一冲突。 */
+export async function duplicateWorkflowForm(id: number) {
+  const src = await ensureFormExists(id);
+  const [row] = await db.insert(workflowForms).values({
+    name: `${src.name} 副本`,
+    code: null,
+    description: src.description ?? null,
+    categoryId: src.categoryId ?? null,
+    schema: src.schema ?? null,
+    status: src.status,
+    tenantId: getCreateTenantId(currentUser()),
+  }).returning();
+  return getWorkflowForm(row.id);
+}
+
 export async function updateWorkflowForm(id: number, input: UpdateWorkflowFormInput) {
   await ensureFormExists(id);
   const tc = tenantCondition(workflowForms, currentUser());

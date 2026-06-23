@@ -88,6 +88,27 @@ export const workflowFormsHandlers = [
     return ok(withUsage(form));
   }),
 
+  http.post('/api/workflows/forms/:id/duplicate', ({ params }) => {
+    const src = mockWorkflowForms.find((item) => item.id === Number(params.id));
+    if (!src) return fail('表单不存在', 404);
+    const now = mockDateTime();
+    const form: WorkflowForm = {
+      ...src,
+      id: getNextWorkflowFormId(),
+      name: `${src.name} 副本`,
+      code: null,
+      schema: src.schema ? structuredClone(src.schema) : src.schema,
+      usageCount: 0,
+      createdBy: 1,
+      updatedBy: 1,
+      createdByName: '张三',
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockWorkflowForms.push(form);
+    return ok(withUsage(form), '复制成功');
+  }),
+
   http.put('/api/workflows/forms/:id', async ({ params, request }) => {
     const form = mockWorkflowForms.find((item) => item.id === Number(params.id));
     if (!form) return fail('表单不存在', 404);
