@@ -1,12 +1,12 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, tenantPackages, tenantPackageMenus, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowForms, workflowDataSources, workflowTemplates, workflowDefinitions, aiPromptTemplates, paymentMethodConfigs, mpAccounts, mpTags, mpFans, mpMessages } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, tenantPackages, tenantPackageMenus, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowForms, workflowDataSources, workflowTemplates, workflowDefinitions, aiPromptTemplates, paymentMethodConfigs, mpAccounts, mpTags, mpFans, mpMessages, mpAutoReplies, mpMenus } from './schema';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
-import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_TENANT_PACKAGES, SEED_WORKFLOW_FORMS, SEED_WORKFLOW_DATA_SOURCES, SEED_WORKFLOW_TEMPLATES, SEED_WORKFLOW_DEFINITIONS, SEED_AI_PROMPT_TEMPLATES, SEED_PAYMENT_METHOD_CONFIGS, SEED_CHECKIN_MILESTONES, SEED_MP_ACCOUNTS, SEED_MP_TAGS, SEED_MP_FANS, SEED_MP_MESSAGES } from '@zenith/shared';
+import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_TENANT_PACKAGES, SEED_WORKFLOW_FORMS, SEED_WORKFLOW_DATA_SOURCES, SEED_WORKFLOW_TEMPLATES, SEED_WORKFLOW_DEFINITIONS, SEED_AI_PROMPT_TEMPLATES, SEED_PAYMENT_METHOD_CONFIGS, SEED_CHECKIN_MILESTONES, SEED_MP_ACCOUNTS, SEED_MP_TAGS, SEED_MP_FANS, SEED_MP_MESSAGES, SEED_MP_AUTO_REPLIES, SEED_MP_MENUS } from '@zenith/shared';
 import type { PaymentChannel, PaymentMethod } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
@@ -365,6 +365,20 @@ async function seedRest() {
   ).onConflictDoNothing({ target: mpMessages.id });
   await db.execute(sql`SELECT setval('mp_messages_id_seq', GREATEST((SELECT MAX(id) FROM mp_messages), 1))`);
   logger.info('  ✔ MP messages seeded (onConflictDoNothing)');
+
+  // ─── 公众号自动回复 / 自定义菜单示例数据 ────────────────────────────────────────
+  await db.insert(mpAutoReplies).values(
+    SEED_MP_AUTO_REPLIES.map(({ id, accountId, replyType, keyword, matchType, contentType, content, mediaId, status, sort }) =>
+      ({ id, accountId, replyType, keyword, matchType, contentType, content, mediaId, status, sort })),
+  ).onConflictDoNothing({ target: mpAutoReplies.id });
+  await db.execute(sql`SELECT setval('mp_auto_replies_id_seq', GREATEST((SELECT MAX(id) FROM mp_auto_replies), 1))`);
+  logger.info('  ✔ MP auto-replies seeded (onConflictDoNothing)');
+
+  await db.insert(mpMenus).values(
+    SEED_MP_MENUS.map(({ id, accountId, buttons, status }) => ({ id, accountId, buttons, status })),
+  ).onConflictDoNothing({ target: mpMenus.id });
+  await db.execute(sql`SELECT setval('mp_menus_id_seq', GREATEST((SELECT MAX(id) FROM mp_menus), 1))`);
+  logger.info('  ✔ MP menus seeded (onConflictDoNothing)');
 
   // ─── 站内信模板示例数据（数据来源：@zenith/shared SEED_INAPP_TEMPLATES）─────────────────────
   await db.insert(inAppTemplates).values(

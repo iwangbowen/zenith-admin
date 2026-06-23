@@ -117,3 +117,33 @@ export const MpConversationDTO = z
     messageCount: z.number().int(),
   })
   .openapi('MpConversation');
+
+export const MpAutoReplyDTO = z
+  .object({
+    id: z.number().int(),
+    accountId: z.number().int(),
+    replyType: z.enum(['subscribe', 'keyword', 'default']),
+    keyword: z.string().nullable(),
+    matchType: z.enum(['exact', 'contain']),
+    contentType: z.enum(['text', 'image']),
+    content: z.string().nullable(),
+    mediaId: z.string().nullable(),
+    status: z.enum(['enabled', 'disabled']),
+    sort: z.number().int(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('MpAutoReply');
+
+export const MpMenuDTO = z
+  .object({
+    id: z.number().int(),
+    accountId: z.number().int(),
+    buttons: z.array(z.any()),
+    status: z.enum(['draft', 'published']),
+    publishedAt: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('MpMenu');
