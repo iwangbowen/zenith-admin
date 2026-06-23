@@ -596,12 +596,10 @@ export default function ChatPage({
         : m);
 
   const handleCardApprove = useCallback(async (messageId: number, taskId: number) => {
-    const res = await request.post(`/api/workflow/tasks/${taskId}/approve`, {});
+    const res = await request.post(`/api/workflows/tasks/${taskId}/approve`, {});
     if (res.code === 0) {
       Toast.success('已同意');
       setMessages(markCardDoneLocal(messageId, '已同意'));
-    } else {
-      Toast.error(res.message ?? '操作失败');
     }
   }, []);
 
@@ -609,14 +607,12 @@ export default function ChatPage({
     if (!cardRejectTask) return;
     const comment = cardRejectComment.trim();
     if (!comment) { Toast.warning('请填写驳回理由'); return; }
-    const res = await request.post(`/api/workflow/tasks/${cardRejectTask.taskId}/reject`, { comment });
+    const res = await request.post(`/api/workflows/tasks/${cardRejectTask.taskId}/reject`, { comment });
     if (res.code === 0) {
       Toast.success('已驳回');
       setMessages(markCardDoneLocal(cardRejectTask.messageId, '已驳回'));
       setCardRejectTask(null);
       setCardRejectComment('');
-    } else {
-      Toast.error(res.message ?? '操作失败');
     }
   }, [cardRejectTask, cardRejectComment]);
 

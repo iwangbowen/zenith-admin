@@ -6,7 +6,7 @@
  * - instance.approved/rejected/withdrawn → 给发起人推送结果卡片
  *
  * 卡片经「系统机器人 → 用户单聊」投递（notifyUserWithCard），按钮在前端调用
- * 既有的 /api/workflow/tasks/{id}/approve|reject 接口。
+ * 既有的 /api/workflows/tasks/{id}/approve|reject 接口。
  */
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';
@@ -14,12 +14,9 @@ import { workflowInstances } from '../../db/schema';
 import type { ChatCard } from '@zenith/shared';
 import { workflowEventBus } from '../workflow-event-bus';
 import {
-  getSystemBotUserId, ensureBotDirectConversation, postBotMessage, markCardMessageDone,
+  getSystemBotUserId, ensureBotDirectConversation, postBotMessage, markTaskCardsDone,
 } from '../../services/chat.service';
 import logger from '../logger';
-
-/** taskId → 审批卡片所在的消息 ID（内存映射，用于任务完成时置灰卡片） */
-const taskCardMessageMap = new Map<number, number>();
 
 async function loadInstanceLabel(instanceId: number): Promise<string> {
   const [row] = await db
@@ -52,8 +49,7 @@ export function registerChatWorkflowSubscriber(): void {
         status: 'pending',
       };
       const conversationId = await ensureBotDirectConversation(botId, task.assigneeId);
-      const msg = await postBotMessage(conversationId, botId, { type: 'card', content: card.title, extra: { card } });
-      taskCardMessageMap.set(task.id, msg.id);
+      await postBotMessage(conversationId, botId, { type: 'card', content: card.title, extra: { card } });
     } catch (err) {
       logger.error('[chat-workflow] 审批卡片推送失败', { err, taskId: task.id });
     }
@@ -61,11 +57,8 @@ export function registerChatWorkflowSubscriber(): void {
 
   // 审批完成 → 置灰卡片
   const resolveCard = (statusText: string) => async (event: { task: { id: number } }) => {
-    const messageId = taskCardMessageMap.get(event.task.id);
-    if (!messageId) return;
-    taskCardMessageMap.delete(event.task.id);
     try {
-      await markCardMessageDone(messageId, statusText);
+      await markTaskCardsDone(event.task.id, statusText);
     } catch (err) {
       logger.error('[chat-workflow] 卡片置灰失败', { err, taskId: event.task.id });
     }

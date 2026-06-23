@@ -2047,6 +2047,26 @@ export async function markCardMessageDone(messageId: number, statusText: string)
   scheduleSendToUsers(members, { type: 'chat:edit', payload: mapChatMessage(updated, sender) });
 }
 
+/**
+ * 将某个工作流任务对应的待审批卡片标记为已处理。
+ *
+ * 通过 jsonb 包含查询按 taskId 直接从 DB 定位卡片消息，不依赖内存映射，
+ * 因此服务重启后（待办创建与审批完成之间）仍能可靠置灰卡片。
+ */
+export async function markTaskCardsDone(taskId: number, statusText: string): Promise<void> {
+  const match = JSON.stringify({ card: { status: 'pending', actions: [{ taskId }] } });
+  const rows = await db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(and(
+      eq(chatMessages.type, 'card'),
+      sql`${chatMessages.extra} @> ${match}::jsonb`,
+    ));
+  for (const r of rows) {
+    await markCardMessageDone(r.id, statusText);
+  }
+}
+
 // ─── WebRTC 音视频通话 ───────────────────────────────────────────────────────
 
 /** 返回 ICE 服务器配置（STUN 默认 + 可选 TURN） */
