@@ -8,13 +8,14 @@ import {
   Button, Spin, Toast, Typography, Input, Select, TextArea,
   RadioGroup, Radio, InputNumber, SideSheet, Divider, Tooltip, Dropdown, Banner, Switch,
 } from '@douyinfe/semi-ui';
-import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy, Stethoscope, LayoutTemplate, SlidersHorizontal, AlertTriangle, CircleAlert } from 'lucide-react';
+import { ArrowLeft, X, Eye, Save, Settings, Monitor, Smartphone, Undo2, Redo2, Braces, Copy, Stethoscope, LayoutTemplate, SlidersHorizontal, AlertTriangle, CircleAlert, Share2 } from 'lucide-react';
 import type { WorkflowForm, WorkflowFormField, WorkflowFormFieldType, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, COLUMN_SPAN_OPTIONS } from '../designer/form-types';
 import { validateFormSchema, countErrors, type FormIssue } from '../designer/form-validate';
 import AppModal from '@/components/AppModal';
+import FieldDependencyGraph from '../designer/components/FieldDependencyGraph';
 import FormDesigner, { type FormHistoryControls } from '../designer/components/FormDesigner';
 import WorkflowFormRenderer from '../designer/components/WorkflowFormRenderer';
 
@@ -116,6 +117,7 @@ export default function WorkflowFormInlineEditor({
   const [jsonVisible, setJsonVisible] = useState(false);
   const [jsonDraft, setJsonDraft] = useState('');
   const [healthVisible, setHealthVisible] = useState(false);
+  const [graphVisible, setGraphVisible] = useState(false);
   const [batchVisible, setBatchVisible] = useState(false);
   const [batchPatch, setBatchPatch] = useState<Partial<WorkflowFormField>>({});
   const [history, setHistory] = useState<FormHistoryControls | null>(null);
@@ -367,6 +369,7 @@ export default function WorkflowFormInlineEditor({
           <Button icon={<LayoutTemplate size={14} />} type="tertiary" theme="borderless" size="small">模板</Button>
         </Dropdown>
         <Button icon={<SlidersHorizontal size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => { setBatchPatch({}); setBatchVisible(true); }}>批量设置</Button>
+        <Button icon={<Share2 size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setGraphVisible(true)}>依赖图</Button>
         <Tooltip content={healthErrorCount > 0 ? `${healthErrorCount} 项错误` : '表单体检'}>
           <Button
             icon={<Stethoscope size={14} />}
@@ -580,6 +583,18 @@ export default function WorkflowFormInlineEditor({
           style={{ fontFamily: 'var(--semi-font-family-mono, monospace)', fontSize: 12 }}
           spellCheck={false}
         />
+      </AppModal>
+
+      {/* 字段依赖关系图 */}
+      <AppModal
+        title="字段依赖关系图"
+        visible={graphVisible}
+        onCancel={() => setGraphVisible(false)}
+        footer={<Button type="primary" onClick={() => setGraphVisible(false)}>关闭</Button>}
+        width={920}
+        closeOnEsc
+      >
+        {graphVisible && <FieldDependencyGraph fields={fields} />}
       </AppModal>
 
       {/* 体检面板 */}
