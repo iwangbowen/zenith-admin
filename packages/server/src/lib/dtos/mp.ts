@@ -83,3 +83,37 @@ export const MpFanSyncResultDTO = z
     total: z.number().int(),
   })
   .openapi('MpFanSyncResult');
+
+const MP_MSG_TYPE = z.enum(['text', 'image', 'voice', 'video', 'shortvideo', 'location', 'link', 'event']);
+const MP_MSG_DIRECTION = z.enum(['in', 'out']);
+
+export const MpMessageDTO = z
+  .object({
+    id: z.number().int(),
+    accountId: z.number().int(),
+    openid: z.string(),
+    direction: MP_MSG_DIRECTION,
+    msgType: MP_MSG_TYPE,
+    content: z.string().nullable(),
+    mediaId: z.string().nullable(),
+    mediaUrl: z.string().nullable(),
+    event: z.string().nullable(),
+    msgId: z.string().nullable(),
+    status: z.enum(['received', 'sent', 'failed']),
+    errorMsg: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('MpMessage');
+
+export const MpConversationDTO = z
+  .object({
+    openid: z.string(),
+    nickname: z.string().nullable(),
+    avatar: z.string().nullable(),
+    lastContent: z.string().nullable(),
+    lastMsgType: MP_MSG_TYPE,
+    lastDirection: MP_MSG_DIRECTION,
+    lastTime: z.string(),
+    messageCount: z.number().int(),
+  })
+  .openapi('MpConversation');

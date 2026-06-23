@@ -2011,3 +2011,11 @@ export const updateMpFanSchema = z.object({
   tagIds: z.array(z.number().int().positive()).optional(),
 });
 export type UpdateMpFanInput = z.infer<typeof updateMpFanSchema>;
+
+// 公众号客服消息（发送文本）
+export const sendMpMessageSchema = z.object({
+  accountId: z.number().int().positive(),
+  openid: z.string().min(1, '请选择粉丝').max(64),
+  content: z.string().min(1, '消息内容不能为空').max(2000),
+});
+export type SendMpMessageInput = z.infer<typeof sendMpMessageSchema>;

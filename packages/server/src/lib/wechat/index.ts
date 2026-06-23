@@ -7,3 +7,6 @@ export * from './signature';
 export * from './api';
 export * from './tags';
 export * from './users';
+export * from './xml';
+export * from './crypto';
+export * from './messages';

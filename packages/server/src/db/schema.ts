@@ -3642,3 +3642,41 @@ export const mpFansRelations = relations(mpFans, ({ one }) => ({
   account: one(mpAccounts, { fields: [mpFans.accountId], references: [mpAccounts.id] }),
   tenant: one(tenants, { fields: [mpFans.tenantId], references: [tenants.id] }),
 }));
+
+// 公众号消息（追加型：入站用户消息 / 出站客服消息）。作者天然为粉丝或当前管理员，故不加审计列。
+export const mpMessageDirectionEnum = pgEnum('mp_message_direction', ['in', 'out']);
+export const mpMessageTypeEnum = pgEnum('mp_message_type', ['text', 'image', 'voice', 'video', 'shortvideo', 'location', 'link', 'event']);
+export const mpMessageStatusEnum = pgEnum('mp_message_status', ['received', 'sent', 'failed']);
+
+export const mpMessages = pgTable('mp_messages', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  openid: varchar('openid', { length: 64 }).notNull(),
+  /** in=用户发来 out=客服回复 */
+  direction: mpMessageDirectionEnum('direction').notNull(),
+  msgType: mpMessageTypeEnum('msg_type').notNull().default('text'),
+  /** 文本内容 / 链接地址 / 事件 EventKey */
+  content: text('content'),
+  /** 媒体素材 id（图片/语音/视频） */
+  mediaId: varchar('media_id', { length: 128 }),
+  /** 媒体 URL（图片 PicUrl 等） */
+  mediaUrl: varchar('media_url', { length: 1000 }),
+  /** 事件类型（msgType=event 时：subscribe/unsubscribe/CLICK/VIEW/SCAN…） */
+  event: varchar('event', { length: 32 }),
+  /** 微信消息 id（入站去重用） */
+  msgId: varchar('msg_id', { length: 64 }),
+  status: mpMessageStatusEnum('status').notNull().default('received'),
+  errorMsg: text('error_msg'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('mp_messages_account_openid_idx').on(t.accountId, t.openid),
+  index('mp_messages_account_idx').on(t.accountId),
+]);
+export type MpMessageRow = typeof mpMessages.$inferSelect;
+export type NewMpMessage = typeof mpMessages.$inferInsert;
+
+export const mpMessagesRelations = relations(mpMessages, ({ one }) => ({
+  account: one(mpAccounts, { fields: [mpMessages.accountId], references: [mpAccounts.id] }),
+  tenant: one(tenants, { fields: [mpMessages.tenantId], references: [tenants.id] }),
+}));

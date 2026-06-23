@@ -157,10 +157,19 @@ export async function testMpAccountConnection(id: number): Promise<{ success: bo
 
 /**
  * 公开回调专用：按 id 查询公众号（不做租户过滤，因回调无登录上下文）。
- * 仅返回签名校验所需的 token 与启用状态。
+ * 返回签名校验与消息解密/落库所需字段。
  */
-export async function getMpAccountForCallback(id: number): Promise<{ token: string; status: MpAccountRow['status'] } | null> {
-  const [row] = await db.select({ token: mpAccounts.token, status: mpAccounts.status })
-    .from(mpAccounts).where(eq(mpAccounts.id, id)).limit(1);
+export async function getMpAccountForCallback(id: number): Promise<
+  Pick<MpAccountRow, 'id' | 'appId' | 'token' | 'encryptMode' | 'encodingAesKey' | 'tenantId' | 'status'> | null
+> {
+  const [row] = await db.select({
+    id: mpAccounts.id,
+    appId: mpAccounts.appId,
+    token: mpAccounts.token,
+    encryptMode: mpAccounts.encryptMode,
+    encodingAesKey: mpAccounts.encodingAesKey,
+    tenantId: mpAccounts.tenantId,
+    status: mpAccounts.status,
+  }).from(mpAccounts).where(eq(mpAccounts.id, id)).limit(1);
   return row ?? null;
 }

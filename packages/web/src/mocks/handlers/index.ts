@@ -46,6 +46,7 @@ import { smsConfigsHandlers } from './sms-configs';
 import { mpAccountsHandlers } from './mp-accounts';
 import { mpTagsHandlers } from './mp-tags';
 import { mpFansHandlers } from './mp-fans';
+import { mpMessagesHandlers } from './mp-messages';
 import { smsTemplatesHandlers } from './sms-templates';
 import { smsSendLogsHandlers } from './sms-send-logs';
 import { aiProvidersHandlers } from './ai-providers';
@@ -126,6 +127,7 @@ export const handlers = [
   ...mpAccountsHandlers,
   ...mpTagsHandlers,
   ...mpFansHandlers,
+  ...mpMessagesHandlers,
   ...smsTemplatesHandlers,
   ...smsSendLogsHandlers,
   ...inAppTemplatesHandlers,

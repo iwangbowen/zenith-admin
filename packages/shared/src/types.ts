@@ -3994,3 +3994,35 @@ export interface MpFan {
   createdAt: string;
   updatedAt: string;
 }
+
+export type MpMessageDirection = 'in' | 'out';
+export type MpMessageType = 'text' | 'image' | 'voice' | 'video' | 'shortvideo' | 'location' | 'link' | 'event';
+export type MpMessageStatus = 'received' | 'sent' | 'failed';
+
+export interface MpMessage {
+  id: number;
+  accountId: number;
+  openid: string;
+  direction: MpMessageDirection;
+  msgType: MpMessageType;
+  content: string | null;
+  mediaId: string | null;
+  mediaUrl: string | null;
+  event: string | null;
+  msgId: string | null;
+  status: MpMessageStatus;
+  errorMsg: string | null;
+  createdAt: string;
+}
+
+/** 会话（按 openid 聚合，含最后一条消息摘要） */
+export interface MpConversation {
+  openid: string;
+  nickname: string | null;
+  avatar: string | null;
+  lastContent: string | null;
+  lastMsgType: MpMessageType;
+  lastDirection: MpMessageDirection;
+  lastTime: string;
+  messageCount: number;
+}

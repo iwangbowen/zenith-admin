@@ -207,7 +207,7 @@ export default function MpAccountsPage() {
       ),
     },
     {
-      title: '操作', key: 'actions', width: 240, fixed: 'right' as const,
+      title: '操作', key: 'actions', width: 300, fixed: 'right' as const,
       render: (_: unknown, record: MpAccount) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => setConfigRecord(record)}>服务器配置</Button>
