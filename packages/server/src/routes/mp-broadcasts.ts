@@ -6,10 +6,11 @@ import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
-import { createMpBroadcastSchema, updateMpBroadcastSchema } from '@zenith/shared';
-import { MpBroadcastDTO } from '../lib/openapi-dtos';
+import { createMpBroadcastSchema, updateMpBroadcastSchema, previewMpBroadcastSchema } from '@zenith/shared';
+import { MpBroadcastDTO, MpBroadcastResultDTO } from '../lib/openapi-dtos';
 import {
   listMpBroadcasts, createMpBroadcast, updateMpBroadcast, deleteMpBroadcast, sendMpBroadcast, getMpBroadcastBeforeAudit,
+  previewMpBroadcast, getMpBroadcastResult,
 } from '../services/mp-broadcast.service';
 
 const mpBroadcastsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -91,6 +92,32 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-mpBroadcastsRouter.openapiRoutes([listRoute, createRouteDef, updateRoute, sendRoute, deleteRoute] as const);
+const previewRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/preview', tags: ['公众号群发'], summary: '群发预览（发给指定 openid）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'mp:broadcast:send', audit: { description: '群发预览', module: '公众号群发' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(previewMpBroadcastSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('预览已发送') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await previewMpBroadcast(id, c.req.valid('json').openid);
+    return c.json(okBody(null, '预览已发送'), 200);
+  },
+});
+
+const resultRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/result', tags: ['公众号群发'], summary: '查询群发发送结果',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'mp:broadcast:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(MpBroadcastResultDTO, '发送结果') },
+  }),
+  handler: async (c) => c.json(okBody(await getMpBroadcastResult(c.req.valid('param').id)), 200),
+});
+
+mpBroadcastsRouter.openapiRoutes([listRoute, createRouteDef, updateRoute, sendRoute, previewRoute, resultRoute, deleteRoute] as const);
 
 export default mpBroadcastsRouter;

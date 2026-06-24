@@ -262,6 +262,7 @@ export const MpBroadcastDTO = z
     mediaId: z.string().nullable(),
     status: z.enum(['draft', 'sent', 'failed']),
     wechatMsgId: z.string().nullable(),
+    scheduledAt: z.string().nullable(),
     errorMsg: z.string().nullable(),
     sentAt: z.string().nullable(),
     ...auditFields,
@@ -269,6 +270,31 @@ export const MpBroadcastDTO = z
     updatedAt: z.string(),
   })
   .openapi('MpBroadcast');
+
+export const MpBroadcastResultDTO = z
+  .object({
+    msgStatus: z.string(),
+    totalCount: z.number().int().optional(),
+    filterCount: z.number().int().optional(),
+    sentCount: z.number().int().optional(),
+    errorCount: z.number().int().optional(),
+  })
+  .openapi('MpBroadcastResult');
+
+export const MpTemplateIndustryDTO = z
+  .object({
+    primaryIndustry: z.object({ firstClass: z.string(), secondClass: z.string() }).nullable(),
+    secondaryIndustry: z.object({ firstClass: z.string(), secondClass: z.string() }).nullable(),
+  })
+  .openapi('MpTemplateIndustry');
+
+export const MpBatchSendResultDTO = z
+  .object({ success: z.number().int(), failed: z.number().int(), total: z.number().int() })
+  .openapi('MpBatchSendResult');
+
+export const MpJsConfigDTO = z
+  .object({ appId: z.string(), timestamp: z.number().int(), nonceStr: z.string(), signature: z.string() })
+  .openapi('MpJsConfig');
 
 export const MpQrcodeDTO = z
   .object({
