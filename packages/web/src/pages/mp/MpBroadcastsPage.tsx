@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Form, Modal, Select, Space, Spin, Tag, Toast, Banner, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Modal, Select, Space, Spin, Tag, Toast, Banner, Typography, Tooltip } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Send } from 'lucide-react';
 import type { PaginatedResponse, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus, MpTag, MpMaterial, MpDraft } from '@zenith/shared';
@@ -171,9 +171,7 @@ export default function MpBroadcastsPage() {
       render: (v: MpBroadcastStatus, r: MpBroadcast) => {
         const meta = STATUS_META[v];
         const tag = <Tag color={meta.color} type="light">{meta.label}</Tag>;
-        return v === 'failed' && r.errorMsg
-          ? <Typography.Text type="danger" ellipsis={{ showTooltip: { content: r.errorMsg } }} style={{ maxWidth: 80 }}>{tag}</Typography.Text>
-          : tag;
+        return v === 'failed' && r.errorMsg ? <Tooltip content={r.errorMsg}>{tag}</Tooltip> : tag;
       },
     },
     {
