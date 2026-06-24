@@ -21,3 +21,4 @@ export * from './oauth';
 export * from './datacube';
 export * from './kf';
 export * from './security';
+export * from './jssdk';

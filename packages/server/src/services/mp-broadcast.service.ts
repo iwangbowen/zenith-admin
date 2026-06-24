@@ -23,6 +23,7 @@ export function mapMpBroadcast(row: MpBroadcastRow) {
     mediaId: row.mediaId ?? null,
     status: row.status,
     wechatMsgId: row.wechatMsgId ?? null,
+    scheduledAt: formatNullableDateTime(row.scheduledAt),
     errorMsg: row.errorMsg ?? null,
     sentAt: formatNullableDateTime(row.sentAt),
     createdBy: row.createdBy ?? null,
@@ -73,6 +74,7 @@ export async function createMpBroadcast(data: CreateMpBroadcastInput) {
     tagId: data.target === 'tag' ? (data.tagId ?? null) : null,
     content: data.msgType === 'text' ? (data.content ?? null) : null,
     mediaId: data.msgType === 'text' ? null : (data.mediaId ?? null),
+    scheduledAt: parseDateTimeInput(data.scheduledAt),
     status: 'draft',
     tenantId,
   }).returning();
@@ -82,11 +84,13 @@ export async function createMpBroadcast(data: CreateMpBroadcastInput) {
 export async function updateMpBroadcast(id: number, data: UpdateMpBroadcastInput) {
   const existing = await ensureMpBroadcastExists(id);
   if (existing.status === 'sent') throw new HTTPException(400, { message: '已发送的群发不可修改' });
-  const patch: Partial<typeof mpBroadcasts.$inferInsert> = { ...data };
+  const { scheduledAt, ...rest } = data;
+  const patch: Partial<typeof mpBroadcasts.$inferInsert> = { ...rest };
   // 规范化关联字段
   if (data.target === 'all') patch.tagId = null;
   if (data.msgType === 'text') patch.mediaId = null;
   else if (data.msgType === 'image' || data.msgType === 'mpnews') patch.content = null;
+  if (scheduledAt !== undefined) patch.scheduledAt = parseDateTimeInput(scheduledAt);
   if (Object.keys(patch).length === 0) return mapMpBroadcast(existing);
   const [row] = await db.update(mpBroadcasts).set(patch).where(eq(mpBroadcasts.id, id)).returning();
   return mapMpBroadcast(row);

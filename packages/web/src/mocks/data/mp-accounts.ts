@@ -16,6 +16,7 @@ export const mockMpAccounts: MpAccount[] = [
     qrCodeUrl: null,
     isDefault: false,
     autoCreateMember: false,
+    contentCheckEnabled: false,
     status: 'enabled',
     remark: '演示用已启用服务号',
     createdAt: '2025-03-01 09:00:00',

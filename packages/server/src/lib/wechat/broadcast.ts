@@ -35,3 +35,42 @@ export async function massSend(account: MpCredential, params: MassSendParams): P
   const data = await wechatApiPost<MassSendResponse>(account, '/cgi-bin/message/mass/sendall', body);
   return { msgId: data.msg_id != null ? String(data.msg_id) : '' };
 }
+
+/** 群发预览：发送给单个 openid 预览（/cgi-bin/message/mass/preview） */
+export async function previewMassSend(account: MpCredential, params: { msgType: 'text' | 'image' | 'mpnews'; content?: string | null; mediaId?: string | null; openid: string }): Promise<void> {
+  const body: Record<string, unknown> = { touser: params.openid, msgtype: params.msgType };
+  if (params.msgType === 'text') body.text = { content: params.content ?? '' };
+  else if (params.msgType === 'image') body.image = { media_id: params.mediaId ?? '' };
+  else body.mpnews = { media_id: params.mediaId ?? '' };
+  await wechatApiPost<MassSendResponse>(account, '/cgi-bin/message/mass/preview', body);
+}
+
+export interface MassSendResult {
+  msgStatus: string;
+  totalCount?: number;
+  filterCount?: number;
+  sentCount?: number;
+  errorCount?: number;
+}
+
+interface MassGetResponse {
+  errcode?: number;
+  errmsg?: string;
+  msg_status?: string;
+  total_count?: number;
+  filter_count?: number;
+  sent_count?: number;
+  error_count?: number;
+}
+
+/** 查询群发发送结果与统计（/cgi-bin/message/mass/get） */
+export async function getMassSendResult(account: MpCredential, msgId: string): Promise<MassSendResult> {
+  const data = await wechatApiPost<MassGetResponse>(account, '/cgi-bin/message/mass/get', { msg_id: msgId });
+  return {
+    msgStatus: data.msg_status ?? 'UNKNOWN',
+    totalCount: data.total_count,
+    filterCount: data.filter_count,
+    sentCount: data.sent_count,
+    errorCount: data.error_count,
+  };
+}

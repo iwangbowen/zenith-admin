@@ -455,7 +455,7 @@ async function seedRest() {
   logger.info('  ✔ MP kf sessions seeded (onConflictDoNothing)');
 
   await db.insert(mpConditionalMenus).values(
-    SEED_MP_CONDITIONAL_MENUS.map((m) => ({ id: m.id, accountId: m.accountId, name: m.name, buttons: m.buttons, matchRule: m.matchRule, status: m.status })),
+    SEED_MP_CONDITIONAL_MENUS.map((m) => ({ id: m.id, accountId: m.accountId, name: m.name, buttons: m.buttons, matchRule: m.matchRule as Record<string, string>, status: m.status })),
   ).onConflictDoNothing({ target: mpConditionalMenus.id });
   await db.execute(sql`SELECT setval('mp_conditional_menus_id_seq', GREATEST((SELECT MAX(id) FROM mp_conditional_menus), 1))`);
   logger.info('  ✔ MP conditional menus seeded (onConflictDoNothing)');

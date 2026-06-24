@@ -4090,6 +4090,8 @@ export const mpBroadcasts = pgTable('mp_broadcasts', {
   status: mpBroadcastStatusEnum('status').notNull().default('draft'),
   /** 微信返回的群发 msg_id（发送成功后回填） */
   wechatMsgId: varchar('wechat_msg_id', { length: 64 }),
+  /** 定时群发时间（为空表示立即发送，由 mp-broadcast-tick 扫描到期发送） */
+  scheduledAt: timestamp('scheduled_at'),
   errorMsg: text('error_msg'),
   sentAt: timestamp('sent_at'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),

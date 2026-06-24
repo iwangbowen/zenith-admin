@@ -3,7 +3,7 @@ import {
   Button, Form, Input, Modal, Space, Tag, Toast, Banner, Typography, Empty, Select, Divider,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Plus, RotateCcw, RefreshCw, Trash2, FlaskConical } from 'lucide-react';
+import { Plus, RotateCcw, Trash2, FlaskConical } from 'lucide-react';
 import type { MpConditionalMenu, MpMenuButton, MpMenuMatchRule } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
@@ -87,7 +87,7 @@ export default function MpConditionalMenusPage() {
 
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<MpConditionalMenu[]>([]);
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const { page, setPage, buildPagination } = usePagination();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<MpConditionalMenu | null>(null);
