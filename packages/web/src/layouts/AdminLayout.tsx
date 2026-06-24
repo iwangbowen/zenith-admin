@@ -357,6 +357,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   // ─── Tabs 滚动 ─────────────────────────────────────────────────────────────
   const activeTabRef = useRef<HTMLDivElement>(null);
   const tabsBarRef = useRef<HTMLDivElement>(null);
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // 延迟以确保 DOM 已完成渲染
     const timer = setTimeout(() => {
@@ -367,18 +368,24 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
     return () => clearTimeout(timer);
   }, [activeKey, tabs.length]);
 
-  // 滚轮横向滚动（需要非 passive 监听以阻止页面纵向滚动）
+  // 滚轮横向滚动：监听挂在整条页签栏，但实际滚动的是内层 __scroll（overflow 在内层）
   useEffect(() => {
     const el = tabsBarRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (e.deltaY === 0) return;
+      const scrollEl = tabsScrollRef.current;
+      if (!scrollEl) return;
+      // 纵向滚轮转横向；触控板横向滑动用 deltaX
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (delta === 0) return;
+      // 没有横向溢出时放行页面默认滚动，避免吞掉滚轮事件
+      if (scrollEl.scrollWidth <= scrollEl.clientWidth) return;
       e.preventDefault();
-      el.scrollLeft += e.deltaY;
+      scrollEl.scrollLeft += delta;
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [preferences.enableTabs, tabs.length]);
 
   // ─── 租户切换（仅平台管理员） ─────────────────────────────────────────────
   const isPlatformAdmin = config.multiTenantMode && !user.tenantId && user.roles?.some((r) => r.code === 'super_admin');
@@ -1688,7 +1695,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
           {/* Tabs bar — shown above breadcrumb for all layouts */}
           {preferences.enableTabs && tabs.length > 0 && (
             <div ref={tabsBarRef} className={`admin-tabs-bar${preferences.showBreadcrumb ? ' admin-tabs-bar--with-breadcrumb' : ''}`} data-tab-animation={preferences.tabAnimation} data-tab-style={preferences.tabStyle ?? 'line'}>
-              <div className="admin-tabs-bar__scroll">
+              <div ref={tabsScrollRef} className="admin-tabs-bar__scroll">
               {tabs.map((tab, tabIndex) => {
                   const isEntering = enteringTabKeys.has(tab.key);
                   const isExiting = exitingTabKeys.has(tab.key);
