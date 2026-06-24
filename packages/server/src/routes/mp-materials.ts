@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { HTTPException } from 'hono/http-exception';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
@@ -6,9 +7,10 @@ import {
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
 import { createMpMaterialSchema, updateMpMaterialSchema, MP_MATERIAL_TYPES } from '@zenith/shared';
+import type { MpMaterialType } from '@zenith/shared';
 import { MpMaterialDTO, MpTagSyncResultDTO } from '../lib/openapi-dtos';
 import {
-  listMpMaterials, createMpMaterial, updateMpMaterial, deleteMpMaterial, getMpMaterialBeforeAudit, syncMpMaterials,
+  listMpMaterials, createMpMaterial, updateMpMaterial, deleteMpMaterial, getMpMaterialBeforeAudit, syncMpMaterials, uploadMpMaterial,
 } from '../services/mp-material.service';
 
 const mpMaterialsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -85,6 +87,48 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-mpMaterialsRouter.openapiRoutes([listRoute, syncRoute, createRouteDef, updateRoute, deleteRoute] as const);
+const uploadRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/upload', tags: ['公众号素材'], summary: '上传二进制素材到微信',
+    description: '上传图片/语音/视频/缩略图文件到微信永久素材库，成功后登记本地素材。',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'mp:material:create', audit: { description: '上传公众号素材', module: '公众号素材', recordBody: false } })] as const,
+    request: {
+      body: {
+        content: {
+          'multipart/form-data': {
+            schema: z.object({
+              accountId: z.string(),
+              type: z.string(),
+              name: z.string().optional(),
+              title: z.string().optional(),
+              introduction: z.string().optional(),
+              file: z.any().openapi({ type: 'string', format: 'binary' }),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...ok(MpMaterialDTO, '上传成功') },
+  }),
+  handler: async (c) => {
+    const body = await c.req.parseBody();
+    const file = body.file;
+    if (!(file instanceof File)) throw new HTTPException(400, { message: '请选择要上传的文件' });
+    const accountId = Number(body.accountId);
+    if (!Number.isInteger(accountId) || accountId <= 0) throw new HTTPException(400, { message: '公众号参数无效' });
+    const type = String(body.type ?? '');
+    if (!(MP_MATERIAL_TYPES as readonly string[]).includes(type)) throw new HTTPException(400, { message: '素材类型无效' });
+    const name = body.name ? String(body.name) : '';
+    const videoMeta = type === 'video'
+      ? { title: body.title ? String(body.title) : (name || file.name), introduction: body.introduction ? String(body.introduction) : '' }
+      : undefined;
+    const result = await uploadMpMaterial(accountId, type as MpMaterialType, file, file.name, name, videoMeta);
+    return c.json(okBody(result, '上传成功'), 200);
+  },
+});
+
+mpMaterialsRouter.openapiRoutes([listRoute, syncRoute, uploadRoute, createRouteDef, updateRoute, deleteRoute] as const);
 
 export default mpMaterialsRouter;

@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Form, Input, Modal, Select, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
+import { Button, Form, Input, Modal, Select, Space, Spin, Tag, Toast, Banner, Upload, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Plus, RotateCcw, Search, RefreshCw } from 'lucide-react';
+import { Plus, RotateCcw, Search, RefreshCw, UploadCloud } from 'lucide-react';
+import { TOKEN_KEY } from '@zenith/shared';
 import type { PaginatedResponse, MpMaterial, MpMaterialType } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
+import { config } from '@/config';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -47,6 +49,13 @@ export default function MpMaterialsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const formRef = useRef<FormApi>(null);
+
+  const [uploadVisible, setUploadVisible] = useState(false);
+  const [uploadType, setUploadType] = useState<MpMaterialType>('image');
+  const [uploadName, setUploadName] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const ACCEPT_MAP: Record<MpMaterialType, string> = { image: 'image/*', thumb: 'image/*', voice: 'audio/*', video: 'video/*' };
 
   const fetchList = useCallback(
     async (p = page, ps = pageSize, params?: SearchParams) => {
@@ -155,6 +164,7 @@ export default function MpMaterialsPage() {
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         {can('mp:material:sync') && <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>从微信同步</Button>}
+        {can('mp:material:create') && <Button icon={<UploadCloud size={14} />} disabled={!currentId} onClick={() => { setUploadType('image'); setUploadName(''); setUploadVisible(true); }}>上传素材</Button>}
         {can('mp:material:create') && <Button type="primary" icon={<Plus size={14} />} disabled={!currentId} onClick={openCreate}>新增</Button>}
       </SearchToolbar>
 
@@ -185,6 +195,41 @@ export default function MpMaterialsPage() {
           </Form>
         </Spin>
       </AppModal>
+
+      <Modal title="上传素材到微信" visible={uploadVisible} footer={null} onCancel={() => setUploadVisible(false)} width={520}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 4 }}>
+          <div>
+            <Typography.Text type="secondary" size="small">素材类型</Typography.Text>
+            <Select style={{ width: '100%', marginTop: 4 }} value={uploadType} onChange={(v) => setUploadType(v as MpMaterialType)} optionList={TYPE_OPTIONS} />
+          </div>
+          <div>
+            <Typography.Text type="secondary" size="small">素材名称（选填，默认取文件名）</Typography.Text>
+            <Input style={{ marginTop: 4 }} value={uploadName} onChange={setUploadName} placeholder="请输入素材名称" maxLength={200} />
+          </div>
+          <Upload
+            action={`${config.apiBaseUrl}/api/mp/materials/upload`}
+            headers={{ Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY) ?? ''}` }}
+            name="file"
+            limit={1}
+            accept={ACCEPT_MAP[uploadType]}
+            showUploadList
+            disabled={uploading || !currentId}
+            data={() => ({ accountId: String(currentId ?? ''), type: uploadType, name: uploadName, ...(uploadType === 'video' ? { title: uploadName } : {}) })}
+            onChange={({ fileList }) => setUploading(fileList.some((f) => f.status === 'uploading'))}
+            onSuccess={(res) => {
+              if (res?.code === 0) { Toast.success('上传成功'); setUploadVisible(false); void fetchList(); }
+              else Toast.error(res?.message || '上传失败');
+            }}
+            onError={() => Toast.error('上传失败，请重试')}
+            draggable
+          >
+            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--semi-color-text-2)' }}>
+              <UploadCloud size={28} style={{ marginBottom: 8 }} />
+              <div>点击或拖拽文件到此处上传（{TYPE_OPTIONS.find((t) => t.value === uploadType)?.label}）</div>
+            </div>
+          </Upload>
+        </div>
+      </Modal>
     </div>
   );
 }

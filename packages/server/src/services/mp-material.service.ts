@@ -7,7 +7,7 @@ import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { formatDateTime } from '../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
-import { batchGetWechatMaterials, deleteWechatMaterial } from '../lib/wechat';
+import { batchGetWechatMaterials, deleteWechatMaterial, uploadWechatMaterial } from '../lib/wechat';
 import { mapWechatError } from '../lib/wechat-error';
 import logger from '../lib/logger';
 import type { CreateMpMaterialInput, UpdateMpMaterialInput, MpMaterialType } from '@zenith/shared';
@@ -88,7 +88,34 @@ export async function deleteMpMaterial(id: number) {
   await db.delete(mpMaterials).where(eq(mpMaterials.id, id));
 }
 
-/** 从微信同步永久素材（image/voice/video），分页拉取全部 */
+/** 上传二进制素材到微信永久素材库，并登记本地。 */
+export async function uploadMpMaterial(
+  accountId: number,
+  type: MpMaterialType,
+  file: Blob,
+  filename: string,
+  name: string,
+  videoMeta?: { title: string; introduction: string },
+) {
+  const account = await ensureMpAccountExists(accountId);
+  const tenantId = currentCreateTenantId();
+  let result;
+  try {
+    result = await uploadWechatMaterial(account, type, file, filename, videoMeta);
+  } catch (err) {
+    return mapWechatError(err);
+  }
+  const [row] = await db.insert(mpMaterials).values({
+    accountId,
+    type,
+    name: name || filename,
+    wechatMediaId: result.mediaId,
+    url: result.url,
+    fileSize: file.size,
+    tenantId,
+  }).returning();
+  return mapMpMaterial(row);
+}
 export async function syncMpMaterials(accountId: number): Promise<{ success: boolean; created: number; updated: number; total: number }> {
   const account = await ensureMpAccountExists(accountId);
   const tenantId = currentCreateTenantId();

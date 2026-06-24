@@ -156,9 +156,20 @@ export async function testMpAccountConnection(id: number): Promise<{ success: bo
 }
 
 /**
- * 公开回调专用：按 id 查询公众号（不做租户过滤，因回调无登录上下文）。
- * 返回签名校验与消息解密/落库所需字段。
+ * 公开回调专用：按 id 查询公众号凭证（不做租户过滤）。用于网页授权 code 换取等需要 appSecret 的公开场景。
  */
+export async function getMpAccountAuthCredential(id: number): Promise<
+  Pick<MpAccountRow, 'id' | 'appId' | 'appSecret' | 'tenantId' | 'status'> | null
+> {
+  const [row] = await db.select({
+    id: mpAccounts.id,
+    appId: mpAccounts.appId,
+    appSecret: mpAccounts.appSecret,
+    tenantId: mpAccounts.tenantId,
+    status: mpAccounts.status,
+  }).from(mpAccounts).where(eq(mpAccounts.id, id)).limit(1);
+  return row ?? null;
+}
 export async function getMpAccountForCallback(id: number): Promise<
   Pick<MpAccountRow, 'id' | 'appId' | 'token' | 'encryptMode' | 'encodingAesKey' | 'tenantId' | 'status'> | null
 > {
