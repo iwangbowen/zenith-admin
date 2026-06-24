@@ -117,7 +117,10 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
       void request.post(`/api/channels/${channel.id}/read`, {}, { silent: true });
     })();
     return () => { cancelled = true; };
-  }, [channel, scrollToBottom]);
+    // 仅在切换频道（channel.id 变化）时重载消息；频道元信息（lastMessage/未读数）更新会生成新的 channel 对象，
+    // 不应据此清空并重拉消息，否则审批置灰卡片等推送会导致整页闪烁。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channel.id, scrollToBottom]);
 
   // 运营号加载底部菜单
   useEffect(() => {
