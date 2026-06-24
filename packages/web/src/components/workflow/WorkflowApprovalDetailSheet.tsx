@@ -9,16 +9,15 @@ import {
   Spin,
   Toast,
   Typography,
-  Upload,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowInstance, WorkflowTask } from '@zenith/shared';
-import { config } from '@/config';
 import { request } from '@/utils/request';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import SignaturePad from '@/components/SignaturePad';
+import FileAttachment, { type AttachmentItem } from '@/components/FileAttachment';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useUserOptions } from '@/hooks/useUserOptions';
@@ -28,6 +27,17 @@ type AddSignPosition = 'before' | 'after' | 'parallel';
 type AddSignMode = 'and' | 'or';
 
 interface UploadedFile { name: string; url: string; size?: number }
+
+/** UploadedFile（{name,url,size}）→ FileAttachment 所需的 AttachmentItem */
+function uploadedToAttachment(f: UploadedFile, i: number): AttachmentItem {
+  return {
+    id: i + 1,
+    fileId: f.url,
+    file: { id: f.url, originalName: f.name, size: Number(f.size ?? 0), mimeType: null, extension: null, url: f.url },
+    sortOrder: i,
+    createdAt: '',
+  };
+}
 
 interface Props {
   instanceId: number | null;
@@ -496,22 +506,15 @@ export default function WorkflowApprovalDetailSheet({
           <Typography.Text strong>
             附件{btnApprove.uploadRequired ? <span style={{ color: 'var(--semi-color-danger)' }}> *</span> : null}
           </Typography.Text>
-          <Upload
-            action={`${config.apiBaseUrl}/api/files/upload-one`}
-            headers={{ Authorization: `Bearer ${localStorage.getItem('zenith_token') ?? ''}` }}
-            name="file"
-            limit={5}
-            onSuccess={(res: unknown) => {
-              const r = res as { code?: number; data?: { url: string; originalName?: string; size?: number } };
-              if (r?.code === 0 && r.data) {
-                setApproveAttachments((prev) => [...prev, { name: r.data!.originalName ?? '附件', url: r.data!.url, size: r.data!.size }]);
-              }
-            }}
-            onRemove={(_file, _fileList, currentFile) => {
-              setApproveAttachments((prev) => prev.filter((a) => a.name !== currentFile.name));
-              return true;
-            }}
-          />
+          <div style={{ marginTop: 6 }}>
+            <FileAttachment
+              mode="edit"
+              showTitle={false}
+              limit={5}
+              value={approveAttachments.map(uploadedToAttachment)}
+              onChange={(items) => setApproveAttachments(items.map((a) => ({ name: a.file.originalName, url: a.file.url, size: a.file.size })))}
+            />
+          </div>
         </div>
         {(currentTask?.signatureRequired ?? false) && (
           <div style={{ marginTop: 12 }}>
