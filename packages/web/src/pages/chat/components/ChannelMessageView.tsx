@@ -1,13 +1,16 @@
 /**
- * 频道（站内公众号 / 系统号）只读消息视图
+ * 频道（站内公众号 / 系统号）消息视图
  *
- * 复用 MessageBubble 渲染卡片/文本，订阅 WS channel:message 实时追加，
- * 纯单向无输入框（第一期）。频道消息 senderId 视为 null，展示身份取频道名/头像或 extra.bot。
+ * - 系统号（system）：只读，纯单向接收系统通知/工作流卡片。
+ * - 运营号（business）：双向客服。底部输入框 + 公众号底部菜单（click 触发关键词 / view 跳转链接），
+ *   用户消息（direction='in'）以「自己」气泡靠右展示，频道回复（out）靠左展示。
+ *
+ * 复用 MessageBubble 渲染气泡，订阅 WS channel:message 实时追加（按 id 去重）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Empty, Spin, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft } from 'lucide-react';
-import type { Channel, ChannelMessage, ChatMessage, ChatCardAction, WsMessage } from '@zenith/shared';
+import { Button, Dropdown, Empty, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { ArrowLeft, ChevronUp, ExternalLink, Send } from 'lucide-react';
+import type { Channel, ChannelMenu, ChannelMessage, ChatMessage, ChatCardAction, WsMessage } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -25,12 +28,13 @@ interface Props {
 }
 
 function toChatMessage(m: ChannelMessage, channel: Channel): ChatMessage {
+  const isIn = m.direction === 'in';
   return {
     id: m.id,
     conversationId: 0,
-    senderId: null,
-    senderName: channel.name,
-    senderAvatar: channel.avatar,
+    senderId: isIn ? m.senderUserId : null,
+    senderName: isIn ? (m.senderUserName ?? '我') : channel.name,
+    senderAvatar: isIn ? null : channel.avatar,
     type: m.type,
     content: m.content,
     replyToId: null,
@@ -44,12 +48,16 @@ function toChatMessage(m: ChannelMessage, channel: Channel): ChatMessage {
   };
 }
 
-const noop = () => { /* 只读频道：禁用交互 */ };
+const noop = () => { /* 频道气泡：禁用交互 */ };
 
 export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscribe, onCardAction, onOpenWorkflow }: Readonly<Props>) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [menus, setMenus] = useState<ChannelMenu[]>([]);
   const [loading, setLoading] = useState(false);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isBusiness = channel.type === 'business';
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -58,10 +66,26 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     });
   }, []);
 
+  const appendMessage = useCallback((m: ChannelMessage) => {
+    if (m.channelId !== channel.id) return;
+    setMessages((prev) => {
+      const mapped = toChatMessage(m, channel);
+      const idx = prev.findIndex((x) => x.id === m.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = mapped;
+        return next;
+      }
+      return [...prev, mapped];
+    });
+  }, [channel]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setMessages([]);
+    setMenus([]);
+    setInput('');
     void (async () => {
       const res = await request.get<{ list: ChannelMessage[]; total: number }>(
         `/api/channels/${channel.id}/messages?page=1&pageSize=50`,
@@ -79,25 +103,102 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     return () => { cancelled = true; };
   }, [channel, scrollToBottom]);
 
+  // 运营号加载底部菜单
+  useEffect(() => {
+    if (!isBusiness) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await request.get<ChannelMenu[]>(`/api/channels/${channel.id}/menus`, { silent: true });
+      if (!cancelled && res.code === 0 && res.data) setMenus(res.data);
+    })();
+    return () => { cancelled = true; };
+  }, [channel.id, isBusiness]);
+
   const handleWs = useCallback((wsMsg: WsMessage) => {
     if (wsMsg.type !== 'channel:message') return;
     const m = wsMsg.payload;
     if (m.channelId !== channel.id) return;
-    setMessages((prev) => {
-      const mapped = toChatMessage(m, channel);
-      const idx = prev.findIndex((x) => x.id === m.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = mapped;
-        return next;
-      }
-      return [...prev, mapped];
-    });
+    // 仅展示与本人相关的消息：广播 / 定向到本人的 out / 本人发出的 in
+    if (m.direction === 'in' && m.senderUserId !== currentUserId) return;
+    appendMessage(m);
     scrollToBottom();
     void request.post(`/api/channels/${channel.id}/read`, {}, { silent: true });
-  }, [channel, scrollToBottom]);
+  }, [channel, currentUserId, appendMessage, scrollToBottom]);
 
   useWebSocket(handleWs);
+
+  const sendContent = useCallback(async (content: string) => {
+    const text = content.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const res = await request.post<{ message: ChannelMessage; autoReply: ChannelMessage | null }>(
+        `/api/channels/${channel.id}/send`, { content: text }, { silent: true },
+      );
+      if (res.code === 0 && res.data) {
+        setInput('');
+        appendMessage(res.data.message);
+        if (res.data.autoReply) appendMessage(res.data.autoReply);
+        scrollToBottom();
+      } else {
+        Toast.error(res.message || '发送失败');
+      }
+    } finally {
+      setSending(false);
+    }
+  }, [channel.id, sending, appendMessage, scrollToBottom]);
+
+  const handleMenuClick = useCallback((menu: ChannelMenu) => {
+    if (menu.type === 'view') {
+      if (menu.value) window.open(menu.value, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    void sendContent(menu.value || menu.name);
+  }, [sendContent]);
+
+  const renderMenuBar = () => {
+    if (!isBusiness || menus.length === 0) return null;
+    return (
+      <div style={{ display: 'flex', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)' }}>
+        {menus.map((top) => {
+          const children = top.children ?? [];
+          const cell = (
+            <div style={{ flex: 1, textAlign: 'center', padding: '10px 4px', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, userSelect: 'none' }}>
+              {children.length > 0 && <ChevronUp size={13} />}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{top.name}</span>
+            </div>
+          );
+          if (children.length > 0) {
+            return (
+              <Dropdown
+                key={top.id}
+                trigger="click"
+                position="top"
+                render={(
+                  <Dropdown.Menu>
+                    {children.map((sub) => (
+                      <Dropdown.Item key={sub.id} onClick={() => handleMenuClick(sub)}>
+                        {sub.type === 'view' && <ExternalLink size={13} style={{ marginRight: 6 }} />}
+                        {sub.name}
+                      </Dropdown.Item>
+                    ))}
+                  </Dropdown.Menu>
+                )}
+                style={{ flex: 1 }}
+              >
+                {cell}
+              </Dropdown>
+            );
+          }
+          return (
+            <div key={top.id} style={{ flex: 1, display: 'flex' }} onClick={() => handleMenuClick(top)}>
+              {cell}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -119,13 +220,13 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
         ) : messages.length === 0 ? (
-          <Empty description="暂无消息" style={{ padding: 40 }} />
+          <Empty description={isBusiness ? '暂无消息，发送一条试试' : '暂无消息'} style={{ padding: 40 }} />
         ) : (
           messages.map((msg) => (
             <div key={msg.id} style={{ padding: '0 20px 16px' }}>
               <MessageBubble
                 msg={msg}
-                isSelf={false}
+                isSelf={msg.senderId != null && msg.senderId === currentUserId}
                 shouldShowTime
                 currentUserId={currentUserId}
                 onReply={noop}
@@ -144,9 +245,40 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
         )}
       </div>
 
-      <div style={{ flexShrink: 0, textAlign: 'center', padding: '10px 16px', borderTop: '1px solid var(--semi-color-border)', color: 'var(--semi-color-text-2)', fontSize: 12 }}>
-        该频道仅用于接收系统通知，不支持回复
-      </div>
+      {isBusiness ? (
+        <div style={{ flexShrink: 0 }}>
+          {renderMenuBar()}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--semi-color-border)' }}>
+            <TextArea
+              value={input}
+              onChange={setInput}
+              autosize={{ minRows: 1, maxRows: 4 }}
+              placeholder="输入消息，Enter 发送 / Shift+Enter 换行"
+              style={{ flex: 1 }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendContent(input);
+                }
+              }}
+            />
+            <Button
+              type="primary"
+              theme="solid"
+              icon={<Send size={14} />}
+              loading={sending}
+              disabled={!input.trim()}
+              onClick={() => void sendContent(input)}
+            >
+              发送
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ flexShrink: 0, textAlign: 'center', padding: '10px 16px', borderTop: '1px solid var(--semi-color-border)', color: 'var(--semi-color-text-2)', fontSize: 12 }}>
+          该频道仅用于接收系统通知，不支持回复
+        </div>
+      )}
     </div>
   );
 }

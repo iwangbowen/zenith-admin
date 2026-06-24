@@ -11,6 +11,8 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { usePagination } from '@/hooks/usePagination';
+import { ChannelMenuDrawer } from './ChannelMenuDrawer';
+import { ChannelAutoReplyDrawer } from './ChannelAutoReplyDrawer';
 
 const TYPE_META: Record<string, { text: string; color: 'green' | 'blue' }> = {
   system: { text: '系统号', color: 'green' },
@@ -34,6 +36,9 @@ export default function ChannelsPage() {
   const [publishVisible, setPublishVisible] = useState(false);
   const [publishTarget, setPublishTarget] = useState<ChannelAdmin | null>(null);
   const [publishApi, setPublishApi] = useState<FormApi | null>(null);
+
+  const [menuDrawer, setMenuDrawer] = useState<ChannelAdmin | null>(null);
+  const [replyDrawer, setReplyDrawer] = useState<ChannelAdmin | null>(null);
 
   const fetchList = useCallback(async (p = page, ps = pageSize, kw = keywordRef.current) => {
     setLoading(true);
@@ -107,10 +112,12 @@ export default function ChannelsPage() {
     { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (v: string) => formatDateTime(v) },
     {
-      title: '操作', dataIndex: 'op', width: 170, fixed: 'right',
+      title: '操作', dataIndex: 'op', width: 280, fixed: 'right',
       render: (_: unknown, r: ChannelAdmin) => (
         <Space>
           {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => openPublish(r)}>群发</Button>}
+          {r.type === 'business' && hasPermission('channel:menu:save') && <Button theme="borderless" size="small" onClick={() => setMenuDrawer(r)}>菜单配置</Button>}
+          {r.type === 'business' && hasPermission('channel:reply:list') && <Button theme="borderless" size="small" onClick={() => setReplyDrawer(r)}>自动回复</Button>}
           {hasPermission('channel:channel:update') && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
           {hasPermission('channel:channel:delete') && !r.builtin && (
             <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(r)}>删除</Button>
@@ -188,6 +195,23 @@ export default function ChannelsPage() {
           <Form.TextArea field="content" label="内容" rules={[{ required: true, message: '请填写内容' }]} autosize={{ minRows: 3, maxRows: 6 }} />
         </Form>
       </AppModal>
+
+      {menuDrawer && (
+        <ChannelMenuDrawer
+          channelId={menuDrawer.id}
+          channelName={menuDrawer.name}
+          visible={!!menuDrawer}
+          onClose={() => setMenuDrawer(null)}
+        />
+      )}
+      {replyDrawer && (
+        <ChannelAutoReplyDrawer
+          channelId={replyDrawer.id}
+          channelName={replyDrawer.name}
+          visible={!!replyDrawer}
+          onClose={() => setReplyDrawer(null)}
+        />
+      )}
     </div>
   );
 }
