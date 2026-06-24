@@ -55,6 +55,4 @@ ALTER TABLE "channel_subscriptions" ADD CONSTRAINT "channel_subscriptions_user_i
 ALTER TABLE "channels" ADD CONSTRAINT "channels_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "channels" ADD CONSTRAINT "channels_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "channels" ADD CONSTRAINT "channels_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-DELETE FROM "chat_conversations" WHERE "id" IN (SELECT "conversation_id" FROM "chat_conversation_members" WHERE "user_id" IN (SELECT "id" FROM "users" WHERE "username" = 'zenith-assistant'));--> statement-breakpoint
-DELETE FROM "users" WHERE "username" = 'zenith-assistant';--> statement-breakpoint
 ALTER TABLE "users" DROP COLUMN "is_bot";

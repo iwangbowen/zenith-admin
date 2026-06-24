@@ -1023,6 +1023,13 @@
       "when": 1782267824081,
       "tag": "0145_absurd_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1782271825339,
+      "tag": "0146_purge_legacy_bot",
+      "breakpoints": true
     }
   ]
 }
