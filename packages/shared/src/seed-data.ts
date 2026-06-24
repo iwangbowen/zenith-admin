@@ -385,6 +385,7 @@ export const SEED_MENUS: Menu[] = [
   { id: 1020, parentId: 1000, title: '粉丝管理',   name: 'MpFans',     path: '/mp/fans',     component: 'mp/MpFansPage',     icon: 'Users',         type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'mp:fan:list',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1021, parentId: 1020, title: '同步粉丝',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:fan:sync',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1022, parentId: 1020, title: '编辑粉丝',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:fan:update',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1023, parentId: 1020, title: '会员绑定',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'mp:fan:bind',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1030, parentId: 1000, title: '消息管理',   name: 'MpMessages', path: '/mp/messages', component: 'mp/MpMessagesPage', icon: 'MessagesSquare', type: 'menu',      sort: 4,  status: 'enabled', visible: true,  permission: 'mp:message:list',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1031, parentId: 1030, title: '发送消息',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:message:send',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1040, parentId: 1000, title: '自动回复',   name: 'MpAutoReplies', path: '/mp/auto-replies', component: 'mp/MpAutoRepliesPage', icon: 'Reply',     type: 'menu',      sort: 5,  status: 'enabled', visible: true,  permission: 'mp:reply:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -1259,8 +1260,8 @@ export const SEED_COUPONS: Coupon[] = [
 
 // ─── 公众号账号（示例占位，需填实际凭证后启用）──────────────────────────────────
 export const SEED_MP_ACCOUNTS: MpAccount[] = [
-  { id: 1, name: '示例服务号', account: 'gh_demo_service', appId: 'wxdemoservice0001', appSecret: 'DemoAppSecretReplaceMe', token: 'zenithdemotoken', encodingAesKey: null, encryptMode: 'plaintext', type: 'service', qrCodeUrl: null, isDefault: true,  status: 'disabled', remark: '初始占位配置，需填实际 AppSecret 后启用', createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, name: '示例测试号', account: null,              appId: 'wxdemotest00000001', appSecret: 'DemoTestSecret',        token: 'zenithtesttoken', encodingAesKey: null, encryptMode: 'plaintext', type: 'test',    qrCodeUrl: null, isDefault: false, status: 'disabled', remark: '微信测试号占位',                createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, name: '示例服务号', account: 'gh_demo_service', appId: 'wxdemoservice0001', appSecret: 'DemoAppSecretReplaceMe', token: 'zenithdemotoken', encodingAesKey: null, encryptMode: 'plaintext', type: 'service', qrCodeUrl: null, isDefault: true,  autoCreateMember: false, status: 'disabled', remark: '初始占位配置，需填实际 AppSecret 后启用', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, name: '示例测试号', account: null,              appId: 'wxdemotest00000001', appSecret: 'DemoTestSecret',        token: 'zenithtesttoken', encodingAesKey: null, encryptMode: 'plaintext', type: 'test',    qrCodeUrl: null, isDefault: false, autoCreateMember: false, status: 'disabled', remark: '微信测试号占位',                createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 公众号标签（示例）────────────────────────────────────────────────────────
@@ -1272,9 +1273,9 @@ export const SEED_MP_TAGS: MpTag[] = [
 
 // ─── 公众号粉丝（示例）────────────────────────────────────────────────────────
 export const SEED_MP_FANS: MpFan[] = [
-  { id: 1, accountId: 1, openid: 'oDemoFan0000000000000001', nickname: '小明', avatar: null, sex: 1, country: '中国', province: '广东', city: '深圳', language: 'zh_CN', subscribe: 'subscribed',   subscribeTime: SEED_DATE, remark: 'VIP客户', tagIds: [1, 2], tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, accountId: 1, openid: 'oDemoFan0000000000000002', nickname: '小红', avatar: null, sex: 2, country: '中国', province: '浙江', city: '杭州', language: 'zh_CN', subscribe: 'subscribed',   subscribeTime: SEED_DATE, remark: null,    tagIds: [1],    tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 3, accountId: 1, openid: 'oDemoFan0000000000000003', nickname: '老王', avatar: null, sex: 1, country: '中国', province: '北京', city: '北京', language: 'zh_CN', subscribe: 'unsubscribed', subscribeTime: SEED_DATE, remark: null,    tagIds: [],     tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, accountId: 1, openid: 'oDemoFan0000000000000001', nickname: '小明', avatar: null, sex: 1, country: '中国', province: '广东', city: '深圳', language: 'zh_CN', subscribe: 'subscribed',   subscribeTime: SEED_DATE, remark: 'VIP客户', tagIds: [1, 2], unionid: null, memberId: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, openid: 'oDemoFan0000000000000002', nickname: '小红', avatar: null, sex: 2, country: '中国', province: '浙江', city: '杭州', language: 'zh_CN', subscribe: 'subscribed',   subscribeTime: SEED_DATE, remark: null,    tagIds: [1],    unionid: null, memberId: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, accountId: 1, openid: 'oDemoFan0000000000000003', nickname: '老王', avatar: null, sex: 1, country: '中国', province: '北京', city: '北京', language: 'zh_CN', subscribe: 'unsubscribed', subscribeTime: SEED_DATE, remark: null,    tagIds: [],     unionid: null, memberId: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 公众号消息（示例会话）──────────────────────────────────────────────────────

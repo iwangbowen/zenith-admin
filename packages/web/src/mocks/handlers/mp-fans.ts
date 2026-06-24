@@ -40,4 +40,30 @@ export const mpFansHandlers = [
     f.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: '更新成功', data: f });
   }),
+
+  http.post('/api/mp/fans/:id/create-member', ({ params }) => {
+    const f = mockMpFans.find((x) => x.id === Number(params.id));
+    if (!f) return HttpResponse.json({ code: 404, message: '粉丝不存在', data: null }, { status: 404 });
+    if (f.memberId) return HttpResponse.json({ code: 400, message: '该粉丝已绑定会员', data: null }, { status: 400 });
+    f.memberId = 9000 + f.id;
+    f.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '会员已创建并绑定', data: f });
+  }),
+
+  http.post('/api/mp/fans/:id/bind-member', async ({ params, request }) => {
+    const f = mockMpFans.find((x) => x.id === Number(params.id));
+    if (!f) return HttpResponse.json({ code: 404, message: '粉丝不存在', data: null }, { status: 404 });
+    const body = await request.json() as { memberId: number };
+    f.memberId = body.memberId;
+    f.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '绑定成功', data: f });
+  }),
+
+  http.post('/api/mp/fans/:id/unbind-member', ({ params }) => {
+    const f = mockMpFans.find((x) => x.id === Number(params.id));
+    if (!f) return HttpResponse.json({ code: 404, message: '粉丝不存在', data: null }, { status: 404 });
+    f.memberId = null;
+    f.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '已解绑', data: f });
+  }),
 ];

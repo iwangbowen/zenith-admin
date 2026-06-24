@@ -27,6 +27,7 @@ export function mapMpAccountSafe(row: MpAccountRow) {
     type: row.type,
     qrCodeUrl: row.qrCodeUrl ?? null,
     isDefault: row.isDefault,
+    autoCreateMember: row.autoCreateMember,
     status: row.status,
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,

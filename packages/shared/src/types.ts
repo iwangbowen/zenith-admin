@@ -2220,6 +2220,8 @@ export interface WorkflowTask {
   comment: string | null;
   /** 手写签名（data URL / 图片地址） */
   signature?: string | null;
+  /** 审批附件（审批通过时上传，{name,url,size}[]） */
+  attachments?: Array<{ name: string; url: string; size?: number }>;
   /** 该任务所属节点是否要求手写签名（派生字段，由节点 operations 计算） */
   signatureRequired?: boolean;
   actionAt: string | null;
@@ -4228,6 +4230,7 @@ export interface MpAccount {
   type: MpAccountType;
   qrCodeUrl: string | null;
   isDefault: boolean;
+  autoCreateMember: boolean;
   status: EntityStatus;
   remark: string | null;
   tenantId?: number | null;

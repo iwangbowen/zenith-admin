@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { mpFans, members, memberPointAccounts, memberWallets, memberLevels } from '../db/schema';
@@ -14,7 +14,8 @@ async function getFanScoped(fanId: number): Promise<MpFanRow> {
 }
 
 async function defaultMemberLevelId(): Promise<number | null> {
-  const [lv] = await db.select({ id: memberLevels.id }).from(memberLevels).where(eq(memberLevels.isDefault, true)).limit(1);
+  const [lv] = await db.select({ id: memberLevels.id }).from(memberLevels)
+    .where(eq(memberLevels.status, 'enabled')).orderBy(asc(memberLevels.level)).limit(1);
   return lv?.id ?? null;
 }
 

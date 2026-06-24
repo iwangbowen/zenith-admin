@@ -56,6 +56,7 @@ export const mpAccountsHandlers = [
       type: body.type ?? 'service',
       qrCodeUrl: body.qrCodeUrl ?? null,
       isDefault: body.isDefault ?? false,
+      autoCreateMember: body.autoCreateMember ?? false,
       status: body.status ?? 'enabled',
       remark: body.remark ?? null,
       createdAt: now,

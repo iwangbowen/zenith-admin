@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Avatar, Button, Form, Input, Select, Space, Spin, Tag, Toast, Banner } from '@douyinfe/semi-ui';
+import { Avatar, Button, Form, Input, Select, Space, Spin, Tag, Toast, Banner, Popconfirm } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { RotateCcw, Search, RefreshCw } from 'lucide-react';
 import type { PaginatedResponse, MpFan, MpTag, MpFanSubscribe } from '@zenith/shared';
@@ -99,6 +99,16 @@ export default function MpFansPage() {
 
   const openEdit = (record: MpFan) => { setEditingRecord(record); setModalVisible(true); };
 
+  const handleCreateMember = async (record: MpFan) => {
+    const res = await request.post(`/api/mp/fans/${record.id}/create-member`);
+    if (res.code === 0) { Toast.success('会员已创建并绑定'); void fetchList(); }
+  };
+
+  const handleUnbindMember = async (record: MpFan) => {
+    const res = await request.post(`/api/mp/fans/${record.id}/unbind-member`);
+    if (res.code === 0) { Toast.success('已解绑会员'); void fetchList(); }
+  };
+
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
     try { values = (await formRef.current?.validate())!; } catch { return; }
@@ -141,6 +151,10 @@ export default function MpFansPage() {
     { title: '备注', dataIndex: 'remark', width: 140, render: (v: string | null) => v || '—' },
     { title: '关注时间', dataIndex: 'subscribeTime', width: 170, render: (v: string | null) => v || '—' },
     {
+      title: '会员', dataIndex: 'memberId', width: 90, align: 'center' as const,
+      render: (v: number | null) => (v ? <Tag color="green" type="light">已绑定 #{v}</Tag> : <Tag color="grey" type="light">未绑定</Tag>),
+    },
+    {
       title: '关注状态', dataIndex: 'subscribe', width: 100, align: 'center' as const, fixed: 'right' as const,
       render: (v: MpFanSubscribe) => (
         v === 'subscribed'
@@ -149,11 +163,18 @@ export default function MpFansPage() {
       ),
     },
     {
-      title: '操作', key: 'actions', width: 100, fixed: 'right' as const,
+      title: '操作', key: 'actions', width: 180, fixed: 'right' as const,
       render: (_: unknown, record: MpFan) => (
-        can('mp:fan:update')
-          ? <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>
-          : <span>—</span>
+        <Space>
+          {can('mp:fan:update') && <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>}
+          {can('mp:fan:bind') && (record.memberId
+            ? (
+              <Popconfirm title="确定解绑该粉丝的会员？" onConfirm={() => void handleUnbindMember(record)}>
+                <Button theme="borderless" size="small" type="danger">解绑会员</Button>
+              </Popconfirm>
+            )
+            : <Button theme="borderless" size="small" onClick={() => void handleCreateMember(record)}>创建会员</Button>)}
+        </Space>
       ),
     },
   ];

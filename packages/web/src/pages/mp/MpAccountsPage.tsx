@@ -329,6 +329,9 @@ export default function MpAccountsPage() {
               <Col span={12}>
                 <Form.Switch field="isDefault" label="设为默认" />
               </Col>
+              <Col span={12}>
+                <Form.Switch field="autoCreateMember" label="关注即注册会员" extraText="开启后，粉丝关注时自动创建并绑定会员" />
+              </Col>
             </Row>
             <Row gutter={16}>
               <Col span={24}>

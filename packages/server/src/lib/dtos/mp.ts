@@ -17,6 +17,7 @@ export const MpAccountDTO = z
     type: z.enum(['subscribe', 'service', 'test']),
     qrCodeUrl: z.string().nullable(),
     isDefault: z.boolean(),
+    autoCreateMember: z.boolean(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable(),
     ...auditFields,
