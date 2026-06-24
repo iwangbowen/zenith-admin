@@ -29,7 +29,7 @@ export const mpQrcodesHandlers = [
     const item: MpQrcode = {
       id: getNextMpQrcodeId(), accountId: body.accountId, type: body.type ?? 'permanent', sceneStr: body.sceneStr ?? '',
       name: body.name ?? '', ticket, url: `https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=${ticket}`,
-      expireSeconds: body.type === 'temporary' ? (body.expireSeconds ?? 604800) : null, scanCount: 0, createdAt: now, updatedAt: now,
+      expireSeconds: body.type === 'temporary' ? (body.expireSeconds ?? 604800) : null, scanCount: 0, rewardPoints: body.rewardPoints ?? 0, createdAt: now, updatedAt: now,
     };
     mockMpQrcodes.push(item);
     return HttpResponse.json({ code: 0, message: '生成成功', data: item });

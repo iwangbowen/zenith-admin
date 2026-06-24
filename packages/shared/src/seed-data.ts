@@ -1307,10 +1307,11 @@ export const SEED_MP_MESSAGES: MpMessage[] = [
 
 // ─── 公众号自动回复（示例）──────────────────────────────────────────────────────
 export const SEED_MP_AUTO_REPLIES: MpAutoReply[] = [
-  { id: 1, accountId: 1, replyType: 'subscribe', keyword: null,     matchType: 'contain', contentType: 'text', content: '欢迎关注 Zenith 公众号！回复「会员」了解会员权益。', mediaId: null, newsArticles: null, status: 'enabled', sort: 0, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, accountId: 1, replyType: 'keyword',   keyword: '会员',   matchType: 'contain', contentType: 'text', content: '点击底部菜单「会员中心」即可开通会员～',           mediaId: null, newsArticles: null, status: 'enabled', sort: 1, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 3, accountId: 1, replyType: 'keyword',   keyword: '优惠券', matchType: 'contain', contentType: 'news', content: null, mediaId: null, newsArticles: [{ title: '最新优惠券领取攻略', description: '点击查看本月可领取的优惠券与使用规则', picUrl: 'https://mmbiz.qpic.cn/demo/coupon.png', url: 'https://example.com/coupons' }], status: 'enabled', sort: 2, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 4, accountId: 1, replyType: 'default',   keyword: null,     matchType: 'contain', contentType: 'text', content: '感谢留言，我们会尽快回复您～',                       mediaId: null, newsArticles: null, status: 'enabled', sort: 0, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, accountId: 1, replyType: 'subscribe', keyword: null,     matchType: 'contain', contentType: 'text', content: '欢迎关注 Zenith 公众号！回复「会员」了解会员权益。', mediaId: null, newsArticles: null, transferToKf: false, status: 'enabled', sort: 0, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, replyType: 'keyword',   keyword: '会员',   matchType: 'contain', contentType: 'text', content: '点击底部菜单「会员中心」即可开通会员～',           mediaId: null, newsArticles: null, transferToKf: false, status: 'enabled', sort: 1, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, accountId: 1, replyType: 'keyword',   keyword: '优惠券', matchType: 'contain', contentType: 'news', content: null, mediaId: null, newsArticles: [{ title: '最新优惠券领取攻略', description: '点击查看本月可领取的优惠券与使用规则', picUrl: 'https://mmbiz.qpic.cn/demo/coupon.png', url: 'https://example.com/coupons' }], transferToKf: false, status: 'enabled', sort: 2, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 4, accountId: 1, replyType: 'keyword',   keyword: '人工',   matchType: 'contain', contentType: 'text', content: '正在为您转接人工客服，请稍候～',                     mediaId: null, newsArticles: null, transferToKf: true,  status: 'enabled', sort: 3, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 5, accountId: 1, replyType: 'default',   keyword: null,     matchType: 'contain', contentType: 'text', content: '感谢留言，我们会尽快回复您～',                       mediaId: null, newsArticles: null, transferToKf: false, status: 'enabled', sort: 0, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 公众号自定义菜单（示例草稿）────────────────────────────────────────────────
@@ -1359,8 +1360,8 @@ export const SEED_MP_BROADCASTS: MpBroadcast[] = [
 
 // ─── 公众号带参数二维码（示例）─────────────────────────────────────────────────
 export const SEED_MP_QRCODES: MpQrcode[] = [
-  { id: 1, accountId: 1, type: 'permanent', sceneStr: 'channel_offline_store', name: '线下门店物料', ticket: 'DEMO_TICKET_OFFLINE', url: 'https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=DEMO_TICKET_OFFLINE', expireSeconds: null, scanCount: 128, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, accountId: 1, type: 'permanent', sceneStr: 'event_2026_spring', name: '春季活动推广', ticket: 'DEMO_TICKET_SPRING', url: 'https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=DEMO_TICKET_SPRING', expireSeconds: null, scanCount: 36, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, accountId: 1, type: 'permanent', sceneStr: 'channel_offline_store', name: '线下门店物料', ticket: 'DEMO_TICKET_OFFLINE', url: 'https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=DEMO_TICKET_OFFLINE', expireSeconds: null, scanCount: 128, rewardPoints: 0, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, type: 'permanent', sceneStr: 'event_2026_spring', name: '春季活动推广', ticket: 'DEMO_TICKET_SPRING', url: 'https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=DEMO_TICKET_SPRING', expireSeconds: null, scanCount: 36, rewardPoints: 50, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 公众号多客服账号（示例）───────────────────────────────────────────────────

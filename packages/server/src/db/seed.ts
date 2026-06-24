@@ -380,8 +380,8 @@ async function seedRest() {
 
   // ─── 公众号自动回复 / 自定义菜单示例数据 ────────────────────────────────────────
   await db.insert(mpAutoReplies).values(
-    SEED_MP_AUTO_REPLIES.map(({ id, accountId, replyType, keyword, matchType, contentType, content, mediaId, newsArticles, status, sort }) =>
-      ({ id, accountId, replyType, keyword, matchType, contentType, content, mediaId, newsArticles, status, sort })),
+    SEED_MP_AUTO_REPLIES.map(({ id, accountId, replyType, keyword, matchType, contentType, content, mediaId, newsArticles, transferToKf, status, sort }) =>
+      ({ id, accountId, replyType, keyword, matchType, contentType, content, mediaId, newsArticles, transferToKf, status, sort })),
   ).onConflictDoNothing({ target: mpAutoReplies.id });
   await db.execute(sql`SELECT setval('mp_auto_replies_id_seq', GREATEST((SELECT MAX(id) FROM mp_auto_replies), 1))`);
   logger.info('  ✔ MP auto-replies seeded (onConflictDoNothing)');
@@ -419,7 +419,7 @@ async function seedRest() {
   logger.info('  ✔ MP broadcasts seeded (onConflictDoNothing)');
 
   await db.insert(mpQrcodes).values(
-    SEED_MP_QRCODES.map(({ id, accountId, type, sceneStr, name, ticket, url, expireSeconds, scanCount }) => ({ id, accountId, type, sceneStr, name, ticket, url, expireSeconds, scanCount })),
+    SEED_MP_QRCODES.map(({ id, accountId, type, sceneStr, name, ticket, url, expireSeconds, scanCount, rewardPoints }) => ({ id, accountId, type, sceneStr, name, ticket, url, expireSeconds, scanCount, rewardPoints })),
   ).onConflictDoNothing({ target: mpQrcodes.id });
   await db.execute(sql`SELECT setval('mp_qrcodes_id_seq', GREATEST((SELECT MAX(id) FROM mp_qrcodes), 1))`);
   logger.info('  ✔ MP qrcodes seeded (onConflictDoNothing)');

@@ -12,7 +12,7 @@ import { validationHook } from '../lib/openapi-schemas';
 import { getMpAccountForCallback } from '../services/mp-account.service';
 import { storeInboundMessage, storeOutboundAutoReply } from '../services/mp-message.service';
 import { resolveAutoReply } from '../services/mp-auto-reply.service';
-import { incrementQrcodeScan } from '../services/mp-qrcode.service';
+import { incrementQrcodeScan, rewardScanPoints } from '../services/mp-qrcode.service';
 import { autoCreateMemberOnSubscribe } from '../services/mp-member.service';
 import { onFanInboundMessage } from '../services/mp-kf-session.service';
 import { handleTemplateSendReceipt } from '../services/mp-template.service';
@@ -170,8 +170,9 @@ const receiveRoute = defineOpenAPIRoute({
       if (scene) {
         try {
           await incrementQrcodeScan(accountId, scene);
+          await rewardScanPoints(accountId, scene, openid);
         } catch (err) {
-          logger.warn(`[mp-callback] 扫码计数失败: ${(err as Error).message}`);
+          logger.warn(`[mp-callback] 扫码计数/奖励失败: ${(err as Error).message}`);
         }
       }
     }

@@ -318,6 +318,7 @@ export const MpQrcodeDTO = z
     url: z.string().nullable(),
     expireSeconds: z.number().int().nullable(),
     scanCount: z.number().int(),
+    rewardPoints: z.number().int(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),

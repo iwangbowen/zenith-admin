@@ -1,7 +1,7 @@
 import { eq, and, or, ilike, desc, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
-import { mpQrcodes } from '../db/schema';
+import { mpQrcodes, mpFans } from '../db/schema';
 import type { MpQrcodeRow } from '../db/schema';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { formatDateTime } from '../lib/datetime';
@@ -23,6 +23,7 @@ export function mapMpQrcode(row: MpQrcodeRow) {
     url: row.url ?? null,
     expireSeconds: row.expireSeconds ?? null,
     scanCount: row.scanCount,
+    rewardPoints: row.rewardPoints,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -87,6 +88,7 @@ export async function createMpQrcode(data: CreateMpQrcodeInput) {
       url: result.url,
       expireSeconds: result.expireSeconds,
       scanCount: 0,
+      rewardPoints: data.rewardPoints ?? 0,
       tenantId,
     }).returning();
     return mapMpQrcode(row);
@@ -106,4 +108,20 @@ export async function incrementQrcodeScan(accountId: number, sceneStr: string): 
   await db.update(mpQrcodes)
     .set({ scanCount: sql`${mpQrcodes.scanCount} + 1` })
     .where(and(eq(mpQrcodes.accountId, accountId), eq(mpQrcodes.sceneStr, sceneStr)));
+}
+
+/**
+ * 扫码关注奖励积分（公开回调调用，无登录上下文）。
+ * 若该带参二维码配置了 rewardPoints 且扫码粉丝已绑定会员，则为会员入账积分。最佳努力，失败仅告警。
+ */
+export async function rewardScanPoints(accountId: number, sceneStr: string, openid: string): Promise<void> {
+  if (!sceneStr || !openid) return;
+  const [qr] = await db.select({ rewardPoints: mpQrcodes.rewardPoints }).from(mpQrcodes)
+    .where(and(eq(mpQrcodes.accountId, accountId), eq(mpQrcodes.sceneStr, sceneStr))).limit(1);
+  if (!qr || qr.rewardPoints <= 0) return;
+  const [fan] = await db.select({ memberId: mpFans.memberId }).from(mpFans)
+    .where(and(eq(mpFans.accountId, accountId), eq(mpFans.openid, openid))).limit(1);
+  if (!fan?.memberId) return;
+  const { changePoints } = await import('./member-points.service');
+  await changePoints({ memberId: fan.memberId, type: 'earn', amount: qr.rewardPoints, bizType: 'mp_scan_reward', bizId: sceneStr, remark: '公众号扫码关注奖励' });
 }

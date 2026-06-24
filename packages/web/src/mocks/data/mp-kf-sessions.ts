@@ -32,6 +32,8 @@ export const mockMpKfSessions: MpKfSession[] = SEED_MP_KF_SESSIONS.map((s) => {
     acceptedAt: s.status === 'waiting' ? null : now,
     closedAt: s.status === 'closed' ? now : null,
     closeReason: s.closeReason,
+    rating: s.status === 'closed' ? 5 : null,
+    ratingRemark: null,
     remark: null,
     waitSeconds: s.status === 'waiting' ? 42 : undefined,
     createdAt: now,
@@ -102,6 +104,7 @@ export function buildMpKfStats(accountId: number): MpKfSessionStats {
     active: list.filter((s) => s.status === 'active').length,
     closedToday: list.filter((s) => s.status === 'closed').length,
     avgWaitSeconds: 35,
+    avgRating: 4.8,
     agents,
   };
 }

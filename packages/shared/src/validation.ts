@@ -2445,6 +2445,8 @@ export const createMpQrcodeSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(100),
   /** 临时二维码有效期（秒），最长 30 天 */
   expireSeconds: z.number().int().min(60).max(2592000).optional(),
+  /** 扫码关注奖励积分（粉丝已绑定会员时入账），0=不奖励 */
+  rewardPoints: z.number().int().min(0).max(100000).default(0),
 }).refine((d) => d.type !== 'temporary' || !!d.expireSeconds, { message: '临时二维码请设置有效期', path: ['expireSeconds'] });
 export type CreateMpQrcodeInput = z.infer<typeof createMpQrcodeSchema>;
 

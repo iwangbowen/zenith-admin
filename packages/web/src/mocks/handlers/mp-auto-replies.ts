@@ -39,6 +39,7 @@ export const mpAutoRepliesHandlers = [
       content: body.content ?? null,
       mediaId: body.mediaId ?? null,
       newsArticles: body.newsArticles ?? null,
+      transferToKf: body.transferToKf ?? false,
       status: body.status ?? 'enabled',
       sort: body.sort ?? 0,
       createdAt: now,

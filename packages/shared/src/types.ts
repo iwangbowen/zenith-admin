@@ -4595,6 +4595,7 @@ export interface MpQrcode {
   url: string | null;
   expireSeconds: number | null;
   scanCount: number;
+  rewardPoints: number;
   tenantId?: number | null;
   createdBy?: number | null;
   updatedBy?: number | null;
