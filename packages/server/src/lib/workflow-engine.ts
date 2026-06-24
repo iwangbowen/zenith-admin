@@ -184,13 +184,11 @@ export function evaluateCondition(
     }
     case 'in':
     case 'notIn': {
-      let inList: boolean;
-      if (typeof target === 'string') {
-        const arr = target.split(',').map((s) => s.trim());
-        inList = arr.includes(String(fv ?? ''));
-      } else {
-        inList = false;
-      }
+      // target 可能是逗号分隔字符串，也可能是单个数字/布尔（如从下拉条件直接存数值）
+      const arr = typeof target === 'string'
+        ? target.split(',').map((s) => s.trim())
+        : [String(target)];
+      const inList = arr.includes(String(fv ?? ''));
       return condition.operator === 'notIn' ? !inList : inList;
     }
     case 'contains':

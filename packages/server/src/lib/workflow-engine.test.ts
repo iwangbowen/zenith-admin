@@ -120,6 +120,15 @@ describe('evaluateCondition', () => {
     expect(evaluateCondition({ field: 'dept', operator: 'in', value: '技术,产品,设计' }, { dept: '销售' })).toBe(false);
   });
 
+  it('in / notIn: supports a single numeric value target', () => {
+    // 条件值为数字（非逗号串）时也应正确比对，而非恒不命中
+    expect(evaluateCondition({ field: 'level', operator: 'in', value: 3 }, { level: 3 })).toBe(true);
+    expect(evaluateCondition({ field: 'level', operator: 'in', value: 3 }, { level: '3' })).toBe(true);
+    expect(evaluateCondition({ field: 'level', operator: 'in', value: 3 }, { level: 4 })).toBe(false);
+    expect(evaluateCondition({ field: 'level', operator: 'notIn', value: 3 }, { level: 4 })).toBe(true);
+    expect(evaluateCondition({ field: 'level', operator: 'notIn', value: 3 }, { level: 3 })).toBe(false);
+  });
+
   it('contains: substring check', () => {
     expect(evaluateCondition({ field: 'reason', operator: 'contains', value: '请假' }, { reason: '因事请假' })).toBe(true);
     expect(evaluateCondition({ field: 'reason', operator: 'contains', value: '请假' }, { reason: '出差' })).toBe(false);

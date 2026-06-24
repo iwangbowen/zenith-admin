@@ -1309,7 +1309,21 @@ async function materializeAdvanceResult(
     if (result.rejected) rejected = true;
   }
 
-  if (rejected) return { createdTasks, finished: false, rejected: true, currentNodeKeys: [] };
+  if (rejected) {
+    // 自动拒绝（如并行分支命中 autoReject）会先插入其它分支的 pending/waiting 任务；
+    // 实例随后被置为 rejected，这些任务成为孤儿待办：统一跳过并从结果中剔除，
+    // 避免残留待办、以及对未真正生效的任务发出 task.created / task.assigned 事件。
+    const orphanIds = createdTasks
+      .filter((t) => t.status === 'pending' || t.status === 'waiting')
+      .map((t) => t.id);
+    if (orphanIds.length > 0) {
+      await ctx.executor.update(workflowTasks)
+        .set({ status: 'skipped', actionAt: new Date() })
+        .where(inArray(workflowTasks.id, orphanIds));
+    }
+    const remaining = createdTasks.filter((t) => t.status !== 'pending' && t.status !== 'waiting');
+    return { createdTasks: remaining, finished: false, rejected: true, currentNodeKeys: [] };
+  }
   return { createdTasks, finished, rejected: false, currentNodeKeys };
 }
 
@@ -2215,6 +2229,9 @@ export async function approveTaskCore(
     });
 
     if (materialized.rejected) {
+      // 下游自动拒绝终止流程：清理实例其余未结束任务（如并行其它分支待办），保证 rejected 实例无残留待办
+      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
+        .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
       const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
       return { row, finished: false, rejected: true, advanced: true, approvedTask, newTasks: materialized.createdTasks };
     }
@@ -2471,6 +2488,9 @@ export async function rejectTaskCore(
     }
 
     if (materialized.rejected) {
+      // 下游自动拒绝终止流程：清理实例其余未结束任务，保证 rejected 实例无残留待办
+      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
+        .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
       const [row] = await tx.update(workflowInstances)
         .set({ status: 'rejected', currentNodeKey: null })
         .where(eq(workflowInstances.id, inst.id))
@@ -2855,6 +2875,9 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
       starter,
     });
     if (materialized.rejected) {
+      // 下游自动拒绝终止流程：清理实例其余未结束任务，保证 rejected 实例无残留待办
+      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
+        .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
       const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
       return { removed: updated, advanced: true, finished: false, rejected: true, row, newTasks: materialized.createdTasks };
     }
