@@ -179,7 +179,7 @@ export default function MpBroadcastsPage() {
       render: (_: unknown, record: MpBroadcast) => (
         <Space>
           {record.status !== 'sent' && can('mp:broadcast:send') && (
-            <Button theme="borderless" size="small" icon={<Send size={13} />} loading={sendingId === record.id} onClick={() => handleSend(record)}>发送</Button>
+            <Button theme="borderless" size="small" loading={sendingId === record.id} onClick={() => handleSend(record)}>发送</Button>
           )}
           {record.status !== 'sent' && can('mp:broadcast:update') && <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>}
           {can('mp:broadcast:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(record)}>删除</Button>}
