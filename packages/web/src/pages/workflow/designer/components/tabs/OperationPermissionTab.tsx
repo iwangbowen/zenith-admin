@@ -8,14 +8,6 @@ import type { OperationPermission } from '../../types';
 /** 操作权限分组定义 */
 const OPERATION_GROUPS = [
   {
-    title: '操作权限',
-    items: [
-      { value: 'transfer' as OperationPermission, label: '允许转交', desc: '审批人可将任务转给其他人处理' },
-      { value: 'addSign' as OperationPermission, label: '允许加 / 减签', desc: '审批人可临时增加或移除审批人' },
-      { value: 'return' as OperationPermission, label: '允许回退', desc: '审批人可将审批退回到指定审批节点' },
-    ],
-  },
-  {
     title: '手写签名',
     items: [
       { value: 'signature' as OperationPermission, label: '审批同意时需手写签名', desc: '' },

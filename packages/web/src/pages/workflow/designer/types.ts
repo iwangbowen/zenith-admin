@@ -76,9 +76,6 @@ export type RejectStrategy =
 export type OperationPermission =
   | 'approve'           // 通过
   | 'reject'            // 拒绝
-  | 'transfer'          // 转办
-  | 'addSign'           // 加签
-  | 'return'            // 退回
   | 'comment'           // 评论
   | 'signature'         // 手写签名
   | 'opinionRequired';  // 审批意见必填

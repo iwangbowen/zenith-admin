@@ -645,7 +645,7 @@ export const workflowEmptyAssigneeStrategySchema = z.enum(['autoApprove', 'assig
 export const workflowSameInitiatorStrategySchema = z.enum(['selfApprove', 'autoSkip', 'toDirectManager', 'toDeptHead']);
 export const workflowDeduplicateStrategySchema = z.enum(['autoSkip', 'repeatApprove']);
 export const workflowOperationPermissionSchema = z.enum([
-  'approve', 'reject', 'transfer', 'addSign', 'return', 'comment', 'signature', 'opinionRequired',
+  'approve', 'reject', 'comment', 'signature', 'opinionRequired',
 ]);
 export const workflowFieldPermissionSchema = z.enum(['read', 'edit', 'hidden']);
 export const workflowActionButtonKeySchema = z.enum([

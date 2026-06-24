@@ -143,12 +143,12 @@ export default function ActionButtonsTab({
       <table className="fd-action-button-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)' }}>操作按钮</th>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)' }}>显示名称</th>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)' }}>意见名称</th>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 120 }}>跳转配置</th>
-            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 80 }}>上传配置</th>
-            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 60 }}>启用</th>
+            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 64, whiteSpace: 'nowrap' }}>操作按钮</th>
+            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>显示名称</th>
+            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>意见名称</th>
+            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 120, whiteSpace: 'nowrap' }}>跳转配置</th>
+            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 64, whiteSpace: 'nowrap' }}>上传配置</th>
+            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 48, whiteSpace: 'nowrap' }}>启用</th>
           </tr>
         </thead>
         <tbody>
@@ -159,7 +159,7 @@ export default function ActionButtonsTab({
             const lockEnabled = meta.key === 'approve' || meta.key === 'reject';
             return (
               <tr key={meta.key} style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
-                <td style={{ padding: '10px 8px', color: 'var(--semi-color-text-0)' }}>{meta.label}</td>
+                <td style={{ padding: '10px 8px', color: 'var(--semi-color-text-0)', whiteSpace: 'nowrap' }}>{meta.label}</td>
                 <td style={{ padding: '10px 8px' }}>
                   <EditableTextCell
                     value={cfg.displayName ?? meta.defaultDisplayName}

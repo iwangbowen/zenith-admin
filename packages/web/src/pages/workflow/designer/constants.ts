@@ -191,9 +191,6 @@ export const REJECT_STRATEGY_OPTIONS: Array<{ value: RejectStrategy; label: stri
 export const OPERATION_PERMISSION_OPTIONS: Array<{ value: OperationPermission; label: string }> = [
   { value: 'approve',          label: '通过' },
   { value: 'reject',           label: '拒绝' },
-  { value: 'transfer',         label: '转办' },
-  { value: 'addSign',          label: '加签' },
-  { value: 'return',           label: '退回' },
   { value: 'comment',          label: '评论' },
   { value: 'signature',        label: '手写签名' },
   { value: 'opinionRequired',  label: '审批意见必填' },
@@ -206,7 +203,7 @@ export const FIELD_PERMISSION_OPTIONS: Array<{ value: FieldPermission; label: st
 ];
 
 /** 默认审批人操作权限 */
-export const DEFAULT_APPROVER_OPERATIONS: OperationPermission[] = ['approve', 'reject', 'transfer', 'comment'];
+export const DEFAULT_APPROVER_OPERATIONS: OperationPermission[] = ['approve', 'reject', 'comment'];
 
 /** 延迟时间单位选项 */
 export const DELAY_UNIT_OPTIONS = [

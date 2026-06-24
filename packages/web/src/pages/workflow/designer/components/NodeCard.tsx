@@ -152,8 +152,6 @@ function getNodeTags(node: FlowNode): string[] {
 
     const ops = p.operations as OperationPermission[] | undefined;
     if (ops && !ops.includes('reject')) tags.push('不可拒绝');
-    if (ops?.includes('transfer')) tags.push('可转办');
-    if (ops?.includes('addSign')) tags.push('可加签');
 
     const fp = p.fieldPermissions as Record<string, FieldPermission> | undefined;
     if (fp) {

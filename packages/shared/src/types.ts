@@ -1488,9 +1488,6 @@ export type WorkflowApproverDedupMode =
 export type WorkflowOperationPermission =
   | 'approve'
   | 'reject'
-  | 'transfer'
-  | 'addSign'
-  | 'return'
   | 'comment'
   | 'signature'
   | 'opinionRequired';
