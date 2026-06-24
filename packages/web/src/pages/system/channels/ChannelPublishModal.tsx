@@ -406,6 +406,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
                   label="定时时间"
                   type="dateTime"
                   style={{ width: '100%' }}
+                  position="topLeft"
                   rules={[{ required: true, message: '请选择定时发送时间' }]}
                 />
               )}
