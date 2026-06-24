@@ -11,21 +11,25 @@
  *  - resume 恢复：单实例子实例已结束(approved/rejected)但父任务仍 waiting → 重新唤醒。
  *    幂等：applySubProcessOutputAndResume 内部重读父任务状态，非 waiting 即 no-op；
  *    异步子流程由 resumeParentSubProcess 内部守卫直接跳过。
+ *  - 多实例汇聚对账：父任务 waiting 且为多实例 → reconcileMultiSubProcess 基于实际子实例
+ *    状态"绝对重算" subDone 与出参聚合，幂等收敛丢失的 settle 回调（健康父任务为 no-op）。
  *
- * 不在范围（避免破坏多实例汇聚计数）：多实例（subTotal 非空）已部分起步 / 部分子实例结束的汇聚恢复。
+ * 暂不覆盖：多实例"并行初次 spawn 部分失败（部分子实例从未创建）"的补发，需结合循环数据源
+ * 逐项核对补建，留待后续。
  */
 import { and, eq, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { workflowInstances, workflowTasks } from '../db/schema';
-import { maybeSpawnSubProcessChild, resumeParentSubProcess } from '../services/workflow-instances.service';
+import { maybeSpawnSubProcessChild, resumeParentSubProcess, reconcileMultiSubProcess } from '../services/workflow-instances.service';
 import logger from './logger';
 
 const SYSTEM_ACTOR = { userId: 0, name: 'system:subprocess-recovery' } as const;
 
-export async function recoverStuckSubProcesses(graceMinutes = 5): Promise<{ resumed: number; spawned: number }> {
+export async function recoverStuckSubProcesses(graceMinutes = 5): Promise<{ resumed: number; spawned: number; reconciled: number }> {
   const cutoff = new Date(Date.now() - graceMinutes * 60_000);
   let resumed = 0;
   let spawned = 0;
+  let reconciled = 0;
 
   // ── resume 恢复：单实例子实例已结束但父任务仍 waiting ──
   const stuckResumes = await db
@@ -72,8 +76,26 @@ export async function recoverStuckSubProcesses(graceMinutes = 5): Promise<{ resu
     }
   }
 
-  if (resumed > 0 || spawned > 0) {
-    logger.info('[subprocess-recovery] recovered stuck subprocesses', { resumed, spawned });
+  // ── 多实例汇聚对账：父任务 waiting 且为多实例（subTotal 非空）→ 基于实际子实例状态重算汇聚 ──
+  // reconcileMultiSubProcess 为绝对重算，对健康父任务为 no-op；对丢失 settle 回调的卡死汇聚可收敛。
+  const stuckMulti = await db.select({ id: workflowTasks.id, instanceId: workflowTasks.instanceId }).from(workflowTasks)
+    .where(and(
+      eq(workflowTasks.nodeType, 'subProcess'),
+      eq(workflowTasks.status, 'waiting'),
+      isNotNull(workflowTasks.subTotal),
+      lte(workflowTasks.createdAt, cutoff),
+    ));
+  for (const t of stuckMulti) {
+    try {
+      await reconcileMultiSubProcess(t.id, t.instanceId, SYSTEM_ACTOR);
+      reconciled += 1;
+    } catch (err) {
+      logger.error('[subprocess-recovery] multi reconcile failed', { taskId: t.id, instanceId: t.instanceId, err });
+    }
   }
-  return { resumed, spawned };
+
+  if (resumed > 0 || spawned > 0 || reconciled > 0) {
+    logger.info('[subprocess-recovery] recovered stuck subprocesses', { resumed, spawned, reconciled });
+  }
+  return { resumed, spawned, reconciled };
 }

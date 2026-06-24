@@ -733,55 +733,65 @@ async function spawnMultiSubProcess(
 /**
  * 多实例子实例结束时的汇聚处理（原子递增 sub_done + 抢占式 claim 防并发重复推进）。
  */
-async function handleMultiChildSettled(
-  childInst: typeof workflowInstances.$inferSelect,
-  outcome: 'approved' | 'rejected',
+/**
+ * 多实例子流程汇聚对账（幂等）：基于"实际已结束子实例数"重算 subDone 与出参聚合，
+ * 据此决定 整体通过 / 整体驳回 / 顺序模式发起下一个 / 继续等待。
+ *
+ * 采用"绝对重算"而非"相对自增"，因此对同一子实例的重复触发、以及丢失的 settle 回调
+ * 都能安全收敛——供正常 settle 回调与恢复扫描共用。
+ */
+export async function reconcileMultiSubProcess(
+  parentTaskId: number,
+  parentInstId: number,
   actor: WorkflowEventActor,
 ): Promise<void> {
-  if (!childInst.parentInstanceId || !childInst.parentTaskId) return;
-  const parentTaskId = childInst.parentTaskId;
-  const parentInstId = childInst.parentInstanceId;
-
   type Decision =
     | { action: 'approve' | 'reject'; parentTaskId: number; parentInstId: number }
     | { action: 'spawnNext'; index: number; parentTaskId: number; parentInstId: number }
-    | { action: 'wait' }
     | null;
 
   const decision: Decision = await db.transaction(async (tx) => {
-    // 原子递增已结束子实例数（仅当父任务仍 waiting 且为多实例时）
-    const [pt] = await tx.update(workflowTasks)
-      .set({ subDone: sql`${workflowTasks.subDone} + 1` })
-      .where(and(eq(workflowTasks.id, parentTaskId), eq(workflowTasks.status, 'waiting'), isNotNull(workflowTasks.subTotal)))
-      .returning();
-    if (!pt || pt.subTotal == null) return null;
+    // 锁定父任务，串行化同一父任务上的并发汇聚/对账
+    const [pt] = await tx.select().from(workflowTasks)
+      .where(eq(workflowTasks.id, parentTaskId)).for('update').limit(1);
+    if (!pt || pt.status !== 'waiting' || pt.subTotal == null) return null;
     const [pi] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, parentInstId)).limit(1);
     if (!pi || pi.status !== 'running') return null;
     const nodeCfg = snapshotNodeCfg(pi, pt.nodeKey);
 
-    // 出参映射：聚合为数组写回父 formData
-    const outputMapping = nodeCfg?.subProcessOutputMapping;
-    if (outputMapping && Object.keys(outputMapping).length > 0) {
-      const childFormData = (childInst.formData ?? {}) as Record<string, unknown>;
-      const parentFormData = { ...((pi.formData ?? {}) as Record<string, unknown>) };
-      let changed = false;
-      for (const [parentKey, childKey] of Object.entries(outputMapping)) {
-        if (childKey in childFormData) {
-          const prev = parentFormData[parentKey];
-          const arr = Array.isArray(prev) ? [...prev] : [];
-          arr.push(childFormData[childKey]);
-          parentFormData[parentKey] = arr;
-          changed = true;
-        }
-      }
-      if (changed) await tx.update(workflowInstances).set({ formData: parentFormData }).where(eq(workflowInstances.id, pi.id));
+    // 基于实际子实例状态重算（绝对值，幂等）
+    const settledChildren = await tx.select({
+      id: workflowInstances.id,
+      status: workflowInstances.status,
+      formData: workflowInstances.formData,
+    }).from(workflowInstances)
+      .where(and(
+        eq(workflowInstances.parentTaskId, pt.id),
+        inArray(workflowInstances.status, ['approved', 'rejected']),
+      ))
+      .orderBy(workflowInstances.id);
+    const settledCount = settledChildren.length;
+    if (settledCount !== pt.subDone) {
+      await tx.update(workflowTasks).set({ subDone: settledCount }).where(eq(workflowTasks.id, pt.id));
     }
 
-    const newDone = pt.subDone;
+    // 出参映射：从所有已结束子实例重算聚合数组（幂等，避免重复 append）
+    const outputMapping = nodeCfg?.subProcessOutputMapping;
+    if (outputMapping && Object.keys(outputMapping).length > 0) {
+      const parentFormData = { ...((pi.formData ?? {}) as Record<string, unknown>) };
+      for (const [parentKey, childKey] of Object.entries(outputMapping)) {
+        parentFormData[parentKey] = settledChildren
+          .map((c) => (c.formData as Record<string, unknown> | null)?.[childKey])
+          .filter((v) => v !== undefined);
+      }
+      await tx.update(workflowInstances).set({ formData: parentFormData }).where(eq(workflowInstances.id, pi.id));
+    }
+
     const ignoreReject = nodeCfg?.subProcessIgnoreReject === true;
     const abortOnReject = (nodeCfg?.subProcessOnChildReject ?? 'abort') === 'abort';
-    const wantReject = outcome === 'rejected' && abortOnReject && !ignoreReject;
-    const wantApprove = !wantReject && newDone >= pt.subTotal;
+    const hasRejected = settledChildren.some((c) => c.status === 'rejected');
+    const wantReject = hasRejected && abortOnReject && !ignoreReject;
+    const wantApprove = !wantReject && settledCount >= pt.subTotal;
 
     if (wantReject || wantApprove) {
       // 抢占式 claim：将父任务移出 waiting，确保只有一个 settler 推进父流程
@@ -795,14 +805,14 @@ async function handleMultiChildSettled(
 
     if (nodeCfg?.subProcessMultiExecution === 'serial') {
       const spawnedCount = await tx.$count(workflowInstances, eq(workflowInstances.parentTaskId, pt.id));
-      if (spawnedCount < pt.subTotal && newDone >= spawnedCount) {
+      if (spawnedCount < pt.subTotal && settledCount >= spawnedCount) {
         return { action: 'spawnNext', index: spawnedCount, parentTaskId: pt.id, parentInstId: pi.id };
       }
     }
-    return { action: 'wait' };
+    return null;
   });
 
-  if (!decision || decision.action === 'wait') return;
+  if (!decision) return;
 
   const [pt] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, decision.parentTaskId)).limit(1);
   const [pi] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, decision.parentInstId)).limit(1);
@@ -823,6 +833,15 @@ async function handleMultiChildSettled(
     const childInitiatorId = await resolveChildInitiator(nodeCfg, pi);
     await spawnMultiInstanceChild(pi, pt, nodeCfg, def, items, decision.index, childInitiatorId, actor);
   }
+}
+
+async function handleMultiChildSettled(
+  childInst: typeof workflowInstances.$inferSelect,
+  _outcome: 'approved' | 'rejected',
+  actor: WorkflowEventActor,
+): Promise<void> {
+  if (!childInst.parentInstanceId || !childInst.parentTaskId) return;
+  await reconcileMultiSubProcess(childInst.parentTaskId, childInst.parentInstanceId, actor);
 }
 
 /**
@@ -2603,7 +2622,8 @@ async function processDelegatedReceipt(
       comment: receiptComment,
       attachments: attachments ?? null,
       actionAt: new Date(),
-    }).where(eq(workflowTasks.id, task.id)).returning();
+    }).where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, task.status))).returning();
+    if (!closedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
     const [newTask] = await tx.insert(workflowTasks).values({
       instanceId: task.instanceId,
       nodeKey: task.nodeKey,
