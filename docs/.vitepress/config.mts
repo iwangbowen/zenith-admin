@@ -56,6 +56,7 @@ export default defineConfig({
           { text: '工作流', link: '/workflow/' },
           { text: '支付中心', link: '/payment/' },
           { text: '数据分析', link: '/analytics/' },
+          { text: '微信公众号', link: '/mp/' },
         ],
       },
       {
@@ -130,6 +131,22 @@ export default defineConfig({
           { text: '通知中心', link: '/notification/' },
           { text: '文件与存储', link: '/storage/' },
           { text: 'AI 能力', link: '/ai-platform/' },
+        ],
+      },
+      {
+        text: '微信公众号',
+        collapsed: true,
+        items: [
+          { text: '总览', link: '/mp/' },
+          { text: '公众号账号', link: '/mp/accounts' },
+          { text: '粉丝、标签与会员', link: '/mp/fans' },
+          { text: '消息与自动回复', link: '/mp/messages' },
+          { text: '多客服会话治理', link: '/mp/customer-service' },
+          { text: '菜单管理', link: '/mp/menus' },
+          { text: '素材与图文草稿', link: '/mp/materials' },
+          { text: '群发、模板与二维码', link: '/mp/marketing' },
+          { text: '网页授权与 JS-SDK', link: '/mp/web-dev' },
+          { text: '数据统计与内容安全', link: '/mp/statistics' },
         ],
       },
       {
