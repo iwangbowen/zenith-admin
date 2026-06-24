@@ -10,7 +10,7 @@
  * 封面图通过 /api/files/upload-one 上传得到 URL。
  */
 import { useEffect, useState } from 'react';
-import { Button, Form, Space, Toast, Typography, Upload, withField } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Row, Space, Toast, Typography, Upload, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ImagePlus, Trash2, Users } from 'lucide-react';
 import type {
@@ -85,6 +85,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [imageUrl, setImageUrl] = useState<string>('');
   const [roleOptions, setRoleOptions] = useState<Array<{ label: string; value: number }>>([]);
+  const [modalType, setModalType] = useState<ChannelMessageType>('text');
 
   const [audienceSel, setAudienceSel] = useState<AudienceSelection>({
     mode: 'all', userIds: [], departmentIds: [], roleIds: [],
@@ -101,6 +102,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     if (!visible) return;
     setCoverUrl(card?.cover ?? '');
     setImageUrl(editing?.type === 'image' ? (editing?.content ?? '') : '');
+    setModalType(editing?.type === 'news' ? 'news' : editing?.type === 'image' ? 'image' : 'text');
     setAudienceSel({ mode: 'all', userIds: [], departmentIds: [], roleIds: [] });
     setEstimateCount(null);
     request.get<Role[]>('/api/roles/all', { silent: true }).then((res) => {
@@ -253,7 +255,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
       onOk={() => void handleSubmit()}
       confirmLoading={submitting}
       okText={editing ? '保存' : '提交'}
-      width={620}
+      width={modalType === 'news' ? 900 : 620}
     >
       <Form<PublishFormValues>
         key={editing?.id ?? channel?.id ?? 'new'}
@@ -263,6 +265,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
         initValues={initValues}
         onValueChange={(vals) => {
           const v = vals as PublishFormValues;
+          setModalType(v.type ?? 'text');
           setAudienceSel({
             mode: v.audienceMode ?? 'all',
             userIds: v.userIds ?? [],
@@ -284,83 +287,92 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
                 ))}
               </Form.RadioGroup>
 
-              {type === 'text' ? (
-                <>
-                  <Form.Input field="title" label="标题" placeholder="可选" />
-                  <Form.TextArea field="content" label="内容" placeholder="请输入文本内容" autosize={{ minRows: 3, maxRows: 8 }} />
-                </>
-              ) : type === 'image' ? (
-                <Form.Slot label="图片">
-                  <Space align="start">
-                    {imageUrl
-                      ? (
-                        <div style={{ position: 'relative' }}>
-                          <img src={imageUrl} alt="图片" style={{ maxWidth: 240, maxHeight: 180, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--semi-color-border)' }} />
-                          <Button
-                            theme="borderless"
-                            type="danger"
-                            size="small"
-                            icon={<Trash2 size={14} />}
-                            style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(255,255,255,0.8)' }}
-                            onClick={() => setImageUrl('')}
-                          />
-                        </div>
-                      )
-                      : (
-                        <Upload
-                          action={`${config.apiBaseUrl}/api/files/upload-one`}
-                          headers={{ Authorization: `Bearer ${localStorage.getItem('zenith_token') ?? ''}` }}
-                          name="file"
-                          accept="image/*"
-                          limit={1}
-                          showUploadList={false}
-                          onSuccess={handleImageUploadSuccess}
-                        >
-                          <Button icon={<ImagePlus size={14} />}>上传图片</Button>
-                        </Upload>
-                      )}
-                  </Space>
-                </Form.Slot>
-              ) : (
-                <>
-                  <Form.Input field="title" label="标题" rules={[{ required: true, message: '请填写标题' }]} />
-                  <Form.Slot label="封面图">
-                    <Space align="start">
-                      {coverUrl
-                        ? (
-                          <div style={{ position: 'relative' }}>
-                            <img src={coverUrl} alt="封面" style={{ width: 120, height: 80, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--semi-color-border)' }} />
-                            <Button
-                              theme="borderless"
-                              type="danger"
-                              size="small"
-                              icon={<Trash2 size={14} />}
-                              style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(255,255,255,0.8)' }}
-                              onClick={() => setCoverUrl('')}
-                            />
-                          </div>
-                        )
-                        : (
-                          <Upload
-                            action={`${config.apiBaseUrl}/api/files/upload-one`}
-                            headers={{ Authorization: `Bearer ${localStorage.getItem('zenith_token') ?? ''}` }}
-                            name="file"
-                            accept="image/*"
-                            limit={1}
-                            showUploadList={false}
-                            onSuccess={handleUploadSuccess}
-                          >
-                            <Button icon={<ImagePlus size={14} />}>上传封面</Button>
-                          </Upload>
-                        )}
-                    </Space>
-                  </Form.Slot>
-                  <Form.TextArea field="summary" label="摘要" placeholder="可选，列表摘要" autosize={{ minRows: 2, maxRows: 3 }} />
-                  <Form.TextArea field="content" label="正文" placeholder="图文正文内容" autosize={{ minRows: 3, maxRows: 8 }} />
-                  <Form.Input field="linkUrl" label="跳转链接" placeholder="可选，点击图文跳转的 URL" />
+              {(() => {
+                const sendSettings = (
+                  <>
+                    <Form.Select field="audienceMode" label="接收范围" style={{ width: '100%' }} optionList={AUDIENCE_OPTIONS} />
+                    {audienceMode === 'users' && (
+                      <FormUserSelect field="userIds" label="指定用户" multiple placeholder="请选择用户" />
+                    )}
+                    {audienceMode === 'departments' && (
+                      <FormDeptSelect field="departmentIds" label="选择部门" multiple placeholder="请选择部门" />
+                    )}
+                    {audienceMode === 'roles' && (
+                      <Form.Select field="roleIds" label="选择角色" multiple filter style={{ width: '100%' }} placeholder="请选择角色" optionList={roleOptions} maxTagCount={3} />
+                    )}
 
+                    <Form.Slot label=" ">
+                      <Space align="center" style={{ color: 'var(--semi-color-text-2)' }}>
+                        <Users size={14} />
+                        <Typography.Text type="tertiary" size="small">
+                          {estimating
+                            ? '计算中...'
+                            : <>预计触达 <Typography.Text strong>{estimateCount ?? '-'}</Typography.Text> 人</>}
+                        </Typography.Text>
+                      </Space>
+                    </Form.Slot>
+
+                    <Form.RadioGroup field="sendMode" label="发送方式" type="button">
+                      {SEND_OPTIONS.map((o) => (
+                        <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
+                      ))}
+                    </Form.RadioGroup>
+                    {sendMode === 'scheduled' && (
+                      <Form.DatePicker
+                        field="scheduledAt"
+                        label="定时时间"
+                        type="dateTime"
+                        style={{ width: '100%' }}
+                        position="topLeft"
+                        rules={[{ required: true, message: '请选择定时发送时间' }]}
+                      />
+                    )}
+                  </>
+                );
+
+                const newsEditor = (
+                  <>
+                    <Form.Input field="title" label="标题" rules={[{ required: true, message: '请填写标题' }]} />
+                    <Form.Slot label="封面图">
+                      <Space align="start">
+                        {coverUrl
+                          ? (
+                            <div style={{ position: 'relative' }}>
+                              <img src={coverUrl} alt="封面" style={{ width: 120, height: 80, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--semi-color-border)' }} />
+                              <Button
+                                theme="borderless"
+                                type="danger"
+                                size="small"
+                                icon={<Trash2 size={14} />}
+                                style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(255,255,255,0.8)' }}
+                                onClick={() => setCoverUrl('')}
+                              />
+                            </div>
+                          )
+                          : (
+                            <Upload
+                              action={`${config.apiBaseUrl}/api/files/upload-one`}
+                              headers={{ Authorization: `Bearer ${localStorage.getItem('zenith_token') ?? ''}` }}
+                              name="file"
+                              accept="image/*"
+                              limit={1}
+                              showUploadList={false}
+                              onSuccess={handleUploadSuccess}
+                            >
+                              <Button icon={<ImagePlus size={14} />}>上传封面</Button>
+                            </Upload>
+                          )}
+                      </Space>
+                    </Form.Slot>
+                    <Form.TextArea field="summary" label="摘要" placeholder="可选，列表摘要" autosize={{ minRows: 2, maxRows: 3 }} />
+                    <Form.TextArea field="content" label="正文" placeholder="图文正文内容" autosize={{ minRows: 4, maxRows: 12 }} />
+                    <Form.Input field="linkUrl" label="跳转链接" placeholder="可选，点击图文跳转的 URL" />
+                  </>
+                );
+
+                const newsPreview = (
                   <Form.Slot label="预览">
-                    <div style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden', width: 320 }}>
+                    <div style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden', width: '100%' }}>
                       {coverUrl && <img src={coverUrl} alt="封面预览" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />}
                       <div style={{ padding: 12 }}>
                         <Typography.Title heading={6} style={{ margin: 0 }}>{(values.title ?? '').trim() || '图文标题'}</Typography.Title>
@@ -370,46 +382,64 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
                       </div>
                     </div>
                   </Form.Slot>
-                </>
-              )}
+                );
 
-              <Form.Select field="audienceMode" label="接收范围" style={{ width: '100%' }} optionList={AUDIENCE_OPTIONS} />
-              {audienceMode === 'users' && (
-                <FormUserSelect field="userIds" label="指定用户" multiple placeholder="请选择用户" />
-              )}
-              {audienceMode === 'departments' && (
-                <FormDeptSelect field="departmentIds" label="选择部门" multiple placeholder="请选择部门" />
-              )}
-              {audienceMode === 'roles' && (
-                <Form.Select field="roleIds" label="选择角色" multiple filter style={{ width: '100%' }} placeholder="请选择角色" optionList={roleOptions} maxTagCount={3} />
-              )}
+                if (type === 'news') {
+                  return (
+                    <Row gutter={24}>
+                      <Col span={12}>{newsEditor}</Col>
+                      <Col span={12}>
+                        {newsPreview}
+                        {sendSettings}
+                      </Col>
+                    </Row>
+                  );
+                }
 
-              <Form.Slot label=" ">
-                <Space align="center" style={{ color: 'var(--semi-color-text-2)' }}>
-                  <Users size={14} />
-                  <Typography.Text type="tertiary" size="small">
-                    {estimating
-                      ? '计算中...'
-                      : <>预计触达 <Typography.Text strong>{estimateCount ?? '-'}</Typography.Text> 人</>}
-                  </Typography.Text>
-                </Space>
-              </Form.Slot>
-
-              <Form.RadioGroup field="sendMode" label="发送方式" type="button">
-                {SEND_OPTIONS.map((o) => (
-                  <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
-                ))}
-              </Form.RadioGroup>
-              {sendMode === 'scheduled' && (
-                <Form.DatePicker
-                  field="scheduledAt"
-                  label="定时时间"
-                  type="dateTime"
-                  style={{ width: '100%' }}
-                  position="topLeft"
-                  rules={[{ required: true, message: '请选择定时发送时间' }]}
-                />
-              )}
+                return (
+                  <>
+                    {type === 'text' ? (
+                      <>
+                        <Form.Input field="title" label="标题" placeholder="可选" />
+                        <Form.TextArea field="content" label="内容" placeholder="请输入文本内容" autosize={{ minRows: 3, maxRows: 8 }} />
+                      </>
+                    ) : (
+                      <Form.Slot label="图片">
+                        <Space align="start">
+                          {imageUrl
+                            ? (
+                              <div style={{ position: 'relative' }}>
+                                <img src={imageUrl} alt="图片" style={{ maxWidth: 240, maxHeight: 180, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--semi-color-border)' }} />
+                                <Button
+                                  theme="borderless"
+                                  type="danger"
+                                  size="small"
+                                  icon={<Trash2 size={14} />}
+                                  style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(255,255,255,0.8)' }}
+                                  onClick={() => setImageUrl('')}
+                                />
+                              </div>
+                            )
+                            : (
+                              <Upload
+                                action={`${config.apiBaseUrl}/api/files/upload-one`}
+                                headers={{ Authorization: `Bearer ${localStorage.getItem('zenith_token') ?? ''}` }}
+                                name="file"
+                                accept="image/*"
+                                limit={1}
+                                showUploadList={false}
+                                onSuccess={handleImageUploadSuccess}
+                              >
+                                <Button icon={<ImagePlus size={14} />}>上传图片</Button>
+                              </Upload>
+                            )}
+                        </Space>
+                      </Form.Slot>
+                    )}
+                    {sendSettings}
+                  </>
+                );
+              })()}
             </>
           );
         }}
