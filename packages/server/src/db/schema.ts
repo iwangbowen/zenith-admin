@@ -4025,3 +4025,77 @@ export const mpTemplateSendLogsRelations = relations(mpTemplateSendLogs, ({ one 
   account: one(mpAccounts, { fields: [mpTemplateSendLogs.accountId], references: [mpAccounts.id] }),
   tenant: one(tenants, { fields: [mpTemplateSendLogs.tenantId], references: [tenants.id] }),
 }));
+
+// 公众号群发消息（按全部粉丝 / 按标签群发，支持文本 / 图片 / 图文）
+export const mpBroadcastTypeEnum = pgEnum('mp_broadcast_type', ['text', 'image', 'mpnews']);
+export const mpBroadcastTargetEnum = pgEnum('mp_broadcast_target', ['all', 'tag']);
+export const mpBroadcastStatusEnum = pgEnum('mp_broadcast_status', ['draft', 'sent', 'failed']);
+
+export const mpBroadcasts = pgTable('mp_broadcasts', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  msgType: mpBroadcastTypeEnum('msg_type').notNull().default('text'),
+  /** 群发对象：all=全部粉丝 tag=指定标签 */
+  target: mpBroadcastTargetEnum('target').notNull().default('all'),
+  /** 指定标签（target=tag 时），关联本地标签 id */
+  tagId: integer('tag_id').references((): AnyPgColumn => mpTags.id, { onDelete: 'set null' }),
+  /** 文本内容（msgType=text） */
+  content: text('content'),
+  /** 素材 media_id（msgType=image 用图片素材 / mpnews 用图文草稿） */
+  mediaId: varchar('media_id', { length: 128 }),
+  status: mpBroadcastStatusEnum('status').notNull().default('draft'),
+  /** 微信返回的群发 msg_id（发送成功后回填） */
+  wechatMsgId: varchar('wechat_msg_id', { length: 64 }),
+  errorMsg: text('error_msg'),
+  sentAt: timestamp('sent_at'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('mp_broadcasts_account_idx').on(t.accountId),
+  index('mp_broadcasts_account_status_idx').on(t.accountId, t.status),
+]);
+export type MpBroadcastRow = typeof mpBroadcasts.$inferSelect;
+export type NewMpBroadcast = typeof mpBroadcasts.$inferInsert;
+
+export const mpBroadcastsRelations = relations(mpBroadcasts, ({ one }) => ({
+  account: one(mpAccounts, { fields: [mpBroadcasts.accountId], references: [mpAccounts.id] }),
+  tag: one(mpTags, { fields: [mpBroadcasts.tagId], references: [mpTags.id] }),
+  tenant: one(tenants, { fields: [mpBroadcasts.tenantId], references: [tenants.id] }),
+}));
+
+// 公众号带参数二维码（临时 / 永久），扫码事件计数
+export const mpQrcodeTypeEnum = pgEnum('mp_qrcode_type', ['temporary', 'permanent']);
+
+export const mpQrcodes = pgTable('mp_qrcodes', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  type: mpQrcodeTypeEnum('type').notNull().default('permanent'),
+  /** 场景值（字符串型 scene_str，用于渠道来源标识） */
+  sceneStr: varchar('scene_str', { length: 64 }).notNull(),
+  /** 备注名称 */
+  name: varchar('name', { length: 100 }).notNull(),
+  /** 微信返回的 ticket（换取二维码图片） */
+  ticket: varchar('ticket', { length: 256 }),
+  /** 二维码图片展示 URL */
+  url: varchar('url', { length: 512 }),
+  /** 有效期秒数（仅临时二维码） */
+  expireSeconds: integer('expire_seconds'),
+  /** 累计扫码次数（回调事件累加） */
+  scanCount: integer('scan_count').notNull().default(0),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('mp_qrcodes_account_idx').on(t.accountId),
+  index('mp_qrcodes_account_scene_idx').on(t.accountId, t.sceneStr),
+]);
+export type MpQrcodeRow = typeof mpQrcodes.$inferSelect;
+export type NewMpQrcode = typeof mpQrcodes.$inferInsert;
+
+export const mpQrcodesRelations = relations(mpQrcodes, ({ one }) => ({
+  account: one(mpAccounts, { fields: [mpQrcodes.accountId], references: [mpAccounts.id] }),
+  tenant: one(tenants, { fields: [mpQrcodes.tenantId], references: [tenants.id] }),
+}));

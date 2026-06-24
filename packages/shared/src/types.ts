@@ -4440,3 +4440,47 @@ export interface MpStats {
   fanTrend: { date: string; count: number }[];
   messageTrend: { date: string; in: number; out: number }[];
 }
+
+// ─── 公众号群发消息 ──────────────────────────────────────────────────────────
+export type MpBroadcastType = 'text' | 'image' | 'mpnews';
+export type MpBroadcastTarget = 'all' | 'tag';
+export type MpBroadcastStatus = 'draft' | 'sent' | 'failed';
+
+export interface MpBroadcast {
+  id: number;
+  accountId: number;
+  msgType: MpBroadcastType;
+  target: MpBroadcastTarget;
+  tagId: number | null;
+  content: string | null;
+  mediaId: string | null;
+  status: MpBroadcastStatus;
+  wechatMsgId: string | null;
+  errorMsg: string | null;
+  sentAt: string | null;
+  tenantId?: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── 公众号带参数二维码 ───────────────────────────────────────────────────────
+export type MpQrcodeType = 'temporary' | 'permanent';
+
+export interface MpQrcode {
+  id: number;
+  accountId: number;
+  type: MpQrcodeType;
+  sceneStr: string;
+  name: string;
+  ticket: string | null;
+  url: string | null;
+  expireSeconds: number | null;
+  scanCount: number;
+  tenantId?: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}

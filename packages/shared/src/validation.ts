@@ -2296,3 +2296,35 @@ export const sendMpTemplateSchema = z.object({
   data: z.record(z.string(), z.object({ value: z.string(), color: z.string().optional() })),
 });
 export type SendMpTemplateInput = z.infer<typeof sendMpTemplateSchema>;
+
+// 公众号群发消息
+export const MP_BROADCAST_TYPES = ['text', 'image', 'mpnews'] as const;
+export const MP_BROADCAST_TARGETS = ['all', 'tag'] as const;
+const mpBroadcastBase = z.object({
+  accountId: z.number().int().positive(),
+  msgType: z.enum(MP_BROADCAST_TYPES).default('text'),
+  target: z.enum(MP_BROADCAST_TARGETS).default('all'),
+  tagId: z.number().int().positive().optional(),
+  content: z.string().max(2000).optional(),
+  mediaId: z.string().max(128).optional(),
+});
+export const createMpBroadcastSchema = mpBroadcastBase
+  .refine((d) => d.msgType !== 'text' || !!d.content, { message: '请填写群发文本内容', path: ['content'] })
+  .refine((d) => d.msgType === 'text' || !!d.mediaId, { message: '请选择图片素材或图文草稿', path: ['mediaId'] })
+  .refine((d) => d.target !== 'tag' || !!d.tagId, { message: '按标签群发时请选择标签', path: ['tagId'] });
+export const updateMpBroadcastSchema = mpBroadcastBase.omit({ accountId: true }).partial()
+  .refine((d) => d.target !== 'tag' || d.tagId == null || d.tagId > 0, { message: '标签不合法', path: ['tagId'] });
+export type CreateMpBroadcastInput = z.infer<typeof createMpBroadcastSchema>;
+export type UpdateMpBroadcastInput = z.infer<typeof updateMpBroadcastSchema>;
+
+// 公众号带参数二维码
+export const MP_QRCODE_TYPES = ['temporary', 'permanent'] as const;
+export const createMpQrcodeSchema = z.object({
+  accountId: z.number().int().positive(),
+  type: z.enum(MP_QRCODE_TYPES).default('permanent'),
+  sceneStr: z.string().min(1, '场景值不能为空').max(64).regex(/^[A-Za-z0-9_-]+$/, '场景值仅支持字母、数字、下划线、连字符'),
+  name: z.string().min(1, '名称不能为空').max(100),
+  /** 临时二维码有效期（秒），最长 30 天 */
+  expireSeconds: z.number().int().min(60).max(2592000).optional(),
+}).refine((d) => d.type !== 'temporary' || !!d.expireSeconds, { message: '临时二维码请设置有效期', path: ['expireSeconds'] });
+export type CreateMpQrcodeInput = z.infer<typeof createMpQrcodeSchema>;

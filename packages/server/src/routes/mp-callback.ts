@@ -12,6 +12,7 @@ import { validationHook } from '../lib/openapi-schemas';
 import { getMpAccountForCallback } from '../services/mp-account.service';
 import { storeInboundMessage, storeOutboundAutoReply } from '../services/mp-message.service';
 import { resolveAutoReply } from '../services/mp-auto-reply.service';
+import { incrementQrcodeScan } from '../services/mp-qrcode.service';
 import { verifyWechatSignature, msgSignature, timingSafeCompare, decryptWechatMessage, encryptWechatMessage, parseWechatXml, buildWechatXml } from '../lib/wechat';
 import logger from '../lib/logger';
 import type { MpMessageType } from '@zenith/shared';
@@ -158,6 +159,18 @@ const receiveRoute = defineOpenAPIRoute({
     } catch (err) {
       logger.error(`[mp-callback] 入站消息落库失败，返回 500 触发微信重试: ${(err as Error).message}`);
       return c.text('', 500);
+    }
+
+    // ── 带参二维码扫码计数（仅首次去重后；SCAN=已关注扫码，subscribe+qrscene=扫码关注） ──
+    if (isNew && msgType === 'event' && (f.Event === 'SCAN' || f.Event === 'subscribe')) {
+      const scene = f.Event === 'SCAN' ? (f.EventKey ?? '') : (f.EventKey ?? '').replace(/^qrscene_/, '');
+      if (scene) {
+        try {
+          await incrementQrcodeScan(accountId, scene);
+        } catch (err) {
+          logger.warn(`[mp-callback] 扫码计数失败: ${(err as Error).message}`);
+        }
+      }
     }
 
     // 自动回复（构建/落库出站失败不影响入站已落库，返回 200 不重试）

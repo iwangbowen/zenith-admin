@@ -14,3 +14,5 @@ export * from './menu';
 export * from './material';
 export * from './draft';
 export * from './template';
+export * from './broadcast';
+export * from './qrcode';

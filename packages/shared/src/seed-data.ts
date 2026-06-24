@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -411,6 +411,14 @@ export const SEED_MENUS: Menu[] = [
   { id: 1082, parentId: 1080, title: '发送模板',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:template:send',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1083, parentId: 1080, title: '删除模板',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'mp:template:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1090, parentId: 1000, title: '数据统计',   name: 'MpStatistics', path: '/mp/statistics', component: 'mp/MpStatisticsPage', icon: 'BarChart3', type: 'menu', sort: 10, status: 'enabled', visible: true, permission: 'mp:statistics:view', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1100, parentId: 1000, title: '群发消息',   name: 'MpBroadcasts', path: '/mp/broadcasts', component: 'mp/MpBroadcastsPage', icon: 'Send', type: 'menu', sort: 11, status: 'enabled', visible: true, permission: 'mp:broadcast:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1101, parentId: 1100, title: '新增群发',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:broadcast:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1102, parentId: 1100, title: '编辑群发',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:broadcast:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1103, parentId: 1100, title: '发送群发',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'mp:broadcast:send',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1104, parentId: 1100, title: '删除群发',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'mp:broadcast:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1110, parentId: 1000, title: '带参二维码', name: 'MpQrcodes',  path: '/mp/qrcodes',  component: 'mp/MpQrcodesPage',  icon: 'QrCode',        type: 'menu',      sort: 12, status: 'enabled', visible: true,  permission: 'mp:qrcode:list',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1111, parentId: 1110, title: '生成二维码', name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:qrcode:create',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1112, parentId: 1110, title: '删除二维码', name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:qrcode:delete',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   // ── 业务接入示例（请假，业务模块自有实体 + 工作流编排）──
   { id: 900, parentId: 0,   title: '业务示例', name: 'BizDemo',          path: undefined,        component: undefined,            icon: 'Briefcase',     type: 'directory', sort: 12, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 901, parentId: 900, title: '请假管理', name: 'BizLeave',         path: '/biz/leave',     component: 'biz/leave/LeavePage', icon: 'CalendarClock', type: 'menu',      sort: 1,  status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -1320,6 +1328,18 @@ export const SEED_MP_DRAFTS: MpDraft[] = [
 export const SEED_MP_MESSAGE_TEMPLATES: MpMessageTemplate[] = [
   { id: 1, accountId: 1, templateId: 'DEMO_TPL_ORDER_PAID', title: '订单支付成功通知', content: '您的订单已支付成功\n订单号：{{order_no.DATA}}\n金额：{{amount.DATA}}', example: '您的订单已支付成功\n订单号：202603230001\n金额：￥99.00', tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, accountId: 1, templateId: 'DEMO_TPL_POINTS', title: '积分变动通知', content: '您的积分有变动\n变动：{{change.DATA}}\n余额：{{balance.DATA}}', example: '您的积分有变动\n变动：+100\n余额：1200', tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 公众号群发消息（示例）────────────────────────────────────────────────────
+export const SEED_MP_BROADCASTS: MpBroadcast[] = [
+  { id: 1, accountId: 1, msgType: 'text', target: 'all', tagId: null, content: '【Zenith 周报】本周上新会员权益，点击菜单「会员中心」查看详情～', mediaId: null, status: 'draft', wechatMsgId: null, errorMsg: null, sentAt: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, msgType: 'text', target: 'tag', tagId: 1, content: '尊敬的星标用户，您有一张专属优惠券待领取！', mediaId: null, status: 'draft', wechatMsgId: null, errorMsg: null, sentAt: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 公众号带参数二维码（示例）─────────────────────────────────────────────────
+export const SEED_MP_QRCODES: MpQrcode[] = [
+  { id: 1, accountId: 1, type: 'permanent', sceneStr: 'channel_offline_store', name: '线下门店物料', ticket: 'DEMO_TICKET_OFFLINE', url: 'https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=DEMO_TICKET_OFFLINE', expireSeconds: null, scanCount: 128, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, type: 'permanent', sceneStr: 'event_2026_spring', name: '春季活动推广', ticket: 'DEMO_TICKET_SPRING', url: 'https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=DEMO_TICKET_SPRING', expireSeconds: null, scanCount: 36, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 签到里程碑（累计签到天数达标奖励）──────────────────────────────────────────

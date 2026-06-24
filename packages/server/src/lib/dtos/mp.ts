@@ -205,6 +205,42 @@ export const MpTemplateSendLogDTO = z
   })
   .openapi('MpTemplateSendLog');
 
+export const MpBroadcastDTO = z
+  .object({
+    id: z.number().int(),
+    accountId: z.number().int(),
+    msgType: z.enum(['text', 'image', 'mpnews']),
+    target: z.enum(['all', 'tag']),
+    tagId: z.number().int().nullable(),
+    content: z.string().nullable(),
+    mediaId: z.string().nullable(),
+    status: z.enum(['draft', 'sent', 'failed']),
+    wechatMsgId: z.string().nullable(),
+    errorMsg: z.string().nullable(),
+    sentAt: z.string().nullable(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('MpBroadcast');
+
+export const MpQrcodeDTO = z
+  .object({
+    id: z.number().int(),
+    accountId: z.number().int(),
+    type: z.enum(['temporary', 'permanent']),
+    sceneStr: z.string(),
+    name: z.string(),
+    ticket: z.string().nullable(),
+    url: z.string().nullable(),
+    expireSeconds: z.number().int().nullable(),
+    scanCount: z.number().int(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('MpQrcode');
+
 export const MpStatsDTO = z
   .object({
     fanTotal: z.number().int(),
