@@ -1883,6 +1883,10 @@ export type NewChatWebhook = typeof chatWebhooks.$inferInsert;
 export const channelTypeEnum = pgEnum('channel_type', ['system', 'business']);
 export const channelAudienceEnum = pgEnum('channel_audience', ['broadcast', 'targeted']);
 export const channelMessageTypeEnum = pgEnum('channel_message_type', ['text', 'card']);
+export const channelMessageDirectionEnum = pgEnum('channel_message_direction', ['out', 'in']);
+export const channelMenuTypeEnum = pgEnum('channel_menu_type', ['click', 'view']);
+export const channelAutoReplyMatchEnum = pgEnum('channel_auto_reply_match', ['subscribe', 'keyword', 'default']);
+export const channelAutoReplyKeywordModeEnum = pgEnum('channel_auto_reply_keyword_mode', ['exact', 'contains']);
 
 export const channels = pgTable('channels', {
   id: serial('id').primaryKey(),
@@ -1910,6 +1914,8 @@ export const channelMessages = pgTable('channel_messages', {
   content: text('content').notNull(),
   extra: jsonb('extra'),
   publishedById: integer('published_by_id').references(() => users.id, { onDelete: 'set null' }),
+  direction: channelMessageDirectionEnum('direction').notNull().default('out'),
+  senderUserId: integer('sender_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 export type ChannelMessageRow = typeof channelMessages.$inferSelect;
@@ -1947,6 +1953,42 @@ export const channelSubscriptionsRelations = relations(channelSubscriptions, ({ 
 export const channelMessageTargetsRelations = relations(channelMessageTargets, ({ one }) => ({
   message: one(channelMessages, { fields: [channelMessageTargets.messageId], references: [channelMessages.id] }),
   user: one(users, { fields: [channelMessageTargets.userId], references: [users.id] }),
+}));
+
+// ─── Channel 公众号菜单（运营号底部菜单） ──────────────────────────────────────
+export const channelMenus = pgTable('channel_menus', {
+  id: serial('id').primaryKey(),
+  channelId: integer('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
+  parentId: integer('parent_id'),
+  name: varchar('name', { length: 32 }).notNull(),
+  type: channelMenuTypeEnum('type').notNull().default('click'),
+  value: varchar('value', { length: 500 }),
+  sort: integer('sort').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ChannelMenuRow = typeof channelMenus.$inferSelect;
+
+// ─── Channel 自动回复规则 ──────────────────────────────────────────────────────
+export const channelAutoReplies = pgTable('channel_auto_replies', {
+  id: serial('id').primaryKey(),
+  channelId: integer('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
+  matchType: channelAutoReplyMatchEnum('match_type').notNull().default('keyword'),
+  keyword: varchar('keyword', { length: 100 }),
+  keywordMode: channelAutoReplyKeywordModeEnum('keyword_mode').notNull().default('contains'),
+  replyContent: text('reply_content').notNull(),
+  status: statusEnum('status').notNull().default('enabled'),
+  sort: integer('sort').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ChannelAutoReplyRow = typeof channelAutoReplies.$inferSelect;
+
+export const channelMenusRelations = relations(channelMenus, ({ one }) => ({
+  channel: one(channels, { fields: [channelMenus.channelId], references: [channels.id] }),
+}));
+export const channelAutoRepliesRelations = relations(channelAutoReplies, ({ one }) => ({
+  channel: one(channels, { fields: [channelAutoReplies.channelId], references: [channels.id] }),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════
