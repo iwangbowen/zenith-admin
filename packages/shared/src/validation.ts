@@ -1558,6 +1558,33 @@ export const audienceEstimateSchema = z.object({
 });
 export type AudienceEstimateInput = z.infer<typeof audienceEstimateSchema>;
 
+/** 新建群发消息模板 */
+export const createChannelTemplateSchema = z.object({
+  name: z.string().min(1, '模板名称不能为空').max(100),
+  type: z.enum(['text', 'image', 'news']).default('text'),
+  title: z.string().max(200).nullable().optional(),
+  content: z.string().max(10000).default(''),
+  extra: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+export type CreateChannelTemplateInput = z.infer<typeof createChannelTemplateSchema>;
+
+/** 更新群发消息模板 */
+export const updateChannelTemplateSchema = createChannelTemplateSchema.partial();
+export type UpdateChannelTemplateInput = z.infer<typeof updateChannelTemplateSchema>;
+
+/** 添加订阅者（运营号批量加订阅用户） */
+export const addChannelSubscribersSchema = z.object({
+  userIds: z.array(z.number().int().positive()).min(1, '请选择用户'),
+});
+export type AddChannelSubscribersInput = z.infer<typeof addChannelSubscribersSchema>;
+
+/** 用户对客服会话评价 */
+export const rateConversationSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(500).nullable().optional(),
+});
+export type RateConversationInput = z.infer<typeof rateConversationSchema>;
+
 // ── 通话记录（结束后写入会话系统消息）──
 export const chatCallRecordSchema = z.object({
   callType: z.enum(['audio', 'video']),

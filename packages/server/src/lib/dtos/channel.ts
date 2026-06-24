@@ -145,8 +145,45 @@ export const ChannelConversationDTO = z
     assigneeName: z.string().nullable(),
     tags: z.array(z.string()),
     resolvedAt: z.string().nullable(),
+    rating: z.number().int().nullable(),
+    ratingComment: z.string().nullable(),
+    ratedAt: z.string().nullable(),
   })
   .openapi('ChannelConversation');
+
+export const ChannelSubscriberDTO = z
+  .object({
+    userId: z.number().int(),
+    name: z.string(),
+    avatar: z.string().nullable(),
+    subscribedAt: z.string().nullable(),
+    isMuted: z.boolean(),
+  })
+  .openapi('ChannelSubscriber');
+
+export const ChannelMessageTemplateDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    type: z.enum(['text', 'card', 'image', 'news']),
+    title: z.string().nullable(),
+    content: z.string(),
+    extra: ChatMessageExtraDTO.nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('ChannelMessageTemplate');
+
+export const ChannelCsPerformanceDTO = z
+  .object({
+    agentId: z.number().int(),
+    agentName: z.string(),
+    replyCount: z.number().int(),
+    resolvedCount: z.number().int(),
+    avgResponseMinutes: z.number().nullable(),
+    avgRating: z.number().nullable(),
+  })
+  .openapi('ChannelCsPerformance');
 
 export const ChannelCsAgentDTO = z
   .object({

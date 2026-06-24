@@ -9,12 +9,13 @@
  * 角色通过 /api/roles/all 加载为 Select multiple。
  * 封面图通过 /api/files/upload-one 上传得到 URL。
  */
-import { useEffect, useState } from 'react';
-import { Button, Col, Form, Row, Space, Toast, Typography, Upload, withField } from '@douyinfe/semi-ui';
+import { useCallback, useEffect, useState } from 'react';
+import { Button, Col, Form, Input, Row, Select, Space, Toast, Typography, Upload, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { ImagePlus, Trash2, Users } from 'lucide-react';
+import { ImagePlus, Save, Send, Settings2, Trash2, Users } from 'lucide-react';
 import type {
-  ChannelAdmin, ChannelMessage, ChannelMessageType, ChannelPublishAudienceMode, ChannelSendMode, Role,
+  ChannelAdmin, ChannelMessage, ChannelMessageTemplate, ChannelMessageType, ChannelPublishAudienceMode,
+  ChannelSendMode, ChatCard, ChatMessageExtra, Role,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
@@ -22,6 +23,7 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import UserSelect from '@/components/UserSelect';
 import DepartmentSelect from '@/components/DepartmentSelect';
+import { ChannelTemplateDrawer } from './ChannelTemplateDrawer';
 
 const FormUserSelect = withField(UserSelect);
 const FormDeptSelect = withField(DepartmentSelect);
@@ -93,6 +95,18 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
   const [estimateCount, setEstimateCount] = useState<number | null>(null);
   const [estimating, setEstimating] = useState(false);
 
+  const [templates, setTemplates] = useState<ChannelMessageTemplate[]>([]);
+  const [tplDrawerVisible, setTplDrawerVisible] = useState(false);
+  const [saveTplVisible, setSaveTplVisible] = useState(false);
+  const [saveTplName, setSaveTplName] = useState('');
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const fetchTemplates = useCallback(async () => {
+    const res = await request.get<ChannelMessageTemplate[]>('/api/channels/templates', { silent: true });
+    if (res.code === 0 && res.data) setTemplates(res.data);
+  }, []);
+
   const card = editing?.extra?.card ?? null;
   const initSendMode: ChannelSendMode = editing?.status === 'draft'
     ? 'draft'
@@ -110,7 +124,8 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
         setRoleOptions(res.data.map((r) => ({ label: r.name, value: r.id })));
       }
     });
-  }, [visible, editing?.id, editing?.type, editing?.content, card?.cover]);
+    void fetchTemplates();
+  }, [visible, editing?.id, editing?.type, editing?.content, card?.cover, fetchTemplates]);
 
   const audienceKey = JSON.stringify(audienceSel);
   useEffect(() => {
@@ -178,30 +193,22 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     }
   };
 
-  const handleSubmit = async () => {
-    if (!formApi || !channel) return;
-    let values: PublishFormValues;
-    try {
-      values = await formApi.validate();
-    } catch {
-      return;
-    }
-
+  const buildBody = (values: PublishFormValues) => {
     const type = values.type;
     const content = (values.content ?? '').trim();
     const title = (values.title ?? '').trim();
 
-    if (type === 'text' && !content) { Toast.error('请填写文本内容'); return; }
-    if (type === 'image' && !imageUrl) { Toast.error('请上传图片'); return; }
-    if (type === 'news' && !title) { Toast.error('图文消息请填写标题'); return; }
-    if (type === 'news' && !coverUrl) { Toast.error('请上传图文封面'); return; }
+    if (type === 'text' && !content) { Toast.error('请填写文本内容'); return null; }
+    if (type === 'image' && !imageUrl) { Toast.error('请上传图片'); return null; }
+    if (type === 'news' && !title) { Toast.error('图文消息请填写标题'); return null; }
+    if (type === 'news' && !coverUrl) { Toast.error('请上传图文封面'); return null; }
 
     const mode = values.audienceMode;
-    if (mode === 'users' && !(values.userIds?.length)) { Toast.error('请选择指定用户'); return; }
-    if (mode === 'departments' && !(values.departmentIds?.length)) { Toast.error('请选择部门'); return; }
-    if (mode === 'roles' && !(values.roleIds?.length)) { Toast.error('请选择角色'); return; }
+    if (mode === 'users' && !(values.userIds?.length)) { Toast.error('请选择指定用户'); return null; }
+    if (mode === 'departments' && !(values.departmentIds?.length)) { Toast.error('请选择部门'); return null; }
+    if (mode === 'roles' && !(values.roleIds?.length)) { Toast.error('请选择角色'); return null; }
 
-    if (values.sendMode === 'scheduled' && !values.scheduledAt) { Toast.error('请选择定时发送时间'); return; }
+    if (values.sendMode === 'scheduled' && !values.scheduledAt) { Toast.error('请选择定时发送时间'); return null; }
 
     const audience: {
       mode: ChannelPublishAudienceMode;
@@ -213,7 +220,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     if (mode === 'departments') audience.departmentIds = values.departmentIds;
     if (mode === 'roles') audience.roleIds = values.roleIds;
 
-    const body = {
+    return {
       type,
       title: type === 'news' ? title : (title || null),
       content: type === 'image' ? '' : content,
@@ -227,6 +234,19 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
         ? formatDateTimeForApi(values.scheduledAt as Date)
         : null,
     };
+  };
+
+  const handleSubmit = async () => {
+    if (!formApi || !channel) return;
+    let values: PublishFormValues;
+    try {
+      values = await formApi.validate();
+    } catch {
+      return;
+    }
+
+    const body = buildBody(values);
+    if (!body) return;
 
     setSubmitting(true);
     try {
@@ -245,16 +265,144 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     }
   };
 
+  const handleTestSend = async () => {
+    if (!formApi || !channel) return;
+    let values: PublishFormValues;
+    try {
+      values = await formApi.validate();
+    } catch {
+      return;
+    }
+    const body = buildBody(values);
+    if (!body) return;
+
+    setTesting(true);
+    try {
+      const res = await request.post(`/api/channels/${channel.id}/test-send`, body);
+      if (res.code === 0) Toast.success('测试消息已发送，请在消息中心查看');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  /** 把当前表单内容抽取为模板内容（不含受众/发送方式） */
+  const buildTemplateContent = (values: PublishFormValues): {
+    type: ChannelMessageType;
+    title: string | null;
+    content: string;
+    extra: ChatMessageExtra | null;
+  } => {
+    const type = values.type;
+    const title = (values.title ?? '').trim();
+    if (type === 'image') {
+      return { type, title: null, content: imageUrl, extra: null };
+    }
+    if (type === 'news') {
+      const summary = (values.summary ?? '').trim();
+      const linkUrl = (values.linkUrl ?? '').trim();
+      const card: ChatCard = {
+        title,
+        cover: coverUrl || null,
+        text: summary || null,
+        actions: linkUrl
+          ? [{ key: 'link', label: '查看详情', action: 'link', url: linkUrl }]
+          : [],
+      };
+      return { type, title: title || null, content: (values.content ?? '').trim(), extra: { card } };
+    }
+    return { type: 'text', title: title || null, content: (values.content ?? '').trim(), extra: null };
+  };
+
+  /** 把模板内容回填到表单 / 本地状态，实现 保存→载入→发布 的内容往返 */
+  const applyTemplate = (tpl: ChannelMessageTemplate) => {
+    if (!formApi) return;
+    const type: ChannelMessageType = tpl.type === 'news' ? 'news' : tpl.type === 'image' ? 'image' : 'text';
+    setModalType(type);
+    formApi.setValue('type', type);
+    if (type === 'image') {
+      setImageUrl(tpl.content ?? '');
+      setCoverUrl('');
+      formApi.setValue('title', '');
+      formApi.setValue('content', '');
+      formApi.setValue('summary', '');
+      formApi.setValue('linkUrl', '');
+    } else if (type === 'news') {
+      const tplCard = tpl.extra?.card ?? null;
+      setImageUrl('');
+      setCoverUrl(tplCard?.cover ?? '');
+      formApi.setValue('title', tpl.title ?? '');
+      formApi.setValue('content', tpl.content ?? '');
+      formApi.setValue('summary', tplCard?.text ?? '');
+      formApi.setValue('linkUrl', tplCard?.actions?.[0]?.url ?? '');
+    } else {
+      setImageUrl('');
+      setCoverUrl('');
+      formApi.setValue('title', tpl.title ?? '');
+      formApi.setValue('content', tpl.content ?? '');
+      formApi.setValue('summary', '');
+      formApi.setValue('linkUrl', '');
+    }
+    Toast.success(`已载入模板「${tpl.name}」`);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!formApi) return;
+    const name = saveTplName.trim();
+    if (!name) { Toast.error('请填写模板名称'); return; }
+    const values = formApi.getValues();
+    const tpl = buildTemplateContent(values);
+    if (tpl.type === 'text' && !tpl.content) { Toast.error('请先填写文本内容'); return; }
+    if (tpl.type === 'image' && !tpl.content) { Toast.error('请先上传图片'); return; }
+    if (tpl.type === 'news' && !tpl.title) { Toast.error('图文模板请先填写标题'); return; }
+
+    setSavingTpl(true);
+    try {
+      const res = await request.post('/api/channels/templates', { name, ...tpl });
+      if (res.code === 0) {
+        Toast.success('已存为模板');
+        setSaveTplVisible(false);
+        setSaveTplName('');
+        void fetchTemplates();
+      }
+    } finally {
+      setSavingTpl(false);
+    }
+  };
+
   const titleText = editing ? '编辑消息' : `向「${channel?.name ?? ''}」群发`;
 
+  const templateOptions = templates.map((t) => ({
+    label: `${t.name}（${TYPE_OPTIONS.find((o) => o.value === t.type)?.label ?? t.type}）`,
+    value: t.id,
+  }));
+
+  const footer = (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Button
+        icon={<Send size={14} />}
+        loading={testing}
+        disabled={submitting}
+        onClick={() => void handleTestSend()}
+      >
+        测试发送
+      </Button>
+      <Space>
+        <Button onClick={onClose}>取消</Button>
+        <Button type="primary" loading={submitting} onClick={() => void handleSubmit()}>
+          {editing ? '保存' : '提交'}
+        </Button>
+      </Space>
+    </div>
+  );
+
   return (
+    <>
     <AppModal
       title={titleText}
       visible={visible}
       onCancel={onClose}
-      onOk={() => void handleSubmit()}
       confirmLoading={submitting}
-      okText={editing ? '保存' : '提交'}
+      footer={footer}
       width={modalType === 'news' ? 900 : 620}
     >
       <Form<PublishFormValues>
@@ -281,6 +429,30 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
           const sendMode = values.sendMode ?? 'now';
           return (
             <>
+              <Form.Slot label="从模板载入">
+                <Space wrap>
+                  <Select
+                    placeholder="选择模板载入内容"
+                    style={{ width: 220 }}
+                    optionList={templateOptions}
+                    showClear
+                    filter
+                    value={undefined}
+                    onChange={(val) => {
+                      const tpl = templates.find((t) => t.id === (val as unknown as number));
+                      if (tpl) applyTemplate(tpl);
+                    }}
+                    emptyContent="暂无模板"
+                  />
+                  <Button icon={<Save size={14} />} onClick={() => { setSaveTplName(''); setSaveTplVisible(true); }}>
+                    存为模板
+                  </Button>
+                  <Button theme="borderless" icon={<Settings2 size={14} />} onClick={() => setTplDrawerVisible(true)}>
+                    模板管理
+                  </Button>
+                </Space>
+              </Form.Slot>
+
               <Form.RadioGroup field="type" label="消息类型" type="button">
                 {TYPE_OPTIONS.map((o) => (
                   <Form.Radio key={o.value} value={o.value}>{o.label}</Form.Radio>
@@ -445,6 +617,31 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
         }}
       </Form>
     </AppModal>
+
+    <AppModal
+      title="存为模板"
+      visible={saveTplVisible}
+      onCancel={() => setSaveTplVisible(false)}
+      onOk={() => void handleSaveTemplate()}
+      okText="保存"
+      confirmLoading={savingTpl}
+      width={420}
+    >
+      <Input
+        placeholder="请输入模板名称"
+        value={saveTplName}
+        onChange={setSaveTplName}
+        maxLength={100}
+        showClear
+      />
+    </AppModal>
+
+    <ChannelTemplateDrawer
+      visible={tplDrawerVisible}
+      onClose={() => setTplDrawerVisible(false)}
+      onChanged={fetchTemplates}
+    />
+    </>
   );
 }
 

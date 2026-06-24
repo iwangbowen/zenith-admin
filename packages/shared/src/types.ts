@@ -3031,6 +3031,46 @@ export interface ChannelConversation {
   tags: string[];
   /** 解决时间 */
   resolvedAt: string | null;
+  /** 用户评价（1-5 星，null=未评价） */
+  rating: number | null;
+  ratingComment: string | null;
+  ratedAt: string | null;
+}
+
+/** 频道订阅者（订阅者管理） */
+export interface ChannelSubscriber {
+  userId: number;
+  name: string;
+  avatar: string | null;
+  /** 订阅时间（系统号全员为 null） */
+  subscribedAt: string | null;
+  isMuted: boolean;
+}
+
+/** 群发消息模板 */
+export interface ChannelMessageTemplate {
+  id: number;
+  name: string;
+  type: ChannelMessageType;
+  title: string | null;
+  content: string;
+  extra: ChatMessageExtra | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 客服绩效（按客服聚合） */
+export interface ChannelCsPerformance {
+  agentId: number;
+  agentName: string;
+  /** 回复消息数 */
+  replyCount: number;
+  /** 标记解决会话数 */
+  resolvedCount: number;
+  /** 平均首次响应时长（分钟，null=无数据） */
+  avgResponseMinutes: number | null;
+  /** 平均评分（1-5，null=无评分） */
+  avgRating: number | null;
 }
 
 /** 可指派的客服（拥有 channel:cs 权限的用户） */

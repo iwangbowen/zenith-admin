@@ -14,7 +14,7 @@ import {
   channels, channelMessages, channelSubscriptions, channelMessageTargets, users, userRoles,
   type ChannelRow, type ChannelMessageRow,
 } from '../db/schema';
-import type { Channel, ChannelAdmin, ChannelMessage, ChannelMessageType, ChatCard, ChatMessageExtra, CreateChannelInput, UpdateChannelInput, PublishChannelInput, ChannelPublishAudienceInput, PaginatedResponse } from '@zenith/shared';
+import type { Channel, ChannelAdmin, ChannelMessage, ChannelMessageType, ChannelSubscriber, ChatCard, ChatMessageExtra, CreateChannelInput, UpdateChannelInput, PublishChannelInput, ChannelPublishAudienceInput, PaginatedResponse } from '@zenith/shared';
 import { SYSTEM_CHANNEL_CODE } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
@@ -446,6 +446,17 @@ export async function publishToChannel(id: number, input: PublishChannelInput): 
   return msg;
 }
 
+/** 测试发送：仅定向发给当前操作管理员本人，用于群发前预览确认 */
+export async function testSend(id: number, input: PublishChannelInput): Promise<ChannelMessage> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, id) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  const me = currentUser();
+  const payload = buildPublishPayload(input, me.userId);
+  const msg = await publishTargeted(id, [me.userId], payload);
+  if (!msg) throw new HTTPException(400, { message: '测试发送失败' });
+  return msg;
+}
+
 // ─── 草稿 / 定时群发 ────────────────────────────────────────────────────────────
 
 /** 写入一条草稿/定时消息（不投递；定时由扫描任务到点发布） */
@@ -628,4 +639,85 @@ export async function listDiscoverableChannels(keyword?: string): Promise<Channe
   });
   const discoverable = chs.filter((ch) => !subscribedIds.has(ch.id));
   return Promise.all(discoverable.map((ch) => buildChannelView(ch, me, false)));
+}
+
+// ─── 订阅者管理 ────────────────────────────────────────────────────────────────
+
+function mapSubscriber(u: { id: number; nickname: string | null; username: string; avatar: string | null }, subscribedAt: Date | null, isMuted: boolean): ChannelSubscriber {
+  return { userId: u.id, name: u.nickname || u.username, avatar: u.avatar, subscribedAt: formatNullableDateTime(subscribedAt), isMuted };
+}
+
+/** 订阅者列表：系统号=全员用户（只读）；运营号=订阅表用户。分页 + 按名称搜索。 */
+export async function listChannelSubscribers(channelId: number, page: number, pageSize: number, keyword?: string): Promise<PaginatedResponse<ChannelSubscriber>> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  const kw = keyword?.trim();
+  const nameWhere = kw
+    ? sql`(${users.nickname} ILIKE ${'%' + escapeLike(kw) + '%'} OR ${users.username} ILIKE ${'%' + escapeLike(kw) + '%'})`
+    : undefined;
+
+  if (ch.type === 'system') {
+    const [total, rows] = await Promise.all([
+      db.$count(users, nameWhere),
+      db.select({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
+        .from(users).where(nameWhere).orderBy(users.id).limit(pageSize).offset(pageOffset(page, pageSize)),
+    ]);
+    return { list: rows.map((u) => mapSubscriber(u, null, false)), total, page, pageSize };
+  }
+
+  const where = and(eq(channelSubscriptions.channelId, channelId), nameWhere);
+  const [total, rows] = await Promise.all([
+    db.$count(channelSubscriptions, where),
+    db.select({
+      id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar,
+      subscribedAt: channelSubscriptions.subscribedAt, isMuted: channelSubscriptions.isMuted,
+    }).from(channelSubscriptions)
+      .innerJoin(users, eq(users.id, channelSubscriptions.userId))
+      .where(where)
+      .orderBy(desc(channelSubscriptions.subscribedAt))
+      .limit(pageSize).offset(pageOffset(page, pageSize)),
+  ]);
+  return { list: rows.map((r) => mapSubscriber(r, r.subscribedAt, r.isMuted)), total, page, pageSize };
+}
+
+/** 运营号批量添加订阅者 */
+export async function addChannelSubscribers(channelId: number, userIds: number[]): Promise<void> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  if (ch.type === 'system') throw new HTTPException(400, { message: '系统号默认全员订阅，无需添加' });
+  const unique = [...new Set(userIds)].filter((x) => x > 0);
+  if (unique.length === 0) return;
+  await db.insert(channelSubscriptions)
+    .values(unique.map((userId) => ({ channelId, userId, lastReadAt: null })))
+    .onConflictDoNothing();
+}
+
+/** 运营号移除订阅者 */
+export async function removeChannelSubscriber(channelId: number, userId: number): Promise<void> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  if (ch.type === 'system') throw new HTTPException(400, { message: '系统号不可移除订阅者' });
+  await db.delete(channelSubscriptions).where(and(
+    eq(channelSubscriptions.channelId, channelId),
+    eq(channelSubscriptions.userId, userId),
+  ));
+}
+
+/** 导出订阅者（全部，不分页，供前端下载） */
+export async function exportChannelSubscribers(channelId: number): Promise<ChannelSubscriber[]> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  if (ch.type === 'system') {
+    const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
+      .from(users).orderBy(users.id);
+    return rows.map((u) => mapSubscriber(u, null, false));
+  }
+  const rows = await db.select({
+    id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar,
+    subscribedAt: channelSubscriptions.subscribedAt, isMuted: channelSubscriptions.isMuted,
+  }).from(channelSubscriptions)
+    .innerJoin(users, eq(users.id, channelSubscriptions.userId))
+    .where(eq(channelSubscriptions.channelId, channelId))
+    .orderBy(desc(channelSubscriptions.subscribedAt));
+  return rows.map((r) => mapSubscriber(r, r.subscribedAt, r.isMuted));
 }

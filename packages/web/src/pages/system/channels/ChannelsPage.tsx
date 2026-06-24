@@ -17,6 +17,7 @@ import { ChannelMenuDrawer } from './ChannelMenuDrawer';
 import { ChannelAutoReplyDrawer } from './ChannelAutoReplyDrawer';
 import { ChannelPublishModal } from './ChannelPublishModal';
 import { ChannelMessagesDrawer } from './ChannelMessagesDrawer';
+import { ChannelSubscribersDrawer } from './ChannelSubscribersDrawer';
 
 const TYPE_META: Record<string, { text: string; color: 'green' | 'blue' }> = {
   system: { text: '系统号', color: 'green' },
@@ -44,6 +45,7 @@ export default function ChannelsPage() {
   const [menuDrawer, setMenuDrawer] = useState<ChannelAdmin | null>(null);
   const [replyDrawer, setReplyDrawer] = useState<ChannelAdmin | null>(null);
   const [messagesDrawer, setMessagesDrawer] = useState<ChannelAdmin | null>(null);
+  const [subscribersDrawer, setSubscribersDrawer] = useState<ChannelAdmin | null>(null);
 
   const fetchList = useCallback(async (p = page, ps = pageSize, kw = keywordRef.current) => {
     setLoading(true);
@@ -118,6 +120,7 @@ export default function ChannelsPage() {
       title: '操作', dataIndex: 'op', width: 290, fixed: 'right',
       render: (_: unknown, r: ChannelAdmin) => {
         const moreItems: ReactNode[] = [];
+        moreItems.push(<Dropdown.Item key="subscribers" onClick={() => setSubscribersDrawer(r)}>订阅者</Dropdown.Item>);
         if (r.type === 'business' && hasPermission('channel:menu:save')) {
           moreItems.push(<Dropdown.Item key="menu" onClick={() => setMenuDrawer(r)}>菜单配置</Dropdown.Item>);
         }
@@ -255,6 +258,13 @@ export default function ChannelsPage() {
           channel={messagesDrawer}
           visible={!!messagesDrawer}
           onClose={() => setMessagesDrawer(null)}
+        />
+      )}
+      {subscribersDrawer && (
+        <ChannelSubscribersDrawer
+          channel={subscribersDrawer}
+          visible={!!subscribersDrawer}
+          onClose={() => setSubscribersDrawer(null)}
         />
       )}
     </div>

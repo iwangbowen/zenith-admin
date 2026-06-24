@@ -2026,6 +2026,9 @@ export const channelConversations = pgTable('channel_conversations', {
   assigneeId: integer('assignee_id').references(() => users.id, { onDelete: 'set null' }),
   tags: jsonb('tags').$type<string[]>().notNull().default([]),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  rating: integer('rating'),
+  ratingComment: text('rating_comment'),
+  ratedAt: timestamp('rated_at', { withTimezone: true }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -2038,6 +2041,21 @@ export const channelConversationsRelations = relations(channelConversations, ({ 
   user: one(users, { fields: [channelConversations.userId], references: [users.id] }),
   assignee: one(users, { fields: [channelConversations.assigneeId], references: [users.id] }),
 }));
+
+// ─── Channel 群发消息模板（运营常用群发内容保存复用） ──────────────────────────
+export const channelMessageTemplates = pgTable('channel_message_templates', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  type: channelMessageTypeEnum('type').notNull().default('text'),
+  title: varchar('title', { length: 200 }),
+  content: text('content').notNull().default(''),
+  extra: jsonb('extra'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ChannelMessageTemplateRow = typeof channelMessageTemplates.$inferSelect;
+export type NewChannelMessageTemplate = typeof channelMessageTemplates.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 支付中心（Payment Center）

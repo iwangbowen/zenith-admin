@@ -12,7 +12,7 @@
  *  - out 回复：direction='out', audienceType='targeted'，经 channelMessageTargets 定向到用户
  *  运营号不接收工作流卡片（那些走系统号），故按业务号聚合的 targeted out 即客服回复，干净无污染。
  */
-import { and, asc, desc, eq, exists, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import {
   channels, channelMessages, channelMenus, channelAutoReplies, channelMessageTargets, channelQuickReplies,
@@ -20,7 +20,7 @@ import {
   type ChannelMenuRow, type ChannelAutoReplyRow, type ChannelQuickReplyRow, type ChannelConversationRow, type ChannelRow,
 } from '../db/schema';
 import type {
-  ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelConversationStatus, ChannelMessage, ChannelMessageType, ChannelQuickReply, ChannelCsAgent, ChannelRichReplyExtra,
+  ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelConversationStatus, ChannelMessage, ChannelMessageType, ChannelQuickReply, ChannelCsAgent, ChannelCsPerformance, ChannelRichReplyExtra,
   ChatCard, ChatMessageExtra,
   SaveChannelMenusInput, CreateChannelAutoReplyInput, UpdateChannelAutoReplyInput,
   CreateChannelQuickReplyInput, UpdateChannelQuickReplyInput,
@@ -436,6 +436,9 @@ export async function listChannelConversations(channelId: number, filter: Conver
       assigneeName: conv?.assigneeId != null ? (assigneeNameMap.get(conv.assigneeId) ?? null) : null,
       tags: (conv?.tags as string[] | null) ?? [],
       resolvedAt: formatNullableDateTime(conv?.resolvedAt ?? null),
+      rating: conv?.rating ?? null,
+      ratingComment: conv?.ratingComment ?? null,
+      ratedAt: formatNullableDateTime(conv?.ratedAt ?? null),
     };
   });
 
@@ -496,6 +499,54 @@ export async function listCsAgents(): Promise<ChannelCsAgent[]> {
     .innerJoin(menus, eq(menus.id, roleMenus.menuId))
     .where(and(eq(menus.permission, 'channel:cs'), eq(users.status, 'enabled')));
   return rows.map((u) => ({ id: u.id, name: u.nickname || u.username, avatar: u.avatar }));
+}
+
+/** 用户对客服会话评价（用户端调用，currentUser 即被服务用户）。 */
+export async function rateConversation(channelId: number, rating: number, comment: string | null): Promise<void> {
+  const me = currentUser().userId;
+  await ensureBusinessChannel(channelId);
+  const existing = await db.query.channelConversations.findFirst({
+    where: and(eq(channelConversations.channelId, channelId), eq(channelConversations.userId, me)),
+  });
+  if (!existing) throw new HTTPException(404, { message: '会话不存在' });
+  await db.update(channelConversations)
+    .set({ rating, ratingComment: comment, ratedAt: new Date() })
+    .where(and(eq(channelConversations.channelId, channelId), eq(channelConversations.userId, me)));
+}
+
+/** 客服绩效统计：各客服回复数 / 解决数 / 平均首次响应 / 平均评分。 */
+export async function getCsPerformance(): Promise<ChannelCsPerformance[]> {
+  const agents = await listCsAgents();
+  if (agents.length === 0) return [];
+  const agentIds = agents.map((a) => a.id);
+
+  const [replyRows, resolvedRows, ratingRows] = await Promise.all([
+    db.select({ agentId: channelMessages.senderUserId, count: sql<number>`count(*)::int` })
+      .from(channelMessages)
+      .where(and(eq(channelMessages.direction, 'out'), inArray(channelMessages.senderUserId, agentIds)))
+      .groupBy(channelMessages.senderUserId),
+    db.select({ agentId: channelConversations.assigneeId, count: sql<number>`count(*)::int` })
+      .from(channelConversations)
+      .where(and(eq(channelConversations.status, 'resolved'), inArray(channelConversations.assigneeId, agentIds)))
+      .groupBy(channelConversations.assigneeId),
+    db.select({ agentId: channelConversations.assigneeId, avg: sql<number>`avg(${channelConversations.rating})` })
+      .from(channelConversations)
+      .where(and(isNotNull(channelConversations.rating), inArray(channelConversations.assigneeId, agentIds)))
+      .groupBy(channelConversations.assigneeId),
+  ]);
+
+  const replyMap = new Map(replyRows.filter((r) => r.agentId != null).map((r) => [r.agentId!, Number(r.count)]));
+  const resolvedMap = new Map(resolvedRows.filter((r) => r.agentId != null).map((r) => [r.agentId!, Number(r.count)]));
+  const ratingMap = new Map(ratingRows.filter((r) => r.agentId != null).map((r) => [r.agentId!, r.avg != null ? Math.round(Number(r.avg) * 10) / 10 : null]));
+
+  return agents.map((a) => ({
+    agentId: a.id,
+    agentName: a.name,
+    replyCount: replyMap.get(a.id) ?? 0,
+    resolvedCount: resolvedMap.get(a.id) ?? 0,
+    avgResponseMinutes: null,
+    avgRating: ratingMap.get(a.id) ?? null,
+  }));
 }
 
 /** 某会话（channelId + userId）的双向消息流，分页倒序（前端反转为正序展示）。 */

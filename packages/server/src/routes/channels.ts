@@ -11,19 +11,25 @@ import {
   createChannelAutoReplySchema, updateChannelAutoReplySchema,
   createChannelQuickReplySchema, updateChannelQuickReplySchema,
   assignConversationSchema, setConversationTagsSchema, audienceEstimateSchema,
+  createChannelTemplateSchema, updateChannelTemplateSchema, addChannelSubscribersSchema, rateConversationSchema,
 } from '@zenith/shared';
 import {
   ChannelDTO, ChannelMessageDTO, ChannelAdminDTO,
   ChannelMenuDTO, ChannelAutoReplyDTO, ChannelConversationDTO, ChannelCsChannelDTO, ChannelQuickReplyDTO, ChannelCsAgentDTO, ChannelDashboardDTO,
+  ChannelSubscriberDTO, ChannelMessageTemplateDTO, ChannelCsPerformanceDTO,
 } from '../lib/openapi-dtos';
 import {
   listMyChannels, listChannelMessages, markChannelRead,
   listChannelsAdmin, createChannel, updateChannel, deleteChannel, publishToChannel,
   subscribeChannel, unsubscribeChannel, listDiscoverableChannels,
   listChannelMessageRecords, updateDeferredMessage, deleteDeferredMessage, publishDeferredMessageNow,
-  estimateAudience, retractMessage,
+  estimateAudience, retractMessage, testSend,
+  listChannelSubscribers, addChannelSubscribers, removeChannelSubscriber, exportChannelSubscribers,
 } from '../services/channel.service';
 import { getChannelDashboard } from '../services/channel-dashboard.service';
+import {
+  listChannelTemplates, createChannelTemplate, updateChannelTemplate, deleteChannelTemplate,
+} from '../services/channel-template.service';
 import {
   getChannelMenus, saveChannelMenus,
   listChannelAutoReplies, createChannelAutoReply, updateChannelAutoReply, deleteChannelAutoReply,
@@ -31,6 +37,7 @@ import {
   listCsChannels, listChannelConversations, listConversationMessages,
   listChannelQuickReplies, createChannelQuickReply, updateChannelQuickReply, deleteChannelQuickReply,
   assignConversation, resolveConversation, setConversationTags, listCsAgents,
+  rateConversation, getCsPerformance,
 } from '../services/channel-cs.service';
 
 const channelsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -463,6 +470,161 @@ const dashboard = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getChannelDashboard()), 200),
 });
 
+// ─── 订阅者管理 ───────────────────────────────────────────────────────────────
+
+const subscribers = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/admin/{id}/subscribers', tags: ['Channels'], summary: '频道订阅者列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:channel:list' })] as const,
+    request: { params: IdParam, query: PaginationQuery.extend({ keyword: z.string().optional() }) },
+    responses: { ...commonErrorResponses, ...okPaginated(ChannelSubscriberDTO, '订阅者列表') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { page, pageSize, keyword } = c.req.valid('query');
+    return c.json(okBody(await listChannelSubscribers(id, page, pageSize, keyword)), 200);
+  },
+});
+
+const addSubscribers = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/admin/{id}/subscribers', tags: ['Channels'], summary: '添加订阅者',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:channel:update', audit: { description: '添加订阅者', module: '消息中心' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(addChannelSubscribersSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已添加') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await addChannelSubscribers(id, c.req.valid('json').userIds);
+    return c.json(okBody(null, '已添加'), 200);
+  },
+});
+
+const removeSubscriber = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/admin/{id}/subscribers/{userId}', tags: ['Channels'], summary: '移除订阅者',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:channel:update', audit: { description: '移除订阅者', module: '消息中心' } })] as const,
+    request: { params: CsConversationParams },
+    responses: { ...commonErrorResponses, ...okMsg('已移除') },
+  }),
+  handler: async (c) => {
+    const { id, userId } = c.req.valid('param');
+    await removeChannelSubscriber(id, userId);
+    return c.json(okBody(null, '已移除'), 200);
+  },
+});
+
+const exportSubscribers = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/admin/{id}/subscribers/export', tags: ['Channels'], summary: '导出订阅者',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:channel:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChannelSubscriberDTO), '全部订阅者') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await exportChannelSubscribers(id)), 200);
+  },
+});
+
+// ─── 群发消息模板 ─────────────────────────────────────────────────────────────
+
+const listTemplates = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/templates', tags: ['Channels'], summary: '群发消息模板列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:message:publish' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(ChannelMessageTemplateDTO), '模板列表') },
+  }),
+  handler: async (c) => c.json(okBody(await listChannelTemplates()), 200),
+});
+
+const createTemplate = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/templates', tags: ['Channels'], summary: '新建群发模板',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:message:publish', audit: { description: '新建群发模板', module: '消息中心' } })] as const,
+    request: { body: { content: jsonContent(createChannelTemplateSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(ChannelMessageTemplateDTO, '已创建') },
+  }),
+  handler: async (c) => c.json(okBody(await createChannelTemplate(c.req.valid('json')), '已创建'), 200),
+});
+
+const updateTemplate = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/templates/{id}', tags: ['Channels'], summary: '编辑群发模板',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:message:publish', audit: { description: '编辑群发模板', module: '消息中心' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(updateChannelTemplateSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(ChannelMessageTemplateDTO, '已保存') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await updateChannelTemplate(id, c.req.valid('json')), '已保存'), 200);
+  },
+});
+
+const removeTemplate = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/templates/{id}', tags: ['Channels'], summary: '删除群发模板',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:message:publish', audit: { description: '删除群发模板', module: '消息中心' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已删除') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await deleteChannelTemplate(id);
+    return c.json(okBody(null, '已删除'), 200);
+  },
+});
+
+const testSendRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/test-send', tags: ['Channels'], summary: '测试发送（仅发给本人）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:message:publish' })] as const,
+    request: { params: IdParam, body: { content: jsonContent(publishChannelSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(ChannelMessageDTO, '已发送测试') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await testSend(id, c.req.valid('json')), '已发送测试，请在消息中心查看'), 200);
+  },
+});
+
+// ─── 会话评价 / 客服绩效 ───────────────────────────────────────────────────────
+
+const rateConv = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/rate', tags: ['Channels'], summary: '用户评价客服会话',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam, body: { content: jsonContent(rateConversationSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('感谢您的评价') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { rating, comment } = c.req.valid('json');
+    await rateConversation(id, rating, comment ?? null);
+    return c.json(okBody(null, '感谢您的评价'), 200);
+  },
+});
+
+const csPerformance = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/cs/performance', tags: ['Channels'], summary: '客服绩效统计',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:cs' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(ChannelCsPerformanceDTO), '客服绩效') },
+  }),
+  handler: async (c) => c.json(okBody(await getCsPerformance()), 200),
+});
+
 const listQuickReplies = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/cs/quick-replies', tags: ['Channels'], summary: '客服快捷回复列表',
@@ -588,7 +750,13 @@ channelsRoute.openapiRoutes([
   listMine, listMessages, read, adminList, create, update, remove, publish, discoverable, subscribe, unsubscribe,
   sendMessage, listMenus, saveMenus,
   listAutoReplies, createAutoReply, updateAutoReply, removeAutoReply,
+] as const);
+channelsRoute.openapiRoutes([
   adminMessages, updateDraft, deleteDraft, publishDraftNow, retract, audienceEstimate, dashboard,
+  subscribers, addSubscribers, removeSubscriber, exportSubscribers,
+  listTemplates, createTemplate, updateTemplate, removeTemplate, testSendRoute, rateConv, csPerformance,
+] as const);
+channelsRoute.openapiRoutes([
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
   csChannels, csAgents, csConversations, csMessages, csReply, csAssign, csResolve, csTags,
 ] as const);

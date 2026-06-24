@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Dropdown, Empty, Input, Select, Spin, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
-import { CheckCheck, MessageSquareText, RotateCcw, Search, Send, Settings, Tag as TagIcon, UserCheck } from 'lucide-react';
+import { BarChart3, CheckCheck, MessageSquareText, RotateCcw, Search, Send, Settings, Tag as TagIcon, UserCheck } from 'lucide-react';
 import type { ChannelConversation, ChannelConversationStatus, ChannelCsAgent, ChannelMessage, ChannelQuickReply, PaginatedResponse, WsMessage } from '@zenith/shared';
 import { CHANNEL_CONVERSATION_STATUS_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -17,6 +17,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { UserAvatar } from '@/components/UserAvatar';
 import { ChannelQuickReplyDrawer } from './ChannelQuickReplyDrawer';
 import { ConversationTagModal } from './ConversationTagModal';
+import { ChannelCsPerformanceDrawer } from './ChannelCsPerformanceDrawer';
 
 const { Text } = Typography;
 
@@ -52,6 +53,7 @@ export default function ChannelCustomerServicePage() {
   const [keyword, setKeyword] = useState('');
   const [agents, setAgents] = useState<ChannelCsAgent[]>([]);
   const [tagModalVisible, setTagModalVisible] = useState(false);
+  const [performanceVisible, setPerformanceVisible] = useState(false);
   const [opLoading, setOpLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastCountRef = useRef(0);
@@ -302,6 +304,9 @@ export default function ChannelCustomerServicePage() {
         >
           刷新
         </Button>
+        <Button icon={<BarChart3 size={14} />} onClick={() => setPerformanceVisible(true)}>
+          绩效
+        </Button>
       </div>
 
       {channels.length === 0 ? (
@@ -547,6 +552,11 @@ export default function ChannelCustomerServicePage() {
           onSaved={refreshAfterOp}
         />
       )}
+
+      <ChannelCsPerformanceDrawer
+        visible={performanceVisible}
+        onClose={() => setPerformanceVisible(false)}
+      />
     </div>
   );
 }

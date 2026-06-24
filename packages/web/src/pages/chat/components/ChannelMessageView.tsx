@@ -8,8 +8,8 @@
  * 复用 MessageBubble 渲染气泡，订阅 WS channel:message 实时追加（按 id 去重）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Dropdown, Empty, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, BadgeCheck, ChevronUp, ExternalLink, Send } from 'lucide-react';
+import { Button, Dropdown, Empty, Modal, Rating, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { ArrowLeft, BadgeCheck, ChevronUp, ExternalLink, Send, Star } from 'lucide-react';
 import type { Channel, ChannelMenu, ChannelMessage, ChatMessage, ChatCardAction, WsMessage } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -58,6 +58,10 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [rateVisible, setRateVisible] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [rateSubmitting, setRateSubmitting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isBusiness = channel.type === 'business';
 
@@ -171,6 +175,28 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     }
   }, [channel.id, sending, appendMessage, scrollToBottom]);
 
+  const handleSubmitRating = useCallback(async () => {
+    if (rateSubmitting) return;
+    setRateSubmitting(true);
+    try {
+      const res = await request.post(
+        `/api/channels/${channel.id}/rate`,
+        { rating, comment: comment.trim() || null },
+        { silent: true },
+      );
+      if (res.code === 0) {
+        Toast.success('感谢您的评价');
+        setRateVisible(false);
+        setRating(5);
+        setComment('');
+      } else {
+        Toast.error(res.message || '评价失败');
+      }
+    } finally {
+      setRateSubmitting(false);
+    }
+  }, [channel.id, rating, comment, rateSubmitting]);
+
   const handleMenuClick = useCallback((menu: ChannelMenu) => {
     if (menu.type === 'view') {
       if (menu.value) window.open(menu.value, '_blank', 'noopener,noreferrer');
@@ -241,6 +267,17 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
             <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{channel.description}</Text>
           )}
         </div>
+        {channel.type === 'business' && (
+          <Button
+            size="small"
+            type="tertiary"
+            theme="borderless"
+            icon={<Star size={14} />}
+            onClick={() => setRateVisible(true)}
+          >
+            评价客服
+          </Button>
+        )}
         {channel.type === 'business' && onUnsubscribe && (
           <Button size="small" type="tertiary" theme="borderless" onClick={onUnsubscribe}>退订</Button>
         )}
@@ -316,6 +353,32 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
           该频道仅用于接收系统通知，不支持回复
         </div>
       )}
+
+      <Modal
+        title="评价客服服务"
+        visible={rateVisible}
+        closeOnEsc
+        onCancel={() => setRateVisible(false)}
+        onOk={() => void handleSubmitRating()}
+        okText="提交评价"
+        cancelText="取消"
+        confirmLoading={rateSubmitting}
+        okButtonProps={{ disabled: rating < 1 }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Text>服务评分</Text>
+            <Rating value={rating} onChange={setRating} />
+          </div>
+          <TextArea
+            value={comment}
+            onChange={setComment}
+            placeholder="说说您的服务体验（选填）"
+            maxCount={500}
+            autosize={{ minRows: 3, maxRows: 6 }}
+          />
+        </div>
+      </Modal>
     </div>
   );
 }

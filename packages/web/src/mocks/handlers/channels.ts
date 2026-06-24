@@ -1,8 +1,9 @@
 import { http, HttpResponse } from 'msw';
-import type { Channel, ChannelMessage, ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelQuickReply, ChannelMessageStatus, ChatMessageExtra } from '@zenith/shared';
+import type { Channel, ChannelMessage, ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelQuickReply, ChannelMessageStatus, ChatMessageExtra, ChannelSubscriber, ChannelMessageTemplate, ChannelCsPerformance } from '@zenith/shared';
 import {
   mockChannels, mockChannelMessages, mockChannelMenus, mockChannelAutoReplies, mockChannelQuickReplies,
   getNextChannelMessageId, getNextAutoReplyId, getNextQuickReplyId, MOCK_CURRENT_USER_ID,
+  MOCK_SUBSCRIBER_USERS, mockChannelTemplates, getNextTemplateId,
   type MockChannelMessage,
 } from '@/mocks/data/channels';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -10,15 +11,42 @@ import { mockDateTime } from '@/mocks/utils/date';
 const CURRENT_USER_NAME = '超级管理员';
 let nextMenuId = 1000;
 
-/** 会话治理属性内存表（key=`${channelId}:${userId}`），默认 open/未分配/无标签 */
-interface ConvAttr { status: 'open' | 'processing' | 'resolved'; assigneeId: number | null; tags: string[]; resolvedAt: string | null; }
+/** 会话治理属性内存表（key=`${channelId}:${userId}`），默认 open/未分配/无标签/未评价 */
+interface ConvAttr { status: 'open' | 'processing' | 'resolved'; assigneeId: number | null; tags: string[]; resolvedAt: string | null; rating: number | null; ratingComment: string | null; ratedAt: string | null; }
 const convAttrs = new Map<string, ConvAttr>();
 const convKey = (channelId: number, userId: number) => `${channelId}:${userId}`;
 function getConvAttr(channelId: number, userId: number): ConvAttr {
-  return convAttrs.get(convKey(channelId, userId)) ?? { status: 'open', assigneeId: null, tags: [], resolvedAt: null };
+  return convAttrs.get(convKey(channelId, userId)) ?? { status: 'open', assigneeId: null, tags: [], resolvedAt: null, rating: null, ratingComment: null, ratedAt: null };
 }
 function setConvAttr(channelId: number, userId: number, patch: Partial<ConvAttr>): void {
   convAttrs.set(convKey(channelId, userId), { ...getConvAttr(channelId, userId), ...patch });
+}
+
+/** 运营号订阅者内存表（channelId → userId → 订阅时间）；系统号为全员只读 */
+const channelSubs = new Map<number, Map<number, string>>();
+function seedSubs(): void {
+  if (channelSubs.size) return;
+  channelSubs.set(3, new Map<number, string>([[1, mockDateTime()], [2, mockDateTime()], [3, mockDateTime()]]));
+}
+function listSubscribers(channelId: number, isSystem: boolean): ChannelSubscriber[] {
+  if (isSystem) {
+    return MOCK_SUBSCRIBER_USERS.map((u) => ({ userId: u.userId, name: u.name, avatar: u.avatar, subscribedAt: null, isMuted: false }));
+  }
+  seedSubs();
+  const m = channelSubs.get(channelId) ?? new Map<number, string>();
+  return [...m.entries()].map(([uid, at]) => {
+    const u = MOCK_SUBSCRIBER_USERS.find((x) => x.userId === uid);
+    return { userId: uid, name: u?.name ?? `用户#${uid}`, avatar: u?.avatar ?? null, subscribedAt: at, isMuted: false };
+  });
+}
+function addSubscribers(channelId: number, userIds: number[]): void {
+  seedSubs();
+  const m = channelSubs.get(channelId) ?? new Map<number, string>();
+  userIds.forEach((uid) => { if (!m.has(uid)) m.set(uid, mockDateTime()); });
+  channelSubs.set(channelId, m);
+}
+function removeSubscriber(channelId: number, userId: number): void {
+  channelSubs.get(channelId)?.delete(userId);
 }
 
 /** Mock 可指派客服 */
@@ -99,6 +127,113 @@ export const channelsHandlers = [
   // ══ 频道功能扩展：消息记录管理 + 客服快捷回复 ══════════════════════════════
   // 注：以下更具体的路由需先于 /api/channels/admin/:id/* 与 /api/channels/cs/:id/* 注册，
   // 避免 MSW 按注册顺序匹配时被通配段抢占。
+
+  // ── 群发消息模板库（需先于 /api/channels/:id/* 注册） ──────
+  http.get('/api/channels/templates', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: [...mockChannelTemplates].sort((a, b) => b.id - a.id) });
+  }),
+  http.post('/api/channels/templates', async ({ request }) => {
+    const body = await request.json() as { name: string; type?: 'text' | 'image' | 'news'; title?: string | null; content?: string; extra?: ChatMessageExtra | null };
+    const now = mockDateTime();
+    const tpl: ChannelMessageTemplate = {
+      id: getNextTemplateId(), name: body.name, type: body.type ?? 'text',
+      title: body.title ?? null, content: body.content ?? '', extra: body.extra ?? null,
+      createdAt: now, updatedAt: now,
+    };
+    mockChannelTemplates.push(tpl);
+    return HttpResponse.json({ code: 0, message: '已创建', data: tpl });
+  }),
+  http.put('/api/channels/templates/:id', async ({ params, request }) => {
+    const tpl = mockChannelTemplates.find((t) => t.id === Number(params.id));
+    if (!tpl) return HttpResponse.json({ code: 404, message: '模板不存在', data: null }, { status: 404 });
+    const body = await request.json() as Partial<{ name: string; type: 'text' | 'image' | 'news'; title: string | null; content: string; extra: ChatMessageExtra | null }>;
+    if (body.name !== undefined) tpl.name = body.name;
+    if (body.type !== undefined) tpl.type = body.type;
+    if (body.title !== undefined) tpl.title = body.title;
+    if (body.content !== undefined) tpl.content = body.content;
+    if (body.extra !== undefined) tpl.extra = body.extra;
+    tpl.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '已保存', data: tpl });
+  }),
+  http.delete('/api/channels/templates/:id', ({ params }) => {
+    const idx = mockChannelTemplates.findIndex((t) => t.id === Number(params.id));
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '模板不存在', data: null }, { status: 404 });
+    mockChannelTemplates.splice(idx, 1);
+    return HttpResponse.json({ code: 0, message: '已删除', data: null });
+  }),
+
+  // ── 客服绩效统计（需先于 /api/channels/cs/:id/* 注册） ──────
+  http.get('/api/channels/cs/performance', () => {
+    const data: ChannelCsPerformance[] = MOCK_CS_AGENTS.map((a) => {
+      const replyCount = mockChannelMessages.filter((m) => m.direction === 'out' && m.senderUserId === a.id).length;
+      let resolvedCount = 0;
+      let ratingSum = 0;
+      let ratingN = 0;
+      convAttrs.forEach((attr) => {
+        if (attr.status === 'resolved' && attr.assigneeId === a.id) resolvedCount++;
+        if (attr.assigneeId === a.id && attr.rating != null) { ratingSum += attr.rating; ratingN++; }
+      });
+      return {
+        agentId: a.id, agentName: a.name, replyCount, resolvedCount,
+        avgResponseMinutes: null,
+        avgRating: ratingN ? Math.round((ratingSum / ratingN) * 10) / 10 : null,
+      };
+    });
+    return HttpResponse.json({ code: 0, message: 'ok', data });
+  }),
+
+  // ── 订阅者管理（需先于 /api/channels/admin/:id/messages 与 /api/channels/:id/* 注册） ──
+  http.get('/api/channels/admin/:id/subscribers/export', ({ params }) => {
+    const channelId = Number(params.id);
+    const ch = mockChannels.find((c) => c.id === channelId);
+    return HttpResponse.json({ code: 0, message: 'ok', data: listSubscribers(channelId, ch?.type === 'system') });
+  }),
+  http.get('/api/channels/admin/:id/subscribers', ({ params, request }) => {
+    const channelId = Number(params.id);
+    const ch = mockChannels.find((c) => c.id === channelId);
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? '1');
+    const pageSize = Number(url.searchParams.get('pageSize') ?? '10');
+    const keyword = (url.searchParams.get('keyword') ?? '').trim();
+    const all = listSubscribers(channelId, ch?.type === 'system');
+    const filtered = keyword ? all.filter((s) => s.name.includes(keyword) || String(s.userId).includes(keyword)) : all;
+    const list = filtered.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: filtered.length, page, pageSize } });
+  }),
+  http.post('/api/channels/admin/:id/subscribers', async ({ params, request }) => {
+    const channelId = Number(params.id);
+    const body = await request.json() as { userIds: number[] };
+    addSubscribers(channelId, body.userIds ?? []);
+    return HttpResponse.json({ code: 0, message: '已添加', data: null });
+  }),
+  http.delete('/api/channels/admin/:id/subscribers/:userId', ({ params }) => {
+    removeSubscriber(Number(params.id), Number(params.userId));
+    return HttpResponse.json({ code: 0, message: '已移除', data: null });
+  }),
+
+  // ── 测试发送 / 用户评价客服（需先于 /api/channels/:id 注册） ──
+  http.post('/api/channels/:id/test-send', async ({ params, request }) => {
+    const channelId = Number(params.id);
+    const body = await request.json() as PublishBody;
+    const msg: MockChannelMessage = {
+      id: getNextChannelMessageId(), channelId, audienceType: 'targeted', type: 'text', title: null, content: '',
+      extra: null, publishedById: MOCK_CURRENT_USER_ID, direction: 'out', senderUserId: null, senderUserName: null, isRead: false,
+      createdAt: mockDateTime(), status: 'sent', scheduledAt: null, convUserId: MOCK_CURRENT_USER_ID,
+    };
+    applyPublishFields(msg, body);
+    msg.audienceType = 'targeted';
+    msg.status = 'sent';
+    msg.scheduledAt = null;
+    msg.convUserId = MOCK_CURRENT_USER_ID;
+    mockChannelMessages.unshift(msg);
+    return HttpResponse.json({ code: 0, message: '测试消息已发送，请在消息中心查看', data: msg });
+  }),
+  http.post('/api/channels/:id/rate', async ({ params, request }) => {
+    const channelId = Number(params.id);
+    const body = await request.json() as { rating: number; comment?: string | null };
+    setConvAttr(channelId, MOCK_CURRENT_USER_ID, { rating: body.rating, ratingComment: body.comment ?? null, ratedAt: mockDateTime() });
+    return HttpResponse.json({ code: 0, message: '感谢您的评价', data: null });
+  }),
 
   // ── 客服快捷回复 ──────────────────────────────────────────
   http.get('/api/channels/cs/quick-replies', ({ request }) => {
@@ -394,6 +529,9 @@ export const channelsHandlers = [
         assigneeName: agentName(attr.assigneeId),
         tags: attr.tags,
         resolvedAt: attr.resolvedAt,
+        rating: attr.rating,
+        ratingComment: attr.ratingComment,
+        ratedAt: attr.ratedAt,
       };
     }).sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
     if (fStatus) list = list.filter((c) => c.status === fStatus);

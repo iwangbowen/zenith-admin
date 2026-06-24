@@ -1,4 +1,4 @@
-import type { Channel, ChannelMessage, ChannelMenu, ChannelAutoReply, ChannelQuickReply } from '@zenith/shared';
+import type { Channel, ChannelMessage, ChannelMenu, ChannelAutoReply, ChannelQuickReply, ChannelMessageTemplate } from '@zenith/shared';
 import { SEED_CHANNELS, SEED_CHANNEL_QUICK_REPLIES } from '@zenith/shared';
 import { mockDateTime } from '@/mocks/utils/date';
 
@@ -239,3 +239,30 @@ export const mockChannels: Channel[] = [
     updatedAt: mockDateTime(),
   },
 ];
+
+/** 订阅者用户池（mock，用于系统号全员订阅与运营号添加候选） */
+export const MOCK_SUBSCRIBER_USERS: { userId: number; name: string; avatar: string | null }[] = [
+  { userId: 1, name: '超级管理员', avatar: null },
+  { userId: 2, name: '张三', avatar: null },
+  { userId: 3, name: '李四', avatar: null },
+  { userId: 4, name: '王五', avatar: null },
+  { userId: 5, name: '赵六', avatar: null },
+  { userId: 6, name: '钱七', avatar: null },
+];
+
+/** 群发消息模板（mock，内存可增删改） */
+export const mockChannelTemplates: ChannelMessageTemplate[] = [
+  {
+    id: 1, name: '节日问候（文本）', type: 'text', title: null,
+    content: '亲爱的用户，节日快乐！感谢您一直以来的支持与陪伴。', extra: null,
+    createdAt: mockDateTime(), updatedAt: mockDateTime(),
+  },
+  {
+    id: 2, name: '版本更新公告（图文）', type: 'news', title: '产品版本更新',
+    content: '',
+    extra: { card: { title: '产品 v2.0 重磅上线', text: '全新界面与多项体验优化，点击查看详情。', cover: null, actions: [{ key: 'open', label: '查看详情', action: 'link', url: 'https://example.com/changelog' }], source: '图文', status: null } },
+    createdAt: mockDateTime(), updatedAt: mockDateTime(),
+  },
+];
+let nextTemplateId = 3;
+export function getNextTemplateId() { return nextTemplateId++; }
