@@ -274,6 +274,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
                 onEditRecalled={noop}
                 onCardAction={onCardAction}
                 onOpenWorkflow={onOpenWorkflow}
+                verifiedSender
               />
               )}
             </div>

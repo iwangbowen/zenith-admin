@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Toast, Tooltip, Dropdown, Typography, Popconfirm } from '@douyinfe/semi-ui';
 import {
-  CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download, Pencil, Check, X as XIcon,
+  CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download, Pencil, Check, X as XIcon, BadgeCheck,
 } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import type { ChatMessage, ChatMessageExtra, ChatCardAction } from '@zenith/shared';
@@ -35,7 +35,7 @@ export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
   onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji,
-  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview, readReceipt, onCardAction, onOpenWorkflow,
+  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview, readReceipt, onCardAction, onOpenWorkflow, verifiedSender,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -65,6 +65,7 @@ export function MessageBubble({
   readReceipt?: MessageReadReceipt;
   onCardAction?: (msg: ChatMessage, action: ChatCardAction) => void;
   onOpenWorkflow?: (instanceId: number, taskId: number | null) => void;
+  verifiedSender?: boolean;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   // 机器人/系统消息（senderId 为空）的展示身份取自 extra.bot
@@ -319,7 +320,6 @@ export function MessageBubble({
         transition: 'background 0.3s ease',
         cursor: multiSelectMode ? 'pointer' : 'default',
       }}
-      // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
       onClick={multiSelectMode ? () => onToggleSelect?.(msg) : undefined} // NOSONAR
     >
       {multiSelectMode && (
@@ -327,7 +327,18 @@ export function MessageBubble({
           {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
         </div>
       )}
-      {!isSelf && <UserAvatar name={displayName ?? '?'} avatar={displayAvatar} size={32} />}
+      {!isSelf && (
+        <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+          <UserAvatar name={displayName ?? '?'} avatar={displayAvatar} size={32} />
+          {verifiedSender && (
+            <BadgeCheck
+              size={13}
+              style={{ position: 'absolute', right: -2, bottom: -2, color: '#fff', fill: 'var(--semi-color-primary)' }}
+              aria-label="官方频道"
+            />
+          )}
+        </span>
+      )}
       <div // NOSONAR
         style={{ maxWidth: '65%', position: 'relative' }}
         onMouseEnter={() => setIsHovered(true)}
