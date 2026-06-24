@@ -1860,6 +1860,13 @@ export default function ChatPage({
         <MasterDetailLayout.Header
           extra={
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Tooltip content="发现频道">
+                <Button
+                  size="small" theme="borderless" type="primary"
+                  icon={<Compass size={16} />}
+                  onClick={openDiscover}
+                />
+              </Tooltip>
               <Tooltip content="新建对话">
                 <Button
                   size="small" theme="borderless" type="primary"
@@ -1954,15 +1961,8 @@ export default function ChatPage({
           <Spin spinning={loadingConvs}>
             {leftPaneMode === 'conversations' && (
               <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', borderBottom: '1px solid var(--semi-color-border)' }}>
+              <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--semi-color-border)' }}>
                 <Text type="tertiary" size="small">频道</Text>
-                <Tooltip content="发现频道">
-                  <Button
-                    size="small" theme="borderless" type="primary"
-                    icon={<Compass size={16} />}
-                    onClick={openDiscover}
-                  />
-                </Tooltip>
               </div>
               {channels.length > 0 && (
                 <SemiList
