@@ -171,7 +171,7 @@ export async function getMpAccountAuthCredential(id: number): Promise<
   return row ?? null;
 }
 export async function getMpAccountForCallback(id: number): Promise<
-  Pick<MpAccountRow, 'id' | 'appId' | 'token' | 'encryptMode' | 'encodingAesKey' | 'tenantId' | 'status'> | null
+  Pick<MpAccountRow, 'id' | 'appId' | 'token' | 'encryptMode' | 'encodingAesKey' | 'tenantId' | 'status' | 'autoCreateMember'> | null
 > {
   const [row] = await db.select({
     id: mpAccounts.id,
@@ -181,6 +181,7 @@ export async function getMpAccountForCallback(id: number): Promise<
     encodingAesKey: mpAccounts.encodingAesKey,
     tenantId: mpAccounts.tenantId,
     status: mpAccounts.status,
+    autoCreateMember: mpAccounts.autoCreateMember,
   }).from(mpAccounts).where(eq(mpAccounts.id, id)).limit(1);
   return row ?? null;
 }

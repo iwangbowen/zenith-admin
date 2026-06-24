@@ -13,6 +13,7 @@ import { getMpAccountForCallback } from '../services/mp-account.service';
 import { storeInboundMessage, storeOutboundAutoReply } from '../services/mp-message.service';
 import { resolveAutoReply } from '../services/mp-auto-reply.service';
 import { incrementQrcodeScan } from '../services/mp-qrcode.service';
+import { autoCreateMemberOnSubscribe } from '../services/mp-member.service';
 import { verifyWechatSignature, msgSignature, timingSafeCompare, decryptWechatMessage, encryptWechatMessage, parseWechatXml, buildWechatXml, buildPassiveReplyXml, summarizePassiveReply } from '../lib/wechat';
 import logger from '../lib/logger';
 import type { MpMessageType } from '@zenith/shared';
@@ -170,6 +171,15 @@ const receiveRoute = defineOpenAPIRoute({
         } catch (err) {
           logger.warn(`[mp-callback] 扫码计数失败: ${(err as Error).message}`);
         }
+      }
+    }
+
+    // ── 关注即注册会员（账号开启 autoCreateMember 时，首次关注自动建会员） ──
+    if (isNew && msgType === 'event' && f.Event === 'subscribe' && account.autoCreateMember) {
+      try {
+        await autoCreateMemberOnSubscribe(accountId, account.tenantId, openid, {});
+      } catch (err) {
+        logger.warn(`[mp-callback] 关注自动建会员失败: ${(err as Error).message}`);
       }
     }
 

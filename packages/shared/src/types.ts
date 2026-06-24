@@ -4268,6 +4268,8 @@ export interface MpFan {
   subscribeTime: string | null;
   remark: string | null;
   tagIds: number[];
+  unionid: string | null;
+  memberId: number | null;
   tenantId?: number | null;
   createdBy?: number | null;
   updatedBy?: number | null;

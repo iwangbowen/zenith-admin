@@ -70,6 +70,8 @@ export const MpFanDTO = z
     subscribeTime: z.string().nullable(),
     remark: z.string().nullable(),
     tagIds: z.array(z.number().int()),
+    unionid: z.string().nullable(),
+    memberId: z.number().int().nullable(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
