@@ -1,5 +1,7 @@
 import { Tag, Timeline, Typography, Toast } from '@douyinfe/semi-ui';
 import { UserAvatar } from '@/components/UserAvatar';
+import FileAttachment from '@/components/FileAttachment';
+import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import { timelineDot } from '@/components/workflow/timeline-dot';
 import { CheckCircle2, Clock, CornerUpLeft, Flag, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog, Send, type LucideIcon } from 'lucide-react';
 import type { WorkflowTask, WorkflowInstanceStatus } from '@zenith/shared';
@@ -188,6 +190,12 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
                 borderRadius: 6,
               }}>
                 <Typography.Text size="small" type="secondary">{task.comment}</Typography.Text>
+              </div>
+            )}
+
+            {task.attachments && task.attachments.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                <FileAttachment mode="view" showTitle={false} value={task.attachments.map((a, i) => uploadedFileToAttachment(a, i))} />
               </div>
             )}
 

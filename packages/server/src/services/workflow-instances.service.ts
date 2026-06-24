@@ -20,6 +20,7 @@ export function mapTask(
     status: row.status,
     comment: row.comment,
     signature: row.signature ?? null,
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
     signatureRequired: signatureRequired ?? false,
     actionAt: formatNullableDateTime(row.actionAt),
     originalAssigneeId: row.originalAssigneeId ?? null,
@@ -2113,14 +2114,11 @@ export async function approveTask(taskId: number, comment?: string, attachments?
   if (nodeCfg?.operations?.includes('signature') && !signature?.trim()) {
     throw new HTTPException(400, { message: '该节点要求手写签名，请先完成签名' });
   }
-  const enrichedComment = attachments && attachments.length > 0
-    ? `${comment ?? ''}\n[附件]${attachments.map((a) => a.name).join(', ')}`.trim()
-    : comment;
   // 委派回执：若由委派人操作，不推进流程，仅生成回执任务给原委派人
   if (task.delegatedFromId && task.delegatedFromId !== user.userId) {
-    return processDelegatedReceipt(task, inst, 'approved', enrichedComment, { userId: user.userId, name: user.username });
+    return processDelegatedReceipt(task, inst, 'approved', comment, { userId: user.userId, name: user.username }, attachments);
   }
-  return approveTaskCore(task, inst, enrichedComment, { userId: user.userId, name: user.username }, { selectedNextApprovers, signature });
+  return approveTaskCore(task, inst, comment, { userId: user.userId, name: user.username }, { selectedNextApprovers, signature, attachments });
 }
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并审批通过 */
@@ -2139,7 +2137,7 @@ export async function approveTaskCore(
   inst: typeof workflowInstances.$inferSelect,
   comment: string | undefined,
   actor: WorkflowEventActor,
-  options?: { selectedNextApprovers?: number[]; signature?: string },
+  options?: { selectedNextApprovers?: number[]; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }> },
 ): Promise<ApproveResult> {
   const taskId = task.id;
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };
@@ -2158,6 +2156,7 @@ export async function approveTaskCore(
       status: 'approved',
       comment: comment ?? null,
       signature: options?.signature ?? null,
+      attachments: options?.attachments ?? null,
       actionAt: new Date(),
     }).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status))).returning();
     if (!approvedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
@@ -2549,6 +2548,7 @@ async function processDelegatedReceipt(
   action: 'approved' | 'rejected',
   comment: string | undefined,
   actor: WorkflowEventActor,
+  attachments?: Array<{ name: string; url: string; size?: number }>,
 ): Promise<ApproveResult> {
   const delegatorId = task.delegatedFromId;
   if (!delegatorId) throw new HTTPException(500, { message: '委派回执缺失原始审批人' });
@@ -2560,6 +2560,7 @@ async function processDelegatedReceipt(
     const [closedTask] = await tx.update(workflowTasks).set({
       status: action,
       comment: receiptComment,
+      attachments: attachments ?? null,
       actionAt: new Date(),
     }).where(eq(workflowTasks.id, task.id)).returning();
     const [newTask] = await tx.insert(workflowTasks).values({

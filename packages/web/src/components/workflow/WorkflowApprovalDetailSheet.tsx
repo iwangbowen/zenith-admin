@@ -17,7 +17,8 @@ import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import SignaturePad from '@/components/SignaturePad';
-import FileAttachment, { type AttachmentItem } from '@/components/FileAttachment';
+import FileAttachment from '@/components/FileAttachment';
+import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useUserOptions } from '@/hooks/useUserOptions';
@@ -27,17 +28,6 @@ type AddSignPosition = 'before' | 'after' | 'parallel';
 type AddSignMode = 'and' | 'or';
 
 interface UploadedFile { name: string; url: string; size?: number }
-
-/** UploadedFile（{name,url,size}）→ FileAttachment 所需的 AttachmentItem */
-function uploadedToAttachment(f: UploadedFile, i: number): AttachmentItem {
-  return {
-    id: i + 1,
-    fileId: f.url,
-    file: { id: f.url, originalName: f.name, size: Number(f.size ?? 0), mimeType: null, extension: null, url: f.url },
-    sortOrder: i,
-    createdAt: '',
-  };
-}
 
 interface Props {
   instanceId: number | null;
@@ -511,7 +501,7 @@ export default function WorkflowApprovalDetailSheet({
               mode="edit"
               showTitle={false}
               limit={5}
-              value={approveAttachments.map(uploadedToAttachment)}
+              value={approveAttachments.map((a, i) => uploadedFileToAttachment(a, i))}
               onChange={(items) => setApproveAttachments(items.map((a) => ({ name: a.file.originalName, url: a.file.url, size: a.file.size })))}
             />
           </div>

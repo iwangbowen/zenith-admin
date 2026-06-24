@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_tasks" ADD COLUMN "attachments" jsonb;

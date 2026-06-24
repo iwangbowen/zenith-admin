@@ -1550,6 +1550,8 @@ export const workflowTasks = pgTable('workflow_tasks', {
   comment: text('comment'),
   /** 手写签名（data URL / 图片地址，审批通过时若节点要求签名则写入） */
   signature: text('signature'),
+  /** 审批附件（[{name,url,size}]，审批通过时上传） */
+  attachments: jsonb('attachments').$type<Array<{ name: string; url: string; size?: number }>>(),
   actionAt: timestamp('action_at', { withTimezone: true }),
   /** 顺序会签中的顺序（0-based），非顺序场景为 null */
   taskOrder: integer('task_order'),

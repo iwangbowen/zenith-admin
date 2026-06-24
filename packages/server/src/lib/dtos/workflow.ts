@@ -159,6 +159,7 @@ export const WorkflowTaskDTO = z
     status: z.enum(['pending', 'approved', 'rejected', 'skipped', 'waiting']),
     comment: z.string().nullable(),
     signature: z.string().nullable().optional(),
+    attachments: z.array(z.object({ name: z.string(), url: z.string(), size: z.number().optional() })).optional(),
     signatureRequired: z.boolean().optional(),
     actionAt: z.string().nullable(),
     originalAssigneeId: z.number().int().nullable().optional(),
