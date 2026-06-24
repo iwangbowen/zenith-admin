@@ -2207,6 +2207,16 @@ export const updateMpFanSchema = z.object({
 export type UpdateMpFanInput = z.infer<typeof updateMpFanSchema>;
 
 // 公众号客服消息（发送文本）
+// 公众号网页授权（OAuth2）
+export const MP_OAUTH_SCOPES = ['snsapi_base', 'snsapi_userinfo'] as const;
+export const buildMpOAuthUrlSchema = z.object({
+  accountId: z.number().int().positive(),
+  redirectUri: z.string().url('回调地址需为合法 URL').max(1024),
+  scope: z.enum(MP_OAUTH_SCOPES).default('snsapi_base'),
+  state: z.string().max(128).optional(),
+});
+export type BuildMpOAuthUrlInput = z.infer<typeof buildMpOAuthUrlSchema>;
+
 // 公众号客服消息（支持文本 / 图片 / 语音 / 视频 / 图文）
 export const MP_CUSTOM_MSG_TYPES = ['text', 'image', 'voice', 'video', 'news'] as const;
 export const sendMpMessageSchema = z.object({

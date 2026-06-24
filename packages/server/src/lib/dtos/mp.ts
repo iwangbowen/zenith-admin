@@ -247,6 +247,26 @@ export const MpQrcodeDTO = z
   })
   .openapi('MpQrcode');
 
+export const MpOAuthUrlDTO = z
+  .object({ url: z.string() })
+  .openapi('MpOAuthUrl');
+
+export const MpOAuthResultDTO = z
+  .object({
+    openid: z.string(),
+    unionid: z.string().nullable(),
+    scope: z.string(),
+    userInfo: z.object({
+      nickname: z.string().optional(),
+      sex: z.number().optional(),
+      province: z.string().optional(),
+      city: z.string().optional(),
+      country: z.string().optional(),
+      headimgurl: z.string().optional(),
+    }).nullable(),
+  })
+  .openapi('MpOAuthResult');
+
 export const MpStatsDTO = z
   .object({
     fanTotal: z.number().int(),
