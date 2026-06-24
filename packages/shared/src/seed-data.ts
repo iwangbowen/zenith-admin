@@ -423,6 +423,7 @@ export const SEED_MENUS: Menu[] = [
   { id: 1131, parentId: 1130, title: '生成二维码', name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:qrcode:create',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1132, parentId: 1130, title: '删除二维码', name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:qrcode:delete',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1140, parentId: 1000, title: '网页授权',   name: 'MpOAuth',    path: '/mp/oauth',    component: 'mp/MpOAuthPage',     icon: 'KeyRound',      type: 'menu',      sort: 13, status: 'enabled', visible: true,  permission: 'mp:oauth:build',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1141, parentId: 1140, title: 'JS-SDK签名', name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:jssdk:config',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1150, parentId: 1000, title: '多客服',     name: 'MpKfAccounts', path: '/mp/kf-accounts', component: 'mp/MpKfAccountsPage', icon: 'Headphones', type: 'menu',  sort: 14, status: 'enabled', visible: true,  permission: 'mp:kf:list',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1151, parentId: 1150, title: '添加客服',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:kf:create',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1152, parentId: 1150, title: '编辑客服',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:kf:update',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -1352,8 +1353,8 @@ export const SEED_MP_MESSAGE_TEMPLATES: MpMessageTemplate[] = [
 
 // ─── 公众号群发消息（示例）────────────────────────────────────────────────────
 export const SEED_MP_BROADCASTS: MpBroadcast[] = [
-  { id: 1, accountId: 1, msgType: 'text', target: 'all', tagId: null, content: '【Zenith 周报】本周上新会员权益，点击菜单「会员中心」查看详情～', mediaId: null, status: 'draft', wechatMsgId: null, errorMsg: null, sentAt: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 2, accountId: 1, msgType: 'text', target: 'tag', tagId: 1, content: '尊敬的星标用户，您有一张专属优惠券待领取！', mediaId: null, status: 'draft', wechatMsgId: null, errorMsg: null, sentAt: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1, accountId: 1, msgType: 'text', target: 'all', tagId: null, content: '【Zenith 周报】本周上新会员权益，点击菜单「会员中心」查看详情～', mediaId: null, status: 'draft', wechatMsgId: null, scheduledAt: null, errorMsg: null, sentAt: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, msgType: 'text', target: 'tag', tagId: 1, content: '尊敬的星标用户，您有一张专属优惠券待领取！', mediaId: null, status: 'draft', wechatMsgId: null, scheduledAt: null, errorMsg: null, sentAt: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 公众号带参数二维码（示例）─────────────────────────────────────────────────

@@ -155,7 +155,7 @@ export const ASSIGNEE_TYPE_OPTIONS: Array<{ value: AssigneeType; label: string; 
   { value: 'manager',                  label: '直属主管',           description: '发起人的直属上级（支持多层级）' },
   { value: 'formUser',                 label: '表单联系人',         description: '表单中联系人字段对应的人员' },
   { value: 'initiatorSelect',          label: '发起人自选',         description: '发起时由发起人自由选择审批人' },
-  { value: 'initiatorSelectScope',     label: '发起人自选(指定范围)', description: '发起时由发起人在指定范围内选择' },
+  { value: 'initiatorSelectScope',     label: '发起人自选(范围)',   description: '发起时由发起人在指定范围内选择' },
   { value: 'approverSelect',           label: '审批人自选',         description: '由上一节点审批人在审批时选择本节点审批人' },
   { value: 'multiLevelManager',        label: '连续多级上级',       description: '从直属上级开始逐级向上审批' },
   { value: 'multiLevelDeptHead',       label: '连续多级部门负责人', description: '从直属部门负责人逐级向上' },

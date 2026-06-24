@@ -24,7 +24,7 @@ export const mpBroadcastsHandlers = [
       tagId: body.target === 'tag' ? (body.tagId ?? null) : null,
       content: body.msgType === 'text' ? (body.content ?? null) : null,
       mediaId: body.msgType === 'text' ? null : (body.mediaId ?? null),
-      status: 'draft', wechatMsgId: null, errorMsg: null, sentAt: null, createdAt: now, updatedAt: now,
+      status: 'draft', wechatMsgId: null, scheduledAt: body.scheduledAt ?? null, errorMsg: null, sentAt: null, createdAt: now, updatedAt: now,
     };
     mockMpBroadcasts.push(item);
     return HttpResponse.json({ code: 0, message: '已创建群发草稿', data: item });
@@ -51,6 +51,19 @@ export const mpBroadcastsHandlers = [
     b.sentAt = mockDateTime();
     b.updatedAt = mockDateTime();
     return HttpResponse.json({ code: 0, message: '发送成功', data: b });
+  }),
+
+  http.post('/api/mp/broadcasts/:id/preview', async ({ params }) => {
+    const b = mockMpBroadcasts.find((x) => x.id === Number(params.id));
+    if (!b) return HttpResponse.json({ code: 404, message: '群发记录不存在', data: null }, { status: 404 });
+    return HttpResponse.json({ code: 0, message: '预览已发送', data: null });
+  }),
+
+  http.get('/api/mp/broadcasts/:id/result', ({ params }) => {
+    const b = mockMpBroadcasts.find((x) => x.id === Number(params.id));
+    if (!b) return HttpResponse.json({ code: 404, message: '群发记录不存在', data: null }, { status: 404 });
+    if (!b.wechatMsgId) return HttpResponse.json({ code: 400, message: '该群发尚未发送，无发送结果', data: null }, { status: 400 });
+    return HttpResponse.json({ code: 0, message: 'ok', data: { msgStatus: 'SEND_SUCCESS', totalCount: 2, filterCount: 2, sentCount: 2, errorCount: 0 } });
   }),
 
   http.delete('/api/mp/broadcasts/:id', ({ params }) => {

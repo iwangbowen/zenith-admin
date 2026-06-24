@@ -60,6 +60,7 @@ import { mpKfAccountsHandlers } from './mp-kf-accounts';
 import { mpKfSessionsHandlers } from './mp-kf-sessions';
 import { mpConditionalMenusHandlers } from './mp-conditional-menus';
 import { mpSecurityHandlers } from './mp-security';
+import { mpJsSdkHandlers } from './mp-jssdk';
 import { smsTemplatesHandlers } from './sms-templates';
 import { smsSendLogsHandlers } from './sms-send-logs';
 import { aiProvidersHandlers } from './ai-providers';
@@ -154,6 +155,7 @@ export const handlers = [
   ...mpKfSessionsHandlers,
   ...mpConditionalMenusHandlers,
   ...mpSecurityHandlers,
+  ...mpJsSdkHandlers,
   ...smsTemplatesHandlers,
   ...smsSendLogsHandlers,
   ...inAppTemplatesHandlers,

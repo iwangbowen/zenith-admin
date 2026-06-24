@@ -1,0 +1,1 @@
+ALTER TABLE "mp_broadcasts" ADD COLUMN "scheduled_at" timestamp;

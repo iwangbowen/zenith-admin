@@ -44,6 +44,21 @@ export const mpTemplatesHandlers = [
     return HttpResponse.json({ code: 0, message: '发送成功', data: log });
   }),
 
+  http.post('/api/mp/templates/batch-send', async ({ request }) => {
+    const body = await request.json() as { accountId: number; templateId: string; openids: string[]; url?: string; data: Record<string, unknown> };
+    for (const openid of body.openids) {
+      mockMpTemplateLogs.push({
+        id: getNextMpTemplateLogId(), accountId: body.accountId, templateId: body.templateId, openid,
+        data: body.data, url: body.url ?? null, status: 'success', errorMsg: null, msgId: `mock_${Date.now()}_${openid.slice(-4)}`, createdAt: mockDateTime(),
+      });
+    }
+    return HttpResponse.json({ code: 0, message: '已提交批量发送', data: { success: body.openids.length, failed: 0, total: body.openids.length } });
+  }),
+
+  http.get('/api/mp/templates/industry', () => HttpResponse.json({ code: 0, message: 'ok', data: { primaryIndustry: { firstClass: 'IT科技', secondClass: '互联网/电子商务' }, secondaryIndustry: { firstClass: 'IT科技', secondClass: 'IT软件与服务' } } })),
+
+  http.put('/api/mp/templates/industry', () => HttpResponse.json({ code: 0, message: '设置成功', data: null })),
+
   http.delete('/api/mp/templates/:id', ({ params }) => {
     const idx = mockMpTemplates.findIndex((x) => x.id === Number(params.id));
     if (idx === -1) return HttpResponse.json({ code: 404, message: '模板不存在', data: null }, { status: 404 });

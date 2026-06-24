@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Button, Input, Modal, Select, Space, Tag, Toast, Tabs, TabPane, Banner, Typography, TextArea } from '@douyinfe/semi-ui';
-import { RotateCcw, Search, RefreshCw } from 'lucide-react';
+import { Button, Input, Modal, Select, Space, Switch, Tag, Toast, Tabs, TabPane, Banner, Typography, TextArea } from '@douyinfe/semi-ui';
+import { RotateCcw, Search, RefreshCw, Briefcase } from 'lucide-react';
 import type { PaginatedResponse, MpMessageTemplate, MpTemplateSendLog } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
@@ -35,6 +35,13 @@ export default function MpTemplateMessagesPage() {
   const [sendUrl, setSendUrl] = useState('');
   const [sendData, setSendData] = useState('{\n  "key1": { "value": "示例内容" }\n}');
   const [sending, setSending] = useState(false);
+  const [sendBatch, setSendBatch] = useState(false);
+
+  const [industryVisible, setIndustryVisible] = useState(false);
+  const [industry, setIndustry] = useState<{ primaryIndustry: { firstClass: string; secondClass: string } | null; secondaryIndustry: { firstClass: string; secondClass: string } | null } | null>(null);
+  const [industryId1, setIndustryId1] = useState('');
+  const [industryId2, setIndustryId2] = useState('');
+  const [savingIndustry, setSavingIndustry] = useState(false);
 
   const fetchTemplates = useCallback(async (p = 1, ps = tplPg.pageSize) => {
     if (!currentId) { setTemplates([]); setTplTotal(0); return; }
@@ -77,18 +84,42 @@ export default function MpTemplateMessagesPage() {
     } finally { setSyncing(false); }
   };
 
-  const openSend = (tpl: MpMessageTemplate) => { setSendTpl(tpl); setSendOpenid(''); setSendUrl(''); setSendData('{\n  "key1": { "value": "示例内容" }\n}'); setSendVisible(true); };
+  const openSend = (tpl: MpMessageTemplate) => { setSendTpl(tpl); setSendOpenid(''); setSendUrl(''); setSendBatch(false); setSendData('{\n  "key1": { "value": "示例内容" }\n}'); setSendVisible(true); };
 
   const handleSend = async () => {
     if (!currentId || !sendTpl) return;
     let data: Record<string, unknown>;
     try { data = JSON.parse(sendData); } catch { Toast.error('模板数据不是合法 JSON'); return; }
-    if (!sendOpenid.trim()) { Toast.error('请填写接收粉丝 openid'); return; }
+    const openids = sendOpenid.split(/[\s,，]+/).map((s) => s.trim()).filter(Boolean);
+    if (openids.length === 0) { Toast.error('请填写接收粉丝 openid'); return; }
     setSending(true);
     try {
-      const res = await request.post('/api/mp/templates/send', { accountId: currentId, templateId: sendTpl.templateId, openid: sendOpenid.trim(), url: sendUrl.trim() || undefined, data });
-      if (res.code === 0) { Toast.success('发送成功'); setSendVisible(false); void fetchLogs(1); }
+      if (sendBatch) {
+        const res = await request.post<{ success: number; failed: number; total: number }>('/api/mp/templates/batch-send', { accountId: currentId, templateId: sendTpl.templateId, openids, url: sendUrl.trim() || undefined, data });
+        if (res.code === 0) { Toast.success(`批量发送完成：成功 ${res.data?.success ?? 0}，失败 ${res.data?.failed ?? 0}`); setSendVisible(false); void fetchLogs(1); }
+      } else {
+        const res = await request.post('/api/mp/templates/send', { accountId: currentId, templateId: sendTpl.templateId, openid: openids[0], url: sendUrl.trim() || undefined, data });
+        if (res.code === 0) { Toast.success('发送成功'); setSendVisible(false); void fetchLogs(1); }
+      }
     } finally { setSending(false); }
+  };
+
+  const openIndustry = async () => {
+    if (!currentId) return;
+    setIndustryVisible(true);
+    setIndustry(null);
+    const res = await request.get<typeof industry>(`/api/mp/templates/industry?accountId=${currentId}`);
+    if (res.code === 0) setIndustry(res.data ?? null);
+  };
+
+  const handleSaveIndustry = async () => {
+    if (!currentId) return;
+    if (!industryId1.trim() || !industryId2.trim()) { Toast.warning('请填写主营/副营行业代码'); return; }
+    setSavingIndustry(true);
+    try {
+      const res = await request.put('/api/mp/templates/industry', { accountId: currentId, industryId1: industryId1.trim(), industryId2: industryId2.trim() });
+      if (res.code === 0) { Toast.success('行业设置成功'); setIndustryVisible(false); }
+    } finally { setSavingIndustry(false); }
   };
 
   const handleDeleteTpl = (record: MpMessageTemplate) => {
@@ -145,6 +176,7 @@ export default function MpTemplateMessagesPage() {
           <SearchToolbar>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchTemplates(1)}>刷新</Button>
             {can('mp:template:sync') && <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>从微信同步模板</Button>}
+            {can('mp:template:sync') && <Button icon={<Briefcase size={14} />} disabled={!currentId} onClick={() => void openIndustry()}>行业设置</Button>}
           </SearchToolbar>
           <ConfigurableTable bordered loading={tplLoading} onRefresh={() => void fetchTemplates()} refreshLoading={tplLoading}
             columns={tplColumns} dataSource={templates} rowKey="id"
@@ -166,12 +198,34 @@ export default function MpTemplateMessagesPage() {
         onOk={handleSend} onCancel={() => setSendVisible(false)} confirmLoading={sending} width={600}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="模板ID"><Input value={sendTpl?.templateId ?? ''} disabled /></Field>
-          <Field label="接收 openid"><Input value={sendOpenid} onChange={setSendOpenid} placeholder="目标粉丝 openid" /></Field>
+          <Field label="发送方式">
+            <Space>
+              <Switch checked={sendBatch} onChange={setSendBatch} />
+              <Typography.Text type="tertiary" size="small">{sendBatch ? '批量发送（多个 openid，每行或逗号分隔，最多 500）' : '单条发送'}</Typography.Text>
+            </Space>
+          </Field>
+          <Field label={sendBatch ? '接收 openid 列表' : '接收 openid'}>
+            {sendBatch
+              ? <TextArea value={sendOpenid} onChange={setSendOpenid} rows={4} placeholder={'每行一个 openid，或用逗号分隔'} />
+              : <Input value={sendOpenid} onChange={setSendOpenid} placeholder="目标粉丝 openid" />}
+          </Field>
           <Field label="跳转链接"><Input value={sendUrl} onChange={setSendUrl} placeholder="点击模板消息跳转的 URL（选填）" /></Field>
           <Field label="模板数据 (JSON)">
             <TextArea value={sendData} onChange={setSendData} rows={6} style={{ fontFamily: 'monospace' }} />
             <Typography.Text type="tertiary" size="small">格式：{'{ "key": { "value": "内容", "color": "#173177" } }'}，key 对应模板 {'{{key.DATA}}'}</Typography.Text>
           </Field>
+        </div>
+      </AppModal>
+
+      <AppModal title="模板消息行业设置" visible={industryVisible}
+        onOk={() => void handleSaveIndustry()} confirmLoading={savingIndustry} onCancel={() => setIndustryVisible(false)} width={460}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {industry && (industry.primaryIndustry || industry.secondaryIndustry) && (
+            <Banner type="info" fullMode={false} description={`当前行业：${[industry.primaryIndustry, industry.secondaryIndustry].filter(Boolean).map((i) => `${i!.firstClass}/${i!.secondClass}`).join('，') || '未设置'}`} />
+          )}
+          <Field label="主营行业代码"><Input value={industryId1} onChange={setIndustryId1} placeholder="如 1（IT科技/互联网）" /></Field>
+          <Field label="副营行业代码"><Input value={industryId2} onChange={setIndustryId2} placeholder="如 2（IT科技/IT软件与服务）" /></Field>
+          <Typography.Text type="tertiary" size="small">行业代码对照见微信公众平台「模板消息 - 设置所属行业」文档。每月可修改 1 次。</Typography.Text>
         </div>
       </AppModal>
     </div>

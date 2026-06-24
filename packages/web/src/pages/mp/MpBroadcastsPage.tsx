@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Form, Modal, Select, Space, Spin, Tag, Toast, Banner, Typography, Tooltip } from '@douyinfe/semi-ui';
+import { Button, DatePicker, Form, Modal, Select, Space, Spin, Tag, Toast, Banner, Typography, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Plus, RotateCcw, Send } from 'lucide-react';
-import type { PaginatedResponse, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus, MpTag, MpMaterial, MpDraft } from '@zenith/shared';
+import { Plus, RotateCcw, Send, Eye, BarChart3 } from 'lucide-react';
+import type { PaginatedResponse, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus, MpBroadcastResult, MpTag, MpMaterial, MpDraft } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
+import { formatDateTimeForApi } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -52,6 +53,12 @@ export default function MpBroadcastsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [sendingId, setSendingId] = useState<number | null>(null);
   const formRef = useRef<FormApi>(null);
+
+  const [previewState, setPreviewState] = useState<{ visible: boolean; id: number | null }>({ visible: false, id: null });
+  const [previewOpenid, setPreviewOpenid] = useState('');
+  const [previewing, setPreviewing] = useState(false);
+  const [resultState, setResultState] = useState<{ visible: boolean; data: MpBroadcastResult | null }>({ visible: false, data: null });
+  const [loadingResult, setLoadingResult] = useState(false);
 
   const fetchList = useCallback(async (p = page, ps = pageSize, status = filterStatus) => {
     if (!currentId) { setList([]); setTotal(0); return; }
@@ -104,6 +111,7 @@ export default function MpBroadcastsPage() {
     if (modalType === 'text') payload.content = values.content;
     else payload.mediaId = values.mediaId;
     if (modalTarget === 'tag') payload.tagId = values.tagId;
+    payload.scheduledAt = values.scheduledAt ? formatDateTimeForApi(values.scheduledAt as Date) : null;
 
     setSubmitting(true);
     try {
@@ -151,6 +159,25 @@ export default function MpBroadcastsPage() {
     });
   };
 
+  const handlePreview = async () => {
+    if (!previewState.id || !previewOpenid.trim()) { Toast.warning('请输入预览 openid'); return; }
+    setPreviewing(true);
+    try {
+      const res = await request.post(`/api/mp/broadcasts/${previewState.id}/preview`, { openid: previewOpenid.trim() });
+      if (res.code === 0) { Toast.success('预览已发送'); setPreviewState({ visible: false, id: null }); }
+    } finally { setPreviewing(false); }
+  };
+
+  const openResult = async (record: MpBroadcast) => {
+    setResultState({ visible: true, data: null });
+    setLoadingResult(true);
+    try {
+      const res = await request.get<MpBroadcastResult>(`/api/mp/broadcasts/${record.id}/result`);
+      if (res.code === 0) setResultState({ visible: true, data: res.data ?? null });
+      else setResultState({ visible: false, data: null });
+    } finally { setLoadingResult(false); }
+  };
+
   const summarize = (r: MpBroadcast): string => {
     if (r.msgType === 'text') return r.content ?? '';
     if (r.msgType === 'image') return `[图片素材] ${r.mediaId ?? ''}`;
@@ -180,6 +207,12 @@ export default function MpBroadcastsPage() {
         <Space>
           {record.status !== 'sent' && can('mp:broadcast:send') && (
             <Button theme="borderless" size="small" loading={sendingId === record.id} onClick={() => handleSend(record)}>发送</Button>
+          )}
+          {can('mp:broadcast:send') && (
+            <Button theme="borderless" size="small" icon={<Eye size={13} />} onClick={() => { setPreviewOpenid(''); setPreviewState({ visible: true, id: record.id }); }}>预览</Button>
+          )}
+          {record.status === 'sent' && (
+            <Button theme="borderless" size="small" icon={<BarChart3 size={13} />} onClick={() => void openResult(record)}>结果</Button>
           )}
           {record.status !== 'sent' && can('mp:broadcast:update') && <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>}
           {can('mp:broadcast:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(record)}>删除</Button>}
@@ -219,8 +252,8 @@ export default function MpBroadcastsPage() {
             getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
             labelPosition="left" labelWidth={90}
             initValues={editingRecord
-              ? { content: editingRecord.content ?? '', mediaId: editingRecord.mediaId ?? '', tagId: editingRecord.tagId ?? undefined }
-              : { content: '', mediaId: '', tagId: undefined }}
+              ? { content: editingRecord.content ?? '', mediaId: editingRecord.mediaId ?? '', tagId: editingRecord.tagId ?? undefined, scheduledAt: editingRecord.scheduledAt ? new Date(editingRecord.scheduledAt) : undefined }
+              : { content: '', mediaId: '', tagId: undefined, scheduledAt: undefined }}
           >
             <Form.Slot label="内容类型">
               <Select style={{ width: '100%' }} optionList={TYPE_OPTIONS} value={modalType} onChange={(v) => setModalType(v as MpBroadcastType)} />
@@ -248,7 +281,31 @@ export default function MpBroadcastsPage() {
                 rules={[{ required: true, message: '请选择标签' }]}
                 emptyContent="暂无标签，请先在「标签管理」创建并同步" />
             )}
+
+            <Form.DatePicker field="scheduledAt" label="定时发送" type="dateTime" style={{ width: '100%' }}
+              placeholder="留空表示立即发送（保存草稿后手动发送）" />
           </Form>
+        </Spin>
+      </AppModal>
+
+      <AppModal title="群发预览" visible={previewState.visible} confirmLoading={previewing}
+        onOk={() => void handlePreview()} okText="发送预览" onCancel={() => setPreviewState({ visible: false, id: null })} width={420}>
+        <Banner type="info" fullMode={false} description="预览将把该群发内容发送给指定的测试 openid（需已关注），用于发送前检查效果。" style={{ marginBottom: 12 }} />
+        <Input value={previewOpenid} onChange={setPreviewOpenid} placeholder="输入测试粉丝 openid" onEnterPress={() => void handlePreview()} />
+      </AppModal>
+
+      <AppModal title="群发发送结果" visible={resultState.visible} footer={null}
+        onCancel={() => setResultState({ visible: false, data: null })} width={420}>
+        <Spin spinning={loadingResult}>
+          {resultState.data ? (
+            <Descriptions row size="medium" data={[
+              { key: '发送状态', value: resultState.data.msgStatus },
+              { key: '目标总数', value: String(resultState.data.totalCount ?? '—') },
+              { key: '过滤后', value: String(resultState.data.filterCount ?? '—') },
+              { key: '送达数', value: String(resultState.data.sentCount ?? '—') },
+              { key: '失败数', value: String(resultState.data.errorCount ?? '—') },
+            ]} />
+          ) : <div style={{ padding: 24, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无数据</div>}
         </Spin>
       </AppModal>
     </div>

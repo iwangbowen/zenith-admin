@@ -20,6 +20,20 @@ export default function MpOAuthPage() {
   const [genUrl, setGenUrl] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [jsUrl, setJsUrl] = useState('');
+  const [jsConfig, setJsConfig] = useState<{ appId: string; timestamp: number; nonceStr: string; signature: string } | null>(null);
+  const [jsLoading, setJsLoading] = useState(false);
+
+  const handleJsConfig = async () => {
+    if (!currentId) { Toast.error('请先选择公众号'); return; }
+    if (!jsUrl.trim()) { Toast.error('请填写页面 URL'); return; }
+    setJsLoading(true);
+    try {
+      const res = await request.post<{ appId: string; timestamp: number; nonceStr: string; signature: string }>('/api/mp/jssdk/config', { accountId: currentId, url: jsUrl.trim() });
+      if (res.code === 0 && res.data) setJsConfig(res.data);
+    } finally { setJsLoading(false); }
+  };
+
   const callbackUrl = currentId ? `${config.apiBaseUrl}/api/public/mp/oauth/${currentId}` : '';
 
   const handleGenerate = async () => {
@@ -90,6 +104,24 @@ export default function MpOAuthPage() {
             {callbackUrl && <Button icon={<Copy size={14} />} onClick={() => void copy(callbackUrl)}>复制</Button>}
           </div>
         </div>
+      </Card>
+
+      <Card style={{ maxWidth: 760, marginTop: 16 }} bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Typography.Title heading={6} style={{ margin: 0 }}>JS-SDK 配置签名（wx.config）</Typography.Title>
+        <Banner type="info" fullMode={false} description="输入需要调用微信 JS-SDK 的页面完整 URL（不含 # 及其后部分），生成 wx.config 所需的签名参数。需先在公众平台配置「JS接口安全域名」。" />
+        <div>
+          <Typography.Text type="secondary" size="small">页面 URL</Typography.Text>
+          <Input style={{ marginTop: 4 }} value={jsUrl} onChange={setJsUrl} placeholder="https://your-h5.example.com/page" />
+        </div>
+        <div>
+          <Button type="primary" icon={<Link2 size={14} />} loading={jsLoading} disabled={!currentId} onClick={handleJsConfig}>生成签名</Button>
+        </div>
+        {jsConfig && (
+          <Typography.Paragraph style={{ wordBreak: 'break-all', margin: 0, padding: 8, background: 'var(--semi-color-fill-0)', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }}>
+            {`wx.config({\n  appId: '${jsConfig.appId}',\n  timestamp: ${jsConfig.timestamp},\n  nonceStr: '${jsConfig.nonceStr}',\n  signature: '${jsConfig.signature}',\n  jsApiList: [...]\n})`}
+          </Typography.Paragraph>
+        )}
+        {jsConfig && <Button icon={<Copy size={14} />} style={{ alignSelf: 'flex-start' }} onClick={() => void copy(JSON.stringify(jsConfig))}>复制 JSON</Button>}
       </Card>
     </div>
   );
