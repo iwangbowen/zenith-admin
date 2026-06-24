@@ -11,7 +11,18 @@ const CONTENT_TYPE_OPTIONS = [
   { label: '跳转网址', value: 'view' },
   { label: '点击事件', value: 'click' },
   { label: '跳转小程序', value: 'miniprogram' },
+  { label: '下发素材', value: 'media_id' },
+  { label: '图文消息', value: 'article_id' },
+  { label: '扫码推事件', value: 'scancode_push' },
+  { label: '扫码带提示', value: 'scancode_waitmsg' },
+  { label: '系统拍照发图', value: 'pic_sysphoto' },
+  { label: '拍照或相册', value: 'pic_photo_or_album' },
+  { label: '微信相册发图', value: 'pic_weixin' },
+  { label: '发送位置', value: 'location_select' },
 ];
+
+// 这些类型在微信侧均通过 event + key 触发
+const KEY_TYPES = ['click', 'scancode_push', 'scancode_waitmsg', 'pic_sysphoto', 'pic_photo_or_album', 'pic_weixin', 'location_select'];
 
 type Sel = { l1: number; l2: number | null } | null;
 
@@ -101,10 +112,12 @@ export default function MpMenuPage() {
   const setType = (type: string) => {
     mutateSelected((b) => {
       b.type = type;
-      delete b.key; delete b.url; delete b.appid; delete b.pagepath;
+      delete b.key; delete b.url; delete b.appid; delete b.pagepath; delete b.media_id; delete b.article_id;
       if (type === 'view') b.url = '';
-      else if (type === 'click') b.key = '';
       else if (type === 'miniprogram') { b.appid = ''; b.pagepath = ''; b.url = ''; }
+      else if (type === 'media_id') b.media_id = '';
+      else if (type === 'article_id') b.article_id = '';
+      else b.key = ''; // click + scancode/pic/location 均使用 key
     });
   };
 
@@ -487,12 +500,34 @@ export default function MpMenuPage() {
                         </FieldRow>
                       )}
 
-                      {sel.type === 'click' && (
+                      {KEY_TYPES.includes(sel.type ?? '') && (
                         <FieldRow label="事件 KEY">
                           <Input
                             value={sel.key ?? ''}
                             placeholder="如 KEY_001"
                             onChange={(v) => mutateSelected((b) => { b.key = v; })}
+                            style={{ width: 220 }}
+                          />
+                        </FieldRow>
+                      )}
+
+                      {sel.type === 'media_id' && (
+                        <FieldRow label="素材 MediaId">
+                          <Input
+                            value={sel.media_id ?? ''}
+                            placeholder="永久素材 media_id"
+                            onChange={(v) => mutateSelected((b) => { b.media_id = v; })}
+                            style={{ width: 220 }}
+                          />
+                        </FieldRow>
+                      )}
+
+                      {sel.type === 'article_id' && (
+                        <FieldRow label="图文 ArticleId">
+                          <Input
+                            value={sel.article_id ?? ''}
+                            placeholder="已发布图文 article_id"
+                            onChange={(v) => mutateSelected((b) => { b.article_id = v; })}
                             style={{ width: 220 }}
                           />
                         </FieldRow>

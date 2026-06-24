@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Avatar, Button, Input, Toast, Banner, Spin, Empty } from '@douyinfe/semi-ui';
-import { RefreshCw, Send } from 'lucide-react';
-import type { MpConversation, MpMessage, MpMessageType } from '@zenith/shared';
+import { Avatar, Button, Input, Toast, Banner, Spin, Empty, Modal, Select, Typography } from '@douyinfe/semi-ui';
+import { RefreshCw, Send, Paperclip } from 'lucide-react';
+import type { MpConversation, MpMessage, MpMessageType, MpMaterial, MpDraft } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
 import type { PaginatedResponse } from '@zenith/shared';
@@ -38,6 +38,13 @@ export default function MpMessagesPage() {
   const [sending, setSending] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  const [materials, setMaterials] = useState<MpMaterial[]>([]);
+  const [drafts, setDrafts] = useState<MpDraft[]>([]);
+  const [mediaModalVisible, setMediaModalVisible] = useState(false);
+  const [mediaContentType, setMediaContentType] = useState<'image' | 'voice' | 'video' | 'news'>('image');
+  const [mediaId, setMediaId] = useState<string>('');
+  const [mediaTitle, setMediaTitle] = useState('');
+
   const fetchConversations = useCallback(async (accountId: number) => {
     setConvLoading(true);
     try {
@@ -61,12 +68,22 @@ export default function MpMessagesPage() {
     }
   }, [currentIdRef]);
 
+  const fetchMedia = useCallback(async (accountId: number) => {
+    const [m, d] = await Promise.all([
+      request.get<PaginatedResponse<MpMaterial>>(`/api/mp/materials?accountId=${accountId}&page=1&pageSize=200`),
+      request.get<PaginatedResponse<MpDraft>>(`/api/mp/drafts?accountId=${accountId}&page=1&pageSize=200`),
+    ]);
+    if (currentIdRef.current !== accountId) return;
+    setMaterials((m.data?.list ?? []).filter((x) => x.wechatMediaId));
+    setDrafts((d.data?.list ?? []).filter((x) => x.wechatMediaId));
+  }, [currentIdRef]);
+
   useEffect(() => {
     setSelectedOpenid(null);
     setThread([]);
-    if (currentId) void fetchConversations(currentId);
-    else setConversations([]);
-  }, [currentId, fetchConversations]);
+    if (currentId) { void fetchConversations(currentId); void fetchMedia(currentId); }
+    else { setConversations([]); setMaterials([]); setDrafts([]); }
+  }, [currentId, fetchConversations, fetchMedia]);
 
   useEffect(() => {
     if (currentId && selectedOpenid) void fetchThread(currentId, selectedOpenid);
@@ -82,7 +99,7 @@ export default function MpMessagesPage() {
     if (!content || !currentId || !selectedOpenid) return;
     setSending(true);
     try {
-      const res = await request.post<MpMessage>('/api/mp/messages/send', { accountId: currentId, openid: selectedOpenid, content });
+      const res = await request.post<MpMessage>('/api/mp/messages/send', { accountId: currentId, openid: selectedOpenid, msgType: 'text', content });
       if (res.code === 0) {
         setReply('');
         if (res.data) setThread((prev) => [...prev, res.data]);
@@ -93,6 +110,31 @@ export default function MpMessagesPage() {
       setSending(false);
     }
   };
+
+  const openMediaModal = () => { setMediaContentType('image'); setMediaId(''); setMediaTitle(''); setMediaModalVisible(true); };
+
+  const handleSendMedia = async () => {
+    if (!currentId || !selectedOpenid) return;
+    if (!mediaId) { Toast.error('请选择素材'); return; }
+    setSending(true);
+    try {
+      const body: Record<string, unknown> = { accountId: currentId, openid: selectedOpenid, msgType: mediaContentType, mediaId };
+      if (mediaContentType === 'video' && mediaTitle) body.content = mediaTitle;
+      const res = await request.post<MpMessage>('/api/mp/messages/send', body);
+      if (res.code === 0) {
+        if (res.data) setThread((prev) => [...prev, res.data]);
+        void fetchConversations(currentId);
+        setMediaModalVisible(false);
+        Toast.success('已发送');
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const mediaOptions = mediaContentType === 'news'
+    ? drafts.map((d) => ({ label: `${d.title}（${d.wechatMediaId}）`, value: d.wechatMediaId as string }))
+    : materials.filter((m) => m.type === mediaContentType).map((m) => ({ label: `${m.name}（${m.wechatMediaId}）`, value: m.wechatMediaId as string }));
 
   const selectedConv = conversations.find((c) => c.openid === selectedOpenid) ?? null;
 
@@ -155,6 +197,7 @@ export default function MpMessagesPage() {
       </div>
       {can('mp:message:send') && (
         <div style={{ flexShrink: 0, padding: 12, borderTop: '1px solid var(--semi-color-border)', display: 'flex', gap: 8 }}>
+          <Button icon={<Paperclip size={14} />} disabled={!selectedOpenid || sending} onClick={openMediaModal} title="发送图片/语音/视频/图文" />
           <Input
             value={reply}
             onChange={setReply}
@@ -190,6 +233,35 @@ export default function MpMessagesPage() {
           detail={detail}
         />
       </div>
+
+      <Modal title="发送素材消息" visible={mediaModalVisible} onOk={() => void handleSendMedia()} onCancel={() => setMediaModalVisible(false)}
+        okText="发送" confirmLoading={sending} okButtonProps={{ disabled: !mediaId }} width={460}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <Typography.Text type="secondary" size="small">消息类型</Typography.Text>
+            <Select style={{ width: '100%', marginTop: 4 }} value={mediaContentType}
+              onChange={(v) => { setMediaContentType(v as 'image' | 'voice' | 'video' | 'news'); setMediaId(''); }}
+              optionList={[
+                { label: '图片', value: 'image' },
+                { label: '语音', value: 'voice' },
+                { label: '视频', value: 'video' },
+                { label: '图文', value: 'news' },
+              ]} />
+          </div>
+          <div>
+            <Typography.Text type="secondary" size="small">{mediaContentType === 'news' ? '图文素材（已推送到微信的草稿）' : '素材（素材库永久素材）'}</Typography.Text>
+            <Select style={{ width: '100%', marginTop: 4 }} value={mediaId || undefined} onChange={(v) => setMediaId(v as string)}
+              filter showClear placeholder="请选择" optionList={mediaOptions}
+              emptyContent={mediaContentType === 'news' ? '暂无可用图文草稿（需已推送到微信）' : '暂无对应类型的永久素材'} />
+          </div>
+          {mediaContentType === 'video' && (
+            <div>
+              <Typography.Text type="secondary" size="small">视频标题（可选）</Typography.Text>
+              <Input style={{ marginTop: 4 }} value={mediaTitle} onChange={setMediaTitle} placeholder="可选" />
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

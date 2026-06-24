@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag, Toast, Switch, Banner } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag, Toast, Switch, Banner, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, MpAutoReply, MpAutoReplyType } from '@zenith/shared';
+import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import type { PaginatedResponse, MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle, MpMaterial } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+import { createdAtColumn } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -22,9 +22,29 @@ const MATCH_OPTIONS = [
   { label: '全匹配', value: 'exact' },
   { label: '包含匹配', value: 'contain' },
 ];
+const CONTENT_TYPE_OPTIONS = [
+  { label: '文本', value: 'text' },
+  { label: '图片', value: 'image' },
+  { label: '语音', value: 'voice' },
+  { label: '视频', value: 'video' },
+  { label: '图文', value: 'news' },
+];
+const CONTENT_TYPE_LABEL: Record<MpReplyContentType, string> = { text: '文本', image: '图片', voice: '语音', video: '视频', news: '图文' };
 const TYPE_TAG_COLOR: Record<MpAutoReplyType, 'green' | 'blue' | 'orange'> = {
   subscribe: 'green', keyword: 'blue', default: 'orange',
 };
+
+function summarizeReply(r: MpAutoReply): string {
+  switch (r.contentType) {
+    case 'image': return `[图片] ${r.mediaId ?? ''}`;
+    case 'voice': return `[语音] ${r.mediaId ?? ''}`;
+    case 'video': return `[视频] ${r.content || r.mediaId || ''}`;
+    case 'news': return `[图文] ${(r.newsArticles ?? []).map((a) => a.title).join('、')}`;
+    default: return r.content ?? '';
+  }
+}
+
+const emptyArticle = (): MpReplyArticle => ({ title: '', description: '', picUrl: '', url: '' });
 
 export default function MpAutoRepliesPage() {
   const { hasPermission: can } = usePermission();
@@ -41,9 +61,12 @@ export default function MpAutoRepliesPage() {
   const searchRef = useRef<SearchParams>(defaultSearch);
   searchRef.current = searchParams;
 
+  const [materials, setMaterials] = useState<MpMaterial[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpAutoReply | null>(null);
   const [modalType, setModalType] = useState<MpAutoReplyType>('keyword');
+  const [contentType, setContentType] = useState<MpReplyContentType>('text');
+  const [articles, setArticles] = useState<MpReplyArticle[]>([emptyArticle()]);
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<FormApi>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
@@ -65,32 +88,71 @@ export default function MpAutoRepliesPage() {
         setPage(res.data?.page ?? p);
         setPageSize(res.data?.pageSize ?? ps);
       } finally {
-        setLoading(false);
+        if (currentIdRef.current === reqId) setLoading(false);
       }
     },
     [page, pageSize, currentId, currentIdRef, setPage, setPageSize],
   );
 
-  useEffect(() => { setPage(1); void fetchList(1, pageSize, searchRef.current); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [currentId]);
+  const fetchMaterials = useCallback(async (accountId: number) => {
+    const res = await request.get<PaginatedResponse<MpMaterial>>(`/api/mp/materials?accountId=${accountId}&page=1&pageSize=200`);
+    if (currentIdRef.current !== accountId) return;
+    setMaterials((res.data?.list ?? []).filter((m) => m.wechatMediaId));
+  }, [currentIdRef]);
+
+  useEffect(() => {
+    setPage(1);
+    void fetchList(1, pageSize, searchRef.current);
+    if (currentId) void fetchMaterials(currentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId]);
 
   const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => { setSearchParams(defaultSearch); setPage(1); void fetchList(1, pageSize, defaultSearch); };
 
-  const openCreate = () => { setEditingRecord(null); setModalType('keyword'); setModalVisible(true); };
-  const openEdit = (record: MpAutoReply) => { setEditingRecord(record); setModalType(record.replyType); setModalVisible(true); };
+  const openCreate = () => {
+    setEditingRecord(null); setModalType('keyword'); setContentType('text'); setArticles([emptyArticle()]); setModalVisible(true);
+  };
+  const openEdit = (record: MpAutoReply) => {
+    setEditingRecord(record); setModalType(record.replyType); setContentType(record.contentType);
+    setArticles(record.newsArticles?.length ? record.newsArticles.map((a) => ({ ...a })) : [emptyArticle()]);
+    setModalVisible(true);
+  };
+
+  const materialOptions = (type: MpReplyContentType) =>
+    materials.filter((m) => m.type === type).map((m) => ({ label: `${m.name}（${m.wechatMediaId}）`, value: m.wechatMediaId as string }));
 
   const handleSubmit = async () => {
     let values: Awaited<ReturnType<FormApi['validate']>>;
     try { values = (await formRef.current?.validate())!; } catch { return; }
     if (!currentId) return;
+
+    const payload: Record<string, unknown> = {
+      contentType,
+      matchType: values.matchType,
+      keyword: values.keyword,
+      sort: values.sort,
+      status: values.status,
+    };
+    if (contentType === 'text') {
+      payload.content = values.content;
+    } else if (contentType === 'news') {
+      const valid = articles.filter((a) => a.title.trim() && a.url.trim());
+      if (valid.length === 0) { Toast.error('图文回复至少需要一篇有标题和链接的文章'); return; }
+      payload.newsArticles = valid;
+    } else {
+      payload.mediaId = values.mediaId;
+      if (contentType === 'video') payload.content = values.content || undefined;
+    }
+
     setSubmitting(true);
     try {
       if (editingRecord) {
-        const res = await request.put(`/api/mp/auto-replies/${editingRecord.id}`, values);
+        const res = await request.put(`/api/mp/auto-replies/${editingRecord.id}`, payload);
         if (res.code !== 0) return;
         Toast.success('更新成功');
       } else {
-        const res = await request.post('/api/mp/auto-replies', { ...values, accountId: currentId, replyType: modalType });
+        const res = await request.post('/api/mp/auto-replies', { ...payload, accountId: currentId, replyType: modalType });
         if (res.code !== 0) return;
         Toast.success('创建成功');
       }
@@ -122,14 +184,19 @@ export default function MpAutoRepliesPage() {
     });
   };
 
+  const updateArticle = (idx: number, patch: Partial<MpReplyArticle>) => {
+    setArticles((prev) => prev.map((a, i) => (i === idx ? { ...a, ...patch } : a)));
+  };
+
   const columns = [
     {
       title: '类型', dataIndex: 'replyType', width: 110,
       render: (v: MpAutoReplyType) => <Tag color={TYPE_TAG_COLOR[v]} type="light">{REPLY_TYPE_OPTIONS.find((t) => t.value === v)?.label ?? v}</Tag>,
     },
-    { title: '关键词', dataIndex: 'keyword', width: 140, render: (v: string | null) => v || '—' },
-    { title: '匹配', dataIndex: 'matchType', width: 90, render: (v: string, r: MpAutoReply) => (r.replyType === 'keyword' ? (v === 'exact' ? '全匹配' : '包含') : '—') },
-    { title: '回复内容', dataIndex: 'content', width: 280, render: renderEllipsis },
+    { title: '关键词', dataIndex: 'keyword', width: 130, render: (v: string | null) => v || '—' },
+    { title: '匹配', dataIndex: 'matchType', width: 80, render: (v: string, r: MpAutoReply) => (r.replyType === 'keyword' ? (v === 'exact' ? '全匹配' : '包含') : '—') },
+    { title: '内容类型', dataIndex: 'contentType', width: 90, render: (v: MpReplyContentType) => <Tag type="light" color="violet">{CONTENT_TYPE_LABEL[v]}</Tag> },
+    { title: '回复内容', dataIndex: 'content', width: 260, render: (_: unknown, r: MpAutoReply) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{summarizeReply(r)}</Typography.Text> },
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, align: 'center' as const, fixed: 'right' as const,
@@ -171,15 +238,15 @@ export default function MpAutoRepliesPage() {
 
       <AppModal title={editingRecord ? '编辑自动回复' : '新增自动回复'} visible={modalVisible}
         onOk={handleSubmit} onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
-        confirmLoading={submitting} width={600}>
+        confirmLoading={submitting} width={640}>
         <Spin spinning={false} wrapperClassName="modal-spin-wrapper">
           <Form
             key={editingRecord?.id ?? `new-${modalType}`}
             getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
             labelPosition="left" labelWidth={90}
             initValues={editingRecord
-              ? { keyword: editingRecord.keyword ?? '', matchType: editingRecord.matchType, content: editingRecord.content ?? '', status: editingRecord.status, sort: editingRecord.sort }
-              : { matchType: 'contain', content: '', status: 'enabled', sort: 0 }}
+              ? { keyword: editingRecord.keyword ?? '', matchType: editingRecord.matchType, content: editingRecord.content ?? '', mediaId: editingRecord.mediaId ?? '', status: editingRecord.status, sort: editingRecord.sort }
+              : { matchType: 'contain', content: '', mediaId: '', status: 'enabled', sort: 0 }}
           >
             <Row gutter={16}>
               <Col span={12}>
@@ -205,8 +272,59 @@ export default function MpAutoRepliesPage() {
                 </Col>
               </Row>
             )}
-            <Form.TextArea field="content" label="回复内容" rows={4} placeholder="请输入回复内容"
-              rules={[{ required: true, message: '请输入回复内容' }]} />
+
+            <Form.Slot label="内容类型">
+              <Select style={{ width: '100%' }} optionList={CONTENT_TYPE_OPTIONS} value={contentType}
+                onChange={(v) => setContentType(v as MpReplyContentType)} />
+            </Form.Slot>
+
+            {contentType === 'text' && (
+              <Form.TextArea field="content" label="回复内容" rows={4} placeholder="请输入回复内容"
+                rules={[{ required: true, message: '请输入回复内容' }]} />
+            )}
+
+            {(contentType === 'image' || contentType === 'voice' || contentType === 'video') && (
+              <>
+                <Form.Select field="mediaId" label="素材" style={{ width: '100%' }} filter showClear
+                  placeholder={`请选择${CONTENT_TYPE_LABEL[contentType]}素材（来自素材库的永久素材）`}
+                  optionList={materialOptions(contentType)}
+                  rules={[{ required: true, message: '请选择素材' }]}
+                  emptyContent="暂无对应类型的永久素材，请先在「素材管理」上传" />
+                {contentType === 'video' && (
+                  <Form.Input field="content" label="视频标题" placeholder="可选，被动回复时作为视频标题" />
+                )}
+              </>
+            )}
+
+            {contentType === 'news' && (
+              <Form.Slot label="图文文章">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {articles.map((a, idx) => (
+                    <div key={idx} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 6, padding: 12, position: 'relative' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Typography.Text type="secondary" size="small">文章 {idx + 1}</Typography.Text>
+                        {articles.length > 1 && (
+                          <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={13} />}
+                            onClick={() => setArticles((prev) => prev.filter((_, i) => i !== idx))} />
+                        )}
+                      </div>
+                      <Space vertical style={{ width: '100%' }} spacing={8}>
+                        <Input prefix="标题" value={a.title} onChange={(v) => updateArticle(idx, { title: v })} placeholder="必填" />
+                        <Input prefix="链接" value={a.url} onChange={(v) => updateArticle(idx, { url: v })} placeholder="必填，https://" />
+                        <Input prefix="封面" value={a.picUrl ?? ''} onChange={(v) => updateArticle(idx, { picUrl: v })} placeholder="可选，图片 URL" />
+                        <Input prefix="摘要" value={a.description ?? ''} onChange={(v) => updateArticle(idx, { description: v })} placeholder="可选" />
+                      </Space>
+                    </div>
+                  ))}
+                  {articles.length < 8 && (
+                    <Button theme="light" type="primary" icon={<Plus size={13} />} onClick={() => setArticles((prev) => [...prev, emptyArticle()])}>
+                      添加文章
+                    </Button>
+                  )}
+                </div>
+              </Form.Slot>
+            )}
+
             <Form.Select field="status" label="状态" style={{ width: '100%' }}
               optionList={[{ label: '启用', value: 'enabled' }, { label: '禁用', value: 'disabled' }]} />
           </Form>

@@ -4,7 +4,7 @@ import { Clock, Flag, Mail, RefreshCw, Send, type LucideIcon } from 'lucide-reac
 import type { WorkflowApproverPreviewNode } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
-import { timelineDot } from '@/components/ApprovalTimeline';
+import { timelineDot } from '@/components/workflow/timeline-dot';
 
 type TagColor = 'blue' | 'orange' | 'purple' | 'grey';
 
