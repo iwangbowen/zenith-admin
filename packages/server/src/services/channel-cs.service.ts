@@ -312,6 +312,7 @@ export async function listChannelConversations(channelId: number): Promise<Chann
     userId: channelMessageTargets.userId,
     content: channelMessages.content,
     createdAt: channelMessages.createdAt,
+    senderUserId: channelMessages.senderUserId,
   }).from(channelMessages)
     .innerJoin(channelMessageTargets, eq(channelMessageTargets.messageId, channelMessages.id))
     .where(and(
@@ -331,7 +332,9 @@ export async function listChannelConversations(channelId: number): Promise<Chann
     const outs = outRows.filter((r) => r.userId === uid);
     const lastIn = ins[ins.length - 1];
     const lastOut = outs.length ? outs[outs.length - 1] : null;
-    const lastOutId = lastOut ? lastOut.id : 0;
+    // 待人工回复：最近一条「人工客服」回复（senderUserId 非空）之后的用户消息；
+    // 自动回复（senderUserId=null）不清除待办，否则配置了默认兜底回复后未读永远为 0。
+    const lastAgentOutId = outs.reduce((max, o) => (o.senderUserId != null && o.id > max ? o.id : max), 0);
     const useIn = !lastOut || lastIn.id > lastOut.id;
     const u = userMap.get(uid);
     return {
@@ -342,7 +345,7 @@ export async function listChannelConversations(channelId: number): Promise<Chann
       lastMessage: useIn ? lastIn.content : lastOut!.content,
       lastDirection: useIn ? 'in' : 'out',
       lastMessageAt: formatDateTime(useIn ? lastIn.createdAt : lastOut!.createdAt),
-      unreadCount: ins.filter((r) => r.id > lastOutId).length,
+      unreadCount: ins.filter((r) => r.id > lastAgentOutId).length,
       messageCount: ins.length + outs.length,
     };
   });

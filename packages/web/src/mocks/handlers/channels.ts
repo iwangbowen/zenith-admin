@@ -180,7 +180,8 @@ export const channelsHandlers = [
       const outs = mockChannelMessages.filter((m) => m.channelId === channelId && m.direction === 'out' && m.convUserId === uid).sort((a, b) => a.id - b.id);
       const lastIn = userIns[userIns.length - 1];
       const lastOut = outs.length ? outs[outs.length - 1] : null;
-      const lastOutId = lastOut ? lastOut.id : 0;
+      // 待人工回复：最近一条人工客服回复（senderUserId 非空）之后的用户消息（自动回复不清除待办）
+      const lastAgentOutId = outs.reduce((max, o) => (o.senderUserId != null && o.id > max ? o.id : max), 0);
       const useIn = !lastOut || lastIn.id > lastOut.id;
       return {
         channelId, userId: uid,
@@ -189,7 +190,7 @@ export const channelsHandlers = [
         lastMessage: useIn ? lastIn.content : lastOut!.content,
         lastDirection: useIn ? 'in' as const : 'out' as const,
         lastMessageAt: useIn ? lastIn.createdAt : lastOut!.createdAt,
-        unreadCount: userIns.filter((m) => m.id > lastOutId).length,
+        unreadCount: userIns.filter((m) => m.id > lastAgentOutId).length,
         messageCount: userIns.length + outs.length,
       };
     }).sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
