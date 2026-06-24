@@ -401,6 +401,93 @@
   background: var(--semi-color-danger-light-default);
 }
 
+.fd-options-editor__delete:disabled {
+  color: var(--semi-color-disabled-text);
+  cursor: not-allowed;
+}
+
+.fd-options-editor__color {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--semi-color-border);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.fd-options-editor__flag {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.fd-options-editor__flag:hover {
+  background: var(--semi-color-fill-1);
+}
+
+.fd-options-editor__flag--active {
+  color: var(--semi-color-warning);
+  background: var(--semi-color-warning-light-default);
+}
+
+/* ─── 公式函数插入助手 ───────────────────────────────────────────── */
+
+.fd-formula-fns {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.fd-formula-fns__label {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.fd-formula-fns__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fd-formula-fns__chip {
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 4px;
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+}
+
+.fd-formula-fns__chip:hover {
+  border-color: var(--semi-color-primary);
+  color: var(--semi-color-primary);
+}
+
+/* ─── 跨字段比较校验 ─────────────────────────────────────────────── */
+
+.fd-compare-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.fd-compare-rules__row {
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  padding: 6px;
+}
+
 /* ─── 明细子字段编辑器 ───────────────────────────────────────────── */
 
 .fd-detail-children {
