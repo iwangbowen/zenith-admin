@@ -40,6 +40,16 @@ export const mpKfSessionsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: ensureMpKfConfig(accountId) });
   }),
 
+  http.get('/api/mp/kf-sessions/report', ({ request }) => {
+    const days = Number(new URL(request.url).searchParams.get('days') ?? '7');
+    const out = [];
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      out.push({ date: d.toISOString().slice(0, 10), created: Math.floor(Math.random() * 6), closed: Math.floor(Math.random() * 5), avgWaitSeconds: 20 + Math.floor(Math.random() * 40), avgRating: 4 + Math.round(Math.random() * 10) / 10 });
+    }
+    return HttpResponse.json({ code: 0, message: 'ok', data: out });
+  }),
+
   http.put('/api/mp/kf-sessions/config', async ({ request }) => {
     const accountId = Number(new URL(request.url).searchParams.get('accountId') ?? '0');
     const body = await request.json() as Record<string, unknown>;
@@ -76,6 +86,14 @@ export const mpKfSessionsHandlers = [
     s.status = 'closed'; s.closedAt = now; s.closeReason = 'manual'; s.unreadCount = 0;
     mockMpKfSessionEvents.push({ id: getNextMpKfEventId(), sessionId: s.id, accountId: s.accountId, type: 'close', fromKfId: s.kfId, toKfId: null, fromKfNickname: kfNick(s.kfId), toKfNickname: null, operatorId: null, operatorName: '管理员', detail: '手动结束', createdAt: now });
     return HttpResponse.json({ code: 0, message: '已结束', data: s });
+  }),
+
+  http.post('/api/mp/kf-sessions/:id/rate', async ({ params, request }) => {
+    const s = mockMpKfSessions.find((x) => x.id === Number(params.id));
+    if (!s) return HttpResponse.json({ code: 404, message: '会话不存在', data: null }, { status: 404 });
+    const body = await request.json() as { rating: number; remark?: string };
+    s.rating = body.rating; s.ratingRemark = body.remark ?? null;
+    return HttpResponse.json({ code: 0, message: '已记录', data: s });
   }),
 
   http.post('/api/mp/kf-sessions/:id/reply', async ({ params, request }) => {

@@ -4,6 +4,18 @@ import { mockDateTime } from '@/mocks/utils/date';
 import type { MpAutoReply } from '@zenith/shared';
 
 export const mpAutoRepliesHandlers = [
+  http.get('/api/mp/auto-replies/unmatched', ({ request }) => {
+    const accountId = Number(new URL(request.url).searchParams.get('accountId') ?? '0');
+    const demo = [
+      { id: 1, accountId, keyword: '退款', count: 12, lastAt: mockDateTime() },
+      { id: 2, accountId, keyword: '发货时间', count: 7, lastAt: mockDateTime() },
+      { id: 3, accountId, keyword: '怎么投诉', count: 3, lastAt: mockDateTime() },
+    ];
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list: demo, total: demo.length, page: 1, pageSize: 20 } });
+  }),
+
+  http.delete('/api/mp/auto-replies/unmatched/:id', () => HttpResponse.json({ code: 0, message: '已删除', data: null })),
+
   http.get('/api/mp/auto-replies', ({ request }) => {
     const url = new URL(request.url);
     const accountId = Number(url.searchParams.get('accountId') ?? '0');

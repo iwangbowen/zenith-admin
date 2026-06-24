@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag, Toast, Switch, Banner, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
-import type { PaginatedResponse, MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle, MpMaterial } from '@zenith/shared';
+import { Plus, RotateCcw, Search, Trash2, Flame } from 'lucide-react';
+import type { PaginatedResponse, MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle, MpMaterial, MpUnmatchedKeyword } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -21,6 +21,7 @@ const REPLY_TYPE_OPTIONS = [
 const MATCH_OPTIONS = [
   { label: '全匹配', value: 'exact' },
   { label: '包含匹配', value: 'contain' },
+  { label: '正则匹配', value: 'regex' },
 ];
 const CONTENT_TYPE_OPTIONS = [
   { label: '文本', value: 'text' },
@@ -133,6 +134,7 @@ export default function MpAutoRepliesPage() {
       keyword: values.keyword,
       sort: values.sort,
       status: values.status,
+      transferToKf: values.transferToKf ?? false,
     };
     if (contentType === 'text') {
       payload.content = values.content;
@@ -216,6 +218,25 @@ export default function MpAutoRepliesPage() {
     },
   ];
 
+  const [hotwordsVisible, setHotwordsVisible] = useState(false);
+  const [hotwords, setHotwords] = useState<MpUnmatchedKeyword[]>([]);
+  const [hotwordsLoading, setHotwordsLoading] = useState(false);
+
+  const openHotwords = async () => {
+    if (!currentId) return;
+    setHotwordsVisible(true);
+    setHotwordsLoading(true);
+    try {
+      const res = await request.get<PaginatedResponse<MpUnmatchedKeyword>>(`/api/mp/auto-replies/unmatched?accountId=${currentId}&page=1&pageSize=50`);
+      setHotwords(res.data?.list ?? []);
+    } finally { setHotwordsLoading(false); }
+  };
+
+  const handleDeleteHotword = async (id: number) => {
+    const res = await request.delete(`/api/mp/auto-replies/unmatched/${id}`);
+    if (res.code === 0) setHotwords((prev) => prev.filter((h) => h.id !== id));
+  };
+
   return (
     <div className="page-container">
       <SearchToolbar>
@@ -227,6 +248,7 @@ export default function MpAutoRepliesPage() {
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         {can('mp:reply:create') && <Button type="primary" icon={<Plus size={14} />} disabled={!currentId} onClick={openCreate}>新增</Button>}
+        {can('mp:reply:list') && <Button icon={<Flame size={14} />} disabled={!currentId} onClick={() => void openHotwords()}>未命中热词</Button>}
       </SearchToolbar>
 
       {!accountsLoading && accounts.length === 0 && (
@@ -245,8 +267,8 @@ export default function MpAutoRepliesPage() {
             getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
             labelPosition="left" labelWidth={90}
             initValues={editingRecord
-              ? { keyword: editingRecord.keyword ?? '', matchType: editingRecord.matchType, content: editingRecord.content ?? '', mediaId: editingRecord.mediaId ?? '', status: editingRecord.status, sort: editingRecord.sort }
-              : { matchType: 'contain', content: '', mediaId: '', status: 'enabled', sort: 0 }}
+              ? { keyword: editingRecord.keyword ?? '', matchType: editingRecord.matchType, content: editingRecord.content ?? '', mediaId: editingRecord.mediaId ?? '', status: editingRecord.status, sort: editingRecord.sort, transferToKf: editingRecord.transferToKf }
+              : { matchType: 'contain', content: '', mediaId: '', status: 'enabled', sort: 0, transferToKf: false }}
           >
             <Row gutter={16}>
               <Col span={12}>
@@ -327,7 +349,26 @@ export default function MpAutoRepliesPage() {
 
             <Form.Select field="status" label="状态" style={{ width: '100%' }}
               optionList={[{ label: '启用', value: 'enabled' }, { label: '禁用', value: 'disabled' }]} />
+            <Form.Switch field="transferToKf" label="命中转人工" extraText="命中该关键词后引导粉丝进入多客服会话队列" />
           </Form>
+        </Spin>
+      </AppModal>
+
+      <AppModal title="未命中热词（优化关键词库参考）" visible={hotwordsVisible} footer={null}
+        onCancel={() => setHotwordsVisible(false)} width={520}>
+        <Spin spinning={hotwordsLoading}>
+          {hotwords.length === 0 ? <Typography.Text type="tertiary">暂无未命中热词记录</Typography.Text> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
+              {hotwords.map((h) => (
+                <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid var(--semi-color-border)', borderRadius: 6 }}>
+                  <Tag color="orange" type="light">{h.count} 次</Tag>
+                  <span style={{ flex: 1 }}>{h.keyword}</span>
+                  <Typography.Text type="tertiary" size="small">{h.lastAt}</Typography.Text>
+                  <Button theme="borderless" size="small" type="danger" icon={<Trash2 size={12} />} onClick={() => void handleDeleteHotword(h.id)} />
+                </div>
+              ))}
+            </div>
+          )}
         </Spin>
       </AppModal>
     </div>

@@ -2022,8 +2022,14 @@ export async function withdrawInstance(id: number) {
     throw new HTTPException(400, { message: '该流程不允许发起人撤回' });
   }
   const { row: updated, cancelledTasks } = await db.transaction(async (tx) => {
+    // 实例行级锁 + 锁内重校验：避免与并发审批推进竞态（撤回时流程正被推进，导致状态互相覆盖或残留任务）
+    const [locked] = await tx.select({ status: workflowInstances.status })
+      .from(workflowInstances).where(eq(workflowInstances.id, id)).for('update').limit(1);
+    if (!locked || locked.status !== 'running') {
+      throw new HTTPException(409, { message: '流程实例状态已变化，请刷新后重试' });
+    }
     const cancelled = await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
-      .where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending')))
+      .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])))
       .returning();
     const [row] = await tx.update(workflowInstances).set({ status: 'withdrawn' }).where(and(...conditions)).returning();
     return { row, cancelledTasks: cancelled };
@@ -2317,25 +2323,6 @@ export async function rejectTaskCore(
   actor: WorkflowEventActor,
 ): Promise<ApproveResult> {
   const taskId = task.id;
-  // 比例会签：在阈值仍可达成时，仅标记当前任务 rejected，不触发整节点驳回
-  if (task.approveMethod === 'ratio' && task.approveRatio) {
-    const siblings = await db.select().from(workflowTasks)
-      .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, task.nodeKey)));
-    const total = siblings.length;
-    const required = Math.ceil(total * task.approveRatio / 100);
-    const rejectedAfter = siblings.filter((t) => t.status === 'rejected').length + 1;
-    const maxPossibleApproved = total - rejectedAfter;
-    if (maxPossibleApproved >= required) {
-      const [rejectedTask] = await db.update(workflowTasks)
-        .set({ status: 'rejected', comment, actionAt: new Date() })
-        .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status)))
-        .returning();
-      if (!rejectedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
-      const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
-      emitTaskEvent('task.rejected', mapTask(rejectedTask), { ...meta, comment });
-      return { instance: mapInstance(inst), message: '已驳回' };
-    }
-  }
   // 读取节点驳回策略
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
   const flowData = snapshot?.flowData;
@@ -2388,6 +2375,30 @@ export async function rejectTaskCore(
       .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status)))
       .returning();
     if (!rejectedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
+
+    // 比例会签：本任务驳回后若阈值仍可达成，仅记录该任务驳回、节点保持活动。
+    // 必须在实例行级锁内基于最新状态判定，避免并发驳回各自读到旧状态、都不触发整节点驳回而使节点卡死。
+    if (rejectedTask.approveMethod === 'ratio') {
+      const ratioSiblings = await tx.select().from(workflowTasks)
+        .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, task.nodeKey)));
+      const ratioPct = ratioSiblings.find((t) => t.approveRatio)?.approveRatio ?? 51;
+      const required = Math.ceil(ratioSiblings.length * ratioPct / 100);
+      const maxPossibleApproved = ratioSiblings
+        .filter((t) => t.status === 'approved' || t.status === 'pending' || t.status === 'waiting')
+        .length;
+      if (maxPossibleApproved >= required) {
+        return {
+          row: inst,
+          terminated: false as const,
+          finished: false as const,
+          partial: true as const,
+          rejectedTask,
+          skippedTasks: [] as typeof workflowTasks.$inferSelect[],
+          newTasks: [] as typeof workflowTasks.$inferSelect[],
+        };
+      }
+    }
+
     // 同节点其他 pending / waiting 任务跳过
     const skipped = await tx.update(workflowTasks)
       .set({ status: 'skipped', actionAt: new Date() })
@@ -2484,6 +2495,10 @@ export async function rejectTaskCore(
 
   const meta = { definitionId: updated.row.definitionId, tenantId: updated.row.tenantId, actor };
   emitTaskEvent('task.rejected', mapTask(updated.rejectedTask), { ...meta, comment });
+  // 比例会签部分驳回：节点仍活动，仅记录该任务驳回，不发节点离开 / 实例状态事件
+  if ((updated as { partial?: boolean }).partial) {
+    return { instance: mapInstance(updated.row), message: '已驳回' };
+  }
   for (const t of updated.skippedTasks) {
     emitTaskEvent('task.skipped', mapTask(t), meta);
   }

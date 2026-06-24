@@ -167,6 +167,10 @@ export default function MpStatisticsPage() {
               rows={datacube.upstreamMsg.map((r) => [r.refDate.slice(5), String(r.msgUser), String(r.msgCount)])} />
             <DatacubeTable title="图文阅读" head={['日期', '页面阅读']}
               rows={datacube.articleSummary.map((r) => [r.refDate.slice(5), String(r.pageReadCount)])} />
+            <DatacubeTable title="图文分享转发" head={['日期', '转发次数', '转发人数']}
+              rows={datacube.userShare.map((r) => [r.refDate.slice(5), String(r.shareCount), String(r.shareUser)])} />
+            <DatacubeTable title="接口分析" head={['日期', '调用', '失败', '最大耗时ms']}
+              rows={datacube.interfaceSummary.map((r) => [r.refDate.slice(5), String(r.callbackCount), String(r.failCount), String(r.maxTimeCost)])} />
           </div>
         ) : (
           <Typography.Text type="tertiary">点击「查询」拉取微信侧真实统计数据。</Typography.Text>

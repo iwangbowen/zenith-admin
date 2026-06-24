@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  Avatar, Badge, Banner, Button, Empty, Form, Input, Modal, Select, Space, Spin, Tabs, TabPane, Tag, Toast, Typography,
+  Avatar, Badge, Banner, Button, Empty, Form, Input, Modal, Rating, Select, Space, Spin, Tabs, TabPane, Tag, Toast, Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import {
-  Search, RotateCcw, RefreshCw, Settings, Send, UserCheck, ArrowRightLeft, XCircle, MessageSquare,
+  Search, RotateCcw, RefreshCw, Settings, Send, UserCheck, ArrowRightLeft, XCircle, MessageSquare, Star,
 } from 'lucide-react';
 import type {
   MpKfSession, MpKfSessionDetail, MpKfSessionStats, MpKfRoutingConfig, MpKfSessionStatus,
@@ -77,6 +77,20 @@ export default function MpKfSessionsPage() {
   const [config, setConfig] = useState<MpKfRoutingConfig | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
   const configFormRef = useRef<FormApi>(null);
+
+  const [rateVisible, setRateVisible] = useState(false);
+  const [rateValue, setRateValue] = useState(5);
+  const [rateRemark, setRateRemark] = useState('');
+  const [rating, setRating] = useState(false);
+
+  const handleRate = async () => {
+    if (!detail) return;
+    setRating(true);
+    try {
+      const res = await request.post(`/api/mp/kf-sessions/${detail.id}/rate`, { rating: rateValue, remark: rateRemark || undefined });
+      if (res.code === 0) { Toast.success('已记录评分'); setRateVisible(false); void fetchDetail(detail.id); void fetchStats(); }
+    } finally { setRating(false); }
+  };
 
   const fetchSessions = useCallback(async (status = tabRef.current, kw = keywordRef.current) => {
     if (!currentId) { setSessions([]); return; }
@@ -243,6 +257,7 @@ export default function MpKfSessionsPage() {
           <StatCard label="进行中" value={stats.active} color="#52c41a" />
           <StatCard label="今日已结束" value={stats.closedToday} color="#8c8c8c" />
           <StatCard label="今日平均等待(秒)" value={stats.avgWaitSeconds} color="#1677ff" />
+          <StatCard label="今日满意度" value={stats.avgRating} color="#eb2f96" />
           <div style={{ flex: 1, minWidth: 220, border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Text type="tertiary" size="small">客服负载：</Text>
             {stats.agents.length === 0 && <Text type="tertiary" size="small">暂无客服</Text>}
@@ -321,6 +336,11 @@ export default function MpKfSessionsPage() {
                   )}
                   {detail.status !== 'closed' && can('mp:kf:session:close') && (
                     <Button size="small" type="danger" icon={<XCircle size={14} />} onClick={handleClose}>结束</Button>
+                  )}
+                  {detail.status === 'closed' && can('mp:kf:session:close') && (
+                    <Button size="small" icon={<Star size={14} />} onClick={() => { setRateValue(detail.rating ?? 5); setRateRemark(detail.ratingRemark ?? ''); setRateVisible(true); }}>
+                      {detail.rating ? `评分 ${detail.rating}★` : '满意度评分'}
+                    </Button>
                   )}
                 </Space>
               </div>
@@ -413,6 +433,14 @@ export default function MpKfSessionsPage() {
             <Form.TextArea field="welcomeText" label="接入欢迎语" maxCount={500} maxLength={500} autosize rows={2} placeholder="客服接入后自动发送（留空则不发送）" />
           </Form>
         )}
+      </AppModal>
+
+      <AppModal title="会话满意度评分" visible={rateVisible} confirmLoading={rating}
+        onOk={() => void handleRate()} onCancel={() => setRateVisible(false)} width={400}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', padding: '8px 0' }}>
+          <Rating value={rateValue} onChange={setRateValue} size={28} />
+          <Input value={rateRemark} onChange={setRateRemark} placeholder="评价备注（可选）" maxLength={255} style={{ width: '100%' }} />
+        </div>
       </AppModal>
     </div>
   );

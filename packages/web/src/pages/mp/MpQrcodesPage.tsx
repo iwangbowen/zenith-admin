@@ -84,6 +84,7 @@ export default function MpQrcodesPage() {
       name: values.name,
     };
     if (modalType === 'temporary') payload.expireSeconds = values.expireSeconds;
+    payload.rewardPoints = values.rewardPoints ?? 0;
 
     setSubmitting(true);
     try {
@@ -116,6 +117,7 @@ export default function MpQrcodesPage() {
     { title: '场景值', dataIndex: 'sceneStr', width: 180, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
     { title: '类型', dataIndex: 'type', width: 90, render: (v: MpQrcodeType) => <Tag color={TYPE_META[v].color} type="light">{TYPE_META[v].label}</Tag> },
     { title: '扫码次数', dataIndex: 'scanCount', width: 100, align: 'center' as const },
+    { title: '奖励积分', dataIndex: 'rewardPoints', width: 100, align: 'center' as const, render: (v: number) => (v > 0 ? <Typography.Text type="success">+{v}</Typography.Text> : '—') },
     {
       title: '二维码', dataIndex: 'url', width: 90, align: 'center' as const,
       render: (v: string | null) => (v
@@ -160,7 +162,7 @@ export default function MpQrcodesPage() {
             key={`new-${modalType}`}
             getFormApi={(api) => { (formRef as { current: FormApi }).current = api; }}
             labelPosition="left" labelWidth={90}
-            initValues={{ sceneStr: '', name: '', expireSeconds: 604800 }}
+            initValues={{ sceneStr: '', name: '', expireSeconds: 604800, rewardPoints: 0 }}
           >
             <Form.Slot label="二维码类型">
               <Select style={{ width: '100%' }} optionList={TYPE_OPTIONS} value={modalType} onChange={(v) => setModalType(v as MpQrcodeType)} />
@@ -173,6 +175,8 @@ export default function MpQrcodesPage() {
               <Form.InputNumber field="expireSeconds" label="有效期(秒)" style={{ width: '100%' }} min={60} max={2592000} step={60}
                 rules={[{ required: true, message: '请设置有效期' }]} />
             )}
+            <Form.InputNumber field="rewardPoints" label="扫码奖励积分" style={{ width: '100%' }} min={0} max={100000}
+              extraText="扫码关注的粉丝若已绑定会员，自动入账该积分；0 表示不奖励" />
           </Form>
         </Spin>
       </AppModal>
