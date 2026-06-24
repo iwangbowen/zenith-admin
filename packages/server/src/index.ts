@@ -514,6 +514,10 @@ try {
   await registerSystemRecurringJob('mp-kf-session-tick', '* * * * *', async () => {
     await runMpKfSessionTimeouts();
   });
+  const { runDueMpBroadcasts } = await import('./services/mp-broadcast.service');
+  await registerSystemRecurringJob('mp-broadcast-tick', '* * * * *', async () => {
+    await runDueMpBroadcasts();
+  });
 } catch (err) {
   logger.error('Failed to initialize cron scheduler', err);
 }
