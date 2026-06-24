@@ -397,6 +397,13 @@ async function resolveAudienceUserIds(audience: ChannelPublishAudienceInput): Pr
   }
 }
 
+/** 预估群发受众触达人数（all=全员数；其余=展开去重后的用户数） */
+export async function estimateAudience(audience: ChannelPublishAudienceInput): Promise<number> {
+  const ids = await resolveAudienceUserIds(audience);
+  if (ids === null) return db.$count(users);
+  return new Set(ids).size;
+}
+
 /** 由群发入参构造底层消息载荷（type + content + extra） */
 function buildPublishPayload(input: PublishChannelInput, publishedById: number): PublishInput {
   if (input.type === 'image') {

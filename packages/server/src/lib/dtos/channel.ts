@@ -20,6 +20,7 @@ export const ChannelMessageDTO = z
     isRead: z.boolean(),
     status: z.enum(['sent', 'draft', 'scheduled']),
     scheduledAt: z.string().nullable(),
+    readByTarget: z.boolean().nullable().optional(),
     createdAt: z.string(),
   })
   .openapi('ChannelMessage');
@@ -105,8 +106,21 @@ export const ChannelConversationDTO = z
     lastMessageAt: z.string(),
     unreadCount: z.number().int(),
     messageCount: z.number().int(),
+    status: z.enum(['open', 'processing', 'resolved']),
+    assigneeId: z.number().int().nullable(),
+    assigneeName: z.string().nullable(),
+    tags: z.array(z.string()),
+    resolvedAt: z.string().nullable(),
   })
   .openapi('ChannelConversation');
+
+export const ChannelCsAgentDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    avatar: z.string().nullable(),
+  })
+  .openapi('ChannelCsAgent');
 
 export const ChannelCsChannelDTO = z
   .object({

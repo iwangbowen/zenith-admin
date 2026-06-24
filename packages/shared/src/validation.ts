@@ -1515,6 +1515,24 @@ export type CreateChannelQuickReplyInput = z.infer<typeof createChannelQuickRepl
 export const updateChannelQuickReplySchema = createChannelQuickReplySchema.partial();
 export type UpdateChannelQuickReplyInput = z.infer<typeof updateChannelQuickReplySchema>;
 
+/** 指派 / 转接会话（assigneeId 为 null = 取消指派） */
+export const assignConversationSchema = z.object({
+  assigneeId: z.number().int().positive().nullable(),
+});
+export type AssignConversationInput = z.infer<typeof assignConversationSchema>;
+
+/** 设置会话标签（整体替换） */
+export const setConversationTagsSchema = z.object({
+  tags: z.array(z.string().min(1).max(20)).max(10, '最多 10 个标签'),
+});
+export type SetConversationTagsInput = z.infer<typeof setConversationTagsSchema>;
+
+/** 群发受众预估请求（复用群发受众定义） */
+export const audienceEstimateSchema = z.object({
+  audience: channelPublishAudienceSchema,
+});
+export type AudienceEstimateInput = z.infer<typeof audienceEstimateSchema>;
+
 // ── 通话记录（结束后写入会话系统消息）──
 export const chatCallRecordSchema = z.object({
   callType: z.enum(['audio', 'video']),

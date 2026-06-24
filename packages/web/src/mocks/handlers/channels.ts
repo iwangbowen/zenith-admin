@@ -10,6 +10,25 @@ import { mockDateTime } from '@/mocks/utils/date';
 const CURRENT_USER_NAME = '超级管理员';
 let nextMenuId = 1000;
 
+/** 会话治理属性内存表（key=`${channelId}:${userId}`），默认 open/未分配/无标签 */
+interface ConvAttr { status: 'open' | 'processing' | 'resolved'; assigneeId: number | null; tags: string[]; resolvedAt: string | null; }
+const convAttrs = new Map<string, ConvAttr>();
+const convKey = (channelId: number, userId: number) => `${channelId}:${userId}`;
+function getConvAttr(channelId: number, userId: number): ConvAttr {
+  return convAttrs.get(convKey(channelId, userId)) ?? { status: 'open', assigneeId: null, tags: [], resolvedAt: null };
+}
+function setConvAttr(channelId: number, userId: number, patch: Partial<ConvAttr>): void {
+  convAttrs.set(convKey(channelId, userId), { ...getConvAttr(channelId, userId), ...patch });
+}
+
+/** Mock 可指派客服 */
+const MOCK_CS_AGENTS = [
+  { id: 1, name: '超级管理员', avatar: null as string | null },
+  { id: 2, name: '张三', avatar: null as string | null },
+  { id: 3, name: '李四', avatar: null as string | null },
+];
+const agentName = (id: number | null): string | null => (id == null ? null : (MOCK_CS_AGENTS.find((a) => a.id === id)?.name ?? null));
+
 /** 管理端群发请求体（文本 / 图片 / 图文 + 受众 + 立即/定时/草稿） */
 interface PublishBody {
   type?: 'text' | 'image' | 'news';
@@ -222,6 +241,10 @@ export const channelsHandlers = [
       createdAt: mockDateTime(), status: 'sent', scheduledAt: null, convUserId: MOCK_CURRENT_USER_ID,
     };
     mockChannelMessages.push(inMsg);
+    // 会话治理：用户来信 → 激活会话（resolved 重新打开）
+    if (getConvAttr(channelId, MOCK_CURRENT_USER_ID).status === 'resolved') {
+      setConvAttr(channelId, MOCK_CURRENT_USER_ID, { status: 'open', resolvedAt: null });
+    }
 
     const matched = matchAutoReply(channelId, body.content, 'message');
     let autoReply: ChannelMessage | null = null;
@@ -313,18 +336,27 @@ export const channelsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: list });
   }),
 
-  http.get('/api/channels/cs/:id/conversations', ({ params }) => {
+  http.get('/api/channels/cs/agents', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: MOCK_CS_AGENTS });
+  }),
+
+  http.get('/api/channels/cs/:id/conversations', ({ params, request }) => {
     const channelId = Number(params.id);
+    const url = new URL(request.url);
+    const fStatus = url.searchParams.get('status') as ConvAttr['status'] | null;
+    const fAssignee = url.searchParams.get('assignee');
+    const fKeyword = (url.searchParams.get('keyword') ?? '').trim().toLowerCase();
+    const fTag = url.searchParams.get('tag');
     const ins = mockChannelMessages.filter((m) => m.channelId === channelId && m.direction === 'in').sort((a, b) => a.id - b.id);
     const userIds = [...new Set(ins.map((m) => m.senderUserId).filter((x): x is number => x != null))];
-    const list: ChannelConversation[] = userIds.map((uid) => {
+    let list: ChannelConversation[] = userIds.map((uid) => {
       const userIns = ins.filter((m) => m.senderUserId === uid);
       const outs = mockChannelMessages.filter((m) => m.channelId === channelId && m.direction === 'out' && m.convUserId === uid).sort((a, b) => a.id - b.id);
       const lastIn = userIns[userIns.length - 1];
       const lastOut = outs.length ? outs[outs.length - 1] : null;
-      // 待人工回复：最近一条人工客服回复（senderUserId 非空）之后的用户消息（自动回复不清除待办）
       const lastAgentOutId = outs.reduce((max, o) => (o.senderUserId != null && o.id > max ? o.id : max), 0);
       const useIn = !lastOut || lastIn.id > lastOut.id;
+      const attr = getConvAttr(channelId, uid);
       return {
         channelId, userId: uid,
         userName: lastIn.senderUserName ?? `用户#${uid}`,
@@ -334,8 +366,18 @@ export const channelsHandlers = [
         lastMessageAt: useIn ? lastIn.createdAt : lastOut!.createdAt,
         unreadCount: userIns.filter((m) => m.id > lastAgentOutId).length,
         messageCount: userIns.length + outs.length,
+        status: attr.status,
+        assigneeId: attr.assigneeId,
+        assigneeName: agentName(attr.assigneeId),
+        tags: attr.tags,
+        resolvedAt: attr.resolvedAt,
       };
     }).sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+    if (fStatus) list = list.filter((c) => c.status === fStatus);
+    if (fAssignee === 'mine') list = list.filter((c) => c.assigneeId === MOCK_CURRENT_USER_ID);
+    else if (fAssignee === 'unassigned') list = list.filter((c) => c.assigneeId == null);
+    if (fTag) list = list.filter((c) => c.tags.includes(fTag));
+    if (fKeyword) list = list.filter((c) => c.userName.toLowerCase().includes(fKeyword) || c.lastMessage.toLowerCase().includes(fKeyword));
     return HttpResponse.json({ code: 0, message: 'ok', data: list });
   }),
 
@@ -347,7 +389,14 @@ export const channelsHandlers = [
     const pageSize = Number(url.searchParams.get('pageSize') ?? '50');
     const all = mockChannelMessages.filter((m) => m.channelId === channelId && m.convUserId === userId).sort((a, b) => b.id - a.id);
     const total = all.length;
-    const list = all.slice((page - 1) * pageSize, page * pageSize);
+    const outIds = all.filter((m) => m.direction === 'out' && m.audienceType === 'targeted').map((m) => m.id);
+    const maxOutId = outIds.length ? Math.max(...outIds) : 0;
+    // Q3 已读回执：最新一条客服消息显示「已送达」，更早的显示「已读」
+    const list = all.slice((page - 1) * pageSize, page * pageSize).map((m) =>
+      (m.direction === 'out' && m.audienceType === 'targeted')
+        ? { ...m, readByTarget: m.id !== maxOutId }
+        : m,
+    );
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
   }),
 
@@ -362,7 +411,33 @@ export const channelsHandlers = [
       createdAt: mockDateTime(), status: 'sent', scheduledAt: null, convUserId: userId,
     };
     mockChannelMessages.push(out);
+    // 会话治理：客服回复 → 处理中
+    setConvAttr(channelId, userId, { status: 'processing', resolvedAt: null });
     return HttpResponse.json({ code: 0, message: '已回复', data: out });
+  }),
+
+  // ── 会话治理（指派/转接 · 解决 · 标签 · 客服列表） ──────────
+  http.post('/api/channels/cs/:id/conversations/:userId/assign', async ({ params, request }) => {
+    const channelId = Number(params.id);
+    const userId = Number(params.userId);
+    const body = await request.json() as { assigneeId: number | null };
+    setConvAttr(channelId, userId, { assigneeId: body.assigneeId });
+    return HttpResponse.json({ code: 0, message: '已指派', data: null });
+  }),
+
+  http.post('/api/channels/cs/:id/conversations/:userId/resolve', ({ params }) => {
+    const channelId = Number(params.id);
+    const userId = Number(params.userId);
+    setConvAttr(channelId, userId, { status: 'resolved', resolvedAt: mockDateTime() });
+    return HttpResponse.json({ code: 0, message: '已解决', data: null });
+  }),
+
+  http.put('/api/channels/cs/:id/conversations/:userId/tags', async ({ params, request }) => {
+    const channelId = Number(params.id);
+    const userId = Number(params.userId);
+    const body = await request.json() as { tags: string[] };
+    setConvAttr(channelId, userId, { tags: body.tags });
+    return HttpResponse.json({ code: 0, message: '已保存', data: null });
   }),
 
   // ── 管理后台 ──────────────────────────────────────────────
@@ -430,6 +505,17 @@ export const channelsHandlers = [
     mockChannelMessages.unshift(msg);
     const okMsg = msg.status === 'draft' ? '已保存草稿' : msg.status === 'scheduled' ? '已设置定时发送' : '已发布';
     return HttpResponse.json({ code: 0, message: okMsg, data: msg });
+  }),
+
+  // 群发受众预估
+  http.post('/api/channels/audience-estimate', async ({ request }) => {
+    const body = await request.json() as { audience: { mode: string; userIds?: number[]; departmentIds?: number[]; roleIds?: number[] } };
+    const a = body.audience;
+    let count = 88;
+    if (a.mode === 'users') count = a.userIds?.length ?? 0;
+    else if (a.mode === 'departments') count = (a.departmentIds?.length ?? 0) * 12;
+    else if (a.mode === 'roles') count = (a.roleIds?.length ?? 0) * 25;
+    return HttpResponse.json({ code: 0, message: 'ok', data: { count } });
   }),
 
   // ── 订阅（运营号） ────────────────────────────────────────

@@ -1888,6 +1888,7 @@ export const channelMessageDirectionEnum = pgEnum('channel_message_direction', [
 export const channelMenuTypeEnum = pgEnum('channel_menu_type', ['click', 'view']);
 export const channelAutoReplyMatchEnum = pgEnum('channel_auto_reply_match', ['subscribe', 'keyword', 'default']);
 export const channelAutoReplyKeywordModeEnum = pgEnum('channel_auto_reply_keyword_mode', ['exact', 'contains']);
+export const channelConversationStatusEnum = pgEnum('channel_conversation_status', ['open', 'processing', 'resolved']);
 
 export const channels = pgTable('channels', {
   id: serial('id').primaryKey(),
@@ -2011,6 +2012,27 @@ export type NewChannelQuickReply = typeof channelQuickReplies.$inferInsert;
 
 export const channelQuickRepliesRelations = relations(channelQuickReplies, ({ one }) => ({
   channel: one(channels, { fields: [channelQuickReplies.channelId], references: [channels.id] }),
+}));
+
+// ─── Channel 客服会话治理（G：状态机 / 指派转接 / 标签；属性表 left join 到消息聚合） ──
+export const channelConversations = pgTable('channel_conversations', {
+  channelId: integer('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: channelConversationStatusEnum('status').notNull().default('open'),
+  assigneeId: integer('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+  tags: jsonb('tags').$type<string[]>().notNull().default([]),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [primaryKey({ columns: [t.channelId, t.userId] })]);
+export type ChannelConversationRow = typeof channelConversations.$inferSelect;
+export type NewChannelConversation = typeof channelConversations.$inferInsert;
+
+export const channelConversationsRelations = relations(channelConversations, ({ one }) => ({
+  channel: one(channels, { fields: [channelConversations.channelId], references: [channels.id] }),
+  user: one(users, { fields: [channelConversations.userId], references: [users.id] }),
+  assignee: one(users, { fields: [channelConversations.assigneeId], references: [users.id] }),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════

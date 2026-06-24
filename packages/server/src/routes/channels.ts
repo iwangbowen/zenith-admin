@@ -10,16 +10,18 @@ import {
   sendChannelMessageSchema, channelReplySchema, saveChannelMenusSchema,
   createChannelAutoReplySchema, updateChannelAutoReplySchema,
   createChannelQuickReplySchema, updateChannelQuickReplySchema,
+  assignConversationSchema, setConversationTagsSchema, audienceEstimateSchema,
 } from '@zenith/shared';
 import {
   ChannelDTO, ChannelMessageDTO, ChannelAdminDTO,
-  ChannelMenuDTO, ChannelAutoReplyDTO, ChannelConversationDTO, ChannelCsChannelDTO, ChannelQuickReplyDTO,
+  ChannelMenuDTO, ChannelAutoReplyDTO, ChannelConversationDTO, ChannelCsChannelDTO, ChannelQuickReplyDTO, ChannelCsAgentDTO,
 } from '../lib/openapi-dtos';
 import {
   listMyChannels, listChannelMessages, markChannelRead,
   listChannelsAdmin, createChannel, updateChannel, deleteChannel, publishToChannel,
   subscribeChannel, unsubscribeChannel, listDiscoverableChannels,
   listChannelMessageRecords, updateDeferredMessage, deleteDeferredMessage, publishDeferredMessageNow,
+  estimateAudience,
 } from '../services/channel.service';
 import {
   getChannelMenus, saveChannelMenus,
@@ -27,6 +29,7 @@ import {
   sendUserMessage, replyAsAgent, handleSubscribeAutoReply,
   listCsChannels, listChannelConversations, listConversationMessages,
   listChannelQuickReplies, createChannelQuickReply, updateChannelQuickReply, deleteChannelQuickReply,
+  assignConversation, resolveConversation, setConversationTags, listCsAgents,
 } from '../services/channel-cs.service';
 
 const channelsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -326,12 +329,21 @@ const csConversations = defineOpenAPIRoute({
     method: 'get', path: '/cs/{id}/conversations', tags: ['Channels'], summary: '客服会话列表（按用户聚合）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'channel:cs' })] as const,
-    request: { params: IdParam },
+    request: {
+      params: IdParam,
+      query: z.object({
+        status: z.enum(['open', 'processing', 'resolved']).optional(),
+        assignee: z.enum(['mine', 'unassigned', 'all']).optional(),
+        keyword: z.string().optional(),
+        tag: z.string().optional(),
+      }),
+    },
     responses: { ...commonErrorResponses, ...ok(z.array(ChannelConversationDTO), '会话列表') },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    return c.json(okBody(await listChannelConversations(id)), 200);
+    const { status, assignee, keyword, tag } = c.req.valid('query');
+    return c.json(okBody(await listChannelConversations(id, { status, assignee, keyword, tag })), 200);
   },
 });
 
@@ -478,13 +490,83 @@ const deleteQuickReply = defineOpenAPIRoute({
   },
 });
 
+// ─── 客服会话治理（指派/转接 · 解决 · 标签 · 客服列表） ─────────────────────────
+
+const csAgents = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/cs/agents', tags: ['Channels'], summary: '可指派的客服列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:cs' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(ChannelCsAgentDTO), '客服列表') },
+  }),
+  handler: async (c) => c.json(okBody(await listCsAgents()), 200),
+});
+
+const csAssign = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/cs/{id}/conversations/{userId}/assign', tags: ['Channels'], summary: '指派/转接会话',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:cs', audit: { description: '指派会话', module: '消息中心' } })] as const,
+    request: { params: CsConversationParams, body: { content: jsonContent(assignConversationSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已指派') },
+  }),
+  handler: async (c) => {
+    const { id, userId } = c.req.valid('param');
+    await assignConversation(id, userId, c.req.valid('json').assigneeId);
+    return c.json(okBody(null, '已指派'), 200);
+  },
+});
+
+const csResolve = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/cs/{id}/conversations/{userId}/resolve', tags: ['Channels'], summary: '标记会话已解决',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:cs', audit: { description: '解决会话', module: '消息中心' } })] as const,
+    request: { params: CsConversationParams },
+    responses: { ...commonErrorResponses, ...okMsg('已解决') },
+  }),
+  handler: async (c) => {
+    const { id, userId } = c.req.valid('param');
+    await resolveConversation(id, userId);
+    return c.json(okBody(null, '已解决'), 200);
+  },
+});
+
+const csTags = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/cs/{id}/conversations/{userId}/tags', tags: ['Channels'], summary: '设置会话标签',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:cs', audit: { description: '设置会话标签', module: '消息中心' } })] as const,
+    request: { params: CsConversationParams, body: { content: jsonContent(setConversationTagsSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已保存') },
+  }),
+  handler: async (c) => {
+    const { id, userId } = c.req.valid('param');
+    await setConversationTags(id, userId, c.req.valid('json').tags);
+    return c.json(okBody(null, '已保存'), 200);
+  },
+});
+
+// ─── 群发受众预估 ─────────────────────────────────────────────────────────────
+
+const audienceEstimate = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/audience-estimate', tags: ['Channels'], summary: '预估群发受众人数',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:message:publish' })] as const,
+    request: { body: { content: jsonContent(audienceEstimateSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(z.object({ count: z.number().int() }), '预估人数') },
+  }),
+  handler: async (c) => c.json(okBody({ count: await estimateAudience(c.req.valid('json').audience) }), 200),
+});
+
 channelsRoute.openapiRoutes([
   listMine, listMessages, read, adminList, create, update, remove, publish, discoverable, subscribe, unsubscribe,
   sendMessage, listMenus, saveMenus,
   listAutoReplies, createAutoReply, updateAutoReply, removeAutoReply,
-  adminMessages, updateDraft, deleteDraft, publishDraftNow,
+  adminMessages, updateDraft, deleteDraft, publishDraftNow, audienceEstimate,
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
-  csChannels, csConversations, csMessages, csReply,
+  csChannels, csAgents, csConversations, csMessages, csReply, csAssign, csResolve, csTags,
 ] as const);
 
 export default channelsRoute;

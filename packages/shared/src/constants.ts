@@ -254,6 +254,7 @@ export const CHANNEL_MESSAGE_DIRECTIONS = ['out', 'in'] as const;
 export const CHANNEL_MENU_TYPES = ['click', 'view'] as const;
 export const CHANNEL_AUTO_REPLY_MATCH_TYPES = ['subscribe', 'keyword', 'default'] as const;
 export const CHANNEL_AUTO_REPLY_KEYWORD_MODES = ['exact', 'contains'] as const;
+export const CHANNEL_CONVERSATION_STATUSES = ['open', 'processing', 'resolved'] as const;
 /** 内置「Zenith 助手」系统号 code（全局唯一、内置不可删、全员订阅） */
 export const SYSTEM_CHANNEL_CODE = 'system-assistant';
 
@@ -297,6 +298,12 @@ export const CHANNEL_SEND_MODE_LABELS: Record<(typeof CHANNEL_SEND_MODES)[number
   now: '立即发送',
   scheduled: '定时发送',
   draft: '存草稿',
+};
+
+export const CHANNEL_CONVERSATION_STATUS_LABELS: Record<(typeof CHANNEL_CONVERSATION_STATUSES)[number], string> = {
+  open: '待处理',
+  processing: '处理中',
+  resolved: '已解决',
 };
 
 export const MEMBER_STATUS_LABELS: Record<MemberStatus, string> = {

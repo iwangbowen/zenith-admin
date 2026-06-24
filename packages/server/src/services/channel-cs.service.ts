@@ -15,17 +15,18 @@
 import { and, asc, desc, eq, exists, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db';
 import {
-  channels, channelMessages, channelMenus, channelAutoReplies, channelMessageTargets, channelQuickReplies, users,
-  type ChannelMenuRow, type ChannelAutoReplyRow, type ChannelQuickReplyRow, type ChannelRow,
+  channels, channelMessages, channelMenus, channelAutoReplies, channelMessageTargets, channelQuickReplies,
+  channelConversations, users, menus, roleMenus, userRoles,
+  type ChannelMenuRow, type ChannelAutoReplyRow, type ChannelQuickReplyRow, type ChannelConversationRow, type ChannelRow,
 } from '../db/schema';
 import type {
-  ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelMessage, ChannelQuickReply,
+  ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelConversationStatus, ChannelMessage, ChannelQuickReply, ChannelCsAgent,
   SaveChannelMenusInput, CreateChannelAutoReplyInput, UpdateChannelAutoReplyInput,
   CreateChannelQuickReplyInput, UpdateChannelQuickReplyInput,
 } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
-import { formatDateTime } from '../lib/datetime';
+import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { broadcast, scheduleSendToUsers } from '../lib/ws-manager';
 import { mapChannelMessage } from './channel.service';
@@ -258,9 +259,23 @@ export async function sendUserMessage(
   if (matched) {
     autoReply = await deliverOut(channelId, me.userId, matched.replyContent, null, null);
   }
+  // 会话治理：用户来信 → upsert 会话；若已解决则重新激活为待处理
+  await activateConversationOnUserMessage(channelId, me.userId);
   // 通知在线客服工作台有新用户消息（轻量信号，不含敏感内容；客服端凭权限拉取刷新）
   broadcast({ type: 'channel:cs-message', payload: { channelId } });
   return { message: inMsg, autoReply };
+}
+
+/** 用户来信时 upsert 会话：新建为 open；已存在且 resolved 则重新激活为 open。 */
+async function activateConversationOnUserMessage(channelId: number, userId: number): Promise<void> {
+  await db.insert(channelConversations).values({ channelId, userId, status: 'open' })
+    .onConflictDoUpdate({
+      target: [channelConversations.channelId, channelConversations.userId],
+      set: {
+        status: sql`CASE WHEN ${channelConversations.status} = 'resolved' THEN 'open'::channel_conversation_status ELSE ${channelConversations.status} END`,
+        resolvedAt: sql`CASE WHEN ${channelConversations.status} = 'resolved' THEN NULL ELSE ${channelConversations.resolvedAt} END`,
+      },
+    });
 }
 
 /** 客服回复某用户：写 out 定向消息 + WS 推送该用户。 */
@@ -270,7 +285,14 @@ export async function replyAsAgent(channelId: number, userId: number, content: s
   const targetUser = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { id: true } });
   if (!targetUser) throw new HTTPException(404, { message: '用户不存在' });
   const agentName = await getUserName(agent.userId);
-  return deliverOut(channelId, userId, content, agent.userId, agentName);
+  const msg = await deliverOut(channelId, userId, content, agent.userId, agentName);
+  // 会话治理：客服回复 → 待处理转为处理中（已解决的也重新进入处理中）
+  await db.insert(channelConversations).values({ channelId, userId, status: 'processing' })
+    .onConflictDoUpdate({
+      target: [channelConversations.channelId, channelConversations.userId],
+      set: { status: 'processing', resolvedAt: null },
+    });
+  return msg;
 }
 
 /** 关注运营号时触发「关注欢迎语」自动回复（首次订阅后由路由层调用）。 */
@@ -294,9 +316,18 @@ export async function listCsChannels(): Promise<{ id: number; name: string; avat
   return rows.map((r) => ({ id: r.id, name: r.name, avatar: r.avatar }));
 }
 
-/** 某运营号下的会话列表（按用户聚合），按最近消息时间倒序。 */
-export async function listChannelConversations(channelId: number): Promise<ChannelConversation[]> {
+/** 会话列表筛选条件 */
+export interface ConversationFilter {
+  status?: ChannelConversationStatus;
+  assignee?: 'mine' | 'unassigned' | 'all';
+  keyword?: string;
+  tag?: string;
+}
+
+/** 某运营号下的会话列表（按用户聚合 + 治理属性 left join），按最近消息时间倒序。 */
+export async function listChannelConversations(channelId: number, filter: ConversationFilter = {}): Promise<ChannelConversation[]> {
   await ensureBusinessChannel(channelId);
+  const me = currentUser().userId;
 
   const inRows = await db.select({
     id: channelMessages.id,
@@ -325,21 +356,28 @@ export async function listChannelConversations(channelId: number): Promise<Chann
     ))
     .orderBy(asc(channelMessages.id));
 
-  const userRows = await db.select({
-    id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar,
-  }).from(users).where(inArray(users.id, userIds));
+  const [userRows, convRows] = await Promise.all([
+    db.select({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
+      .from(users).where(inArray(users.id, userIds)),
+    db.select().from(channelConversations)
+      .where(and(eq(channelConversations.channelId, channelId), inArray(channelConversations.userId, userIds))),
+  ]);
   const userMap = new Map(userRows.map((u) => [u.id, u]));
+  const convMap = new Map(convRows.map((c) => [c.userId, c]));
 
-  const convos: ChannelConversation[] = userIds.map((uid) => {
+  // 收集所有指派客服名
+  const assigneeIds = [...new Set(convRows.map((c) => c.assigneeId).filter((x): x is number => x != null))];
+  const assigneeNameMap = await getUserNames(assigneeIds);
+
+  let convos: ChannelConversation[] = userIds.map((uid) => {
     const ins = inRows.filter((r) => r.userId === uid);
     const outs = outRows.filter((r) => r.userId === uid);
     const lastIn = ins[ins.length - 1];
     const lastOut = outs.length ? outs[outs.length - 1] : null;
-    // 待人工回复：最近一条「人工客服」回复（senderUserId 非空）之后的用户消息；
-    // 自动回复（senderUserId=null）不清除待办，否则配置了默认兜底回复后未读永远为 0。
     const lastAgentOutId = outs.reduce((max, o) => (o.senderUserId != null && o.id > max ? o.id : max), 0);
     const useIn = !lastOut || lastIn.id > lastOut.id;
     const u = userMap.get(uid);
+    const conv = convMap.get(uid);
     return {
       channelId,
       userId: uid,
@@ -350,12 +388,74 @@ export async function listChannelConversations(channelId: number): Promise<Chann
       lastMessageAt: formatDateTime(useIn ? lastIn.createdAt : lastOut!.createdAt),
       unreadCount: ins.filter((r) => r.id > lastAgentOutId).length,
       messageCount: ins.length + outs.length,
+      status: conv?.status ?? 'open',
+      assigneeId: conv?.assigneeId ?? null,
+      assigneeName: conv?.assigneeId != null ? (assigneeNameMap.get(conv.assigneeId) ?? null) : null,
+      tags: (conv?.tags as string[] | null) ?? [],
+      resolvedAt: formatNullableDateTime(conv?.resolvedAt ?? null),
     };
   });
+
+  // 筛选
+  if (filter.status) convos = convos.filter((c) => c.status === filter.status);
+  if (filter.assignee === 'mine') convos = convos.filter((c) => c.assigneeId === me);
+  else if (filter.assignee === 'unassigned') convos = convos.filter((c) => c.assigneeId == null);
+  if (filter.tag) convos = convos.filter((c) => c.tags.includes(filter.tag!));
+  if (filter.keyword) {
+    const kw = filter.keyword.trim().toLowerCase();
+    convos = convos.filter((c) => c.userName.toLowerCase().includes(kw) || c.lastMessage.toLowerCase().includes(kw));
+  }
 
   convos.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
   return convos;
 }
+
+/** upsert 会话属性行（写操作前确保行存在），返回更新后的行。 */
+async function upsertConversation(channelId: number, userId: number, set: Partial<ChannelConversationRow>): Promise<ChannelConversationRow> {
+  const [row] = await db.insert(channelConversations)
+    .values({ channelId, userId, ...set })
+    .onConflictDoUpdate({
+      target: [channelConversations.channelId, channelConversations.userId],
+      set,
+    })
+    .returning();
+  return row;
+}
+
+/** 指派 / 转接会话给某客服（assigneeId 为 null = 取消指派）。 */
+export async function assignConversation(channelId: number, userId: number, assigneeId: number | null): Promise<void> {
+  await ensureBusinessChannel(channelId);
+  if (assigneeId != null) {
+    const agent = await db.query.users.findFirst({ where: eq(users.id, assigneeId), columns: { id: true } });
+    if (!agent) throw new HTTPException(404, { message: '指派的客服不存在' });
+  }
+  await upsertConversation(channelId, userId, { assigneeId });
+}
+
+/** 标记会话已解决。 */
+export async function resolveConversation(channelId: number, userId: number): Promise<void> {
+  await ensureBusinessChannel(channelId);
+  await upsertConversation(channelId, userId, { status: 'resolved', resolvedAt: new Date() });
+}
+
+/** 设置会话标签（整体替换）。 */
+export async function setConversationTags(channelId: number, userId: number, tags: string[]): Promise<void> {
+  await ensureBusinessChannel(channelId);
+  await upsertConversation(channelId, userId, { tags });
+}
+
+/** 可指派的客服列表（拥有 channel:cs 权限的用户）。 */
+export async function listCsAgents(): Promise<ChannelCsAgent[]> {
+  const rows = await db.selectDistinct({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
+    .from(users)
+    .innerJoin(userRoles, eq(userRoles.userId, users.id))
+    .innerJoin(roleMenus, eq(roleMenus.roleId, userRoles.roleId))
+    .innerJoin(menus, eq(menus.id, roleMenus.menuId))
+    .where(and(eq(menus.permission, 'channel:cs'), eq(users.status, 'enabled')));
+  return rows.map((u) => ({ id: u.id, name: u.nickname || u.username, avatar: u.avatar }));
+}
+
+/** 某会话（channelId + userId）的双向消息流，分页倒序（前端反转为正序展示）。 */
 
 /** 某会话（channelId + userId）的双向消息流，分页倒序（前端反转为正序展示）。 */
 export async function listConversationMessages(channelId: number, userId: number, page: number, pageSize: number) {
@@ -383,11 +483,25 @@ export async function listConversationMessages(channelId: number, userId: number
       .offset(pageOffset(page, pageSize)),
   ]);
 
+  // Q3 已读回执：查该用户对本页 out 消息的已读状态（targets.readAt 非空 = 已读）
+  const outIds = rows.filter((r) => r.direction === 'out' && r.audienceType === 'targeted').map((r) => r.id);
+  const readMap = new Map<number, boolean>();
+  if (outIds.length > 0) {
+    const tg = await db.select({ messageId: channelMessageTargets.messageId, readAt: channelMessageTargets.readAt })
+      .from(channelMessageTargets)
+      .where(and(inArray(channelMessageTargets.messageId, outIds), eq(channelMessageTargets.userId, userId)));
+    tg.forEach((t) => readMap.set(t.messageId, t.readAt != null));
+  }
+
   const senderIds = [...new Set(rows.map((r) => r.senderUserId).filter((x): x is number => x != null))];
   const nameMap = await getUserNames(senderIds);
-  const list = rows.map((r) =>
-    mapChannelMessage(r, true, r.senderUserId != null ? (nameMap.get(r.senderUserId) ?? null) : null),
-  );
+  const list = rows.map((r) => {
+    const msg = mapChannelMessage(r, true, r.senderUserId != null ? (nameMap.get(r.senderUserId) ?? null) : null);
+    if (r.direction === 'out' && r.audienceType === 'targeted') {
+      msg.readByTarget = readMap.get(r.id) ?? false;
+    }
+    return msg;
+  });
   return { list, total, page, pageSize };
 }
 

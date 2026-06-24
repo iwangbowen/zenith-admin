@@ -2915,6 +2915,8 @@ export type ChannelMenuType = 'click' | 'view';
 export type ChannelAutoReplyMatchType = 'subscribe' | 'keyword' | 'default';
 /** 关键词匹配模式：exact=完全匹配；contains=包含 */
 export type ChannelAutoReplyKeywordMode = 'exact' | 'contains';
+/** 客服会话状态：open=待处理；processing=处理中；resolved=已解决 */
+export type ChannelConversationStatus = 'open' | 'processing' | 'resolved';
 
 /** 频道内一条消息（卡片复用 ChatMessageExtra.card / 身份用 extra.bot） */
 export interface ChannelMessage {
@@ -2938,6 +2940,8 @@ export interface ChannelMessage {
   status: ChannelMessageStatus;
   /** 定时发送时间（status=scheduled 时有值） */
   scheduledAt: string | null;
+  /** 客服会话视角：该 out 定向消息是否已被目标用户读取（null=非定向/不适用） */
+  readByTarget?: boolean | null;
   createdAt: string;
 }
 
@@ -2996,6 +3000,23 @@ export interface ChannelConversation {
   unreadCount: number;
   /** 会话内消息总数 */
   messageCount: number;
+  /** 会话状态（待处理 / 处理中 / 已解决） */
+  status: ChannelConversationStatus;
+  /** 指派的客服 userId（null=未指派，开放协作） */
+  assigneeId: number | null;
+  /** 指派客服展示名 */
+  assigneeName: string | null;
+  /** 会话标签 */
+  tags: string[];
+  /** 解决时间 */
+  resolvedAt: string | null;
+}
+
+/** 可指派的客服（拥有 channel:cs 权限的用户） */
+export interface ChannelCsAgent {
+  id: number;
+  name: string;
+  avatar: string | null;
 }
 
 /** 公众号 / 系统号（在聊天会话列表中以只读频道形式呈现） */
