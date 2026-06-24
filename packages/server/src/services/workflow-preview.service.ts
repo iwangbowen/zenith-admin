@@ -45,6 +45,10 @@ export async function previewFlow(
   const entries: Array<{ nodeKey: string; nodeName: string; nodeType: string; ids: number[]; approveMethod: string | null; branchLabel: string | null }> = [];
   const visited = new Set<string>();
 
+  // 发起人节点：始终作为链路第一个节点，展示当前发起人
+  entries.push({ nodeKey: '__initiator__', nodeName: '发起人', nodeType: 'start', ids: [user.userId], approveMethod: null, branchLabel: null });
+  pendingIds.add(user.userId);
+
   const walk = async (nodeId: string, branchLabel: string | null): Promise<void> => {
     if (visited.has(nodeId)) return;
     visited.add(nodeId);

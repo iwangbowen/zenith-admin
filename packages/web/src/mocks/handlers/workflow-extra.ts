@@ -305,6 +305,7 @@ export const workflowExtraHandlers = [
 
   // ── T1-1 提交前审批链路预览 ──
   http.post('/api/workflows/definitions/:id/preview', () => ok([
+    { nodeKey: '__initiator__', nodeName: '发起人', nodeType: 'start', approvers: [{ id: 1, name: '张三' }], approveMethod: null, branchLabel: null, empty: false },
     { nodeKey: 'approve_manager', nodeName: '直属主管审批', nodeType: 'approve', approvers: [{ id: 2, name: '李四' }], approveMethod: 'or', branchLabel: null, empty: false },
     { nodeKey: 'approve_dept_head', nodeName: '部门负责人审批', nodeType: 'approve', approvers: [{ id: 3, name: '王五' }], approveMethod: 'and', branchLabel: null, empty: false },
     { nodeKey: 'cc_initiator', nodeName: '抄送发起人', nodeType: 'ccNode', approvers: [{ id: 1, name: '张三' }], approveMethod: null, branchLabel: null, empty: false },

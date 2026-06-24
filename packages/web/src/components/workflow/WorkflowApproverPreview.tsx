@@ -5,8 +5,8 @@ import type { WorkflowApproverPreviewNode } from '@zenith/shared';
 import { request } from '@/utils/request';
 
 const METHOD_LABEL: Record<string, string> = { and: '会签', or: '或签', sequential: '顺序会签', ratio: '比例会签' };
-const TYPE_LABEL: Record<string, string> = { approve: '审批', handler: '办理', ccNode: '抄送', subProcess: '子流程' };
-const TYPE_COLOR: Record<string, 'blue' | 'cyan' | 'orange' | 'purple'> = { approve: 'blue', handler: 'cyan', ccNode: 'orange', subProcess: 'purple' };
+const TYPE_LABEL: Record<string, string> = { start: '发起人', approve: '审批', handler: '办理', ccNode: '抄送', subProcess: '子流程' };
+const TYPE_COLOR: Record<string, 'green' | 'blue' | 'cyan' | 'orange' | 'purple'> = { start: 'green', approve: 'blue', handler: 'cyan', ccNode: 'orange', subProcess: 'purple' };
 
 /**
  * 提交前审批链路预览（T1-1）。按 definitionId 拉取已解析审批人的链路，
@@ -45,6 +45,9 @@ export default function WorkflowApproverPreview({
 
   if (!definitionId) return null;
 
+  // 仅含发起人节点（无任何审批/抄送节点）时，视作无需审批
+  const hasFlowNodes = nodes.some((n) => n.nodeType !== 'start');
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
@@ -54,7 +57,7 @@ export default function WorkflowApproverPreview({
       </div>
       {loading ? (
         <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
-      ) : nodes.length === 0 ? (
+      ) : (nodes.length === 0 || !hasFlowNodes) ? (
         <Empty description="该流程无需审批，提交后自动通过" style={{ padding: 24 }} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
@@ -75,7 +78,7 @@ export default function WorkflowApproverPreview({
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <Tag color={TYPE_COLOR[n.nodeType] ?? 'grey'} size="small">{TYPE_LABEL[n.nodeType] ?? n.nodeType}</Tag>
-                  <Typography.Text strong>{n.nodeName}</Typography.Text>
+                  {n.nodeType !== 'start' && <Typography.Text strong>{n.nodeName}</Typography.Text>}
                   {n.approveMethod && METHOD_LABEL[n.approveMethod] && (
                     <Tag color="light-blue" size="small">{METHOD_LABEL[n.approveMethod]}</Tag>
                   )}
