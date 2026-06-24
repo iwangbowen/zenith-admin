@@ -4,18 +4,17 @@
  * 封装标准字段（标题/优先级/抄送）+ 4 个页签（填写表单/审批链路/流程图预览/节点详情）
  * 及取数校验逻辑，通过 ref 暴露 collectFormData 供外层提交/存草稿调用。
  */
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { Banner, Col, Form, Row, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import dayjs from 'dayjs';
 import type { WorkflowDefinition } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
+import { useUserOptions } from '@/hooks/useUserOptions';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import { resolveDynamicDefaults } from '@/pages/workflow/designer/form-defaults';
 import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
-import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
-import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
+import WorkflowFlowTab from '@/components/workflow/WorkflowFlowTab';
 import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPreview';
 import { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
 
@@ -44,15 +43,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
     const formApi = useRef<FormApi | null>(null);
     const dynamicFormApi = useRef<FormApi | null>(null);
     const businessFormApi = useRef<WorkflowBusinessFormApi | null>(null);
-    const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
-
-    useEffect(() => {
-      request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all')
-        .then((res) => {
-          if (res.code === 0 && res.data) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
-        })
-        .catch(() => { /* 抄送人选项加载失败不阻断发起 */ });
-    }, []);
+    const { userOptions } = useUserOptions({ immediate: true });
 
     useEffect(() => {
       const who = user?.nickname || user?.username || '我';
@@ -177,11 +168,8 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
             <TabPane tab="审批链路" itemKey="chain">
               <WorkflowApproverPreview definitionId={def.id} getFormData={getPreviewFormData} />
             </TabPane>
-            <TabPane tab="流程图预览" itemKey="graph">
-              <WorkflowGraphView flowData={def.flowData} />
-            </TabPane>
-            <TabPane tab="节点详情" itemKey="nodes">
-              <WorkflowNodeListView flowData={def.flowData} initiator={user ? { name: user.nickname, avatar: user.avatar } : undefined} />
+            <TabPane tab="流程图" itemKey="graph">
+              <WorkflowFlowTab flowData={def.flowData} initiator={user ? { name: user.nickname, avatar: user.avatar } : undefined} />
             </TabPane>
           </Tabs>
         </div>

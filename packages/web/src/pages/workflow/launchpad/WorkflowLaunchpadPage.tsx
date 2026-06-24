@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Input, List, Space, SideSheet, Spin, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Empty, Input, List, Space, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
 import { ExternalLink, RotateCcw, Search, Send } from 'lucide-react';
 import type { WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
+import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 
 const UNCATEGORIZED = -1;
@@ -188,35 +189,33 @@ export default function WorkflowLaunchpadPage() {
 
       {renderContent()}
 
-      <SideSheet
+      <WorkflowSideSheet
         title={selectedDef ? `发起：${selectedDef.name}` : '发起申请'}
         visible={applyVisible}
         onCancel={closeApply}
-        width={720}
-        bodyStyle={{ padding: 16 }}
-        footer={
-          <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Button
-              theme="borderless"
-              icon={<ExternalLink size={14} />}
-              onClick={() => {
-                if (!selectedDef) return;
-                const icon = selectedDef.customForm?.icon ?? selectedDef.categoryIcon ?? 'Send';
-                navigate(`/workflow/launch/${selectedDef.id}`, { state: { tabTitle: `发起：${selectedDef.name}`, tabIcon: icon } });
-              }}
-            >
-              在新页签打开
-            </Button>
-            <Space>
-              <Button onClick={closeApply}>取消</Button>
-              <Button loading={savingDraft} disabled={submitting} onClick={() => void handleSubmit(true)}>保存草稿</Button>
-              <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSubmit(false)}>提交</Button>
-            </Space>
-          </div>
+        footerLeft={
+          <Button
+            theme="borderless"
+            icon={<ExternalLink size={14} />}
+            onClick={() => {
+              if (!selectedDef) return;
+              const icon = selectedDef.customForm?.icon ?? selectedDef.categoryIcon ?? 'Send';
+              navigate(`/workflow/launch/${selectedDef.id}`, { state: { tabTitle: `发起：${selectedDef.name}`, tabIcon: icon } });
+            }}
+          >
+            在新页签打开
+          </Button>
+        }
+        footerRight={
+          <Space>
+            <Button onClick={closeApply}>取消</Button>
+            <Button loading={savingDraft} disabled={submitting} onClick={() => void handleSubmit(true)}>保存草稿</Button>
+            <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSubmit(false)}>提交</Button>
+          </Space>
         }
       >
         {selectedDef && <WorkflowLaunchForm ref={launchFormRef} def={selectedDef} container="sheet" />}
-      </SideSheet>
+      </WorkflowSideSheet>
     </div>
   );
 }

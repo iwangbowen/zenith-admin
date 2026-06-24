@@ -5,7 +5,6 @@ import {
   Button,
   Form,
   Select,
-  SideSheet,
   Space,
   Spin,
   Toast,
@@ -21,6 +20,8 @@ import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import SignaturePad from '@/components/SignaturePad';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
+import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
+import { useUserOptions } from '@/hooks/useUserOptions';
 
 type ApprovalInitialAction = 'approve' | 'reject' | null;
 type AddSignPosition = 'before' | 'after' | 'parallel';
@@ -98,7 +99,7 @@ export default function WorkflowApprovalDetailSheet({
   const [rejectHintLoading, setRejectHintLoading] = useState(false);
   const [approveAttachments, setApproveAttachments] = useState<UploadedFile[]>([]);
   const [approveSignature, setApproveSignature] = useState('');
-  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
+  const { userOptions, ensureLoaded: ensureUserOptions } = useUserOptions();
   const [selectedNextApprovers, setSelectedNextApprovers] = useState<number[]>([]);
   const [addSignPosition, setAddSignPosition] = useState<AddSignPosition>('after');
   const [signMode, setSignMode] = useState<AddSignMode>('and');
@@ -204,21 +205,9 @@ export default function WorkflowApprovalDetailSheet({
     return false;
   }, [currentDetailDefinition, currentTask]);
 
-  const loadUserOptions = useCallback(async () => {
-    if (userOptions.length > 0) return;
-    try {
-      const res = await request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all');
-      if (res.code === 0) {
-        setUserOptions(res.data.map((u) => ({ label: `${u.nickname ?? u.username}`, value: u.id })));
-      }
-    } catch {
-      // ignore
-    }
-  }, [userOptions.length]);
-
   useEffect(() => {
-    if (approveVisible && hasApproverSelectDownstream) void loadUserOptions();
-  }, [approveVisible, hasApproverSelectDownstream, loadUserOptions]);
+    if (approveVisible && hasApproverSelectDownstream) void ensureUserOptions();
+  }, [approveVisible, hasApproverSelectDownstream, ensureUserOptions]);
 
   const openReject = useCallback(async () => {
     if (!instanceId) return;
@@ -414,7 +403,7 @@ export default function WorkflowApprovalDetailSheet({
   };
 
   const openUserPickerModal = (opener: () => void) => {
-    void loadUserOptions();
+    void ensureUserOptions();
     opener();
   };
 
@@ -467,12 +456,11 @@ export default function WorkflowApprovalDetailSheet({
 
   return (
     <>
-      <SideSheet
+      <WorkflowSideSheet
         title={title}
         visible={detailSheetVisible}
         onCancel={onClose}
-        width={780}
-        bodyStyle={{ padding: 16 }}
+        footerRight={extraActions}
       >
         {detailLoading ? (
           <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
@@ -481,11 +469,10 @@ export default function WorkflowApprovalDetailSheet({
             instance={detail}
             definition={detailDef}
             loading={detailLoading}
-            extraActions={extraActions}
             onOpenInstance={(id) => setViewId(id)}
           />
         )}
-      </SideSheet>
+      </WorkflowSideSheet>
 
       <AppModal
         title={btnApprove.displayName ? `${btnApprove.displayName}` : '审批通过'}

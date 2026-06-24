@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import {
   Descriptions, Empty, Spin, Tabs, TabPane, Tag, Typography, Button,
-  Avatar, TextArea, Select, Toast, Popconfirm, Divider,
+  Avatar, TextArea, Select, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
 import { CornerUpLeft, Send, Undo2 } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowInstance, WorkflowComment, WorkflowTaskConsult } from '@zenith/shared';
@@ -16,8 +16,7 @@ import { formatDateTime } from '@/utils/date';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import BusinessFormHost from '@/components/workflow/BusinessFormHost';
-import WorkflowGraphView from './WorkflowGraphView';
-import WorkflowNodeListView from './WorkflowNodeListView';
+import WorkflowFlowTab from './WorkflowFlowTab';
 import {
   resolveWorkflowCustomForm,
   resolveWorkflowDetailDefinition,
@@ -295,13 +294,10 @@ export default function WorkflowInstanceDetailPanel({
       <Tabs type="line" style={{ marginTop: 8 }}>
         <TabPane tab="表单内容" itemKey="form">{renderFormData()}</TabPane>
         <TabPane tab="流程图" itemKey="graph">
-          <WorkflowGraphView flowData={flowData} tasks={instance.tasks ?? []} instanceStatus={instance.status} />
-          <Divider align="left" margin="16px">
-            <Typography.Text type="tertiary" size="small">节点列表</Typography.Text>
-          </Divider>
-          <WorkflowNodeListView
+          <WorkflowFlowTab
             flowData={flowData}
             tasks={instance.tasks ?? []}
+            instanceStatus={instance.status}
             initiator={{ name: instance.initiatorName, avatar: instance.initiatorAvatar, submittedAt: instance.createdAt }}
           />
         </TabPane>
