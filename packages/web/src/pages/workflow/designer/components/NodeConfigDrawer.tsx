@@ -2,7 +2,7 @@
  * 节点配置抽屉面板 — 右侧滑出，根据节点类型渲染不同的 Tab 页
  *
  * 替代原有 NodeConfigModal，提供更丰富的分区配置能力：
- * - 审批人：审批人设置 / 表单权限 / 操作权限 / 高级设置
+ * - 审批人：审批人设置 / 表单权限 / 审批要求 / 高级设置
  * - 办理人：办理人设置 / 表单权限
  * - 抄送人：抄送人设置 / 表单权限
  * - 发起人：发起人设置 / 表单权限
@@ -449,7 +449,7 @@ export default function NodeConfigDrawer({
 
           {/* 操作权限 Tab（仅审批人） */}
           {hasOperationPermission && (
-            <TabPane tab="操作权限" itemKey="operations">
+            <TabPane tab="审批要求" itemKey="operations">
               <OperationPermissionTab
                 operations={(props.operations as OperationPermission[]) ?? DEFAULT_APPROVER_OPERATIONS}
                 onChange={(ops) => handlePropsChange({ operations: ops })}

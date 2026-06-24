@@ -1,6 +1,6 @@
 /**
- * 操作权限配置 Tab
- * 飞书风格分组布局：操作权限 + 手写签名 + 审批意见
+ * 审批要求配置 Tab
+ * 飞书风格分组布局：手写签名 + 审批意见
  */
 import { Checkbox } from '@douyinfe/semi-ui';
 import type { OperationPermission } from '../../types';
