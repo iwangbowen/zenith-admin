@@ -1,11 +1,14 @@
 import { eq, and, gte, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { mpFans, mpTags, mpMaterials, mpDrafts, mpMessages, mpAutoReplies } from '../db/schema';
 import { mergeWhere } from '../lib/where-helpers';
 import { formatDate } from '../lib/datetime';
 import { tenantScope } from '../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
-import type { MpStats } from '@zenith/shared';
+import { getUserSummary, getUserCumulate, getUpstreamMsg, getArticleSummary, DATACUBE_MAX_SPAN_DAYS } from '../lib/wechat';
+import { mapWechatError } from '../lib/wechat-error';
+import type { MpStats, MpDatacube } from '@zenith/shared';
 
 /** 公众号数据统计（基于本地数据聚合，近 7 日趋势） */
 export async function getMpStats(accountId: number): Promise<MpStats> {
@@ -64,4 +67,23 @@ export async function getMpStats(accountId: number): Promise<MpStats> {
     fanTrend: days.map((date) => ({ date, count: fanMap.get(date) ?? 0 })),
     messageTrend: days.map((date) => ({ date, in: inMap.get(date) ?? 0, out: outMap.get(date) ?? 0 })),
   };
+}
+
+/** 微信数据立方（真实接口对接）：用户增减/累计、消息概况、图文阅读。 */
+export async function getMpDatacube(accountId: number, beginDate: string, endDate: string): Promise<MpDatacube> {
+  const account = await ensureMpAccountExists(accountId);
+  const spanDays = Math.floor((Date.parse(`${endDate}T00:00:00`) - Date.parse(`${beginDate}T00:00:00`)) / 86_400_000);
+  if (Number.isNaN(spanDays) || spanDays < 0) throw new HTTPException(400, { message: '日期范围无效' });
+  if (spanDays >= DATACUBE_MAX_SPAN_DAYS) throw new HTTPException(400, { message: `查询跨度不能超过 ${DATACUBE_MAX_SPAN_DAYS} 天` });
+  try {
+    const [userSummary, userCumulate, upstreamMsg, articleSummary] = await Promise.all([
+      getUserSummary(account, beginDate, endDate),
+      getUserCumulate(account, beginDate, endDate),
+      getUpstreamMsg(account, beginDate, endDate),
+      getArticleSummary(account, beginDate, endDate),
+    ]);
+    return { beginDate, endDate, userSummary, userCumulate, upstreamMsg, articleSummary };
+  } catch (err) {
+    return mapWechatError(err);
+  }
 }

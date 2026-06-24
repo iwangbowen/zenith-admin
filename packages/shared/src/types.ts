@@ -4450,6 +4450,15 @@ export interface MpStats {
   messageTrend: { date: string; in: number; out: number }[];
 }
 
+export interface MpDatacube {
+  beginDate: string;
+  endDate: string;
+  userSummary: { refDate: string; newUser: number; cancelUser: number }[];
+  userCumulate: { refDate: string; cumulateUser: number }[];
+  upstreamMsg: { refDate: string; msgUser: number; msgCount: number }[];
+  articleSummary: { refDate: string; pageReadCount: number }[];
+}
+
 // ─── 公众号群发消息 ──────────────────────────────────────────────────────────
 export type MpBroadcastType = 'text' | 'image' | 'mpnews';
 export type MpBroadcastTarget = 'all' | 'tag';

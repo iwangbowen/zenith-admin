@@ -282,3 +282,14 @@ export const MpStatsDTO = z
     messageTrend: z.array(z.object({ date: z.string(), in: z.number().int(), out: z.number().int() })),
   })
   .openapi('MpStats');
+
+export const MpDatacubeDTO = z
+  .object({
+    beginDate: z.string(),
+    endDate: z.string(),
+    userSummary: z.array(z.object({ refDate: z.string(), newUser: z.number().int(), cancelUser: z.number().int() })),
+    userCumulate: z.array(z.object({ refDate: z.string(), cumulateUser: z.number().int() })),
+    upstreamMsg: z.array(z.object({ refDate: z.string(), msgUser: z.number().int(), msgCount: z.number().int() })),
+    articleSummary: z.array(z.object({ refDate: z.string(), pageReadCount: z.number().int() })),
+  })
+  .openapi('MpDatacube');

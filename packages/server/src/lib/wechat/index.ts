@@ -18,3 +18,4 @@ export * from './broadcast';
 export * from './qrcode';
 export * from './reply';
 export * from './oauth';
+export * from './datacube';

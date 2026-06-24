@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Spin, Banner, Typography, Skeleton, Card } from '@douyinfe/semi-ui';
-import { Users, UserCheck, UserMinus, Tags, Image, FileText, MessageSquare, Reply } from 'lucide-react';
-import type { MpStats } from '@zenith/shared';
+import { Spin, Banner, Typography, Skeleton, Card, DatePicker, Button, Toast } from '@douyinfe/semi-ui';
+import { Users, UserCheck, UserMinus, Tags, Image, FileText, MessageSquare, Reply, BarChart3 } from 'lucide-react';
+import type { MpStats, MpDatacube } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { formatDateForApi } from '@/utils/date';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 
@@ -32,6 +33,33 @@ export default function MpStatisticsPage() {
   }, [currentIdRef]);
 
   useEffect(() => { if (currentId) void load(currentId); else setStats(null); }, [currentId, load]);
+
+  // ── 微信数据立方（真实接口） ──
+  const [datacube, setDatacube] = useState<MpDatacube | null>(null);
+  const [dcLoading, setDcLoading] = useState(false);
+  const defaultRange = (): [Date, Date] => {
+    const end = new Date(); end.setDate(end.getDate() - 1);
+    const begin = new Date(); begin.setDate(begin.getDate() - 7);
+    return [begin, end];
+  };
+  const [dcRange, setDcRange] = useState<[Date, Date]>(defaultRange());
+
+  const loadDatacube = useCallback(async () => {
+    if (!currentId) { Toast.error('请先选择公众号'); return; }
+    const [begin, end] = dcRange;
+    const reqId = currentId;
+    setDcLoading(true);
+    try {
+      const q = new URLSearchParams({ accountId: String(currentId), beginDate: formatDateForApi(begin), endDate: formatDateForApi(end) });
+      const res = await request.get<MpDatacube>(`/api/mp/stats/datacube?${q}`);
+      if (currentIdRef.current !== reqId) return;
+      if (res.code === 0) setDatacube(res.data ?? null);
+    } finally {
+      if (currentIdRef.current === reqId) setDcLoading(false);
+    }
+  }, [currentId, currentIdRef, dcRange]);
+
+  useEffect(() => { setDatacube(null); }, [currentId]);
 
   const maxFan = Math.max(1, ...(stats?.fanTrend.map((d) => d.count) ?? [0]));
   const maxMsg = Math.max(1, ...(stats?.messageTrend.flatMap((d) => [d.in, d.out]) ?? [0]));
@@ -119,6 +147,49 @@ export default function MpStatisticsPage() {
           </>
         )}
       </Spin>
+
+      <Card style={{ marginTop: 16 }} bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Typography.Title heading={6} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}><BarChart3 size={16} /> 微信数据立方（真实接口）</Typography.Title>
+          <DatePicker type="dateRange" density="compact" value={dcRange} style={{ width: 260 }}
+            onChange={(v) => { if (Array.isArray(v) && v.length === 2) setDcRange([v[0] as Date, v[1] as Date]); }} />
+          <Button type="primary" size="small" loading={dcLoading} disabled={!currentId} onClick={() => void loadDatacube()}>查询</Button>
+          <Typography.Text type="tertiary" size="small">跨度 ≤ 7 天；数据 T+1，需账号已认证并有数据权限</Typography.Text>
+        </div>
+
+        {datacube ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+            <DatacubeTable title="用户增减" head={['日期', '新增', '取关']}
+              rows={datacube.userSummary.map((r) => [r.refDate.slice(5), String(r.newUser), String(r.cancelUser)])} />
+            <DatacubeTable title="累计用户" head={['日期', '累计关注']}
+              rows={datacube.userCumulate.map((r) => [r.refDate.slice(5), String(r.cumulateUser)])} />
+            <DatacubeTable title="消息概况" head={['日期', '发送人数', '消息条数']}
+              rows={datacube.upstreamMsg.map((r) => [r.refDate.slice(5), String(r.msgUser), String(r.msgCount)])} />
+            <DatacubeTable title="图文阅读" head={['日期', '页面阅读']}
+              rows={datacube.articleSummary.map((r) => [r.refDate.slice(5), String(r.pageReadCount)])} />
+          </div>
+        ) : (
+          <Typography.Text type="tertiary">点击「查询」拉取微信侧真实统计数据。</Typography.Text>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function DatacubeTable({ title, head, rows }: Readonly<{ title: string; head: string[]; rows: string[][] }>) {
+  return (
+    <div style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: 12, background: 'var(--semi-color-bg-1)' }}>
+      <Typography.Text strong style={{ fontSize: 13 }}>{title}</Typography.Text>
+      <table style={{ width: '100%', marginTop: 8, fontSize: 12, borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>{head.map((h) => <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--semi-color-text-2)', borderBottom: '1px solid var(--semi-color-border)' }}>{h}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.length === 0
+            ? <tr><td colSpan={head.length} style={{ padding: '8px 6px', color: 'var(--semi-color-text-3)' }}>无数据</td></tr>
+            : rows.map((r, i) => <tr key={i}>{r.map((cell, j) => <td key={j} style={{ padding: '4px 6px', borderBottom: '1px solid var(--semi-color-fill-0)' }}>{cell}</td>)}</tr>)}
+        </tbody>
+      </table>
     </div>
   );
 }
