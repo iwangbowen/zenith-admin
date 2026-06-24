@@ -3803,6 +3803,10 @@ export const mpFans = pgTable('mp_fans', {
   remark: varchar('remark', { length: 128 }),
   /** 本地标签 id 列表（指向 mp_tags.id） */
   tagIds: jsonb('tag_ids').$type<number[]>().notNull().default([]),
+  /** 微信 unionid（账号绑定开放平台时可获取，用于跨应用打通会员） */
+  unionid: varchar('unionid', { length: 64 }),
+  /** 关联的会员 id（公众号粉丝 ↔ 会员体系打通） */
+  memberId: integer('member_id').references((): AnyPgColumn => members.id, { onDelete: 'set null' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -3810,6 +3814,7 @@ export const mpFans = pgTable('mp_fans', {
 }, (t) => [
   uniqueIndex('mp_fans_account_openid_uq').on(t.accountId, t.openid),
   index('mp_fans_account_idx').on(t.accountId),
+  index('mp_fans_member_idx').on(t.memberId),
 ]);
 export type MpFanRow = typeof mpFans.$inferSelect;
 export type NewMpFan = typeof mpFans.$inferInsert;
