@@ -62,13 +62,14 @@ const FIELD_TEMPLATES: Array<{ key: string; label: string; build: () => Workflow
   },
 ];
 
-const LAYOUT_TYPES = new Set<WorkflowFormFieldType>(['row', 'group', 'divider', 'description', 'detail', 'serialNumber']);
+const LAYOUT_TYPES = new Set<WorkflowFormFieldType>(['row', 'group', 'divider', 'description', 'detail', 'serialNumber', 'tabs', 'steps']);
 
-// 批量应用属性到所有可编辑字段（递归进入分栏/分组/明细）
+// 批量应用属性到所有可编辑字段（递归进入分栏/分组/明细/面板）
 function applyBatchToFields(fields: WorkflowFormField[], patch: Partial<WorkflowFormField>): WorkflowFormField[] {
   return fields.map((f) => {
     let nf = LAYOUT_TYPES.has(f.type) ? { ...f } : { ...f, ...patch };
     if (f.columns) nf = { ...nf, columns: f.columns.map((c) => ({ ...c, fields: applyBatchToFields(c.fields, patch) })) };
+    if (f.panes) nf = { ...nf, panes: f.panes.map((p) => ({ ...p, fields: applyBatchToFields(p.fields, patch) })) };
     if (f.children) nf = { ...nf, children: applyBatchToFields(f.children, patch) };
     return nf;
   });

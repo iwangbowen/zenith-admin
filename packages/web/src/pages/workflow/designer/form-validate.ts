@@ -108,6 +108,29 @@ export function validateFormSchema(fields: WorkflowFormField[]): FormIssue[] {
     if (f.type === 'formula' && f.formula && formulaReferencesKey(f.formula, f.key)) {
       issues.push({ level: 'warning', fieldKey: f.key, fieldLabel: label, message: '公式引用了自身' });
     }
+
+    // 跨字段比较校验：目标字段必须存在且不能是自身
+    if (f.compareRules?.length) {
+      for (const cr of f.compareRules) {
+        if (!cr.field) {
+          issues.push({ level: 'warning', fieldKey: f.key, fieldLabel: label, message: '比较校验未选择目标字段' });
+        } else if (cr.field === f.key) {
+          issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: '比较校验不能引用字段自身' });
+        } else if (!keys.has(cr.field)) {
+          issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: `比较校验引用了不存在的字段：${cr.field}` });
+        }
+      }
+    }
+
+    // 自定义日期范围：最早不得晚于最晚
+    if (f.dateLimit === 'custom' && f.minDate && f.maxDate && f.minDate > f.maxDate) {
+      issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: '最早可选日期晚于最晚可选日期' });
+    }
+
+    // tabs / steps 容器至少保留一个面板
+    if ((f.type === 'tabs' || f.type === 'steps') && (f.panes?.length ?? 0) === 0) {
+      issues.push({ level: 'warning', fieldKey: f.key, fieldLabel: label, message: '容器没有任何面板' });
+    }
   }
 
   return issues;
