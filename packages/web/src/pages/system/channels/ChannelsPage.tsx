@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Form, Input, Modal, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button, Dropdown, Form, Input, Modal, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Plus, RotateCcw, Search } from 'lucide-react';
+import { ImagePlus, MoreHorizontal, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type { ChannelAdmin, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -34,6 +35,7 @@ export default function ChannelsPage() {
   const [editing, setEditing] = useState<ChannelAdmin | null>(null);
   const [formApi, setFormApi] = useState<FormApi | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState('');
 
   const [publishVisible, setPublishVisible] = useState(false);
   const [publishTarget, setPublishTarget] = useState<ChannelAdmin | null>(null);
@@ -56,8 +58,14 @@ export default function ChannelsPage() {
   const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => { setKeyword(''); setPage(1); void fetchList(1, pageSize, ''); };
 
-  const openCreate = () => { setEditing(null); setEditVisible(true); };
-  const openEdit = (ch: ChannelAdmin) => { setEditing(ch); setEditVisible(true); };
+  const openCreate = () => { setEditing(null); setAvatarUrl(''); setEditVisible(true); };
+  const openEdit = (ch: ChannelAdmin) => { setEditing(ch); setAvatarUrl(ch.avatar ?? ''); setEditVisible(true); };
+
+  const handleAvatarUpload = (res: unknown) => {
+    const r = res as { code?: number; data?: { url?: string } };
+    if (r?.code === 0 && r.data?.url) { setAvatarUrl(r.data.url); Toast.success('头像已上传'); }
+    else Toast.error('头像上传失败');
+  };
 
   const handleSubmit = async () => {
     if (!formApi) return;
@@ -66,10 +74,10 @@ export default function ChannelsPage() {
       setSubmitting(true);
       const res = editing
         ? await request.put(`/api/channels/${editing.id}`, {
-          name: values.name, avatar: values.avatar || null, description: values.description || null, status: values.status,
+          name: values.name, avatar: avatarUrl || null, description: values.description || null, status: values.status,
         })
         : await request.post('/api/channels', {
-          code: values.code, name: values.name, avatar: values.avatar || null, description: values.description || null,
+          code: values.code, name: values.name, avatar: avatarUrl || null, description: values.description || null,
         });
       if (res.code === 0) { Toast.success(editing ? '已更新' : '已创建'); setEditVisible(false); void fetchList(); }
     } catch { /* validation failed */ } finally { setSubmitting(false); }
@@ -105,19 +113,33 @@ export default function ChannelsPage() {
     { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
     { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
     {
-      title: '操作', dataIndex: 'op', width: 440, fixed: 'right',
-      render: (_: unknown, r: ChannelAdmin) => (
-        <Space>
-          {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => openPublish(r)}>群发</Button>}
-          {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => setMessagesDrawer(r)}>消息记录</Button>}
-          {r.type === 'business' && hasPermission('channel:menu:save') && <Button theme="borderless" size="small" onClick={() => setMenuDrawer(r)}>菜单配置</Button>}
-          {r.type === 'business' && hasPermission('channel:reply:list') && <Button theme="borderless" size="small" onClick={() => setReplyDrawer(r)}>自动回复</Button>}
-          {hasPermission('channel:channel:update') && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
-          {hasPermission('channel:channel:delete') && !r.builtin && (
-            <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(r)}>删除</Button>
-          )}
-        </Space>
-      ),
+      title: '操作', dataIndex: 'op', width: 180, fixed: 'right',
+      render: (_: unknown, r: ChannelAdmin) => {
+        const moreItems: ReactNode[] = [];
+        if (hasPermission('channel:message:publish')) {
+          moreItems.push(<Dropdown.Item key="records" onClick={() => setMessagesDrawer(r)}>消息记录</Dropdown.Item>);
+        }
+        if (r.type === 'business' && hasPermission('channel:menu:save')) {
+          moreItems.push(<Dropdown.Item key="menu" onClick={() => setMenuDrawer(r)}>菜单配置</Dropdown.Item>);
+        }
+        if (r.type === 'business' && hasPermission('channel:reply:list')) {
+          moreItems.push(<Dropdown.Item key="reply" onClick={() => setReplyDrawer(r)}>自动回复</Dropdown.Item>);
+        }
+        if (hasPermission('channel:channel:delete') && !r.builtin) {
+          moreItems.push(<Dropdown.Item key="delete" type="danger" onClick={() => handleDelete(r)}>删除</Dropdown.Item>);
+        }
+        return (
+          <Space>
+            {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => openPublish(r)}>群发</Button>}
+            {hasPermission('channel:channel:update') && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
+            {moreItems.length > 0 && (
+              <Dropdown trigger="click" clickToHide position="bottomRight" render={<Dropdown.Menu>{moreItems}</Dropdown.Menu>}>
+                <Button theme="borderless" size="small" icon={<MoreHorizontal size={16} />} />
+              </Dropdown>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -158,7 +180,6 @@ export default function ChannelsPage() {
           initValues={{
             code: editing?.code ?? '',
             name: editing?.name ?? '',
-            avatar: editing?.avatar ?? '',
             description: editing?.description ?? '',
             status: editing?.status ?? 'enabled',
           }}
@@ -167,7 +188,34 @@ export default function ChannelsPage() {
             <Form.Input field="code" label="编码" placeholder="小写字母 / 数字 / 连字符" rules={[{ required: true, message: '请填写编码' }]} />
           )}
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请填写名称' }]} />
-          <Form.Input field="avatar" label="头像 URL" placeholder="可选" />
+          <Form.Slot label="头像">
+            <Space align="center">
+              {avatarUrl
+                ? (
+                  <div style={{ position: 'relative', width: 64, height: 64 }}>
+                    <img src={avatarUrl} alt="头像" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--semi-color-border)' }} />
+                    <Button
+                      theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />}
+                      style={{ position: 'absolute', top: -8, right: -8, background: 'var(--semi-color-bg-2)' }}
+                      onClick={() => setAvatarUrl('')}
+                    />
+                  </div>
+                )
+                : (
+                  <Upload
+                    action={`${config.apiBaseUrl}/api/files/upload-one`}
+                    headers={{ Authorization: `Bearer ${localStorage.getItem('zenith_token') ?? ''}` }}
+                    name="file"
+                    accept="image/*"
+                    limit={1}
+                    showUploadList={false}
+                    onSuccess={handleAvatarUpload}
+                  >
+                    <Button icon={<ImagePlus size={14} />}>上传头像</Button>
+                  </Upload>
+                )}
+            </Space>
+          </Form.Slot>
           <Form.TextArea field="description" label="简介" autosize={{ minRows: 2, maxRows: 4 }} />
           {editing && (
             <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ label: '启用', value: 'enabled' }, { label: '停用', value: 'disabled' }]} />
