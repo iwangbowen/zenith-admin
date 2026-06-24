@@ -3,6 +3,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { timelineDot } from '@/components/workflow/timeline-dot';
 import { CheckCircle2, Clock, CornerUpLeft, Flag, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog, Send, type LucideIcon } from 'lucide-react';
 import type { WorkflowTask, WorkflowInstanceStatus } from '@zenith/shared';
+import type { FlowNodeBrief } from '@/components/workflow/workflow-runtime';
 import { formatDateTime, formatDurationBetween } from '@/utils/date';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
@@ -31,6 +32,8 @@ const FINISH_MAP: Partial<Record<WorkflowInstanceStatus, { text: string; color: 
 
 interface ApprovalTimelineProps {
   tasks: WorkflowTask[];
+  /** 流程全部审批节点（按流转顺序，用于展示尚未到达的后续节点） */
+  flowNodes?: FlowNodeBrief[];
   /** 发起人信息（用于顶部「发起申请」节点） */
   initiator?: { name?: string | null; avatar?: string | null; submittedAt?: string | null };
   /** 实例状态（终态时展示底部「流程结束」节点） */
@@ -40,7 +43,7 @@ interface ApprovalTimelineProps {
 }
 
 /** 审批流时间线，使用 Semi Design Timeline 组件统一渲染 */
-export default function ApprovalTimeline({ tasks, initiator, instanceStatus, finishedAt }: Readonly<ApprovalTimelineProps>) {
+export default function ApprovalTimeline({ tasks, flowNodes, initiator, instanceStatus, finishedAt }: Readonly<ApprovalTimelineProps>) {
   const sorted = [...tasks].sort((a, b) => a.id - b.id);
 
   // 为每个 rejected 任务定位"已回退至"的目标节点：取 id 严格大于当前任务、且非抄送节点的第一条后续任务
@@ -252,6 +255,20 @@ export default function ApprovalTimeline({ tasks, initiator, instanceStatus, fin
           </Timeline.Item>
         );
       })}
+      {!finish && (() => {
+        // 展示流程后续尚未到达的审批节点（无对应 task），运行态预览完整链路
+        const doneKeys = new Set(tasks.map((t) => t.nodeKey));
+        return (flowNodes ?? [])
+          .filter((n) => !doneKeys.has(n.key))
+          .map((n) => (
+            <Timeline.Item key={`future-${n.key}`} dot={timelineDot(Clock, 'var(--semi-color-tertiary)')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Typography.Text strong style={{ fontSize: 13, color: 'var(--semi-color-text-2)' }}>{n.name}</Typography.Text>
+                <Tag color="grey" size="small">{n.type === 'cc' ? '待抄送' : '待审批'}</Tag>
+              </div>
+            </Timeline.Item>
+          ));
+      })()}
       {finish ? (
         <Timeline.Item dot={timelineDot(finish.icon, finish.iconColor)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

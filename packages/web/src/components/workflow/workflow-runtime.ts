@@ -3,7 +3,38 @@
  * 供「流程图」「节点列表」共用。
  */
 import type { WorkflowTask } from '@zenith/shared';
-import type { NodeRuntimeInfo } from '@/pages/workflow/designer/types';
+import type { FlowNode, FlowProcess, NodeRuntimeInfo } from '@/pages/workflow/designer/types';
+
+/** 线性化后的审批节点简要信息（用于展示流程全部节点，含未到达节点） */
+export interface FlowNodeBrief {
+  key: string;
+  name: string;
+  type: string;
+}
+
+const APPROVAL_NODE_TYPES = new Set(['approve', 'handler', 'cc']);
+
+/**
+ * 线性化流程中的审批相关节点（approve / handler / cc），按流转顺序返回（含尚未到达的后续节点）。
+ * 用于审批时间线展示完整链路，而非只展示已创建任务对应的节点。
+ */
+export function linearizeApprovalNodes(
+  flowData: { process?: unknown } | null | undefined,
+): FlowNodeBrief[] {
+  const process = flowData?.process as FlowProcess | undefined;
+  if (!process?.initiator) return [];
+  const out: FlowNodeBrief[] = [];
+  const visit = (node: FlowNode | undefined) => {
+    if (!node) return;
+    if (APPROVAL_NODE_TYPES.has(node.type)) {
+      out.push({ key: node.key ?? node.id, name: node.name || node.key || node.id, type: node.type });
+    }
+    node.branches?.forEach((b) => visit(b.children));
+    visit(node.children);
+  };
+  visit(process.initiator.children);
+  return out;
+}
 
 /** 按 nodeKey 聚合 tasks → 节点运行态（状态 + 处理人列表） */
 export function buildNodeRuntimeMap(tasks: WorkflowTask[]): Map<string, NodeRuntimeInfo> {

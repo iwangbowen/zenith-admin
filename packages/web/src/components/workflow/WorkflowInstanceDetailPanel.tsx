@@ -17,6 +17,7 @@ import ApprovalTimeline from '@/components/ApprovalTimeline';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import BusinessFormHost from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
+import { linearizeApprovalNodes } from './workflow-runtime';
 import {
   resolveWorkflowCustomForm,
   resolveWorkflowDetailDefinition,
@@ -296,6 +297,7 @@ export default function WorkflowInstanceDetailPanel({
         <TabPane tab="审批流程" itemKey="approvals">
           <ApprovalTimeline
             tasks={instance.tasks ?? []}
+            flowNodes={linearizeApprovalNodes(flowData)}
             initiator={{ name: instance.initiatorName, avatar: instance.initiatorAvatar, submittedAt: instance.createdAt }}
             instanceStatus={instance.status}
             finishedAt={instance.updatedAt}
