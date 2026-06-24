@@ -1961,9 +1961,6 @@ export default function ChatPage({
           <Spin spinning={loadingConvs}>
             {leftPaneMode === 'conversations' && (
               <>
-              <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--semi-color-border)' }}>
-                <Text type="tertiary" size="small">频道</Text>
-              </div>
               {channels.length > 0 && (
                 <SemiList
                   className="chat-conv-list"

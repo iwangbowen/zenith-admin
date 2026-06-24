@@ -11,6 +11,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
+import { UserAvatar } from '@/components/UserAvatar';
 import { usePagination } from '@/hooks/usePagination';
 import { ChannelMenuDrawer } from './ChannelMenuDrawer';
 import { ChannelAutoReplyDrawer } from './ChannelAutoReplyDrawer';
@@ -101,10 +102,11 @@ export default function ChannelsPage() {
     {
       title: '频道', dataIndex: 'name',
       render: (v: string, r: ChannelAdmin) => (
-        <div>
+        <Space align="center">
+          <UserAvatar name={v} avatar={r.avatar} size={36} />
           <Typography.Text strong>{v}</Typography.Text>
-          <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{r.code}</Typography.Text>
-        </div>
+          <Typography.Text type="tertiary" size="small">{r.code}</Typography.Text>
+        </Space>
       ),
     },
     { title: '类型', dataIndex: 'type', width: 90, render: (v: string) => <Tag color={TYPE_META[v]?.color ?? 'grey'} size="small">{TYPE_META[v]?.text ?? v}</Tag> },
@@ -184,9 +186,13 @@ export default function ChannelsPage() {
             status: editing?.status ?? 'enabled',
           }}
         >
-          {!editing && (
-            <Form.Input field="code" label="编码" placeholder="小写字母 / 数字 / 连字符" rules={[{ required: true, message: '请填写编码' }]} />
-          )}
+          <Form.Input
+            field="code"
+            label="编码"
+            placeholder="小写字母 / 数字 / 连字符"
+            disabled={!!editing}
+            rules={editing ? undefined : [{ required: true, message: '请填写编码' }]}
+          />
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请填写名称' }]} />
           <Form.Slot label="头像">
             <Space align="center">
