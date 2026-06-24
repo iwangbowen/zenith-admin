@@ -2179,6 +2179,7 @@ export const createMpAccountSchema = z.object({
   type: z.enum(MP_ACCOUNT_TYPES).default('service'),
   qrCodeUrl: z.string().max(500).optional(),
   isDefault: z.boolean().default(false),
+  autoCreateMember: z.boolean().default(false),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   remark: z.string().max(500).optional(),
 });
