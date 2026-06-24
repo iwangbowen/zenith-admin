@@ -110,9 +110,9 @@ export default function ChannelsPage() {
     { title: '订阅数', dataIndex: 'subscriberCount', width: 90 },
     { title: '消息数', dataIndex: 'messageCount', width: 90 },
     { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
-    { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (v: string) => formatDateTime(v) },
+    { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
     {
-      title: '操作', dataIndex: 'op', width: 280, fixed: 'right',
+      title: '操作', dataIndex: 'op', width: 360, fixed: 'right',
       render: (_: unknown, r: ChannelAdmin) => (
         <Space>
           {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => openPublish(r)}>群发</Button>}

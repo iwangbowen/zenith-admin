@@ -1,6 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
 import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { createWorkflowQuickPhraseSchema, updateWorkflowQuickPhraseSchema } from '@zenith/shared';
 import { WorkflowQuickPhraseDTO } from '../lib/openapi-dtos';
@@ -14,7 +13,7 @@ const listRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/', tags: ['WorkflowQuickPhrases'], summary: '我的审批常用语',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:task:handle' })] as const,
+    middleware: [authMiddleware] as const,
     responses: { ...commonErrorResponses, ...ok(z.array(WorkflowQuickPhraseDTO), 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listMyQuickPhrases()), 200),
@@ -24,7 +23,7 @@ const createRouteDef = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/', tags: ['WorkflowQuickPhrases'], summary: '新增常用语',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:task:handle' })] as const,
+    middleware: [authMiddleware] as const,
     request: { body: { content: jsonContent(createWorkflowQuickPhraseSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(WorkflowQuickPhraseDTO, '已新增') },
   }),
@@ -35,7 +34,7 @@ const updateRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}', tags: ['WorkflowQuickPhrases'], summary: '更新常用语',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:task:handle' })] as const,
+    middleware: [authMiddleware] as const,
     request: { params: IdParam, body: { content: jsonContent(updateWorkflowQuickPhraseSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(WorkflowQuickPhraseDTO, '已更新') },
   }),
@@ -46,7 +45,7 @@ const deleteRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete', path: '/{id}', tags: ['WorkflowQuickPhrases'], summary: '删除常用语',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:task:handle' })] as const,
+    middleware: [authMiddleware] as const,
     request: { params: IdParam },
     responses: { ...commonErrorResponses, ...okMsg('已删除') },
   }),
