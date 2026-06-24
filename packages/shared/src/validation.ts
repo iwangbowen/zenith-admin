@@ -2368,3 +2368,38 @@ export const updateMpKfAccountSchema = z.object({
 });
 export type CreateMpKfAccountInput = z.infer<typeof createMpKfAccountSchema>;
 export type UpdateMpKfAccountInput = z.infer<typeof updateMpKfAccountSchema>;
+
+// 多客服会话治理（接入/转接/超时自动路由/会话分配）
+export const acceptMpKfSessionSchema = z.object({
+  kfId: z.number().int().positive(),
+});
+export const transferMpKfSessionSchema = z.object({
+  toKfId: z.number().int().positive(),
+  remark: z.string().max(255).optional(),
+});
+export const closeMpKfSessionSchema = z.object({
+  remark: z.string().max(255).optional(),
+});
+export const replyMpKfSessionSchema = z.object({
+  msgType: z.enum(['text', 'image', 'voice', 'video', 'news']).default('text'),
+  content: z.string().max(2000).optional(),
+  mediaId: z.string().max(128).optional(),
+}).refine((v) => v.msgType !== 'text' || (v.content && v.content.trim().length > 0), {
+  message: '文本消息内容不能为空', path: ['content'],
+}).refine((v) => v.msgType === 'text' || !!v.mediaId, {
+  message: '该消息类型需提供 mediaId', path: ['mediaId'],
+});
+export const updateMpKfRoutingConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  strategy: z.enum(['manual', 'round_robin', 'least_active']).optional(),
+  maxConcurrent: z.number().int().min(1).max(100).optional(),
+  waitTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
+  idleTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
+  autoCloseEnabled: z.boolean().optional(),
+  welcomeText: z.string().max(500).nullable().optional(),
+});
+export type AcceptMpKfSessionInput = z.infer<typeof acceptMpKfSessionSchema>;
+export type TransferMpKfSessionInput = z.infer<typeof transferMpKfSessionSchema>;
+export type CloseMpKfSessionInput = z.infer<typeof closeMpKfSessionSchema>;
+export type ReplyMpKfSessionInput = z.infer<typeof replyMpKfSessionSchema>;
+export type UpdateMpKfRoutingConfigInput = z.infer<typeof updateMpKfRoutingConfigSchema>;

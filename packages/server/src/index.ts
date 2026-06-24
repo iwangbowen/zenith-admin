@@ -127,6 +127,7 @@ import mpQrcodesRoutes from './routes/mp-qrcodes';
 import mpOAuthRoutes from './routes/mp-oauth';
 import mpOAuthPublicRoutes from './routes/mp-oauth-public';
 import mpKfRoutes from './routes/mp-kf';
+import mpKfSessionRoutes from './routes/mp-kf-sessions';
 import mpCallbackRoutes from './routes/mp-callback';
 import inAppTemplatesRoutes from './routes/in-app-templates';
 import inAppMessagesRoutes from './routes/in-app-messages';
@@ -393,6 +394,7 @@ app.route('/api/mp/broadcasts', mpBroadcastsRoutes);
 app.route('/api/mp/qrcodes', mpQrcodesRoutes);
 app.route('/api/mp/oauth', mpOAuthRoutes);
 app.route('/api/mp/kf-accounts', mpKfRoutes);
+app.route('/api/mp/kf-sessions', mpKfSessionRoutes);
 app.route('/api/in-app-templates', inAppTemplatesRoutes);
 app.route('/api/in-app-messages', inAppMessagesRoutes);
 app.route('/api/ai/providers', aiProvidersRoutes);
@@ -502,6 +504,10 @@ try {
   });
   const { publishDueScheduledMessages } = await import('./services/channel.service');
   await registerSystemRecurringJob('channel-scheduled-publish', '* * * * *', publishDueScheduledMessages);
+  const { runMpKfSessionTimeouts } = await import('./services/mp-kf-session.service');
+  await registerSystemRecurringJob('mp-kf-session-tick', '* * * * *', async () => {
+    await runMpKfSessionTimeouts();
+  });
 } catch (err) {
   logger.error('Failed to initialize cron scheduler', err);
 }

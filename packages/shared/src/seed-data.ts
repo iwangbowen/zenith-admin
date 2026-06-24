@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -426,6 +426,12 @@ export const SEED_MENUS: Menu[] = [
   { id: 1152, parentId: 1150, title: '编辑客服',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:kf:update',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1153, parentId: 1150, title: '删除客服',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'mp:kf:delete',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1154, parentId: 1150, title: '同步客服',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'mp:kf:sync',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1160, parentId: 1000, title: '会话工作台', name: 'MpKfSessions', path: '/mp/kf-sessions', component: 'mp/MpKfSessionsPage', icon: 'Headset', type: 'menu',   sort: 15, status: 'enabled', visible: true,  permission: 'mp:kf:session:list',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1161, parentId: 1160, title: '接入会话',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:kf:session:accept',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1162, parentId: 1160, title: '转接会话',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:kf:session:transfer', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1163, parentId: 1160, title: '结束会话',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'mp:kf:session:close',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1164, parentId: 1160, title: '会话回复',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'mp:kf:session:reply',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1165, parentId: 1160, title: '路由配置',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 5,  status: 'enabled', visible: true,  permission: 'mp:kf:session:config',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   // ── 业务接入示例（请假，业务模块自有实体 + 工作流编排）──
   { id: 900, parentId: 0,   title: '业务示例', name: 'BizDemo',          path: undefined,        component: undefined,            icon: 'Briefcase',     type: 'directory', sort: 12, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 901, parentId: 900, title: '请假管理', name: 'BizLeave',         path: '/biz/leave',     component: 'biz/leave/LeavePage', icon: 'CalendarClock', type: 'menu',      sort: 1,  status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -1353,6 +1359,55 @@ export const SEED_MP_QRCODES: MpQrcode[] = [
 export const SEED_MP_KF_ACCOUNTS: MpKfAccount[] = [
   { id: 1, accountId: 1, kfAccount: 'kf2001@gh_demo_service', nickname: '客服小柒', avatar: null, kfId: '1001', inviteStatus: 'bound', inviteWx: 'zenith_cs_01', status: 'enabled', tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, accountId: 1, kfAccount: 'kf2002@gh_demo_service', nickname: '客服小满', avatar: null, kfId: '1002', inviteStatus: 'inviting', inviteWx: null, status: 'enabled', tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 多客服会话治理（路由配置 + 会话状态机 + 事件流水）──────────────────────────
+export interface SeedMpKfRoutingConfig {
+  accountId: number;
+  enabled: boolean;
+  strategy: MpKfRoutingStrategy;
+  maxConcurrent: number;
+  waitTimeoutMinutes: number;
+  idleTimeoutMinutes: number;
+  autoCloseEnabled: boolean;
+  welcomeText: string | null;
+}
+export const SEED_MP_KF_ROUTING_CONFIGS: SeedMpKfRoutingConfig[] = [
+  { accountId: 1, enabled: true, strategy: 'least_active', maxConcurrent: 5, waitTimeoutMinutes: 3, idleTimeoutMinutes: 15, autoCloseEnabled: true, welcomeText: '您好，很高兴为您服务，请问有什么可以帮您？' },
+];
+
+export interface SeedMpKfSession {
+  id: number;
+  accountId: number;
+  openid: string;
+  kfId: number | null;
+  status: MpKfSessionStatus;
+  unreadCount: number;
+  source: string;
+  closeReason: MpKfSessionCloseReason | null;
+}
+export const SEED_MP_KF_SESSIONS: SeedMpKfSession[] = [
+  { id: 1, accountId: 1, openid: 'oDemoFan0000000000000001', kfId: 1, status: 'active', unreadCount: 0, source: 'text', closeReason: null },
+  { id: 2, accountId: 1, openid: 'oDemoFan0000000000000002', kfId: null, status: 'waiting', unreadCount: 1, source: 'text', closeReason: null },
+  { id: 3, accountId: 1, openid: 'oDemoFan0000000000000003', kfId: 2, status: 'closed', unreadCount: 0, source: 'text', closeReason: 'manual' },
+];
+
+export interface SeedMpKfSessionEvent {
+  id: number;
+  sessionId: number;
+  accountId: number;
+  type: MpKfSessionEventType;
+  fromKfId: number | null;
+  toKfId: number | null;
+  detail: string;
+}
+export const SEED_MP_KF_SESSION_EVENTS: SeedMpKfSessionEvent[] = [
+  { id: 1, sessionId: 1, accountId: 1, type: 'create', fromKfId: null, toKfId: null, detail: '粉丝发起会话' },
+  { id: 2, sessionId: 1, accountId: 1, type: 'assign', fromKfId: null, toKfId: 1, detail: '系统自动分配' },
+  { id: 3, sessionId: 2, accountId: 1, type: 'create', fromKfId: null, toKfId: null, detail: '粉丝发起会话' },
+  { id: 4, sessionId: 3, accountId: 1, type: 'create', fromKfId: null, toKfId: null, detail: '粉丝发起会话' },
+  { id: 5, sessionId: 3, accountId: 1, type: 'accept', fromKfId: null, toKfId: 2, detail: '人工接入' },
+  { id: 6, sessionId: 3, accountId: 1, type: 'close', fromKfId: 2, toKfId: null, detail: '手动结束' },
 ];
 
 // ─── 签到里程碑（累计签到天数达标奖励）──────────────────────────────────────────

@@ -4141,3 +4141,108 @@ export const mpKfAccountsRelations = relations(mpKfAccounts, ({ one }) => ({
   account: one(mpAccounts, { fields: [mpKfAccounts.accountId], references: [mpAccounts.id] }),
   tenant: one(tenants, { fields: [mpKfAccounts.tenantId], references: [tenants.id] }),
 }));
+
+// ─── 公众号多客服会话治理（实时状态机：接入/转接/超时自动路由/会话分配）──────────────
+export const mpKfSessionStatusEnum = pgEnum('mp_kf_session_status', ['waiting', 'active', 'closed']);
+export const mpKfSessionCloseReasonEnum = pgEnum('mp_kf_session_close_reason', ['manual', 'wait_timeout', 'idle_timeout', 'system']);
+export const mpKfRoutingStrategyEnum = pgEnum('mp_kf_routing_strategy', ['manual', 'round_robin', 'least_active']);
+export const mpKfSessionEventTypeEnum = pgEnum('mp_kf_session_event_type', ['create', 'assign', 'accept', 'transfer', 'reroute', 'close']);
+
+// 多客服会话：一名粉丝（openid）与一个客服账号的一次会话，含排队(waiting)/进行(active)/结束(closed)状态机
+export const mpKfSessions = pgTable('mp_kf_sessions', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  openid: varchar('openid', { length: 64 }).notNull(),
+  /** 当前承接的客服账号；waiting 时为 null */
+  kfId: integer('kf_id').references((): AnyPgColumn => mpKfAccounts.id, { onDelete: 'set null' }),
+  status: mpKfSessionStatusEnum('status').notNull().default('waiting'),
+  /** 优先级（越大越靠前），超时未接入时自动提升 */
+  priority: integer('priority').notNull().default(0),
+  /** 会话来源（首条消息类型，如 text/event） */
+  source: varchar('source', { length: 32 }),
+  /** 未读（粉丝发来但客服未回复）条数 */
+  unreadCount: integer('unread_count').notNull().default(0),
+  lastFanMsgAt: timestamp('last_fan_msg_at'),
+  lastKfMsgAt: timestamp('last_kf_msg_at'),
+  lastMsgAt: timestamp('last_msg_at').defaultNow().notNull(),
+  /** 进入排队的时间（用于等待超时计算） */
+  waitingSince: timestamp('waiting_since'),
+  acceptedAt: timestamp('accepted_at'),
+  closedAt: timestamp('closed_at'),
+  closeReason: mpKfSessionCloseReasonEnum('close_reason'),
+  remark: varchar('remark', { length: 255 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  // 同一公众号下，一个粉丝至多存在一个未结束会话
+  uniqueIndex('mp_kf_sessions_open_uq').on(t.accountId, t.openid).where(sql`${t.status} <> 'closed'`),
+  index('mp_kf_sessions_account_status_idx').on(t.accountId, t.status),
+  index('mp_kf_sessions_kf_idx').on(t.kfId),
+]);
+export type MpKfSessionRow = typeof mpKfSessions.$inferSelect;
+export type NewMpKfSession = typeof mpKfSessions.$inferInsert;
+
+// 会话事件流水：创建/分配/接入/转接/重路由/结束，支撑时间线与转接历史审计
+export const mpKfSessionEvents = pgTable('mp_kf_session_events', {
+  id: serial('id').primaryKey(),
+  sessionId: integer('session_id').notNull().references((): AnyPgColumn => mpKfSessions.id, { onDelete: 'cascade' }),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  type: mpKfSessionEventTypeEnum('type').notNull(),
+  fromKfId: integer('from_kf_id').references((): AnyPgColumn => mpKfAccounts.id, { onDelete: 'set null' }),
+  toKfId: integer('to_kf_id').references((): AnyPgColumn => mpKfAccounts.id, { onDelete: 'set null' }),
+  /** 操作人（人工操作时为后台用户；系统自动时为 null） */
+  operatorId: integer('operator_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  detail: varchar('detail', { length: 255 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('mp_kf_session_events_session_idx').on(t.sessionId),
+]);
+export type MpKfSessionEventRow = typeof mpKfSessionEvents.$inferSelect;
+export type NewMpKfSessionEvent = typeof mpKfSessionEvents.$inferInsert;
+
+// 多客服路由治理配置：每公众号一份，决定会话分配策略与超时阈值
+export const mpKfRoutingConfigs = pgTable('mp_kf_routing_configs', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  /** 是否启用会话治理（关闭则回调不再建会话） */
+  enabled: boolean('enabled').notNull().default(true),
+  strategy: mpKfRoutingStrategyEnum('strategy').notNull().default('least_active'),
+  /** 单客服最大并发会话数（容量上限） */
+  maxConcurrent: integer('max_concurrent').notNull().default(5),
+  /** 排队等待超时（分钟）：超时自动重新路由 */
+  waitTimeoutMinutes: integer('wait_timeout_minutes').notNull().default(3),
+  /** 会话空闲超时（分钟）：超时自动结束 */
+  idleTimeoutMinutes: integer('idle_timeout_minutes').notNull().default(15),
+  autoCloseEnabled: boolean('auto_close_enabled').notNull().default(true),
+  /** 接入后自动发送的欢迎语（可空） */
+  welcomeText: varchar('welcome_text', { length: 500 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('mp_kf_routing_configs_account_uq').on(t.accountId),
+]);
+export type MpKfRoutingConfigRow = typeof mpKfRoutingConfigs.$inferSelect;
+export type NewMpKfRoutingConfig = typeof mpKfRoutingConfigs.$inferInsert;
+
+export const mpKfSessionsRelations = relations(mpKfSessions, ({ one, many }) => ({
+  account: one(mpAccounts, { fields: [mpKfSessions.accountId], references: [mpAccounts.id] }),
+  kf: one(mpKfAccounts, { fields: [mpKfSessions.kfId], references: [mpKfAccounts.id] }),
+  events: many(mpKfSessionEvents),
+  tenant: one(tenants, { fields: [mpKfSessions.tenantId], references: [tenants.id] }),
+}));
+
+export const mpKfSessionEventsRelations = relations(mpKfSessionEvents, ({ one }) => ({
+  session: one(mpKfSessions, { fields: [mpKfSessionEvents.sessionId], references: [mpKfSessions.id] }),
+  fromKf: one(mpKfAccounts, { fields: [mpKfSessionEvents.fromKfId], references: [mpKfAccounts.id] }),
+  toKf: one(mpKfAccounts, { fields: [mpKfSessionEvents.toKfId], references: [mpKfAccounts.id] }),
+}));
+
+export const mpKfRoutingConfigsRelations = relations(mpKfRoutingConfigs, ({ one }) => ({
+  account: one(mpAccounts, { fields: [mpKfRoutingConfigs.accountId], references: [mpAccounts.id] }),
+  tenant: one(tenants, { fields: [mpKfRoutingConfigs.tenantId], references: [tenants.id] }),
+}));

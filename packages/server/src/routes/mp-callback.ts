@@ -14,6 +14,7 @@ import { storeInboundMessage, storeOutboundAutoReply } from '../services/mp-mess
 import { resolveAutoReply } from '../services/mp-auto-reply.service';
 import { incrementQrcodeScan } from '../services/mp-qrcode.service';
 import { autoCreateMemberOnSubscribe } from '../services/mp-member.service';
+import { onFanInboundMessage } from '../services/mp-kf-session.service';
 import { verifyWechatSignature, msgSignature, timingSafeCompare, decryptWechatMessage, encryptWechatMessage, parseWechatXml, buildWechatXml, buildPassiveReplyXml, summarizePassiveReply } from '../lib/wechat';
 import logger from '../lib/logger';
 import type { MpMessageType } from '@zenith/shared';
@@ -180,6 +181,15 @@ const receiveRoute = defineOpenAPIRoute({
         await autoCreateMemberOnSubscribe(accountId, account.tenantId, openid, {});
       } catch (err) {
         logger.warn(`[mp-callback] 关注自动建会员失败: ${(err as Error).message}`);
+      }
+    }
+
+    // ── 多客服会话接入（粉丝实质消息触发；开启路由治理时建/续会话并按策略分配） ──
+    if (isNew && msgType !== 'event') {
+      try {
+        await onFanInboundMessage(accountId, account.tenantId, openid, msgType);
+      } catch (err) {
+        logger.warn(`[mp-callback] 多客服会话接入失败: ${(err as Error).message}`);
       }
     }
 

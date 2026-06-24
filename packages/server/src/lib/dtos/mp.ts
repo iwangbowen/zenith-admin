@@ -313,3 +313,88 @@ export const MpDatacubeDTO = z
     articleSummary: z.array(z.object({ refDate: z.string(), pageReadCount: z.number().int() })),
   })
   .openapi('MpDatacube');
+
+// ─── 多客服会话治理 ───────────────────────────────────────────────────────────
+const MP_KF_SESSION_STATUS = z.enum(['waiting', 'active', 'closed']);
+
+export const MpKfSessionDTO = z
+  .object({
+    id: z.number().int(),
+    accountId: z.number().int(),
+    openid: z.string(),
+    kfId: z.number().int().nullable(),
+    kfNickname: z.string().nullable(),
+    fanNickname: z.string().nullable(),
+    fanAvatar: z.string().nullable(),
+    status: MP_KF_SESSION_STATUS,
+    priority: z.number().int(),
+    source: z.string().nullable(),
+    unreadCount: z.number().int(),
+    lastFanMsgAt: z.string().nullable(),
+    lastKfMsgAt: z.string().nullable(),
+    lastMsgAt: z.string().nullable(),
+    waitingSince: z.string().nullable(),
+    acceptedAt: z.string().nullable(),
+    closedAt: z.string().nullable(),
+    closeReason: z.enum(['manual', 'wait_timeout', 'idle_timeout', 'system']).nullable(),
+    remark: z.string().nullable(),
+    waitSeconds: z.number().int().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('MpKfSession');
+
+export const MpKfSessionEventDTO = z
+  .object({
+    id: z.number().int(),
+    sessionId: z.number().int(),
+    accountId: z.number().int(),
+    type: z.enum(['create', 'assign', 'accept', 'transfer', 'reroute', 'close']),
+    fromKfId: z.number().int().nullable(),
+    toKfId: z.number().int().nullable(),
+    fromKfNickname: z.string().nullable(),
+    toKfNickname: z.string().nullable(),
+    operatorId: z.number().int().nullable(),
+    operatorName: z.string().nullable(),
+    detail: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('MpKfSessionEvent');
+
+export const MpKfSessionDetailDTO = MpKfSessionDTO
+  .extend({
+    events: z.array(MpKfSessionEventDTO),
+    messages: z.array(MpMessageDTO),
+  })
+  .openapi('MpKfSessionDetail');
+
+export const MpKfRoutingConfigDTO = z
+  .object({
+    id: z.number().int(),
+    accountId: z.number().int(),
+    enabled: z.boolean(),
+    strategy: z.enum(['manual', 'round_robin', 'least_active']),
+    maxConcurrent: z.number().int(),
+    waitTimeoutMinutes: z.number().int(),
+    idleTimeoutMinutes: z.number().int(),
+    autoCloseEnabled: z.boolean(),
+    welcomeText: z.string().nullable(),
+    updatedAt: z.string(),
+  })
+  .openapi('MpKfRoutingConfig');
+
+export const MpKfSessionStatsDTO = z
+  .object({
+    waiting: z.number().int(),
+    active: z.number().int(),
+    closedToday: z.number().int(),
+    avgWaitSeconds: z.number().int(),
+    agents: z.array(z.object({
+      kfId: z.number().int(),
+      kfAccount: z.string(),
+      nickname: z.string(),
+      status: z.enum(['enabled', 'disabled']),
+      activeCount: z.number().int(),
+    })),
+  })
+  .openapi('MpKfSessionStats');

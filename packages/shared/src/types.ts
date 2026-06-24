@@ -1261,7 +1261,10 @@ export type WsMessage =
   | { type: 'payment:closed'; payload: { orderNo: string; bizType: string; bizId: string } }
   | { type: 'payment:failed'; payload: { orderNo: string; bizType: string; bizId: string } }
   | { type: 'payment:refunded'; payload: { orderNo: string; refundNo: string; refundAmount: number } }
-  | { type: 'payment:refund-failed'; payload: { orderNo: string; refundNo: string; refundAmount: number } };
+  | { type: 'payment:refund-failed'; payload: { orderNo: string; refundNo: string; refundAmount: number } }
+  | { type: 'mp-kf:session-new'; payload: MpKfSession }
+  | { type: 'mp-kf:session-update'; payload: MpKfSession }
+  | { type: 'mp-kf:session-message'; payload: { sessionId: number; accountId: number; openid: string; direction: MpMessageDirection; msgType: MpMessageType; content: string | null; createdAt: string } };
 
 /** Terminal WebSocket 消息（独立端点 /api/ws/terminal） */
 export type TerminalMessage =
@@ -4524,4 +4527,88 @@ export interface MpKfAccount {
   updatedBy?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── 多客服会话治理（实时状态机）──────────────────────────────────────────────
+export type MpKfSessionStatus = 'waiting' | 'active' | 'closed';
+export type MpKfSessionCloseReason = 'manual' | 'wait_timeout' | 'idle_timeout' | 'system';
+export type MpKfRoutingStrategy = 'manual' | 'round_robin' | 'least_active';
+export type MpKfSessionEventType = 'create' | 'assign' | 'accept' | 'transfer' | 'reroute' | 'close';
+
+export interface MpKfSession {
+  id: number;
+  accountId: number;
+  openid: string;
+  kfId: number | null;
+  /** 承接客服昵称（联表） */
+  kfNickname: string | null;
+  /** 粉丝昵称（联表） */
+  fanNickname: string | null;
+  fanAvatar: string | null;
+  status: MpKfSessionStatus;
+  priority: number;
+  source: string | null;
+  unreadCount: number;
+  lastFanMsgAt: string | null;
+  lastKfMsgAt: string | null;
+  lastMsgAt: string | null;
+  waitingSince: string | null;
+  acceptedAt: string | null;
+  closedAt: string | null;
+  closeReason: MpKfSessionCloseReason | null;
+  remark: string | null;
+  /** 已等待秒数（waiting 时由后端计算） */
+  waitSeconds?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MpKfSessionEvent {
+  id: number;
+  sessionId: number;
+  accountId: number;
+  type: MpKfSessionEventType;
+  fromKfId: number | null;
+  toKfId: number | null;
+  fromKfNickname: string | null;
+  toKfNickname: string | null;
+  operatorId: number | null;
+  operatorName: string | null;
+  detail: string | null;
+  createdAt: string;
+}
+
+export interface MpKfSessionDetail extends MpKfSession {
+  events: MpKfSessionEvent[];
+  messages: MpMessage[];
+}
+
+export interface MpKfRoutingConfig {
+  id: number;
+  accountId: number;
+  enabled: boolean;
+  strategy: MpKfRoutingStrategy;
+  maxConcurrent: number;
+  waitTimeoutMinutes: number;
+  idleTimeoutMinutes: number;
+  autoCloseEnabled: boolean;
+  welcomeText: string | null;
+  updatedAt: string;
+}
+
+export interface MpKfAgentLoad {
+  kfId: number;
+  kfAccount: string;
+  nickname: string;
+  status: EntityStatus;
+  activeCount: number;
+}
+
+export interface MpKfSessionStats {
+  waiting: number;
+  active: number;
+  closedToday: number;
+  /** 今日已结束会话平均等待接入秒数 */
+  avgWaitSeconds: number;
+  agents: MpKfAgentLoad[];
 }
