@@ -228,7 +228,7 @@ import { workflowEventOutbox, workflowInstances, workflowTasks, workflowTaskUrge
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { advanceFlow, getInitialTasks, validateFlowData, findReturnPrevTarget, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType } from '@zenith/shared';
 import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
@@ -2238,7 +2238,7 @@ function mapRuntimeTriggerExecution(row: typeof workflowTriggerExecutions.$infer
     taskId: row.taskId ?? null,
     nodeKey: row.nodeKey,
     nodeName: row.nodeName ?? null,
-    triggerType: row.triggerType,
+    triggerType: row.triggerType as WorkflowTriggerType,
     status: row.status,
     attempt: row.attempt,
     requestUrl: row.requestUrl ?? null,
@@ -2388,7 +2388,7 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
     initiatorAvatar: row.initiator?.avatar ?? null,
     tasks,
     includeDefinitionSnapshot: true,
-  });
+  }) as WorkflowInstance;
   const activeTasks = tasks.filter((task) => task.status === 'pending' || task.status === 'waiting');
   return {
     instance,
