@@ -573,6 +573,26 @@ export const SEED_SYSTEM_CONFIGS: SystemConfig[] = [
   { id: 25, configKey: 'upload_session_ttl_hours',      configValue: '24',    configType: 'number',  description: '分片上传会话保留时长（小时）；超过该时长仍未完成的会话及其临时分片将被定时清理', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
+// ─── 限流规则 ─────────────────────────────────────────────────────────────────
+
+export const SEED_RATE_LIMIT_RULES = [
+  {
+    name: 'workflow_public_callback',
+    description: '工作流公开回调接口限流',
+    windowMs: 60 * 1000,
+    limit: 120,
+    keyType: 'ip_path' as const,
+    enabled: true,
+    blockedMessage: '工作流回调请求过于频繁，请稍后再试',
+    pathPatterns: [
+      '/api/public/workflow/external-callback/*',
+      '/api/public/workflow/trigger-callback/*',
+    ],
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
 // ─── 定时任务 ─────────────────────────────────────────────────────────────────
 
 export const SEED_CRON_JOBS: CronJob[] = [
@@ -854,6 +874,24 @@ export const SEED_CRON_JOBS: CronJob[] = [
     params: null,
     status: 'enabled',
     description: '每 5 分钟扫描因异步副作用失败/进程崩溃而挂起的子流程父任务，重新发起未起步的子实例、重新唤醒已结束但未推进的父任务',
+    retryCount: 0,
+    retryInterval: 0,
+    retryBackoff: false,
+    monitorTimeout: null,
+    lastRunAt: null,
+    lastRunStatus: null,
+    lastRunMessage: null,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+  {
+    id: 17,
+    name: '工作流运行时副作用恢复',
+    cronExpression: '*/5 * * * *',
+    handler: 'recoverWorkflowRuntimeSideEffects',
+    params: null,
+    status: 'enabled',
+    description: '每 5 分钟恢复因进程崩溃或事件总线丢失而未派发的外部审批与触发器任务',
     retryCount: 0,
     retryInterval: 0,
     retryBackoff: false,

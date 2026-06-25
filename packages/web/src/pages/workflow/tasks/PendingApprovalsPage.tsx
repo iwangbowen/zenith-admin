@@ -106,9 +106,12 @@ export default function PendingApprovalsPage() {
     setBatchSubmitting(true);
     try {
       const path = batchMode === 'approve' ? 'batch-approve' : 'batch-reject';
+      const payload = batchMode === 'reject'
+        ? { taskIds, comment: batchComment.trim() }
+        : { taskIds, comment: batchComment.trim() || undefined };
       const res = await request.post<{ succeeded: number; failed: number }>(
         `/api/workflows/tasks/${path}`,
-        { taskIds, comment: batchComment.trim() || undefined },
+        payload,
       );
       if (res.code === 0) {
         Toast.success(res.message || '批量处理完成');

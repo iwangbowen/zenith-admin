@@ -83,10 +83,19 @@ export async function resumeTriggerTask(
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
   if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
   if (task.nodeType !== 'trigger') throw new HTTPException(400, { message: '该回调不属于触发器任务' });
-  if (task.status !== 'waiting') throw new HTTPException(400, { message: '回调任务已处理' });
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  if (task.status === 'approved') return { instanceId: inst.id, nodeKey: task.nodeKey };
+  if (task.status !== 'waiting') throw new HTTPException(409, { message: '回调任务已处理' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
-  await approveTaskCore(task, inst, comment ?? `触发器回调：${callerName}`, { userId: 0, name: `trigger:${callerName}` });
+  try {
+    await approveTaskCore(task, inst, comment ?? `触发器回调：${callerName}`, { userId: 0, name: `trigger:${callerName}` });
+  } catch (err) {
+    if (err instanceof HTTPException && err.status === 409) {
+      const [freshTask] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);
+      if (freshTask?.status === 'approved') return { instanceId: inst.id, nodeKey: task.nodeKey };
+    }
+    throw err;
+  }
   return { instanceId: inst.id, nodeKey: task.nodeKey };
 }

@@ -497,6 +497,8 @@ export const workflowExtraHandlers = [
   http.post('/api/workflows/tasks/:taskId/recall', ({ params }) => {
     const task = mockWorkflowTasks.find((t) => t.id === Number(params.taskId));
     if (!task) return err('任务不存在', 404);
+    if (task.assigneeId !== 1) return err('只能撤回自己处理的任务', 403);
+    if (task.status !== 'approved' && task.status !== 'rejected') return err('只有已处理的任务可撤回');
     task.status = 'pending'; task.comment = null; task.signature = null; task.actionAt = null;
     const inst = mockWorkflowInstances.find((i) => i.id === task.instanceId);
     if (inst) { inst.status = 'running'; inst.updatedAt = mockDateTime(); return ok(inst, '已撤回'); }

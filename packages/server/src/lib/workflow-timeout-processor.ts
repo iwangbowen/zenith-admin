@@ -54,7 +54,8 @@ export async function processWorkflowTaskTimeouts(): Promise<{ processed: number
     const cfg = nodeCfg?.timeout;
     if (!cfg || !cfg.enabled) {
       // 配置已被移除：清空 timeoutAt 防止重复扫描
-      await db.update(workflowTasks).set({ timeoutAt: null }).where(eq(workflowTasks.id, task.id));
+      await db.update(workflowTasks).set({ timeoutAt: null })
+        .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')));
       continue;
     }
 
@@ -73,7 +74,7 @@ export async function processWorkflowTaskTimeouts(): Promise<{ processed: number
         if (!reachedMax) {
           await db.update(workflowTasks)
             .set({ timeoutRemindCount: nextCount, timeoutAt: computeTimeoutAt(cfg, now) })
-            .where(eq(workflowTasks.id, task.id));
+            .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')));
           logger.info('workflow task timeout remind', { taskId: task.id, instanceId: inst.id, nextCount, maxRemind });
           reminded += 1;
           continue;
@@ -82,11 +83,13 @@ export async function processWorkflowTaskTimeouts(): Promise<{ processed: number
         // 提醒已耗尽 → 升级
         const escalate = cfg.escalateAction ?? 'none';
         if (escalate === 'autoApprove') {
-          await db.update(workflowTasks).set({ timeoutRemindCount: nextCount, timeoutAt: null }).where(eq(workflowTasks.id, task.id));
+          await db.update(workflowTasks).set({ timeoutRemindCount: nextCount, timeoutAt: null })
+            .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')));
           await approveTaskCore(task, inst, '系统超时（提醒耗尽）自动通过', SYSTEM_ACTOR);
           approved += 1;
         } else if (escalate === 'autoReject') {
-          await db.update(workflowTasks).set({ timeoutRemindCount: nextCount, timeoutAt: null }).where(eq(workflowTasks.id, task.id));
+          await db.update(workflowTasks).set({ timeoutRemindCount: nextCount, timeoutAt: null })
+            .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')));
           await rejectTaskCore(task, inst, '系统超时（提醒耗尽）自动拒绝', SYSTEM_ACTOR);
           rejected += 1;
         } else if (escalate === 'transferToManager') {
@@ -97,7 +100,8 @@ export async function processWorkflowTaskTimeouts(): Promise<{ processed: number
             escalated += 1;
           } else {
             const fallback = cfg.escalateFallbackAction ?? 'none';
-            await db.update(workflowTasks).set({ timeoutRemindCount: nextCount, timeoutAt: null }).where(eq(workflowTasks.id, task.id));
+            await db.update(workflowTasks).set({ timeoutRemindCount: nextCount, timeoutAt: null })
+              .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')));
             if (fallback === 'autoApprove') {
               await approveTaskCore(task, inst, '系统超时（无人可转）自动通过', SYSTEM_ACTOR);
               approved += 1;
@@ -110,7 +114,8 @@ export async function processWorkflowTaskTimeouts(): Promise<{ processed: number
           }
         } else {
           // none：停止扫描，保持挂起
-          await db.update(workflowTasks).set({ timeoutRemindCount: nextCount, timeoutAt: null }).where(eq(workflowTasks.id, task.id));
+          await db.update(workflowTasks).set({ timeoutRemindCount: nextCount, timeoutAt: null })
+            .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')));
         }
       }
     } catch (err) {

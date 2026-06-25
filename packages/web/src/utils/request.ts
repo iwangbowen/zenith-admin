@@ -11,6 +11,7 @@ export interface RequestOptions {
   silent?: boolean;
   /** 跳过 401 自动刷新/跳转：为 true 时 401 直接返回响应体，不触发 token 刷新或退出登录（用于密码校验等场景） */
   skipAuth?: boolean;
+  signal?: AbortSignal;
 }
 
 class Request {

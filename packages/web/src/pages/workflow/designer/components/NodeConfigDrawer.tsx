@@ -641,7 +641,7 @@ export default function NodeConfigDrawer({
               <>
                 <Form.Slot label="回调签名方式">
                   <Select
-                    value={(props.callbackSignMode as string) ?? 'none'}
+                    value={(props.callbackSignMode as string) ?? 'hmacSha256'}
                     onChange={(v) => handlePropsChange({ callbackSignMode: v })}
                     style={{ width: '100%' }}
                     optionList={[
@@ -650,7 +650,7 @@ export default function NodeConfigDrawer({
                     ]}
                   />
                 </Form.Slot>
-                {(props.callbackSignMode as string) === 'hmacSha256' && (
+                {((props.callbackSignMode as string) ?? 'hmacSha256') === 'hmacSha256' && (
                   <Form.Slot label="回调密钥（HMAC Secret）">
                     <Input
                       value={typeof props.callbackSecret === 'string' ? props.callbackSecret : ''}
@@ -957,6 +957,7 @@ function getDefaultProps(type: FlowNodeType): Record<string, unknown> {
     case 'trigger':
       return {
         triggerType: 'webhook',
+        callbackSignMode: 'hmacSha256',
         httpMethod: 'POST',
         webhookUrl: '',
         headers: '',

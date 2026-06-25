@@ -1574,7 +1574,7 @@ async function expandTasksToRows(
 
 async function getCompletedNodeKeys(exec: DbExecutor, instanceId: number): Promise<Set<string>> {
   const rows = await exec.select({ nodeKey: workflowTasks.nodeKey }).from(workflowTasks)
-    .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.status, 'approved')));
+    .where(and(eq(workflowTasks.instanceId, instanceId), inArray(workflowTasks.status, ['approved', 'skipped'])));
   const keys = new Set(rows.map((row) => row.nodeKey));
   keys.add('start');
   return keys;
@@ -2460,11 +2460,25 @@ export async function approveTask(taskId: number, comment?: string, attachments?
 export async function approveTaskByCallback(callbackId: string, comment: string | undefined, approverName: string): Promise<ApproveResult> {
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
   if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
-  if (task.status !== 'waiting') throw new HTTPException(400, { message: '回调任务已处理' });
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  if (task.status === 'approved') {
+    return { instance: mapInstance(inst), message: '回调已处理' };
+  }
+  if (task.status !== 'waiting') throw new HTTPException(409, { message: '回调任务已处理' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
-  return approveTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
+  try {
+    return await approveTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
+  } catch (err) {
+    if (err instanceof HTTPException && err.status === 409) {
+      const [freshTask] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);
+      const [freshInst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
+      if (freshTask?.status === 'approved' && freshInst) {
+        return { instance: mapInstance(freshInst), message: '回调已处理' };
+      }
+    }
+    throw err;
+  }
 }
 
 export async function approveTaskCore(
@@ -2506,9 +2520,7 @@ export async function approveTaskCore(
       return { row, finished: false, rejected: false, advanced: false, approvedTask, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
-    const allTasks = await tx.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')));
-    const completedKeys = new Set(allTasks.map((t) => t.nodeKey));
-    completedKeys.add('start');
+    const completedKeys = await getCompletedNodeKeys(tx, inst.id);
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
     const starter = await buildStarterContext(inst.initiatorId, tx);
     // 退回模式 backToOrigin：被退回任务通过后，直接跳回发起退回的来源节点（而非继续后续路径）
@@ -2641,11 +2653,25 @@ export async function rejectTask(taskId: number, comment: string): Promise<Appro
 export async function rejectTaskByCallback(callbackId: string, comment: string, approverName: string) {
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
   if (!task) throw new HTTPException(404, { message: '回调任务不存在' });
-  if (task.status !== 'waiting') throw new HTTPException(400, { message: '回调任务已处理' });
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  if (task.status === 'rejected') {
+    return { instance: mapInstance(inst), message: '回调已处理' };
+  }
+  if (task.status !== 'waiting') throw new HTTPException(409, { message: '回调任务已处理' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
-  return rejectTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
+  try {
+    return await rejectTaskCore(task, inst, comment, { userId: 0, name: `external:${approverName}` });
+  } catch (err) {
+    if (err instanceof HTTPException && err.status === 409) {
+      const [freshTask] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);
+      const [freshInst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
+      if (freshTask?.status === 'rejected' && freshInst) {
+        return { instance: mapInstance(freshInst), message: '回调已处理' };
+      }
+    }
+    throw err;
+  }
 }
 
 export async function rejectTaskCore(
@@ -3007,8 +3033,9 @@ export async function systemTransferTaskToManager(
       timeoutRemindCount: 0,
       timeoutAt: newTimeoutAt,
     })
-    .where(eq(workflowTasks.id, task.id))
+    .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
     .returning();
+  if (!updated) return;
   emitTaskEvent('task.transferred', mapTask(updated, target?.nickname ?? null), {
     definitionId: inst.definitionId,
     tenantId: inst.tenantId,
@@ -3177,10 +3204,7 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
       return { removed: updated, advanced: false, finished: false, rejected: false, row: inst, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
     // 减签触发节点完成：推进流程（checkNodeCompletion 已跳过本节点剩余 pending/waiting 任务）
-    const allApproved = await tx.select().from(workflowTasks)
-      .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')));
-    const completedKeys = new Set(allApproved.map((t) => t.nodeKey));
-    completedKeys.add('start');
+    const completedKeys = await getCompletedNodeKeys(tx, inst.id);
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
     const starter = await buildStarterContext(inst.initiatorId, tx);
     const advanceResult = advanceFlow(flowData, task.nodeKey, formData, completedKeys, starter);
@@ -3261,9 +3285,12 @@ export async function urgeTask(taskId: number, message?: string) {
     .where(eq(workflowTasks.id, taskId)).limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在' });
   if (task.status !== 'pending') throw new HTTPException(400, { message: '仅可催办未处理任务' });
+  const tc = tenantCondition(workflowInstances, user);
+  const instConditions = [eq(workflowInstances.id, task.instanceId)];
+  if (tc) instConditions.push(tc);
   const [inst] = await db.select().from(workflowInstances)
-    .where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+    .where(and(...instConditions)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '任务不存在或无权操作' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无需催办' });
 
   const isInitiator = inst.initiatorId === user.userId;
@@ -3320,8 +3347,11 @@ export async function listInstanceUrges(instanceId: number) {
 /** 实例级批量催办：对实例所有 pending 任务依次催办，节流命中的任务静默跳过 */
 export async function urgeInstance(instanceId: number, message?: string) {
   const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [eq(workflowInstances.id, instanceId)];
+  if (tc) conditions.push(tc);
   const [inst] = await db.select().from(workflowInstances)
-    .where(eq(workflowInstances.id, instanceId)).limit(1);
+    .where(and(...conditions)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '流程不存在' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无需催办' });
   const isInitiator = inst.initiatorId === user.userId;
@@ -3369,8 +3399,11 @@ export async function urgeInstance(instanceId: number, message?: string) {
 /** 动态补加抄送：运行中实例为指定 ccNode 节点补加抄送人（去重 + 校验节点类型） */
 export async function addInstanceCc(instanceId: number, nodeKey: string, userIds: number[]) {
   const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [eq(workflowInstances.id, instanceId)];
+  if (tc) conditions.push(tc);
   const [inst] = await db.select().from(workflowInstances)
-    .where(eq(workflowInstances.id, instanceId)).limit(1);
+    .where(and(...conditions)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '流程不存在' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程已结束，无法补加抄送' });
   const isInitiator = inst.initiatorId === user.userId;
@@ -3679,8 +3712,11 @@ export async function reassignTask(taskId: number, targetUserId: number, comment
   }
   const [tgt] = await db.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
   if (!tgt) throw new HTTPException(400, { message: '目标处理人不存在' });
-  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  const tc = tenantCondition(workflowInstances, user);
+  const instConditions = [eq(workflowInstances.id, task.instanceId)];
+  if (tc) instConditions.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...instConditions)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '任务不存在或无权操作' });
   const chain = Array.isArray(task.transferChain) ? task.transferChain : [];
   const note = `[管理员改派]${comment ? ' ' + comment : ''}`;
   const [updated] = await db.update(workflowTasks).set({
@@ -3705,8 +3741,11 @@ export async function recallTask(taskId: number, comment?: string) {
   if (task.status !== 'approved' && task.status !== 'rejected') {
     throw new HTTPException(400, { message: '只有已处理的任务可撤回' });
   }
-  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  const tc = tenantCondition(workflowInstances, user);
+  const instConditions = [eq(workflowInstances.id, task.instanceId)];
+  if (tc) instConditions.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...instConditions)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '任务不存在或无权操作' });
   if (inst.status === 'withdrawn' || inst.status === 'cancelled') {
     throw new HTTPException(400, { message: '流程已结束，无法撤回' });
   }

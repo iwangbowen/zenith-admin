@@ -107,6 +107,14 @@ handlerRegistry.set('recoverStuckWorkflowSubProcesses', async () => {
   return `子流程恢复扫描：重新发起 ${r.spawned} 个、重新唤醒 ${r.resumed} 个、多实例汇聚对账 ${r.reconciled} 个`;
 });
 
+handlerRegistry.set('recoverWorkflowRuntimeSideEffects', async () => {
+  const { recoverPendingExternalApprovals } = await import('./workflow-subscribers/external-approver');
+  const { recoverPendingWorkflowTriggers } = await import('./workflow-subscribers/trigger');
+  const external = await recoverPendingExternalApprovals();
+  const trigger = await recoverPendingWorkflowTriggers();
+  return `工作流运行时副作用恢复：外部审批扫描 ${external.scanned}/派发 ${external.dispatched}；触发器扫描 ${trigger.scanned}/派发 ${trigger.dispatched}/跳过 ${trigger.skipped}`;
+});
+
 handlerRegistry.set('publishScheduledAnnouncements', async () => {
   const { publishScheduledAnnouncements } = await import('../services/announcements.service');
   const count = await publishScheduledAnnouncements();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SideSheet, Spin } from '@douyinfe/semi-ui';
 import type { WorkflowInstance, WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -23,6 +23,7 @@ export default function WorkflowInstanceDetailSheet({
   const [data, setData] = useState<WorkflowInstance | null>(null);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [viewId, setViewId] = useState<number | null>(instanceId);
+  const requestSeq = useRef(0);
 
   useEffect(() => {
     if (visible) setViewId(instanceId);
@@ -30,20 +31,25 @@ export default function WorkflowInstanceDetailSheet({
 
   useEffect(() => {
     if (!visible || !viewId) return;
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
+    const controller = new AbortController();
     setLoading(true);
     setDefinition(null);
-    const p = request.get<WorkflowInstance>(`/api/workflows/instances/${viewId}`)
+    const p = request.get<WorkflowInstance>(`/api/workflows/instances/${viewId}`, { signal: controller.signal, silent: true })
       .then((res) => {
+        if (requestSeq.current !== seq) return null;
         if (res.code === 0) {
           setData(res.data);
           if (res.data.definitionSnapshot) return null;
-          return request.get<WorkflowDefinition>(`/api/workflows/definitions/${res.data.definitionId}`, { silent: true });
+          return request.get<WorkflowDefinition>(`/api/workflows/definitions/${res.data.definitionId}`, { silent: true, signal: controller.signal });
         }
         return null;
       })
-      .then((defRes) => { if (defRes?.code === 0) setDefinition(defRes.data); })
-      .finally(() => setLoading(false));
+      .then((defRes) => { if (requestSeq.current === seq && defRes?.code === 0) setDefinition(defRes.data); })
+      .finally(() => { if (requestSeq.current === seq) setLoading(false); });
     p.catch(() => undefined);
+    return () => controller.abort();
   }, [visible, viewId]);
 
   return (

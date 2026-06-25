@@ -6,7 +6,7 @@
  * 外部系统收到后通过 /api/public/workflow/external-callback/:callbackId 回调审批结果。
  */
 import { createHmac } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray, lte } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowInstances, workflowTasks } from '../../db/schema';
 import { workflowEventBus } from '../workflow-event-bus';
@@ -41,13 +41,17 @@ async function applyFallback(
   }
 }
 
-async function dispatchExternalApproval(taskId: number): Promise<void> {
+export async function dispatchExternalApproval(taskId: number): Promise<void> {
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
   if (!task?.externalCallbackId) return;
-  // 原子声明：仅 pending→dispatched 的唯一赢家继续派发，防止并发/重复 task.created 事件重复调用外部审批服务
+  // 原子声明：仅 pending/failed→dispatched 的唯一赢家继续派发，防止并发/重复 task.created 事件重复调用外部审批服务
   const claimed = await db.update(workflowTasks)
     .set({ externalDispatchStatus: 'dispatched' })
-    .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.externalDispatchStatus, 'pending')))
+    .where(and(
+      eq(workflowTasks.id, taskId),
+      eq(workflowTasks.status, 'waiting'),
+      inArray(workflowTasks.externalDispatchStatus, ['pending', 'failed']),
+    ))
     .returning({ id: workflowTasks.id });
   if (claimed.length === 0) return;
 
@@ -131,6 +135,30 @@ async function dispatchExternalApproval(taskId: number): Promise<void> {
     if (handled) return;
     await applyFallback(taskId, ext.fallbackStrategy);
   }
+}
+
+export async function recoverPendingExternalApprovals(graceMinutes = 5, limit = 100): Promise<{ scanned: number; dispatched: number }> {
+  const cutoff = new Date(Date.now() - graceMinutes * 60_000);
+  const rows = await db.select({ id: workflowTasks.id }).from(workflowTasks)
+    .where(and(
+      eq(workflowTasks.nodeType, 'approve'),
+      eq(workflowTasks.status, 'waiting'),
+      inArray(workflowTasks.externalDispatchStatus, ['pending', 'failed']),
+      lte(workflowTasks.createdAt, cutoff),
+    ))
+    .orderBy(asc(workflowTasks.createdAt))
+    .limit(Math.max(1, Math.min(limit, 500)));
+
+  let dispatched = 0;
+  for (const row of rows) {
+    try {
+      await dispatchExternalApproval(row.id);
+      dispatched += 1;
+    } catch (err) {
+      logger.error('[external-approver] recovery dispatch failed', { taskId: row.id, err });
+    }
+  }
+  return { scanned: rows.length, dispatched };
 }
 
 export function registerExternalApproverSubscriber(): void {

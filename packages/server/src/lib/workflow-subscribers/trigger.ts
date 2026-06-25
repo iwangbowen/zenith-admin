@@ -9,9 +9,9 @@
  * 当前为非阻塞执行：流程已经在 expandTasksToRows 中往下推进，
  * 触发器仅产生 workflow_trigger_executions 跟踪记录。
  */
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq, lte } from 'drizzle-orm';
 import { db } from '../../db';
-import { workflowInstances, workflowTasks } from '../../db/schema';
+import { workflowInstances, workflowTasks, workflowTriggerExecutions } from '../../db/schema';
 import { workflowEventBus } from '../workflow-event-bus';
 import { insertTriggerExecution } from '../../services/workflow-trigger-executions.service';
 import { approveTaskCore, handleNodeExecutionError } from '../../services/workflow-instances.service';
@@ -125,7 +125,7 @@ async function executeDataMutation(
   }
 }
 
-async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: string): Promise<void> {
+export async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: string): Promise<void> {
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, instanceId)).limit(1);
   if (!inst) return;
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
@@ -212,6 +212,43 @@ async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: st
       logger.warn('[trigger-subscriber] 阻塞触发器执行失败，流程已阻塞，等待人工处理', { instanceId, nodeKey, attempt, error: result.errorMessage });
     }
   }
+}
+
+export async function recoverPendingWorkflowTriggers(graceMinutes = 5, limit = 100): Promise<{ scanned: number; dispatched: number; skipped: number }> {
+  const cutoff = new Date(Date.now() - graceMinutes * 60_000);
+  const rows = await db.select({
+    id: workflowTasks.id,
+    instanceId: workflowTasks.instanceId,
+    nodeKey: workflowTasks.nodeKey,
+    nodeName: workflowTasks.nodeName,
+  }).from(workflowTasks)
+    .where(and(
+      eq(workflowTasks.nodeType, 'trigger'),
+      eq(workflowTasks.status, 'waiting'),
+      lte(workflowTasks.createdAt, cutoff),
+    ))
+    .orderBy(asc(workflowTasks.createdAt))
+    .limit(Math.max(1, Math.min(limit, 500)));
+
+  let dispatched = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const [existing] = await db.select({ id: workflowTriggerExecutions.id })
+      .from(workflowTriggerExecutions)
+      .where(eq(workflowTriggerExecutions.taskId, row.id))
+      .limit(1);
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      await dispatchTrigger(row.instanceId, row.nodeKey, row.nodeName);
+      dispatched += 1;
+    } catch (err) {
+      logger.error('[trigger-subscriber] recovery dispatch failed', { taskId: row.id, instanceId: row.instanceId, nodeKey: row.nodeKey, err });
+    }
+  }
+  return { scanned: rows.length, dispatched, skipped };
 }
 
 export function registerTriggerWorkflowSubscriber(): void {

@@ -11,7 +11,6 @@
  * 3. 调用 resumeTriggerTask 推进流程
  */
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
@@ -19,6 +18,7 @@ import { workflowInstances, workflowTasks } from '../db/schema';
 import type { WorkflowFlowData, WorkflowTriggerNodeConfig } from '@zenith/shared';
 import { validationHook, commonErrorResponses, ok, okBody } from '../lib/openapi-schemas';
 import { resumeTriggerTask } from '../services/workflow-resume.service';
+import { assertWorkflowCallbackSignature, captureWorkflowCallbackRawBody, getWorkflowCallbackRawBody } from '../lib/workflow-callback-security';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -35,35 +35,13 @@ const ResultDTO = z.object({
   nodeKey: z.string(),
 }).openapi('WorkflowTriggerCallbackResult');
 
-function parseSignature(raw: string | undefined): { ts: string; v1: string } | null {
-  if (!raw) return null;
-  const parts = raw.split(',').map((p) => p.trim());
-  let ts = '';
-  let v1 = '';
-  for (const p of parts) {
-    if (p.startsWith('t=')) ts = p.slice(2);
-    else if (p.startsWith('v1=')) v1 = p.slice(3);
-  }
-  if (!ts || !v1) return null;
-  return { ts, v1 };
-}
-
-function verifyHmac(secret: string, ts: string, body: string, expected: string): boolean {
-  const actual = createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');
-  if (actual.length !== expected.length) return false;
-  try {
-    return timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
-  } catch {
-    return false;
-  }
-}
-
 const callback = defineOpenAPIRoute({
   route: createRoute({
     method: 'post',
     path: '/{callbackId}',
     tags: ['WorkflowTriggerCallback'],
     summary: '触发器回调（公开，无需登录）',
+    middleware: [captureWorkflowCallbackRawBody] as const,
     request: {
       params: CallbackParam,
       body: { content: { 'application/json': { schema: CallbackBody } } },
@@ -88,19 +66,15 @@ const callback = defineOpenAPIRoute({
       throw new HTTPException(400, { message: '当前任务不是回调类型触发器' });
     }
 
-    // 签名校验（仅在节点声明 hmacSha256 时启用）
-    if ((cfg.callbackSignMode ?? 'none') === 'hmacSha256') {
-      if (!cfg.callbackSecret) throw new HTTPException(500, { message: '回调未配置 secret' });
-      const sig = parseSignature(c.req.header('X-Zenith-Signature'));
-      if (!sig) throw new HTTPException(401, { message: '缺少签名头 X-Zenith-Signature' });
-      const tsNum = Number.parseInt(sig.ts, 10);
-      if (!Number.isFinite(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > 300) {
-        throw new HTTPException(401, { message: '签名时间戳过期' });
-      }
-      const rawBody = JSON.stringify(body);
-      if (!verifyHmac(cfg.callbackSecret, sig.ts, rawBody, sig.v1)) {
-        throw new HTTPException(401, { message: '签名校验失败' });
-      }
+    // 签名校验默认启用；历史流程如显式配置 none 才允许无签名。
+    if ((cfg.callbackSignMode ?? 'hmacSha256') === 'hmacSha256') {
+      assertWorkflowCallbackSignature({
+        secret: cfg.callbackSecret,
+        signatureHeader: c.req.header('X-Zenith-Signature'),
+        rawBody: getWorkflowCallbackRawBody(c.req.raw, body),
+        canonicalBody: JSON.stringify(body),
+        missingSecretMessage: '回调未配置 secret',
+      });
     }
 
     const caller = body.callerName ?? 'external';
