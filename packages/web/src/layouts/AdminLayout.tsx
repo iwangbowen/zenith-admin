@@ -5,7 +5,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { BackTop, Badge, Banner, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
-import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink, Menu as MenuIcon } from 'lucide-react';
+import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink, Menu as MenuIcon, Files } from 'lucide-react';
 import { match as pinyinMatch } from 'pinyin-pro';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
@@ -184,7 +184,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [isMobileNav, setIsMobileNav] = useState(false);
   const [mobileNavVisible, setMobileNavVisible] = useState(false);
-  const [mobileMoreVisible, setMobileMoreVisible] = useState(false);
+  const [mobilePagesVisible, setMobilePagesVisible] = useState(false);
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
 
   const flatMenus = useMemo<FlatMenuItem[]>(() => {
@@ -227,7 +227,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
       setIsMobileNav(e.matches);
       if (!e.matches) {
         setMobileNavVisible(false);
-        setMobileMoreVisible(false);
+        setMobilePagesVisible(false);
       }
     };
 
@@ -1052,7 +1052,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                     type="button"
                     className="mobile-quick-pages-item__main"
                     onClick={() => {
-                      setMobileMoreVisible(false);
+                      setMobilePagesVisible(false);
                       handleTabChange(tab.key);
                     }}
                   >
@@ -1098,7 +1098,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                   type="button"
                   className="mobile-quick-pages-item__main"
                   onClick={() => {
-                    setMobileMoreVisible(false);
+                    setMobilePagesVisible(false);
                     navigate(menu.path);
                   }}
                 >
@@ -1123,35 +1123,6 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
         )}
       </div>
 
-      <div className="mobile-quick-pages-section mobile-quick-pages-section--compact">
-        <Dropdown.Menu>
-          <Dropdown.Item
-            icon={<Megaphone size={14} strokeWidth={1.5} />}
-            onClick={() => {
-              setMobileMoreVisible(false);
-              navigate('/announcements');
-            }}
-          >
-            公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
-          </Dropdown.Item>
-          <Dropdown.Item
-            icon={<Bell size={14} strokeWidth={1.5} />}
-            onClick={() => {
-              setMobileMoreVisible(false);
-              navigate('/inbox');
-            }}
-          >
-            我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
-          </Dropdown.Item>
-          <Dropdown.Divider />
-          <Dropdown.Title>颜色模式</Dropdown.Title>
-          {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
-            <Dropdown.Item key={m} icon={themeLabelMap[m].icon} active={mode === m} onClick={() => { handleThemeModeChange(m); setMobileMoreVisible(false); }}>
-              {themeLabelMap[m].label}
-            </Dropdown.Item>
-          ))}
-        </Dropdown.Menu>
-      </div>
     </div>
   );
 
@@ -1465,14 +1436,24 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
           {themeLabelMap[mode].icon}
         </button>
       </Dropdown>
-      {/* 溢出菜单：窄屏时收纳公告/消息/主题切换 */}
+      {/* 移动端页面入口与常用功能入口分离 */}
+      <div className="admin-header-action admin-header-action--pages">
+        <Dropdown
+          position="bottomRight"
+          visible={isMobileNav ? mobilePagesVisible : undefined}
+          onVisibleChange={isMobileNav ? setMobilePagesVisible : undefined}
+          render={mobileQuickPagesPanel}
+        >
+          <button className="admin-theme-btn" title="页面">
+            <Files size={16} strokeWidth={1.5} />
+          </button>
+        </Dropdown>
+      </div>
       <div className="admin-header-action admin-header-action--more">
         <Dropdown
           position="bottomRight"
-          visible={isMobileNav ? mobileMoreVisible : undefined}
-          onVisibleChange={isMobileNav ? setMobileMoreVisible : undefined}
           clickToHide
-          render={isMobileNav ? mobileQuickPagesPanel : (
+          render={
             <Dropdown.Menu>
               <Dropdown.Item
                 icon={<Megaphone size={14} strokeWidth={1.5} />}
@@ -1494,9 +1475,9 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 </Dropdown.Item>
               ))}
             </Dropdown.Menu>
-          )}
+          }
         >
-          <button className="admin-theme-btn" title={isMobileNav ? '页面与更多' : '更多'}>
+          <button className="admin-theme-btn" title="更多">
             <MoreHorizontal size={16} strokeWidth={1.5} />
           </button>
         </Dropdown>

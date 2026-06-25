@@ -733,10 +733,6 @@
   border-bottom: 0;
 }
 
-.mobile-quick-pages-section--compact {
-  padding-bottom: 0;
-}
-
 .mobile-quick-pages-section__header {
   display: flex;
   align-items: center;
@@ -1721,7 +1717,8 @@
 
 /* ===== 响应式：Header 右侧操作区窄屏优化 ===== */
 
-/* 溢出菜单默认隐藏，仅窄屏显示 */
+/* 移动端专用入口默认隐藏，仅窄屏显示 */
+.admin-header-action--pages,
 .admin-header-action--more {
   display: none;
 }
@@ -1733,7 +1730,7 @@
   }
 }
 
-/* < 768px：顶部品牌区只显示 Logo，隐藏系统名称；隐藏公告/消息/主题按钮，显示溢出菜单 */
+/* < 768px：使用移动端顶部栏，页面入口和常用功能入口分离展示 */
 @media (max-width: 767px) {
   .admin-mobile-header {
     display: flex;
@@ -1745,7 +1742,7 @@
   }
 
   .admin-mobile-header .admin-menu-search,
-  .admin-mobile-header .admin-header__actions > .admin-header-action:not(.admin-header-action--more),
+  .admin-mobile-header .admin-header__actions > .admin-header-action:not(.admin-header-action--pages):not(.admin-header-action--more),
   .admin-mobile-header .admin-header__actions > .semi-select,
   .admin-mobile-header .admin-header__actions > div[style*="width: 1"] {
     display: none !important;
@@ -1761,6 +1758,7 @@
     display: none !important;
   }
 
+  .admin-header-action--pages,
   .admin-header-action--more {
     display: inline-flex;
   }
