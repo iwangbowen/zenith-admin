@@ -29,6 +29,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
@@ -372,27 +373,30 @@ export default function DepartmentsPage() {
         />
       ),
     },
-    {
-      title: '操作',
-      fixed: 'right',
+    createOperationColumn<Department>({
       width: 160,
-      render: (_: unknown, record: Department) => (
-        <Space>
-          {hasPermission('system:department:update') && <Button
-            theme="borderless"
-            size="small"
-            onClick={() => { void openEdit(record); }}
-          >编辑</Button>}
-          {hasPermission('system:department:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
+      actions: (record) => [
+        {
+          key: 'edit',
+          label: '编辑',
+          hidden: !hasPermission('system:department:update'),
+          onClick: () => { void openEdit(record); },
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !hasPermission('system:department:delete'),
+          onClick: () => {
             Modal.confirm({
               title: '确定要删除该部门吗？',
               okButtonProps: { type: 'danger', theme: 'solid' },
               onOk: () => handleDelete(record.id),
             });
-          }}>删除</Button>}
-        </Space>
-      ),
-    },
+          },
+        },
+      ],
+    }),
   ];
 
   const renderKeywordSearch = () => (

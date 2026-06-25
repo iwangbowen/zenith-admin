@@ -15,14 +15,13 @@ import {
   Row,
   Col,
   Tree,
-  Tooltip,
   Dropdown,
   SplitButtonGroup,
   Spin,
   Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, MoreHorizontal, Building2, ArrowLeft, KeyRound, ToggleLeft, ToggleRight, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, Building2, ArrowLeft, KeyRound, ToggleLeft, ToggleRight, ChevronDown } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -39,6 +38,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import './UsersPage.css';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { UserMenuPermissionModal } from './UserMenuPermissionModal';
@@ -479,31 +479,6 @@ export default function UsersPage() {
     }
   };
 
-  const renderDeleteBtn = (record: User) => {
-    const isAdmin = isAdminUser(record);
-    const deleteBtn = (
-      <Button
-        theme="borderless"
-        type="danger"
-        size="small"
-        disabled={isAdmin}
-        onClick={() => {
-          Modal.confirm({
-            title: '确定要删除该用户吗？',
-            okButtonProps: { type: 'danger', theme: 'solid' },
-            onOk: () => handleDelete(record.id),
-          });
-        }}
-      >删除</Button>
-    );
-    if (!isAdmin) return deleteBtn;
-    return (
-      <Tooltip content="admin 账号不允许删除">
-        <span>{deleteBtn}</span>
-      </Tooltip>
-    );
-  };
-
   const columns: ColumnProps<User>[] = [
     {
       title: '用户',
@@ -607,16 +582,17 @@ export default function UsersPage() {
         />
       ),
     },
-    {
-      title: '操作',
-      fixed: 'right',
+    createOperationColumn<User>({
       width: 200,
-      render: (_: unknown, record: User) => (
-        <Space>
-          {hasPermission('system:user:update') && <Button
-            theme="borderless"
-            size="small"
-            onClick={async () => {
+      desktopInlineKeys: ['edit', 'delete'],
+      actions: (record) => {
+        const isAdmin = isAdminUser(record);
+        return [
+          {
+            key: 'edit',
+            label: '编辑',
+            hidden: !hasPermission('system:user:update'),
+            onClick: async () => {
               setEditingUser(record);
               setModalVisible(true);
               setModalDetailLoading(true);
@@ -627,71 +603,99 @@ export default function UsersPage() {
               } else {
                 Toast.error(res.message || '获取用户信息失败');
               }
-            }}
-          >编辑</Button>}
-          {hasPermission('system:user:delete') && renderDeleteBtn(record)}
-          {hasPermission('system:user:update') && (
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={() => {
-                    setAvatarUser(record);
-                    setAvatarModalVisible(true);
-                  }}>管理头像</Dropdown.Item>
-                  <Dropdown.Item onClick={() => {
-                    setPasswordUser(record);
-                    setPasswordModalVisible(true);
-                  }}>修改密码</Dropdown.Item>
-                  {record.isLocked && (
-                    <Dropdown.Item onClick={() => handleUnlock(record.id)}>解锁</Dropdown.Item>
-                  )}
-                  {hasPermission('system:user:assign') && (
-                    <Dropdown.Item onClick={() => { setMenuPermUser(record); setMenuPermVisible(true); }}>菜单权限</Dropdown.Item>
-                  )}
-                  {hasPermission('system:user:assign') && (
-                    <Dropdown.Item onClick={() => {
-                      setRoleAssignUser(record);
-                      setRoleAssignIds(record.roles.map((r) => r.id));
-                      setRoleAssignVisible(true);
-                    }}>分配角色</Dropdown.Item>
-                  )}
-                  {hasPermission('system:user:assign') && (
-                    <Dropdown.Item onClick={() => { setDataPermUser(record); setDataPermVisible(true); }}>数据权限</Dropdown.Item>
-                  )}
-                  {record.isOnline && hasPermission('system:session:forceLogout') && (
-                    <>
-                      <Dropdown.Divider />
-                      <Dropdown.Item
-                        type="danger"
-                        onClick={() => {
-                          Modal.confirm({
-                            title: '强制下线',
-                            content: `确定要强制下线用户「${record.nickname}（${record.username}）」的全部会话吗？`,
-                            okButtonProps: { type: 'danger', theme: 'solid' },
-                            onOk: async () => {
-                              const res = await request.delete(`/api/sessions/user/${record.id}`);
-                              if (res.code === 0) {
-                                Toast.success('已强制下线');
-                                void fetchUsers(page, pageSize);
-                              }
-                            },
-                          });
-                        }}
-                      >强制下线</Dropdown.Item>
-                    </>
-                  )}
-                </Dropdown.Menu>
-              }
-            >
-              <Button theme="borderless" size="small" icon={<MoreHorizontal size={14} />} />
-            </Dropdown>
-          )}
-        </Space>
-      ),
-    },
+            },
+          },
+          {
+            key: 'delete',
+            label: '删除',
+            danger: true,
+            hidden: !hasPermission('system:user:delete'),
+            disabled: isAdmin,
+            disabledReason: 'admin 账号不允许删除',
+            onClick: () => {
+              Modal.confirm({
+                title: '确定要删除该用户吗？',
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => handleDelete(record.id),
+              });
+            },
+          },
+          {
+            key: 'avatar',
+            label: '管理头像',
+            hidden: !hasPermission('system:user:update'),
+            onClick: () => {
+              setAvatarUser(record);
+              setAvatarModalVisible(true);
+            },
+          },
+          {
+            key: 'password',
+            label: '修改密码',
+            hidden: !hasPermission('system:user:update'),
+            onClick: () => {
+              setPasswordUser(record);
+              setPasswordModalVisible(true);
+            },
+          },
+          {
+            key: 'unlock',
+            label: '解锁',
+            hidden: !record.isLocked || !hasPermission('system:user:update'),
+            onClick: () => handleUnlock(record.id),
+          },
+          {
+            key: 'menu-permission',
+            label: '菜单权限',
+            hidden: !hasPermission('system:user:assign'),
+            onClick: () => {
+              setMenuPermUser(record);
+              setMenuPermVisible(true);
+            },
+          },
+          {
+            key: 'assign-role',
+            label: '分配角色',
+            hidden: !hasPermission('system:user:assign'),
+            onClick: () => {
+              setRoleAssignUser(record);
+              setRoleAssignIds(record.roles.map((r) => r.id));
+              setRoleAssignVisible(true);
+            },
+          },
+          {
+            key: 'data-permission',
+            label: '数据权限',
+            hidden: !hasPermission('system:user:assign'),
+            onClick: () => {
+              setDataPermUser(record);
+              setDataPermVisible(true);
+            },
+          },
+          {
+            key: 'force-logout',
+            label: '强制下线',
+            danger: true,
+            dividerBefore: true,
+            hidden: !record.isOnline || !hasPermission('system:session:forceLogout'),
+            onClick: () => {
+              Modal.confirm({
+                title: '强制下线',
+                content: `确定要强制下线用户「${record.nickname}（${record.username}）」的全部会话吗？`,
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: async () => {
+                  const res = await request.delete(`/api/sessions/user/${record.id}`);
+                  if (res.code === 0) {
+                    Toast.success('已强制下线');
+                    void fetchUsers(page, pageSize);
+                  }
+                },
+              });
+            },
+          },
+        ];
+      },
+    }),
   ];
 
   const [showDeptTree, setShowDeptTree] = useState(false);

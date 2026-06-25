@@ -31,6 +31,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
@@ -327,28 +328,36 @@ export default function PositionsPage() {
         />
       ),
     },
-    {
-      title: '操作',
-      fixed: 'right',
+    createOperationColumn<Position>({
       width: 220,
-      render: (_: unknown, record: Position) => (
-        <Space>
-          {hasPermission('system:position:update') && (
-            <Button theme="borderless" size="small" onClick={() => { void openEdit(record); }}>编辑</Button>
-          )}
-          {hasPermission('system:position:update') && (
-            <Button theme="borderless" size="small" onClick={() => { void openMembers(record); }}>成员</Button>
-          )}
-          {hasPermission('system:position:delete') && <Button theme="borderless" type="danger" size="small" onClick={() => {
+      actions: (record) => [
+        {
+          key: 'edit',
+          label: '编辑',
+          hidden: !hasPermission('system:position:update'),
+          onClick: () => { void openEdit(record); },
+        },
+        {
+          key: 'members',
+          label: '成员',
+          hidden: !hasPermission('system:position:update'),
+          onClick: () => { void openMembers(record); },
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !hasPermission('system:position:delete'),
+          onClick: () => {
             Modal.confirm({
               title: '确定要删除该岗位吗？',
               okButtonProps: { type: 'danger', theme: 'solid' },
               onOk: () => handleDelete(record.id),
             });
-          }}>删除</Button>}
-        </Space>
-      ),
-    },
+          },
+        },
+      ],
+    }),
   ];
 
   const renderKeywordSearch = () => (

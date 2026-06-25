@@ -300,6 +300,21 @@ body {
   background-color: var(--semi-color-fill-1);
 }
 
+.responsive-table-actions {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.responsive-table-actions--mobile {
+  width: 100%;
+  justify-content: center;
+}
+
+.responsive-table-actions__tooltip-wrap {
+  display: inline-flex;
+}
+
 .responsive-toolbar {
   display: flex;
   justify-content: space-between;

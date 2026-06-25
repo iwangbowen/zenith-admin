@@ -5,11 +5,12 @@ import { Button, Checkbox, Dropdown, Radio, RadioGroup, Space, Switch, Table } f
 import { RotateCcw, Rows3, Settings, Settings2, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import type { ColumnProps, Data, TableProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TableSizePreference } from '@/hooks/usePreferences';
+import { ZENITH_OPERATION_COLUMN_SYMBOL, type ZenithOperationColumnMarker } from './table-column-meta';
 
 type TableRecord = Data;
 type ConfigurableColumn<RecordType extends TableRecord> = ColumnProps<RecordType> & {
   children?: ConfigurableColumn<RecordType>[];
-};
+} & ZenithOperationColumnMarker;
 
 interface ColumnOption {
   key: string;
@@ -64,7 +65,7 @@ interface ConfigurableTableProps<RecordType extends TableRecord = TableRecord> e
 }
 
 const DEFAULT_ALWAYS_VISIBLE_KEYS = ['action', 'actions', 'operation', 'operations', 'operate'];
-const DEFAULT_ALWAYS_VISIBLE_TITLES = new Set(['操作']);
+const MOBILE_ACTION_COLUMN_WIDTH = 64;
 const STRIPED_ROW_CLASS_NAME = 'configurable-table-row--striped';
 
 function joinClassNames(...classNames: Array<string | false | null | undefined>): string | undefined {
@@ -99,8 +100,11 @@ function isAlwaysVisibleColumn<RecordType extends TableRecord>(
   key: string,
   alwaysVisibleKeys: Set<string>,
 ): boolean {
-  const titleText = getTitleText(column.title);
-  return alwaysVisibleKeys.has(key.toLowerCase()) || (!!titleText && DEFAULT_ALWAYS_VISIBLE_TITLES.has(titleText));
+  return alwaysVisibleKeys.has(key.toLowerCase()) || isOperationColumn(column);
+}
+
+function isOperationColumn<RecordType extends TableRecord>(column: ConfigurableColumn<RecordType>): boolean {
+  return column[ZENITH_OPERATION_COLUMN_SYMBOL] === true;
 }
 
 function getColumnLabel<RecordType extends TableRecord>(
@@ -139,6 +143,7 @@ function filterColumns<RecordType extends TableRecord>(
   columns: ConfigurableColumn<RecordType>[],
   hiddenKeys: Set<string>,
   alwaysVisibleKeys: Set<string>,
+  compactActionColumn = false,
   path: number[] = [],
 ): ColumnProps<RecordType>[] {
   return columns.flatMap((column, index) => {
@@ -146,12 +151,18 @@ function filterColumns<RecordType extends TableRecord>(
     const children = column.children ?? [];
 
     if (children.length > 0) {
-      const visibleChildren = filterColumns(children, hiddenKeys, alwaysVisibleKeys, [...path, index]);
+      const visibleChildren = filterColumns(children, hiddenKeys, alwaysVisibleKeys, compactActionColumn, [...path, index]);
       if (visibleChildren.length === 0) return [];
       return [{ ...column, children: visibleChildren }];
     }
 
     if (hiddenKeys.has(key) && !isAlwaysVisibleColumn(column, key, alwaysVisibleKeys)) return [];
+    if (compactActionColumn && isOperationColumn(column)) {
+      return [{
+        ...column,
+        width: MOBILE_ACTION_COLUMN_WIDTH,
+      }];
+    }
     return [column];
   });
 }
@@ -284,8 +295,12 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   );
   const hiddenKeySet = useMemo(() => new Set(hiddenKeys), [hiddenKeys]);
   const visibleColumns = useMemo(
-    () => filterColumns(rawColumns, hiddenKeySet, alwaysVisibleKeys),
-    [rawColumns, hiddenKeySet, alwaysVisibleKeys],
+    () => filterColumns(rawColumns, hiddenKeySet, alwaysVisibleKeys, isMobile),
+    [rawColumns, hiddenKeySet, alwaysVisibleKeys, isMobile],
+  );
+  const responsiveColumns = useMemo(
+    () => filterColumns(rawColumns, new Set<string>(), alwaysVisibleKeys, isMobile),
+    [rawColumns, alwaysVisibleKeys, isMobile],
   );
   const effectiveOnRow = useMemo<TableProps<RecordType>['onRow']>(() => {
     if (!effectiveStriped) return onRow;
@@ -301,7 +316,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
     };
   }, [effectiveStriped, onRow]);
   const tableClassName = joinClassNames(className, effectiveStriped && 'configurable-table__table--striped');
-  const effectiveColumns = effectiveColumnSettings ? visibleColumns : columns;
+  const effectiveColumns = effectiveColumnSettings ? visibleColumns : responsiveColumns;
 
   const handleResetColumns = useCallback(() => {
     updateHiddenKeys(() => []);
