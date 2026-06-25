@@ -689,6 +689,28 @@ export default function FrontendErrorsPage() {
     }
   }, [fetchAlerts]);
 
+  const handleIssueSearch = () => {
+    setGroupPage(1);
+    void fetchGroups(1, groupPageSize);
+  };
+
+  const handleIssueReset = () => {
+    setIssueFilters(defaultIssueFilters);
+    issueFiltersRef.current = defaultIssueFilters;
+    setGroupPage(1);
+    void fetchGroups(1, groupPageSize);
+  };
+
+  const handleSourceMapSearch = () => {
+    setSourceMapPage(1);
+    void fetchSourceMaps(1, sourceMapPageSize);
+  };
+
+  const openSourceMapUpload = () => {
+    setUploadForm(defaultSourceMapUpload);
+    setUploadVisible(true);
+  };
+
   useEffect(() => {
     if (activeTab === 'overview') void loadOverview();
   }, [activeTab, loadOverview]);
@@ -900,19 +922,128 @@ export default function FrontendErrorsPage() {
     groups: item.groups,
   }));
 
+  const renderOverviewDaysFilter = () => (
+    <Select
+      value={overviewDays}
+      style={{ width: 140 }}
+      optionList={[7, 30, 90].map((days) => ({ label: `近 ${days} 天`, value: days }))}
+      onChange={(value) => setOverviewDays(Number(value))}
+    />
+  );
+  const renderOverviewRefreshButton = () => (
+    <Button type="primary" icon={<RefreshCcw size={14} />} loading={overviewLoading} onClick={() => void loadOverview()}>刷新</Button>
+  );
+  const renderIssueStatusFilter = () => (
+    <Select
+      showClear
+      placeholder="状态"
+      value={issueFilters.status || undefined}
+      style={{ width: 130 }}
+      optionList={statusOptions}
+      onChange={(value) => setIssueFilters((prev) => ({ ...prev, status: (value as ErrorStatus | undefined) ?? '' }))}
+    />
+  );
+  const renderIssueTypeFilter = () => (
+    <Select
+      showClear
+      placeholder="类型"
+      value={issueFilters.errorType || undefined}
+      style={{ width: 150 }}
+      optionList={typeOptions}
+      onChange={(value) => setIssueFilters((prev) => ({ ...prev, errorType: (value as FrontendErrorType | undefined) ?? '' }))}
+    />
+  );
+  const renderIssueLevelFilter = () => (
+    <Select
+      showClear
+      placeholder="级别"
+      value={issueFilters.level || undefined}
+      style={{ width: 130 }}
+      optionList={levelOptions}
+      onChange={(value) => setIssueFilters((prev) => ({ ...prev, level: (value as ErrorLevel | undefined) ?? '' }))}
+    />
+  );
+  const renderIssueKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="错误信息关键词"
+      showClear
+      value={issueFilters.keyword}
+      style={{ width: 220 }}
+      onChange={(value) => setIssueFilters((prev) => ({ ...prev, keyword: value }))}
+      onEnterPress={handleIssueSearch}
+    />
+  );
+  const renderIssueSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleIssueSearch}>查询</Button>;
+  const renderIssueResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleIssueReset}>重置</Button>;
+  const renderIssueBatchActions = () => selectedRowKeys.length > 0 ? (
+    <>
+      <SplitButtonGroup>
+        <Button type="primary" icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('resolved')}>
+          批量标记已解决 ({selectedRowKeys.length})
+        </Button>
+        <Dropdown
+          trigger="click"
+          render={(
+            <Dropdown.Menu>
+              <Dropdown.Item onClick={() => batchUpdateStatus('ignored')}>批量忽略</Dropdown.Item>
+            </Dropdown.Menu>
+          )}
+        >
+          <Button type="primary" icon={<ChevronDown size={14} />} />
+        </Dropdown>
+      </SplitButtonGroup>
+      <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDeleteGroups}>
+        批量删除
+      </Button>
+    </>
+  ) : null;
+  const renderMobileIssueBatchActions = () => selectedRowKeys.length > 0 ? (
+    <>
+      <Button icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('resolved')}>
+        标记已解决 ({selectedRowKeys.length})
+      </Button>
+      <Button icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('ignored')}>
+        批量忽略
+      </Button>
+      <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDeleteGroups}>
+        批量删除
+      </Button>
+    </>
+  ) : null;
+  const renderSourceReleaseSearch = () => (
+    <Input
+      prefix={<FileCode size={14} />}
+      placeholder="Release"
+      showClear
+      value={sourceRelease}
+      style={{ width: 220 }}
+      onChange={setSourceRelease}
+      onEnterPress={handleSourceMapSearch}
+    />
+  );
+  const renderSourceMapSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSourceMapSearch}>查询</Button>;
+  const renderSourceMapUploadButton = () => <Button type="primary" icon={<FileCode size={14} />} onClick={openSourceMapUpload}>上传</Button>;
+  const renderAlertCreateButton = () => <Button type="primary" icon={<Bell size={14} />} onClick={() => openAlertModal()}>新增</Button>;
+
   return (
     <div className="page-container">
       <Tabs type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
         <TabPane tab="概览" itemKey="overview">
-          <SearchToolbar>
-            <Select
-              value={overviewDays}
-              style={{ width: 140 }}
-              optionList={[7, 30, 90].map((days) => ({ label: `近 ${days} 天`, value: days }))}
-              onChange={(value) => setOverviewDays(Number(value))}
-            />
-            <Button type="primary" icon={<RefreshCcw size={14} />} loading={overviewLoading} onClick={() => void loadOverview()}>刷新</Button>
-          </SearchToolbar>
+          <SearchToolbar
+            primary={(
+              <>
+                {renderOverviewDaysFilter()}
+                {renderOverviewRefreshButton()}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                {renderOverviewDaysFilter()}
+                {renderOverviewRefreshButton()}
+              </>
+            )}
+          />
 
           {overview ? (
             <Space vertical align="start" style={{ width: '100%' }}>
@@ -1010,88 +1141,37 @@ export default function FrontendErrorsPage() {
         </TabPane>
 
         <TabPane tab="错误 Issue" itemKey="issues">
-          <SearchToolbar>
-            <Select
-              showClear
-              placeholder="状态"
-              value={issueFilters.status || undefined}
-              style={{ width: 130 }}
-              optionList={statusOptions}
-              onChange={(value) => setIssueFilters((prev) => ({ ...prev, status: (value as ErrorStatus | undefined) ?? '' }))}
-            />
-            <Select
-              showClear
-              placeholder="类型"
-              value={issueFilters.errorType || undefined}
-              style={{ width: 150 }}
-              optionList={typeOptions}
-              onChange={(value) => setIssueFilters((prev) => ({ ...prev, errorType: (value as FrontendErrorType | undefined) ?? '' }))}
-            />
-            <Select
-              showClear
-              placeholder="级别"
-              value={issueFilters.level || undefined}
-              style={{ width: 130 }}
-              optionList={levelOptions}
-              onChange={(value) => setIssueFilters((prev) => ({ ...prev, level: (value as ErrorLevel | undefined) ?? '' }))}
-            />
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="错误信息关键词"
-              showClear
-              value={issueFilters.keyword}
-              style={{ width: 220 }}
-              onChange={(value) => setIssueFilters((prev) => ({ ...prev, keyword: value }))}
-              onEnterPress={() => {
-                setGroupPage(1);
-                void fetchGroups(1, groupPageSize);
-              }}
-            />
-            <Button
-              type="primary"
-              icon={<Search size={14} />}
-              onClick={() => {
-                setGroupPage(1);
-                void fetchGroups(1, groupPageSize);
-              }}
-            >
-              查询
-            </Button>
-            <Button
-              type="tertiary"
-              icon={<RotateCcw size={14} />}
-              onClick={() => {
-                setIssueFilters(defaultIssueFilters);
-                issueFiltersRef.current = defaultIssueFilters;
-                setGroupPage(1);
-                void fetchGroups(1, groupPageSize);
-              }}
-            >
-              重置
-            </Button>
-            {selectedRowKeys.length > 0 && (
+          <SearchToolbar
+            primary={(
               <>
-                <SplitButtonGroup>
-                  <Button type="primary" icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('resolved')}>
-                    批量标记已解决 ({selectedRowKeys.length})
-                  </Button>
-                  <Dropdown
-                    trigger="click"
-                    render={(
-                      <Dropdown.Menu>
-                        <Dropdown.Item onClick={() => batchUpdateStatus('ignored')}>批量忽略</Dropdown.Item>
-                      </Dropdown.Menu>
-                    )}
-                  >
-                    <Button type="primary" icon={<ChevronDown size={14} />} />
-                  </Dropdown>
-                </SplitButtonGroup>
-                <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDeleteGroups}>
-                  批量删除
-                </Button>
+                {renderIssueStatusFilter()}
+                {renderIssueTypeFilter()}
+                {renderIssueLevelFilter()}
+                {renderIssueKeywordSearch()}
+                {renderIssueSearchButton()}
+                {renderIssueResetButton()}
+                {renderIssueBatchActions()}
               </>
             )}
-          </SearchToolbar>
+            mobilePrimary={(
+              <>
+                {renderIssueKeywordSearch()}
+                {renderIssueSearchButton()}
+              </>
+            )}
+            mobileFilters={(
+              <>
+                {renderIssueStatusFilter()}
+                {renderIssueTypeFilter()}
+                {renderIssueLevelFilter()}
+              </>
+            )}
+            mobileActions={renderMobileIssueBatchActions()}
+            filterTitle="错误 Issue 筛选"
+            actionTitle="Issue 操作"
+            onFilterApply={handleIssueSearch}
+            onFilterReset={handleIssueReset}
+          />
 
           <ConfigurableTable<ErrorGroup>
             bordered
@@ -1128,40 +1208,22 @@ export default function FrontendErrorsPage() {
         </TabPane>
 
         <TabPane tab="Source Map" itemKey="sourcemaps">
-          <SearchToolbar>
-            <Input
-              prefix={<FileCode size={14} />}
-              placeholder="Release"
-              showClear
-              value={sourceRelease}
-              style={{ width: 220 }}
-              onChange={setSourceRelease}
-              onEnterPress={() => {
-                setSourceMapPage(1);
-                void fetchSourceMaps(1, sourceMapPageSize);
-              }}
-            />
-            <Button
-              type="primary"
-              icon={<Search size={14} />}
-              onClick={() => {
-                setSourceMapPage(1);
-                void fetchSourceMaps(1, sourceMapPageSize);
-              }}
-            >
-              查询
-            </Button>
-            <Button
-              type="primary"
-              icon={<FileCode size={14} />}
-              onClick={() => {
-                setUploadForm(defaultSourceMapUpload);
-                setUploadVisible(true);
-              }}
-            >
-              上传
-            </Button>
-          </SearchToolbar>
+          <SearchToolbar
+            primary={(
+              <>
+                {renderSourceReleaseSearch()}
+                {renderSourceMapSearchButton()}
+                {renderSourceMapUploadButton()}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                {renderSourceReleaseSearch()}
+                {renderSourceMapSearchButton()}
+                {renderSourceMapUploadButton()}
+              </>
+            )}
+          />
 
           <ConfigurableTable<SourceMapItem>
             bordered
@@ -1178,9 +1240,10 @@ export default function FrontendErrorsPage() {
         </TabPane>
 
         <TabPane tab="告警规则" itemKey="alerts">
-          <SearchToolbar>
-            <Button type="primary" icon={<Bell size={14} />} onClick={() => openAlertModal()}>新增</Button>
-          </SearchToolbar>
+          <SearchToolbar
+            primary={renderAlertCreateButton()}
+            mobilePrimary={renderAlertCreateButton()}
+          />
 
           <ConfigurableTable<ErrorAlertRule>
             bordered
