@@ -211,19 +211,35 @@ export default function RateLimitPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Text type="tertiary" style={{ fontSize: 13 }}>
-          管理 API 接口限流规则，保存后立即热更新到运行中的服务，无需重启。统计每 30 秒自动刷新。
-        </Text>
-        {canManage && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreating(true)}>
-            新增规则
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            <Text type="tertiary" style={{ fontSize: 13 }}>
+              管理 API 接口限流规则，保存后立即热更新到运行中的服务，无需重启。统计每 30 秒自动刷新。
+            </Text>
+            {canManage && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreating(true)}>
+                新增规则
+              </Button>
+            )}
+            <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} loading={loading}>
+              刷新
+            </Button>
+          </>
         )}
-        <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} loading={loading}>
-          刷新
-        </Button>
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            {canManage && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreating(true)}>
+                新增规则
+              </Button>
+            )}
+            <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} loading={loading}>
+              刷新
+            </Button>
+          </>
+        )}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))', gap: 16, marginTop: 16 }}>
         {rules.map((rule) => {

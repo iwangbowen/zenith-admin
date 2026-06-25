@@ -242,48 +242,89 @@ export default function TerminalRecordingsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索标题"
-          value={keyword}
-          onChange={setKeyword}
-          onEnterPress={handleSearch}
-          showClear
-          style={{ width: 220 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        <SplitButtonGroup>
-          <Button
-            type="danger"
-            theme="light"
-            icon={<Trash2 size={14} />}
-            loading={clearLoading}
-            onClick={() => handleClear(12)}
-          >
-            清除录屏
-          </Button>
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            clickToHide
-            render={(
-              <Dropdown.Menu>
-                {([12, 6, 3, 1] as const).map((m) => (
-                  <Dropdown.Item key={m} onClick={() => handleClear(m)}>
-                    清除{clearLabels[m]}前的录屏
-                  </Dropdown.Item>
-                ))}
-                <Dropdown.Divider />
-                <Dropdown.Item type="danger" onClick={() => handleClear(0)}>清除全部录屏</Dropdown.Item>
-              </Dropdown.Menu>
-            )}
-          >
-            <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
-          </Dropdown>
-        </SplitButtonGroup>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索标题"
+              value={keyword}
+              onChange={setKeyword}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 220 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        actions={(
+          <SplitButtonGroup>
+            <Button
+              type="danger"
+              theme="light"
+              icon={<Trash2 size={14} />}
+              loading={clearLoading}
+              onClick={() => handleClear(12)}
+            >
+              清除录屏
+            </Button>
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              clickToHide
+              render={(
+                <Dropdown.Menu>
+                  {([12, 6, 3, 1] as const).map((m) => (
+                    <Dropdown.Item key={m} onClick={() => handleClear(m)}>
+                      清除{clearLabels[m]}前的录屏
+                    </Dropdown.Item>
+                  ))}
+                  <Dropdown.Divider />
+                  <Dropdown.Item type="danger" onClick={() => handleClear(0)}>清除全部录屏</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
+            </Dropdown>
+          </SplitButtonGroup>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索标题"
+              value={keyword}
+              onChange={setKeyword}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 220 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          </>
+        )}
+        mobileActions={(
+          <>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {([12, 6, 3, 1] as const).map((m) => (
+              <Button
+                key={m}
+                type="danger"
+                theme="light"
+                icon={<Trash2 size={14} />}
+                loading={clearLoading}
+                onClick={() => handleClear(m)}
+              >
+                清除{clearLabels[m]}前的录屏
+              </Button>
+            ))}
+            <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLoading} onClick={() => handleClear(0)}>
+              清除全部录屏
+            </Button>
+          </>
+        )}
+        actionTitle="录屏操作"
+      />
 
       <ConfigurableTable
         bordered
