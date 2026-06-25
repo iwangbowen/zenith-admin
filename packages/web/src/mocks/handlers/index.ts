@@ -34,6 +34,7 @@ import { workflowCategoriesHandlers } from './workflow-categories';
 import { workflowAutomationsHandlers } from './workflow-automations';
 import { workflowEventSubscriptionsHandlers } from './workflow-event-subscriptions';
 import { workflowTriggerExecutionsHandlers } from './workflow-trigger-executions';
+import { workflowHealthHandlers } from './workflow-health';
 import { workflowDataSourcesHandlers } from './workflow-data-sources';
 import { bizLeaveHandlers } from './biz-leave';
 import { bizPayDemoHandlers } from './biz-pay-demo';
@@ -131,6 +132,7 @@ export const handlers = [
   ...workflowAutomationsHandlers,
   ...workflowEventSubscriptionsHandlers,
   ...workflowTriggerExecutionsHandlers,
+  ...workflowHealthHandlers,
   ...bizLeaveHandlers,
   ...bizPayDemoHandlers,
   ...chatHandlers,

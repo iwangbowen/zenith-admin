@@ -98,6 +98,7 @@ import workflowSavedViewsRoutes from './routes/workflow-saved-views';
 import workflowDelegationsRoutes from './routes/workflow-delegations';
 import workflowQuickPhrasesRoutes from './routes/workflow-quick-phrases';
 import workflowTemplatesRoutes from './routes/workflow-templates';
+import workflowHealthRoutes from './routes/workflow-health';
 import healthRoutes from './routes/health';
 import maintenanceRoutes from './routes/maintenance';
 import logFilesRoutes from './routes/log-files';
@@ -367,6 +368,7 @@ app.route('/api/workflows/saved-views', workflowSavedViewsRoutes);
 app.route('/api/workflows/delegations', workflowDelegationsRoutes);
 app.route('/api/workflows/quick-phrases', workflowQuickPhrasesRoutes);
 app.route('/api/workflows/templates', workflowTemplatesRoutes);
+app.route('/api/workflows/health', workflowHealthRoutes);
 app.route('/api/public/workflow/external-callback', workflowExternalCallbackRoutes);
 app.route('/api/public/workflow/trigger-callback', workflowTriggerCallbackRoutes);
 app.route('/api/public/payment/notify', paymentPublicRoutes);
@@ -510,6 +512,10 @@ try {
   await registerSystemRecurringJob('workflow-schedule-tick', '* * * * *', runDueWorkflowSchedules);
   await registerSystemRecurringJob('workflow-event-delivery-retry', '*/5 * * * *', async () => {
     await retryWorkflowEventDeliveries();
+  });
+  const { replayWorkflowEventOutbox } = await import('./lib/workflow-event-bus');
+  await registerSystemRecurringJob('workflow-event-outbox-replay', '* * * * *', async () => {
+    await replayWorkflowEventOutbox();
   });
   const { recoverDueDelayTasks } = await import('./services/workflow-resume.service');
   await registerSystemRecurringJob('workflow-delay-recovery', '* * * * *', async () => {

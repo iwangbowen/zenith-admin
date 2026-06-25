@@ -2719,6 +2719,49 @@ export interface WorkflowTriggerExecution {
   createdAt: string;
 }
 
+export type WorkflowHealthIssueType =
+  | 'external_dispatch_failed'
+  | 'external_dispatch_pending'
+  | 'trigger_waiting_no_execution'
+  | 'subprocess_waiting'
+  | 'delay_overdue'
+  | 'task_timeout_overdue'
+  | 'workflow_event_outbox_failed'
+  | 'workflow_event_outbox_pending'
+  | 'waiting_task_stuck';
+
+export interface WorkflowHealthIssue {
+  id: string;
+  type: WorkflowHealthIssueType;
+  severity: 'warning' | 'critical';
+  title: string;
+  description: string;
+  instanceId: number | null;
+  instanceTitle?: string | null;
+  taskId?: number | null;
+  nodeKey?: string | null;
+  nodeName?: string | null;
+  status?: string | null;
+  ageMinutes: number;
+  createdAt: string;
+}
+
+export interface WorkflowHealthSummary {
+  healthy: boolean;
+  checkedAt: string;
+  thresholdMinutes: number;
+  stats: {
+    total: number;
+    critical: number;
+    warning: number;
+    externalFailed: number;
+    triggerStuck: number;
+    subProcessStuck: number;
+    outboxFailed: number;
+  };
+  issues: WorkflowHealthIssue[];
+}
+
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export type ChatConversationType = 'direct' | 'group';
 export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward' | 'vote' | 'voice' | 'card';

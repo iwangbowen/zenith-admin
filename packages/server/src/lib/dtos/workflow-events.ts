@@ -79,3 +79,49 @@ export const WorkflowTriggerExecutionDTO = z
     createdAt: z.string(),
   })
   .openapi('WorkflowTriggerExecution');
+
+export const WorkflowHealthIssueDTO = z
+  .object({
+    id: z.string(),
+    type: z.enum([
+      'external_dispatch_failed',
+      'external_dispatch_pending',
+      'trigger_waiting_no_execution',
+      'subprocess_waiting',
+      'delay_overdue',
+      'task_timeout_overdue',
+      'workflow_event_outbox_failed',
+      'workflow_event_outbox_pending',
+      'waiting_task_stuck',
+    ]),
+    severity: z.enum(['warning', 'critical']),
+    title: z.string(),
+    description: z.string(),
+    instanceId: z.number().int().nullable(),
+    instanceTitle: z.string().nullable().optional(),
+    taskId: z.number().int().nullable().optional(),
+    nodeKey: z.string().nullable().optional(),
+    nodeName: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
+    ageMinutes: z.number().int(),
+    createdAt: z.string(),
+  })
+  .openapi('WorkflowHealthIssue');
+
+export const WorkflowHealthSummaryDTO = z
+  .object({
+    healthy: z.boolean(),
+    checkedAt: z.string(),
+    thresholdMinutes: z.number().int(),
+    stats: z.object({
+      total: z.number().int(),
+      critical: z.number().int(),
+      warning: z.number().int(),
+      externalFailed: z.number().int(),
+      triggerStuck: z.number().int(),
+      subProcessStuck: z.number().int(),
+      outboxFailed: z.number().int(),
+    }),
+    issues: z.array(WorkflowHealthIssueDTO),
+  })
+  .openapi('WorkflowHealthSummary');

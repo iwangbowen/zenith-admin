@@ -95,6 +95,12 @@ handlerRegistry.set('retryWorkflowEventDeliveries', async () => {
   return `重试了 ${retried} 个事件投递`;
 });
 
+handlerRegistry.set('replayWorkflowEventOutbox', async () => {
+  const { replayWorkflowEventOutbox } = await import('./workflow-event-bus');
+  const r = await replayWorkflowEventOutbox();
+  return `工作流事件 outbox：扫描 ${r.scanned}，重放成功 ${r.dispatched}，失败 ${r.failed}`;
+});
+
 handlerRegistry.set('processWorkflowTaskTimeouts', async () => {
   const { processWorkflowTaskTimeouts } = await import('./workflow-timeout-processor');
   const r = await processWorkflowTaskTimeouts();

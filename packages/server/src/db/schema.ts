@@ -1688,6 +1688,29 @@ export const workflowEventDeliveries = pgTable('workflow_event_deliveries', {
 export type WorkflowEventDeliveryRow = typeof workflowEventDeliveries.$inferSelect;
 export type NewWorkflowEventDelivery = typeof workflowEventDeliveries.$inferInsert;
 
+export const workflowEventOutbox = pgTable('workflow_event_outbox', {
+  id: serial('id').primaryKey(),
+  eventId: varchar('event_id', { length: 64 }).notNull().unique(),
+  eventType: varchar('event_type', { length: 64 }).notNull(),
+  instanceId: integer('instance_id'),
+  definitionId: integer('definition_id'),
+  taskId: integer('task_id'),
+  payload: jsonb('payload').notNull(),
+  status: varchar('status', { length: 16 }).notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  errorMessage: text('error_message'),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('workflow_event_outbox_status_idx').on(t.status, t.nextRetryAt),
+  index('workflow_event_outbox_instance_idx').on(t.instanceId),
+]);
+
+export type WorkflowEventOutboxRow = typeof workflowEventOutbox.$inferSelect;
+export type NewWorkflowEventOutbox = typeof workflowEventOutbox.$inferInsert;
+
 export const workflowTriggerExecutions = pgTable('workflow_trigger_executions', {
   id: serial('id').primaryKey(),
   instanceId: integer('instance_id').notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),

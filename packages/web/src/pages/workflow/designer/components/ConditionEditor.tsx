@@ -37,6 +37,11 @@ interface ConditionEditorProps {
 }
 
 const operatorOptions = Object.entries(OPERATOR_LABELS).map(([value, label]) => ({ value, label }));
+const NUMERIC_OPERATORS: ConditionOperator[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNotEmpty'];
+const DATE_OPERATORS: ConditionOperator[] = ['eq', 'neq', 'withinDays', 'beforeDays', 'isEmpty', 'isNotEmpty'];
+const OPTION_OPERATORS: ConditionOperator[] = ['eq', 'neq', 'in', 'notIn', 'isEmpty', 'isNotEmpty'];
+const TEXT_OPERATORS: ConditionOperator[] = ['eq', 'neq', 'contains', 'isEmpty', 'isNotEmpty'];
+const COMPLEX_OPERATORS: ConditionOperator[] = ['isEmpty', 'isNotEmpty'];
 /** 发起人维度仅支持 属于/不属于 */
 const STARTER_OPERATOR_OPTIONS = [
   { value: 'in', label: '属于' },
@@ -73,6 +78,30 @@ function replaceRuleInGroup(group: ConditionGroup, ruleIndex: number, updates: P
     ri === ruleIndex ? { ...r, ...updates } : r
   );
   return { ...group, rules: newRules };
+}
+
+function isComplexFieldType(type: string | undefined): boolean {
+  return ['table', 'subtable', 'array', 'object', 'upload', 'file', 'image'].includes(type ?? '');
+}
+
+function operatorsForField(field: FormField | undefined, aggregate?: ConditionRule['aggregate']): Array<{ value: string; label: string }> {
+  if (aggregate) {
+    const allowed = aggregate === 'count' ? NUMERIC_OPERATORS.filter((op) => op !== 'isEmpty' && op !== 'isNotEmpty') : NUMERIC_OPERATORS;
+    return operatorOptions.filter((op) => allowed.includes(op.value as ConditionOperator));
+  }
+  if (!field) return operatorOptions;
+  let allowed: ConditionOperator[];
+  if (field.type === 'number') allowed = NUMERIC_OPERATORS;
+  else if (field.type === 'date' || field.type === 'datetime') allowed = DATE_OPERATORS;
+  else if (field.type === 'select' || field.type === 'radio' || field.type === 'checkbox') allowed = OPTION_OPERATORS;
+  else if (isComplexFieldType(field.type)) allowed = COMPLEX_OPERATORS;
+  else allowed = TEXT_OPERATORS;
+  return operatorOptions.filter((op) => allowed.includes(op.value as ConditionOperator));
+}
+
+function normalizeOperatorForField(rule: ConditionRule, field: FormField | undefined): ConditionOperator {
+  const options = rule.source === 'starter' ? STARTER_OPERATOR_OPTIONS : operatorsForField(field, rule.aggregate);
+  return options.some((op) => op.value === rule.operator) ? rule.operator : options[0].value as ConditionOperator;
 }
 
 /** 顶层函数：移除指定 group 中的某条 rule */
@@ -149,7 +178,8 @@ export default function ConditionEditor({
       updateRule(groupIndex, ruleIndex, { source: 'starter', field: val.slice('starter:'.length), operator: 'in', value: '' });
     } else {
       const key = val.startsWith('form:') ? val.slice('form:'.length) : val;
-      updateRule(groupIndex, ruleIndex, { source: 'form', field: key, operator: 'eq', value: '' });
+      const field = formFields.find((item) => item.key === key);
+      updateRule(groupIndex, ruleIndex, { source: 'form', field: key, operator: normalizeOperatorForField({ ...EMPTY_RULE, field: key }, field), value: '' });
     }
   };
 
@@ -180,7 +210,12 @@ export default function ConditionEditor({
     const cleaned = groups
       .map(g => ({
         ...g,
-        rules: g.rules.filter(r => r.field !== ''),
+        rules: g.rules.filter((r) => {
+          if (r.field === '') return false;
+          if (r.source === 'starter') return STARTER_OPERATOR_OPTIONS.some((op) => op.value === r.operator);
+          const field = formFields.find((item) => item.key === r.field);
+          return operatorsForField(field, r.aggregate).some((op) => op.value === r.operator);
+        }),
       }))
       .filter(g => g.rules.length > 0);
     const trimmedName = name.trim() || branch.name;
@@ -245,7 +280,11 @@ export default function ConditionEditor({
               </div>
 
               {/* 条件规则列表 */}
-              {group.rules.map((rule, ri) => (
+              {group.rules.map((rule, ri) => {
+                const field = formFields.find((item) => item.key === rule.field);
+                const currentOperatorOptions = rule.source === 'starter' ? STARTER_OPERATOR_OPTIONS : operatorsForField(field, rule.aggregate);
+                const operatorUnsupported = !currentOperatorOptions.some((op) => op.value === rule.operator);
+                return (
                 <div key={ruleKeys[gi]?.[ri] ?? ri} className="fd-condition-rule" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
                   {/* 主控件行 */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -272,9 +311,9 @@ export default function ConditionEditor({
                       </Select.OptGroup>
                     </Select>
                     <Select
-                      value={rule.operator}
-                      onChange={(v) => updateRule(gi, ri, { operator: v as ConditionOperator })}
-                      optionList={rule.source === 'starter' ? STARTER_OPERATOR_OPTIONS : operatorOptions}
+                      value={operatorUnsupported ? undefined : rule.operator}
+                      onChange={(v) => updateRule(gi, ri, { operator: v as ConditionOperator, value: '' })}
+                      optionList={currentOperatorOptions}
                       placeholder="选择条件"
                       style={{ width: 100 }}
                       size="small"
@@ -297,9 +336,11 @@ export default function ConditionEditor({
                         value={rule.aggregate ?? 'none'}
                         onChange={(v) => {
                           if (v === 'none') {
-                            updateRule(gi, ri, { aggregate: undefined, aggregateField: undefined });
+                            const nextRule = { ...rule, aggregate: undefined, aggregateField: undefined };
+                            updateRule(gi, ri, { aggregate: undefined, aggregateField: undefined, operator: normalizeOperatorForField(nextRule, field) });
                           } else {
-                            updateRule(gi, ri, { aggregate: v as 'sum' | 'count' | 'avg' });
+                            const nextRule = { ...rule, aggregate: v as 'sum' | 'count' | 'avg' };
+                            updateRule(gi, ri, { aggregate: nextRule.aggregate, operator: normalizeOperatorForField(nextRule, field) });
                           }
                         }}
                         optionList={AGGREGATE_OPTIONS}
@@ -317,8 +358,13 @@ export default function ConditionEditor({
                       )}
                     </div>
                   )}
+                  {operatorUnsupported && (
+                    <Typography.Text type="warning" size="small">
+                      当前字段类型不支持该操作符，请重新选择条件。
+                    </Typography.Text>
+                  )}
                 </div>
-              ))}
+              );})}
 
               {/* 添加条件按钮 */}
               <Button

@@ -62,6 +62,12 @@ export interface IdempotencyOptions {
   autoFingerprint?: boolean;
 }
 
+interface CachedResponse {
+  status: number;
+  contentType: string | null;
+  body: string;
+}
+
 /**
  * 计算请求体的 SHA-256 指纹（hex 截断为 16 字符）。
  * 对空/无 body 的请求返回固定字符串 'nobody'。
@@ -131,8 +137,26 @@ export function idempotencyGuard(options: IdempotencyOptions = {}) {
     const redisKey = `${IDEMPOTENCY_PREFIX}${idempotencyKey}`;
 
     try {
+      const existing = await redis.get(redisKey);
+      if (existing) {
+        try {
+          const cached = JSON.parse(existing) as CachedResponse | { state?: string };
+          if ('body' in cached && typeof cached.body === 'string') {
+            logger.info(`[Idempotency] 返回缓存响应 source=${keySource} key=${idempotencyKey.slice(0, 8)}...`);
+            return new Response(cached.body, {
+              status: cached.status,
+              headers: cached.contentType ? { 'Content-Type': cached.contentType } : undefined,
+            });
+          }
+        } catch {
+          // fall through to duplicate rejection for legacy/simple markers
+        }
+        logger.warn(`[Idempotency] 重复提交拦截 source=${keySource} key=${idempotencyKey.slice(0, 8)}...`);
+        return c.json(errBody(message, 429), 429);
+      }
+
       // SET NX EX —— 原子性：仅当 key 不存在时设置，确保并发安全
-      const result = await redis.set(redisKey, '1', 'EX', ttlSeconds, 'NX');
+      const result = await redis.set(redisKey, JSON.stringify({ state: 'processing' }), 'EX', ttlSeconds, 'NX');
 
       if (result === null) {
         // key 已存在 → 重复请求
@@ -140,8 +164,15 @@ export function idempotencyGuard(options: IdempotencyOptions = {}) {
         return c.json(errBody(message, 429), 429);
       }
 
-      // 首次请求，继续处理
-      return next();
+      // 首次请求，继续处理；成功 JSON 响应缓存给相同幂等 key 的网络重试。
+      await next();
+      const res = c.res;
+      const contentType = res.headers.get('Content-Type');
+      if (res.status >= 200 && res.status < 300 && contentType?.includes('application/json')) {
+        const body = await res.clone().text();
+        await redis.set(redisKey, JSON.stringify({ status: res.status, contentType, body } satisfies CachedResponse), 'EX', ttlSeconds);
+      }
+      return;
     } catch (err) {
       // Redis 不可用时降级放行（可观测，不阻断业务）
       logger.error(`[Idempotency] Redis 检查失败，降级放行: ${(err as Error).message}`);
