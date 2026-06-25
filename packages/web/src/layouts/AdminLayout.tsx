@@ -5,7 +5,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { BackTop, Badge, Banner, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
-import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink } from 'lucide-react';
+import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock, Wrench, ExternalLink, Menu as MenuIcon } from 'lucide-react';
 import { match as pinyinMatch } from 'pinyin-pro';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
@@ -182,6 +182,8 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   const autoCollapsedRef = useRef(false);
   // hover 模式：鼠标悬浮时侧边栏临时滑出
   const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [isMobileNav, setIsMobileNav] = useState(false);
+  const [mobileNavVisible, setMobileNavVisible] = useState(false);
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
 
   const flatMenus = useMemo<FlatMenuItem[]>(() => {
@@ -209,6 +211,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   // ─── 响应式侧边栏断点 ──────────────────────────────────────────────────────
   useEffect(() => {
     const lgMq = globalThis.matchMedia('(max-width: 991px)');
+    const mobileMq = globalThis.matchMedia('(max-width: 767px)');
 
     const handleLg = (e: MediaQueryList | MediaQueryListEvent) => {
       if (e.matches) {
@@ -219,12 +222,19 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
         setCollapsed(false);
       }
     };
+    const handleMobile = (e: MediaQueryList | MediaQueryListEvent) => {
+      setIsMobileNav(e.matches);
+      if (!e.matches) setMobileNavVisible(false);
+    };
 
     handleLg(lgMq);
+    handleMobile(mobileMq);
 
     lgMq.addEventListener('change', handleLg);
+    mobileMq.addEventListener('change', handleMobile);
     return () => {
       lgMq.removeEventListener('change', handleLg);
+      mobileMq.removeEventListener('change', handleMobile);
     };
   }, []);
 
@@ -672,7 +682,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   const [openKeys, setOpenKeys] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!collapsed && currentSectionKeys.length > 0) {
+    if ((!collapsed || isMobileNav) && currentSectionKeys.length > 0) {
       if (preferences.sidebarAccordion) {
         // 手风琴模式：路由切换时仅保留当前路径的祖先链
         setOpenKeys(currentSectionKeys);
@@ -680,7 +690,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
         setOpenKeys((prev) => Array.from(new Set([...prev, ...currentSectionKeys])));
       }
     }
-  }, [collapsed, currentSectionKeys, preferences.sidebarAccordion]);
+  }, [collapsed, currentSectionKeys, isMobileNav, preferences.sidebarAccordion]);
 
   // ─── 锁屏快捷键 Alt+L / 侧边栏 toggle Alt+S ────────────────────────────────
   useEffect(() => {
@@ -931,6 +941,33 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
       }
       return (
         <NavLink to={itemKey} className="admin-nav-link-wrapper">
+          {itemElement}
+        </NavLink>
+      );
+    },
+    [externalNavKeys],
+  );
+
+  const renderMobileWrapper = useCallback(
+    (args: { itemElement: React.ReactNode; props: { itemKey?: string | number } }) => {
+      const { itemElement, props: itemProps } = args;
+      const itemKey = String(itemProps.itemKey ?? '');
+      if (!itemKey.startsWith('/')) return itemElement;
+      if (externalNavKeys.has(itemKey)) {
+        return (
+          <a
+            href={itemKey}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="admin-nav-link-wrapper"
+            onClick={() => setMobileNavVisible(false)}
+          >
+            {itemElement}
+          </a>
+        );
+      }
+      return (
+        <NavLink to={itemKey} className="admin-nav-link-wrapper" onClick={() => setMobileNavVisible(false)}>
           {itemElement}
         </NavLink>
       );
@@ -1399,6 +1436,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   const topNavSelectedKeys = navLayout === 'mixed' ? mixedTopSelectedKeys : horizontalSelectedKeys;
   const stickyNavClass = preferences.sidebarStickyScroll === false ? '' : ' admin-sidebar--sticky-nav';
   const sidebarClassName = `admin-sidebar${effectiveCollapsed ? ' admin-sidebar--collapsed' : ''}${stickyNavClass}`;
+  const mobileHeaderTitle = currentPageTitle ?? displayBreadcrumbs.at(-1)?.title ?? config.appTitle;
 
   // 菜单自动滚动至可视区
   useEffect(() => {
@@ -1459,8 +1497,66 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
           closeIcon={null}
         />
       )}
+      {isMobileNav && (
+        <header className="admin-mobile-header">
+          <button
+            type="button"
+            className="admin-mobile-header__menu"
+            aria-label="打开导航菜单"
+            onClick={() => setMobileNavVisible(true)}
+          >
+            <MenuIcon size={20} strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            className="admin-mobile-header__brand"
+            onClick={navigateHome}
+            onKeyDown={handleNavigateHomeKey}
+          >
+            <AppLogo size={26} />
+            <span className="admin-mobile-header__title">{mobileHeaderTitle}</span>
+          </button>
+          {headerActions}
+        </header>
+      )}
+
+      {isMobileNav && (
+        <SideSheet
+          className="admin-mobile-nav-sheet"
+          title={
+            <button
+              type="button"
+              className="admin-mobile-nav-sheet__brand"
+              onClick={() => {
+                setMobileNavVisible(false);
+                navigateHome();
+              }}
+              onKeyDown={handleNavigateHomeKey}
+            >
+              <AppLogo size={26} />
+              <span>{config.appTitle}</span>
+            </button>
+          }
+          visible={mobileNavVisible}
+          onCancel={() => setMobileNavVisible(false)}
+          placement="left"
+          width="min(86vw, 320px)"
+          bodyStyle={{ padding: 0 }}
+        >
+          <Nav
+            className="admin-mobile-nav"
+            mode="vertical"
+            items={navItems}
+            selectedKeys={currentSelectedKeys}
+            openKeys={openKeys}
+            onOpenChange={handleSidebarOpenChange}
+            renderWrapper={renderMobileWrapper}
+          />
+        </SideSheet>
+      )}
+
       {/* Top bar for horizontal and mixed layouts */}
-      {navLayout !== 'vertical' && navLayout !== 'double' && (
+      {!isMobileNav && navLayout !== 'vertical' && navLayout !== 'double' && (
         <header className="admin-topbar">
           {(preferences.showLogo ?? true) && (
             <button
@@ -1489,7 +1585,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
       <div className="admin-body">
 
 {/* Sidebar — always in vertical, conditional in mixed, always in double */}
-        {showSidebar && (
+        {!isMobileNav && showSidebar && (
           navLayout === 'double' ? (
             <aside className={`admin-sidebar admin-sidebar--double${doubleSubItems.length === 0 ? ' admin-sidebar--double-no-sub' : ''}${stickyNavClass}`}>
               {/* Left icon rail */}
@@ -1607,7 +1703,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
         <div className="admin-main">
           <NProgress />
           {/* Vertical mode has its own header bar */}
-          {(navLayout === 'vertical' || navLayout === 'double') && (
+          {!isMobileNav && (navLayout === 'vertical' || navLayout === 'double') && (
             <header className="admin-header">
               {/* Left: breadcrumb (vertical / double layouts only) */}
               {preferences.showBreadcrumb && displayBreadcrumbs.length > 0 ? (

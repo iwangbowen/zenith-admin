@@ -615,6 +615,108 @@
   color: var(--color-text);
 }
 
+/* ===== Mobile header / navigation drawer ===== */
+.admin-mobile-header {
+  height: var(--header-height);
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--color-layout-bg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.admin-mobile-header__menu,
+.admin-mobile-header__brand {
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.admin-mobile-header__menu {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.admin-mobile-header__menu:hover,
+.admin-mobile-header__brand:hover {
+  background: var(--color-layout-hover);
+}
+
+.admin-mobile-header__brand {
+  min-width: 0;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  border-radius: var(--radius);
+  padding: 0 6px;
+  text-align: left;
+}
+
+.admin-mobile-header__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.admin-mobile-nav-sheet .semi-sidesheet-inner {
+  max-width: 86vw;
+}
+
+.admin-mobile-nav-sheet__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+}
+
+.admin-mobile-nav {
+  width: 100%;
+  height: calc(100vh - var(--header-height));
+  background: var(--color-sidebar-bg);
+  border-right: 0;
+}
+
+.admin-mobile-nav.semi-navigation {
+  border-right: 0;
+}
+
+.admin-mobile-nav .semi-navigation-list-wrapper {
+  padding: 8px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.admin-mobile-nav .semi-navigation-item,
+.admin-mobile-nav .semi-navigation-sub-title {
+  min-height: 42px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
 /* Breadcrumb bar (horizontal/mixed layouts) */
 .admin-breadcrumb-bar {
   height: 36px;
@@ -1518,6 +1620,22 @@
 
 /* < 768px：顶部品牌区只显示 Logo，隐藏系统名称；隐藏公告/消息/主题按钮，显示溢出菜单 */
 @media (max-width: 767px) {
+  .admin-mobile-header {
+    display: flex;
+  }
+
+  .admin-mobile-header .admin-header__actions {
+    flex: 0 0 auto;
+    gap: 2px;
+  }
+
+  .admin-mobile-header .admin-menu-search,
+  .admin-mobile-header .admin-header__actions > .admin-header-action:not(.admin-header-action--more),
+  .admin-mobile-header .admin-header__actions > .semi-select,
+  .admin-mobile-header .admin-header__actions > div[style*="width: 1"] {
+    display: none !important;
+  }
+
   .admin-topbar__brand .admin-sidebar__title {
     display: none;
   }
@@ -1530,6 +1648,10 @@
 
   .admin-header-action--more {
     display: inline-flex;
+  }
+
+  .admin-tabs-bar {
+    display: none;
   }
 }
 
