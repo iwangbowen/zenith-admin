@@ -22,7 +22,14 @@ export async function resumeDelayTask(taskId: number): Promise<boolean> {
   if (!inst || inst.status !== 'running') {
     return false;
   }
-  await approveTaskCore(task, inst, '延迟到期自动唤醒', { userId: 0, name: 'system:delay' });
+  try {
+    await approveTaskCore(task, inst, '延迟到期自动唤醒', { userId: 0, name: 'system:delay' });
+  } catch (err) {
+    if (err instanceof HTTPException && err.status === 409) {
+      return false;
+    }
+    throw err;
+  }
   return true;
 }
 

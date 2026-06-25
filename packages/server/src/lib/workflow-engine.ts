@@ -772,6 +772,10 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
     const normalIn = normalInEdges.get(node.id) ?? [];
     const normalOut = normalOutEdges.get(node.id) ?? [];
     const exceptionIn = exceptionInEdges.get(node.id) ?? [];
+    const isGateway = gwType === 'exclusiveGateway'
+      || gwType === 'routeGateway'
+      || gwType === 'inclusiveGateway'
+      || gwType === 'parallelGateway';
 
     if (gwType === 'start') {
       if (normalIn.length > 0) errors.push(`开始节点"${node.data.label}"不应有入边`);
@@ -787,7 +791,7 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
       }
     } else {
       if (normalIn.length === 0) errors.push(`节点"${node.data.label}"缺少入边`);
-      if (normalOut.length === 0) errors.push(`节点"${node.data.label}"缺少出边`);
+      if (!isGateway && normalOut.length === 0) errors.push(`节点"${node.data.label}"缺少出边`);
     }
 
     if (gwType === 'exclusiveGateway' || gwType === 'routeGateway' || gwType === 'inclusiveGateway') {
