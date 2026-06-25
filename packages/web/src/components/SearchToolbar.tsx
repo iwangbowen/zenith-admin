@@ -100,7 +100,7 @@ export function SearchToolbar({
                   render={(
                     <div className="responsive-toolbar__mobile-actions">
                       <div className="responsive-toolbar__mobile-actions-title">{actionTitle}</div>
-                      <Space vertical align="stretch" spacing={8} style={{ width: '100%' }}>
+                      <Space vertical spacing={8} style={{ width: '100%' }}>
                         {mobileActionsContent}
                       </Space>
                     </div>
@@ -151,7 +151,7 @@ export function SearchToolbar({
             </Space>
           ) : null}
         >
-          <Space vertical align="stretch" spacing={12} style={{ width: '100%' }}>
+          <Space vertical spacing={12} style={{ width: '100%' }}>
             {mobileFiltersContent}
           </Space>
         </SideSheet>
