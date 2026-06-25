@@ -35,3 +35,8 @@ export function useMediaQuery(query: string): boolean {
 export function useIsMobile(): boolean {
   return useMediaQuery(mediaDown('md'));
 }
+
+/** 系统是否偏好深色模式（prefers-color-scheme: dark）。深色判断的统一入口。 */
+export function usePrefersDark(): boolean {
+  return useMediaQuery('(prefers-color-scheme: dark)');
+}

@@ -2126,8 +2126,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>主题颜色</div>
                 <div className="theme-color-picker">
                   {THEME_COLOR_PRESETS.map((preset) => {
-                    const colorIsDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
-                    const currentColor = colorIsDark ? preset.dark.primary : preset.light.primary;
+                    const currentColor = isDark ? preset.dark.primary : preset.light.primary;
                     const isActive = themeColor === preset.key;
                     return (
                       <Tooltip key={preset.key} content={preset.name} position="top">

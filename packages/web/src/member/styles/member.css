@@ -816,7 +816,7 @@ body {
    ============================================================ */
 
 /* ── 平板（≤ 1024px）─────────────────────────────────────── */
-@media (max-width: 1024px) {
+@media (--lg-down) {
   .mc-features-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -831,7 +831,7 @@ body {
 }
 
 /* ── 移动端（≤ 768px）────────────────────────────────────── */
-@media (max-width: 768px) {
+@media (--md-down) {
   /* Landing 顶部导航 */
   .mc-landing-header {
     padding: 0 16px;
@@ -911,7 +911,7 @@ body {
 }
 
 /* ── 小屏手机（≤ 480px）──────────────────────────────────── */
-@media (max-width: 480px) {
+@media (--xs-down) {
   .mc-hero-title {
     font-size: 22px;
   }

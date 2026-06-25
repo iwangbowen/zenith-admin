@@ -109,7 +109,7 @@
   color: var(--semi-color-text-2);
 }
 
-@media (max-width: 1200px) {
+@media (--xl-down) {
   .channel-dashboard-stats-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -121,7 +121,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (--md-down) {
   .channel-dashboard-stats-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

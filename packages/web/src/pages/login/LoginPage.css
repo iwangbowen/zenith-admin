@@ -298,7 +298,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
 }
 
 /* ===== 窄屏响应式 ===== */
-@media (max-width: 768px) {
+@media (--md-down) {
   .login-left {
     display: none;
   }
@@ -336,7 +336,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
   }
 }
 
-@media (max-width: 1200px) {
+@media (--xl-down) {
   .login-left {
     width: 46%;
     min-width: 420px;
@@ -351,7 +351,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
   }
 }
 
-@media (max-width: 480px) {
+@media (--xs-down) {
   .login-form-wrapper {
     padding: 28px 20px;
     border-radius: 16px;

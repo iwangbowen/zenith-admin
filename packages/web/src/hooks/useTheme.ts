@@ -1,13 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { usePrefersDark } from '@/hooks/useMediaQuery';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-function getSystemDark(): boolean {
-  return globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
-}
-
-function applyTheme(mode: ThemeMode) {
-  const isDark = mode === 'dark' || (mode === 'system' && getSystemDark());
+function applyTheme(mode: ThemeMode, systemDark: boolean) {
+  const isDark = mode === 'dark' || (mode === 'system' && systemDark);
   // Semi Design dark mode: body[theme-mode="dark"]
   if (isDark) {
     document.body.setAttribute('theme-mode', 'dark');
@@ -20,25 +17,18 @@ function applyTheme(mode: ThemeMode) {
 
 export function useTheme(initialMode: ThemeMode = 'light') {
   const [mode, setMode] = useState<ThemeMode>(initialMode);
+  // 系统深色偏好统一走 usePrefersDark；其变化会自动触发重渲染并重新应用主题
+  const systemDark = usePrefersDark();
 
   // Keep mode synced with external source of truth
   useEffect(() => {
     setMode(initialMode);
   }, [initialMode]);
 
-  // Apply on mount + mode change
+  // Apply on mount + mode change + 系统偏好变化（mode === 'system' 时生效）
   useEffect(() => {
-    applyTheme(mode);
-  }, [mode]);
-
-  // Listen to system preference changes when mode === 'system'
-  useEffect(() => {
-    if (mode !== 'system') return;
-    const mq = globalThis.matchMedia('(prefers-color-scheme: dark)');
-    const handler = () => applyTheme('system');
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, [mode]);
+    applyTheme(mode, systemDark);
+  }, [mode, systemDark]);
 
   const setThemeMode = useCallback((newMode: ThemeMode) => {
     setMode(newMode);

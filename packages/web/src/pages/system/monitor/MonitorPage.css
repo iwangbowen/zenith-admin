@@ -34,13 +34,13 @@
   margin-bottom: 20px;
 }
 
-@media (max-width: 1100px) {
+@media (--xl-down) {
   .monitor-overview-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (max-width: 600px) {
+@media (--sm-down) {
   .monitor-overview-grid {
     grid-template-columns: 1fr;
   }
@@ -109,7 +109,7 @@
   padding-top: 4px;
 }
 
-@media (max-width: 600px) {
+@media (--sm-down) {
   .monitor-overview-sys {
     grid-template-columns: 1fr;
   }
@@ -128,7 +128,7 @@
   margin-top: 4px;
 }
 
-@media (max-width: 768px) {
+@media (--md-down) {
   .monitor-detail-grid {
     grid-template-columns: 1fr;
   }
@@ -319,7 +319,7 @@
   border-radius: 6px;
   min-width: 140px;
 }
-@media (max-width: 1100px) {
+@media (--xl-down) {
   .monitor-history-grid,
   .monitor-topproc-grid {
     grid-template-columns: 1fr;

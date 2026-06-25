@@ -564,7 +564,7 @@
   white-space: nowrap;
 }
 
-@media (max-width: 639px) {
+@media (--sm-down) {
   .admin-header {
     padding: 0 10px;
     gap: 8px;
@@ -857,7 +857,7 @@
   z-index: 1;
 }
 
-@media (max-width: 639px) {
+@media (--sm-down) {
   .admin-breadcrumb-bar {
     padding: 0 10px;
   }
@@ -1741,14 +1741,14 @@
 }
 
 /* < 992px：隐藏用户名，只保留头像 */
-@media (max-width: 991px) {
+@media (--lg-down) {
   .admin-header__username {
     display: none;
   }
 }
 
 /* < 768px：使用移动端顶部栏，页面入口和常用功能入口分离展示 */
-@media (max-width: 767px) {
+@media (--md-down) {
   .admin-mobile-header {
     display: flex;
   }
@@ -1786,7 +1786,7 @@
 }
 
 /* < 540px：隐藏全屏按钮 */
-@media (max-width: 539px) {
+@media (--sm-down) {
   .admin-theme-btn--fullscreen {
     display: none;
   }

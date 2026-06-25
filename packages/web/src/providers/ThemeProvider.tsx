@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { PREFERENCES_KEY } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
+import { usePrefersDark } from '@/hooks/useMediaQuery';
 import { applyThemeColor } from '@/lib/theme-color';
 import { defaultPreferences, useOptionalPreferences } from '@/hooks/usePreferences';
 import { ThemeControllerContext, type ThemeControllerValue } from './theme-controller';
@@ -53,7 +54,8 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   const themeColor = serverSyncedPreferences?.themeColor ?? localThemeColor;
   const { mode, setThemeMode: setThemeModeInternal } = useTheme(serverSyncedPreferences?.colorMode ?? initial.colorMode);
 
-  const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
+  const prefersDark = usePrefersDark();
+  const isDark = mode === 'dark' || (mode === 'system' && prefersDark);
 
   useEffect(() => {
     applyThemeColor(themeColor, isDark);

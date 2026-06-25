@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zenith Admin Landing Page</title>
+  <style>
+    :root {
+      --ink: #13202f;
+      --muted: #627084;
+      --line: rgba(32, 48, 72, 0.12);
+      --blue: #2563eb;
+      --green: #10b981;
+      --orange: #f59e0b;
+      --red: #ef4444;
+      --cyan: #0891b2;
+      --violet: #7c3aed;
+      --bg: #f5f7fb;
+      --panel: rgba(255, 255, 255, 0.92);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 1920px;
+      height: 1080px;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family:
+        "Inter",
+        "Noto Sans SC",
+        "Microsoft YaHei",
+        "PingFang SC",
+        Arial,
+        sans-serif;
+    }
+
+    body {
+      position: relative;
+    }
+
+    .stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      padding: 70px 88px 62px;
+      background:
+        radial-gradient(circle at 8% 10%, rgba(37, 99, 235, 0.16), transparent 30%),
+        radial-gradient(circle at 92% 82%, rgba(16, 185, 129, 0.16), transparent 29%),
+        linear-gradient(135deg, #f8fbff 0%, #eef3f9 56%, #f7faf7 100%);
+    }
+
+    .grid-bg {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(19, 32, 47, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(19, 32, 47, 0.045) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.78), transparent 90%);
+      pointer-events: none;
+    }
+
+    .topbar {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 58px;
+      z-index: 2;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .mark {
+      display: grid;
+      width: 58px;
+      height: 58px;
+      place-items: center;
+      color: #fff;
+      background: linear-gradient(135deg, #2563eb, #10b981);
+      border-radius: 16px;
+      box-shadow: 0 18px 36px rgba(37, 99, 235, 0.22);
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .brand-title {
+      font-size: 28px;
+      font-weight: 850;
+      line-height: 1;
+    }
+
+    .brand-subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    .nav-pills {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 40px;
+      padding: 0 16px;
+      color: #264159;
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid rgba(38, 65, 89, 0.12);
+      border-radius: 999px;
+      box-shadow: 0 10px 24px rgba(31, 48, 73, 0.06);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .pill-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 99px;
+      background: currentColor;
+    }
+
+    .hero {
+      position: relative;
+      display: grid;
+      grid-template-columns: 0.86fr 1.14fr;
+      gap: 66px;
+      align-items: center;
+      z-index: 2;
+    }
+
+    .copy {
+      padding-bottom: 8px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      height: 40px;
+      padding: 0 16px;
+      color: #0f766e;
+      background: rgba(236, 253, 245, 0.85);
+      border: 1px solid rgba(15, 118, 110, 0.18);
+      border-radius: 999px;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    h1 {
+      width: 720px;
+      margin: 28px 0 22px;
+      font-size: 76px;
+      line-height: 1.05;
+      letter-spacing: 0;
+      font-weight: 900;
+    }
+
+    .accent {
+      color: #1d4ed8;
+    }
+
+    .lead {
+      width: 710px;
+      margin: 0;
+      color: #43546a;
+      font-size: 25px;
+      line-height: 1.58;
+      font-weight: 560;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      width: 710px;
+      margin-top: 42px;
+    }
+
+    .stat {
+      min-height: 118px;
+      padding: 20px 22px;
+      background: rgba(255, 255, 255, 0.84);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 16px 38px rgba(29, 43, 61, 0.08);
+    }
+
+    .stat-value {
+      font-size: 31px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .stat-label {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.35;
+      font-weight: 700;
+    }
+
+    .cta-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-top: 34px;
+    }
+
+    .primary-btn,
+    .secondary-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 54px;
+      padding: 0 24px;
+      border-radius: 8px;
+      font-size: 17px;
+      font-weight: 850;
+    }
+
+    .primary-btn {
+      color: #fff;
+      background: #2563eb;
+      box-shadow: 0 20px 40px rgba(37, 99, 235, 0.22);
+    }
+
+    .secondary-btn {
+      color: #28435c;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(40, 67, 92, 0.14);
+    }
+
+    .dashboard {
+      position: relative;
+      width: 100%;
+      min-height: 764px;
+      padding: 22px;
+      border: 1px solid rgba(24, 42, 66, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.76);
+      box-shadow: 0 26px 80px rgba(31, 48, 73, 0.14);
+      backdrop-filter: blur(14px);
+    }
+
+    .window-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 48px;
+      padding: 0 18px;
+      color: #4c6075;
+      background: #f8fafc;
+      border: 1px solid rgba(24, 42, 66, 0.1);
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .traffic {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .traffic span {
+      width: 11px;
+      height: 11px;
+      border-radius: 99px;
+      background: #cbd5e1;
+    }
+
+    .traffic span:nth-child(1) {
+      background: #ef4444;
+    }
+
+    .traffic span:nth-child(2) {
+      background: #f59e0b;
+    }
+
+    .traffic span:nth-child(3) {
+      background: #10b981;
+    }
+
+    .metric-strip {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+      margin: 18px 0;
+    }
+
+    .metric {
+      min-height: 98px;
+      padding: 18px;
+      border: 1px solid rgba(24, 42, 66, 0.1);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .metric-name {
+      color: #718096;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .metric-main {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .metric-value {
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .spark {
+      width: 90px;
+      height: 24px;
+      border-radius: 99px;
+      background:
+        linear-gradient(90deg, transparent 0 15%, rgba(37, 99, 235, 0.16) 15% 100%),
+        repeating-linear-gradient(90deg, #2563eb 0 8px, transparent 8px 17px);
+      opacity: 0.72;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .feature {
+      position: relative;
+      min-height: 146px;
+      padding: 18px 18px 16px;
+      overflow: hidden;
+      border: 1px solid rgba(24, 42, 66, 0.1);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .feature::after {
+      position: absolute;
+      right: -18px;
+      bottom: -20px;
+      width: 82px;
+      height: 82px;
+      content: "";
+      border-radius: 30px;
+      background: color-mix(in srgb, var(--tone) 16%, transparent);
+      transform: rotate(16deg);
+    }
+
+    .icon {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      color: #fff;
+      background: var(--tone);
+      border-radius: 8px;
+      font-size: 21px;
+      font-weight: 900;
+    }
+
+    .feature-title {
+      margin-top: 16px;
+      font-size: 20px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .feature-desc {
+      margin-top: 10px;
+      color: #5f6f83;
+      font-size: 14.5px;
+      line-height: 1.42;
+      font-weight: 650;
+    }
+
+    .feature:nth-child(1) { --tone: var(--blue); }
+    .feature:nth-child(2) { --tone: var(--green); }
+    .feature:nth-child(3) { --tone: var(--orange); }
+    .feature:nth-child(4) { --tone: var(--red); }
+    .feature:nth-child(5) { --tone: var(--cyan); }
+    .feature:nth-child(6) { --tone: var(--violet); }
+    .feature:nth-child(7) { --tone: #0f766e; }
+    .feature:nth-child(8) { --tone: #475569; }
+
+    .bottom-band {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .code-card,
+    .stack-card {
+      min-height: 140px;
+      padding: 18px;
+      border: 1px solid rgba(24, 42, 66, 0.1);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .code-title,
+    .stack-title {
+      color: #334155;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .code-lines {
+      display: grid;
+      gap: 9px;
+      margin-top: 16px;
+      font-family: "JetBrains Mono", "Consolas", monospace;
+      font-size: 15px;
+      font-weight: 800;
+      color: #2563eb;
+    }
+
+    .code-lines span {
+      display: block;
+      height: 14px;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #2563eb, rgba(37, 99, 235, 0.08));
+    }
+
+    .code-lines span:nth-child(2) {
+      width: 80%;
+      background: linear-gradient(90deg, #10b981, rgba(16, 185, 129, 0.08));
+    }
+
+    .code-lines span:nth-child(3) {
+      width: 68%;
+      background: linear-gradient(90deg, #f59e0b, rgba(245, 158, 11, 0.08));
+    }
+
+    .stack-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .stack-chip {
+      display: inline-flex;
+      align-items: center;
+      height: 32px;
+      padding: 0 12px;
+      color: #334155;
+      background: #f1f5f9;
+      border: 1px solid rgba(51, 65, 85, 0.08);
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .footer-note {
+      position: absolute;
+      left: 88px;
+      right: 88px;
+      bottom: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #66788c;
+      font-size: 15px;
+      font-weight: 750;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <div class="grid-bg"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark">Z</div>
+        <div>
+          <div class="brand-title">Zenith Admin</div>
+          <div class="brand-subtitle">Hono + React + Drizzle ORM 全栈后台管理系统</div>
+        </div>
+      </div>
+      <div class="nav-pills">
+        <div class="pill"><span class="pill-dot" style="color:#2563eb"></span>OpenAPI</div>
+        <div class="pill"><span class="pill-dot" style="color:#10b981"></span>Demo Mock</div>
+        <div class="pill"><span class="pill-dot" style="color:#f59e0b"></span>Electron</div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="copy">
+        <div class="eyebrow">企业级后台 · 开箱即用 · AI 友好</div>
+        <h1>一套覆盖业务中后台全场景的 <span class="accent">全栈管理平台</span></h1>
+        <p class="lead">
+          集成认证授权、组织权限、通知消息、日志审计、文件存储、工作流、AI 助手、支付会员、数据分析与服务器运维能力，适合作为企业内部系统、SaaS 控制台与低代码业务平台的起点。
+        </p>
+
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value">20+</div>
+            <div class="stat-label">核心业务模块覆盖管理、运维、支付与会员</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">9</div>
+            <div class="stat-label">文件存储后端：本地、OSS、S3、SFTP 等</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">3</div>
+            <div class="stat-label">通知通道：邮件、短信、站内信实时推送</div>
+          </div>
+        </div>
+
+        <div class="cta-row">
+          <div class="primary-btn">查看演示站</div>
+          <div class="secondary-btn">阅读开发文档</div>
+        </div>
+      </div>
+
+      <div class="dashboard">
+        <div class="window-bar">
+          <div class="traffic"><span></span><span></span><span></span></div>
+          <div>系统能力总览 / admin console</div>
+          <div>v0.70.0</div>
+        </div>
+
+        <div class="metric-strip">
+          <div class="metric">
+            <div class="metric-name">在线会话</div>
+            <div class="metric-main">
+              <div class="metric-value">1,284</div>
+              <div class="spark"></div>
+            </div>
+          </div>
+          <div class="metric">
+            <div class="metric-name">今日操作日志</div>
+            <div class="metric-main">
+              <div class="metric-value">8,936</div>
+              <div class="spark"></div>
+            </div>
+          </div>
+          <div class="metric">
+            <div class="metric-name">工作流实例</div>
+            <div class="metric-main">
+              <div class="metric-value">326</div>
+              <div class="spark"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feature-grid">
+          <div class="feature">
+            <div class="icon">A</div>
+            <div class="feature-title">认证与安全</div>
+            <div class="feature-desc">JWT 双 Token、OAuth2、密码策略、登录锁定、API Token。</div>
+          </div>
+          <div class="feature">
+            <div class="icon">R</div>
+            <div class="feature-title">权限与组织</div>
+            <div class="feature-desc">用户、角色、菜单、部门、岗位、数据权限与按钮级控制。</div>
+          </div>
+          <div class="feature">
+            <div class="icon">M</div>
+            <div class="feature-title">消息通知</div>
+            <div class="feature-desc">公告、邮件、短信、站内信、WebSocket 推送与 IM 会话。</div>
+          </div>
+          <div class="feature">
+            <div class="icon">L</div>
+            <div class="feature-title">日志审计</div>
+            <div class="feature-desc">登录日志、操作日志、字段 Diff、在线会话与强制下线。</div>
+          </div>
+          <div class="feature">
+            <div class="icon">F</div>
+            <div class="feature-title">文件与存储</div>
+            <div class="feature-desc">文件管理器、上传预览、多云对象存储与默认策略切换。</div>
+          </div>
+          <div class="feature">
+            <div class="icon">W</div>
+            <div class="feature-title">工作流 + AI</div>
+            <div class="feature-desc">流程设计器、表单设计器、审批办理、AI 对话与用量统计。</div>
+          </div>
+          <div class="feature">
+            <div class="icon">P</div>
+            <div class="feature-title">支付与会员</div>
+            <div class="feature-desc">微信/支付宝、订单退款、积分钱包、优惠券和 C 端门户。</div>
+          </div>
+          <div class="feature">
+            <div class="icon">D</div>
+            <div class="feature-title">DevOps 运维</div>
+            <div class="feature-desc">Web 终端、SSH/SFTP、Docker、缓存、数据库备份与监控告警。</div>
+          </div>
+        </div>
+
+        <div class="bottom-band">
+          <div class="code-card">
+            <div class="code-title">AI 辅助开发工作流</div>
+            <div class="code-lines" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+          <div class="stack-card">
+            <div class="stack-title">Modern Stack</div>
+            <div class="stack-list">
+              <span class="stack-chip">Hono v4</span>
+              <span class="stack-chip">React 19</span>
+              <span class="stack-chip">Semi Design</span>
+              <span class="stack-chip">Drizzle ORM</span>
+              <span class="stack-chip">PostgreSQL</span>
+              <span class="stack-chip">Redis</span>
+              <span class="stack-chip">OpenTelemetry</span>
+              <span class="stack-chip">MSW Demo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer-note">
+      <span>适用于企业后台、SaaS 控制台、统一登录中心、低代码流程平台与运维控制台</span>
+      <span>文档站 · 演示站 · Swagger UI · OpenAPI JSON</span>
+    </footer>
+  </main>
+</body>
+</html>

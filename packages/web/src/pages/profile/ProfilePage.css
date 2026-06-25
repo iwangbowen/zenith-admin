@@ -223,7 +223,7 @@
   background: var(--semi-color-fill-0);
 }
 
-@media (max-width: 768px) {
+@media (--md-down) {
   .profile-tabs > .semi-tabs-bar {
     padding: 0 12px;
     overflow-x: auto;
