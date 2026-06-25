@@ -212,17 +212,62 @@ export default function PaymentReconPage() {
     { title: '备注', dataIndex: 'remark', width: 180, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v || '-'}</Typography.Text> },
   ];
 
+  const renderChannelFilter = () => (
+    <Select
+      placeholder="全部渠道"
+      value={searchParams.channel || undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 120 }}
+      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={searchParams.status || undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 120 }}
+      optionList={Object.entries(PAYMENT_RECON_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+    />
+  );
+
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderCreateButton = () => hasPermission('payment:recon:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新建对账</Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Select placeholder="全部渠道" value={searchParams.channel || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, channel: (v as string) ?? '' }))} showClear style={{ width: 120 }}
-          optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]} />
-        <Select placeholder="全部状态" value={searchParams.status || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))} showClear style={{ width: 120 }}
-          optionList={Object.entries(PAYMENT_RECON_STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {hasPermission('payment:recon:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新建对账</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderChannelFilter()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderChannelFilter()}
+            {renderStatusFilter()}
+          </>
+        )}
+        filterTitle="对账批次筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"

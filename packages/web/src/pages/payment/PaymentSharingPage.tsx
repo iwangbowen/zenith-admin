@@ -190,30 +190,119 @@ export default function PaymentSharingPage() {
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: PaymentSharingOrderStatus) => <Tag color={ORDER_STATUS_COLOR[v]}>{PAYMENT_SHARING_ORDER_STATUS_LABELS[v]}</Tag> },
   ];
 
+  const handleReceiverSearch = () => {
+    setRPage(1);
+    void fetchReceivers(1, rPageSize);
+  };
+  const handleReceiverReset = () => {
+    setReceiverKeyword('');
+    setRPage(1);
+    void fetchReceivers(1, rPageSize, '');
+  };
+  const handleOrderSearch = () => {
+    setOPage(1);
+    void fetchOrders(1, oPageSize);
+  };
+  const handleOrderReset = () => {
+    setOrderKeyword('');
+    setOrderStatus('');
+    setOPage(1);
+    void fetchOrders(1, oPageSize, { keyword: '', status: '' });
+  };
+
+  const renderReceiverKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="名称..."
+      value={receiverKeyword}
+      onChange={setReceiverKeyword}
+      showClear
+      style={{ width: 200 }}
+      onEnterPress={handleReceiverSearch}
+    />
+  );
+  const renderReceiverSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleReceiverSearch}>查询</Button>;
+  const renderReceiverResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReceiverReset}>重置</Button>;
+  const renderReceiverCreateButton = () => canManage ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreateReceiver}>新增</Button>
+  ) : null;
+
+  const renderOrderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="订单号..."
+      value={orderKeyword}
+      onChange={setOrderKeyword}
+      showClear
+      style={{ width: 200 }}
+      onEnterPress={handleOrderSearch}
+    />
+  );
+  const renderOrderStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={orderStatus || undefined}
+      onChange={(v) => setOrderStatus((v as string) ?? '')}
+      showClear
+      style={{ width: 120 }}
+      optionList={Object.entries(PAYMENT_SHARING_ORDER_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+    />
+  );
+  const renderOrderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleOrderSearch}>查询</Button>;
+  const renderOrderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleOrderReset}>重置</Button>;
+  const renderDispatchButton = () => canDispatch ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={() => void openDispatch()}>发起分账</Button>
+  ) : null;
+
   return (
     <div className="page-container">
       <Tabs activeKey={activeTab} onChange={(k) => setActiveTab(k as 'receivers' | 'orders')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="分账接收方" itemKey="receivers">
-          <SearchToolbar>
-            <Input prefix={<Search size={14} />} placeholder="名称..." value={receiverKeyword} onChange={setReceiverKeyword} showClear style={{ width: 200 }} onEnterPress={() => { setRPage(1); void fetchReceivers(1, rPageSize); }} />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setRPage(1); void fetchReceivers(1, rPageSize); }}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setReceiverKeyword(''); setRPage(1); void fetchReceivers(1, rPageSize, ''); }}>重置</Button>
-            {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreateReceiver}>新增</Button>}
-          </SearchToolbar>
+          <SearchToolbar
+            primary={(
+              <>
+                {renderReceiverKeywordSearch()}
+                {renderReceiverSearchButton()}
+                {renderReceiverResetButton()}
+                {renderReceiverCreateButton()}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                {renderReceiverKeywordSearch()}
+                {renderReceiverSearchButton()}
+                {renderReceiverCreateButton()}
+              </>
+            )}
+          />
           <ConfigurableTable
             bordered columns={receiverColumns} dataSource={receiverData?.list ?? []} loading={receiverLoading} rowKey="id" size="small" empty="暂无数据"
             onRefresh={() => void fetchReceivers()} refreshLoading={receiverLoading} pagination={buildRPagination(receiverData?.total ?? 0, fetchReceivers)}
           />
         </TabPane>
         <TabPane tab="分账单" itemKey="orders">
-          <SearchToolbar>
-            <Input prefix={<Search size={14} />} placeholder="订单号..." value={orderKeyword} onChange={setOrderKeyword} showClear style={{ width: 200 }} onEnterPress={() => { setOPage(1); void fetchOrders(1, oPageSize); }} />
-            <Select placeholder="全部状态" value={orderStatus || undefined} onChange={(v) => setOrderStatus((v as string) ?? '')} showClear style={{ width: 120 }}
-              optionList={Object.entries(PAYMENT_SHARING_ORDER_STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
-            <Button type="primary" icon={<Search size={14} />} onClick={() => { setOPage(1); void fetchOrders(1, oPageSize); }}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setOrderKeyword(''); setOrderStatus(''); setOPage(1); void fetchOrders(1, oPageSize, { keyword: '', status: '' }); }}>重置</Button>
-            {canDispatch && <Button type="primary" icon={<Plus size={14} />} onClick={() => void openDispatch()}>发起分账</Button>}
-          </SearchToolbar>
+          <SearchToolbar
+            primary={(
+              <>
+                {renderOrderKeywordSearch()}
+                {renderOrderStatusFilter()}
+                {renderOrderSearchButton()}
+                {renderOrderResetButton()}
+                {renderDispatchButton()}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                {renderOrderKeywordSearch()}
+                {renderOrderSearchButton()}
+                {renderDispatchButton()}
+              </>
+            )}
+            mobileFilters={renderOrderStatusFilter()}
+            filterTitle="分账单筛选"
+            onFilterApply={handleOrderSearch}
+            onFilterReset={handleOrderReset}
+          />
           <ConfigurableTable
             bordered columns={orderColumns} dataSource={orderData?.list ?? []} loading={orderLoading} rowKey="id" size="small" empty="暂无数据"
             onRefresh={() => void fetchOrders()} refreshLoading={orderLoading} pagination={buildOPagination(orderData?.total ?? 0, fetchOrders)}
