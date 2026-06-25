@@ -977,20 +977,14 @@ button.fd-node-card {
   padding: 16px;
 }
 
-/* 只读节点配置抽屉：禁用表单控件交互，但保留标签页切换与关闭操作 */
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-input,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-input-wrapper,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-input-number,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-select,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-tree-select,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-switch,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-radio,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-checkbox,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-tag-closable,
-.fd-config-drawer--readonly .semi-sidesheet-body .semi-button,
-.fd-config-drawer--readonly .semi-sidesheet-body textarea,
-.fd-config-drawer--readonly .semi-sidesheet-body input {
+/* 只读节点配置抽屉：禁用 body 内全部控件交互（覆盖所有控件类型，无需逐类枚举），
+   仅保留标签页切换与滚动（body 自身 pointer-events 不变，子节点置 none，wheel 事件穿透到可滚动的 body） */
+.fd-config-drawer--readonly .semi-sidesheet-body > * {
   pointer-events: none;
+}
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-tabs-bar,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-tabs-bar * {
+  pointer-events: auto;
 }
 
 .fd-drawer-tab-content {
