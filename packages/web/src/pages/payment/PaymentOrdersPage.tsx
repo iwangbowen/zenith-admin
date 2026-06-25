@@ -288,6 +288,119 @@ export default function PaymentOrdersPage() {
     { title: '退款时间', dataIndex: 'refundedAt', width: 160, render: (t: string | null) => (t ? formatDateTime(t) : '-') },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="订单号/标题..."
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      showClear
+      style={{ width: 180 }}
+      onEnterPress={handleSearch}
+    />
+  );
+
+  const renderBizTypeFilter = () => (
+    <Input
+      placeholder="业务类型"
+      value={searchParams.bizType}
+      onChange={(v) => setSearchParams((p) => ({ ...p, bizType: v }))}
+      showClear
+      style={{ width: 120 }}
+      onEnterPress={handleSearch}
+    />
+  );
+
+  const renderChannelFilter = () => (
+    <Select
+      placeholder="全部渠道"
+      value={searchParams.channel || undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, channel: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 110 }}
+      optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]}
+    />
+  );
+
+  const renderPayMethodFilter = () => (
+    <Select
+      placeholder="支付方式"
+      value={searchParams.payMethod || undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, payMethod: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 130 }}
+      optionList={Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }))}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={searchParams.status || undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 110 }}
+      optionList={Object.entries(PAYMENT_ORDER_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+    />
+  );
+
+  const renderMinAmountFilter = () => (
+    <InputNumber
+      placeholder="金额≥(元)"
+      value={searchParams.minAmount ?? undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, minAmount: v !== '' && v != null ? Number(v) : null }))}
+      min={0}
+      hideButtons
+      style={{ width: 110 }}
+    />
+  );
+
+  const renderMaxAmountFilter = () => (
+    <InputNumber
+      placeholder="金额≤(元)"
+      value={searchParams.maxAmount ?? undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, maxAmount: v !== '' && v != null ? Number(v) : null }))}
+      min={0}
+      hideButtons
+      style={{ width: 110 }}
+    />
+  );
+
+  const renderTimeRangeFilter = () => (
+    <DatePicker
+      type="dateTimeRange"
+      placeholder={['创建开始', '创建结束']}
+      value={searchParams.timeRange ?? undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))}
+      style={{ width: 330 }}
+    />
+  );
+
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderCreateButton = () => hasPermission('payment:order:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>手动下单</Button>
+  ) : null;
+  const renderExportButtons = () => (
+    <SplitButtonGroup>
+      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+      <Dropdown trigger="click" position="bottomRight" clickToHide render={(
+        <Dropdown.Menu>
+          <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
+          <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+        </Dropdown.Menu>
+      )}>
+        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+  const renderMobileExportActions = () => (
+    <>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
+      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+    </>
+  );
+
   return (
     <div className="page-container">
       <Tabs activeKey={activeTab} onChange={(k) => setActiveTab(k as 'list' | 'stats')} type="line" lazyRender keepDOM={false}>
@@ -301,33 +414,50 @@ export default function PaymentOrdersPage() {
               <StatCard label="累计退款" value={yuan(stats.refundAmount)} />
             </div>
           )}
-          <SearchToolbar>
-            <Input prefix={<Search size={14} />} placeholder="订单号/标题..." value={searchParams.keyword} onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))} showClear style={{ width: 180 }} onEnterPress={handleSearch} />
-            <Input placeholder="业务类型" value={searchParams.bizType} onChange={(v) => setSearchParams((p) => ({ ...p, bizType: v }))} showClear style={{ width: 120 }} onEnterPress={handleSearch} />
-            <Select placeholder="全部渠道" value={searchParams.channel || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, channel: (v as string) ?? '' }))} showClear style={{ width: 110 }}
-              optionList={[{ value: 'wechat', label: '微信支付' }, { value: 'alipay', label: '支付宝' }]} />
-            <Select placeholder="支付方式" value={searchParams.payMethod || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, payMethod: (v as string) ?? '' }))} showClear style={{ width: 130 }}
-              optionList={Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }))} />
-            <Select placeholder="全部状态" value={searchParams.status || undefined} onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))} showClear style={{ width: 110 }}
-              optionList={Object.entries(PAYMENT_ORDER_STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
-            <InputNumber placeholder="金额≥(元)" value={searchParams.minAmount ?? undefined} onChange={(v) => setSearchParams((p) => ({ ...p, minAmount: v !== '' && v != null ? Number(v) : null }))} min={0} hideButtons style={{ width: 110 }} />
-            <InputNumber placeholder="金额≤(元)" value={searchParams.maxAmount ?? undefined} onChange={(v) => setSearchParams((p) => ({ ...p, maxAmount: v !== '' && v != null ? Number(v) : null }))} min={0} hideButtons style={{ width: 110 }} />
-            <DatePicker type="dateTimeRange" placeholder={['创建开始', '创建结束']} value={searchParams.timeRange ?? undefined} onChange={(v) => setSearchParams((p) => ({ ...p, timeRange: v ? (v as [Date, Date]) : null }))} style={{ width: 330 }} />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            <SplitButtonGroup>
-              <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-              <Dropdown trigger="click" position="bottomRight" clickToHide render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}>
-                <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-              </Dropdown>
-            </SplitButtonGroup>
-            {hasPermission('payment:order:create') && <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>手动下单</Button>}
-          </SearchToolbar>
+          <SearchToolbar
+            primary={(
+              <>
+                {renderKeywordSearch()}
+                {renderBizTypeFilter()}
+                {renderChannelFilter()}
+                {renderPayMethodFilter()}
+                {renderStatusFilter()}
+                {renderMinAmountFilter()}
+                {renderMaxAmountFilter()}
+                {renderTimeRangeFilter()}
+                {renderSearchButton()}
+                {renderResetButton()}
+              </>
+            )}
+            actions={(
+              <>
+                {renderExportButtons()}
+                {renderCreateButton()}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                {renderKeywordSearch()}
+                {renderSearchButton()}
+                {renderCreateButton()}
+              </>
+            )}
+            mobileFilters={(
+              <>
+                {renderBizTypeFilter()}
+                {renderChannelFilter()}
+                {renderPayMethodFilter()}
+                {renderStatusFilter()}
+                {renderMinAmountFilter()}
+                {renderMaxAmountFilter()}
+                {renderTimeRangeFilter()}
+              </>
+            )}
+            mobileActions={renderMobileExportActions()}
+            filterTitle="支付订单筛选"
+            onFilterApply={handleSearch}
+            onFilterReset={handleReset}
+          />
 
           <ConfigurableTable
             bordered columns={columns} dataSource={data?.list ?? []} loading={loading} rowKey="id" size="small" empty="暂无数据"
