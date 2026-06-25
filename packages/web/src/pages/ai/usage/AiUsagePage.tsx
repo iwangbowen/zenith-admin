@@ -174,27 +174,48 @@ export default function AiUsagePage() {
 
   const trendChartData = (stats?.trend ?? []).map((item) => ({ ...item, shortDate: shortDate(item.date) }));
 
+  const renderDateRangeFilter = () => (
+    <DatePicker
+      type="dateRange"
+      placeholder={['开始日期', '结束日期']}
+      value={dateRange}
+      onChange={(value) => {
+        if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) {
+          setDateRange([value[0], value[1]]);
+        }
+      }}
+      style={{ width: 300 }}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
+      查询
+    </Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
+      重置
+    </Button>
+  );
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <DatePicker
-          type="dateRange"
-          placeholder={['开始日期', '结束日期']}
-          value={dateRange}
-          onChange={(value) => {
-            if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) {
-              setDateRange([value[0], value[1]]);
-            }
-          }}
-          style={{ width: 300 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-          查询
-        </Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-          重置
-        </Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderDateRangeFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+          </>
+        )}
+        mobilePrimary={renderSearchButton()}
+        mobileFilters={renderDateRangeFilter()}
+        filterTitle="用量筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <Spin spinning={loading}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

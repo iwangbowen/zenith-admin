@@ -238,37 +238,70 @@ export default function PromptTemplatesPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索名称/描述"
+      value={searchParams.keyword}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: String(value ?? '') }))}
+      onEnterPress={handleSearch}
+      showClear
+      style={{ width: 220 }}
+    />
+  );
+
+  const renderScopeFilter = () => (
+    <Select
+      value={searchParams.scope}
+      optionList={scopeSearchOptions}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, scope: (value as AiPromptScope | undefined) ?? '' }))}
+      showClear
+      style={{ width: 140 }}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
+      查询
+    </Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
+      重置
+    </Button>
+  );
+
+  const renderCreateButton = () => hasPermission('ai:prompt:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
+      新增
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索名称/描述"
-          value={searchParams.keyword}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: String(value ?? '') }))}
-          onEnterPress={handleSearch}
-          showClear
-          style={{ width: 220 }}
-        />
-        <Select
-          value={searchParams.scope}
-          optionList={scopeSearchOptions}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, scope: (value as AiPromptScope | undefined) ?? '' }))}
-          showClear
-          style={{ width: 140 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-          查询
-        </Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-          重置
-        </Button>
-        {hasPermission('ai:prompt:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-            新增
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderScopeFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+          </>
         )}
-      </SearchToolbar>
+        actions={renderCreateButton()}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={renderScopeFilter()}
+        filterTitle="提示词筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

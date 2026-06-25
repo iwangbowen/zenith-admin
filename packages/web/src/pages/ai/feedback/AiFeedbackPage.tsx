@@ -213,26 +213,56 @@ export default function AiFeedbackPage() {
     },
   ];
 
+  const renderFeedbackFilter = () => (
+    <Select
+      value={feedbackFilter}
+      onChange={(v) => setFeedbackFilter(String(v))}
+      optionList={FEEDBACK_OPTIONS}
+      style={{ width: 120 }}
+      placeholder="反馈类型"
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      value={statusFilter}
+      onChange={(v) => setStatusFilter(String(v))}
+      optionList={STATUS_FILTER_OPTIONS}
+      style={{ width: 120 }}
+      placeholder="处理状态"
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
-      <SearchToolbar>
-        <Select
-          value={feedbackFilter}
-          onChange={(v) => setFeedbackFilter(String(v))}
-          optionList={FEEDBACK_OPTIONS}
-          style={{ width: 120 }}
-          placeholder="反馈类型"
-        />
-        <Select
-          value={statusFilter}
-          onChange={(v) => setStatusFilter(String(v))}
-          optionList={STATUS_FILTER_OPTIONS}
-          style={{ width: 120 }}
-          placeholder="处理状态"
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderFeedbackFilter()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+          </>
+        )}
+        mobilePrimary={renderSearchButton()}
+        mobileFilters={(
+          <>
+            {renderFeedbackFilter()}
+            {renderStatusFilter()}
+          </>
+        )}
+        filterTitle="反馈筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
       <div style={{ flex: 1, minHeight: 0, marginTop: 12 }}>
         <ConfigurableTable<AiMessage>
           bordered

@@ -222,36 +222,72 @@ export default function AIProvidersPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      placeholder="搜索名称/模型"
+      prefix={<Search size={14} />}
+      showClear
+      value={search}
+      onChange={(v) => setSearch(String(v ?? ''))}
+      onEnterPress={() => void loadData()}
+      style={{ width: 220 }}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={() => void loadData()}>
+      查询
+    </Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearch(''); void loadData(); }}>
+      重置
+    </Button>
+  );
+
+  const renderExpandButton = () => (
+    <Button
+      type="primary"
+      icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+      onClick={toggleExpandAll}
+    >
+      {isAllExpanded ? '全部折叠' : '全部展开'}
+    </Button>
+  );
+
+  const renderCreateButton = () => hasPermission('ai:provider:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
+      新增
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          placeholder="搜索名称/模型"
-          prefix={<Search size={14} />}
-          showClear
-          value={search}
-          onChange={(v) => setSearch(String(v ?? ''))}
-          style={{ width: 220 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={() => void loadData()}>
-          查询
-        </Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearch(''); void loadData(); }}>
-          重置
-        </Button>
-        <Button
-          type="primary"
-          icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-          onClick={toggleExpandAll}
-        >
-          {isAllExpanded ? '全部折叠' : '全部展开'}
-        </Button>
-        {hasPermission('ai:provider:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-            新增
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderResetButton()}
+          </>
         )}
-      </SearchToolbar>
+        actions={(
+          <>
+            {renderExpandButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileActions={renderExpandButton()}
+        actionTitle="表格操作"
+      />
       <ConfigurableTable
         bordered
         columns={columns}
