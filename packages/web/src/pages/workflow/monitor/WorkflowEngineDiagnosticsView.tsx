@@ -400,7 +400,7 @@ export default function WorkflowEngineDiagnosticsView() {
             <Typography.Text type="tertiary" size="small">近 1h / 24h 吞吐、延迟与生命周期</Typography.Text>
           </Space>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
           {telemetryMetrics.map(renderMetric)}
         </div>
       </Card>
