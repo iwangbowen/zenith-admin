@@ -4,7 +4,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  Button, Input, Space, Tooltip, Dropdown, Modal, Toast,
+  Button, Input, Space, Tooltip, Modal, Toast,
   Typography, Tag, Spin, Breadcrumb, Popconfirm, ImagePreview, Checkbox, SideSheet,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';

@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import type { CSSProperties } from 'react';
-import { Tree, Typography, Spin, Toast, Tag } from '@douyinfe/semi-ui';
+import { Tree, Spin, Toast, Tag } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { FileText, FolderOpen } from 'lucide-react';
 import JSZip from 'jszip';
 import { formatFileSize } from '@/utils/file-utils';
-
-const { Text } = Typography;
 
 interface ZipPreviewPanelProps {
   readonly blob: Blob;

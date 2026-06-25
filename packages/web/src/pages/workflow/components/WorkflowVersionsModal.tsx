@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Modal, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import { Modal, Table, Tag, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';

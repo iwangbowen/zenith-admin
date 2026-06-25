@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import type { UserAiConfig } from '@zenith/shared';
 import { mockDateTime } from '../utils/date';
 
-let mockUserAiConfigs: UserAiConfig[] = [];
+const mockUserAiConfigs: UserAiConfig[] = [];
 let nextId = 1;
 
 export const userAiConfigHandlers = [

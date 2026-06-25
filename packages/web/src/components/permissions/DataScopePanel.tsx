@@ -22,7 +22,7 @@ export const DATA_SCOPE_OPTIONS = [
   { value: 'self', label: '仅本人数据权限' },
 ];
 
-interface DataScopePanelProps extends Readonly<{
+type DataScopePanelProps = Readonly<{
   dataScope: string | null;
   deptScopeIds: number[];
   deptTree: Department[];
@@ -31,7 +31,7 @@ interface DataScopePanelProps extends Readonly<{
   loading?: boolean;
   nullable?: boolean;
   readonly?: boolean;
-}> {}
+}>;
 
 function deptsToTreeData(items: Department[]): object[] {
   return items.map((d) => ({

@@ -19,7 +19,6 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import {
-  RotateCcw,
   FileText,
   RefreshCw,
   ChevronDown,

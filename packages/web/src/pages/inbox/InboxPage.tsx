@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppModal } from '@/components/AppModal';
 import {
-  Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Modal, Popconfirm, Spin,
+  Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Popconfirm, Spin,
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';

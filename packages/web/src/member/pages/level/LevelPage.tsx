@@ -64,7 +64,7 @@ export default function LevelPage() {
                 }
               >
                 <div style={{ fontSize: 13, color: 'var(--m-text-secondary)', marginBottom: 8 }}>
-                  成长值 ≥ {lv.growthThreshold}　·　消费折扣：{discountText(lv.discount)}
+                  成长值 ≥ {lv.growthThreshold}{'　·　'}消费折扣：{discountText(lv.discount)}
                 </div>
                 {lv.benefits.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

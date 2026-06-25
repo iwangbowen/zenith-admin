@@ -14,7 +14,7 @@ import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
+import { type PasswordPolicy } from '@/utils/password-policy';
 import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useDictItems } from '@/hooks/useDictItems';

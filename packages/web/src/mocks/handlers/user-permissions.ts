@@ -1,16 +1,11 @@
 import { http, HttpResponse } from 'msw';
 import { mockUsers } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
-import { mockMenus } from '@/mocks/data/menus';
 
 // In-memory store for user-level menu/data permissions
 const userMenuMap: Record<number, number[]> = {};
 const userDataScopeMap: Record<number, string | null> = {};
 const userDeptScopeMap: Record<number, number[]> = {};
-
-function getAllMenuIds(items: typeof mockMenus): number[] {
-  return items.flatMap((m) => [m.id, ...(m.children ? getAllMenuIds(m.children as typeof mockMenus) : [])]);
-}
 
 const SCOPE_PRIORITY: Record<string, number> = { all: 5, dept: 4, dept_only: 3, custom: 2, self: 1 };
 

@@ -82,7 +82,7 @@ export const terminalFilesHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: { list: [], total: 0, page, pageSize } });
   }),
 
-  http.get('/api/terminal-recordings/:id', ({ params }) => {
+  http.get('/api/terminal-recordings/:id', () => {
     return HttpResponse.json({ code: 404, message: '录屏记录不存在', data: null }, { status: 404 });
   }),
 

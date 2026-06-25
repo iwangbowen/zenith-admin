@@ -78,7 +78,6 @@ export default function NodeListenersTab({ value, onChange }: Readonly<NodeListe
       <Space vertical align="start" style={{ width: '100%' }} spacing={12}>
         {list.map((l, idx) => (
           <div
-            // eslint-disable-next-line react/no-array-index-key
             key={`listener-${idx}`}
             style={{
               border: '1px solid var(--semi-color-border)',

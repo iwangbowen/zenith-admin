@@ -65,36 +65,6 @@ async function copyRowSqlAndToast(sql: string, label: string) {
   else Toast.warning('复制失败');
 }
 
-function renderRowSqlMenu(
-  schema: string,
-  table: string,
-  pkCols: string[],
-  record: Record<string, unknown>,
-) {
-  const cleanRow: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(record)) {
-    if (!k.startsWith('__')) cleanRow[k] = v;
-  }
-  const pk: Record<string, unknown> = {};
-  for (const k of pkCols) pk[k] = record[k];
-  const insertSql = buildInsertSql(schema, table, cleanRow);
-  const updateChanges: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(cleanRow)) {
-    if (!pkCols.includes(k)) updateChanges[k] = v;
-  }
-  const updateSql = buildUpdateSql(schema, table, pk, updateChanges);
-  return (
-    <Dropdown.Menu>
-      <Dropdown.Item onClick={() => void copyRowSqlAndToast(insertSql, 'INSERT SQL')}>
-        复制为 INSERT SQL
-      </Dropdown.Item>
-      <Dropdown.Item onClick={() => void copyRowSqlAndToast(updateSql, 'UPDATE SQL')}>
-        复制为 UPDATE SQL
-      </Dropdown.Item>
-    </Dropdown.Menu>
-  );
-}
-
 interface RenderEditableCellOptions {
   columnName: string;
   dataType?: string;

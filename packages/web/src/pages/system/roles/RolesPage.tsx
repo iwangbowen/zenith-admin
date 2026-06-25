@@ -28,7 +28,6 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
-import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';

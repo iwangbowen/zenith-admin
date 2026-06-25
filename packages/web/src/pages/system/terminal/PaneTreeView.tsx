@@ -27,7 +27,6 @@ export default function PaneTreeView({
   root,
   sessionActive,
   activePaneId,
-  dirtyIds,
   onFocusPane,
   onSplitPane,
   onClosePane,

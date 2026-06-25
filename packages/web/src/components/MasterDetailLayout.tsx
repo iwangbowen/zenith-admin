@@ -350,7 +350,6 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
   const handleEl = (() => {
     if (showResizeHandle && showDivider) {
       return (
-        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
         <div
           aria-orientation="vertical"
           onPointerDown={handlePointerDown}
@@ -423,7 +422,6 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
 
   // bordered 模式仍提供 resize：在两个 bordered 容器之间放把手（无中央线，因为容器各自有边框）
   const handleElBordered = resizable && !collapsed && bordered && showDivider ? (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       aria-orientation="vertical"
       onPointerDown={handlePointerDown}

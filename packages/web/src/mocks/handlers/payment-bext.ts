@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { http } from 'msw';
 import { PAYMENT_MOCK_SEED_TIME, getNextPaymentOrderId, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { ok, notFound, badRequest, paginate } from '@/mocks/utils/handlers';
