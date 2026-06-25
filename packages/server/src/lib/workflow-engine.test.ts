@@ -416,6 +416,83 @@ describe('validateFlowData', () => {
     expect(result.errors.some(e => e.includes('孤立节点'))).toBe(true);
   });
 
+  it('reports malformed topology before publish', () => {
+    const flow = makeLinearFlow();
+    flow.nodes.push({ id: 'n2', position: { x: 9, y: 9 }, data: { key: 'duplicate-id', type: 'approve', label: '重复 ID', assigneeId: 1 } });
+    flow.edges.push({ id: 'broken-edge', source: 'n-missing', target: 'n3' });
+
+    const result = validateFlowData(flow);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('节点 ID"n2"重复'))).toBe(true);
+    expect(result.errors.some(e => e.includes('起点节点不存在'))).toBe(true);
+  });
+
+  it('accepts terminating exception catch nodes without requiring normal-path reachability', () => {
+    const flow: WorkflowFlowData = {
+      nodes: [
+        { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '开始' } },
+        { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'a1', type: 'approve', label: '审批', assigneeId: 1 } },
+        { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+        { id: 'n4', position: { x: 1, y: 1 }, data: { key: 'catch', type: 'catchNode', label: '异常捕获', catchAction: 'terminate' } },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1', target: 'n2' },
+        { id: 'e2', source: 'n2', target: 'n3' },
+        { id: 'e-catch', source: 'n2', target: 'n4', isException: true },
+      ],
+    };
+
+    const result = validateFlowData(flow);
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('accepts exception recovery paths even when they are not on the normal path', () => {
+    const flow: WorkflowFlowData = {
+      nodes: [
+        { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '开始' } },
+        { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'a1', type: 'approve', label: '审批', assigneeId: 1 } },
+        { id: 'n3', position: { x: 3, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+        { id: 'n4', position: { x: 1, y: 1 }, data: { key: 'catch', type: 'catchNode', label: '异常捕获', catchAction: 'toAdmin' } },
+        { id: 'n5', position: { x: 2, y: 1 }, data: { key: 'recover', type: 'approve', label: '恢复审批', assigneeId: 2 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1', target: 'n2' },
+        { id: 'e2', source: 'n2', target: 'n3' },
+        { id: 'e-catch', source: 'n2', target: 'n4', isException: true },
+        { id: 'e-recover', source: 'n4', target: 'n5' },
+        { id: 'e-recover-end', source: 'n5', target: 'n3' },
+      ],
+    };
+
+    const result = validateFlowData(flow);
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('reports catch nodes without an exception inbound edge', () => {
+    const flow: WorkflowFlowData = {
+      nodes: [
+        { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '开始' } },
+        { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'a1', type: 'approve', label: '审批', assigneeId: 1 } },
+        { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+        { id: 'n4', position: { x: 1, y: 1 }, data: { key: 'catch', type: 'catchNode', label: '异常捕获' } },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1', target: 'n2' },
+        { id: 'e2', source: 'n2', target: 'n3' },
+      ],
+    };
+
+    const result = validateFlowData(flow);
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('异常入边'))).toBe(true);
+  });
+
   it('reports exclusive gateway without conditions', () => {
     const flow = makeExclusiveFlow();
     // Remove condition from edges
@@ -749,4 +826,3 @@ describe('advanceFlow - loop-back gateway safety', () => {
     expect(result.rejected).toBe(false);
   });
 });
-

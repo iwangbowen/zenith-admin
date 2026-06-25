@@ -508,6 +508,10 @@ try {
   await registerSystemRecurringJob('workflow-event-delivery-retry', '*/5 * * * *', async () => {
     await retryWorkflowEventDeliveries();
   });
+  const { recoverDueDelayTasks } = await import('./services/workflow-resume.service');
+  await registerSystemRecurringJob('workflow-delay-recovery', '* * * * *', async () => {
+    await recoverDueDelayTasks();
+  });
   const { publishDueScheduledMessages } = await import('./services/channel.service');
   await registerSystemRecurringJob('channel-scheduled-publish', '* * * * *', publishDueScheduledMessages);
   const { runMpKfSessionTimeouts } = await import('./services/mp-kf-session.service');

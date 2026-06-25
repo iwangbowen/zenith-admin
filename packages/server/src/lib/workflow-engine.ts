@@ -642,6 +642,119 @@ export function findReturnPrevTarget(
 export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
+  if (!flowData || typeof flowData !== 'object') {
+    return { valid: false, errors: ['流程数据格式错误'] };
+  }
+  if (!Array.isArray(flowData.nodes)) {
+    errors.push('流程节点数据格式错误');
+  }
+  if (!Array.isArray(flowData.edges)) {
+    errors.push('流程连线数据格式错误');
+  }
+  if (errors.length > 0) return { valid: false, errors };
+
+  const validNodeTypes = new Set<WorkflowNodeConfig['type']>([
+    'start',
+    'approve',
+    'handler',
+    'end',
+    'exclusiveGateway',
+    'parallelGateway',
+    'inclusiveGateway',
+    'routeGateway',
+    'ccNode',
+    'delay',
+    'trigger',
+    'subProcess',
+    'catchNode',
+  ]);
+
+  const nodeIdSet = new Set<string>();
+  const nodeKeySet = new Set<string>();
+  const nodeMapById = new Map<string, FlowNode>();
+
+  for (const node of flowData.nodes) {
+    const nodeId = typeof node.id === 'string' ? node.id.trim() : '';
+    const nodeKey = typeof node.data?.key === 'string' ? node.data.key.trim() : '';
+    const nodeLabel = typeof node.data?.label === 'string' ? node.data.label.trim() : '';
+    const display = nodeLabel || nodeKey || nodeId || '未命名节点';
+
+    if (!nodeId) {
+      errors.push(`节点"${display}"缺少节点 ID`);
+    } else if (nodeIdSet.has(nodeId)) {
+      errors.push(`节点 ID"${nodeId}"重复`);
+    } else {
+      nodeIdSet.add(nodeId);
+      nodeMapById.set(nodeId, { id: nodeId, data: node.data });
+    }
+
+    if (!nodeKey) {
+      errors.push(`节点"${display}"缺少节点标识`);
+    } else if (nodeKeySet.has(nodeKey)) {
+      errors.push(`节点标识"${nodeKey}"重复`);
+    } else {
+      nodeKeySet.add(nodeKey);
+    }
+
+    if (!nodeLabel) {
+      errors.push(`节点"${nodeKey || nodeId || '未命名节点'}"缺少节点名称`);
+    }
+
+    if (!validNodeTypes.has(node.data?.type)) {
+      errors.push(`节点"${display}"类型无效`);
+    }
+  }
+
+  const edgeIdSet = new Set<string>();
+  const normalInEdges = new Map<string, WorkflowEdge[]>();
+  const normalOutEdges = new Map<string, WorkflowEdge[]>();
+  const exceptionInEdges = new Map<string, WorkflowEdge[]>();
+
+  for (const edge of flowData.edges) {
+    const edgeId = typeof edge.id === 'string' ? edge.id.trim() : '';
+    const source = typeof edge.source === 'string' ? edge.source.trim() : '';
+    const target = typeof edge.target === 'string' ? edge.target.trim() : '';
+    const display = edgeId || `${source || '?'} -> ${target || '?'}`;
+
+    if (!edgeId) {
+      errors.push(`连线"${display}"缺少连线 ID`);
+    } else if (edgeIdSet.has(edgeId)) {
+      errors.push(`连线 ID"${edgeId}"重复`);
+    } else {
+      edgeIdSet.add(edgeId);
+    }
+
+    const sourceNode = source ? nodeMapById.get(source) : undefined;
+    const targetNode = target ? nodeMapById.get(target) : undefined;
+    if (!source) {
+      errors.push(`连线"${display}"缺少起点`);
+    } else if (!sourceNode) {
+      errors.push(`连线"${display}"的起点节点不存在`);
+    }
+    if (!target) {
+      errors.push(`连线"${display}"缺少终点`);
+    } else if (!targetNode) {
+      errors.push(`连线"${display}"的终点节点不存在`);
+    }
+
+    if (!sourceNode || !targetNode) continue;
+
+    const isExceptionEdge = !!edge.isException || targetNode.data.type === 'catchNode';
+    if (isExceptionEdge) {
+      const ins = exceptionInEdges.get(targetNode.id) ?? [];
+      ins.push(edge);
+      exceptionInEdges.set(targetNode.id, ins);
+      continue;
+    }
+
+    const outs = normalOutEdges.get(sourceNode.id) ?? [];
+    outs.push(edge);
+    normalOutEdges.set(sourceNode.id, outs);
+    const ins = normalInEdges.get(targetNode.id) ?? [];
+    ins.push(edge);
+    normalInEdges.set(targetNode.id, ins);
+  }
+
   const startNodes = flowData.nodes.filter(n => n.data.type === 'start');
   if (startNodes.length === 0) errors.push('流程缺少开始节点');
   if (startNodes.length > 1) errors.push('流程只能有一个开始节点');
@@ -652,18 +765,31 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
   const approveNodes = flowData.nodes.filter(n => n.data.type === 'approve' || n.data.type === 'handler');
   if (approveNodes.length === 0) errors.push('流程至少需要一个审批/办理节点');
 
-  const keys = new Set<string>();
-  for (const node of flowData.nodes) {
-    if (keys.has(node.data.key)) {
-      errors.push(`节点标识"${node.data.key}"重复`);
-    }
-    keys.add(node.data.key);
-  }
-
   // 检查条件型网关（排他/路由/包容）出边的条件与默认分支配置
   const { nodeMap, outEdges, inEdges } = buildAdjacency(flowData);
   for (const node of flowData.nodes) {
     const gwType = node.data.type;
+    const normalIn = normalInEdges.get(node.id) ?? [];
+    const normalOut = normalOutEdges.get(node.id) ?? [];
+    const exceptionIn = exceptionInEdges.get(node.id) ?? [];
+
+    if (gwType === 'start') {
+      if (normalIn.length > 0) errors.push(`开始节点"${node.data.label}"不应有入边`);
+      if (normalOut.length === 0) errors.push(`开始节点"${node.data.label}"缺少出边`);
+    } else if (gwType === 'end') {
+      if (normalIn.length === 0) errors.push(`结束节点"${node.data.label}"缺少入边`);
+      if (normalOut.length > 0) errors.push(`结束节点"${node.data.label}"不应有出边`);
+    } else if (gwType === 'catchNode') {
+      if (exceptionIn.length === 0) errors.push(`异常捕获节点"${node.data.label}"缺少异常入边`);
+      const catchAction = node.data.catchAction ?? 'notify';
+      if (catchAction !== 'terminate' && normalOut.length === 0) {
+        errors.push(`异常捕获节点"${node.data.label}"缺少恢复出边`);
+      }
+    } else {
+      if (normalIn.length === 0) errors.push(`节点"${node.data.label}"缺少入边`);
+      if (normalOut.length === 0) errors.push(`节点"${node.data.label}"缺少出边`);
+    }
+
     if (gwType === 'exclusiveGateway' || gwType === 'routeGateway' || gwType === 'inclusiveGateway') {
       const outs = outEdges.get(node.id) ?? [];
       const ins = inEdges.get(node.id) ?? [];
@@ -727,7 +853,7 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
     }
   }
 
-  // 检查所有节点是否可达
+  // 检查所有节点是否可达；catchNode 从异常边触达，其后恢复路径按正常出边继续。
   if (startNodes.length === 1) {
     const visited = new Set<string>();
     const queue = [startNodes[0].id];
@@ -740,8 +866,21 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
         queue.push(target);
       }
     }
+    const exceptionVisited = new Set<string>();
+    const exceptionQueue = flowData.nodes
+      .filter((node) => node.data.type === 'catchNode' && (exceptionInEdges.get(node.id)?.length ?? 0) > 0)
+      .map((node) => node.id);
+    while (exceptionQueue.length > 0) {
+      const id = exceptionQueue.shift();
+      if (!id || exceptionVisited.has(id)) continue;
+      exceptionVisited.add(id);
+      const outs = normalOutEdges.get(id) ?? [];
+      for (const edge of outs) {
+        exceptionQueue.push(edge.target.trim());
+      }
+    }
     for (const node of flowData.nodes) {
-      if (!visited.has(node.id)) {
+      if (!visited.has(node.id) && !exceptionVisited.has(node.id)) {
         errors.push(`节点"${node.data.label}"不可达`);
       }
     }
