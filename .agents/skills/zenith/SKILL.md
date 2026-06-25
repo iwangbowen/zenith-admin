@@ -91,6 +91,7 @@ MSW Mock 的详细代码模板见 [crud-mock.md](./references/crud-mock.md)。
 
 **前端：**
 - [ ] 页面组件已创建，使用 `SearchToolbar` + `ConfigurableTable`
+- [ ] 搜索项较多的列表页使用 `SearchToolbar` 结构化模式，移动端只露出关键词/查询/新增等高频入口，其他筛选进底部筛选抽屉，低频操作进更多菜单
 - [ ] 操作列 `fixed: 'right'`，状态列紧靠操作列左侧也 `fixed: 'right'`
 - [ ] ConfigurableTable 传入了 `onRefresh` 和 `refreshLoading`
 - [ ] Modal 表单 `labelPosition="left"`，`closeOnEsc`

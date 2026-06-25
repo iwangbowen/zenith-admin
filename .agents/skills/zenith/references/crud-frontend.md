@@ -328,55 +328,107 @@ export default function XxxPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索名称..."
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      showClear
+      style={{ width: 220 }}
+      onEnterPress={handleSearch}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={searchParams.status || undefined}
+      onChange={(v) =>
+        setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))
+      }
+      showClear
+      style={{ width: 120 }}
+      optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
+  const renderCreateButton = () => hasPermission('system:xxx:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  ) : null;
+
+  const renderExportButtons = () => (
+    <SplitButtonGroup>
+      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
+      <Dropdown
+        trigger="click"
+        position="bottomRight"
+        clickToHide
+        render={(
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
+            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+          </Dropdown.Menu>
+        )}
+      >
+        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+
+  const renderMobileExportActions = () => (
+    <>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+    </>
+  );
+
   // ════════════════════════════════════════════════════════════════════════
   // 渲染
   // ════════════════════════════════════════════════════════════════════════
   return (
     <div className="page-container">
-      {/* 搜索区：使用 SearchToolbar 组件 */}
-      {/* 具体写法参考 packages/web/src/pages/users/UsersPage.tsx */}
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索名称..."
-          value={searchParams.keyword}
-          onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
-          showClear
-          style={{ width: 220 }}
-          onEnterPress={handleSearch}
-        />
-        <Select
-          placeholder="全部状态"
-          value={searchParams.status || undefined}
-          onChange={(v) =>
-            setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))
-          }
-          showClear
-          style={{ width: 120 }}
-          optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        <SplitButtonGroup>
-          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            clickToHide
-            render={(
-              <Dropdown.Menu>
-                <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-                <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-              </Dropdown.Menu>
-            )}
-          >
-            <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-          </Dropdown>
-        </SplitButtonGroup>
-        {hasPermission('system:xxx:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+      {/* 搜索区：筛选/操作较多时使用结构化 SearchToolbar，移动端自动精简 */}
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+          </>
         )}
-      </SearchToolbar>
+        actions={(
+          <>
+            {renderExportButtons()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderStatusFilter()}
+          </>
+        )}
+        mobileActions={renderMobileExportActions()}
+        filterTitle="筛选条件"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       {/* 数据表格 */}
       <ConfigurableTable

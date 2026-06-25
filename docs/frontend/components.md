@@ -83,10 +83,22 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 
 ### SearchToolbar Props
 
-- `children: ReactNode`：工具栏内容（搜索输入框、下拉筛选、查询/重置按钮、新增等操作按钮），自动用 `<Space wrap>` 包裹
-- `className: string`：附加 CSS 类名，应用到外层容器
+- `children?: ReactNode`：简单工具栏内容，自动用 `<Space wrap>` 包裹
+- `className?: string`：附加 CSS 类名，应用到外层容器
+- `primary?: ReactNode`：结构化模式下的桌面端主搜索区
+- `filters?: ReactNode`：结构化模式下的桌面端筛选区
+- `actions?: ReactNode`：结构化模式下的桌面端操作区
+- `mobilePrimary?: ReactNode`：移动端默认露出的核心区域；不传时使用 `primary`
+- `mobileFilters?: ReactNode`：移动端底部筛选抽屉内容；不传时使用 `filters`
+- `mobileActions?: ReactNode`：移动端更多菜单内容；不传时使用 `actions`
+- `filterTitle?: ReactNode`：移动端筛选抽屉标题，默认 `筛选条件`
+- `actionTitle?: string`：移动端更多菜单标题，默认 `更多操作`
+- `onFilterApply?: () => void`：移动端筛选抽屉底部 `查询` 按钮回调
+- `onFilterReset?: () => void`：移动端筛选抽屉底部 `重置` 按钮回调
 
 ### SearchToolbar 使用示例
+
+简单页面继续使用 children 写法：
 
 ```tsx
 import { SearchToolbar } from '../../components/SearchToolbar';
@@ -118,10 +130,77 @@ import { Search, RotateCcw, Plus } from 'lucide-react';
 </SearchToolbar>
 ```
 
+筛选项或操作按钮较多时使用结构化写法，让移动端只露出高频入口：
+
+```tsx
+<SearchToolbar
+  primary={(
+    <>
+      <Input
+        prefix={<Search size={14} />}
+        placeholder="请输入名称"
+        value={keyword}
+        onChange={setKeyword}
+        onEnterPress={handleSearch}
+        showClear
+        style={{ width: 220 }}
+      />
+      <Select
+        placeholder="请选择状态"
+        value={status}
+        onChange={(v) => setStatus(v as string)}
+        showClear
+        style={{ width: 120 }}
+      />
+      <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+      <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+    </>
+  )}
+  actions={(
+    <>
+      <Button type="primary" icon={<Download size={14} />} onClick={handleExport}>导出</Button>
+      <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+    </>
+  )}
+  mobilePrimary={(
+    <>
+      <Input
+        prefix={<Search size={14} />}
+        placeholder="请输入名称"
+        value={keyword}
+        onChange={setKeyword}
+        onEnterPress={handleSearch}
+        showClear
+        style={{ width: 220 }}
+      />
+      <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+      <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+    </>
+  )}
+  mobileFilters={(
+    <Select
+      placeholder="请选择状态"
+      value={status}
+      onChange={(v) => setStatus(v as string)}
+      showClear
+      style={{ width: 120 }}
+    />
+  )}
+  mobileActions={(
+    <Button icon={<Download size={14} />} onClick={handleExport}>导出</Button>
+  )}
+  filterTitle="筛选条件"
+  onFilterApply={handleSearch}
+  onFilterReset={handleReset}
+/>
+```
+
 ### SearchToolbar 注意事项
 
 - 按钮文案统一为**「查询」「重置」「新增」**
-- `children` 内的元素会自动换行（`wrap`），响应式友好
+- 简单工具栏使用 `children` 即可；复杂工具栏优先使用结构化 props
+- 移动端不要把页面导航、筛选项和顶部常用功能混在一起；筛选属于当前列表页，应放在 SearchToolbar 的底部筛选抽屉中
+- 移动端默认只露出关键词、查询、新增等高频操作；低频操作通过更多菜单承载
 
 ---
 

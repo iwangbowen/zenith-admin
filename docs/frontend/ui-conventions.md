@@ -15,7 +15,9 @@
 ### 搜索区与操作按钮
 
 - 所有元素（搜索输入框、下拉筛选、查询/重置按钮、操作按钮）统一通过 `SearchToolbar` 组件排列
-- `SearchToolbar` 内部使用 `<Space wrap>` 包裹，子元素从左到右依次排列，按需换行
+- 简单列表可继续使用 `children` 写法，`SearchToolbar` 内部使用 `<Space wrap>` 包裹，子元素从左到右依次排列，按需换行
+- 筛选项或操作按钮较多的列表页应使用结构化写法：`primary` 放桌面端主搜索区，`filters` 放桌面端筛选项，`actions` 放桌面端操作区；移动端可通过 `mobilePrimary`、`mobileFilters`、`mobileActions` 单独覆盖
+- 移动端默认只露出关键词搜索、`查询`、`新增` 等高频入口；状态、时间等额外筛选放入底部筛选抽屉；导入、导出、批量删除等低频操作放入更多菜单
 - 按钮文案统一为：`查询`、`重置`、`新增`
 - 导出、导入、新增等主操作按钮使用 `type="primary"`，仅「重置」使用 `type="tertiary"`；批量删除、批量停用等危险操作按语义使用 `type="danger"` / `theme="light"`
 
@@ -198,6 +200,8 @@ const { hasPermission } = usePermission();
 
 ## 搜索区代码示例
 
+简单页面可直接使用 `children`：
+
 ```tsx
 import { SearchToolbar } from '../../components/SearchToolbar';
 
@@ -208,6 +212,43 @@ import { SearchToolbar } from '../../components/SearchToolbar';
   <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
   <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
 </SearchToolbar>
+```
+
+筛选和操作较多的页面使用结构化写法，参考岗位管理：
+
+```tsx
+<SearchToolbar
+  primary={(
+    <>
+      <Input prefix={<Search size={14} />} placeholder="搜索..." showClear />
+      <Select placeholder="全部状态" style={{ width: 120 }} />
+      <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+      <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+    </>
+  )}
+  actions={(
+    <>
+      <Button type="primary" icon={<Download size={14} />} onClick={handleExport}>导出</Button>
+      <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+    </>
+  )}
+  mobilePrimary={(
+    <>
+      <Input prefix={<Search size={14} />} placeholder="搜索..." showClear />
+      <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+      <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+    </>
+  )}
+  mobileFilters={(
+    <Select placeholder="全部状态" style={{ width: 120 }} />
+  )}
+  mobileActions={(
+    <Button icon={<Download size={14} />} onClick={handleExport}>导出</Button>
+  )}
+  filterTitle="筛选条件"
+  onFilterApply={handleSearch}
+  onFilterReset={handleReset}
+/>
 ```
 
 ## 页面设计原则
