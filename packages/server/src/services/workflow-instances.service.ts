@@ -929,7 +929,7 @@ export async function reconcileMultiSubProcess(
       const spawnedIndexes = new Set(
         spawnedChildren
           .map((child) => child.parentTaskItemIndex)
-          .filter((index): index is number => Number.isInteger(index) && index >= 0),
+          .filter((index): index is number => typeof index === 'number' && Number.isInteger(index) && index >= 0),
       );
       if (spawnedChildren.length < pt.subTotal) {
         if (spawnedIndexes.size === 0) {
