@@ -6,7 +6,7 @@
  * - 运营号（business）：可添加订阅者（用户选择器）、按行移除、导出。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Banner, Button, Input, Popconfirm, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Input, Modal, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Download, Plus, Search, RotateCcw } from 'lucide-react';
 import type { ChannelAdmin, ChannelSubscriber, PaginatedResponse } from '@zenith/shared';
@@ -16,6 +16,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { UserAvatar } from '@/components/UserAvatar';
 import UserSelect from '@/components/UserSelect';
 import { AppModal } from '@/components/AppModal';
@@ -151,14 +152,23 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
   ];
 
   if (canManage && !isSystem) {
-    columns.push({
-      title: '操作', dataIndex: 'op', width: 90, fixed: 'right',
-      render: (_: unknown, r: ChannelSubscriber) => (
-        <Popconfirm title={`确定移除订阅者「${r.name}」？`} onConfirm={() => void handleRemove(r)}>
-          <Button theme="borderless" type="danger" size="small">移除</Button>
-        </Popconfirm>
-      ),
-    });
+    columns.push(createOperationColumn<ChannelSubscriber>({
+      width: 90,
+      actions: (record) => [
+        {
+          key: 'remove',
+          label: '移除',
+          danger: true,
+          onClick: () => {
+            Modal.confirm({
+              title: `确定移除订阅者「${record.name}」？`,
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleRemove(record); },
+            });
+          },
+        },
+      ],
+    }));
   }
 
   return (

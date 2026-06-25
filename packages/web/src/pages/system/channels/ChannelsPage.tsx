@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, Dropdown, Form, Input, Modal, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Button, Form, Input, Modal, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { ImagePlus, MoreHorizontal, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { ImagePlus, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type { ChannelAdmin, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
@@ -10,6 +10,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { usePagination } from '@/hooks/usePagination';
@@ -116,34 +117,54 @@ export default function ChannelsPage() {
     { title: '消息数', dataIndex: 'messageCount', width: 90 },
     { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
     { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
-    {
-      title: '操作', dataIndex: 'op', width: 290, fixed: 'right',
-      render: (_: unknown, r: ChannelAdmin) => {
-        const moreItems: ReactNode[] = [];
-        moreItems.push(<Dropdown.Item key="subscribers" onClick={() => setSubscribersDrawer(r)}>订阅者</Dropdown.Item>);
-        if (r.type === 'business' && hasPermission('channel:menu:save')) {
-          moreItems.push(<Dropdown.Item key="menu" onClick={() => setMenuDrawer(r)}>菜单配置</Dropdown.Item>);
-        }
-        if (r.type === 'business' && hasPermission('channel:reply:list')) {
-          moreItems.push(<Dropdown.Item key="reply" onClick={() => setReplyDrawer(r)}>自动回复</Dropdown.Item>);
-        }
-        if (hasPermission('channel:channel:delete') && !r.builtin) {
-          moreItems.push(<Dropdown.Item key="delete" type="danger" onClick={() => handleDelete(r)}>删除</Dropdown.Item>);
-        }
-        return (
-          <Space>
-            {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => openPublish(r)}>群发</Button>}
-            {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => setMessagesDrawer(r)}>消息记录</Button>}
-            {hasPermission('channel:channel:update') && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
-            {moreItems.length > 0 && (
-              <Dropdown trigger="click" clickToHide position="bottomRight" render={<Dropdown.Menu>{moreItems}</Dropdown.Menu>}>
-                <Button theme="borderless" size="small" icon={<MoreHorizontal size={16} />} />
-              </Dropdown>
-            )}
-          </Space>
-        );
-      },
-    },
+    createOperationColumn<ChannelAdmin>({
+      width: 290,
+      desktopInlineKeys: ['publish', 'messages', 'edit'],
+      actions: (record) => [
+        {
+          key: 'publish',
+          label: '群发',
+          hidden: !hasPermission('channel:message:publish'),
+          onClick: () => openPublish(record),
+        },
+        {
+          key: 'messages',
+          label: '消息记录',
+          hidden: !hasPermission('channel:message:publish'),
+          onClick: () => setMessagesDrawer(record),
+        },
+        {
+          key: 'edit',
+          label: '编辑',
+          hidden: !hasPermission('channel:channel:update'),
+          onClick: () => openEdit(record),
+        },
+        {
+          key: 'subscribers',
+          label: '订阅者',
+          onClick: () => setSubscribersDrawer(record),
+        },
+        {
+          key: 'menu',
+          label: '菜单配置',
+          hidden: record.type !== 'business' || !hasPermission('channel:menu:save'),
+          onClick: () => setMenuDrawer(record),
+        },
+        {
+          key: 'reply',
+          label: '自动回复',
+          hidden: record.type !== 'business' || !hasPermission('channel:reply:list'),
+          onClick: () => setReplyDrawer(record),
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !hasPermission('channel:channel:delete') || record.builtin,
+          onClick: () => handleDelete(record),
+        },
+      ],
+    }),
   ];
 
   return (

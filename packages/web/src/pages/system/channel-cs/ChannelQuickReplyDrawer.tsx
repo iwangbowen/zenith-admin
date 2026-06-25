@@ -5,12 +5,13 @@
  * 在此可对全部快捷回复做 CRUD；新建/编辑时作用域可选「全局」或「当前频道」。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Form, Popconfirm, SideSheet, Space, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Modal, SideSheet, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import type { ChannelQuickReply } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { AppModal } from '@/components/AppModal';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 
 interface Props {
   channelId: number;
@@ -97,17 +98,28 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
         : <Tag color="blue" size="small">{r.channelName ?? `频道#${v}`}</Tag>),
     },
     { title: '排序', dataIndex: 'sort', width: 60 },
-    {
-      title: '操作', dataIndex: 'op', width: 120, fixed: 'right',
-      render: (_: unknown, r: ChannelQuickReply) => (
-        <Space>
-          <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>
-          <Popconfirm title="确定删除该快捷回复？" onConfirm={() => void handleDelete(r)}>
-            <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    createOperationColumn<ChannelQuickReply>({
+      width: 120,
+      actions: (record) => [
+        {
+          key: 'edit',
+          label: '编辑',
+          onClick: () => openEdit(record),
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定删除该快捷回复？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleDelete(record); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (

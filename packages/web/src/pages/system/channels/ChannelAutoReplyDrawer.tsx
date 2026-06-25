@@ -4,7 +4,7 @@
  * 优先级（后端 matchAutoReply）：subscribe → keyword(exact 优先 contains，按 sort) → default。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Form, Popconfirm, SideSheet, Space, Table, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { Button, Form, Modal, SideSheet, Space, Table, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ImagePlus, Plus, Trash2 } from 'lucide-react';
 import type { ChannelAutoReply, ChannelMessageType, ChannelRichReplyExtra } from '@zenith/shared';
@@ -15,6 +15,7 @@ import { request } from '@/utils/request';
 import { config } from '@/config';
 import { usePermission } from '@/hooks/usePermission';
 import { AppModal } from '@/components/AppModal';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 
 interface Props {
   channelId: number;
@@ -185,19 +186,30 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
     },
     { title: '状态', dataIndex: 'status', width: 70, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
     { title: '排序', dataIndex: 'sort', width: 60 },
-    {
-      title: '操作', dataIndex: 'op', width: 120, fixed: 'right',
-      render: (_: unknown, r: ChannelAutoReply) => (
-        <Space>
-          {canSave && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
-          {canDelete && (
-            <Popconfirm title="确定删除该规则？" onConfirm={() => void handleDelete(r)}>
-              <Button theme="borderless" type="danger" size="small">删除</Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
+    createOperationColumn<ChannelAutoReply>({
+      width: 120,
+      actions: (record) => [
+        {
+          key: 'edit',
+          label: '编辑',
+          hidden: !canSave,
+          onClick: () => openEdit(record),
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !canDelete,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定删除该规则？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleDelete(record); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (

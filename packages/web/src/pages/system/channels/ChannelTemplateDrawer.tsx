@@ -9,7 +9,7 @@
  *   - news：extra.card = { title, cover, text(摘要), actions:[{ url }] }
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Form, Popconfirm, SideSheet, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { Button, Form, Modal, SideSheet, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ImagePlus, Plus, Trash2 } from 'lucide-react';
 import type { ChannelMessageTemplate, ChannelMessageType, ChatCard, ChatMessageExtra } from '@zenith/shared';
@@ -18,6 +18,7 @@ import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 
 interface Props {
   visible: boolean;
@@ -168,17 +169,28 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
       render: (v: ChannelMessageType) => <Tag color={TYPE_COLOR[v] ?? 'grey'} size="small">{TYPE_LABELS[v] ?? v}</Tag>,
     },
     { title: '更新时间', dataIndex: 'updatedAt', width: 180, render: (v: string) => formatDateTime(v) },
-    {
-      title: '操作', dataIndex: 'op', width: 120, fixed: 'right',
-      render: (_: unknown, t: ChannelMessageTemplate) => (
-        <Space>
-          <Button theme="borderless" size="small" onClick={() => openEdit(t)}>编辑</Button>
-          <Popconfirm title="确定删除该模板？" onConfirm={() => void handleDelete(t)}>
-            <Button theme="borderless" type="danger" size="small">删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    createOperationColumn<ChannelMessageTemplate>({
+      width: 120,
+      actions: (record) => [
+        {
+          key: 'edit',
+          label: '编辑',
+          onClick: () => openEdit(record),
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定删除该模板？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleDelete(record); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   const editType: ChannelMessageType = formValues.type ?? 'text';

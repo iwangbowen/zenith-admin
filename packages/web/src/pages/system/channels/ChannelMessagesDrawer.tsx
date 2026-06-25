@@ -5,13 +5,14 @@
  * 草稿与定时消息可编辑、删除、立即发送；已发消息只读。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Popconfirm, SideSheet, Space, Table, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Modal, SideSheet, Table, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ChannelAdmin, ChannelMessage, ChannelMessageStatus, PaginatedResponse } from '@zenith/shared';
 import { CHANNEL_MESSAGE_STATUS_LABELS, CHANNEL_MESSAGE_TYPE_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ChannelPublishModal } from './ChannelPublishModal';
 
 interface Props {
@@ -132,35 +133,59 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
       title: '定时时间', dataIndex: 'scheduledAt', width: 175,
       render: (v: string | null) => (v ? <span style={{ whiteSpace: 'nowrap' }}>{formatDateTime(v)}</span> : <Typography.Text type="tertiary">—</Typography.Text>),
     },
-    {
-      title: '操作', dataIndex: 'op', width: 160, fixed: 'right',
-      render: (_: unknown, r: ChannelMessage) => {
-        if (!canManage) {
-          return <Typography.Text type="tertiary">—</Typography.Text>;
+    createOperationColumn<ChannelMessage>({
+      width: 160,
+      emptyContent: <Typography.Text type="tertiary">—</Typography.Text>,
+      actions: (record) => {
+        if (!canManage) return [];
+        if (record.status === 'sent') {
+          return [
+            {
+              key: 'retract',
+              label: '撤回',
+              danger: true,
+              hidden: record.isRetracted,
+              onClick: () => {
+                Modal.confirm({
+                  title: '确定撤回？撤回后用户将看不到此消息',
+                  okButtonProps: { type: 'danger', theme: 'solid' },
+                  onOk: () => { void handleRetract(record); },
+                });
+              },
+            },
+          ];
         }
-        if (r.status === 'sent') {
-          if (r.isRetracted) {
-            return <Typography.Text type="tertiary">—</Typography.Text>;
-          }
-          return (
-            <Popconfirm title="确定撤回？撤回后用户将看不到此消息" onConfirm={() => void handleRetract(r)}>
-              <Button theme="borderless" type="danger" size="small">撤回</Button>
-            </Popconfirm>
-          );
-        }
-        return (
-          <Space>
-            <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>
-            <Popconfirm title="确定立即发送该消息？" onConfirm={() => void handleSendNow(r)}>
-              <Button theme="borderless" size="small">立即发送</Button>
-            </Popconfirm>
-            <Popconfirm title="确定删除该消息？" onConfirm={() => void handleDelete(r)}>
-              <Button theme="borderless" type="danger" size="small">删除</Button>
-            </Popconfirm>
-          </Space>
-        );
+        return [
+          {
+            key: 'edit',
+            label: '编辑',
+            onClick: () => openEdit(record),
+          },
+          {
+            key: 'send-now',
+            label: '立即发送',
+            onClick: () => {
+              Modal.confirm({
+                title: '确定立即发送该消息？',
+                onOk: () => { void handleSendNow(record); },
+              });
+            },
+          },
+          {
+            key: 'delete',
+            label: '删除',
+            danger: true,
+            onClick: () => {
+              Modal.confirm({
+                title: '确定删除该消息？',
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => { void handleDelete(record); },
+              });
+            },
+          },
+        ];
       },
-    },
+    }),
   ];
 
   return (
