@@ -13,6 +13,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { request } from '@/utils/request';
 import { config } from '@/config';
+import { formatDateTime } from '@/utils/date';
 import { TOKEN_KEY } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import type { ProcessInfo, ProcessListResponse } from '@zenith/shared';
@@ -458,7 +459,7 @@ export default function ProcessesPage() {
               <Typography.Text type="tertiary" size="small">{sseIndicator.text}</Typography.Text>
               {lastUpdated && (
                 <Typography.Text type="tertiary" size="small">
-                  · {lastUpdated.toLocaleTimeString()}
+                  · {formatDateTime(lastUpdated)}
                 </Typography.Text>
               )}
             </div>
