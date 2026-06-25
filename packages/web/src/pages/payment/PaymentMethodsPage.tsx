@@ -86,11 +86,13 @@ export default function PaymentMethodsPage() {
     },
   ];
 
+  const renderRefreshButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchList()}>刷新</Button>
+  );
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchList()}>刷新</Button>
-      </SearchToolbar>
+      <SearchToolbar actions={renderRefreshButton()} mobileActions={renderRefreshButton()} />
 
       <ConfigurableTable
         bordered columns={columns} dataSource={list} loading={loading} rowKey="id" size="small" empty="暂无数据"

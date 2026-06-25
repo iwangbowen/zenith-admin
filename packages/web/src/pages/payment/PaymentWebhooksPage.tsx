@@ -280,31 +280,109 @@ export default function PaymentWebhooksPage() {
     },
   ];
 
+  const renderEndpointKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="名称/URL..."
+      value={endpointSearch.keyword}
+      onChange={(v) => setEndpointSearch((p) => ({ ...p, keyword: v }))}
+      showClear
+      style={{ width: 200 }}
+      onEnterPress={handleEndpointSearch}
+    />
+  );
+  const renderEndpointStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={endpointSearch.status || undefined}
+      onChange={(v) => setEndpointSearch((p) => ({ ...p, status: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 120 }}
+      optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]}
+    />
+  );
+  const renderEndpointSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleEndpointSearch}>查询</Button>;
+  const renderEndpointResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleEndpointReset}>重置</Button>;
+  const renderEndpointCreateButton = () => hasPermission('payment:webhook:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  ) : null;
+
+  const renderDeliveryKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="订单号..."
+      value={deliverySearch.keyword}
+      onChange={(v) => setDeliverySearch((p) => ({ ...p, keyword: v }))}
+      showClear
+      style={{ width: 200 }}
+      onEnterPress={handleDeliverySearch}
+    />
+  );
+  const renderDeliveryStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={deliverySearch.status || undefined}
+      onChange={(v) => setDeliverySearch((p) => ({ ...p, status: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 120 }}
+      optionList={Object.entries(PAYMENT_WEBHOOK_DELIVERY_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+    />
+  );
+  const renderDeliverySearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleDeliverySearch}>查询</Button>;
+  const renderDeliveryResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleDeliveryReset}>重置</Button>;
+
   return (
     <div className="page-container">
       <Tabs activeKey={activeTab} onChange={(k) => setActiveTab(k as 'endpoints' | 'deliveries')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="端点配置" itemKey="endpoints">
-          <SearchToolbar>
-            <Input prefix={<Search size={14} />} placeholder="名称/URL..." value={endpointSearch.keyword} onChange={(v) => setEndpointSearch((p) => ({ ...p, keyword: v }))} showClear style={{ width: 200 }} onEnterPress={handleEndpointSearch} />
-            <Select placeholder="全部状态" value={endpointSearch.status || undefined} onChange={(v) => setEndpointSearch((p) => ({ ...p, status: (v as string) ?? '' }))} showClear style={{ width: 120 }}
-              optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleEndpointSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleEndpointReset}>重置</Button>
-            {hasPermission('payment:webhook:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
-          </SearchToolbar>
+          <SearchToolbar
+            primary={(
+              <>
+                {renderEndpointKeywordSearch()}
+                {renderEndpointStatusFilter()}
+                {renderEndpointSearchButton()}
+                {renderEndpointResetButton()}
+                {renderEndpointCreateButton()}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                {renderEndpointKeywordSearch()}
+                {renderEndpointSearchButton()}
+                {renderEndpointCreateButton()}
+              </>
+            )}
+            mobileFilters={renderEndpointStatusFilter()}
+            filterTitle="Webhook 端点筛选"
+            onFilterApply={handleEndpointSearch}
+            onFilterReset={handleEndpointReset}
+          />
           <ConfigurableTable
             bordered columns={endpointColumns} dataSource={endpointData?.list ?? []} loading={endpointLoading} rowKey="id" size="small" empty="暂无数据"
             onRefresh={() => void fetchEndpoints()} refreshLoading={endpointLoading} pagination={buildEndpointPagination(endpointData?.total ?? 0, fetchEndpoints)}
           />
         </TabPane>
         <TabPane tab="投递日志" itemKey="deliveries">
-          <SearchToolbar>
-            <Select placeholder="全部状态" value={deliverySearch.status || undefined} onChange={(v) => setDeliverySearch((p) => ({ ...p, status: (v as string) ?? '' }))} showClear style={{ width: 120 }}
-              optionList={Object.entries(PAYMENT_WEBHOOK_DELIVERY_STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
-            <Input prefix={<Search size={14} />} placeholder="订单号..." value={deliverySearch.keyword} onChange={(v) => setDeliverySearch((p) => ({ ...p, keyword: v }))} showClear style={{ width: 200 }} onEnterPress={handleDeliverySearch} />
-            <Button type="primary" icon={<Search size={14} />} onClick={handleDeliverySearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleDeliveryReset}>重置</Button>
-          </SearchToolbar>
+          <SearchToolbar
+            primary={(
+              <>
+                {renderDeliveryKeywordSearch()}
+                {renderDeliveryStatusFilter()}
+                {renderDeliverySearchButton()}
+                {renderDeliveryResetButton()}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                {renderDeliveryKeywordSearch()}
+                {renderDeliverySearchButton()}
+              </>
+            )}
+            mobileFilters={renderDeliveryStatusFilter()}
+            filterTitle="Webhook 投递筛选"
+            onFilterApply={handleDeliverySearch}
+            onFilterReset={handleDeliveryReset}
+          />
           <ConfigurableTable
             bordered columns={deliveryColumns} dataSource={deliveryData?.list ?? []} loading={deliveryLoading} rowKey="id" size="small" empty="暂无数据"
             onRefresh={() => void fetchDeliveries()} refreshLoading={deliveryLoading} pagination={buildDeliveryPagination(deliveryData?.total ?? 0, fetchDeliveries)}
