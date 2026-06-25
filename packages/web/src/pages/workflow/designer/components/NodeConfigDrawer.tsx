@@ -150,6 +150,10 @@ interface NodeConfigDrawerProps {
   subProcessOptions?: SubProcessOption[];
   onSave: (nodeId: string, updates: { name?: string; key?: string; props?: Record<string, unknown> }) => void;
   onCancel: () => void;
+  /** 只读模式：禁用全部编辑（点击节点查看配置），仅保留关闭 */
+  readOnly?: boolean;
+  /** 抽屉层级；嵌入到其它 SideSheet 内（如只读设计器）时需高于外层，避免被遮挡 */
+  zIndex?: number;
 }
 
 export default function NodeConfigDrawer({
@@ -166,6 +170,8 @@ export default function NodeConfigDrawer({
   subProcessOptions = [],
   onSave,
   onCancel,
+  readOnly = false,
+  zIndex,
 }: Readonly<NodeConfigDrawerProps>) {
 
   // 节点名称
@@ -178,8 +184,8 @@ export default function NodeConfigDrawer({
 
   const nodeInfo = node ? ADDABLE_NODE_TYPES.find(n => n.type === node.type) : null;
   const title = node?.type === 'initiator'
-    ? '设置发起人'
-    : `编辑${nodeInfo?.label ?? '节点'}`;
+    ? (readOnly ? '发起人设置' : '设置发起人')
+    : `${readOnly ? '查看' : '编辑'}${nodeInfo?.label ?? '节点'}`;
 
   // 初始化编辑态
   useEffect(() => {
@@ -237,11 +243,18 @@ export default function NodeConfigDrawer({
       onCancel={onCancel}
       placement="right"
       width={480}
-      className="fd-config-drawer"
+      zIndex={zIndex}
+      className={`fd-config-drawer${readOnly ? ' fd-config-drawer--readonly' : ''}`}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 0' }}>
-          <button type="button" className="fd-drawer-btn fd-drawer-btn--cancel" onClick={onCancel}>取消</button>
-          <button type="button" className="fd-drawer-btn fd-drawer-btn--save" onClick={handleSave}>保存</button>
+          {readOnly ? (
+            <button type="button" className="fd-drawer-btn fd-drawer-btn--cancel" onClick={onCancel}>关闭</button>
+          ) : (
+            <>
+              <button type="button" className="fd-drawer-btn fd-drawer-btn--cancel" onClick={onCancel}>取消</button>
+              <button type="button" className="fd-drawer-btn fd-drawer-btn--save" onClick={handleSave}>保存</button>
+            </>
+          )}
         </div>
       }
     >

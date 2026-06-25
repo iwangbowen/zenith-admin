@@ -16,6 +16,8 @@ interface NodeCardProps {
   onDelete: (nodeId: string) => void;
   onDuplicate?: (nodeId: string) => void;
   readOnly?: boolean;
+  /** 只读但允许点击查看（点击打开只读配置抽屉，用于只读设计器） */
+  readOnlyInteractive?: boolean;
   /** 运行态信息（实例详情流程图叠加：实际处理人 + 状态 + 时间）；设计态为空 */
   runtime?: NodeRuntimeInfo;
 }
@@ -166,21 +168,22 @@ function getNodeTags(node: FlowNode): string[] {
   return tags;
 }
 
-export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly = false, runtime }: Readonly<NodeCardProps>) {
+export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly = false, readOnlyInteractive = false, runtime }: Readonly<NodeCardProps>) {
   const info = getNodeInfo(node.type);
   const color = NODE_COLOR_MAP[node.type] ?? '#999';
   const Icon = info?.icon;
 
   const bodyText = getBodySummary(node);
   const tags = getNodeTags(node);
+  const clickable = !readOnly || readOnlyInteractive;
 
   return (
     <button
       type="button"
       className={`fd-node-card${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}`}
       data-fd-node-id={node.id}
-      onClick={readOnly ? undefined : () => onEdit(node)}
-      tabIndex={readOnly ? -1 : 0}
+      onClick={clickable ? () => onEdit(node) : undefined}
+      tabIndex={clickable ? 0 : -1}
     >
       {/* 标题栏 */}
       <div className="fd-node-card__header" style={{ background: color }}>

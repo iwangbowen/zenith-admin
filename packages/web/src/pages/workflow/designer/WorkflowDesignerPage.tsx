@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -42,6 +42,7 @@ import RouteBranchEditor, { type RouteBranchEditorUpdates } from './components/R
 import FormSelectorPanel from './components/FormSelectorPanel';
 import CustomFormConfigPanel from './components/CustomFormConfigPanel';
 import FormPreview from './components/FormPreview';
+import WorkflowFormRenderer from './components/WorkflowFormRenderer';
 import BasicInfoPanel from './components/BasicInfoPanel';
 import AdvancedSettingsPanel from './components/AdvancedSettingsPanel';
 import type { AdvancedSettingsData } from './components/AdvancedSettingsPanel';
@@ -56,12 +57,28 @@ interface DepartmentOption { id: number; name: string; parentId: number | null; 
 
 // ─── 主组件 ───────────────────────────────────────────────────────────
 
-export default function WorkflowDesignerPage() {
+interface WorkflowDesignerPageProps {
+  /** 只读模式：禁用全部编辑（用于在其他页面以只读方式查看流程定义） */
+  readOnly?: boolean;
+  /** 嵌入模式：隐藏返回按钮等整页专属操作（用于嵌入 SideSheet/Modal） */
+  embedded?: boolean;
+  /** 预置定义数据：提供时不再按路由 id 拉取，而是用此数据初始化（如实例发起时的流程定义快照） */
+  presetDefinition?: WorkflowDefinition | WorkflowDefinitionSnapshot | null;
+  /** 节点配置抽屉层级；嵌入到其它 SideSheet 内时需高于外层，避免被遮挡 */
+  drawerZIndex?: number;
+}
+
+export default function WorkflowDesignerPage({
+  readOnly = false,
+  embedded = false,
+  presetDefinition = null,
+  drawerZIndex,
+}: Readonly<WorkflowDesignerPageProps> = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const isNew = id === 'new';
+  const isNew = !presetDefinition && id === 'new';
 
-  const [pageLoading, setPageLoading] = useState(!isNew);
+  const [pageLoading, setPageLoading] = useState(!presetDefinition && !isNew);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
@@ -138,7 +155,7 @@ export default function WorkflowDesignerPage() {
   // ─── 加载数据 ─────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!isNew && id) {
+    if (!presetDefinition && !isNew && id) {
       setPageLoading(true);
       request.get<WorkflowDefinition>(`/api/workflows/definitions/${id}`).then(res => {
         if (res.code === 0 && res.data) {
@@ -172,7 +189,37 @@ export default function WorkflowDesignerPage() {
     // history.reset 是稳定的 useCallback，不需要追踪；
     // 不能将 history 对象本身加入依赖，否则每次添加节点（pastLen 变化）都会重新触发数据加载
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, isNew]);
+  }, [id, isNew, presetDefinition]);
+
+  // 预置定义数据（如流程定义快照）：直接用其初始化，跳过路由拉取
+  useEffect(() => {
+    if (!presetDefinition) return;
+    const d = presetDefinition;
+    setDefinition(d as WorkflowDefinition);
+    setMetaName(d.name);
+    setMetaDesc(d.description ?? '');
+    setMetaCategoryId(d.categoryId ?? null);
+    setMetaInitiatorScopeType((d as WorkflowDefinition).initiatorScopeType ?? 'all');
+    setMetaInitiatorScopeIds((d as WorkflowDefinition).initiatorScopeIds ?? []);
+    setFormId(d.formId ?? null);
+    setFormType(d.formType ?? 'designer');
+    setCustomForm(d.customForm ?? null);
+    if (d.formFields) setLocalFormFields(d.formFields);
+    const fd = d.flowData;
+    if (fd?.process) history.reset(fd.process as unknown as FlowProcess);
+    if (fd?.settings) {
+      const loaded = fd.settings as unknown as Partial<AdvancedSettingsData>;
+      const normalized: AdvancedSettingsData = {
+        ...DEFAULT_ADVANCED_SETTINGS,
+        ...loaded,
+        approverDedupMode: resolveApproverDedupMode(loaded),
+      };
+      delete normalized.autoApproveIfSameUser;
+      setAdvancedSettings(normalized);
+    }
+    setPageLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetDefinition]);
 
   useEffect(() => {
     request.get<UserOption[]>('/api/users/all').then(res => {
@@ -524,7 +571,7 @@ export default function WorkflowDesignerPage() {
   // ─── 快捷键：Undo / Redo ──────────────────────────────────────────
 
   useEffect(() => {
-    if (currentStep !== 3) return;
+    if (currentStep !== 3 || readOnly) return;
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
@@ -541,7 +588,7 @@ export default function WorkflowDesignerPage() {
     };
     globalThis.addEventListener('keydown', handler);
     return () => globalThis.removeEventListener('keydown', handler);
-  }, [currentStep, history]);
+  }, [currentStep, history, readOnly]);
 
   // ─── 步骤导航标签 ──────────────────────────────────────────────────
 
@@ -581,13 +628,15 @@ export default function WorkflowDesignerPage() {
     <div className="fd-designer-root" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 顶部工具栏 */}
       <div className="fd-toolbar">
-        <Button
-          icon={<ArrowLeft size={14} />}
-          type="tertiary"
-          theme="borderless"
-          title="返回列表"
-          onClick={() => navigate('/workflow/definitions')}
-        />
+        {!embedded && (
+          <Button
+            icon={<ArrowLeft size={14} />}
+            type="tertiary"
+            theme="borderless"
+            title="返回列表"
+            onClick={() => navigate('/workflow/definitions')}
+          />
+        )}
 
         <div className="fd-toolbar__title">
           <Tooltip content={isNew ? '新建流程' : (metaName || definition?.name || '')} position="bottom">
@@ -614,7 +663,7 @@ export default function WorkflowDesignerPage() {
 
         {/* 右侧操作 */}
         <div className="fd-toolbar__actions">
-          {currentStep === 2 && formType === 'designer' && (
+          {!readOnly && currentStep === 2 && formType === 'designer' && (
             <Button
               icon={<Eye size={14} />}
               type="tertiary"
@@ -624,25 +673,29 @@ export default function WorkflowDesignerPage() {
               预览
             </Button>
           )}
-          <Button
-            icon={<Save size={14} />}
-            type="primary"
-            loading={saving}
-            onClick={() => void handleSave()}
-          >
-            保存
-          </Button>
-          {!isNew && (
-            <Button
-              icon={<Send size={14} />}
-              type="primary"
-              theme="solid"
-              loading={publishing}
-              disabled={saving}
-              onClick={() => void handlePublish()}
-            >
-              发布
-            </Button>
+          {!readOnly && (
+            <>
+              <Button
+                icon={<Save size={14} />}
+                type="primary"
+                loading={saving}
+                onClick={() => void handleSave()}
+              >
+                保存
+              </Button>
+              {!isNew && (
+                <Button
+                  icon={<Send size={14} />}
+                  type="primary"
+                  theme="solid"
+                  loading={publishing}
+                  disabled={saving}
+                  onClick={() => void handlePublish()}
+                >
+                  发布
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -658,6 +711,7 @@ export default function WorkflowDesignerPage() {
           departments={departments}
           initiatorScopeType={metaInitiatorScopeType}
           initiatorScopeIds={metaInitiatorScopeIds}
+          readOnly={readOnly}
           onFieldChange={handleMetaFieldChange}
           onCategoryChange={setMetaCategoryId}
           onInitiatorScopeTypeChange={(v) => {
@@ -676,6 +730,7 @@ export default function WorkflowDesignerPage() {
             <RadioGroup
               type="button"
               value={formType}
+              disabled={readOnly}
               onChange={(e) => setFormType((e.target as HTMLInputElement).value as WorkflowFormType)}
             >
               {WORKFLOW_FORM_TYPES.map((t) => (
@@ -683,7 +738,21 @@ export default function WorkflowDesignerPage() {
               ))}
             </RadioGroup>
           </div>
-          {formType === 'designer' ? (
+          {readOnly ? (
+            <div style={{ padding: '0 20px 16px' }}>
+              {formType === 'designer' ? (
+                localFormFields.length > 0 ? (
+                  <WorkflowFormRenderer fields={localFormFields} readOnly />
+                ) : (
+                  <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无表单字段</div>
+                )
+              ) : (
+                <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>
+                  {WORKFLOW_FORM_TYPE_LABELS[formType]}{definition?.formName ? `：${definition.formName}` : ''}（无可视化表单字段）
+                </div>
+              )}
+            </div>
+          ) : formType === 'designer' ? (
             <FormSelectorPanel
               formId={formId}
               formName={definition?.formName}
@@ -702,39 +771,43 @@ export default function WorkflowDesignerPage() {
       {currentStep === 3 && (
         <div className="fd-canvas">
           <div className="fd-canvas__toolbar">
-            <Button
-              icon={<Undo2 size={14} />}
-              type="tertiary"
-              theme="borderless"
-              onClick={history.undo}
-              disabled={!history.canUndo}
-              title="撤销 (Ctrl+Z)"
-            >
-              撤销
-            </Button>
-            <Button
-              icon={<Redo2 size={14} />}
-              type="tertiary"
-              theme="borderless"
-              onClick={history.redo}
-              disabled={!history.canRedo}
-              title="重做 (Ctrl+Shift+Z)"
-            >
-              重做
-            </Button>
-            <span className="fd-canvas__toolbar-divider" />
-            <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
-              导出
-            </Button>
-            <Button icon={<Upload size={14} />} type="tertiary" theme="borderless" onClick={handleImport}>
-              导入
-            </Button>
-            {!isNew && (
-              <Button icon={<History size={14} />} type="tertiary" theme="borderless" onClick={openHistoryModal}>
-                历史版本
-              </Button>
+            {!readOnly && (
+              <>
+                <Button
+                  icon={<Undo2 size={14} />}
+                  type="tertiary"
+                  theme="borderless"
+                  onClick={history.undo}
+                  disabled={!history.canUndo}
+                  title="撤销 (Ctrl+Z)"
+                >
+                  撤销
+                </Button>
+                <Button
+                  icon={<Redo2 size={14} />}
+                  type="tertiary"
+                  theme="borderless"
+                  onClick={history.redo}
+                  disabled={!history.canRedo}
+                  title="重做 (Ctrl+Shift+Z)"
+                >
+                  重做
+                </Button>
+                <span className="fd-canvas__toolbar-divider" />
+                <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
+                  导出
+                </Button>
+                <Button icon={<Upload size={14} />} type="tertiary" theme="borderless" onClick={handleImport}>
+                  导入
+                </Button>
+                {!isNew && (
+                  <Button icon={<History size={14} />} type="tertiary" theme="borderless" onClick={openHistoryModal}>
+                    历史版本
+                  </Button>
+                )}
+                <span className="fd-canvas__toolbar-divider" />
+              </>
             )}
-            <span className="fd-canvas__toolbar-divider" />
             <div className="fd-toolbar__zoom">
               <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomOut} />
               <span>{zoom}%</span>
@@ -743,19 +816,23 @@ export default function WorkflowDesignerPage() {
             </div>
           </div>
           <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
-            <FlowRenderer
-              process={process}
-              onEditNode={handleEditNode}
-              onDeleteNode={handleDeleteNode}
-              onDuplicateNode={handleDuplicateNode}
-              onAddNodeAfter={handleAddNodeAfter}
-              onAddNodeInBranch={handleAddNodeInBranch}
-              onAddBranch={handleAddBranch}
-              onRemoveBranch={handleRemoveBranch}
-              onEditBranch={handleEditBranch}
-              onMoveBranch={handleMoveBranch}
-              formFields={formFields}
-            />
+            {readOnly ? (
+              <FlowRenderer process={process} readOnly readOnlyInteractive onEditNode={handleEditNode} formFields={formFields} />
+            ) : (
+              <FlowRenderer
+                process={process}
+                onEditNode={handleEditNode}
+                onDeleteNode={handleDeleteNode}
+                onDuplicateNode={handleDuplicateNode}
+                onAddNodeAfter={handleAddNodeAfter}
+                onAddNodeInBranch={handleAddNodeInBranch}
+                onAddBranch={handleAddBranch}
+                onRemoveBranch={handleRemoveBranch}
+                onEditBranch={handleEditBranch}
+                onMoveBranch={handleMoveBranch}
+                formFields={formFields}
+              />
+            )}
           </div>
         </div>
       )}
@@ -765,6 +842,7 @@ export default function WorkflowDesignerPage() {
         <AdvancedSettingsPanel
           settings={advancedSettings}
           onChange={setAdvancedSettings}
+          readOnly={readOnly}
         />
       )}
 
@@ -790,6 +868,8 @@ export default function WorkflowDesignerPage() {
         subProcessOptions={subProcessOptions}
         onSave={handleSaveNode}
         onCancel={() => { setDrawerVisible(false); setEditingNode(null); }}
+        readOnly={readOnly}
+        zIndex={drawerZIndex}
       />
 
       {/* 条件规则编辑器 */}

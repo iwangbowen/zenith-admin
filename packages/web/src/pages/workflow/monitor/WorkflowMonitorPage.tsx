@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -23,7 +23,6 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Download, FileText, MoreHorizontal, RotateCcw, Search } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowDefinition, WorkflowFlowData, WorkflowInstance, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared';
-import { WORKFLOW_APPROVER_DEDUP_OPTIONS, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime } from '@/utils/date';
@@ -35,12 +34,14 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
-import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL } from '@/components/workflow/workflow-runtime';
 import { resolveWorkflowFlowData } from '@/utils/workflow-snapshot';
 import WorkflowAnalyticsView from './WorkflowAnalyticsView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
+
+/** 只读流程设计器（懒加载）：用于在诊断 SideSheet 内查看发起时的流程定义快照 */
+const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -749,129 +750,6 @@ export default function WorkflowMonitorPage() {
     );
   };
 
-  const renderDefinitionSnapshot = () => {
-    const snap = diagnostics?.instance.definitionSnapshot ?? null;
-    if (!snap) {
-      return (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>无流程定义快照数据</div>
-      );
-    }
-    const flowData = snap.flowData ?? null;
-    const settings = flowData?.settings ?? null;
-    const flatNodes = flowData?.nodes ?? [];
-    const rank = (type: string) => (type === 'start' ? 0 : type === 'end' ? 2 : 1);
-    const orderedNodes = [...flatNodes].sort((a, b) => rank(a.data.type) - rank(b.data.type));
-
-    const renderFormDesign = () => {
-      if (snap.formType === 'designer') {
-        const fields = snap.formFields ?? [];
-        if (fields.length === 0) {
-          return <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无表单字段</div>;
-        }
-        return <WorkflowFormRenderer fields={fields} readOnly labelPosition="top" style={{ padding: '4px 2px' }} />;
-      }
-      return (
-        <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>
-          {WORKFLOW_FORM_TYPE_LABELS[snap.formType] ?? snap.formType}
-          {snap.formName ? `：${snap.formName}` : ''}（无可视化表单字段）
-        </div>
-      );
-    };
-
-    const renderSettings = () => {
-      if (!settings) {
-        return <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>无高级设置</div>;
-      }
-      const dedupMode = resolveApproverDedupMode(settings);
-      const dedupLabel = WORKFLOW_APPROVER_DEDUP_OPTIONS.find((o) => o.value === dedupMode)?.label ?? dedupMode;
-      const items: Array<{ label: string; value: string }> = [
-        { label: '允许撤回', value: settings.allowWithdraw ? '是' : '否' },
-        { label: '允许驳回后重新提交', value: settings.allowResubmit ? '是' : '否' },
-        { label: '流程结束后通知发起人', value: settings.notifyInitiator ? '是' : '否' },
-        { label: '允许流程中评论', value: settings.allowComment !== false ? '是' : '否' },
-        { label: '自动去重', value: dedupLabel },
-      ];
-      if (settings.serialNo?.enabled) {
-        const s = settings.serialNo;
-        items.push({ label: '业务编号', value: `前缀「${s.prefix ?? ''}」· 日期 ${s.dateFormat ?? 'none'} · 序号 ${s.seqLength ?? 4} 位 · 重置 ${s.resetPeriod ?? 'never'}` });
-      }
-      const channels: string[] = ['站内信'];
-      if (settings.notifyChannels?.email) channels.push('邮件');
-      if (settings.notifyChannels?.sms) channels.push('短信');
-      items.push({ label: '通知渠道', value: channels.join('、') });
-      return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-          {items.map((it) => (
-            <div key={it.label}>
-              <Typography.Text type="tertiary" size="small">{it.label}</Typography.Text>
-              <div>{it.value}</div>
-            </div>
-          ))}
-        </div>
-      );
-    };
-
-    const renderNodeConfigList = () => {
-      if (orderedNodes.length === 0) {
-        return <div style={{ padding: 32, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>无节点数据</div>;
-      }
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {orderedNodes.map((node) => {
-            const cfg = node.data;
-            const items = getNodeConfigItems(cfg);
-            const typeLabel = NODE_TYPE_LABEL[cfg.type] ?? cfg.type;
-            return (
-              <div key={cfg.key} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--semi-color-fill-0)', flexWrap: 'wrap' }}>
-                  <Tag size="small" color="grey" type="light">{typeLabel}</Tag>
-                  <Typography.Text strong>{cfg.label || cfg.key}</Typography.Text>
-                  <Typography.Text type="tertiary" size="small">{cfg.key}</Typography.Text>
-                </div>
-                {items.length > 0 && (
-                  <div style={{ padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: '4px 18px', borderTop: '1px solid var(--semi-color-fill-1)' }}>
-                    {items.map((it) => (
-                      <span key={it.label} style={{ fontSize: 12 }}>
-                        <Typography.Text type="tertiary" size="small">{it.label}：</Typography.Text>
-                        <Typography.Text size="small">{it.value}</Typography.Text>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      );
-    };
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-          <div><Typography.Text type="tertiary" size="small">流程名称</Typography.Text><div>{snap.name || '—'}</div></div>
-          <div><Typography.Text type="tertiary" size="small">版本</Typography.Text><div>v{snap.version ?? '—'}</div></div>
-          <div><Typography.Text type="tertiary" size="small">分类</Typography.Text><div>{snap.categoryName || '—'}</div></div>
-          <div><Typography.Text type="tertiary" size="small">表单类型</Typography.Text><div>{WORKFLOW_FORM_TYPE_LABELS[snap.formType] ?? snap.formType}</div></div>
-          <div style={{ gridColumn: '1 / -1' }}><Typography.Text type="tertiary" size="small">描述</Typography.Text><div>{snap.description || '—'}</div></div>
-        </div>
-        <Tabs type="line">
-          <TabPane tab="流程图" itemKey="def-graph">
-            <WorkflowGraphView flowData={flowData} />
-          </TabPane>
-          <TabPane tab="表单设计" itemKey="def-form">
-            {renderFormDesign()}
-          </TabPane>
-          <TabPane tab={`节点配置 ${orderedNodes.length}`} itemKey="def-nodes">
-            {renderNodeConfigList()}
-          </TabPane>
-          <TabPane tab="高级设置" itemKey="def-settings">
-            {renderSettings()}
-          </TabPane>
-        </Tabs>
-      </div>
-    );
-  };
-
   const columns: ColumnProps<WorkflowInstance>[] = [
     {
       title: '申请标题',
@@ -1171,14 +1049,18 @@ export default function WorkflowMonitorPage() {
       </SideSheet>
 
       <SideSheet
-        title="流程定义快照（发起时）"
+        title="流程定义（发起时快照 · 只读）"
         visible={defSnapshotVisible}
         onCancel={() => setDefSnapshotVisible(false)}
-        width={860}
+        width="82%"
         zIndex={1061}
-        bodyStyle={{ padding: 16 }}
+        bodyStyle={{ padding: 0, height: '100%' }}
       >
-        {defSnapshotVisible ? renderDefinitionSnapshot() : null}
+        {defSnapshotVisible && (
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>}>
+            <WorkflowDesignerPage embedded readOnly drawerZIndex={1100} presetDefinition={diagnostics?.instance.definitionSnapshot ?? null} />
+          </Suspense>
+        )}
       </SideSheet>
 
       {/* 管理员：强制跳转节点 */}

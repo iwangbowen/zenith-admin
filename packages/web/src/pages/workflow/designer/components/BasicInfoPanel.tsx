@@ -22,6 +22,7 @@ interface BasicInfoPanelProps {
   onCategoryChange: (categoryId: number | null) => void;
   onInitiatorScopeTypeChange: (v: InitiatorScopeType) => void;
   onInitiatorScopeIdsChange: (v: number[]) => void;
+  readOnly?: boolean;
 }
 
 function getStatusLabel(status: string): string {
@@ -43,6 +44,7 @@ export default function BasicInfoPanel({
   onCategoryChange,
   onInitiatorScopeTypeChange,
   onInitiatorScopeIdsChange,
+  readOnly = false,
 }: Readonly<BasicInfoPanelProps>) {
   const { categories } = useWorkflowCategories();
   const scopeOptions = [
@@ -92,6 +94,7 @@ export default function BasicInfoPanel({
         <Form
           key={`basic-${definition?.id ?? 'new'}-${categoryId ?? 'none'}`}
           allowEmpty
+          disabled={readOnly}
           initValues={{
             name: definition?.name ?? '',
             description: definition?.description ?? '',
@@ -141,6 +144,7 @@ export default function BasicInfoPanel({
           <Form.Slot label="可发起范围">
             <Select
               value={initiatorScopeType}
+              disabled={readOnly}
               style={{ width: '100%' }}
               optionList={scopeOptions as unknown as Array<{ label: string; value: string }>}
               onChange={(v) => onInitiatorScopeTypeChange((v as InitiatorScopeType) ?? 'all')}

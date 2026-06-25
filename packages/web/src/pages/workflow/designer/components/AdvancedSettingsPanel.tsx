@@ -13,9 +13,10 @@ export type { AdvancedSettingsData } from './advanced-settings';
 interface AdvancedSettingsProps {
   settings: AdvancedSettingsData;
   onChange: (settings: AdvancedSettingsData) => void;
+  readOnly?: boolean;
 }
 
-export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<AdvancedSettingsProps>) {
+export default function AdvancedSettingsPanel({ settings, onChange, readOnly = false }: Readonly<AdvancedSettingsProps>) {
   const serialNo: Required<WorkflowSerialNoConfig> = { ...DEFAULT_SERIAL_NO, ...settings.serialNo };
 
   const updateSerialNo = (patch: Partial<WorkflowSerialNoConfig>) => {
@@ -38,6 +39,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
           initValues={{ ...settings, approverDedupMode: resolveApproverDedupMode(settings) } as unknown as Record<string, unknown>}
           labelPosition="left"
           labelWidth={180}
+          disabled={readOnly}
           onValueChange={(values: Record<string, unknown>) => {
             onChange({ ...settings, ...values });
           }}
@@ -64,6 +66,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
           <Form.Slot label="启用业务编号">
             <Switch
               checked={serialNo.enabled}
+              disabled={readOnly}
               onChange={(checked) => updateSerialNo({ enabled: checked })}
             />
           </Form.Slot>
@@ -75,6 +78,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
                   value={serialNo.prefix}
                   placeholder="BX-"
                   style={{ width: '100%' }}
+                  disabled={readOnly}
                   onChange={(v) => updateSerialNo({ prefix: v })}
                 />
               </Form.Slot>
@@ -82,6 +86,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
                 <Select
                   value={serialNo.dateFormat}
                   style={{ width: '100%' }}
+                  disabled={readOnly}
                   onChange={(v) => updateSerialNo({ dateFormat: v as WorkflowSerialNoConfig['dateFormat'] })}
                 >
                   <Select.Option value="none">无</Select.Option>
@@ -96,6 +101,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
                   min={1}
                   max={12}
                   style={{ width: '100%' }}
+                  disabled={readOnly}
                   onChange={(v) => updateSerialNo({ seqLength: typeof v === 'number' ? v : serialNo.seqLength })}
                 />
               </Form.Slot>
@@ -103,6 +109,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
                 <Select
                   value={serialNo.resetPeriod}
                   style={{ width: '100%' }}
+                  disabled={readOnly}
                   onChange={(v) => updateSerialNo({ resetPeriod: v as WorkflowSerialNoConfig['resetPeriod'] })}
                 >
                   <Select.Option value="never">不重置</Select.Option>
@@ -127,10 +134,10 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
             <Divider margin="8px 0" />
           </Form.Slot>
           <Form.Slot label="邮件通知">
-            <Switch checked={!!notify.email} onChange={(checked) => updateNotify({ email: checked })} />
+            <Switch checked={!!notify.email} disabled={readOnly} onChange={(checked) => updateNotify({ email: checked })} />
           </Form.Slot>
           <Form.Slot label="短信通知">
-            <Switch checked={!!notify.sms} onChange={(checked) => updateNotify({ sms: checked })} />
+            <Switch checked={!!notify.sms} disabled={readOnly} onChange={(checked) => updateNotify({ sms: checked })} />
           </Form.Slot>
           {notify.sms && (
             <Form.Slot label="短信模板 ID">
@@ -139,6 +146,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
                 min={1}
                 style={{ width: '100%' }}
                 placeholder="短信模板库中的模板 ID"
+                disabled={readOnly}
                 onChange={(v) => updateNotify({ smsTemplateId: typeof v === 'number' ? v : undefined })}
               />
             </Form.Slot>

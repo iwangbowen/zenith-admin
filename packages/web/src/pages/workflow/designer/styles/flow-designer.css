@@ -977,6 +977,22 @@ button.fd-node-card {
   padding: 16px;
 }
 
+/* 只读节点配置抽屉：禁用表单控件交互，但保留标签页切换与关闭操作 */
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-input,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-input-wrapper,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-input-number,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-select,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-tree-select,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-switch,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-radio,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-checkbox,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-tag-closable,
+.fd-config-drawer--readonly .semi-sidesheet-body .semi-button,
+.fd-config-drawer--readonly .semi-sidesheet-body textarea,
+.fd-config-drawer--readonly .semi-sidesheet-body input {
+  pointer-events: none;
+}
+
 .fd-drawer-tab-content {
   padding: 16px 0;
 }

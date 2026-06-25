@@ -22,6 +22,8 @@ interface FlowRendererProps {
   onMoveBranch?: (branchNodeId: string, branchId: string, direction: 'up' | 'down') => void;
   formFields?: ReadonlyArray<{ key: string; label: string; type?: string }>;
   readOnly?: boolean;
+  /** 只读但允许点击节点查看其配置（只读设计器场景） */
+  readOnlyInteractive?: boolean;
   /** 运行态：nodeKey → 节点运行态（实例详情流程图叠加状态） */
   nodeRuntime?: Map<string, NodeRuntimeInfo>;
   /** 运行态：未被实际命中的分支 id 集合（用于置灰未走的分支） */
@@ -45,6 +47,7 @@ export default function FlowRenderer({
   onMoveBranch,
   formFields,
   readOnly = false,
+  readOnlyInteractive = false,
   nodeRuntime,
   dimmedBranchIds,
   instanceStatus,
@@ -86,6 +89,7 @@ export default function FlowRenderer({
             onDelete={deleteNode}
             onDuplicate={onDuplicateNode}
             readOnly={readOnly}
+            readOnlyInteractive={readOnlyInteractive}
             runtime={nodeRuntime?.get(node.key ?? node.id)}
           />
         )}
