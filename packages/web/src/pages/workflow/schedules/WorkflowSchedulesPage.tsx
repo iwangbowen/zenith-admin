@@ -338,42 +338,79 @@ export default function WorkflowSchedulesPage() {
     },
   ];
 
+  const renderDefinitionFilter = () => (
+    <Select
+      placeholder="流程"
+      value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
+      onChange={(value) =>
+        setSearchParams((prev) => ({ ...prev, definitionId: (value as number) ?? '' }))
+      }
+      optionList={definitionOptions}
+      filter
+      showClear
+      style={{ width: 220 }}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="状态"
+      value={searchParams.status || undefined}
+      onChange={(value) =>
+        setSearchParams((prev) => ({ ...prev, status: (value as ScheduleStatus) ?? '' }))
+      }
+      optionList={STATUS_OPTIONS}
+      showClear
+      style={{ width: 120 }}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
+      查询
+    </Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
+      重置
+    </Button>
+  );
+
+  const renderCreateButton = () => canCreate ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
+      新增
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Select
-          placeholder="流程"
-          value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
-          onChange={(value) =>
-            setSearchParams((prev) => ({ ...prev, definitionId: (value as number) ?? '' }))
-          }
-          optionList={definitionOptions}
-          filter
-          showClear
-          style={{ width: 220 }}
-        />
-        <Select
-          placeholder="状态"
-          value={searchParams.status || undefined}
-          onChange={(value) =>
-            setSearchParams((prev) => ({ ...prev, status: (value as ScheduleStatus) ?? '' }))
-          }
-          optionList={STATUS_OPTIONS}
-          showClear
-          style={{ width: 120 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-          查询
-        </Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-          重置
-        </Button>
-        {canCreate && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-            新增
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderDefinitionFilter()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderCreateButton()}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderDefinitionFilter()}
+            {renderStatusFilter()}
+          </>
+        )}
+        filterTitle="定时规则筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable<WorkflowSchedule>
         bordered

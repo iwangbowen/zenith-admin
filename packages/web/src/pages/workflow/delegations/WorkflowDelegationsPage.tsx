@@ -273,33 +273,61 @@ export default function WorkflowDelegationsPage() {
       : []),
   ];
 
+  const renderScopeFilter = () => (
+    <Select
+      placeholder="数据范围"
+      value={searchParams.scope}
+      onChange={(v) =>
+        setSearchParams((prev) => ({ ...prev, scope: (v as Scope) ?? 'mine' }))
+      }
+      style={{ width: 140 }}
+      optionList={[
+        { value: 'mine', label: '我的' },
+        { value: 'all', label: '全部' },
+      ]}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
+      查询
+    </Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
+      重置
+    </Button>
+  );
+
+  const renderCreateButton = () => canManage ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
+      新增
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Select
-          placeholder="数据范围"
-          value={searchParams.scope}
-          onChange={(v) =>
-            setSearchParams((prev) => ({ ...prev, scope: (v as Scope) ?? 'mine' }))
-          }
-          style={{ width: 140 }}
-          optionList={[
-            { value: 'mine', label: '我的' },
-            { value: 'all', label: '全部' },
-          ]}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-          查询
-        </Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-          重置
-        </Button>
-        {canManage && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-            新增
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderScopeFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderCreateButton()}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={renderScopeFilter()}
+        filterTitle="审批代理筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable<WorkflowDelegation>
         bordered

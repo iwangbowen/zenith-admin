@@ -447,34 +447,81 @@ export default function WorkflowAutomationsPage() {
     },
   ];
 
+  const renderDefinitionFilter = () => (
+    <Select
+      placeholder="所属流程"
+      value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
+      onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
+      showClear
+      style={{ width: 220 }}
+      optionList={launchableDefOptions}
+    />
+  );
+
+  const renderTriggerFilter = () => (
+    <Select
+      placeholder="触发时机"
+      value={searchParams.trigger || undefined}
+      onChange={(v) => setSearchParams(prev => ({ ...prev, trigger: (v as WorkflowAutomationTrigger) ?? '' }))}
+      showClear
+      style={{ width: 140 }}
+      optionList={TRIGGER_OPTIONS}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="状态"
+      value={searchParams.status || undefined}
+      onChange={(v) => setSearchParams(prev => ({ ...prev, status: (v as 'enabled' | 'disabled') ?? '' }))}
+      showClear
+      style={{ width: 120 }}
+      optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }]}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
+  const renderCreateButton = () => canEditAutomation ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Select
-          placeholder="所属流程"
-          value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
-          onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
-          showClear style={{ width: 220 }}
-          optionList={launchableDefOptions}
-        />
-        <Select
-          placeholder="触发时机"
-          value={searchParams.trigger || undefined}
-          onChange={(v) => setSearchParams(prev => ({ ...prev, trigger: (v as WorkflowAutomationTrigger) ?? '' }))}
-          showClear style={{ width: 140 }}
-          optionList={TRIGGER_OPTIONS}
-        />
-        <Select
-          placeholder="状态"
-          value={searchParams.status || undefined}
-          onChange={(v) => setSearchParams(prev => ({ ...prev, status: (v as 'enabled' | 'disabled') ?? '' }))}
-          showClear style={{ width: 120 }}
-          optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }]}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {canEditAutomation && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderDefinitionFilter()}
+            {renderTriggerFilter()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderDefinitionFilter()}
+            {renderTriggerFilter()}
+            {renderStatusFilter()}
+          </>
+        )}
+        filterTitle="自动化规则筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable<WorkflowAutomation>
         bordered

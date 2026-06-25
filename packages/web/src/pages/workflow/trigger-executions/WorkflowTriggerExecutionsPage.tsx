@@ -166,33 +166,72 @@ export default function WorkflowTriggerExecutionsPage() {
     },
   ];
 
+  const renderNodeKeySearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      value={searchParams.nodeKey}
+      onChange={(v) => setSearchParams(prev => ({ ...prev, nodeKey: v }))}
+      placeholder="节点 key"
+      showClear
+      style={{ width: 180 }}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      value={searchParams.status}
+      onChange={(v) => setSearchParams(prev => ({ ...prev, status: v as WorkflowTriggerExecutionStatus | '' }))}
+      style={{ width: 140 }}
+      optionList={STATUS_OPTIONS}
+    />
+  );
+
+  const renderInstanceIdFilter = () => (
+    <InputNumber
+      value={searchParams.instanceId}
+      onChange={(v) => setSearchParams(prev => ({ ...prev, instanceId: typeof v === 'number' ? v : undefined }))}
+      placeholder="实例 ID"
+      min={1}
+      style={{ width: 140 }}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Select
-          value={searchParams.status}
-          onChange={(v) => setSearchParams(prev => ({ ...prev, status: v as WorkflowTriggerExecutionStatus | '' }))}
-          style={{ width: 140 }}
-          optionList={STATUS_OPTIONS}
-        />
-        <InputNumber
-          value={searchParams.instanceId}
-          onChange={(v) => setSearchParams(prev => ({ ...prev, instanceId: typeof v === 'number' ? v : undefined }))}
-          placeholder="实例 ID"
-          min={1}
-          style={{ width: 140 }}
-        />
-        <Input
-          prefix={<Search size={14} />}
-          value={searchParams.nodeKey}
-          onChange={(v) => setSearchParams(prev => ({ ...prev, nodeKey: v }))}
-          placeholder="节点 key"
-          showClear
-          style={{ width: 180 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderNodeKeySearch()}
+            {renderStatusFilter()}
+            {renderInstanceIdFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderNodeKeySearch()}
+            {renderSearchButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderStatusFilter()}
+            {renderInstanceIdFilter()}
+          </>
+        )}
+        filterTitle="执行记录筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

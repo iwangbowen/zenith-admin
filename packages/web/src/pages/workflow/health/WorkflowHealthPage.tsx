@@ -68,6 +68,7 @@ export default function WorkflowHealthPage() {
 
   const handleReset = () => {
     setThresholdMinutes(30);
+    setIssueType('');
     void fetchData(30);
   };
 
@@ -106,27 +107,57 @@ export default function WorkflowHealthPage() {
     { title: '创建时间', dataIndex: 'createdAt', width: 170 },
   ];
 
+  const renderThresholdFilter = () => (
+    <Select
+      value={thresholdMinutes}
+      onChange={(v) => setThresholdMinutes(Number(v) || 30)}
+      optionList={THRESHOLD_OPTIONS}
+      prefix="只看等待"
+      suffix="的问题"
+      style={{ width: 320 }}
+    />
+  );
+
+  const renderIssueTypeFilter = () => (
+    <Select
+      value={issueType}
+      onChange={(v) => setIssueType(v as WorkflowHealthIssue['type'] | '')}
+      optionList={ISSUE_TYPE_OPTIONS}
+      prefix="问题类型"
+      style={{ width: 220 }}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Select
-          value={thresholdMinutes}
-          onChange={(v) => setThresholdMinutes(Number(v) || 30)}
-          optionList={THRESHOLD_OPTIONS}
-          prefix="只看等待"
-          suffix="的问题"
-          style={{ width: 320 }}
-        />
-        <Select
-          value={issueType}
-          onChange={(v) => setIssueType(v as WorkflowHealthIssue['type'] | '')}
-          optionList={ISSUE_TYPE_OPTIONS}
-          prefix="问题类型"
-          style={{ width: 220 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderThresholdFilter()}
+            {renderIssueTypeFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+          </>
+        )}
+        mobilePrimary={renderSearchButton()}
+        mobileFilters={(
+          <>
+            {renderThresholdFilter()}
+            {renderIssueTypeFilter()}
+          </>
+        )}
+        filterTitle="健康巡检筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <Space wrap style={{ marginBottom: 12 }}>
         <SummaryItem label="问题总数" value={data?.stats.total ?? 0} danger={(data?.stats.total ?? 0) > 0} />

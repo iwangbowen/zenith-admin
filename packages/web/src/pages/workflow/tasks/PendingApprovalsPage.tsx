@@ -255,43 +255,86 @@ export default function PendingApprovalsPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="请输入审批标题"
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      onEnterPress={() => { setPage(1); void fetchList(1, pageSize); }}
+      style={{ width: 200 }}
+      showClear
+    />
+  );
+
+  const renderDefinitionFilter = () => (
+    <Select
+      placeholder="流程类型"
+      value={searchParams.definitionId ?? undefined}
+      onChange={(v) => setSearchParams((prev) => ({ ...prev, definitionId: typeof v === 'number' ? v : null }))}
+      style={{ width: 180 }}
+      showClear
+    >
+      {definitions.map((d) => (
+        <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>
+      ))}
+    </Select>
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchList(1, pageSize); }}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }}>重置</Button>
+  );
+
+  const renderMyConsultsButton = () => (
+    <Button type="tertiary" onClick={openMyConsults}>我的协办</Button>
+  );
+
+  const renderBatchButtons = () => selectedRowKeys.length > 0 ? (
+    <>
+      <Button type="primary" theme="solid" icon={<Plus size={14} />} onClick={() => { setBatchComment(''); setBatchMode('approve'); }}>
+        批量通过（{selectedRowKeys.length}）
+      </Button>
+      <Button type="danger" theme="solid" onClick={() => { setBatchComment(''); setBatchMode('reject'); }}>
+        批量驳回（{selectedRowKeys.length}）
+      </Button>
+    </>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="请输入审批标题"
-          value={searchParams.keyword}
-          onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-          onEnterPress={() => { setPage(1); void fetchList(1, pageSize); }}
-          style={{ width: 200 }}
-          showClear
-        />
-        <Select
-          placeholder="流程类型"
-          value={searchParams.definitionId ?? undefined}
-          onChange={(v) => setSearchParams((prev) => ({ ...prev, definitionId: typeof v === 'number' ? v : null }))}
-          style={{ width: 180 }}
-          showClear
-        >
-          {definitions.map((d) => (
-            <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>
-          ))}
-        </Select>
-        <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchList(1, pageSize); }}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }}>重置</Button>
-        <Button type="tertiary" onClick={openMyConsults}>我的协办</Button>
-        {selectedRowKeys.length > 0 && (
+      <SearchToolbar
+        primary={(
           <>
-            <Button type="primary" theme="solid" icon={<Plus size={14} />} onClick={() => { setBatchComment(''); setBatchMode('approve'); }}>
-              批量通过（{selectedRowKeys.length}）
-            </Button>
-            <Button type="danger" theme="solid" onClick={() => { setBatchComment(''); setBatchMode('reject'); }}>
-              批量驳回（{selectedRowKeys.length}）
-            </Button>
+            {renderKeywordSearch()}
+            {renderDefinitionFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderMyConsultsButton()}
+            {renderBatchButtons()}
           </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+          </>
+        )}
+        mobileFilters={renderDefinitionFilter()}
+        mobileActions={(
+          <>
+            {renderResetButton()}
+            {renderMyConsultsButton()}
+            {renderBatchButtons()}
+          </>
+        )}
+        filterTitle="待办审批筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }}
+      />
       <ConfigurableTable
         bordered
         columns={columns}

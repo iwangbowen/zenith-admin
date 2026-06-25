@@ -355,39 +355,85 @@ export default function WorkflowEventSubscriptionsPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="名称 / URL"
+      value={searchParams.keyword}
+      onChange={v => setSearchParams(prev => ({ ...prev, keyword: v }))}
+      showClear
+      style={{ width: 220 }}
+      onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+    />
+  );
+
+  const renderDefinitionFilter = () => (
+    <Select
+      placeholder="所属流程"
+      value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
+      onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
+      showClear
+      style={{ width: 200 }}
+      optionList={[{ value: '', label: '全部（含全局）' }, ...defs.map((d) => ({ value: d.id, label: d.name }))]}
+    />
+  );
+
+  const renderEnabledFilter = () => (
+    <Select
+      placeholder="状态"
+      value={searchParams.enabled || undefined}
+      onChange={(v) => setSearchParams(prev => ({ ...prev, enabled: (v as 'true' | 'false') ?? '' }))}
+      showClear
+      style={{ width: 120 }}
+      optionList={[
+        { value: 'true', label: '启用' },
+        { value: 'false', label: '禁用' },
+      ]}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
+  const renderCreateButton = () => canManageEventSubscription ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="名称 / URL"
-          value={searchParams.keyword}
-          onChange={v => setSearchParams(prev => ({ ...prev, keyword: v }))}
-          showClear
-          style={{ width: 220 }}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-        />
-        <Select
-          placeholder="所属流程"
-          value={searchParams.definitionId === '' ? undefined : searchParams.definitionId}
-          onChange={(v) => setSearchParams(prev => ({ ...prev, definitionId: (v as number) ?? '' }))}
-          showClear style={{ width: 200 }}
-          optionList={[{ value: '', label: '全部（含全局）' }, ...defs.map((d) => ({ value: d.id, label: d.name }))]}
-        />
-        <Select
-          placeholder="状态"
-          value={searchParams.enabled || undefined}
-          onChange={(v) => setSearchParams(prev => ({ ...prev, enabled: (v as 'true' | 'false') ?? '' }))}
-          showClear style={{ width: 120 }}
-          optionList={[
-            { value: 'true', label: '启用' },
-            { value: 'false', label: '禁用' },
-          ]}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {canManageEventSubscription && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderDefinitionFilter()}
+            {renderEnabledFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderDefinitionFilter()}
+            {renderEnabledFilter()}
+          </>
+        )}
+        filterTitle="订阅筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable<WorkflowEventSubscription>
         bordered

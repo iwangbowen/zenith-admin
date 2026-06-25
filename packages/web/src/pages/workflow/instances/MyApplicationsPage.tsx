@@ -805,36 +805,90 @@ export default function MyApplicationsPage() {
     </Space>
   );
 
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={searchParams.status || undefined}
+      onChange={v => setSearchParams({ status: typeof v === 'string' ? v : '' })}
+      showClear
+      style={{ width: 140 }}
+    >
+      {Object.entries(INSTANCE_STATUS_MAP).map(([k, s]) => (
+        <Select.Option key={k} value={k}>{s.text}</Select.Option>
+      ))}
+    </Select>
+  );
+
+  const renderPriorityFilter = () => (
+    <Select
+      placeholder="全部优先级"
+      value={priorityFilter || undefined}
+      onChange={v => setPriorityFilter(typeof v === 'string' ? v : '')}
+      showClear
+      style={{ width: 130 }}
+      optionList={WORKFLOW_PRIORITY_OPTIONS}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={() => { handleSearch(); }}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { handleReset(); }}>重置</Button>
+  );
+
+  const renderBatchWithdrawButton = () => (
+    <Button type="tertiary" icon={<Undo2 size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchWithdraw}>批量撤回</Button>
+  );
+
+  const renderBatchUrgeButton = () => (
+    <Button type="primary" icon={<Megaphone size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchUrge}>批量催办</Button>
+  );
+
+  const renderCreateButton = () => (
+    <Button type="primary" icon={<Plus size={14} />} onClick={() => { void openApply(); }}>
+      发起申请
+    </Button>
+  );
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-          <Select
-            placeholder="全部状态"
-            value={searchParams.status || undefined}
-            onChange={v => setSearchParams({ status: typeof v === 'string' ? v : '' })}
-            showClear
-            style={{ width: 140 }}
-          >
-            {Object.entries(INSTANCE_STATUS_MAP).map(([k, s]) => (
-              <Select.Option key={k} value={k}>{s.text}</Select.Option>
-            ))}
-          </Select>
-          <Select
-            placeholder="全部优先级"
-            value={priorityFilter || undefined}
-            onChange={v => setPriorityFilter(typeof v === 'string' ? v : '')}
-            showClear
-            style={{ width: 130 }}
-            optionList={WORKFLOW_PRIORITY_OPTIONS}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={() => { handleSearch(); }}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { handleReset(); }}>重置</Button>
-          <Button type="tertiary" icon={<Undo2 size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchWithdraw}>批量撤回</Button>
-          <Button type="primary" icon={<Megaphone size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchUrge}>批量催办</Button>
-          <Button type="primary" icon={<Plus size={14} />} onClick={() => { void openApply(); }}>
-            发起申请
-          </Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderStatusFilter()}
+            {renderPriorityFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderBatchWithdrawButton()}
+            {renderBatchUrgeButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderStatusFilter()}
+            {renderPriorityFilter()}
+          </>
+        )}
+        mobileActions={(
+          <>
+            {renderResetButton()}
+            {renderBatchWithdrawButton()}
+            {renderBatchUrgeButton()}
+          </>
+        )}
+        filterTitle="我的申请筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
       <ConfigurableTable
         bordered
         columns={columns}

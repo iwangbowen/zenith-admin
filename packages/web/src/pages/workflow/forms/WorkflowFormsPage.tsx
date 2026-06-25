@@ -213,46 +213,88 @@ export default function WorkflowFormsPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索表单名称/标识"
+      value={searchParams.keyword}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      onEnterPress={handleSearch}
+      showClear
+      style={{ width: 220 }}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="状态"
+      value={searchParams.status}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: toStatus(value) }))}
+      optionList={STATUS_OPTIONS}
+      showClear
+      style={{ width: 120 }}
+    />
+  );
+
+  const renderCategoryFilter = () => (
+    <Select
+      placeholder="分类"
+      value={searchParams.categoryId === null ? '' : String(searchParams.categoryId)}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, categoryId: toCategoryId(value) }))}
+      optionList={categoryOptions}
+      showClear
+      style={{ width: 160 }}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
+  const renderCreateButton = () => hasPermission('workflow:form:create') ? (
+    <Button
+      type="primary"
+      icon={<Plus size={14} />}
+      onClick={() => navigate('/workflow/forms/designer')}
+    >
+      新建表单
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索表单名称/标识"
-          value={searchParams.keyword}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-          onEnterPress={handleSearch}
-          showClear
-          style={{ width: 220 }}
-        />
-        <Select
-          placeholder="状态"
-          value={searchParams.status}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, status: toStatus(value) }))}
-          optionList={STATUS_OPTIONS}
-          showClear
-          style={{ width: 120 }}
-        />
-        <Select
-          placeholder="分类"
-          value={searchParams.categoryId === null ? '' : String(searchParams.categoryId)}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, categoryId: toCategoryId(value) }))}
-          optionList={categoryOptions}
-          showClear
-          style={{ width: 160 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {hasPermission('workflow:form:create') && (
-          <Button
-            type="primary"
-            icon={<Plus size={14} />}
-            onClick={() => navigate('/workflow/forms/designer')}
-          >
-            新建表单
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderCategoryFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderCreateButton()}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderStatusFilter()}
+            {renderCategoryFilter()}
+          </>
+        )}
+        filterTitle="表单筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable<WorkflowForm>
         bordered

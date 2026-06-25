@@ -224,32 +224,65 @@ export default function WorkflowDataSourcesPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索名称 / 地址..."
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      showClear
+      style={{ width: 220 }}
+      onEnterPress={handleSearch}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={searchParams.status || undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 120 }}
+      optionList={STATUS_OPTIONS}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
+  const renderCreateButton = () => hasPermission('workflow:datasource:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索名称 / 地址..."
-          value={searchParams.keyword}
-          onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
-          showClear
-          style={{ width: 220 }}
-          onEnterPress={handleSearch}
-        />
-        <Select
-          placeholder="全部状态"
-          value={searchParams.status || undefined}
-          onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
-          showClear
-          style={{ width: 120 }}
-          optionList={STATUS_OPTIONS}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {hasPermission('workflow:datasource:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderCreateButton()}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={renderStatusFilter()}
+        filterTitle="数据源筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

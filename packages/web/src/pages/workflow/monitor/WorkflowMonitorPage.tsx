@@ -456,6 +456,80 @@ export default function WorkflowMonitorPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索申请标题 / 流程名称"
+      showClear
+      value={searchParams.keyword}
+      onChange={v => setSearchParams(prev => ({ ...prev, keyword: v }))}
+      onEnterPress={handleSearch}
+      style={{ width: 240 }}
+    />
+  );
+
+  const renderCategoryFilter = () => (
+    <Select
+      placeholder="所有分类"
+      showClear
+      value={searchParams.categoryId === '' ? undefined : searchParams.categoryId}
+      onChange={v => setSearchParams(prev => ({ ...prev, categoryId: (v as number) ?? '' }))}
+      style={{ width: 140 }}
+      optionList={categories.map((c: WorkflowCategory) => ({ label: c.name, value: c.id }))}
+    />
+  );
+
+  const renderInitiatorFilter = () => (
+    <Input
+      placeholder="申请人"
+      showClear
+      value={searchParams.initiator}
+      onChange={v => setSearchParams(prev => ({ ...prev, initiator: v }))}
+      onEnterPress={handleSearch}
+      style={{ width: 120 }}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="所有状态"
+      showClear
+      value={searchParams.status || undefined}
+      onChange={v => setSearchParams(prev => ({ ...prev, status: (v as string) ?? '' }))}
+      style={{ width: 140 }}
+      optionList={[
+        { label: '审批中', value: 'running' },
+        { label: '已通过', value: 'approved' },
+        { label: '已驳回', value: 'rejected' },
+        { label: '已撤回', value: 'withdrawn' },
+        { label: '已取消', value: 'cancelled' },
+      ]}
+    />
+  );
+
+  const renderPriorityFilter = () => (
+    <Select
+      placeholder="所有优先级"
+      showClear
+      value={searchParams.priority || undefined}
+      onChange={v => setSearchParams(prev => ({ ...prev, priority: (v as string) ?? '' }))}
+      style={{ width: 130 }}
+      optionList={WORKFLOW_PRIORITY_OPTIONS}
+    />
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
+  const renderExportButton = () => (
+    <Button type="primary" icon={<Download size={14} />} loading={exporting} onClick={() => void handleExport()}>导出</Button>
+  );
+
   return (
     <div className="page-container">
       <Tabs type="line">
@@ -481,58 +555,43 @@ export default function WorkflowMonitorPage() {
           void fetchList(1, pageSize, next);
         }}
       />
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索申请标题 / 流程名称"
-            showClear
-            value={searchParams.keyword}
-            onChange={v => setSearchParams(prev => ({ ...prev, keyword: v }))}
-            onEnterPress={handleSearch}
-            style={{ width: 240 }}
-          />
-          <Select
-            placeholder="所有分类"
-            showClear
-            value={searchParams.categoryId === '' ? undefined : searchParams.categoryId}
-            onChange={v => setSearchParams(prev => ({ ...prev, categoryId: (v as number) ?? '' }))}
-            style={{ width: 140 }}
-            optionList={categories.map((c: WorkflowCategory) => ({ label: c.name, value: c.id }))}
-          />
-          <Input
-            placeholder="申请人"
-            showClear
-            value={searchParams.initiator}
-            onChange={v => setSearchParams(prev => ({ ...prev, initiator: v }))}
-            onEnterPress={handleSearch}
-            style={{ width: 120 }}
-          />
-          <Select
-            placeholder="所有状态"
-            showClear
-            value={searchParams.status || undefined}
-            onChange={v => setSearchParams(prev => ({ ...prev, status: (v as string) ?? '' }))}
-            style={{ width: 140 }}
-            optionList={[
-              { label: '审批中', value: 'running' },
-              { label: '已通过', value: 'approved' },
-              { label: '已驳回', value: 'rejected' },
-              { label: '已撤回', value: 'withdrawn' },
-              { label: '已取消', value: 'cancelled' },
-            ]}
-          />
-          <Select
-            placeholder="所有优先级"
-            showClear
-            value={searchParams.priority || undefined}
-            onChange={v => setSearchParams(prev => ({ ...prev, priority: (v as string) ?? '' }))}
-            style={{ width: 130 }}
-            optionList={WORKFLOW_PRIORITY_OPTIONS}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <Button type="primary" icon={<Download size={14} />} loading={exporting} onClick={() => void handleExport()}>导出</Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderCategoryFilter()}
+            {renderInitiatorFilter()}
+            {renderStatusFilter()}
+            {renderPriorityFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderExportButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderCategoryFilter()}
+            {renderInitiatorFilter()}
+            {renderStatusFilter()}
+            {renderPriorityFilter()}
+          </>
+        )}
+        mobileActions={(
+          <>
+            {renderResetButton()}
+            {renderExportButton()}
+          </>
+        )}
+        filterTitle="实例监控筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered
