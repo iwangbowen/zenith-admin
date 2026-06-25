@@ -832,6 +832,164 @@ export default function AnalyticsDataPage() {
     );
   };
 
+  const renderEventTypeFilter = () => (
+    <Select
+      placeholder="事件类型"
+      value={eventSearch.eventType || undefined}
+      onChange={(value) => setEventSearch((prev) => ({ ...prev, eventType: (value as string) ?? '' }))}
+      optionList={EVENT_TYPE_OPTIONS}
+      showClear
+      style={{ width: 150 }}
+    />
+  );
+  const renderEventNameSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="事件名"
+      value={eventSearch.eventName}
+      onChange={(value) => setEventSearch((prev) => ({ ...prev, eventName: value }))}
+      onEnterPress={handleEventSearch}
+      showClear
+      style={{ width: 160 }}
+    />
+  );
+  const renderEventUsernameSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="用户名"
+      value={eventSearch.username}
+      onChange={(value) => setEventSearch((prev) => ({ ...prev, username: value }))}
+      onEnterPress={handleEventSearch}
+      showClear
+      style={{ width: 140 }}
+    />
+  );
+  const renderEventPagePathSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="页面路径"
+      value={eventSearch.pagePath}
+      onChange={(value) => setEventSearch((prev) => ({ ...prev, pagePath: value }))}
+      onEnterPress={handleEventSearch}
+      showClear
+      style={{ width: 180 }}
+    />
+  );
+  const renderEventDeviceFilter = () => (
+    <Select
+      placeholder="设备"
+      value={eventSearch.deviceType || undefined}
+      onChange={(value) => setEventSearch((prev) => ({ ...prev, deviceType: (value as string) ?? '' }))}
+      optionList={DEVICE_OPTIONS}
+      showClear
+      style={{ width: 130 }}
+    />
+  );
+  const renderEventTimeRangeFilter = () => (
+    <DatePicker
+      type="dateTimeRange"
+      placeholder={['开始时间', '结束时间']}
+      value={eventSearch.timeRange ?? undefined}
+      onChange={handleEventRangeChange}
+      style={{ width: 330 }}
+    />
+  );
+  const renderEventSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleEventSearch}>查询</Button>;
+  const renderEventResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleEventReset}>重置</Button>;
+  const renderEventExportButtons = () => (
+    <SplitButtonGroup>
+      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出</Button>
+      <Dropdown trigger="click" position="bottomRight" clickToHide render={(
+        <Dropdown.Menu>
+          <Dropdown.Item onClick={() => void handleExport()}>导出 Excel</Dropdown.Item>
+          <Dropdown.Item onClick={() => void handleExportCsv()}>导出 CSV</Dropdown.Item>
+        </Dropdown.Menu>
+      )}>
+        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+  const renderEventCleanButtons = () => (
+    <SplitButtonGroup>
+      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanLoading} onClick={() => handleClean(90)}>清除数据</Button>
+      <Dropdown trigger="click" position="bottomRight" clickToHide render={(
+        <Dropdown.Menu>
+          {CLEAN_DAY_OPTIONS.map((item) => (
+            <Dropdown.Item
+              key={item.value}
+              type={item.value === 0 ? 'danger' : 'primary'}
+              onClick={() => handleClean(item.value)}
+            >
+              清除{item.label === '全部' ? '全部数据' : `${item.label}前数据`}
+            </Dropdown.Item>
+          ))}
+        </Dropdown.Menu>
+      )}>
+        <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+  const renderMobileEventActions = () => (
+    <>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出 Excel</Button>
+      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={() => void handleExportCsv()}>导出 CSV</Button>
+      {CLEAN_DAY_OPTIONS.map((item) => (
+        <Button
+          key={item.value}
+          type={item.value === 0 ? 'danger' : 'tertiary'}
+          theme="light"
+          icon={<Trash2 size={14} />}
+          loading={cleanLoading}
+          onClick={() => handleClean(item.value)}
+        >
+          清除{item.label === '全部' ? '全部数据' : `${item.label}前数据`}
+        </Button>
+      ))}
+    </>
+  );
+
+  const renderMetaKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="关键词"
+      value={metaSearch.keyword}
+      onChange={(value) => setMetaSearch((prev) => ({ ...prev, keyword: value }))}
+      onEnterPress={handleMetaSearch}
+      showClear
+      style={{ width: 180 }}
+    />
+  );
+  const renderMetaCategorySearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="分类"
+      value={metaSearch.category}
+      onChange={(value) => setMetaSearch((prev) => ({ ...prev, category: value }))}
+      onEnterPress={handleMetaSearch}
+      showClear
+      style={{ width: 140 }}
+    />
+  );
+  const renderMetaStatusFilter = () => (
+    <Select
+      placeholder="状态"
+      value={metaSearch.status || undefined}
+      onChange={(value) => setMetaSearch((prev) => ({ ...prev, status: (value as AnalyticsEventMeta['status']) ?? '' }))}
+      optionList={META_STATUS_OPTIONS}
+      showClear
+      style={{ width: 130 }}
+    />
+  );
+  const renderMetaSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleMetaSearch}>查询</Button>;
+  const renderMetaResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleMetaReset}>重置</Button>;
+  const renderMetaCreateButton = () => <Button type="primary" icon={<Plus size={14} />} onClick={openCreateMeta}>新增</Button>;
+  const renderRollupDaysFilter = () => (
+    <Select value={rollupDays} onChange={handleRollupDaysChange} optionList={ROLLUP_DAY_OPTIONS} style={{ width: 130 }} />
+  );
+  const renderRebuildRollupButton = () => (
+    <Button type="primary" loading={rollupRebuilding} onClick={() => void handleRebuildRollup()}>重建聚合</Button>
+  );
+
   return (
     <div className="page-container">
       <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>

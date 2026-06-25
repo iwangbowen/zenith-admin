@@ -551,22 +551,50 @@ function SessionsTab() {
     { title: '开始时间', dataIndex: 'startedAt', width: 180, render: (_value, record) => formatDateTime(record.startedAt), fixed: 'right' },
   ];
 
+  const renderUsernameSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="用户名"
+      value={usernameInput}
+      showClear
+      onChange={setUsernameInput}
+      onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+      style={{ width: 200 }}
+    />
+  );
+  const renderDeviceFilter = () => (
+    <Select
+      value={deviceInput}
+      optionList={DEVICE_OPTIONS}
+      onChange={(v) => setDeviceInput(String(v ?? '') as DeviceFilter)}
+      style={{ width: 150 }}
+    />
+  );
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+
   return (
     <div style={sectionStyle}>
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="用户名"
-          value={usernameInput}
-          showClear
-          onChange={setUsernameInput}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-          style={{ width: 200 }}
-        />
-        <Select value={deviceInput} optionList={DEVICE_OPTIONS} onChange={(v) => setDeviceInput(String(v ?? '') as DeviceFilter)} style={{ width: 150 }} />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderUsernameSearch()}
+            {renderDeviceFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderUsernameSearch()}
+            {renderSearchButton()}
+          </>
+        )}
+        mobileFilters={renderDeviceFilter()}
+        filterTitle="会话筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
       <ConfigurableTable<SessionListItem>
         bordered
         columns={columns}
