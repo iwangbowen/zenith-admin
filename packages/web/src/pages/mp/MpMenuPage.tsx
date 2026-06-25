@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Button, Input, Select, Space, Spin, Tag, Toast, Modal, Banner, Empty } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Spin, Tag, Toast, Modal, Banner, Empty } from '@douyinfe/semi-ui';
 import { RefreshCw, Save, Send, Trash2, Plus } from 'lucide-react';
 import type { MpMenu, MpMenuButton } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
+import { SearchToolbar } from '@/components/SearchToolbar';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 
@@ -210,30 +211,60 @@ export default function MpMenuPage() {
   const actionBusy = busy === 'save' || busy === 'publish';
   const canEditMenu = can('mp:menu:save') || can('mp:menu:publish');
 
+  const renderAccountFilter = () => (
+    <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
+  );
+  const renderStatusTag = () => menu ? (menu.status === 'published'
+    ? <Tag color="green" type="light">已发布{menu.publishedAt ? ` · ${menu.publishedAt.slice(5, 16)}` : ''}</Tag>
+    : <Tag color="grey" type="light">草稿</Tag>) : null;
+  const renderPullButton = () => can('mp:menu:pull') ? (
+    <Button icon={<RefreshCw size={14} />} loading={busy === 'pull'} disabled={!currentId} onClick={() => void doPull()}>从微信拉取</Button>
+  ) : null;
+  const renderSaveButton = () => can('mp:menu:save') ? (
+    <Button icon={<Save size={14} />} loading={busy === 'save'} disabled={!currentId} onClick={() => void doSave()}>保存草稿</Button>
+  ) : null;
+  const renderPublishButton = () => can('mp:menu:publish') ? (
+    <Button type="primary" icon={<Send size={14} />} loading={busy === 'publish'} disabled={!currentId} onClick={() => void doPublish()}>发布到微信</Button>
+  ) : null;
+  const renderDeleteButton = () => can('mp:menu:delete') ? (
+    <Button type="danger" icon={<Trash2 size={14} />} loading={busy === 'delete'} disabled={!currentId} onClick={doDelete}>删除微信菜单</Button>
+  ) : null;
+  const renderMobilePrimaryAction = () => renderPublishButton() ?? renderSaveButton();
+  const renderMobileActions = () => {
+    const pullButton = renderPullButton();
+    const saveButton = can('mp:menu:publish') ? renderSaveButton() : null;
+    const deleteButton = renderDeleteButton();
+    return pullButton || saveButton || deleteButton ? <>{pullButton}{saveButton}{deleteButton}</> : null;
+  };
+
   return (
     <div className="page-container">
       {!accountsLoading && accounts.length === 0 && (
         <Banner type="warning" fullMode={false} description="尚未配置公众号，请先在「公众号账号」中添加公众号。" style={{ marginBottom: 12 }} />
       )}
 
-      <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-        <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
-        {menu && (menu.status === 'published'
-          ? <Tag color="green" type="light">已发布{menu.publishedAt ? ` · ${menu.publishedAt.slice(5, 16)}` : ''}</Tag>
-          : <Tag color="grey" type="light">草稿</Tag>)}
-        {can('mp:menu:pull') && (
-          <Button icon={<RefreshCw size={14} />} loading={busy === 'pull'} disabled={!currentId} onClick={() => void doPull()}>从微信拉取</Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderAccountFilter()}
+            {renderStatusTag()}
+            {renderPullButton()}
+            {renderSaveButton()}
+            {renderPublishButton()}
+            {renderDeleteButton()}
+          </>
         )}
-        {can('mp:menu:save') && (
-          <Button icon={<Save size={14} />} loading={busy === 'save'} disabled={!currentId} onClick={() => void doSave()}>保存草稿</Button>
+        mobilePrimary={(
+          <>
+            {renderStatusTag()}
+            {renderMobilePrimaryAction()}
+          </>
         )}
-        {can('mp:menu:publish') && (
-          <Button type="primary" icon={<Send size={14} />} loading={busy === 'publish'} disabled={!currentId} onClick={() => void doPublish()}>发布到微信</Button>
-        )}
-        {can('mp:menu:delete') && (
-          <Button type="danger" icon={<Trash2 size={14} />} loading={busy === 'delete'} disabled={!currentId} onClick={doDelete}>删除微信菜单</Button>
-        )}
-      </Space>
+        mobileFilters={renderAccountFilter()}
+        mobileActions={renderMobileActions()}
+        filterTitle="自定义菜单筛选"
+        actionTitle="自定义菜单操作"
+      />
 
       <Spin spinning={loading}>
         <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flexWrap: 'wrap' }}>
