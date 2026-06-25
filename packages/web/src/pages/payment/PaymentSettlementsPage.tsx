@@ -166,13 +166,13 @@ export default function PaymentSettlementsPage() {
         )}
         mobilePrimary={(
           <>
+            {renderChannelFilter()}
             {renderSearchButton()}
             {renderGenerateButton()}
           </>
         )}
         mobileFilters={(
           <>
-            {renderChannelFilter()}
             {renderStatusFilter()}
           </>
         )}

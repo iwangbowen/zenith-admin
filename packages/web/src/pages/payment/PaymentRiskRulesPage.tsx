@@ -206,13 +206,13 @@ export default function PaymentRiskRulesPage() {
         )}
         mobilePrimary={(
           <>
+            {renderScopeFilter()}
             {renderSearchButton()}
             {renderCreateButton()}
           </>
         )}
         mobileFilters={(
           <>
-            {renderScopeFilter()}
             {renderStatusFilter()}
           </>
         )}
