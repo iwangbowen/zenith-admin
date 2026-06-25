@@ -361,40 +361,81 @@ export default function MenusPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="菜单名称"
+      showClear
+      value={pendingKeyword}
+      onChange={(val) => setPendingKeyword(val)}
+      onEnterPress={handleSearch}
+      style={{ width: 200, maxWidth: '100%' }}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="状态"
+      showClear
+      value={pendingStatus || undefined}
+      onChange={(val) => setPendingStatus((val as string) ?? '')}
+      style={{ width: 120, maxWidth: '100%' }}
+    >
+      {statusItems.map((i) => (
+        <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
+      ))}
+    </Select>
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
+  const renderExpandButton = () => (
+    <Button
+      type="primary"
+      icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+      onClick={toggleExpandAll}
+    >
+      {isAllExpanded ? '全部折叠' : '全部展开'}
+    </Button>
+  );
+
+  const renderCreateButton = () => hasPermission('system:menu:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="菜单名称"
-            showClear
-            value={pendingKeyword}
-            onChange={(val) => setPendingKeyword(val)}
-            onEnterPress={handleSearch}
-            style={{ width: 200 }}
-          />
-          <Select
-            placeholder="状态"
-            showClear
-            value={pendingStatus || undefined}
-            onChange={(val) => setPendingStatus((val as string) ?? '')}
-            style={{ width: 120 }}
-          >
-            {statusItems.map((i) => (
-              <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
-            ))}
-          </Select>
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <Button
-            type="primary"
-            icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-            onClick={toggleExpandAll}
-          >
-            {isAllExpanded ? '全部折叠' : '全部展开'}
-          </Button>
-          {hasPermission('system:menu:create') && <Button type="primary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderExpandButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={renderStatusFilter()}
+        mobileActions={renderExpandButton()}
+        filterTitle="菜单筛选"
+        actionTitle="菜单操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered
