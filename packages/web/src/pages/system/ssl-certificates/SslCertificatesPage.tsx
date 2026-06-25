@@ -255,33 +255,70 @@ export default function SslCertificatesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索名称或域名"
-          value={searchParams.keyword}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-          onEnterPress={handleSearch}
-          showClear
-          style={{ width: 240 }}
-        />
-        <Select
-          placeholder="证书类型"
-          value={searchParams.type || undefined}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
-          optionList={[
-            { value: '', label: '全部类型' },
-            { value: 'self_signed', label: '自签名' },
-            { value: 'uploaded', label: '上传' },
-            { value: 'letsencrypt', label: 'Let\'s Encrypt' },
-          ]}
-          style={{ width: 160 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {canCreate && <Button type="primary" icon={<Lock size={14} />} onClick={() => setGenerateVisible(true)}>生成自签名证书</Button>}
-        {canCreate && <Button type="primary" icon={<Upload size={14} />} onClick={() => setUploadVisible(true)}>上传证书</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索名称或域名"
+              value={searchParams.keyword}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 240 }}
+            />
+            <Select
+              placeholder="证书类型"
+              value={searchParams.type || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
+              optionList={[
+                { value: '', label: '全部类型' },
+                { value: 'self_signed', label: '自签名' },
+                { value: 'uploaded', label: '上传' },
+                { value: 'letsencrypt', label: 'Let\'s Encrypt' },
+              ]}
+              style={{ width: 160 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {canCreate && <Button type="primary" icon={<Lock size={14} />} onClick={() => setGenerateVisible(true)}>生成自签名证书</Button>}
+            {canCreate && <Button type="primary" icon={<Upload size={14} />} onClick={() => setUploadVisible(true)}>上传证书</Button>}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索名称或域名"
+              value={searchParams.keyword}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 240 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {canCreate && <Button type="primary" icon={<Lock size={14} />} onClick={() => setGenerateVisible(true)}>生成</Button>}
+            {canCreate && <Button type="primary" icon={<Upload size={14} />} onClick={() => setUploadVisible(true)}>上传</Button>}
+          </>
+        )}
+        mobileFilters={(
+          <Select
+            placeholder="证书类型"
+            value={searchParams.type || undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, type: (value as string) ?? '' }))}
+            optionList={[
+              { value: '', label: '全部类型' },
+              { value: 'self_signed', label: '自签名' },
+              { value: 'uploaded', label: '上传' },
+              { value: 'letsencrypt', label: 'Let\'s Encrypt' },
+            ]}
+            style={{ width: 160 }}
+          />
+        )}
+        filterTitle="证书筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

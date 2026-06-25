@@ -178,23 +178,51 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
         />
       )}
 
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索用户姓名"
-          value={keyword}
-          onChange={setKeyword}
-          onEnterPress={handleSearch}
-          showClear
-          style={{ width: 200 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {canManage && !isSystem && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openAdd}>添加订阅者</Button>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索用户姓名"
+              value={keyword}
+              onChange={setKeyword}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {canManage && !isSystem && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openAdd}>添加订阅者</Button>
+            )}
+          </>
         )}
-        <Button icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出</Button>
-      </SearchToolbar>
+        actions={<Button icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出</Button>}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索用户姓名"
+              value={keyword}
+              onChange={setKeyword}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {canManage && !isSystem && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openAdd}>添加订阅者</Button>
+            )}
+          </>
+        )}
+        mobileActions={(
+          <>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出</Button>
+          </>
+        )}
+        actionTitle="订阅者操作"
+      />
 
       <ConfigurableTable
         bordered

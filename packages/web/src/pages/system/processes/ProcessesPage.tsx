@@ -405,91 +405,145 @@ export default function ProcessesPage() {
     <div className="page-container">
       <style>{processesTableStyle}</style>
       {/* 搜索与操作栏 */}
-      <SearchToolbar>
-        {/* 搜索框 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6,
-          border: '1px solid var(--semi-color-border)', borderRadius: 6,
-          padding: '0 8px', background: 'var(--semi-color-bg-1)', width: 240 }}>
-          <Search size={14} style={{ color: '#8c8c8c', flexShrink: 0 }} />
-          <input
-            style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1,
-              fontSize: 14, color: 'inherit', padding: '5px 0' }}
-            placeholder="搜索进程名、用户、PID..."
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          {keyword && (
-            <button
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-                color: '#8c8c8c', display: 'flex', alignItems: 'center', padding: 0 }}
-              onClick={() => setKeyword('')}
+      <SearchToolbar
+        primary={(
+          <>
+            {/* 搜索框 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6,
+              border: '1px solid var(--semi-color-border)', borderRadius: 6,
+              padding: '0 8px', background: 'var(--semi-color-bg-1)', width: 240 }}>
+              <Search size={14} style={{ color: '#8c8c8c', flexShrink: 0 }} />
+              <input
+                style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1,
+                  fontSize: 14, color: 'inherit', padding: '5px 0' }}
+                placeholder="搜索进程名、用户、PID..."
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+              {keyword && (
+                <button
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer',
+                    color: '#8c8c8c', display: 'flex', alignItems: 'center', padding: 0 }}
+                  onClick={() => setKeyword('')}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            {/* 状态筛选 */}
+            <Select
+              placeholder="全部状态"
+              value={filterStatus || undefined}
+              onChange={(v) => setFilterStatus((v as string) ?? '')}
+              showClear
+              style={{ width: 120 }}
+              optionList={Object.entries(STATUS_META).map(([k, v]) => ({ value: k, label: v.label }))}
+            />
+            {/* 手动刷新 */}
+            <Button
+              type="tertiary"
+              icon={<RefreshCw size={14} />}
+              onClick={() => { sseAbortRef.current?.abort(); connectSse(); }}
+              loading={sseStatus === 'connecting'}
             >
-              <X size={12} />
-            </button>
-          )}
-        </div>
-        {/* 状态筛选 */}
-        <Select
-          placeholder="全部状态"
-          value={filterStatus || undefined}
-          onChange={(v) => setFilterStatus((v as string) ?? '')}
-          showClear
-          style={{ width: 120 }}
-          optionList={Object.entries(STATUS_META).map(([k, v]) => ({ value: k, label: v.label }))}
-        />
-        {/* 手动刷新 */}
-        <Button
-          type="tertiary"
-          icon={<RefreshCw size={14} />}
-          onClick={() => { sseAbortRef.current?.abort(); connectSse(); }}
-          loading={sseStatus === 'connecting'}
-        >
-          刷新
-        </Button>
-        {/* 导出 */}
-        <SplitButtonGroup>
-          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>
-            导出
-          </Button>
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            clickToHide
-            render={(
-              <Dropdown.Menu>
-                <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-                <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-              </Dropdown.Menu>
+              刷新
+            </Button>
+            {/* SSE 状态指示 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: sseIndicator.color,
+                boxShadow: sseStatus === 'open' ? `0 0 0 2px ${sseIndicator.color}40` : undefined,
+              }} />
+              <Typography.Text type="tertiary" size="small">{sseIndicator.text}</Typography.Text>
+              {lastUpdated && (
+                <Typography.Text type="tertiary" size="small">
+                  · {lastUpdated.toLocaleTimeString()}
+                </Typography.Text>
+              )}
+            </div>
+            {/* 平台信息 */}
+            {platform && (
+              <Tag size="small" color="cyan" style={{ marginLeft: 4 }}>
+              {(() => {
+                if (platform === 'win32') return 'Windows';
+                if (platform === 'darwin') return 'macOS';
+                return platform;
+              })()}
+              </Tag>
             )}
-          >
-            <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-          </Dropdown>
-        </SplitButtonGroup>
-        {/* SSE 状态指示 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-          <span style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: sseIndicator.color,
-            boxShadow: sseStatus === 'open' ? `0 0 0 2px ${sseIndicator.color}40` : undefined,
-          }} />
-          <Typography.Text type="tertiary" size="small">{sseIndicator.text}</Typography.Text>
-          {lastUpdated && (
-            <Typography.Text type="tertiary" size="small">
-              · {lastUpdated.toLocaleTimeString()}
-            </Typography.Text>
-          )}
-        </div>
-        {/* 平台信息 */}
-        {platform && (
-          <Tag size="small" color="cyan" style={{ marginLeft: 4 }}>
-          {(() => {
-            if (platform === 'win32') return 'Windows';
-            if (platform === 'darwin') return 'macOS';
-            return platform;
-          })()}
-          </Tag>
+          </>
         )}
-      </SearchToolbar>
+        actions={(
+          <SplitButtonGroup>
+            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>
+              导出
+            </Button>
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              clickToHide
+              render={(
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
+                  <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+            </Dropdown>
+          </SplitButtonGroup>
+        )}
+        mobilePrimary={(
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6,
+            border: '1px solid var(--semi-color-border)', borderRadius: 6,
+            padding: '0 8px', background: 'var(--semi-color-bg-1)', width: 240 }}>
+            <Search size={14} style={{ color: '#8c8c8c', flexShrink: 0 }} />
+            <input
+              style={{ border: 'none', outline: 'none', background: 'transparent', flex: 1,
+                fontSize: 14, color: 'inherit', padding: '5px 0' }}
+              placeholder="搜索进程名、用户、PID..."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            {keyword && (
+              <button
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer',
+                  color: '#8c8c8c', display: 'flex', alignItems: 'center', padding: 0 }}
+                onClick={() => setKeyword('')}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        )}
+        mobileFilters={(
+          <Select
+            placeholder="全部状态"
+            value={filterStatus || undefined}
+            onChange={(v) => setFilterStatus((v as string) ?? '')}
+            showClear
+            style={{ width: 120 }}
+            optionList={Object.entries(STATUS_META).map(([k, v]) => ({ value: k, label: v.label }))}
+          />
+        )}
+        mobileActions={(
+          <>
+            <Button
+              type="tertiary"
+              icon={<RefreshCw size={14} />}
+              onClick={() => { sseAbortRef.current?.abort(); connectSse(); }}
+              loading={sseStatus === 'connecting'}
+            >
+              刷新
+            </Button>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+          </>
+        )}
+        filterTitle="进程筛选"
+        actionTitle="进程操作"
+      />
 
       {/* 统计信息 */}
       <div style={{ display: 'flex', gap: 20, padding: '8px 0', fontSize: 13, color: 'var(--semi-color-text-2)' }}>

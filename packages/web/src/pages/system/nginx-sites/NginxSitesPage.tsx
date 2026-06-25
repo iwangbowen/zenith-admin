@@ -307,14 +307,37 @@ export default function NginxSitesPage() {
         </div>
       </div>
 
-      <SearchToolbar>
-        <Input prefix={<Search size={14} />} placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} showClear style={{ width: 260 }} />
-        <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchData()}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增站点</Button>}
-        {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testLoading} onClick={() => void handleTest()}>测试配置</Button>}
-        {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadLoading} onClick={() => void handleReload()}>重载 Nginx</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} showClear style={{ width: 260 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchData()}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增站点</Button>}
+          </>
+        )}
+        actions={(
+          <>
+            {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testLoading} onClick={() => void handleTest()}>测试配置</Button>}
+            {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadLoading} onClick={() => void handleReload()}>重载 Nginx</Button>}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} showClear style={{ width: 260 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchData()}>查询</Button>
+            {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增站点</Button>}
+          </>
+        )}
+        mobileActions={(
+          <>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testLoading} onClick={() => void handleTest()}>测试配置</Button>}
+            {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadLoading} onClick={() => void handleReload()}>重载 Nginx</Button>}
+          </>
+        )}
+        actionTitle="Nginx 操作"
+      />
 
       <ConfigurableTable
         bordered
