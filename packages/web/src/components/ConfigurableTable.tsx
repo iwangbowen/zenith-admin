@@ -64,7 +64,7 @@ interface ConfigurableTableProps<RecordType extends TableRecord = TableRecord> e
   refreshLoading?: boolean;
 }
 
-const DEFAULT_ALWAYS_VISIBLE_KEYS = ['action', 'actions', 'operation', 'operations', 'operate'];
+const DEFAULT_ALWAYS_VISIBLE_KEYS: string[] = [];
 const MOBILE_ACTION_COLUMN_WIDTH = 64;
 const STRIPED_ROW_CLASS_NAME = 'configurable-table-row--striped';
 
