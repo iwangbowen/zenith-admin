@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Form, Input, Popconfirm, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Input, Modal, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Copy, Plus, RotateCcw, Search } from 'lucide-react';
@@ -7,6 +7,7 @@ import type { ChatConversation, ChatWebhook, PaginatedResponse } from '@zenith/s
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -288,29 +289,41 @@ export default function ChatBotsPage() {
       fixed: 'right',
       render: (enabled: boolean) => enabled ? <Tag color="green">启用</Tag> : <Tag color="grey">停用</Tag>,
     },
-    {
-      title: '操作',
-      key: 'operation',
-      fixed: 'right',
+    createOperationColumn<ChatWebhook>({
       width: 220,
-      render: (_: unknown, row: ChatWebhook) => (
-        <Space>
-          {hasPermission('chat:bot:update') && (
-            <Button theme="borderless" size="small" onClick={() => openEditModal(row)}>编辑</Button>
-          )}
-          {hasPermission('chat:bot:update') && (
-            <Popconfirm title="重置后旧地址立即失效，确认重置？" onConfirm={() => void handleRegenerate(row)}>
-              <Button theme="borderless" size="small">重置令牌</Button>
-            </Popconfirm>
-          )}
-          {hasPermission('chat:bot:delete') && (
-            <Popconfirm title="确定删除该机器人？" onConfirm={() => void handleDelete(row.id)}>
-              <Button theme="borderless" type="danger" size="small">删除</Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
+      actions: (row) => [
+        {
+          key: 'edit',
+          label: '编辑',
+          hidden: !hasPermission('chat:bot:update'),
+          onClick: () => openEditModal(row),
+        },
+        {
+          key: 'regenerate',
+          label: '重置令牌',
+          hidden: !hasPermission('chat:bot:update'),
+          onClick: () => {
+            Modal.confirm({
+              title: '重置后旧地址立即失效，确认重置？',
+              onOk: () => { void handleRegenerate(row); },
+            });
+          },
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !hasPermission('chat:bot:delete'),
+          onClick: () => {
+            Modal.confirm({
+              title: '确定删除该机器人？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleDelete(row.id); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (

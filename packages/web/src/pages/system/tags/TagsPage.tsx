@@ -20,6 +20,7 @@ import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -331,31 +332,24 @@ export default function TagsPage() {
         />
       ),
     },
-    {
-      title: '操作',
-      key: 'actions',
+    createOperationColumn<Tag>({
       width: 130,
-      fixed: 'right' as const,
-      render: (_: unknown, record: Tag) => (
-        <Space>
-          {can('system:tag:update') && (
-            <Button theme="borderless" size="small" onClick={() => openEdit(record)}>
-              编辑
-            </Button>
-          )}
-          {can('system:tag:delete') && (
-            <Button
-              theme="borderless"
-              type="danger"
-              size="small"
-              onClick={() => handleDelete(record.id)}
-            >
-              删除
-            </Button>
-          )}
-        </Space>
-      ),
-    },
+      actions: (record) => [
+        {
+          key: 'edit',
+          label: '编辑',
+          hidden: !can('system:tag:update'),
+          onClick: () => openEdit(record),
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !can('system:tag:delete'),
+          onClick: () => handleDelete(record.id),
+        },
+      ],
+    }),
   ];
 
   const groupOptions = groups.map((g) => ({ label: g, value: g }));

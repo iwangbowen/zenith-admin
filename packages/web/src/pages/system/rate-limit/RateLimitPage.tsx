@@ -7,16 +7,16 @@ import {
   Space,
   Tag,
   Toast,
-  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Gauge, Lock, Plus, RotateCcw, ShieldOff, Unlock, Zap } from 'lucide-react';
+import { Gauge, Plus, RotateCcw, ShieldOff, Zap } from 'lucide-react';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import {
   CartesianGrid,
   Legend,
@@ -351,20 +351,18 @@ export default function RateLimitPage() {
           { title: '拦截时间', dataIndex: 'at', width: 180 },
           { title: '触发 Key', dataIndex: 'key', render: (v: string) => <Text copyable>{v}</Text> },
           { title: '请求路径', dataIndex: 'path', render: (v: string) => <Text code>{v || '-'}</Text> },
-          {
-            title: '操作',
-            dataIndex: '_op',
+          createOperationColumn<{ _rowId: string; rule: string; at: string; key: string; path: string }>({
             width: 120,
-            fixed: 'right',
-            render: (_: unknown, row: { rule: string; key: string }) =>
-              canManage ? (
-                <Tooltip content="清除该 key 在 Redis 中的限流计数窗口，立即放行">
-                  <Button theme="borderless" size="small" icon={<Unlock size={14} />} onClick={() => handleUnblock(row.rule, row.key)}>
-                    解封
-                  </Button>
-                </Tooltip>
-              ) : <Lock size={14} style={{ color: 'var(--semi-color-text-3)' }} />,
-          },
+            emptyContent: <span style={{ color: 'var(--semi-color-text-3)' }}>—</span>,
+            actions: (row) => [
+              {
+                key: 'unblock',
+                label: '解封',
+                hidden: !canManage,
+                onClick: () => handleUnblock(row.rule, row.key),
+              },
+            ],
+          }),
         ]}
       />
 
