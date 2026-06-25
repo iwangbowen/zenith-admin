@@ -375,11 +375,11 @@ export default function WorkflowEngineDiagnosticsView() {
             <Typography.Text strong>{data.healthy ? '引擎状态正常' : '引擎存在严重事项'}</Typography.Text>
             <Typography.Text type="tertiary" size="small">· {data.generatedAt} 生成 · 阈值 {data.thresholdMinutes} 分钟</Typography.Text>
           </div>
-          <Tag size="large" color={data.telemetry.healthScore >= 90 ? 'green' : data.telemetry.healthScore >= 70 ? 'orange' : 'red'}>健康分 {data.telemetry.healthScore}</Tag>
-          <Tag size="large" color={criticalCount > 0 ? 'red' : 'green'}>严重 {criticalCount}</Tag>
-          <Tag size="large" color={warningCount > 0 ? 'orange' : 'grey'}>警告 {warningCount}</Tag>
-          <Tag size="large" color="blue">运行实例 {data.runtime.runningInstances}</Tag>
-          <Tag size="large" color="purple">监听器 {data.eventBus.totalListenerCount}</Tag>
+          <Tag size="large" style={HEADER_TAG_STYLE} color={data.telemetry.healthScore >= 90 ? 'green' : data.telemetry.healthScore >= 70 ? 'orange' : 'red'}>健康分 {data.telemetry.healthScore}</Tag>
+          <Tag size="large" style={HEADER_TAG_STYLE} color={criticalCount > 0 ? 'red' : 'green'}>严重 {criticalCount}</Tag>
+          <Tag size="large" style={HEADER_TAG_STYLE} color={warningCount > 0 ? 'orange' : 'grey'}>警告 {warningCount}</Tag>
+          <Tag size="large" style={HEADER_TAG_STYLE} color="blue">运行实例 {data.runtime.runningInstances}</Tag>
+          <Tag size="large" style={HEADER_TAG_STYLE} color="purple">监听器 {data.eventBus.totalListenerCount}</Tag>
         </Space>
         <Space wrap align="center">
           <Select
