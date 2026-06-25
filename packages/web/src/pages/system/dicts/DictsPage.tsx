@@ -596,6 +596,64 @@ export default function DictsPage() {
     },
   ];
 
+  const renderItemKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="标签/键值"
+      showClear
+      value={pendingItemKeyword}
+      onChange={(v) => setPendingItemKeyword(v)}
+      onEnterPress={handleItemSearch}
+      style={{ width: 180, maxWidth: '100%' }}
+      disabled={!selectedDict}
+    />
+  );
+
+  const renderItemStatusFilter = () => (
+    <Select
+      placeholder="状态"
+      showClear
+      value={pendingItemStatus || undefined}
+      onChange={(val) => setPendingItemStatus((val as string) ?? '')}
+      style={{ width: 120, maxWidth: '100%' }}
+      disabled={!selectedDict}
+    >
+      {statusItems.map((i) => (
+        <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
+      ))}
+    </Select>
+  );
+
+  const renderItemSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleItemSearch} disabled={!selectedDict}>查询</Button>
+  );
+
+  const renderItemResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleItemReset} disabled={!selectedDict}>重置</Button>
+  );
+
+  const renderItemExpandButton = () => allItemIds.length > 0 ? (
+    <Button
+      type="primary"
+      icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+      onClick={toggleExpandAll}
+      disabled={!selectedDict}
+    >
+      {isAllExpanded ? '全部折叠' : '全部展开'}
+    </Button>
+  ) : null;
+
+  const renderItemCreateButton = () => hasPermission('system:dict:item') ? (
+    <Button
+      type="primary"
+      icon={<Plus size={14} />}
+      onClick={() => { setEditingItem(null); setItemParentId(null); setItemColor(null); setMetadataStr('{}'); setItemModalVisible(true); }}
+      disabled={!selectedDict}
+    >
+      新增
+    </Button>
+  ) : null;
+
   const dictDetail = (
     <>
       <MasterDetailLayout.Header>
@@ -619,52 +677,31 @@ export default function DictsPage() {
         )}
       </MasterDetailLayout.Header>
       <MasterDetailLayout.Body>
-        <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="标签/键值"
-            showClear
-            value={pendingItemKeyword}
-            onChange={(v) => setPendingItemKeyword(v)}
-            onEnterPress={handleItemSearch}
-            style={{ width: 180 }}
-            disabled={!selectedDict}
-          />
-          <Select
-            placeholder="状态"
-            showClear
-            value={pendingItemStatus || undefined}
-            onChange={(val) => setPendingItemStatus((val as string) ?? '')}
-            style={{ width: 120 }}
-            disabled={!selectedDict}
-          >
-            {statusItems.map((i) => (
-              <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
-            ))}
-          </Select>
-          <Button type="primary" icon={<Search size={14} />} onClick={handleItemSearch} disabled={!selectedDict}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleItemReset} disabled={!selectedDict}>重置</Button>
-          {allItemIds.length > 0 && (
-            <Button
-              type="primary"
-              icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-              onClick={toggleExpandAll}
-              disabled={!selectedDict}
-            >
-              {isAllExpanded ? '全部折叠' : '全部展开'}
-            </Button>
+        <SearchToolbar
+          primary={(
+            <>
+              {renderItemKeywordSearch()}
+              {renderItemStatusFilter()}
+              {renderItemSearchButton()}
+              {renderItemResetButton()}
+              {renderItemExpandButton()}
+              {renderItemCreateButton()}
+            </>
           )}
-          {hasPermission('system:dict:item') && (
-            <Button
-              type="primary"
-              icon={<Plus size={14} />}
-              onClick={() => { setEditingItem(null); setItemParentId(null); setItemColor(null); setMetadataStr('{}'); setItemModalVisible(true); }}
-              disabled={!selectedDict}
-            >
-              新增
-            </Button>
+          mobilePrimary={(
+            <>
+              {renderItemKeywordSearch()}
+              {renderItemSearchButton()}
+              {renderItemCreateButton()}
+            </>
           )}
-        </SearchToolbar>
+          mobileFilters={renderItemStatusFilter()}
+          mobileActions={renderItemExpandButton()}
+          filterTitle="字典项筛选"
+          actionTitle="字典项操作"
+          onFilterApply={handleItemSearch}
+          onFilterReset={handleItemReset}
+        />
         <ConfigurableTable
           bordered
           columns={itemColumns}

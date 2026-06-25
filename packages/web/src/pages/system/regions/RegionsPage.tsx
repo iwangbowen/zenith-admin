@@ -128,6 +128,24 @@ export default function RegionsPage() {
     void fetchRegions(defaultSearchParams);
   }
 
+  const handleExportExcel = async () => {
+    setExportLoading(true);
+    try {
+      await request.download('/api/regions/export', '地区列表.xlsx');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try {
+      await request.download('/api/regions/export/csv', '地区列表.csv');
+    } finally {
+      setExportCsvLoading(false);
+    }
+  };
+
   // 递归收集所有节点 ID
   const allRowKeys = useMemo(() => {
     const keys: number[] = [];
@@ -365,82 +383,120 @@ export default function RegionsPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索名称或代码..."
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      showClear
+      style={{ width: 220, maxWidth: '100%' }}
+      onEnterPress={handleSearch}
+    />
+  );
+
+  const renderLevelFilter = () => (
+    <Select
+      placeholder="全部级别"
+      value={searchParams.level || undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, level: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 110, maxWidth: '100%' }}
+      optionList={LEVEL_OPTIONS}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="全部状态"
+      value={searchParams.status || undefined}
+      onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+      showClear
+      style={{ width: 110, maxWidth: '100%' }}
+      optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+    />
+  );
+
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderExpandButton = () => (
+    <Button
+      type="primary"
+      icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+      onClick={toggleExpandAll}
+    >
+      {isAllExpanded ? '全部折叠' : '全部展开'}
+    </Button>
+  );
+  const renderExportButtons = () => hasPermission('system:region:export') ? (
+    <SplitButtonGroup>
+      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
+      <Dropdown
+        trigger="click"
+        position="bottomRight"
+        clickToHide
+        render={(
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
+            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+          </Dropdown.Menu>
+        )}
+      >
+        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+      </Dropdown>
+    </SplitButtonGroup>
+  ) : null;
+  const renderMobileExportActions = () => hasPermission('system:region:export') ? (
+    <>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+    </>
+  ) : null;
+  const renderCreateButton = () => hasPermission('system:region:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
+      新增
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container regions-page" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索名称或代码..."
-            value={searchParams.keyword}
-            onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
-            showClear
-            style={{ width: 220 }}
-            onEnterPress={handleSearch}
-          />
-          <Select
-            placeholder="全部级别"
-            value={searchParams.level || undefined}
-            onChange={(v) => setSearchParams((p) => ({ ...p, level: (v as string) ?? '' }))}
-            showClear
-            style={{ width: 110 }}
-            optionList={LEVEL_OPTIONS}
-          />
-          <Select
-            placeholder="全部状态"
-            value={searchParams.status || undefined}
-            onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
-            showClear
-            style={{ width: 110 }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-            查询
-          </Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-            重置
-          </Button>
-          <Button
-            type="primary"
-            icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-            onClick={toggleExpandAll}
-          >
-            {isAllExpanded ? '全部折叠' : '全部展开'}
-          </Button>
-          {hasPermission('system:region:export') && (
-            <SplitButtonGroup>
-              <Button
-                type="primary"
-                icon={<Download size={14} />}
-                loading={exportLoading}
-                onClick={async () => {
-                  setExportLoading(true);
-                  try { await request.download('/api/regions/export', '地区列表.xlsx'); }
-                  finally { setExportLoading(false); }
-                }}
-              >
-                导出
-              </Button>
-              <Dropdown
-                trigger="click"
-                position="bottomRight"
-                clickToHide
-                render={(
-                  <Dropdown.Menu>
-                    <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/regions/export', '地区列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
-                    <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/regions/export/csv', '地区列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
-                  </Dropdown.Menu>
-                )}
-              >
-                <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-              </Dropdown>
-            </SplitButtonGroup>
-          )}
-          {hasPermission('system:region:create') && (
-            <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-              新增
-            </Button>
-          )}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderLevelFilter()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderExpandButton()}
+            {renderExportButtons()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderLevelFilter()}
+            {renderStatusFilter()}
+          </>
+        )}
+        mobileActions={(
+          <>
+            {renderExpandButton()}
+            {renderMobileExportActions()}
+          </>
+        )}
+        filterTitle="地区筛选"
+        actionTitle="地区操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <div ref={tableWrapperRef} style={{ flex: 1, minHeight: 0 }}>
         <ConfigurableTable

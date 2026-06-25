@@ -165,6 +165,24 @@ export default function DepartmentsPage() {
     setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
   }
 
+  const handleExportExcel = async () => {
+    setExportLoading(true);
+    try {
+      await request.download('/api/departments/export', '部门列表.xlsx');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try {
+      await request.download('/api/departments/export/csv', '部门列表.csv');
+    } finally {
+      setExportCsvLoading(false);
+    }
+  };
+
   const fetchDepartments = useCallback(async (params?: SearchParams) => {
     const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
@@ -377,65 +395,113 @@ export default function DepartmentsPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索部门名称/编码"
+      value={searchParams.keyword}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      onEnterPress={() => void fetchDepartments()}
+      style={{ width: 240, maxWidth: '100%' }}
+      showClear
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="请选择状态"
+      value={searchParams.status || undefined}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      style={{ width: 140, maxWidth: '100%' }}
+      optionList={[
+        { value: '', label: '全部状态' },
+        ...statusItems.map((item) => ({ value: item.value, label: item.label })),
+      ]}
+    />
+  );
+
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchDepartments()}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderExpandButton = () => (
+    <Button
+      type="primary"
+      icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+      onClick={toggleExpandAll}
+    >
+      {isAllExpanded ? '全部折叠' : '全部展开'}
+    </Button>
+  );
+  const renderExportButtons = () => (
+    <SplitButtonGroup>
+      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
+      <Dropdown
+        trigger="click"
+        position="bottomRight"
+        clickToHide
+        render={(
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
+            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+          </Dropdown.Menu>
+        )}
+      >
+        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+  const renderMobileExportActions = () => (
+    <>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+    </>
+  );
+  const renderCreateButton = () => hasPermission('system:department:create') ? (
+    <Button
+      type="primary"
+      icon={<Plus size={14} />}
+      onClick={() => {
+        setEditingDepartment(null);
+        setModalVisible(true);
+        void fetchLeaderOptions();
+      }}
+    >
+      新增
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索部门名称/编码"
-            value={searchParams.keyword}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-            onEnterPress={() => void fetchDepartments()}
-            style={{ width: 240 }}
-            showClear
-          />
-          <Select
-            placeholder="请选择状态"
-            value={searchParams.status || undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-            style={{ width: 140 }}
-            optionList={[
-              { value: '', label: '全部状态' },
-              ...statusItems.map((item) => ({ value: item.value, label: item.label })),
-            ]}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchDepartments()}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <Button
-            type="primary"
-            icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-            onClick={toggleExpandAll}
-          >
-            {isAllExpanded ? '全部折叠' : '全部展开'}
-          </Button>
-          <SplitButtonGroup>
-            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/departments/export', '部门列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/departments/export', '部门列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/departments/export/csv', '部门列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
-          {hasPermission('system:department:create') && <Button
-            type="primary"
-            icon={<Plus size={14} />}
-            onClick={() => {
-              setEditingDepartment(null);
-              setModalVisible(true);
-              void fetchLeaderOptions();
-            }}
-          >
-            新增
-          </Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderExpandButton()}
+            {renderExportButtons()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={renderStatusFilter()}
+        mobileActions={(
+          <>
+            {renderExpandButton()}
+            {renderMobileExportActions()}
+          </>
+        )}
+        filterTitle="部门筛选"
+        actionTitle="部门操作"
+        onFilterApply={() => void fetchDepartments()}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

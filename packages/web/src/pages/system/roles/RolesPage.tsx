@@ -132,6 +132,24 @@ export default function RolesPage() {
     void fetchRoles(1, pageSize, defaultSearchParams);
   }
 
+  const handleExportExcel = async () => {
+    setExportLoading(true);
+    try {
+      await request.download('/api/roles/export', '角色列表.xlsx');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try {
+      await request.download('/api/roles/export/csv', '角色列表.csv');
+    } finally {
+      setExportCsvLoading(false);
+    }
+  };
+
   // 拉取菜单树（用于分配权限）
   const openMenuModal = async (role: Role) => {
     setMenuRole(role);
@@ -402,61 +420,110 @@ export default function RolesPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索角色名称/编码"
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      onEnterPress={handleSearch}
+      style={{ width: 220, maxWidth: '100%' }}
+      showClear
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="请选择状态"
+      value={searchParams.status || undefined}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      style={{ width: 140, maxWidth: '100%' }}
+      optionList={[
+        { value: '', label: '全部状态' },
+        ...statusItems.map((item) => ({ value: item.value, label: item.label })),
+      ]}
+    />
+  );
+
+  const renderTimeRangeFilter = () => (
+    <DatePicker
+      type="dateTimeRange"
+      placeholder={["开始时间", "结束时间"]}
+      value={searchParams.timeRange ?? undefined}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+      style={{ width: 360, maxWidth: '100%' }}
+    />
+  );
+
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderExportButtons = () => (
+    <SplitButtonGroup>
+      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
+      <Dropdown
+        trigger="click"
+        position="bottomRight"
+        clickToHide
+        render={(
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
+            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+          </Dropdown.Menu>
+        )}
+      >
+        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+  const renderMobileExportActions = () => (
+    <>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+    </>
+  );
+  const renderCreateButton = () => hasPermission('system:role:create') ? (
+    <Button
+      type="primary"
+      icon={<Plus size={14} />}
+      onClick={() => { setEditingRole(null); setModalVisible(true); }}
+    >
+      新增
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索角色名称/编码"
-            value={searchParams.keyword}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-            onEnterPress={handleSearch}
-            style={{ width: 220 }}
-            showClear
-          />
-          <Select
-            placeholder="请选择状态"
-            value={searchParams.status || undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-            style={{ width: 140 }}
-            optionList={[
-              { value: '', label: '全部状态' },
-              ...statusItems.map((item) => ({ value: item.value, label: item.label })),
-            ]}
-          />
-          <DatePicker
-            type="dateTimeRange"
-            placeholder={["开始时间", "结束时间"]}
-            value={searchParams.timeRange ?? undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-            style={{ width: 360 }}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <SplitButtonGroup>
-            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/roles/export', '角色列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/roles/export', '角色列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/roles/export/csv', '角色列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
-          {hasPermission('system:role:create') && <Button
-            type="primary"
-            icon={<Plus size={14} />}
-            onClick={() => { setEditingRole(null); setModalVisible(true); }}
-          >
-            新增
-          </Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderTimeRangeFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderExportButtons()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            {renderStatusFilter()}
+            {renderTimeRangeFilter()}
+          </>
+        )}
+        mobileActions={renderMobileExportActions()}
+        filterTitle="角色筛选"
+        actionTitle="角色操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

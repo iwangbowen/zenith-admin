@@ -101,6 +101,24 @@ export default function TenantsPage() {
     void fetchData(1, pageSize, defaultSearchParams);
   }
 
+  const handleExportExcel = async () => {
+    setExportLoading(true);
+    try {
+      await request.download('/api/tenants/export', '租户列表.xlsx');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try {
+      await request.download('/api/tenants/export/csv', '租户列表.csv');
+    } finally {
+      setExportCsvLoading(false);
+    }
+  };
+
   const handleModalOk = async () => {
     let values;
     try {
@@ -277,67 +295,95 @@ export default function TenantsPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索租户名称/编码"
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      onEnterPress={handleSearch}
+      style={{ width: 220, maxWidth: '100%' }}
+      showClear
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="请选择状态"
+      value={searchParams.status || undefined}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      style={{ width: 140, maxWidth: '100%' }}
+      optionList={[
+        { value: '', label: '全部状态' },
+        { value: 'enabled', label: '正常' },
+        { value: 'disabled', label: '停用' },
+      ]}
+    />
+  );
+
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderExportButtons = () => (
+    <SplitButtonGroup>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
+      <Dropdown
+        trigger="click"
+        position="bottomRight"
+        clickToHide
+        render={(
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
+            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+          </Dropdown.Menu>
+        )}
+      >
+        <Button icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+  const renderMobileExportActions = () => (
+    <>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+    </>
+  );
+  const renderCreateButton = () => hasPermission('system:tenant:create') ? (
+    <Button
+      type="primary"
+      icon={<Plus size={14} />}
+      onClick={() => { setEditingTenant(null); setModalVisible(true); }}
+    >
+      新增
+    </Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索租户名称/编码"
-            value={searchParams.keyword}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-            onEnterPress={handleSearch}
-            style={{ width: 220 }}
-            showClear
-          />
-          <Select
-            placeholder="请选择状态"
-            value={searchParams.status || undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-            style={{ width: 140 }}
-            optionList={[
-              { value: '', label: '全部状态' },
-              { value: 'enabled', label: '正常' },
-              { value: 'disabled', label: '停用' },
-            ]}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <SplitButtonGroup>
-            <Button
-              icon={<Download size={14} />}
-              loading={exportLoading}
-              onClick={async () => {
-                setExportLoading(true);
-                try { await request.download('/api/tenants/export', '租户列表.xlsx'); }
-                finally { setExportLoading(false); }
-              }}
-            >
-              导出
-            </Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/tenants/export', '租户列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/tenants/export/csv', '租户列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
-          {hasPermission('system:tenant:create') && (
-            <Button
-              type="primary"
-              icon={<Plus size={14} />}
-              onClick={() => { setEditingTenant(null); setModalVisible(true); }}
-            >
-              新增
-            </Button>
-          )}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderExportButtons()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
+        )}
+        mobileFilters={renderStatusFilter()}
+        mobileActions={renderMobileExportActions()}
+        filterTitle="租户筛选"
+        actionTitle="租户操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

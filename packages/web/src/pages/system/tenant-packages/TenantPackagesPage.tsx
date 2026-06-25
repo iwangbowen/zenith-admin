@@ -248,40 +248,70 @@ export default function TenantPackagesPage() {
     },
   ];
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索套餐名称"
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      onEnterPress={handleSearch}
+      style={{ width: 220, maxWidth: '100%' }}
+      showClear
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="请选择状态"
+      value={searchParams.status || undefined}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      style={{ width: 140, maxWidth: '100%' }}
+      optionList={[
+        { value: '', label: '全部状态' },
+        { value: 'enabled', label: '正常' },
+        { value: 'disabled', label: '停用' },
+      ]}
+    />
+  );
+
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:tenant-package:delete') ? (
+    <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+      批量删除 ({selectedRowKeys.length})
+    </Button>
+  ) : null;
+  const renderCreateButton = () => hasPermission('system:tenant-package:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索套餐名称"
-          value={searchParams.keyword}
-          onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-          onEnterPress={handleSearch}
-          style={{ width: 220 }}
-          showClear
-        />
-        <Select
-          placeholder="请选择状态"
-          value={searchParams.status || undefined}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-          style={{ width: 140 }}
-          optionList={[
-            { value: '', label: '全部状态' },
-            { value: 'enabled', label: '正常' },
-            { value: 'disabled', label: '停用' },
-          ]}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {selectedRowKeys.length > 0 && hasPermission('system:tenant-package:delete') && (
-          <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-            批量删除 ({selectedRowKeys.length})
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderBatchDeleteButton()}
+            {renderCreateButton()}
+          </>
         )}
-        {hasPermission('system:tenant-package:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
         )}
-      </SearchToolbar>
+        mobileFilters={renderStatusFilter()}
+        mobileActions={renderBatchDeleteButton()}
+        filterTitle="套餐筛选"
+        actionTitle="套餐操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

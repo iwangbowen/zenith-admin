@@ -347,40 +347,70 @@ export default function UserGroupsPage() {
       }
     : { status: 'enabled' };
 
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索名称/编码"
+      value={searchParams.keyword}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      onEnterPress={handleSearch}
+      style={{ width: 240, maxWidth: '100%' }}
+      showClear
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="请选择状态"
+      value={searchParams.status || undefined}
+      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      style={{ width: 140, maxWidth: '100%' }}
+      optionList={[
+        { value: '', label: '全部状态' },
+        { value: 'enabled', label: '启用' },
+        { value: 'disabled', label: '禁用' },
+      ]}
+    />
+  );
+
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
+  const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
+  const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:user-groups:delete') ? (
+    <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+      批量删除 ({selectedRowKeys.length})
+    </Button>
+  ) : null;
+  const renderCreateButton = () => hasPermission('system:user-groups:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditing(null); setModalVisible(true); }}>新增</Button>
+  ) : null;
+
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索名称/编码"
-          value={searchParams.keyword}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-          onEnterPress={handleSearch}
-          style={{ width: 240 }}
-          showClear
-        />
-        <Select
-          placeholder="请选择状态"
-          value={searchParams.status || undefined}
-          onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-          style={{ width: 140 }}
-          optionList={[
-            { value: '', label: '全部状态' },
-            { value: 'enabled', label: '启用' },
-            { value: 'disabled', label: '禁用' },
-          ]}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {selectedRowKeys.length > 0 && hasPermission('system:user-groups:delete') && (
-          <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-            批量删除 ({selectedRowKeys.length})
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            {renderKeywordSearch()}
+            {renderStatusFilter()}
+            {renderSearchButton()}
+            {renderResetButton()}
+            {renderBatchDeleteButton()}
+            {renderCreateButton()}
+          </>
         )}
-        {hasPermission('system:user-groups:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditing(null); setModalVisible(true); }}>新增</Button>
+        mobilePrimary={(
+          <>
+            {renderKeywordSearch()}
+            {renderSearchButton()}
+            {renderCreateButton()}
+          </>
         )}
-      </SearchToolbar>
+        mobileFilters={renderStatusFilter()}
+        mobileActions={renderBatchDeleteButton()}
+        filterTitle="用户组筛选"
+        actionTitle="用户组操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered
