@@ -14,6 +14,7 @@ import {
   Tabs,
   TabPane,
   Tag,
+  Timeline,
   Toast,
   Tooltip,
   Typography,
@@ -123,11 +124,19 @@ const APPROVE_METHOD_LABEL: Partial<Record<WorkflowApproveMethod, string>> = {
 /** 节点运行态（由关联任务派生） */
 type DiagNodeState = 'done' | 'active' | 'rejected' | 'idle';
 
-const NODE_STATE_MAP: Record<DiagNodeState, { text: string; color: TagColor; accent: string }> = {
-  done: { text: '已完成', color: 'green', accent: 'var(--semi-color-success)' },
-  active: { text: '进行中', color: 'blue', accent: 'var(--semi-color-primary)' },
-  rejected: { text: '已驳回', color: 'red', accent: 'var(--semi-color-danger)' },
-  idle: { text: '无任务', color: 'grey', accent: 'var(--semi-color-border)' },
+const NODE_STATE_MAP: Record<DiagNodeState, { text: string; color: TagColor }> = {
+  done: { text: '已完成', color: 'green' },
+  active: { text: '进行中', color: 'blue' },
+  rejected: { text: '已驳回', color: 'red' },
+  idle: { text: '无任务', color: 'grey' },
+};
+
+/** 节点状态 → Semi Timeline 节点类型（进行中用 ongoing 呈现脉冲态） */
+const NODE_STATE_TIMELINE_TYPE: Record<DiagNodeState, 'success' | 'ongoing' | 'error' | 'default'> = {
+  done: 'success',
+  active: 'ongoing',
+  rejected: 'error',
+  idle: 'default',
 };
 
 /** 整合后的诊断节点：流程定义节点 + 关联运行时任务 + 派生状态 */
@@ -590,7 +599,7 @@ export default function WorkflowMonitorPage() {
       const items = getNodeConfigItems(node.config);
       if (items.length === 0) return null;
       return (
-        <div style={{ padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: '4px 18px', borderTop: '1px solid var(--semi-color-fill-1)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 16px', margin: '2px 0 6px' }}>
           {items.map((it) => (
             <span key={it.label} style={{ fontSize: 12 }}>
               <Typography.Text type="tertiary" size="small">{it.label}：</Typography.Text>
@@ -602,8 +611,8 @@ export default function WorkflowMonitorPage() {
     };
 
     const renderNodeTaskRow = (task: WorkflowTask) => (
-      <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: '1px solid var(--semi-color-fill-1)', flexWrap: 'wrap' }}>
-        <Typography.Text type="tertiary" size="small" style={{ width: 44 }}>#{task.id}</Typography.Text>
+      <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderTop: '1px solid var(--semi-color-fill-1)', flexWrap: 'wrap' }}>
+        <Typography.Text type="tertiary" size="small" style={{ width: 40 }}>#{task.id}</Typography.Text>
         <Tag size="small" color={NODE_RT_STATUS_COLOR[task.status]}>{NODE_RT_STATUS_LABEL[task.status]}</Tag>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 110 }}>
           <UserAvatar name={task.assigneeName || '未指定'} avatar={task.assigneeAvatar} size={20} />
@@ -629,34 +638,36 @@ export default function WorkflowMonitorPage() {
         );
       }
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Timeline>
           {diagNodes.map((node) => {
             const stateMeta = NODE_STATE_MAP[node.state];
             const typeLabel = NODE_TYPE_LABEL[node.type] ?? node.type;
+            const lastTask = node.tasks[node.tasks.length - 1];
+            const nodeTime = lastTask ? (lastTask.actionAt || lastTask.createdAt) : undefined;
             return (
-              <div key={node.key} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--semi-color-fill-0)', flexWrap: 'wrap' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: stateMeta.accent, flexShrink: 0 }} />
-                  <Tag size="small" color="grey" type="light">{typeLabel}</Tag>
-                  <Typography.Text strong>{node.name}</Typography.Text>
-                  <Typography.Text type="tertiary" size="small">{node.key}</Typography.Text>
-                  {node.isCurrent && <Tag size="small" color="light-blue">当前</Tag>}
-                  <span style={{ flex: 1 }} />
-                  <Tag size="small" color={stateMeta.color}>{stateMeta.text}</Tag>
-                  <Typography.Text type="tertiary" size="small">{node.tasks.length} 个任务</Typography.Text>
-                </div>
-                {renderNodeConfigSummary(node)}
-                {node.tasks.length > 0 ? (
-                  <div>{node.tasks.map(renderNodeTaskRow)}</div>
-                ) : (
-                  <div style={{ padding: '8px 12px', borderTop: '1px dashed var(--semi-color-border)' }}>
+              <Timeline.Item key={node.key} type={NODE_STATE_TIMELINE_TYPE[node.state]} time={nodeTime}>
+                <div style={{ paddingBottom: 6 }}>
+                  <Space spacing={8} wrap align="center" style={{ marginBottom: 2 }}>
+                    <Tag size="small" color="grey" type="light">{typeLabel}</Tag>
+                    <Typography.Text strong>{node.name}</Typography.Text>
+                    <Typography.Text type="tertiary" size="small">{node.key}</Typography.Text>
+                    {node.isCurrent && <Tag size="small" color="light-blue">当前</Tag>}
+                    <Tag size="small" color={stateMeta.color}>{stateMeta.text}</Tag>
+                    <Typography.Text type="tertiary" size="small">{node.tasks.length} 个任务</Typography.Text>
+                  </Space>
+                  {renderNodeConfigSummary(node)}
+                  {node.tasks.length > 0 ? (
+                    <div style={{ border: '1px solid var(--semi-color-fill-1)', borderTop: 'none', borderRadius: 6 }}>
+                      {node.tasks.map(renderNodeTaskRow)}
+                    </div>
+                  ) : (
                     <Typography.Text type="tertiary" size="small">该节点暂未生成运行时任务</Typography.Text>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              </Timeline.Item>
             );
           })}
-        </div>
+        </Timeline>
       );
     };
 
