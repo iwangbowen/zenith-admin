@@ -846,7 +846,7 @@ export default function WorkflowMonitorPage() {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 180,
       fixed: 'right',
       render: (_: unknown, record: WorkflowInstance) => {
         const canCancel = hasPermission('workflow:instance:cancel') && record.status === 'running';
@@ -1023,7 +1023,7 @@ export default function WorkflowMonitorPage() {
         loading={loading}
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
-        scroll={{ x: 1450 }}
+        scroll={{ x: 1470 }}
         pagination={buildPagination(data?.total ?? 0, (p, ps) => void fetchList(p, ps))}
       />
         </TabPane>
