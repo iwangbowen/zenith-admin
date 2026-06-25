@@ -14,7 +14,7 @@
 
 - 右上角内置「列设置」下拉菜单，用户可勾选/取消勾选各列的显示状态
 - 列显隐配置自动持久化到 `localStorage`（key 默认根据页面路径 + 列 key 自动生成）
-- 操作列（key 为 `action`/`actions`/`operation`/`operations`/`operate`，或标题为 `操作`）默认不可隐藏
+- 通过 `createOperationColumn` 创建的操作列默认不可隐藏，并会在移动端自动收窄
 - 可选展示刷新按钮，并内置表格尺寸、边框/斑马纹显示设置和全屏展示按钮
 - 分页配置会自动补充 `showTotal`、`showSizeChanger` 和 `[10, 20, 50, 100]` 页大小选项
 - 完全透传 Semi Design `TableProps`，使用方式与 `<Table>` 一致
@@ -25,7 +25,6 @@
 | --- | --- | --- | --- |
 | `columnSettings` | `boolean` | `true` | 是否显示列设置按钮 |
 | `columnSettingsKey` | `string` | 自动生成 | 自定义 localStorage 存储 key |
-| `alwaysVisibleColumnKeys` | `string[]` | `[]` | 额外指定不可隐藏的列 key |
 | `columnSettingsLabel` | `string` | `'列设置'` | 列设置按钮文字 |
 | `onRefresh` | `() => void` | — | 传入后显示右上角刷新按钮 |
 | `refreshLoading` | `boolean` | `false` | 刷新按钮 loading 状态 |
@@ -72,7 +71,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 ### ConfigurableTable 注意事项
 
 - 所有 CRUD 列表页**必须**使用 `ConfigurableTable` 替代裸 `Table`，并保留 `bordered` 属性
-- 操作列自动不可隐藏，无需额外配置 `alwaysVisibleColumnKeys`
+- 操作列请使用 `createOperationColumn` 创建，避免依赖列标题或 key 约定
 - 若需关闭列设置功能（如只有 1-2 列的简单表格），传 `columnSettings={false}`
 
 ---

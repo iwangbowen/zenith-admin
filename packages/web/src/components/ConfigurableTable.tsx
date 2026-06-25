@@ -58,13 +58,11 @@ function writeTableDisplaySettings(key: string, settings: TableDisplaySettings) 
 interface ConfigurableTableProps<RecordType extends TableRecord = TableRecord> extends TableProps<RecordType> {
   columnSettings?: boolean;
   columnSettingsKey?: string;
-  alwaysVisibleColumnKeys?: string[];
   columnSettingsLabel?: string;
   onRefresh?: () => void;
   refreshLoading?: boolean;
 }
 
-const DEFAULT_ALWAYS_VISIBLE_KEYS: string[] = [];
 const MOBILE_ACTION_COLUMN_WIDTH = 64;
 const STRIPED_ROW_CLASS_NAME = 'configurable-table-row--striped';
 
@@ -97,10 +95,8 @@ function getColumnKey<RecordType extends TableRecord>(
 
 function isAlwaysVisibleColumn<RecordType extends TableRecord>(
   column: ConfigurableColumn<RecordType>,
-  key: string,
-  alwaysVisibleKeys: Set<string>,
 ): boolean {
-  return alwaysVisibleKeys.has(key.toLowerCase()) || isOperationColumn(column);
+  return isOperationColumn(column);
 }
 
 function isOperationColumn<RecordType extends TableRecord>(column: ConfigurableColumn<RecordType>): boolean {
@@ -123,18 +119,17 @@ function getColumnLabel<RecordType extends TableRecord>(
 
 function collectColumnOptions<RecordType extends TableRecord>(
   columns: ConfigurableColumn<RecordType>[],
-  alwaysVisibleKeys: Set<string>,
   path: number[] = [],
 ): ColumnOption[] {
   return columns.flatMap((column, index) => {
     const key = getColumnKey(column, index, path);
     const children = column.children ?? [];
-    if (children.length > 0) return collectColumnOptions(children, alwaysVisibleKeys, [...path, index]);
+    if (children.length > 0) return collectColumnOptions(children, [...path, index]);
 
     return [{
       key,
       title: getColumnLabel(column, key),
-      alwaysVisible: isAlwaysVisibleColumn(column, key, alwaysVisibleKeys),
+      alwaysVisible: isAlwaysVisibleColumn(column),
     }];
   });
 }
@@ -142,7 +137,6 @@ function collectColumnOptions<RecordType extends TableRecord>(
 function filterColumns<RecordType extends TableRecord>(
   columns: ConfigurableColumn<RecordType>[],
   hiddenKeys: Set<string>,
-  alwaysVisibleKeys: Set<string>,
   compactActionColumn = false,
   path: number[] = [],
 ): ColumnProps<RecordType>[] {
@@ -151,12 +145,12 @@ function filterColumns<RecordType extends TableRecord>(
     const children = column.children ?? [];
 
     if (children.length > 0) {
-      const visibleChildren = filterColumns(children, hiddenKeys, alwaysVisibleKeys, compactActionColumn, [...path, index]);
+      const visibleChildren = filterColumns(children, hiddenKeys, compactActionColumn, [...path, index]);
       if (visibleChildren.length === 0) return [];
       return [{ ...column, children: visibleChildren }];
     }
 
-    if (hiddenKeys.has(key) && !isAlwaysVisibleColumn(column, key, alwaysVisibleKeys)) return [];
+    if (hiddenKeys.has(key) && !isAlwaysVisibleColumn(column)) return [];
     if (compactActionColumn && isOperationColumn(column)) {
       return [{
         ...column,
@@ -213,7 +207,6 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   columns,
   columnSettings = true,
   columnSettingsKey,
-  alwaysVisibleColumnKeys = [],
   columnSettingsLabel = '列设置',
   onRefresh,
   refreshLoading = false,
@@ -233,13 +226,9 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   }, [pagination, isMobile]);
   const effectiveColumnSettings = (preferences.showTableColumnSettings ?? true) && columnSettings;
   const rawColumns = useMemo(() => (columns ?? []) as ConfigurableColumn<RecordType>[], [columns]);
-  const alwaysVisibleKeys = useMemo(
-    () => new Set([...DEFAULT_ALWAYS_VISIBLE_KEYS, ...alwaysVisibleColumnKeys].map((key) => key.toLowerCase())),
-    [alwaysVisibleColumnKeys],
-  );
   const columnOptions = useMemo(
-    () => collectColumnOptions(rawColumns, alwaysVisibleKeys),
-    [rawColumns, alwaysVisibleKeys],
+    () => collectColumnOptions(rawColumns),
+    [rawColumns],
   );
   const storageKey = useMemo(
     () => columnSettingsKey ?? getDefaultStorageKey(columnOptions.map((option) => option.key)),
@@ -295,12 +284,12 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   );
   const hiddenKeySet = useMemo(() => new Set(hiddenKeys), [hiddenKeys]);
   const visibleColumns = useMemo(
-    () => filterColumns(rawColumns, hiddenKeySet, alwaysVisibleKeys, isMobile),
-    [rawColumns, hiddenKeySet, alwaysVisibleKeys, isMobile],
+    () => filterColumns(rawColumns, hiddenKeySet, isMobile),
+    [rawColumns, hiddenKeySet, isMobile],
   );
   const responsiveColumns = useMemo(
-    () => filterColumns(rawColumns, new Set<string>(), alwaysVisibleKeys, isMobile),
-    [rawColumns, alwaysVisibleKeys, isMobile],
+    () => filterColumns(rawColumns, new Set<string>(), isMobile),
+    [rawColumns, isMobile],
   );
   const effectiveOnRow = useMemo<TableProps<RecordType>['onRow']>(() => {
     if (!effectiveStriped) return onRow;
