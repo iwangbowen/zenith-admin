@@ -742,25 +742,21 @@ export default function FilesPage() {
             />
           </>
         )}
-        mobileActions={(
+        mobileActions={selectedRowKeys.length > 0 ? (
           <>
-            {selectedRowKeys.length > 0 && (
-              <Button type="tertiary" theme="light" icon={<FolderDown size={14} />} loading={batchDownloadLoading} onClick={handleBatchDownload}>
-                批量下载 ({selectedRowKeys.length})
-              </Button>
-            )}
+            <Button type="tertiary" theme="light" icon={<FolderDown size={14} />} loading={batchDownloadLoading} onClick={handleBatchDownload}>
+              批量下载 ({selectedRowKeys.length})
+            </Button>
             {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
               <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteLoading} onClick={handleBatchDelete}>
                 批量删除 ({selectedRowKeys.length})
               </Button>
             )}
-            {selectedRowKeys.length > 0 && (
-              <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
-                取消选择
-              </Button>
-            )}
+            <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
+              取消选择
+            </Button>
           </>
-        )}
+        ) : null}
         filterTitle="文件筛选"
         actionTitle="文件操作"
         onFilterApply={handleSearch}
