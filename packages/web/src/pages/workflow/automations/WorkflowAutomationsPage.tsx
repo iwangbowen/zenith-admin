@@ -507,13 +507,13 @@ export default function WorkflowAutomationsPage() {
         )}
         mobilePrimary={(
           <>
+            {renderDefinitionFilter()}
             {renderSearchButton()}
             {renderCreateButton()}
           </>
         )}
         mobileFilters={(
           <>
-            {renderDefinitionFilter()}
             {renderTriggerFilter()}
             {renderStatusFilter()}
           </>

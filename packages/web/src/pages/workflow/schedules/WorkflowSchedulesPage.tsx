@@ -397,16 +397,12 @@ export default function WorkflowSchedulesPage() {
         )}
         mobilePrimary={(
           <>
+            {renderDefinitionFilter()}
             {renderSearchButton()}
             {renderCreateButton()}
           </>
         )}
-        mobileFilters={(
-          <>
-            {renderDefinitionFilter()}
-            {renderStatusFilter()}
-          </>
-        )}
+        mobileFilters={renderStatusFilter()}
         filterTitle="定时规则筛选"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}

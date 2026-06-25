@@ -108,6 +108,17 @@ export default function PendingApprovalsPage() {
       .then((res) => { if (res.code === 0 && res.data) setDefinitions(res.data); });
   }, [fetchList]);
 
+  const handleSearch = () => {
+    setPage(1);
+    void fetchList(1, pageSize);
+  };
+
+  const handleReset = () => {
+    setSearchParams(defaultSearchParams);
+    setPage(1);
+    void fetchList(1, pageSize, defaultSearchParams);
+  };
+
   const handleBatch = async () => {
     if (batchSubmitting) return;
     const taskIds = (data?.list ?? [])
@@ -261,7 +272,7 @@ export default function PendingApprovalsPage() {
       placeholder="请输入审批标题"
       value={searchParams.keyword}
       onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-      onEnterPress={() => { setPage(1); void fetchList(1, pageSize); }}
+      onEnterPress={handleSearch}
       style={{ width: 200 }}
       showClear
     />
@@ -282,11 +293,11 @@ export default function PendingApprovalsPage() {
   );
 
   const renderSearchButton = () => (
-    <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchList(1, pageSize); }}>查询</Button>
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
   );
 
   const renderResetButton = () => (
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }}>重置</Button>
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
   );
 
   const renderMyConsultsButton = () => (
@@ -333,7 +344,7 @@ export default function PendingApprovalsPage() {
         )}
         filterTitle="待办审批筛选"
         onFilterApply={handleSearch}
-        onFilterReset={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }}
+        onFilterReset={handleReset}
       />
       <ConfigurableTable
         bordered

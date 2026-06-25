@@ -319,11 +319,11 @@ export default function WorkflowDelegationsPage() {
         )}
         mobilePrimary={(
           <>
+            {renderScopeFilter()}
             {renderSearchButton()}
             {renderCreateButton()}
           </>
         )}
-        mobileFilters={renderScopeFilter()}
         filterTitle="审批代理筛选"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}

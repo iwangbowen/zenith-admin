@@ -838,13 +838,13 @@ export default function MyApplicationsPage() {
     <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { handleReset(); }}>重置</Button>
   );
 
-  const renderBatchWithdrawButton = () => (
+  const renderBatchWithdrawButton = () => selectedRunningIds.length > 0 ? (
     <Button type="tertiary" icon={<Undo2 size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchWithdraw}>批量撤回</Button>
-  );
+  ) : null;
 
-  const renderBatchUrgeButton = () => (
+  const renderBatchUrgeButton = () => selectedRunningIds.length > 0 ? (
     <Button type="primary" icon={<Megaphone size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchUrge}>批量催办</Button>
-  );
+  ) : null;
 
   const renderCreateButton = () => (
     <Button type="primary" icon={<Plus size={14} />} onClick={() => { void openApply(); }}>
@@ -868,16 +868,12 @@ export default function MyApplicationsPage() {
         )}
         mobilePrimary={(
           <>
+            {renderStatusFilter()}
             {renderSearchButton()}
             {renderCreateButton()}
           </>
         )}
-        mobileFilters={(
-          <>
-            {renderStatusFilter()}
-            {renderPriorityFilter()}
-          </>
-        )}
+        mobileFilters={renderPriorityFilter()}
         mobileActions={(
           <>
             {renderResetButton()}

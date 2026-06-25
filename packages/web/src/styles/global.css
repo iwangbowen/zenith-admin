@@ -407,6 +407,11 @@ body {
     width: 100% !important;
   }
 
+  .responsive-toolbar__mobile-primary .semi-space-item:first-child .semi-select,
+  .responsive-toolbar__mobile-primary .semi-space-item:first-child .semi-input-number {
+    width: 100% !important;
+  }
+
   .responsive-toolbar__mobile-primary .semi-button {
     flex-shrink: 0;
   }

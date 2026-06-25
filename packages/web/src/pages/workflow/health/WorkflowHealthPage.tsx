@@ -147,13 +147,13 @@ export default function WorkflowHealthPage() {
             {renderResetButton()}
           </>
         )}
-        mobilePrimary={renderSearchButton()}
-        mobileFilters={(
+        mobilePrimary={(
           <>
             {renderThresholdFilter()}
-            {renderIssueTypeFilter()}
+            {renderSearchButton()}
           </>
         )}
+        mobileFilters={renderIssueTypeFilter()}
         filterTitle="健康巡检筛选"
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
