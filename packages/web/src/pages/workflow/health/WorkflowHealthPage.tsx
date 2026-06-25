@@ -118,6 +118,16 @@ export default function WorkflowHealthPage() {
     />
   );
 
+  const renderMobileThresholdFilter = () => (
+    <Select
+      value={thresholdMinutes}
+      onChange={(v) => setThresholdMinutes(Number(v) || 30)}
+      optionList={THRESHOLD_OPTIONS}
+      placeholder="等待阈值"
+      style={{ width: 180 }}
+    />
+  );
+
   const renderIssueTypeFilter = () => (
     <Select
       value={issueType}
@@ -149,7 +159,7 @@ export default function WorkflowHealthPage() {
         )}
         mobilePrimary={(
           <>
-            {renderThresholdFilter()}
+            {renderMobileThresholdFilter()}
             {renderSearchButton()}
           </>
         )}
