@@ -4,10 +4,9 @@ import {
   Descriptions,
   Form,
   Input,
-  Popconfirm,
+  Modal,
   Select,
   SideSheet,
-  Space,
   Spin,
   Tag,
   Toast,
@@ -18,6 +17,7 @@ import { Lock, Search, RotateCcw, Upload } from 'lucide-react';
 import type { PaginatedResponse, SslCertificate } from '@zenith/shared';
 import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -232,25 +232,29 @@ export default function SslCertificatesPage() {
         </Tag>
       ),
     },
-    {
-      title: '操作',
+    createOperationColumn<SslCertificateRecord>({
       width: 130,
-      fixed: 'right',
-      render: (_value: unknown, record: SslCertificateRecord) => (
-        <Space>
-          <Button theme="borderless" size="small" onClick={() => { void openDetail(record); }}>
-            查看详情
-          </Button>
-          {canDelete && (
-            <Popconfirm title="确定要删除该证书吗？" onConfirm={() => void handleDelete(record.id)}>
-              <Button theme="borderless" type="danger" size="small">
-                删除
-              </Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
+      actions: (record) => [
+        {
+          key: 'detail',
+          label: '查看详情',
+          onClick: () => { void openDetail(record); },
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !canDelete,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定要删除该证书吗？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleDelete(record.id); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (

@@ -3,7 +3,7 @@ import {
   Button,
   Form,
   Input,
-  Popconfirm,
+  Modal,
   Space,
   Tag,
   Toast,
@@ -12,6 +12,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RefreshCw, RotateCcw, Search, Shield, ShieldOff } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { request } from '@/utils/request';
@@ -241,20 +242,26 @@ export default function FirewallPage() {
       dataIndex: 'comment',
       render: (value: string | null) => value ?? <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
     },
-    {
-      title: '操作',
-      fixed: 'right',
+    createOperationColumn<FirewallRule>({
       width: 100,
-      render: (_: unknown, record: FirewallRule) => (
-        canManage ? (
-          <Space>
-            <Popconfirm title="确定要删除该规则吗？" onConfirm={() => handleDelete(record.id)}>
-              <Button theme="borderless" type="danger" size="small" loading={deletingId === record.id}>删除</Button>
-            </Popconfirm>
-          </Space>
-        ) : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>
-      ),
-    },
+      emptyContent: <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
+      actions: (record) => [
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          loading: deletingId === record.id,
+          hidden: !canManage,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定要删除该规则吗？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => handleDelete(record.id),
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   const currentStatus = status ?? {
