@@ -638,7 +638,6 @@ export default function WorkflowDefinitionsPage() {
             )}
             mobilePrimary={(
               <>
-                {renderCategoryButton()}
                 {renderKeywordSearch()}
                 {renderSearchButton()}
                 {renderCreateButton()}
@@ -647,6 +646,7 @@ export default function WorkflowDefinitionsPage() {
             mobileFilters={renderStatusFilter()}
             mobileActions={(
               <>
+                {renderCategoryButton()}
                 {renderResetButton()}
                 {renderImportButton()}
                 {renderTemplateButton()}
