@@ -578,10 +578,56 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     },
   ];
 
+  const telemetryPendingRetry = outboxEvents.filter((item) => item.status === 'pending' || item.status === 'processing' || item.status === 'retrying').length;
+  const telemetryHealthScore = (() => {
+    let score = 100;
+    for (const issue of issues) {
+      if (issue.severity === 'critical') score -= 12;
+      else if (issue.severity === 'warning') score -= 4;
+    }
+    for (const q of queues) {
+      if (q.failed > 0) score -= 5;
+      if (q.oldestAgeMinutes != null && q.oldestAgeMinutes >= 60) score -= 3;
+    }
+    return Math.max(0, Math.min(100, Math.round(score)));
+  })();
+  const triggerSuccess = mockWorkflowTriggerExecutions.filter((item) => item.status === 'success');
+  const telemetry: WorkflowEngineIntrospection['telemetry'] = {
+    healthScore: telemetryHealthScore,
+    events: {
+      last1h: { total: 18, success: 17, failed: 1 },
+      last24h: { total: 412, success: 405, failed: 4 },
+      pendingRetry: telemetryPendingRetry,
+      avgLatencyMs: 38,
+    },
+    triggers: {
+      last24h: {
+        total: mockWorkflowTriggerExecutions.length,
+        success: triggerSuccess.length,
+        failed: mockWorkflowTriggerExecutions.filter((item) => item.status === 'failed').length,
+        retrying: mockWorkflowTriggerExecutions.filter((item) => item.status === 'retrying').length,
+      },
+      avgDurationMs: triggerSuccess.length
+        ? Math.round(triggerSuccess.reduce((sum, item) => sum + (item.durationMs ?? 0), 0) / triggerSuccess.length)
+        : null,
+    },
+    instances: {
+      running: runningInstances.length,
+      createdLast24h: 9,
+      completedLast24h: 6,
+      canceledLast24h: 1,
+    },
+    recurringJobs: [
+      { name: 'workflow-timeout-scan', cronExpression: '*/5 * * * *', registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000), nextRunAt: mockDateTimeOffset(3 * 60 * 1000) },
+      { name: 'workflow-subprocess-recovery', cronExpression: '*/10 * * * *', registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000), nextRunAt: mockDateTimeOffset(7 * 60 * 1000) },
+    ],
+  };
+
   return {
     healthy: !issues.some((item) => item.severity === 'critical'),
     generatedAt: mockDateTime(),
     thresholdMinutes,
+    telemetry,
     components,
     queues,
     definitions,

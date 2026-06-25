@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, JsonViewer, Select, Space, Spin, Tabs, TabPane, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Activity, AlertTriangle, CheckCircle2, DatabaseZap, GitBranch, RefreshCw, TimerReset } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, DatabaseZap, Gauge, GitBranch, RefreshCw, TimerReset } from 'lucide-react';
 import type {
   WorkflowEngineComponent,
   WorkflowEngineComponentStatus,
@@ -101,6 +101,12 @@ function formatAge(value: number | null | undefined) {
     return `${hours} 小时 ${minutes} 分钟`;
   }
   return `${value} 分钟`;
+}
+
+function formatMs(value: number | null | undefined) {
+  if (value == null) return '—';
+  if (value < 1000) return `${value} ms`;
+  return `${(value / 1000).toFixed(1)} s`;
 }
 
 function renderJsonBlock(value: unknown) {
@@ -297,9 +303,10 @@ export default function WorkflowEngineDiagnosticsView() {
     { title: '监听器数', dataIndex: 'listenerCount', width: 120 },
   ];
 
-  const recurringJobColumns: ColumnProps<WorkflowEngineIntrospection['scheduler']['systemRecurringJobs'][number]>[] = [
+  const recurringJobColumns: ColumnProps<WorkflowEngineIntrospection['telemetry']['recurringJobs'][number]>[] = [
     { title: '任务名', dataIndex: 'name' },
     { title: 'Cron', dataIndex: 'cronExpression', width: 150 },
+    { title: '下次执行', dataIndex: 'nextRunAt', width: 180, render: (value) => value || '—' },
     { title: '注册时间', dataIndex: 'registeredAt', width: 180 },
   ];
 
@@ -316,6 +323,23 @@ export default function WorkflowEngineDiagnosticsView() {
   const taskRows = useMemo(() => (
     data?.runtime.taskQueue.map((item) => ({ ...item, rowId: `${item.queue}-${item.taskId}` })) ?? []
   ), [data]);
+
+  const telemetryMetrics = useMemo<WorkflowEngineComponent['metrics']>(() => {
+    if (!data) return [];
+    const t = data.telemetry;
+    const scoreStatus: WorkflowEngineComponentStatus = t.healthScore >= 90 ? 'healthy' : t.healthScore >= 70 ? 'warning' : 'critical';
+    return [
+      { label: '健康分', value: t.healthScore, status: scoreStatus, hint: '满分 100' },
+      { label: '运行实例', value: t.instances.running, hint: `24h 新增 ${t.instances.createdLast24h}` },
+      { label: '24h 完结', value: t.instances.completedLast24h, hint: `取消 ${t.instances.canceledLast24h}` },
+      { label: '事件 1h', value: t.events.last1h.total, hint: `成功 ${t.events.last1h.success} / 失败 ${t.events.last1h.failed}` },
+      { label: '事件 24h', value: t.events.last24h.total, status: t.events.last24h.failed > 0 ? 'warning' : null, hint: `成功 ${t.events.last24h.success} / 失败 ${t.events.last24h.failed}` },
+      { label: '待重放事件', value: t.events.pendingRetry, status: t.events.pendingRetry > 0 ? 'warning' : null },
+      { label: '事件延迟', value: formatMs(t.events.avgLatencyMs), hint: '近 24h 均值' },
+      { label: '触发器 24h', value: t.triggers.last24h.total, status: t.triggers.last24h.failed > 0 ? 'critical' : null, hint: `失败 ${t.triggers.last24h.failed} / 重试 ${t.triggers.last24h.retrying}` },
+      { label: '触发耗时', value: formatMs(t.triggers.avgDurationMs), hint: '近 24h 成功均值' },
+    ];
+  }, [data]);
 
   if (loading && !data) {
     return (
@@ -354,6 +378,7 @@ export default function WorkflowEngineDiagnosticsView() {
               </div>
             </div>
           </div>
+          <Tag color={data.telemetry.healthScore >= 90 ? 'green' : data.telemetry.healthScore >= 70 ? 'orange' : 'red'}>健康分 {data.telemetry.healthScore}</Tag>
           <Tag color={criticalCount > 0 ? 'red' : 'green'}>严重 {criticalCount}</Tag>
           <Tag color={warningCount > 0 ? 'orange' : 'grey'}>警告 {warningCount}</Tag>
           <Tag color="blue">运行实例 {data.runtime.runningInstances}</Tag>
@@ -369,6 +394,19 @@ export default function WorkflowEngineDiagnosticsView() {
           <Button type="primary" icon={<RefreshCw size={14} />} loading={loading} onClick={() => void fetchData()}>刷新</Button>
         </Space>
       </div>
+
+      <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
+        <div style={{ marginBottom: 10 }}>
+          <Space spacing={8}>
+            <Gauge size={18} color="var(--semi-color-primary)" />
+            <Typography.Text strong>引擎遥测</Typography.Text>
+            <Typography.Text type="tertiary" size="small">近 1h / 24h 吞吐、延迟与生命周期</Typography.Text>
+          </Space>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
+          {telemetryMetrics.map(renderMetric)}
+        </div>
+      </Card>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
         {data.components.map((component) => (
@@ -495,7 +533,7 @@ export default function WorkflowEngineDiagnosticsView() {
               bordered
               columnSettings={false}
               columns={recurringJobColumns}
-              dataSource={data.scheduler.systemRecurringJobs}
+              dataSource={data.telemetry.recurringJobs}
               rowKey="name"
               pagination={false}
               empty="暂无系统周期任务"

@@ -345,11 +345,49 @@ const WorkflowEngineRuntimeSnapshotDTO = z.object({
   outboxEvents: z.array(WorkflowEngineOutboxEventDTO),
 });
 
+const WorkflowEngineThroughputWindowDTO = z.object({
+  total: z.number().int(),
+  success: z.number().int(),
+  failed: z.number().int(),
+});
+
+const WorkflowEngineTelemetryDTO = z.object({
+  healthScore: z.number().int(),
+  events: z.object({
+    last1h: WorkflowEngineThroughputWindowDTO,
+    last24h: WorkflowEngineThroughputWindowDTO,
+    pendingRetry: z.number().int(),
+    avgLatencyMs: z.number().nullable(),
+  }),
+  triggers: z.object({
+    last24h: z.object({
+      total: z.number().int(),
+      success: z.number().int(),
+      failed: z.number().int(),
+      retrying: z.number().int(),
+    }),
+    avgDurationMs: z.number().nullable(),
+  }),
+  instances: z.object({
+    running: z.number().int(),
+    createdLast24h: z.number().int(),
+    completedLast24h: z.number().int(),
+    canceledLast24h: z.number().int(),
+  }),
+  recurringJobs: z.array(z.object({
+    name: z.string(),
+    cronExpression: z.string(),
+    registeredAt: z.string(),
+    nextRunAt: z.string().nullable(),
+  })),
+});
+
 export const WorkflowEngineIntrospectionDTO = z
   .object({
     healthy: z.boolean(),
     generatedAt: z.string(),
     thresholdMinutes: z.number().int(),
+    telemetry: WorkflowEngineTelemetryDTO,
     components: z.array(WorkflowEngineComponentDTO),
     queues: z.array(WorkflowEngineQueueSnapshotDTO),
     definitions: WorkflowEngineDefinitionSnapshotDTO,

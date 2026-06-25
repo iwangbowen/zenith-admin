@@ -2929,10 +2929,56 @@ export interface WorkflowEngineRuntimeSnapshot {
   outboxEvents: WorkflowEngineOutboxEvent[];
 }
 
+/** 时间窗口内的事件处理计数（吞吐 / 错误黄金信号） */
+export interface WorkflowEngineThroughputWindow {
+  total: number;
+  success: number;
+  failed: number;
+}
+
+/**
+ * 引擎遥测指标（借鉴 Camunda/Zeebe/Temporal 内省端点对外暴露的吞吐 / 延迟 / 生命周期信号）。
+ * 仅承载“只能由后端计算”的数据；饱和度、积压、SLA 分布等展示聚合由前端从其它字段派生。
+ */
+export interface WorkflowEngineTelemetry {
+  /** 引擎健康分 0-100（规范化健康度，越高越好） */
+  healthScore: number;
+  /** 事件 Outbox 吞吐 + 延迟（Traffic / Errors / Latency） */
+  events: {
+    last1h: WorkflowEngineThroughputWindow;
+    last24h: WorkflowEngineThroughputWindow;
+    /** 当前 pending/retrying 待重放事件数 */
+    pendingRetry: number;
+    /** 近 24h 成功事件的平均处理延迟（processedAt - createdAt，毫秒） */
+    avgLatencyMs: number | null;
+  };
+  /** 触发器执行吞吐 + 延迟 */
+  triggers: {
+    last24h: { total: number; success: number; failed: number; retrying: number };
+    /** 近 24h 触发器平均耗时（毫秒） */
+    avgDurationMs: number | null;
+  };
+  /** 流程实例生命周期吞吐 */
+  instances: {
+    running: number;
+    createdLast24h: number;
+    completedLast24h: number;
+    canceledLast24h: number;
+  };
+  /** 系统周期任务及下次执行时间（cron 解析） */
+  recurringJobs: Array<{
+    name: string;
+    cronExpression: string;
+    registeredAt: string;
+    nextRunAt: string | null;
+  }>;
+}
+
 export interface WorkflowEngineIntrospection {
   healthy: boolean;
   generatedAt: string;
   thresholdMinutes: number;
+  telemetry: WorkflowEngineTelemetry;
   components: WorkflowEngineComponent[];
   queues: WorkflowEngineQueueSnapshot[];
   definitions: WorkflowEngineDefinitionSnapshot;
