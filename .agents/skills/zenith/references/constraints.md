@@ -52,13 +52,13 @@
 
 ## 前端层（Step 8）
 
-- **操作列固定**（Step 8）：所有表格操作列必须 `fixed: 'right'`
+- **操作列创建**（Step 8）：所有表格操作列通过 `packages/web/src/components/ResponsiveTableActions.tsx` 的 `createOperationColumn` 创建；该工具统一处理 `fixed: 'right'`、列设置不可隐藏、移动端列宽收窄和更多菜单
 - **状态列固定**（Step 8）：状态列必须紧靠操作列左侧，并同样设置 `fixed: 'right'`
 - **搜索栏布局**（Step 8）：使用 `SearchToolbar` 组件（`packages/web/src/components/SearchToolbar.tsx`）。简单页面可继续使用 children 写法；筛选/操作较多时必须使用结构化模式（`primary` / `filters` / `actions`，必要时用 `mobilePrimary` / `mobileFilters` / `mobileActions` 覆盖移动端）。移动端至少露出一个高频搜索/筛选项：优先关键词搜索；没有关键词搜索时，选择最常用且区分度最高的筛选项（如渠道、类型、作用域、状态）放在 `mobilePrimary`。其他筛选放入底部筛选抽屉，导出/导入/批量等低频操作放入更多菜单。参考 `packages/web/src/pages/system/positions/PositionsPage.tsx`
 - **表格样式**（Step 8）：统一 `<ConfigurableTable bordered ... />`
 - **表格列公共工具**（Step 8）：`createdAtColumn`（创建时间预置列）和 `renderEllipsis`（省略列 render）从 `'../../utils/table-columns'` 导入；**禁止**内联写 `<Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>`
-- **操作按钮样式**（Step 8）：`theme="borderless" size="small"`，删除加 `type="danger"`
-- **无图标文字按钮**（Step 8）：操作列按钮只用纯文字，不加图标
+- **操作按钮样式**（Step 8）：在 `createOperationColumn` 的 `actions` 中配置 `key` / `label` / `onClick` / `danger` / `disabledReason`；桌面端默认内联全部动作，也可用 `desktopInlineKeys` 只保留高频动作内联、其余动作进入更多菜单；删除等危险操作加 `danger: true`
+- **无图标文字按钮**（Step 8）：操作列动作只用纯文字 `label`，不加图标；移动端由公共组件自动收窄操作列并收纳到更多菜单
 - **弹窗表单布局**（Step 8）：`Form` 必须加 `labelPosition="left"`；`labelWidth` 按标签字数选取（≤3字→ 72，4-5字→ 90，≥6字→ 110+）；有 3 对以上可并排的普通字段时用双列布局（`Row gutter={16}` + `Col span={12}`，`Modal width={660}`），否则单列（`width` 480-520 酌情）；TreeSelect / TextArea 等宽字段不包 `Col` 直接全宽占一行；所有 `Modal` 必须加 `closeOnEsc`
 - **树形表格展开控制**（Step 8）：使用 `children` 字段渲染树形表格时，必须在搜索栏添加「全部展开/全部折叠」按钮，使用受控 `expandedRowKeys` + `onExpandedRowsChange`；图标：已展开用 `ChevronsDownUp`，未展开用 `ChevronsUpDown`
 - **批量按钮显示时机**（Step 8）：批量操作按钮仅在 `selectedRowKeys.length > 0` 时显示，放在查询/重置按钮之后

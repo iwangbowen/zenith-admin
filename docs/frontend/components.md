@@ -33,6 +33,19 @@
 
 ```tsx
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
+
+const columns = [
+  { title: '名称', dataIndex: 'name' },
+  createOperationColumn<User>({
+    width: 160,
+    desktopInlineKeys: ['edit', 'delete'],
+    actions: (record) => [
+      { key: 'edit', label: '编辑', onClick: () => openEdit(record) },
+      { key: 'delete', label: '删除', danger: true, onClick: () => handleDelete(record.id) },
+    ],
+  }),
+];
 
 // 标准分页列表
 <ConfigurableTable
@@ -71,7 +84,8 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 ### ConfigurableTable 注意事项
 
 - 所有 CRUD 列表页**必须**使用 `ConfigurableTable` 替代裸 `Table`，并保留 `bordered` 属性
-- 操作列请使用 `createOperationColumn` 创建，避免依赖列标题或 key 约定
+- 操作列请使用 `createOperationColumn` 创建；它会统一处理右固定、列设置不可隐藏、移动端列宽收窄和更多菜单
+- `createOperationColumn` 默认在桌面端内联展示全部动作；动作较多时可通过 `desktopInlineKeys` 指定高频内联按钮，其余动作进入更多菜单；移动端始终只显示更多按钮
 - 若需关闭列设置功能（如只有 1-2 列的简单表格），传 `columnSettings={false}`
 
 ---

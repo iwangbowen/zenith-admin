@@ -19,13 +19,14 @@ packages/web/src/pages/xxx/XxxPage.tsx
 ```tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Button, Form, Input, Select, Space, Spin, SplitButtonGroup, Dropdown,
-  Toast, Popconfirm, Switch,
+  Button, Form, Input, Select, Spin, SplitButtonGroup, Dropdown,
+  Toast, Modal, Switch,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus, Download, ChevronDown } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { request } from '@/utils/request';
@@ -296,36 +297,29 @@ export default function XxxPage() {
         />
       ),
     },
-    {
-      // 操作列：必须 fixed: 'right'；纯文字按钮，无图标
-      title: '操作',
-      fixed: 'right',
+    createOperationColumn<Xxx>({
       width: 160,
-      render: (_, record) => (
-        <Space>
-          {hasPermission('system:xxx:update') && (
-            <Button
-              theme="borderless"
-              size="small"
-              onClick={() => openEdit(record)}
-            >
-              编辑
-            </Button>
-          )}
-          {hasPermission('system:xxx:delete') && (
-            <Popconfirm
-              title="确定要删除吗？"
-              content="删除后不可恢复"
-              onConfirm={() => handleDelete(record.id)}
-            >
-              <Button theme="borderless" type="danger" size="small">
-                删除
-              </Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
+      desktopInlineKeys: ['edit', 'delete'],
+      actions: (record) => [
+        ...(hasPermission('system:xxx:update') ? [{
+          key: 'edit',
+          label: '编辑',
+          onClick: () => openEdit(record),
+        }] : []),
+        ...(hasPermission('system:xxx:delete') ? [{
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定要删除吗？',
+              content: '删除后不可恢复',
+              onOk: () => handleDelete(record.id),
+            });
+          },
+        }] : []),
+      ],
+    }),
   ];
 
   const renderKeywordSearch = () => (
@@ -593,12 +587,17 @@ formatDateTime(someDate)
 ### 操作列按钮样式
 
 ```tsx
-// ✅ 正确：纯文字，无图标，borderless
-<Button theme="borderless" size="small">编辑</Button>
-<Button theme="borderless" type="danger" size="small">删除</Button>
-
-// ❌ 禁止：带图标
-<Button theme="borderless" size="small" icon={<Edit size={14} />}>编辑</Button>
+// ✅ 正确：使用 createOperationColumn。默认桌面端内联全部动作；
+// 设置 desktopInlineKeys 后，只把高频动作作为内联按钮展示，其余动作进入更多菜单。
+// 移动端会自动收窄操作列，并将全部动作收进更多菜单。
+createOperationColumn<Xxx>({
+  width: 160,
+  desktopInlineKeys: ['edit', 'delete'],
+  actions: (record) => [
+    { key: 'edit', label: '编辑', onClick: () => openEdit(record) },
+    { key: 'delete', label: '删除', danger: true, onClick: () => handleDelete(record.id) },
+  ],
+})
 ```
 
 ### 搜索参数与分页联动
@@ -701,12 +700,12 @@ const columns: ColumnProps<Region>[] = [
     width: 90,
     // 注意：不加 fixed: 'right'，否则必须设 scroll.x 导致宽度固定
   },
-  {
-    title: '操作',
-    fixed: 'right',   // 仅操作列保留右固定
+  createOperationColumn<Region>({
     width: 160,
-    render: ...
-  },
+    actions: (record) => [
+      { key: 'edit', label: '编辑', onClick: () => openEdit(record) },
+    ],
+  }),
 ];
 
 <ConfigurableTable

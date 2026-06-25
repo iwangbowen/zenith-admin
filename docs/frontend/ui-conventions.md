@@ -26,7 +26,7 @@
 - 数据表格必须使用 `ConfigurableTable` 组件（`@/components/ConfigurableTable`），并保持带边框属性：`bordered`
 - `ConfigurableTable` 在 `Table` 基础上内置列显隐配置、刷新入口、表格尺寸、边框/斑马纹显示设置和全屏展示能力，用户选择会持久化到 `localStorage`
 - 列表页建议传入 `onRefresh` 和 `refreshLoading`，让表格右上角刷新按钮与当前加载状态一致
-- "操作"列必须右侧固定：`fixed: 'right'`
+- 操作列必须通过 `createOperationColumn` 创建；该工具统一处理右侧固定、列设置不可隐藏、移动端列宽收窄和更多菜单
 - "状态"列必须放在"操作"列左侧（紧靠操作列），并同样添加 `fixed: 'right'`
 
 ### 表格公共列工具（`@/utils/table-columns`）
@@ -47,10 +47,10 @@ const columns = [
 
 ### 操作列按钮
 
-- 直接展示的行操作使用纯文字无图标按钮；更多操作可收纳到 `Dropdown`，触发按钮同样使用 `theme="borderless"` + `size="small"`
-- `theme="borderless"`
-- `size="small"`
-- 删除按钮额外使用 `type="danger"`
+- 行操作统一配置在 `createOperationColumn` 的 `actions` 中，桌面端自动渲染纯文字无图标的 `theme="borderless"` + `size="small"` 按钮
+- 桌面端默认内联展示全部动作；动作较多时用 `desktopInlineKeys` 指定高频内联按钮，其余动作进入更多菜单
+- 移动端操作列自动收窄，并只显示更多按钮，所有动作收纳到更多菜单
+- 删除等危险操作在 action 上配置 `danger: true`
 
 ## 虚拟化表格（大数据量）
 
@@ -82,17 +82,31 @@ const columns = [
 若需要表格填满容器宽度，**让一列不设 `width`**（通常是名称/标题列），该列自动弹性填充剩余空间：
 
 ```tsx
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
+
 const columns = [
   { title: '名称', dataIndex: 'name' },          // 无 width — 弹性列，填满剩余宽度
   { title: '编码', dataIndex: 'code', width: 140 },
   // ... 其他固定宽度列
-  { title: '操作', fixed: 'right', width: 160 }, // 操作列保持右固定
+  createOperationColumn<Row>({
+    width: 160,
+    desktopInlineKeys: ['edit', 'delete'],
+    actions: (record) => [
+      { key: 'edit', label: '编辑', onClick: () => openEdit(record) },
+      { key: 'delete', label: '删除', danger: true, onClick: () => handleDelete(record.id) },
+    ],
+  }),
 ];
 
-<Table
+<ConfigurableTable
+  bordered
   virtualized
   scroll={{ y: 'calc(100vh - 260px)' }}   // 不设 scroll.x
   columns={columns}
+  dataSource={data}
+  rowKey="id"
+  onRefresh={() => void fetchList()}
+  refreshLoading={loading}
 />
 ```
 
