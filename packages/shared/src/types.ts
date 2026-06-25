@@ -2275,6 +2275,16 @@ export interface WorkflowTask {
   /** 外部审批回调 ID（task.status='waiting' + externalApproval 启用时生效） */
   externalCallbackId?: string | null;
   externalDispatchStatus?: WorkflowTaskExternalDispatchStatus | null;
+  /** 触发器调度/执行状态（trigger 节点副作用恢复与幂等） */
+  triggerDispatchStatus?: WorkflowTriggerExecutionStatus | null;
+  /** 触发器调度尝试次数 */
+  triggerAttempt?: number;
+  /** 触发器本次调度开始时间 */
+  triggerStartedAt?: string | null;
+  /** 触发器下一次恢复重试时间 */
+  triggerNextRetryAt?: string | null;
+  /** 触发器最近一次调度错误 */
+  triggerLastError?: string | null;
   /** 当前节点配置中的操作按钮设置（仅审批节点） */
   actionButtons?: Partial<Record<WorkflowActionButtonKey, WorkflowActionButtonConfig>> | null;
   createdAt: string;
@@ -2723,6 +2733,7 @@ export type WorkflowHealthIssueType =
   | 'external_dispatch_failed'
   | 'external_dispatch_pending'
   | 'trigger_waiting_no_execution'
+  | 'trigger_execution_failed'
   | 'subprocess_waiting'
   | 'delay_overdue'
   | 'task_timeout_overdue'

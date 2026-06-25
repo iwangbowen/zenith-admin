@@ -29,6 +29,11 @@ export function mapTask(
     actionButtons: actionButtons ?? null,
     externalCallbackId: row.externalCallbackId ?? null,
     externalDispatchStatus: row.externalDispatchStatus ?? null,
+    triggerDispatchStatus: row.triggerDispatchStatus ?? null,
+    triggerAttempt: row.triggerAttempt ?? 0,
+    triggerStartedAt: formatNullableDateTime(row.triggerStartedAt),
+    triggerNextRetryAt: formatNullableDateTime(row.triggerNextRetryAt),
+    triggerLastError: row.triggerLastError ?? null,
     createdAt: formatDateTime(row.createdAt),
   };
 }
@@ -1328,7 +1333,8 @@ async function expandTasksToRows(
       const tcfg = t.nodeConfig.triggerConfig;
       const isCallback = tcfg?.triggerType === 'callback';
       const isBlocking = tcfg?.onFailure === 'block';
-      if (isCallback || isBlocking) {
+      const isDataMutation = tcfg?.triggerType === 'updateData' || tcfg?.triggerType === 'deleteData';
+      if (isCallback || isBlocking || isDataMutation) {
         rows.push({
           instanceId: ctx.instanceId,
           nodeKey: t.nodeKey,
@@ -1336,6 +1342,8 @@ async function expandTasksToRows(
           nodeType: 'trigger',
           assigneeId: null,
           status: 'waiting' as const,
+          triggerDispatchStatus: 'pending' as const,
+          triggerAttempt: 0,
           ...(isCallback ? { externalCallbackId: randomBytes(16).toString('hex') } : {}),
         });
         continue;
@@ -1379,6 +1387,7 @@ async function expandTasksToRows(
     }
 
     if (t.nodeType !== 'approve' && t.nodeType !== 'handler') {
+      const isTrigger = t.nodeType === 'trigger';
       rows.push({
         instanceId: ctx.instanceId,
         nodeKey: t.nodeKey,
@@ -1387,6 +1396,7 @@ async function expandTasksToRows(
         assigneeId: t.assigneeId,
         status: (t.nodeType as string) === 'ccNode' ? 'skipped' as const : 'approved' as const,
         actionAt: (t.nodeType as string) === 'ccNode' ? null : new Date(),
+        ...(isTrigger ? { triggerDispatchStatus: 'pending' as const, triggerAttempt: 0 } : {}),
       });
       continue;
     }
@@ -2232,7 +2242,10 @@ export async function createInstance(data: { definitionId: number; title: string
   const skipScopeCheck = !!callerOverride;
   const [def] = await db.select().from(workflowDefinitions).where(and(eq(workflowDefinitions.id, data.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);
   if (!def) throw new HTTPException(404, { message: '流程定义不存在或未发布' });
-  assertLaunchMatchesFormType(def, data);
+  const normalizedBizType = data.bizType?.trim() || null;
+  const normalizedBizId = data.bizId?.trim() || null;
+  const launchData = { ...data, bizType: normalizedBizType, bizId: normalizedBizId };
+  assertLaunchMatchesFormType(def, launchData);
   const scopeType = (def.initiatorScopeType ?? 'all') as 'all' | 'users' | 'departments' | 'roles';
   const scopeIds = Array.isArray(def.initiatorScopeIds)
     ? def.initiatorScopeIds.map(Number).filter((v) => Number.isInteger(v) && v > 0)
@@ -2260,6 +2273,9 @@ export async function createInstance(data: { definitionId: number; title: string
   const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
 
+  const existingBizInstance = await findInstanceByBusinessKey(normalizedBizType, normalizedBizId);
+  if (existingBizInstance) return mapInstance(existingBizInstance);
+
   // 草稿：仅保存表单，不进入流转、不生成业务编号、不触发事件
   if (data.asDraft) {
     const [draft] = await db.insert(workflowInstances).values({
@@ -2273,8 +2289,8 @@ export async function createInstance(data: { definitionId: number; title: string
       currentNodeKey: null,
       initiatorId: user.userId,
       tenantId: getCreateTenantId(user),
-      bizType: data.bizType ?? null,
-      bizId: data.bizId ?? null,
+      bizType: normalizedBizType,
+      bizId: normalizedBizId,
     }).returning();
     return mapInstance(draft);
   }
@@ -2285,38 +2301,48 @@ export async function createInstance(data: { definitionId: number; title: string
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }
   const serialConfig = flowData.settings?.serialNo;
-  const { instance, createdTasks } = await db.transaction(async (tx) => {
-    const serialNo = await generateSerialNo(tx, def.id, serialConfig);
-    const [createdInstance] = await tx.insert(workflowInstances).values({
-      definitionId: def.id,
-      definitionSnapshot: def,
-      title: data.title,
-      serialNo,
-      formData,
-      formSnapshot,
-      status: 'running',
-      priority: data.priority ?? 'normal',
-      currentNodeKey: null,
-      initiatorId: user.userId,
-      tenantId: getCreateTenantId(user),
-      bizType: data.bizType ?? null,
-      bizId: data.bizId ?? null,
-    }).returning();
-    const materialized = await materializeAdvanceResult(initialResult, {
-      instanceId: createdInstance.id,
-      initiatorId: user.userId,
-      executor: tx,
-      flowData,
-      formData,
-      settings: flowData.settings,
-      starter,
+  let txResult: { instance: typeof workflowInstances.$inferSelect; createdTasks: typeof workflowTasks.$inferSelect[] };
+  try {
+    txResult = await db.transaction(async (tx) => {
+      const serialNo = await generateSerialNo(tx, def.id, serialConfig);
+      const [createdInstance] = await tx.insert(workflowInstances).values({
+        definitionId: def.id,
+        definitionSnapshot: def,
+        title: data.title,
+        serialNo,
+        formData,
+        formSnapshot,
+        status: 'running',
+        priority: data.priority ?? 'normal',
+        currentNodeKey: null,
+        initiatorId: user.userId,
+        tenantId: getCreateTenantId(user),
+        bizType: normalizedBizType,
+        bizId: normalizedBizId,
+      }).returning();
+      const materialized = await materializeAdvanceResult(initialResult, {
+        instanceId: createdInstance.id,
+        initiatorId: user.userId,
+        executor: tx,
+        flowData,
+        formData,
+        settings: flowData.settings,
+        starter,
+      });
+      const [updatedInstance] = await tx.update(workflowInstances).set({
+        status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
+        currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
+      }).where(eq(workflowInstances.id, createdInstance.id)).returning();
+      return { instance: updatedInstance, createdTasks: materialized.createdTasks };
     });
-    const [updatedInstance] = await tx.update(workflowInstances).set({
-      status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
-      currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
-    }).where(eq(workflowInstances.id, createdInstance.id)).returning();
-    return { instance: updatedInstance, createdTasks: materialized.createdTasks };
-  });
+  } catch (err) {
+    if (normalizedBizType && normalizedBizId && isPgUniqueViolation(err)) {
+      const existing = await findInstanceByBusinessKey(normalizedBizType, normalizedBizId);
+      if (existing) return mapInstance(existing);
+    }
+    throw err;
+  }
+  const { instance, createdTasks } = txResult;
   const instanceDto = mapInstance(instance);
   const actor = { userId: user.userId, name: user.username };
   emitInstanceStartEvents(instanceDto, instance, createdTasks, actor);
@@ -2382,6 +2408,18 @@ function emitInstanceStartEvents(
   }
   if (instance.status === 'approved') emitInstanceEvent('instance.approved', instanceDto, actor);
   if (instance.status === 'rejected') emitInstanceEvent('instance.rejected', instanceDto, actor);
+}
+
+async function findInstanceByBusinessKey(
+  bizType: string | null,
+  bizId: string | null,
+): Promise<typeof workflowInstances.$inferSelect | null> {
+  if (!bizType || !bizId) return null;
+  const [existing] = await db.select().from(workflowInstances)
+    .where(and(eq(workflowInstances.bizType, bizType), eq(workflowInstances.bizId, bizId)))
+    .orderBy(desc(workflowInstances.id))
+    .limit(1);
+  return existing ?? null;
 }
 
 export async function withdrawInstance(id: number) {
@@ -2542,7 +2580,7 @@ export async function approveTaskCore(
 
   const updated = await db.transaction(async (tx) => {
     // 实例行级锁：序列化同一实例上的并发审批，避免会签末位并发各自读不到对方已审批而都不推进（节点卡死）
-    const [lockedInst] = await tx.select({ status: workflowInstances.status })
+    const [lockedInst] = await tx.select({ status: workflowInstances.status, formData: workflowInstances.formData })
       .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
     if (!lockedInst || lockedInst.status !== 'running') {
       throw new HTTPException(409, { message: '流程实例状态已变化，请刷新后重试' });
@@ -2568,7 +2606,7 @@ export async function approveTaskCore(
     }
 
     const completedKeys = await getCompletedNodeKeys(tx, inst.id);
-    const formData = (inst.formData ?? {}) as Record<string, unknown>;
+    const formData = (lockedInst.formData ?? inst.formData ?? {}) as Record<string, unknown>;
     const starter = await buildStarterContext(inst.initiatorId, tx);
     // 退回模式 backToOrigin：被退回任务通过后，直接跳回发起退回的来源节点（而非继续后续路径）
     let advanceResult: AdvanceResult;
@@ -3793,7 +3831,7 @@ export async function recallTask(taskId: number, comment?: string) {
   if (tc) instConditions.push(tc);
   const [inst] = await db.select().from(workflowInstances).where(and(...instConditions)).limit(1);
   if (!inst) throw new HTTPException(404, { message: '任务不存在或无权操作' });
-  if (inst.status === 'withdrawn' || inst.status === 'cancelled') {
+  if (inst.status === 'withdrawn' || inst.status === 'cancelled' || inst.status === 'approved' || inst.status === 'rejected') {
     throw new HTTPException(400, { message: '流程已结束，无法撤回' });
   }
   // 本任务之后创建的任务：若已有被处理（approved/rejected）的，则不允许撤回
@@ -3808,7 +3846,7 @@ export async function recallTask(taskId: number, comment?: string) {
     // 实例行级锁 + 锁内重校验：防止与并发审批/驳回竞态（撤回时后续任务正被处理）
     const [lockedInst] = await tx.select({ status: workflowInstances.status })
       .from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).for('update').limit(1);
-    if (!lockedInst || lockedInst.status === 'withdrawn' || lockedInst.status === 'cancelled') {
+    if (!lockedInst || lockedInst.status === 'withdrawn' || lockedInst.status === 'cancelled' || lockedInst.status === 'approved' || lockedInst.status === 'rejected') {
       throw new HTTPException(400, { message: '流程已结束，无法撤回' });
     }
     const [freshTask] = await tx.select().from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);

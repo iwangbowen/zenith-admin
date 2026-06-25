@@ -1515,7 +1515,7 @@ export const workflowInstances = pgTable('workflow_instances', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
-  index('workflow_instances_biz_idx').on(t.bizType, t.bizId),
+  uniqueIndex('workflow_instances_biz_key_uniq').on(t.bizType, t.bizId),
   uniqueIndex('workflow_instances_parent_task_item_key_idx').on(t.parentTaskId, t.parentTaskItemKey),
 ]);
 export type WorkflowInstanceRow = typeof workflowInstances.$inferSelect;
@@ -1597,6 +1597,16 @@ export const workflowTasks = pgTable('workflow_tasks', {
   externalCallbackId: varchar('external_callback_id', { length: 64 }).unique(),
   /** 外部审批：调度状态 */
   externalDispatchStatus: workflowTaskExternalDispatchStatusEnum('external_dispatch_status'),
+  /** 触发器：调度/执行状态，用于 outbox 重放幂等与恢复 */
+  triggerDispatchStatus: workflowTriggerExecutionStatusEnum('trigger_dispatch_status'),
+  /** 触发器：已调度尝试次数 */
+  triggerAttempt: integer('trigger_attempt').default(0).notNull(),
+  /** 触发器：本次调度开始时间，用于识别 running 卡死 */
+  triggerStartedAt: timestamp('trigger_started_at', { withTimezone: true }),
+  /** 触发器：下一次恢复重试时间 */
+  triggerNextRetryAt: timestamp('trigger_next_retry_at', { withTimezone: true }),
+  /** 触发器：最近一次调度错误 */
+  triggerLastError: text('trigger_last_error'),
   /** delay 节点的唤醒时间（status='waiting' 期间有效，由调度器扫描） */
   wakeAt: timestamp('wake_at', { withTimezone: true }),
   /** 子流程（multi 多实例）：期望子实例总数（仅 subProcess 多实例 waiting 任务有值；单实例/非子流程为 null） */

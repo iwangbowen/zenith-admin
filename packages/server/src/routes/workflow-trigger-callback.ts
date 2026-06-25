@@ -78,7 +78,7 @@ const callback = defineOpenAPIRoute({
     }
 
     const caller = body.callerName ?? 'external';
-    const result = await resumeTriggerTask(callbackId, body.comment, caller);
+    const result = await resumeTriggerTask(callbackId, body.comment, caller, body.payload);
     return c.json(okBody({ message: '触发器回调成功', instanceId: result.instanceId, nodeKey: result.nodeKey }), 200);
   },
 });

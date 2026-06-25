@@ -98,6 +98,19 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       }));
       continue;
     }
+    if (task.nodeType === 'trigger' && task.status === 'waiting' && task.triggerDispatchStatus === 'failed') {
+      issues.push(taskIssue({
+        type: 'trigger_execution_failed',
+        severity: 'critical',
+        title: '触发器执行失败',
+        description: task.triggerLastError
+          ? `触发器最终执行失败：${task.triggerLastError}`
+          : '触发器最终执行失败，流程仍在等待该节点处理。',
+        row,
+        now,
+      }));
+      continue;
+    }
     if (task.nodeType === 'trigger' && task.status === 'waiting' && !triggerTaskIdsWithExecution.has(task.id)) {
       issues.push(taskIssue({
         type: 'trigger_waiting_no_execution',
@@ -187,7 +200,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       critical,
       warning,
       externalFailed: issues.filter((issue) => issue.type === 'external_dispatch_failed').length,
-      triggerStuck: issues.filter((issue) => issue.type === 'trigger_waiting_no_execution').length,
+      triggerStuck: issues.filter((issue) => issue.type === 'trigger_waiting_no_execution' || issue.type === 'trigger_execution_failed').length,
       subProcessStuck: issues.filter((issue) => issue.type === 'subprocess_waiting').length,
       outboxFailed: issues.filter((issue) => issue.type === 'workflow_event_outbox_failed').length,
     },

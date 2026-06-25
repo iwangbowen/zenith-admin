@@ -87,6 +87,7 @@ export const WorkflowHealthIssueDTO = z
       'external_dispatch_failed',
       'external_dispatch_pending',
       'trigger_waiting_no_execution',
+      'trigger_execution_failed',
       'subprocess_waiting',
       'delay_overdue',
       'task_timeout_overdue',

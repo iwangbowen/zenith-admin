@@ -11,6 +11,7 @@ const ISSUE_LABELS: Record<WorkflowHealthIssue['type'], string> = {
   external_dispatch_failed: '外部审批失败',
   external_dispatch_pending: '外部审批未派发',
   trigger_waiting_no_execution: '触发器无执行记录',
+  trigger_execution_failed: '触发器执行失败',
   subprocess_waiting: '子流程等待',
   delay_overdue: '延迟未唤醒',
   task_timeout_overdue: '任务超时',

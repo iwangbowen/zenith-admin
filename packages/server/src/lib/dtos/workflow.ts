@@ -165,6 +165,13 @@ export const WorkflowTaskDTO = z
     originalAssigneeId: z.number().int().nullable().optional(),
     transferChain: z.array(z.number().int()).optional(),
     delegatedFromId: z.number().int().nullable().optional(),
+    externalCallbackId: z.string().nullable().optional(),
+    externalDispatchStatus: z.enum(['pending', 'dispatched', 'failed', 'fallback']).nullable().optional(),
+    triggerDispatchStatus: z.enum(['pending', 'running', 'success', 'failed', 'retrying']).nullable().optional(),
+    triggerAttempt: z.number().int().optional(),
+    triggerStartedAt: z.string().nullable().optional(),
+    triggerNextRetryAt: z.string().nullable().optional(),
+    triggerLastError: z.string().nullable().optional(),
     actionButtons: z.record(z.string(), z.object({
       enabled: z.boolean(),
       displayName: z.string().optional(),
