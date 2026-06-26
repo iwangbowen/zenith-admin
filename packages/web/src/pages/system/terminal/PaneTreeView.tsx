@@ -86,6 +86,7 @@ export default function PaneTreeView({
               sessionId={leaf.stableSessionId}
               active={sessionActive}
               shell={leaf.shell ?? ''}
+              label={leaf.title}
               cwd={leaf.cwd}
               onTitleChange={onTitleChange ? (t) => onTitleChange(leaf.id, t) : undefined}
               onOpenTerminalAt={onOpenTerminalAt}

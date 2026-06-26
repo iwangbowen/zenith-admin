@@ -26,6 +26,7 @@ interface TerminalTabProps {
   readonly sessionId: string;
   readonly active: boolean;
   readonly shell: string;
+  readonly label?: string;
   readonly cwd?: string;
   /** CWD 变化时回调（OSC 7），用于更新 Tab 标题 */
   readonly onTitleChange?: (newTitle: string) => void;
@@ -33,7 +34,7 @@ interface TerminalTabProps {
   readonly onOpenTerminalAt?: (cwd: string) => void;
 }
 
-export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChange, onOpenTerminalAt }: TerminalTabProps) {
+export default function TerminalTab({ sessionId, active, shell, label, cwd, onTitleChange, onOpenTerminalAt }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const { isDark } = useThemeController();
@@ -285,6 +286,7 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
   ]);
 
   const statusCwd = status?.cwd ?? cwd;
+  const shellLabel = label || status?.shell || shell || 'shell';
   const reconnectSeconds = status?.reconnectNextAt
     ? Math.max(0, Math.ceil((status.reconnectNextAt - now) / 1000))
     : 0;
@@ -401,9 +403,9 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
             <span className="terminal-status-bar__dot" data-state={status?.connectionState ?? 'connecting'} />
             <span className="terminal-status-bar__text">{connectionText[status?.connectionState ?? 'connecting']}</span>
           </span>
-          <span className="terminal-status-bar__item terminal-status-bar__item--shell" title={status?.shell ?? shell}>
+          <span className="terminal-status-bar__item terminal-status-bar__item--shell" title={shellLabel}>
             <Radio size={12} className="terminal-status-bar__icon" />
-            <span className="terminal-status-bar__text">{(status?.shell ?? shell) || 'shell'}</span>
+            <span className="terminal-status-bar__text">{shellLabel}</span>
           </span>
           <span className="terminal-status-bar__item terminal-status-bar__item--path" title={statusCwd || '未获取当前路径'}>
             <Folder size={12} className="terminal-status-bar__icon" />
