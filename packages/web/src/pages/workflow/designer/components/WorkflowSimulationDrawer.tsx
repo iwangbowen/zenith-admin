@@ -55,6 +55,39 @@ function parseJsonRecord(raw: string): Record<string, unknown> | null {
   return parsed as Record<string, unknown>;
 }
 
+function pickValidationMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (!error || typeof error !== 'object') return '请先补全仿真表单必填项';
+
+  const seen = new Set<unknown>();
+  const readMessage = (value: unknown): string | null => {
+    if (!value || typeof value !== 'object' || seen.has(value)) return null;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === 'string' && record.message.trim()) return record.message;
+    if (Array.isArray(record.errors)) {
+      for (const item of record.errors) {
+        const message = readMessage(item);
+        if (message) return message;
+      }
+    }
+    for (const item of Object.values(record)) {
+      if (Array.isArray(item)) {
+        for (const child of item) {
+          const message = readMessage(child);
+          if (message) return message;
+        }
+      } else {
+        const message = readMessage(item);
+        if (message) return message;
+      }
+    }
+    return null;
+  };
+
+  return readMessage(error) ?? '请先补全仿真表单必填项';
+}
+
 function defaultFormDataFromFields(fields: WorkflowFormField[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const visit = (items: WorkflowFormField[]) => {
@@ -99,8 +132,13 @@ export default function WorkflowSimulationDrawer({
 
   const effectiveFormData = async () => {
     if (formFields.length > 0 && formApi.current) {
-      const values = await formApi.current.validate() as Record<string, unknown>;
-      return values;
+      try {
+        const values = await formApi.current.validate() as Record<string, unknown>;
+        return values;
+      } catch (err) {
+        Toast.warning(pickValidationMessage(err));
+        return null;
+      }
     }
     const parsed = parseJsonRecord(jsonDraft);
     if (!parsed) {
