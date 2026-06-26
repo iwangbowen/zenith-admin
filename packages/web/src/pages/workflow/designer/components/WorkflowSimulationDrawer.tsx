@@ -267,7 +267,7 @@ function nodeLabel(flowData: WorkflowFlowData, key?: string): string {
   return flowData.nodes.find((node) => node.data.key === key)?.data.label ?? key;
 }
 
-function nodeTypeCanDecide(item: WorkflowSimulationResult['timeline'][number] | null): boolean {
+function nodeTypeCanDecide(item: WorkflowSimulationResult['timeline'][number] | null | undefined): boolean {
   return !!item && ['approve', 'handler'].includes(String(item.nodeType));
 }
 

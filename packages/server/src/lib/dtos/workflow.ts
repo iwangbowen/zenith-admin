@@ -419,8 +419,10 @@ export const WorkflowSimulationTimelineItemDTO = z
     nodeType: z.string(),
     status: z.enum(['entered', 'waiting', 'approved', 'rejected', 'autoApproved', 'skipped', 'blocked']),
     assignees: z.array(z.object({ id: z.number().int(), name: z.string() })).optional(),
-    decision: z.enum(['approve', 'reject', 'auto']).optional(),
+    decision: z.enum(['approve', 'reject', 'skip', 'wait', 'auto']).optional(),
     reason: z.string().optional(),
+    detail: z.string().optional(),
+    nextNodeKeys: z.array(z.string()).optional(),
   })
   .openapi('WorkflowSimulationTimelineItem');
 
@@ -434,6 +436,9 @@ export const WorkflowSimulationEdgeResultDTO = z
     label: z.string().nullable().optional(),
     taken: z.boolean(),
     reason: z.string().optional(),
+    conditionMatched: z.boolean().nullable().optional(),
+    conditionSummary: z.string().nullable().optional(),
+    actualValue: z.string().nullable().optional(),
   })
   .openapi('WorkflowSimulationEdgeResult');
 
@@ -444,6 +449,17 @@ export const WorkflowSimulationNodeStateDTO = z
   })
   .openapi('WorkflowSimulationNodeState');
 
+export const WorkflowSimulationHealthIssueDTO = z
+  .object({
+    level: z.enum(['error', 'warning', 'info']),
+    scope: z.enum(['flow', 'node', 'edge']),
+    nodeKey: z.string().optional(),
+    edgeId: z.string().optional(),
+    message: z.string(),
+    suggestion: z.string().optional(),
+  })
+  .openapi('WorkflowSimulationHealthIssue');
+
 export const WorkflowSimulationResultDTO = z
   .object({
     valid: z.boolean(),
@@ -452,6 +468,8 @@ export const WorkflowSimulationResultDTO = z
     timeline: z.array(WorkflowSimulationTimelineItemDTO),
     edgeResults: z.array(WorkflowSimulationEdgeResultDTO),
     nodeStates: z.record(z.string(), WorkflowSimulationNodeStateDTO),
+    healthIssues: z.array(WorkflowSimulationHealthIssueDTO),
+    pathSignature: z.array(z.string()),
   })
   .openapi('WorkflowSimulationResult');
 
