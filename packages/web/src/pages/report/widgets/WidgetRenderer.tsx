@@ -1,10 +1,13 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Table } from '@douyinfe/semi-ui';
+import VChartCore from '@visactor/vchart';
+import type { ISpec } from '@visactor/vchart';
+import { VChart as VChartReact } from '@visactor/react-vchart';
 import {
   BarChart, LineChart, AreaChart, PieChart, ScatterChart, TreemapChart, CommonChart,
   makeBarSpec, makeLineSpec, makeAreaSpec, makePieSpec, makeScatterSpec, makeTreemapSpec, makeMixedBarLineSpec,
-  useChartPalette, chartOptions,
+  useChartPalette, chartOptions, type ChartPalette,
 } from '@/components/charts';
 import type { ReportWidget, ReportField, ReportDataResult, ReportConditionalFormat, ReportWidgetOptions } from '@zenith/shared';
 
@@ -93,6 +96,8 @@ function EmptyHint({ text }: { readonly text: string }) {
   return <div className="report-widget-empty">{text}</div>;
 }
 
+const registeredMapNames = new Set<string>();
+
 interface WidgetRendererProps {
   widget: ReportWidget;
   data: ReportDataResult | null;
@@ -158,8 +163,27 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       );
     }
 
+    if (widget.type === 'flipper') {
+      const value = aggregate(rawRows, o.valueField, o.aggregate ?? 'sum');
+      return <Flipper value={value} digits={o.flipDigits} decimals={o.decimals} prefix={o.prefix} unit={o.unit} />;
+    }
+
     if (!rawRows.length) return <EmptyHint text="暂无数据" />;
     const rows = sortAndLimit(rawRows, o);
+
+    if (widget.type === 'scrollList') {
+      if (!o.categoryField || !o.valueFields?.[0]) return <EmptyHint text="请配置名称字段与数值字段" />;
+      return (
+        <ScrollList
+          rows={rows}
+          cat={o.categoryField}
+          val={o.valueFields[0]}
+          speed={o.scrollSpeed}
+          showRank={o.showRank}
+          onClick={onCategoryClick}
+        />
+      );
+    }
 
     // 表格
     if (widget.type === 'table') {
@@ -252,6 +276,24 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       return <TreemapChart {...spec} options={chartOptions} height={chartHeight} />;
     }
 
+    // 地图
+    if (widget.type === 'map') {
+      const valueField = o.valueFields?.[0];
+      if (!o.mapGeojsonUrl) return <EmptyHint text="请配置地图 geojson URL" />;
+      if (!o.areaField || !valueField) return <EmptyHint text="请配置区域字段与数值字段" />;
+      return (
+        <MapChart
+          geojsonUrl={o.mapGeojsonUrl}
+          mapName={o.mapName}
+          areaField={o.areaField}
+          valueField={valueField}
+          rows={rows}
+          height={chartHeight}
+          palette={palette}
+        />
+      );
+    }
+
     // 双轴组合
     if (widget.type === 'dualAxis') {
       const barF = o.valueFields?.[0]; const lineF = o.secondaryFields?.[0];
@@ -294,6 +336,271 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
 }
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
+function formatFlipperNumber(value: number, digits?: number, decimals?: number): string {
+  const safeDecimals = Math.max(0, decimals ?? 0);
+  const fixed = Math.abs(value).toFixed(safeDecimals);
+  const [rawInteger, fraction] = fixed.split('.');
+  const padded = digits && digits > 0 ? rawInteger.padStart(digits, '0') : rawInteger;
+  const grouped = padded.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${value < 0 ? '-' : ''}${grouped}${fraction ? `.${fraction}` : ''}`;
+}
+
+function FlipperDigit({ digit }: { readonly digit: string }) {
+  const value = Number(digit);
+  const height = 44;
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        width: 34,
+        height,
+        overflow: 'hidden',
+        borderRadius: 8,
+        background: 'linear-gradient(180deg, #142753 0%, #0e1b3a 100%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 6px 18px rgba(0,0,0,0.18)',
+        border: '1px solid rgba(90,216,255,0.22)',
+        verticalAlign: 'middle',
+      }}
+    >
+      <span
+        style={{
+          display: 'block',
+          transform: `translateY(${-value * height}px)`,
+          transition: 'transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+        }}
+      >
+        {'0123456789'.split('').map((n) => (
+          <span
+            key={n}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height,
+              color: '#5ad8ff',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              fontSize: 30,
+              fontWeight: 800,
+              lineHeight: `${height}px`,
+              textShadow: '0 0 12px rgba(90,216,255,0.45)',
+            }}
+          >
+            {n}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function Flipper({ value, digits, decimals, prefix, unit }: { readonly value: number; readonly digits?: number; readonly decimals?: number; readonly prefix?: string; readonly unit?: string }) {
+  const chars = `${prefix ?? ''}${formatFlipperNumber(value, digits, decimals)}${unit ?? ''}`.split('');
+  return (
+    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, flexWrap: 'wrap' }}>
+        {chars.map((ch, i) => (
+          /\d/.test(ch) ? (
+            <FlipperDigit key={i} digit={ch} />
+          ) : (
+            <span
+              key={i}
+              style={{
+                color: 'var(--semi-color-text-0)',
+                fontSize: ch === ',' ? 24 : 26,
+                fontWeight: 700,
+                lineHeight: '44px',
+                padding: ch.trim() ? '0 1px' : '0 4px',
+              }}
+            >
+              {ch}
+            </span>
+          )
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScrollList({ rows, cat, val, speed, showRank, onClick }: { readonly rows: Record<string, unknown>[]; readonly cat: string; readonly val: string; readonly speed?: number; readonly showRank?: boolean; readonly onClick?: (v: string) => void }) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [canScroll, setCanScroll] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const max = Math.max(...rows.map((r) => toNumber(r[val])), 0) || 1;
+  const scrollSpeed = Math.max(0, speed ?? 0);
+
+  useEffect(() => {
+    setOffset(0);
+    const update = () => {
+      const viewport = viewportRef.current;
+      const list = listRef.current;
+      setCanScroll(!!viewport && !!list && scrollSpeed > 0 && list.scrollHeight > viewport.clientHeight + 1);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    if (viewportRef.current) ro.observe(viewportRef.current);
+    if (listRef.current) ro.observe(listRef.current);
+    return () => ro.disconnect();
+  }, [rows, scrollSpeed]);
+
+  useEffect(() => {
+    if (!canScroll || scrollSpeed <= 0 || paused) return;
+    let raf = 0;
+    let last = 0;
+    const tick = (ts: number) => {
+      const listHeight = listRef.current?.scrollHeight ?? 0;
+      const rowHeight = rows.length ? listHeight / rows.length : 32;
+      if (last && listHeight > 0) {
+        const delta = ((ts - last) / 1000) * scrollSpeed * rowHeight;
+        setOffset((prev) => (prev + delta) % listHeight);
+      }
+      last = ts;
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [canScroll, paused, rows.length, scrollSpeed]);
+
+  const renderRows = (duplicate = false) => (
+    <div ref={duplicate ? undefined : listRef}>
+      {rows.map((r, i) => {
+        const name = String(r[cat] ?? '');
+        const value = toNumber(r[val]);
+        const pct = Math.max(0, Math.min(100, (value / max) * 100));
+        const rankColor = i === 0 ? '#f7ba1e' : i === 1 ? '#c9cdd4' : i === 2 ? '#b87333' : 'var(--semi-color-fill-2)';
+        return (
+          <div
+            key={`${duplicate ? 'd' : 'r'}-${i}-${name}`}
+            onClick={onClick ? () => onClick(name) : undefined}
+            style={{
+              padding: '8px 4px',
+              cursor: onClick ? 'pointer' : 'default',
+              borderBottom: '1px solid var(--semi-color-border)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {showRank ? (
+                <span
+                  style={{
+                    flex: '0 0 24px',
+                    height: 22,
+                    borderRadius: 11,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: i < 3 ? '#101828' : 'var(--semi-color-text-1)',
+                    background: rankColor,
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  {i + 1}
+                </span>
+              ) : null}
+              <span style={{ flex: 1, minWidth: 0, color: 'var(--semi-color-text-0)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+              <span style={{ color: 'var(--semi-color-text-1)', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{fmtNumber(value)}</span>
+            </div>
+            <div style={{ height: 3, marginTop: 6, borderRadius: 999, background: 'var(--semi-color-fill-1)', overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, var(--semi-color-primary), #5ad8ff)' }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div
+      ref={viewportRef}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      style={{ height: '100%', overflowY: canScroll ? 'hidden' : 'auto', padding: '0 4px' }}
+    >
+      <div style={{ transform: canScroll ? `translateY(${-offset}px)` : undefined, willChange: canScroll ? 'transform' : undefined }}>
+        {renderRows()}
+        {canScroll ? renderRows(true) : null}
+      </div>
+    </div>
+  );
+}
+
+function MapChart({ geojsonUrl, mapName, areaField, valueField, rows, height, palette }: { readonly geojsonUrl: string; readonly mapName?: string; readonly areaField: string; readonly valueField: string; readonly rows: Record<string, unknown>[]; readonly height: number; readonly palette: ChartPalette }) {
+  const name = mapName?.trim() || geojsonUrl;
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(registeredMapNames.has(name) ? 'ready' : 'loading');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    if (registeredMapNames.has(name)) {
+      setStatus('ready');
+      setMessage('');
+      return;
+    }
+    setStatus('loading');
+    setMessage('');
+    fetch(geojsonUrl)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<unknown>;
+      })
+      .then((geojson) => {
+        VChartCore.registerMap(name, geojson);
+        registeredMapNames.add(name);
+        if (alive) setStatus('ready');
+      })
+      .catch((err: unknown) => {
+        if (!alive) return;
+        setMessage(err instanceof Error ? err.message : String(err));
+        setStatus('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [geojsonUrl, name]);
+
+  const values = useMemo(() => rows.map((r) => ({ name: String(r[areaField] ?? ''), value: toNumber(r[valueField]) })), [areaField, rows, valueField]);
+  const max = Math.max(...values.map((v) => v.value), 0) || 1;
+  const spec = useMemo(() => ({
+    type: 'map',
+    map: name,
+    data: [{ id: 'd', values }],
+    region: [{ roam: false }],
+    color: {
+      type: 'linear',
+      field: 'value',
+      domain: [0, max],
+      range: [palette.dataColors[1] ?? '#9bdcff', palette.dataColors[0] ?? palette.primary],
+      clamp: true,
+    },
+    series: [{
+      type: 'map',
+      map: name,
+      nameField: 'name',
+      valueField: 'value',
+      dataKey: 'name',
+      defaultFillColor: palette.fill1,
+      area: {
+        style: {
+          fill: { field: 'value', scale: 'color' },
+          stroke: palette.border,
+          lineWidth: 1,
+        },
+      },
+      label: {
+        visible: true,
+        style: { fill: palette.text1, fontSize: 10 },
+      },
+    }],
+    legends: { visible: true },
+    tooltip: { visible: true },
+  }) as ISpec & { map: string }, [max, name, palette.border, palette.dataColors, palette.fill1, palette.primary, palette.text1, values]);
+
+  if (status === 'loading') return <EmptyHint text="加载地图中…" />;
+  if (status === 'error') return <EmptyHint text={`地图加载失败：${message}`} />;
+  return <VChartReact spec={spec} options={chartOptions} style={{ width: '100%', height }} />;
+}
+
 function Sparkline({ values }: { readonly values: number[] }) {
   const w = 120, h = 28;
   const max = Math.max(...values), min = Math.min(...values);

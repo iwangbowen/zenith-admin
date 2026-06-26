@@ -7,17 +7,43 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
+import ExportButton from '@/components/ExportButton';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import type {
   ReportDataset, ReportDatasource, ReportDatasourceType, ReportField, ReportDataResult,
-  ReportApiDatasetContent, ReportSqlDatasetContent, PaginatedResponse,
+  ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField, PaginatedResponse,
 } from '@zenith/shared';
 
 interface SearchParams { keyword: string; status: string }
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+
+function isSqlAuthoringType(type: ReportDatasourceType | null) {
+  return type === 'sql' || type === 'mysql' || type === 'postgresql';
+}
+
+function datasourceTypeLabel(type: ReportDatasourceType) {
+  if (type === 'api') return 'API';
+  if (type === 'sql') return 'SQL';
+  if (type === 'mysql') return 'MySQL';
+  return 'PostgreSQL';
+}
+
+function datasourceTypeTag(type: ReportDatasourceType) {
+  if (type === 'api') return <Tag color="blue" size="small">API</Tag>;
+  if (type === 'sql') return <Tag color="violet" size="small">SQL</Tag>;
+  if (type === 'mysql') return <Tag color="cyan" size="small">MySQL</Tag>;
+  return <Tag color="indigo" size="small">PostgreSQL</Tag>;
+}
+
+const COMPUTED_FIELD_TYPE_OPTIONS = [
+  { value: 'string', label: '字符串' },
+  { value: 'number', label: '数字' },
+  { value: 'date', label: '日期' },
+  { value: 'boolean', label: '布尔' },
+];
 
 export default function DatasetsPage() {
   const { hasPermission } = usePermission();
@@ -42,6 +68,7 @@ export default function DatasetsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [selectedDsId, setSelectedDsId] = useState<number | null>(null);
   const [fields, setFields] = useState<ReportField[]>([]);
+  const [computedFields, setComputedFields] = useState<ReportComputedField[]>([]);
   const [preview, setPreview] = useState<ReportDataResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
@@ -74,6 +101,7 @@ export default function DatasetsPage() {
   function resetModalExtra(ds: ReportDataset | null) {
     setSelectedDsId(ds?.datasourceId ?? null);
     setFields(ds?.fields ?? []);
+    setComputedFields(ds?.computedFields ?? []);
     setPreview(null);
   }
   function openCreate() { setEditing(null); resetModalExtra(null); setModalVisible(true); }
@@ -89,14 +117,15 @@ export default function DatasetsPage() {
         sql: sqlContent.sql ?? '',
         itemsPath: apiContent.itemsPath ?? '',
         paramsText: apiContent.params ? JSON.stringify(apiContent.params, null, 2) : '',
+        cacheTtl: editing.cacheTtl ?? 0,
         status: editing.status,
         remark: editing.remark ?? '',
       }
-    : { status: 'enabled' };
+    : { status: 'enabled', cacheTtl: 0 };
 
   /** 根据当前表单值构造 content（按选中数据源类型）*/
   function buildContent(values: Record<string, unknown>): Record<string, unknown> | null {
-    if (selectedType === 'sql') {
+    if (isSqlAuthoringType(selectedType)) {
       return { sql: String(values.sql ?? '') };
     }
     if (selectedType === 'api') {
@@ -111,14 +140,37 @@ export default function DatasetsPage() {
     return {};
   }
 
+  function normalizeComputedFields(): ReportComputedField[] | null {
+    const list = computedFields
+      .map((field) => ({
+        name: field.name.trim(),
+        label: field.label.trim(),
+        expression: field.expression.trim(),
+        type: field.type,
+      }))
+      .filter((field) => field.name || field.label || field.expression);
+    const invalid = list.some((field) => !field.name || !field.label || !field.expression);
+    if (invalid) {
+      Toast.error('请完整填写计算字段的字段名、标题和表达式');
+      return null;
+    }
+    return list;
+  }
+
   async function handlePreview() {
     const values = formApi.current?.getValues() as Record<string, unknown>;
     if (!selectedDsId) { Toast.warning('请先选择数据源'); return; }
     const content = buildContent(values ?? {});
     if (content === null) return;
+    const normalizedComputedFields = normalizeComputedFields();
+    if (normalizedComputedFields === null) return;
     setPreviewLoading(true);
     try {
-      const res = await request.post<ReportDataResult>('/api/report/datasets/preview', { datasourceId: selectedDsId, content, limit: 50 }, { silent: true });
+      const res = await request.post<ReportDataResult>(
+        '/api/report/datasets/preview',
+        { datasourceId: selectedDsId, content, computedFields: normalizedComputedFields, limit: 50 },
+        { silent: true },
+      );
       if (res.code === 0) { setPreview(res.data); }
       else { Toast.error(res.message || '预览失败'); setPreview(null); }
     } finally { setPreviewLoading(false); }
@@ -137,8 +189,19 @@ export default function DatasetsPage() {
     if (!selectedDsId) { Toast.error('请选择数据源'); throw new Error('ds'); }
     const content = buildContent(values);
     if (content === null) throw new Error('content');
+    const normalizedComputedFields = normalizeComputedFields();
+    if (normalizedComputedFields === null) throw new Error('computedFields');
 
-    const payload = { name: values.name, datasourceId: selectedDsId, content, fields, status: values.status, remark: values.remark || undefined };
+    const payload = {
+      name: values.name,
+      datasourceId: selectedDsId,
+      content,
+      fields,
+      computedFields: normalizedComputedFields,
+      cacheTtl: Number(values.cacheTtl) || 0,
+      status: values.status,
+      remark: values.remark || undefined,
+    };
     setSubmitting(true);
     try {
       const res = editing
@@ -154,15 +217,28 @@ export default function DatasetsPage() {
     if (res.code === 0) { Toast.success('删除成功'); void fetchList(); }
   }
 
+  function updateComputedField(index: number, patch: Partial<ReportComputedField>) {
+    setComputedFields((prev) => prev.map((field, i) => (i === index ? { ...field, ...patch } : field)));
+  }
+
   const columns: ColumnProps<ReportDataset>[] = [
     { title: '名称', dataIndex: 'name', width: 180 },
     { title: '数据源', dataIndex: 'datasourceName', width: 160, render: (v: string) => v || '-' },
     {
       title: '类型', dataIndex: 'type', width: 80,
-      render: (t: ReportDatasourceType) => t === 'api' ? <Tag color="blue" size="small">API</Tag> : <Tag color="violet" size="small">SQL</Tag>,
+      render: (t: ReportDatasourceType) => datasourceTypeTag(t),
     },
     { title: '字段数', dataIndex: 'fields', width: 80, render: (f: ReportField[]) => (f?.length ?? 0) },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (t: string) => formatDateTime(t) },
+    ...(hasPermission('report:dataset:list') ? [{
+      title: '导出',
+      dataIndex: 'id',
+      width: 96,
+      fixed: 'right' as const,
+      render: (_: unknown, record: ReportDataset) => (
+        <ExportButton entity="report.dataset" query={{ datasetId: record.id }} formats={['xlsx', 'csv']} variant="flat" />
+      ),
+    }] : []),
     {
       title: '状态', dataIndex: 'status', width: 70, fixed: 'right',
       render: (s: string) => s === 'enabled' ? <Tag color="green" size="small">启用</Tag> : <Tag color="grey" size="small">停用</Tag>,
@@ -226,10 +302,10 @@ export default function DatasetsPage() {
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear />
           <Form.Select field="datasourceId" label="数据源" style={{ width: '100%' }} rules={[{ required: true, message: '请选择数据源' }]}
             placeholder="选择数据源"
-            optionList={datasources.map((d) => ({ value: d.id, label: `${d.name}（${d.type === 'api' ? 'API' : 'SQL'}）` }))}
+            optionList={datasources.map((d) => ({ value: d.id, label: `${d.name}（${datasourceTypeLabel(d.type)}）` }))}
           />
 
-          {selectedType === 'sql' && (
+          {isSqlAuthoringType(selectedType) && (
             <Form.TextArea field="sql" label="SQL" placeholder="SELECT col1, col2 FROM your_table WHERE ..."
               autosize={{ minRows: 4, maxRows: 10 }} style={{ fontFamily: 'var(--semi-font-family-mono, monospace)' }}
               rules={[{ required: true, message: '请输入 SQL' }]} />
@@ -241,6 +317,7 @@ export default function DatasetsPage() {
             </>
           )}
 
+          <Form.InputNumber field="cacheTtl" label="缓存(秒)" min={0} max={86400} style={{ width: '100%' }} helpText="0=不缓存；命中按数据集+参数缓存" />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
           <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 2 }} />
@@ -261,6 +338,36 @@ export default function DatasetsPage() {
             </div>
           ) : (
             <Empty description="点击「试跑预览」查看取数结果" style={{ padding: '16px 0' }} />
+          )}
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--semi-color-border)', marginTop: 12, paddingTop: 12 }}>
+          <Space style={{ marginBottom: 6 }}>
+            <Typography.Text strong>计算字段</Typography.Text>
+            <Button size="small" onClick={() => setComputedFields((prev) => [...prev, { name: '', label: '', expression: '', type: 'string' }])}>添加计算字段</Button>
+          </Space>
+          <div>
+            <Typography.Text type="tertiary" size="small">
+              表达式支持 + - * / %、比较、三元 ?:、函数 round/concat/upper/coalesce 等，列名直接引用。
+            </Typography.Text>
+          </div>
+          {computedFields.length > 0 && (
+            <Space vertical align="start" style={{ width: '100%', marginTop: 8 }}>
+              {computedFields.map((field, index) => (
+                <Space key={index} align="start" style={{ width: '100%' }}>
+                  <Input placeholder="字段名" value={field.name} onChange={(v) => updateComputedField(index, { name: v })} style={{ width: 110 }} showClear />
+                  <Input placeholder="标题" value={field.label} onChange={(v) => updateComputedField(index, { label: v })} style={{ width: 110 }} showClear />
+                  <Input placeholder="a + b 或 round(amount/100, 2)" value={field.expression} onChange={(v) => updateComputedField(index, { expression: v })} style={{ width: 260 }} showClear />
+                  <Select
+                    value={field.type ?? 'string'}
+                    optionList={COMPUTED_FIELD_TYPE_OPTIONS}
+                    onChange={(v) => updateComputedField(index, { type: v as ReportComputedField['type'] })}
+                    style={{ width: 110 }}
+                  />
+                  <Button theme="borderless" type="danger" onClick={() => setComputedFields((prev) => prev.filter((_, i) => i !== index))}>删除</Button>
+                </Space>
+              ))}
+            </Space>
           )}
         </div>
       </AppModal>

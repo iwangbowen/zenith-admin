@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Spin, Empty } from '@douyinfe/semi-ui';
-import RGL, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
 import '@/pages/report/report-grid.css';
+import '@/pages/report/report-screen.css';
 import { request } from '@/utils/request';
-import { WidgetRenderer } from '@/pages/report/widgets/WidgetRenderer';
+import { ScreenCanvas } from '@/pages/report/widgets/ScreenCanvas';
 import { useWidgetData } from '@/pages/report/widgets/useWidgetData';
 import { FilterBar } from '@/pages/report/widgets/FilterBar';
-import type { ReportDashboard, ReportWidget, ReportFilter } from '@zenith/shared';
-
-const GridLayout = WidthProvider(RGL);
+import type { ReportDashboard, ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
 
 function defaultFilterValue(f: ReportFilter): unknown {
   if (f.defaultValue !== undefined) return f.defaultValue;
@@ -42,8 +38,10 @@ export function ReportEmbed({ dashboardId, filterValues: external, showFilters, 
   const [innerValues, setInnerValues] = useState<Record<string, unknown>>({});
 
   const widgets = useMemo(() => dashboard?.widgets ?? [], [dashboard]);
-  const layout = (dashboard?.layout ?? []) as Layout;
   const filters = dashboard?.filters ?? [];
+  const isCanvas = dashboard?.config?.layoutMode === 'canvas';
+  const screen = dashboard?.config?.screenConfig;
+  const aspect = isCanvas ? `${screen?.width || 1920} / ${screen?.height || 1080}` : undefined;
 
   // 宿主传入的 external 覆盖内部值
   const effectiveValues = useMemo(() => ({ ...innerValues, ...(external ?? {}) }), [innerValues, external]);
@@ -71,21 +69,16 @@ export function ReportEmbed({ dashboardId, filterValues: external, showFilters, 
       {widgets.length === 0 ? (
         <Empty description="该仪表盘还没有组件" style={{ padding: 40 }} />
       ) : (
-        <GridLayout className="report-grid" layout={layout} cols={12} rowHeight={40} margin={[12, 12]} isDraggable={false} isResizable={false} compactType="vertical">
-          {widgets.map((w: ReportWidget) => {
-            const ds = getData(w);
-            return (
-              <div key={w.i}>
-                <div className="report-widget-card">
-                  <div className="report-widget-card__header"><span className="report-widget-card__title">{w.title || '未命名组件'}</span></div>
-                  <div className="report-widget-card__body">
-                    <WidgetRenderer widget={w} data={ds.data} loading={ds.loading} error={ds.error} filterValues={effectiveValues} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </GridLayout>
+        <div style={isCanvas ? { width: '100%', aspectRatio: aspect } : undefined}>
+          <ScreenCanvas
+            widgets={widgets}
+            layout={(dashboard?.layout ?? []) as ReportGridItem[]}
+            canvasLayout={(dashboard?.canvasLayout ?? []) as ReportCanvasItem[]}
+            config={dashboard?.config ?? {}}
+            filterValues={effectiveValues}
+            getWidgetState={(w: ReportWidget) => getData(w)}
+          />
+        </div>
       )}
     </div>
   );

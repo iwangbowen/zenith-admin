@@ -2,19 +2,15 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Spin, Toast, Empty } from '@douyinfe/semi-ui';
 import { ArrowLeft, RotateCcw, PencilRuler, Maximize, Image } from 'lucide-react';
-import RGL, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
 import { toPng } from 'html-to-image';
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
 import './report-grid.css';
+import './report-screen.css';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
-import { WidgetRenderer } from './widgets/WidgetRenderer';
+import { ScreenCanvas } from './widgets/ScreenCanvas';
 import { useWidgetData } from './widgets/useWidgetData';
 import { FilterBar } from './widgets/FilterBar';
-import type { ReportDashboard, ReportWidget, ReportFilter } from '@zenith/shared';
-
-const GridLayout = WidthProvider(RGL);
+import type { ReportDashboard, ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
 
 function defaultFilterValue(f: ReportFilter): unknown {
   if (f.defaultValue !== undefined) return f.defaultValue;
@@ -34,11 +30,14 @@ export default function DashboardViewPage() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [isFs, setIsFs] = useState(false);
 
   const widgets = useMemo(() => dashboard?.widgets ?? [], [dashboard]);
-  const layout = (dashboard?.layout ?? []) as Layout;
   const filters = dashboard?.filters ?? [];
   const isDark = dashboard?.config?.theme === 'dark';
+  const isCanvas = dashboard?.config?.layoutMode === 'canvas';
+  const screen = dashboard?.config?.screenConfig;
+  const aspect = isCanvas ? `${screen?.width || 1920} / ${screen?.height || 1080}` : undefined;
 
   const { get: getData, refresh } = useWidgetData(widgets, filterValues);
 
@@ -66,6 +65,12 @@ export default function DashboardViewPage() {
     const t = setInterval(() => refresh(), sec * 1000);
     return () => clearInterval(t);
   }, [dashboard?.config?.refreshInterval, refresh]);
+
+  useEffect(() => {
+    const onFs = () => setIsFs(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
 
   function handleCategoryClick(w: ReportWidget, value: string) {
     if (w.interaction?.enabled && w.interaction.setFilterId) {
@@ -102,11 +107,17 @@ export default function DashboardViewPage() {
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
 
+  const canvasState = (w: ReportWidget) => getData(w);
+
   return (
-    <div className="report-view" ref={rootRef} style={isDark ? { background: '#0b1020' } : undefined}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+    <div
+      ref={rootRef}
+      className={`report-screen-root${isCanvas ? '' : ' report-view'}`}
+      style={isCanvas ? { background: isDark ? '#060c1f' : 'var(--semi-color-fill-0)' } : (isDark ? { background: '#0b1020' } : undefined)}
+    >
+      <div className={`report-screen-header${isDark ? ' report-screen-header--dark' : ''}`} style={isCanvas ? undefined : { padding: 0, marginBottom: 12 }}>
         <Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={() => navigate('/report/dashboards')}>返回</Button>
-        <span className="report-view__title" style={{ margin: 0, color: isDark ? '#fff' : undefined }}>{dashboard?.name ?? '仪表盘'}</span>
+        <span className="report-screen-header__title" style={{ margin: 0, color: isDark ? '#eaf4ff' : 'var(--semi-color-text-0)', fontSize: isCanvas ? 20 : 18 }}>{dashboard?.name ?? '仪表盘'}</span>
         <div style={{ flex: 1 }} />
         <Button icon={<RotateCcw size={16} />} onClick={() => refresh()}>刷新</Button>
         <Button icon={<Image size={16} />} loading={exporting} onClick={handleExportPng}>图片</Button>
@@ -116,32 +127,36 @@ export default function DashboardViewPage() {
         )}
       </div>
 
-      <div ref={exportRef}>
-      <FilterBar filters={filters} values={filterValues} onChange={(fid, val) => setFilterValues((p) => ({ ...p, [fid]: val }))} />
+      <div ref={exportRef} style={isCanvas ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}>
+        <div style={isCanvas ? { padding: '0 12px' } : undefined}>
+          <FilterBar filters={filters} values={filterValues} onChange={(fid, val) => setFilterValues((p) => ({ ...p, [fid]: val }))} />
+        </div>
 
-      {widgets.length === 0 ? (
-        <Empty description="该仪表盘还没有组件" style={{ paddingTop: 80 }} />
-      ) : (
-        <GridLayout className="report-grid" layout={layout} cols={12} rowHeight={40} margin={[12, 12]} isDraggable={false} isResizable={false} compactType="vertical">
-          {widgets.map((w: ReportWidget) => {
-            const ds = getData(w);
-            const clickable = w.interaction?.enabled || w.drilldown?.enabled;
-            return (
-              <div key={w.i}>
-                <div className="report-widget-card">
-                  <div className="report-widget-card__header">
-                    <span className="report-widget-card__title">{w.title || '未命名组件'}</span>
-                  </div>
-                  <div className="report-widget-card__body">
-                    <WidgetRenderer widget={w} data={ds.data} loading={ds.loading} error={ds.error} filterValues={filterValues}
-                      onCategoryClick={clickable ? (v) => handleCategoryClick(w, v) : undefined} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </GridLayout>
-      )}
+        {widgets.length === 0 ? (
+          <Empty description="该仪表盘还没有组件" style={{ paddingTop: 80 }} />
+        ) : isCanvas ? (
+          <div style={isFs ? { flex: 1, minHeight: 0 } : { width: '100%', aspectRatio: aspect, maxHeight: 'calc(100vh - 160px)' }}>
+            <ScreenCanvas
+              widgets={widgets}
+              layout={(dashboard?.layout ?? []) as ReportGridItem[]}
+              canvasLayout={(dashboard?.canvasLayout ?? []) as ReportCanvasItem[]}
+              config={dashboard?.config ?? {}}
+              filterValues={filterValues}
+              getWidgetState={canvasState}
+              onCategoryClick={handleCategoryClick}
+            />
+          </div>
+        ) : (
+          <ScreenCanvas
+            widgets={widgets}
+            layout={(dashboard?.layout ?? []) as ReportGridItem[]}
+            canvasLayout={(dashboard?.canvasLayout ?? []) as ReportCanvasItem[]}
+            config={dashboard?.config ?? {}}
+            filterValues={filterValues}
+            getWidgetState={canvasState}
+            onCategoryClick={handleCategoryClick}
+          />
+        )}
       </div>
     </div>
   );

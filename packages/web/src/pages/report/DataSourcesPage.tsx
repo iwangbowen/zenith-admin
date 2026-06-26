@@ -12,7 +12,9 @@ import { formatDateTime } from '@/utils/date';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import type { ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig, PaginatedResponse } from '@zenith/shared';
+import type {
+  ReportDatasource, ReportDatasourceType, ReportApiDatasourceConfig, ReportExternalDbConfig, PaginatedResponse,
+} from '@zenith/shared';
 
 interface SearchParams { keyword: string; type: string; status: string }
 const defaultSearchParams: SearchParams = { keyword: '', type: '', status: '' };
@@ -20,12 +22,19 @@ const defaultSearchParams: SearchParams = { keyword: '', type: '', status: '' };
 const TYPE_OPTIONS = [
   { value: 'api', label: 'API（远程 HTTP）' },
   { value: 'sql', label: 'SQL（内置只读主库）' },
+  { value: 'mysql', label: 'MySQL（外部库）' },
+  { value: 'postgresql', label: 'PostgreSQL（外部库）' },
 ];
 
 function typeTag(type: ReportDatasourceType) {
-  return type === 'api'
-    ? <Tag color="blue" size="small">API</Tag>
-    : <Tag color="violet" size="small">SQL</Tag>;
+  if (type === 'api') return <Tag color="blue" size="small">API</Tag>;
+  if (type === 'sql') return <Tag color="violet" size="small">SQL</Tag>;
+  if (type === 'mysql') return <Tag color="cyan" size="small">MySQL</Tag>;
+  return <Tag color="indigo" size="small">PostgreSQL</Tag>;
+}
+
+function isExternalDbType(type: unknown): type is 'mysql' | 'postgresql' {
+  return type === 'mysql' || type === 'postgresql';
 }
 
 export default function DataSourcesPage() {
@@ -42,6 +51,7 @@ export default function DataSourcesPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDatasource | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
   const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
@@ -71,6 +81,7 @@ export default function DataSourcesPage() {
   function closeModal() { setModalVisible(false); setEditing(null); }
 
   const apiConfig = (editing?.config ?? {}) as ReportApiDatasourceConfig;
+  const externalConfig = (editing?.config ?? {}) as ReportExternalDbConfig;
   const formInitValues = editing
     ? {
         name: editing.name,
@@ -78,10 +89,16 @@ export default function DataSourcesPage() {
         url: apiConfig.url ?? '',
         method: apiConfig.method ?? 'GET',
         headersText: apiConfig.headers ? JSON.stringify(apiConfig.headers, null, 2) : '',
+        host: externalConfig.host ?? '',
+        port: externalConfig.port ?? (editing.type === 'postgresql' ? 5432 : 3306),
+        database: externalConfig.database ?? '',
+        user: externalConfig.user ?? '',
+        password: '',
+        ssl: externalConfig.ssl ?? false,
         status: editing.status,
         remark: editing.remark ?? '',
       }
-    : { type: 'api', method: 'GET', status: 'enabled' };
+    : { type: 'api', method: 'GET', port: 3306, status: 'enabled' };
 
   async function handleModalOk() {
     let values: Record<string, unknown>;
@@ -101,6 +118,17 @@ export default function DataSourcesPage() {
       }
       config = { url, method: values.method || 'GET', headers };
     }
+    if (isExternalDbType(type)) {
+      const password = String(values.password ?? '').trim();
+      config = {
+        host: String(values.host ?? '').trim(),
+        port: Number(values.port),
+        database: String(values.database ?? '').trim(),
+        user: String(values.user ?? '').trim(),
+        ssl: !!values.ssl,
+        ...(password ? { password } : {}),
+      };
+    }
 
     const payload = { name: values.name, type, config, status: values.status, remark: values.remark || undefined };
     setSubmitting(true);
@@ -111,6 +139,37 @@ export default function DataSourcesPage() {
       if (res.code === 0) { Toast.success(editing ? '更新成功' : '创建成功'); closeModal(); void fetchList(); }
       else throw new Error(res.message);
     } finally { setSubmitting(false); }
+  }
+
+  async function handleTestConnection() {
+    const values = formApi.current?.getValues() as Record<string, unknown> | undefined;
+    const type = values?.type as ReportDatasourceType | undefined;
+    if (!values || !isExternalDbType(type)) return;
+    const host = String(values.host ?? '').trim();
+    const database = String(values.database ?? '').trim();
+    const user = String(values.user ?? '').trim();
+    const port = Number(values.port);
+    if (!host || !port || !database || !user) { Toast.warning('请先填写连接信息'); return; }
+    const password = String(values.password ?? '').trim();
+    setTesting(true);
+    try {
+      const res = await request.post<{ ok: boolean; message: string; latencyMs?: number }>(
+        '/api/report/datasources/test',
+        {
+          id: editing?.id,
+          type,
+          config: { host, port, database, user, ssl: !!values.ssl, ...(password ? { password } : {}) },
+        },
+        { silent: true },
+      );
+      if (res.code === 0 && res.data.ok) {
+        Toast.success(res.data.latencyMs != null ? `连接成功（${res.data.latencyMs}ms）` : '连接成功');
+      } else {
+        Toast.error(res.data?.message || res.message || '连接失败');
+      }
+    } finally {
+      setTesting(false);
+    }
   }
 
   async function handleDelete(id: number) {
@@ -136,9 +195,15 @@ export default function DataSourcesPage() {
     { title: '类型', dataIndex: 'type', width: 90, render: (t: ReportDatasourceType) => typeTag(t) },
     {
       title: '连接', dataIndex: 'config', width: 320,
-      render: (_: unknown, r: ReportDatasource) => r.type === 'api'
-        ? <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', color: 'var(--semi-color-text-1)' }}>{(r.config as ReportApiDatasourceConfig).url ?? '-'}</Typography.Text>
-        : <span style={{ color: 'var(--semi-color-text-2)' }}>内置只读主库</span>,
+      render: (_: unknown, r: ReportDatasource) => {
+        if (r.type === 'api') {
+          return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', color: 'var(--semi-color-text-1)' }}>{(r.config as ReportApiDatasourceConfig).url ?? '-'}</Typography.Text>;
+        }
+        if (r.type === 'sql') return <span style={{ color: 'var(--semi-color-text-2)' }}>内置只读主库</span>;
+        const cfg = r.config as ReportExternalDbConfig;
+        const text = `${cfg.user ?? '-'}@${cfg.host ?? '-'}:${cfg.port ?? '-'}/${cfg.database ?? '-'}`;
+        return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', color: 'var(--semi-color-text-1)' }}>{text}</Typography.Text>;
+      },
     },
     { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
     { title: '创建时间', dataIndex: 'createdAt', width: 170, render: (t: string) => formatDateTime(t) },
@@ -213,12 +278,40 @@ export default function DataSourcesPage() {
           {({ values }) => (
             <>
               <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} maxLength={64} showClear placeholder="如：订单库" />
-              <Form.Select field="type" label="类型" optionList={TYPE_OPTIONS} style={{ width: '100%' }} rules={[{ required: true }]} />
+              <Form.Select
+                field="type"
+                label="类型"
+                optionList={TYPE_OPTIONS}
+                style={{ width: '100%' }}
+                rules={[{ required: true }]}
+                onChange={(v) => {
+                  if (v === 'mysql') formApi.current?.setValue('port', 3306);
+                  if (v === 'postgresql') formApi.current?.setValue('port', 5432);
+                }}
+              />
               {values.type === 'api' ? (
                 <>
                   <Form.Input field="url" label="URL" placeholder="https://api.example.com/data" rules={[{ required: true, message: '请输入 URL' }]} showClear />
                   <Form.Select field="method" label="方法" optionList={[{ value: 'GET', label: 'GET' }, { value: 'POST', label: 'POST' }]} style={{ width: '100%' }} />
                   <Form.TextArea field="headersText" label="请求头" placeholder={'选填，JSON 键值，如：\n{ "Authorization": "Bearer xxx" }'} autosize={{ minRows: 2, maxRows: 5 }} />
+                </>
+              ) : isExternalDbType(values.type) ? (
+                <>
+                  <Form.Input field="host" label="主机" placeholder="127.0.0.1" rules={[{ required: true, message: '请输入主机' }]} showClear />
+                  <Form.InputNumber field="port" label="端口" min={1} max={65535} style={{ width: '100%' }} rules={[{ required: true, message: '请输入端口' }]} />
+                  <Form.Input field="database" label="数据库" rules={[{ required: true, message: '请输入数据库名' }]} showClear />
+                  <Form.Input field="user" label="用户" rules={[{ required: true, message: '请输入用户名' }]} showClear />
+                  <Form.Input
+                    field="password"
+                    label="密码"
+                    mode="password"
+                    placeholder={editing ? '留空表示不修改' : '请输入密码'}
+                    helpText={editing && externalConfig.hasPassword ? '已保存密码，留空表示继续使用原密码' : undefined}
+                  />
+                  <Form.Switch field="ssl" label="SSL" />
+                  <Form.Slot label=" ">
+                    <Button onClick={handleTestConnection} loading={testing}>测试连接</Button>
+                  </Form.Slot>
                 </>
               ) : (
                 <Form.Slot label="说明">

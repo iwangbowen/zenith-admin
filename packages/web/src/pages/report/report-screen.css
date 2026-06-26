@@ -1,0 +1,235 @@
+/* ════════════════════════════════════════════════════════════════
+   报表大屏（数据大屏）——自由画布 + 等比缩放 + 深色科技皮肤
+   说明：图表(VChart)配色跟随 App 全局主题；本皮肤负责舞台背景、
+   卡片外观与自绘组件(KPI/翻牌器/榜单等)的暗色适配，保持整体一致。
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── 缩放视口：填满容器，居中舞台，溢出隐藏(letterbox) ── */
+.report-screen-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--semi-color-fill-0);
+}
+
+/* ── 设计舞台：固定设计尺寸，transform 缩放 ── */
+.report-screen-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  overflow: hidden;
+}
+
+/* 画布模式：组件绝对定位项 */
+.report-canvas-item {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--semi-color-bg-1);
+  border: 1px solid var(--semi-color-border);
+}
+
+/* ── 深色科技皮肤 ── */
+.report-screen--dark {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(33, 92, 196, 0.25), transparent 60%),
+    linear-gradient(180deg, #060c1f 0%, #0a1330 100%);
+}
+.report-screen--dark .report-screen-stage {
+  background-image:
+    linear-gradient(rgba(64, 132, 240, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(64, 132, 240, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.report-screen--dark .report-canvas-item,
+.report-screen--dark .report-widget-card {
+  background: rgba(10, 24, 56, 0.55);
+  border: 1px solid rgba(70, 150, 255, 0.28);
+  box-shadow: 0 0 16px rgba(24, 84, 190, 0.18), inset 0 0 22px rgba(16, 52, 128, 0.25);
+}
+.report-screen--dark .report-widget-card__header {
+  background: linear-gradient(90deg, rgba(34, 96, 200, 0.28), rgba(34, 96, 200, 0));
+  border-bottom: 1px solid rgba(70, 150, 255, 0.25);
+  color: #cfe6ff;
+}
+.report-screen--dark .report-widget-card__header::before {
+  content: '';
+  width: 3px;
+  height: 13px;
+  margin-right: 7px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #5ad8ff, #2f7bff);
+  box-shadow: 0 0 6px rgba(90, 216, 255, 0.7);
+}
+.report-screen--dark .report-widget-card__title,
+.report-screen--dark .report-kpi__value {
+  color: #eaf4ff;
+}
+.report-screen--dark .report-kpi__unit {
+  color: #8fb6e6;
+}
+.report-screen--dark .report-widget-empty {
+  color: #6f8bb5;
+}
+
+/* 大屏标题栏 */
+.report-screen-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  flex-shrink: 0;
+}
+.report-screen-header--dark {
+  color: #eaf4ff;
+  background: linear-gradient(180deg, rgba(8, 18, 44, 0.9), rgba(8, 18, 44, 0));
+}
+.report-screen-header__title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.report-screen-header--dark .report-screen-header__title {
+  text-shadow: 0 0 12px rgba(90, 160, 255, 0.5);
+}
+
+/* 全屏容器（大屏视图根） */
+.report-screen-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.report-screen-root--fullpage {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+/* ── 设计器：画布编辑模式 ── */
+.report-canvas-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.report-canvas-design-stage {
+  position: relative;
+  transform-origin: top left;
+  flex-shrink: 0;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.18);
+  outline: 1px solid var(--semi-color-border);
+}
+.report-canvas-rnd {
+  border: 1px solid transparent;
+}
+.report-canvas-rnd--selected {
+  outline: 2px solid var(--semi-color-primary);
+  outline-offset: -1px;
+}
+
+/* ── 数字翻牌器 flipper ── */
+.report-flipper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
+  flex-wrap: wrap;
+}
+.report-flipper__digit {
+  position: relative;
+  width: 0.72em;
+  height: 1.2em;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #0e1b3a;
+  border: 1px solid rgba(90, 160, 255, 0.35);
+  box-shadow: inset 0 0 10px rgba(40, 90, 180, 0.35);
+}
+.report-flipper__sep {
+  color: var(--semi-color-text-2);
+  font-weight: 700;
+}
+.report-flipper__strip {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  color: #5ad8ff;
+  text-shadow: 0 0 8px rgba(90, 216, 255, 0.7);
+  font-weight: 700;
+}
+
+/* ── 滚动榜单 scrollList ── */
+.report-scrolllist {
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+.report-scrolllist__track {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  will-change: transform;
+}
+.report-scrolllist__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.report-scrolllist__rank {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--semi-color-tertiary);
+}
+.report-scrolllist__rank--1 { background: linear-gradient(135deg, #ffd45e, #ff9d2e); }
+.report-scrolllist__rank--2 { background: linear-gradient(135deg, #cdd7e4, #97a6bb); }
+.report-scrolllist__rank--3 { background: linear-gradient(135deg, #e3a06a, #b9743f); }
+.report-scrolllist__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--semi-color-text-0);
+}
+.report-scrolllist__bar-wrap {
+  flex: 1.2;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--semi-color-fill-1);
+  overflow: hidden;
+}
+.report-scrolllist__bar {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #2f7bff, #5ad8ff);
+}
+.report-scrolllist__value {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--semi-color-text-1);
+}
+.report-screen--dark .report-scrolllist__name { color: #dcebff; }
+.report-screen--dark .report-scrolllist__value { color: #9fc1ea; }

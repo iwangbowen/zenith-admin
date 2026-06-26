@@ -1,4 +1,4 @@
-import { Hash, Table as TableIcon, Grid3x3, Type, BarChart3, LineChart as LineChartIcon, TrendingUp, Columns3, PieChart as PieChartIcon, CircleDot, Radar as RadarIcon, Filter, Gauge as GaugeIcon, LayoutGrid } from 'lucide-react';
+import { Hash, Table as TableIcon, Grid3x3, Type, BarChart3, LineChart as LineChartIcon, TrendingUp, Columns3, PieChart as PieChartIcon, CircleDot, Radar as RadarIcon, Filter, Gauge as GaugeIcon, LayoutGrid, ListOrdered, Map } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ReportWidgetType } from '@zenith/shared';
 
@@ -16,6 +16,7 @@ export interface WidgetTypeMeta {
 export const WIDGET_TYPES: WidgetTypeMeta[] = [
   { type: 'kpi', label: '指标卡', icon: Hash, defaultSize: { w: 3, h: 3 }, group: '指标' },
   { type: 'gauge', label: '仪表盘', icon: GaugeIcon, defaultSize: { w: 4, h: 4 }, group: '指标' },
+  { type: 'flipper', label: '翻牌器', icon: Hash, defaultSize: { w: 3, h: 3 }, group: '指标' },
   { type: 'table', label: '表格', icon: TableIcon, defaultSize: { w: 6, h: 6 }, group: '表格' },
   { type: 'pivot', label: '透视表', icon: Grid3x3, defaultSize: { w: 6, h: 6 }, group: '表格' },
   { type: 'bar', label: '柱状图', icon: BarChart3, defaultSize: { w: 6, h: 6 }, group: '图表' },
@@ -27,6 +28,7 @@ export const WIDGET_TYPES: WidgetTypeMeta[] = [
   { type: 'radar', label: '雷达图', icon: RadarIcon, defaultSize: { w: 5, h: 6 }, group: '图表' },
   { type: 'funnel', label: '漏斗图', icon: Filter, defaultSize: { w: 4, h: 6 }, group: '图表' },
   { type: 'treemap', label: '矩形树图', icon: LayoutGrid, defaultSize: { w: 6, h: 6 }, group: '图表' },
+  { type: 'map', label: '地图', icon: Map, defaultSize: { w: 6, h: 6 }, group: '图表' },
+  { type: 'scrollList', label: '滚动榜单', icon: ListOrdered, defaultSize: { w: 4, h: 6 }, group: '其它' },
   { type: 'text', label: '文本', icon: Type, defaultSize: { w: 4, h: 2 }, group: '其它' },
 ];
-

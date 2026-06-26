@@ -71,7 +71,7 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
       )}
 
       {/* ── 字段映射（按类型）── */}
-      {(t === 'kpi' || t === 'gauge') && (
+      {(t === 'kpi' || t === 'gauge' || t === 'flipper') && (
         <>
           <Field label="取值字段"><Select style={full} value={o.valueField} placeholder="字段" showClear onChange={(v) => onOptions({ valueField: v as string })} optionList={fieldOptions} /></Field>
           <Field label="聚合方式"><Select style={full} value={o.aggregate ?? 'sum'} onChange={(v) => onOptions({ aggregate: v as ReportWidgetOptions['aggregate'] })} optionList={AGG} /></Field>
@@ -84,6 +84,12 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
           <Field label="目标值"><InputNumber style={full} value={o.targetValue} onChange={(v) => onOptions({ targetValue: typeof v === 'number' ? v : undefined })} /></Field>
           <Field label="迷你趋势字段"><Select style={full} value={o.trendField} placeholder="可选" showClear onChange={(v) => onOptions({ trendField: (v as string) || undefined })} optionList={fieldOptions} /></Field>
         </>
+      )}
+      {t === 'flipper' && (
+        <Space style={{ width: '100%' }}>
+          <Field label="小数位"><InputNumber style={full} min={0} max={6} value={o.decimals} onChange={(v) => onOptions({ decimals: typeof v === 'number' ? v : undefined })} /></Field>
+          <Field label="固定位数"><InputNumber style={full} min={0} value={o.flipDigits} onChange={(v) => onOptions({ flipDigits: typeof v === 'number' ? v : undefined })} /></Field>
+        </Space>
       )}
       {t === 'gauge' && (
         <Space style={{ width: '100%' }}>
@@ -111,6 +117,22 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
         <>
           <Field label="左轴-柱 字段"><Select style={full} value={o.valueFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ valueFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
           <Field label="右轴-线 字段"><Select style={full} value={o.secondaryFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ secondaryFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
+        </>
+      )}
+      {t === 'scrollList' && (
+        <>
+          <Field label="名称字段"><Select style={full} value={o.categoryField} placeholder="字段" showClear onChange={(v) => onOptions({ categoryField: v as string })} optionList={fieldOptions} /></Field>
+          <Field label="数值字段"><Select style={full} value={o.valueFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ valueFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
+          <Field label="滚动速度（行/秒）"><InputNumber style={full} min={0} value={o.scrollSpeed} onChange={(v) => onOptions({ scrollSpeed: typeof v === 'number' ? v : undefined })} /></Field>
+          <SwitchRow label="显示排名" checked={!!o.showRank} onChange={(c) => onOptions({ showRank: c })} />
+        </>
+      )}
+      {t === 'map' && (
+        <>
+          <Field label="geojson URL"><Input value={o.mapGeojsonUrl ?? ''} onChange={(v) => onOptions({ mapGeojsonUrl: v })} showClear /></Field>
+          <Field label="地图名称（可选）"><Input value={o.mapName ?? ''} onChange={(v) => onOptions({ mapName: v })} showClear /></Field>
+          <Field label="区域字段"><Select style={full} value={o.areaField} placeholder="字段" showClear onChange={(v) => onOptions({ areaField: v as string })} optionList={fieldOptions} /></Field>
+          <Field label="数值字段"><Select style={full} value={o.valueFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ valueFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
         </>
       )}
 

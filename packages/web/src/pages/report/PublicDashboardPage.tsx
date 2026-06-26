@@ -2,16 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Input, Spin, Empty, Toast } from '@douyinfe/semi-ui';
 import { Lock } from 'lucide-react';
-import RGL, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
 import './report-grid.css';
+import './report-screen.css';
 import { request } from '@/utils/request';
-import { WidgetRenderer } from './widgets/WidgetRenderer';
+import { ScreenCanvas } from './widgets/ScreenCanvas';
 import { FilterBar } from './widgets/FilterBar';
-import type { ReportPublicDashboard, ReportWidget, ReportFilter, ReportDataResult } from '@zenith/shared';
-
-const GridLayout = WidthProvider(RGL);
+import type { ReportPublicDashboard, ReportWidget, ReportFilter, ReportDataResult, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
 
 function defaultFilterValue(f: ReportFilter): unknown {
   if (f.defaultValue !== undefined) return f.defaultValue;
@@ -78,28 +74,28 @@ export default function PublicDashboardPage() {
   }
 
   const widgets = dashboard?.widgets ?? [];
-  const layout = (dashboard?.layout ?? []) as Layout;
   const isDark = dashboard?.config?.theme === 'dark';
+  const isCanvas = dashboard?.config?.layoutMode === 'canvas';
+  const screen = dashboard?.config?.screenConfig;
+  const aspect = isCanvas ? `${screen?.width || 1920} / ${screen?.height || 1080}` : undefined;
 
   return (
-    <div className="report-view" style={{ minHeight: '100vh', ...(isDark ? { background: '#0b1020' } : {}) }}>
-      <div className="report-view__title" style={{ color: isDark ? '#fff' : undefined }}>{dashboard?.name ?? '报表'}</div>
+    <div className="report-view" style={{ minHeight: '100vh', ...(isDark ? { background: isCanvas ? '#060c1f' : '#0b1020' } : {}) }}>
+      <div className="report-view__title" style={{ color: isDark ? '#eaf4ff' : undefined }}>{dashboard?.name ?? '报表'}</div>
       <FilterBar filters={dashboard?.filters ?? []} values={filterValues} onChange={onFilterChange} disableDynamicOptions />
       {widgets.length === 0 ? (
         <Empty description="该仪表盘还没有组件" style={{ paddingTop: 80 }} />
       ) : (
-        <GridLayout className="report-grid" layout={layout} cols={12} rowHeight={40} margin={[12, 12]} isDraggable={false} isResizable={false} compactType="vertical">
-          {widgets.map((w: ReportWidget) => (
-            <div key={w.i}>
-              <div className="report-widget-card">
-                <div className="report-widget-card__header"><span className="report-widget-card__title">{w.title || '未命名组件'}</span></div>
-                <div className="report-widget-card__body">
-                  <WidgetRenderer widget={w} data={dataMap[w.i] ?? null} filterValues={filterValues} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </GridLayout>
+        <div style={isCanvas ? { width: '100%', aspectRatio: aspect, maxHeight: 'calc(100vh - 120px)' } : undefined}>
+          <ScreenCanvas
+            widgets={widgets}
+            layout={(dashboard?.layout ?? []) as ReportGridItem[]}
+            canvasLayout={(dashboard?.canvasLayout ?? []) as ReportCanvasItem[]}
+            config={dashboard?.config ?? {}}
+            filterValues={filterValues}
+            getWidgetState={(w: ReportWidget) => ({ data: dataMap[w.i] ?? null })}
+          />
+        </div>
       )}
     </div>
   );
