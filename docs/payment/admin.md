@@ -50,7 +50,7 @@
 
 ### 收款趋势看板
 
-「支付订单 → 统计分析」Tab 基于 `recharts` 呈现：
+「支付订单 → 统计分析」Tab 以图表形式呈现：
 
 - **KPI 卡**：累计 / 今日成功金额、成功率、累计退款、退款率、成功笔均；
 - **收款趋势面积图**：近 7 / 30 / 90 天收款与退款金额双曲线；
@@ -72,7 +72,7 @@
 | 支付链接 | `/payment/links` | `payment:link:list` | 生成可分享收款链接 / 收款码（固定或用户填写金额，可限次 / 限时），公开页下单 |
 | 风控限额 | `/payment/risk-rules` | `payment:risk:list` | 全局 / 按渠道 / 按业务类型限额规则（单笔上限、当日累计、当日笔数、黑名单），下单前拦截 |
 | 支付方式 | `/payment/methods` | `payment:method:list` | 管理可用支付方式（启停 / 排序 / 名称 / 图标），控制下单可选项 |
-| 财务报表 | `/payment/reports` | `payment:report:view` | 按业务类型 / 渠道 / 日聚合收款·手续费·退款·净额·笔数，`recharts` 可视化 |
+| 财务报表 | `/payment/reports` | `payment:report:view` | 按业务类型 / 渠道 / 日聚合收款·手续费·退款·净额·笔数，柱状图可视化 |
 
 ### 手续费 / 费率
 
@@ -115,7 +115,7 @@
 ### 财务报表
 
 - `GET /api/payment/reports/summary?groupBy=bizType|channel|day&startTime&endTime`：基于资金台账聚合，返回每组 `{ key, label, gross, fee, refund, net, count }` 及总计；
-- 前端以 KPI 卡 + `recharts` 柱状图（收款 / 净额）+ 明细表呈现。
+- 前端以 KPI 卡 + 柱状图（收款 / 净额）+ 明细表呈现。
 
 ### 接口一览（B 档）
 

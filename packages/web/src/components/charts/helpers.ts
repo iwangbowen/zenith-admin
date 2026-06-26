@@ -108,8 +108,8 @@ export interface LongDatum {
 
 /**
  * 宽表转长表（melt）。
- * recharts 的多系列是「一行多列 + 多个 <Line/> 」，而 VChart 通用图表用
- * 「seriesField」区分系列，需要把 `{ x, a, b }` 摊平成 `{ __x, __type, __value }`。
+ * 多系列数据常见的「一行多列」形态（如 `{ x, a, b }`），需要摊平成
+ * `{ __x, __type, __value }`，以便 VChart 通用图表用 `seriesField` 区分系列。
  */
 export function wideToLong(
   rows: readonly Record<string, unknown>[],
