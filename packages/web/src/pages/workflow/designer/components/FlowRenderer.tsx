@@ -30,6 +30,14 @@ interface FlowRendererProps {
   dimmedBranchIds?: Set<string>;
   /** 运行态：实例状态（用于 start/end 节点状态标识） */
   instanceStatus?: string;
+  /** 仿真图交互：点击节点跳转到该节点步骤 */
+  onSimulationNodeClick?: (node: FlowNode) => void;
+  /** 仿真图交互：右键节点切换断点 */
+  onSimulationNodeContextMenu?: (node: FlowNode) => void;
+  /** 仿真图交互：点击分支查看条件命中原因 */
+  onSimulationBranchClick?: (branch: FlowBranch, branchNode: FlowNode) => void;
+  selectedSimulationBranchId?: string | null;
+  simulationBreakpoints?: Set<string>;
 }
 
 const noop = () => { /* noop */ };
@@ -51,6 +59,11 @@ export default function FlowRenderer({
   nodeRuntime,
   dimmedBranchIds,
   instanceStatus,
+  onSimulationNodeClick,
+  onSimulationNodeContextMenu,
+  onSimulationBranchClick,
+  selectedSimulationBranchId,
+  simulationBreakpoints,
 }: Readonly<FlowRendererProps>) {
 
   const editNode = onEditNode ?? noop;
@@ -79,6 +92,8 @@ export default function FlowRenderer({
             onEditNode={editNode}
             formFields={formFields}
             dimmedBranchIds={dimmedBranchIds}
+            onSimulationBranchClick={onSimulationBranchClick}
+            selectedSimulationBranchId={selectedSimulationBranchId}
             renderChildren={(childNode, key) => renderNodeChain(childNode, key)}
             readOnly={readOnly}
           />
@@ -91,6 +106,9 @@ export default function FlowRenderer({
             readOnly={readOnly}
             readOnlyInteractive={readOnlyInteractive}
             runtime={nodeRuntime?.get(node.key ?? node.id)}
+            onSimulationNodeClick={onSimulationNodeClick}
+            onSimulationNodeContextMenu={onSimulationNodeContextMenu}
+            simulationBreakpoint={simulationBreakpoints?.has(node.key ?? node.id)}
           />
         )}
 
@@ -109,6 +127,9 @@ export default function FlowRenderer({
         onEdit={editNode}
         started={!!nodeRuntime}
         runtime={nodeRuntime?.get(process.initiator.key ?? 'start') ?? nodeRuntime?.get('start')}
+        onSimulationNodeClick={onSimulationNodeClick}
+        onSimulationNodeContextMenu={onSimulationNodeContextMenu}
+        simulationBreakpoint={simulationBreakpoints?.has(process.initiator.key ?? 'start') || simulationBreakpoints?.has('start')}
       />
 
       {!readOnly && <AddNodeButton onAdd={(type) => addAfter(process.initiator.id, type)} />}

@@ -18,6 +18,11 @@ interface NodeCardProps {
   readOnly?: boolean;
   /** 只读但允许点击查看（点击打开只读配置抽屉，用于只读设计器） */
   readOnlyInteractive?: boolean;
+  /** 仿真图交互：点击节点跳转到该节点步骤 */
+  onSimulationNodeClick?: (node: FlowNode) => void;
+  /** 仿真图交互：右键节点切换断点 */
+  onSimulationNodeContextMenu?: (node: FlowNode) => void;
+  simulationBreakpoint?: boolean;
   /** 运行态信息（实例详情流程图叠加：实际处理人 + 状态 + 时间）；设计态为空 */
   runtime?: NodeRuntimeInfo;
 }
@@ -168,22 +173,47 @@ function getNodeTags(node: FlowNode): string[] {
   return tags;
 }
 
-export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly = false, readOnlyInteractive = false, runtime }: Readonly<NodeCardProps>) {
+export default function NodeCard({
+  node,
+  onEdit,
+  onDelete,
+  onDuplicate,
+  readOnly = false,
+  readOnlyInteractive = false,
+  onSimulationNodeClick,
+  onSimulationNodeContextMenu,
+  simulationBreakpoint = false,
+  runtime,
+}: Readonly<NodeCardProps>) {
   const info = getNodeInfo(node.type);
   const color = NODE_COLOR_MAP[node.type] ?? '#999';
   const Icon = info?.icon;
 
   const bodyText = getBodySummary(node);
   const tags = getNodeTags(node);
-  const clickable = !readOnly || readOnlyInteractive;
+  const simulationInteractive = !!onSimulationNodeClick || !!onSimulationNodeContextMenu;
+  const clickable = !readOnly || readOnlyInteractive || simulationInteractive;
+  const handleClick = () => {
+    if (onSimulationNodeClick) {
+      onSimulationNodeClick(node);
+      return;
+    }
+    if (!readOnly || readOnlyInteractive) onEdit(node);
+  };
 
   return (
     <button
       type="button"
-      className={`fd-node-card${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}${runtime?.active ? ' fd-node-card--rt-active' : ''}`}
+      className={`fd-node-card${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}${runtime?.active ? ' fd-node-card--rt-active' : ''}${simulationInteractive ? ' fd-node-card--sim-interactive' : ''}${simulationBreakpoint ? ' fd-node-card--sim-breakpoint' : ''}`}
       data-fd-node-id={node.id}
-      onClick={clickable ? () => onEdit(node) : undefined}
+      onClick={clickable ? handleClick : undefined}
+      onContextMenu={onSimulationNodeContextMenu ? (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onSimulationNodeContextMenu(node);
+      } : undefined}
       tabIndex={clickable ? 0 : -1}
+      title={simulationInteractive ? '点击跳转到仿真步骤；右键切换断点' : undefined}
     >
       {/* 标题栏 */}
       <div className="fd-node-card__header" style={{ background: color }}>

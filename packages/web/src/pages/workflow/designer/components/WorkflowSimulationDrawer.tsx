@@ -11,7 +11,7 @@ import { formatDateForApi, formatDateTimeForApi } from '@/utils/date';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import FlowRenderer from './FlowRenderer';
 import { timelineDot } from '@/components/workflow/timeline-dot';
-import type { FlowNode, FlowProcess, NodeRuntimeInfo } from '../types';
+import type { FlowBranch, FlowNode, FlowProcess, NodeRuntimeInfo } from '../types';
 
 interface UserOption {
   id: number;
@@ -36,6 +36,14 @@ interface SavedSimulationCase {
   starterUserId?: number;
   formData: Record<string, unknown>;
   decisions: WorkflowSimulationDecision[];
+}
+
+interface SelectedSimulationBranch {
+  id: string;
+  name: string;
+  branchNodeKey: string;
+  branchNodeName: string;
+  childNodeKey?: string;
 }
 
 const SAVED_CASE_STORAGE_KEY = 'zenith.workflow.simulation.cases';
@@ -280,6 +288,21 @@ function pathText(result: WorkflowSimulationResult | null, flowData: WorkflowFlo
   return keys.length ? keys.map((key) => nodeLabel(flowData, key)).join(' -> ') : '暂无路径';
 }
 
+function runtimeNodeKey(node: FlowNode): string {
+  if (node.type === 'initiator') return 'start';
+  return node.key ?? node.id;
+}
+
+function flowDataEntryKey(node: FlowNode): string {
+  if (node.type === 'initiator') return 'start';
+  if (node.branches?.length) return `fork-${node.id}`;
+  return node.key ?? node.id;
+}
+
+function branchGatewayKey(node: FlowNode): string {
+  return `fork-${node.id}`;
+}
+
 export default function WorkflowSimulationDrawer({
   visible,
   definitionId,
@@ -303,6 +326,7 @@ export default function WorkflowSimulationDrawer({
   const [graphZoom, setGraphZoom] = useState(90);
   const [decisions, setDecisions] = useState<WorkflowSimulationDecision[]>([]);
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
+  const [selectedBranch, setSelectedBranch] = useState<SelectedSimulationBranch | null>(null);
   const [savedCases, setSavedCases] = useState<SavedSimulationCase[]>(() => readSavedCases());
   const [selectedCaseId, setSelectedCaseId] = useState<string | undefined>(undefined);
 
@@ -325,12 +349,31 @@ export default function WorkflowSimulationDrawer({
   const currentItem = currentStep > 0 ? result?.timeline[currentStep - 1] : null;
   const progressPercent = totalSteps > 0 ? Math.round((currentStep / totalSteps) * 100) : 0;
   const currentDecision = currentItem ? decisions.find((item) => item.nodeKey === currentItem.nodeKey) : undefined;
+  const timelineStepByNodeKey = useMemo(() => {
+    const map = new Map<string, number>();
+    result?.timeline.forEach((item) => {
+      if (!map.has(item.nodeKey)) map.set(item.nodeKey, item.step);
+    });
+    return map;
+  }, [result]);
+  const edgeMatchesSelectedBranch = (edge: WorkflowSimulationResult['edgeResults'][number]) => {
+    if (!selectedBranch) return false;
+    if (edge.sourceKey !== selectedBranch.branchNodeKey) return false;
+    if (selectedBranch.childNodeKey && edge.targetKey === selectedBranch.childNodeKey) return true;
+    return edge.label === selectedBranch.name;
+  };
   const currentEdges = useMemo(() => {
-    if (!result || !currentItem) return [];
+    if (!result) return [];
+    if (selectedBranch) {
+      const selected = result.edgeResults.filter(edgeMatchesSelectedBranch);
+      if (selected.length > 0) return selected;
+      return result.edgeResults.filter((edge) => edge.sourceKey === selectedBranch.branchNodeKey);
+    }
+    if (!currentItem) return [];
     const outgoing = result.edgeResults.filter((edge) => edge.sourceKey === currentItem.nodeKey);
     if (outgoing.length > 0) return outgoing;
     return result.edgeResults.filter((edge) => edge.targetKey === currentItem.nodeKey || edge.taken);
-  }, [currentItem, result]);
+  }, [currentItem, result, selectedBranch]);
   const pathCompare = useMemo(() => {
     if (!previousResult || !result) return null;
     const before = uniquePath(previousResult);
@@ -433,6 +476,43 @@ export default function WorkflowSimulationDrawer({
       return;
     }
     setActiveStep(Math.max(1, Math.min(totalSteps, nextStep)));
+  };
+
+  const jumpToNode = (node: FlowNode) => {
+    const key = runtimeNodeKey(node);
+    const step = timelineStepByNodeKey.get(key);
+    setSelectedBranch(null);
+    if (!result || !step) {
+      Toast.info('该节点尚未出现在当前仿真路径中');
+      return;
+    }
+    moveStep(step);
+  };
+
+  const toggleBreakpointForNode = (node: FlowNode) => {
+    const key = runtimeNodeKey(node);
+    setBreakpoints((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        Toast.info('已取消节点断点');
+      } else {
+        next.add(key);
+        Toast.success('已设置节点断点');
+      }
+      return next;
+    });
+  };
+
+  const selectBranch = (branch: FlowBranch, branchNode: FlowNode) => {
+    const branchNodeKey = branchGatewayKey(branchNode);
+    setSelectedBranch({
+      id: branch.id,
+      name: branch.name,
+      branchNodeKey,
+      branchNodeName: branchNode.name || '分支',
+      childNodeKey: branch.children ? flowDataEntryKey(branch.children) : `join-${branchNode.id}`,
+    });
   };
 
   const generateTestData = () => {
@@ -840,7 +920,14 @@ export default function WorkflowSimulationDrawer({
               <div className="fd-simulation-detail__title">
                 <GitCompare size={14} />
                 <Typography.Text strong>路径与分支</Typography.Text>
+                {selectedBranch && <Tag size="small" color="blue">{selectedBranch.name}</Tag>}
               </div>
+              {selectedBranch && (
+                <div className="fd-simulation-branch-focus">
+                  <Typography.Text size="small">已选中：{selectedBranch.branchNodeName} / {selectedBranch.name}</Typography.Text>
+                  <Button size="small" type="tertiary" theme="borderless" onClick={() => setSelectedBranch(null)}>清除</Button>
+                </div>
+              )}
               {pathCompare && (
                 <div className="fd-simulation-path-compare">
                   <Typography.Text size="small" type="tertiary">上次：{pathCompare.before}</Typography.Text>
@@ -878,6 +965,11 @@ export default function WorkflowSimulationDrawer({
                 nodeRuntime={simulationNodeRuntime}
                 dimmedBranchIds={simulationDimmedBranchIds}
                 instanceStatus={simulationInstanceStatus}
+                onSimulationNodeClick={jumpToNode}
+                onSimulationNodeContextMenu={toggleBreakpointForNode}
+                onSimulationBranchClick={selectBranch}
+                selectedSimulationBranchId={selectedBranch?.id}
+                simulationBreakpoints={breakpoints}
               />
             </div>
           </div>

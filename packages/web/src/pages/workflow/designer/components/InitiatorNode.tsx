@@ -9,9 +9,20 @@ interface InitiatorNodeProps {
   onEdit: (node: FlowNode) => void;
   started?: boolean;
   runtime?: NodeRuntimeInfo;
+  onSimulationNodeClick?: (node: FlowNode) => void;
+  onSimulationNodeContextMenu?: (node: FlowNode) => void;
+  simulationBreakpoint?: boolean;
 }
 
-export default function InitiatorNode({ node, onEdit, started, runtime }: Readonly<InitiatorNodeProps>) {
+export default function InitiatorNode({
+  node,
+  onEdit,
+  started,
+  runtime,
+  onSimulationNodeClick,
+  onSimulationNodeContextMenu,
+  simulationBreakpoint = false,
+}: Readonly<InitiatorNodeProps>) {
   const desc = node.props.initiatorDesc as string || '所有人';
 
   // 表单权限摘要
@@ -32,8 +43,14 @@ export default function InitiatorNode({ node, onEdit, started, runtime }: Readon
     <div className="fd-initiator-node">
       <button
         type="button"
-        className={`fd-node-card fd-node-card--initiator${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}${runtime?.active ? ' fd-node-card--rt-active' : ''}`}
-        onClick={() => onEdit(node)}
+        className={`fd-node-card fd-node-card--initiator${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}${runtime?.active ? ' fd-node-card--rt-active' : ''}${onSimulationNodeClick || onSimulationNodeContextMenu ? ' fd-node-card--sim-interactive' : ''}${simulationBreakpoint ? ' fd-node-card--sim-breakpoint' : ''}`}
+        onClick={() => (onSimulationNodeClick ? onSimulationNodeClick(node) : onEdit(node))}
+        onContextMenu={onSimulationNodeContextMenu ? (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onSimulationNodeContextMenu(node);
+        } : undefined}
+        title={onSimulationNodeClick || onSimulationNodeContextMenu ? '点击跳转到仿真步骤；右键切换断点' : undefined}
       >
         <div className="fd-node-card__header" style={{ background: '#ff943e' }}>
           <span className="fd-node-card__header-icon"><User size={14} /></span>

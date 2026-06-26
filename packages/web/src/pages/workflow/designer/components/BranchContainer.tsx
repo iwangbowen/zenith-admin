@@ -26,6 +26,9 @@ interface BranchContainerProps {
   /** 运行态：未被实际命中的分支 id（置灰展示） */
   dimmedBranchIds?: Set<string>;
   readOnly?: boolean;
+  /** 仿真图交互：点击分支标题查看条件命中原因 */
+  onSimulationBranchClick?: (branch: FlowBranch, branchNode: FlowNode) => void;
+  selectedSimulationBranchId?: string | null;
 }
 
 function getBranchNameClass(type: BranchNodeType, isDefault?: boolean): string {
@@ -81,6 +84,8 @@ export default function BranchContainer({
   formFields,
   dimmedBranchIds,
   readOnly = false,
+  onSimulationBranchClick,
+  selectedSimulationBranchId,
 }: Readonly<BranchContainerProps>) {
   const branches = node.branches ?? [];
   const color = NODE_COLOR_MAP[node.type];
@@ -147,7 +152,17 @@ export default function BranchContainer({
           <div key={branch.id} className={`fd-branch-col${dimmedBranchIds?.has(branch.id) ? ' fd-branch-col--dimmed' : ''}`}>
             <div className="fd-branch-col-top-line" />
 
-            <button className="fd-branch-title" type="button" onClick={readOnly || branchType === 'parallelBranch' ? undefined : () => onEditBranch(branch, node.id)} tabIndex={readOnly || branchType === 'parallelBranch' ? -1 : 0}>
+            <button
+              className={`fd-branch-title${onSimulationBranchClick ? ' fd-branch-title--sim-interactive' : ''}${selectedSimulationBranchId === branch.id ? ' fd-branch-title--sim-selected' : ''}`}
+              type="button"
+              onClick={onSimulationBranchClick
+                ? () => onSimulationBranchClick(branch, node)
+                : readOnly || branchType === 'parallelBranch'
+                  ? undefined
+                  : () => onEditBranch(branch, node.id)}
+              tabIndex={readOnly && !onSimulationBranchClick || branchType === 'parallelBranch' && !onSimulationBranchClick ? -1 : 0}
+              title={onSimulationBranchClick ? '点击查看该分支条件命中原因' : undefined}
+            >
               <div className="fd-branch-title__header">
                 <span className={getBranchNameClass(branchType, branch.isDefault)}>
                   {branch.name}
