@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Button, Typography, Space, Dropdown, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Typography, Space, Dropdown, Tooltip, Modal } from '@douyinfe/semi-ui';
 import { Plus, TerminalSquare, ChevronDown, ChevronLeft, ChevronRight, X, PanelLeft, Settings, Server, Package } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import FileExplorer from './FileExplorer';
@@ -235,7 +235,31 @@ export default function TerminalPage() {
     });
   }, []);
 
-  const removeSession = (id: string) => {
+  const confirmClosingDirtyEditors = (leaves: PaneLeaf[], onConfirm: () => void) => {
+    const dirtyEditors = leaves.filter((l) => l.kind === 'editor' && dirtyIds.has(l.id));
+    if (dirtyEditors.length === 0) {
+      onConfirm();
+      return;
+    }
+
+    const fileNames = dirtyEditors.map((l) => l.filePath ?? l.title);
+    const preview = fileNames.slice(0, 3).join('、');
+    const content =
+      dirtyEditors.length === 1
+        ? `文件「${preview}」有未保存修改，关闭后未保存内容将丢失。`
+        : `以下 ${dirtyEditors.length} 个文件有未保存修改：${preview}${dirtyEditors.length > 3 ? ' 等' : ''}。关闭后未保存内容将丢失。`;
+
+    Modal.confirm({
+      title: '关闭未保存文件？',
+      content,
+      okText: '仍然关闭',
+      cancelText: '取消',
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: onConfirm,
+    });
+  };
+
+  const removeSessionNow = (id: string) => {
     const target = sessions.find((s) => s.id === id);
     if (target) {
       const leaves = collectLeaves(target.root);
@@ -253,6 +277,15 @@ export default function TerminalPage() {
     const next = sessions.filter((s) => s.id !== id);
     setSessions(next);
     if (activeId === id) setActiveId(next[Math.max(0, idx - 1)]?.id ?? next[0]?.id ?? '');
+  };
+
+  const removeSession = (id: string) => {
+    const target = sessions.find((s) => s.id === id);
+    if (!target) {
+      removeSessionNow(id);
+      return;
+    }
+    confirmClosingDirtyEditors(collectLeaves(target.root), () => removeSessionNow(id));
   };
 
   const handleFocusPane = (tabId: string, paneId: string) => {
@@ -306,7 +339,7 @@ export default function TerminalPage() {
     );
   };
 
-  const handleClosePane = (tabId: string, paneId: string) => {
+  const handleClosePaneNow = (tabId: string, paneId: string) => {
     const target = sessions.find((s) => s.id === tabId);
     if (!target) return;
     // 明确关闭前，先标记该面板的 session 待销毁
@@ -326,7 +359,7 @@ export default function TerminalPage() {
       return n;
     });
     if (result.root === null) {
-      removeSession(tabId);
+      removeSessionNow(tabId);
       return;
     }
     const nextRoot = result.root;
@@ -346,6 +379,13 @@ export default function TerminalPage() {
     );
   };
 
+  const handleClosePane = (tabId: string, paneId: string) => {
+    const target = sessions.find((s) => s.id === tabId);
+    if (!target) return;
+    const closedLeaf = findLeaf(target.root, paneId);
+    confirmClosingDirtyEditors(closedLeaf ? [closedLeaf] : [], () => handleClosePaneNow(tabId, paneId));
+  };
+
   const reorderSessions = (fromId: string, toId: string) => {
     if (!fromId || fromId === toId) return;
     setSessions((prev) => {
@@ -359,7 +399,7 @@ export default function TerminalPage() {
     });
   };
 
-  const closeOthers = (id: string) => {
+  const closeOthersNow = (id: string) => {
     const kept = sessions.find((s) => s.id === id);
     const keptSessionIds = new Set(
       kept ? collectLeaves(kept.root).filter((l) => l.kind === 'terminal').map((l) => l.stableSessionId) : [],
@@ -385,7 +425,12 @@ export default function TerminalPage() {
     });
   };
 
-  const closeRight = (id: string) => {
+  const closeOthers = (id: string) => {
+    const closingLeaves = sessions.filter((s) => s.id !== id).flatMap((s) => collectLeaves(s.root));
+    confirmClosingDirtyEditors(closingLeaves, () => closeOthersNow(id));
+  };
+
+  const closeRightNow = (id: string) => {
     const idx = sessions.findIndex((s) => s.id === id);
     if (idx < 0) return;
     const kept = sessions.slice(0, idx + 1);
@@ -413,7 +458,13 @@ export default function TerminalPage() {
     });
   };
 
-  const closeAll = () => {
+  const closeRight = (id: string) => {
+    const idx = sessions.findIndex((s) => s.id === id);
+    const closingLeaves = idx >= 0 ? sessions.slice(idx + 1).flatMap((s) => collectLeaves(s.root)) : [];
+    confirmClosingDirtyEditors(closingLeaves, () => closeRightNow(id));
+  };
+
+  const closeAllNow = () => {
     // 标记所有 session 待销毁
     sessions.forEach((s) =>
       collectLeaves(s.root).forEach((l) => {
@@ -423,6 +474,11 @@ export default function TerminalPage() {
     setSessions([]);
     setActiveId('');
     setDirtyIds(new Set());
+  };
+
+  const closeAll = () => {
+    const closingLeaves = sessions.flatMap((s) => collectLeaves(s.root));
+    confirmClosingDirtyEditors(closingLeaves, closeAllNow);
   };
 
   if (IS_DEMO) return <DemoNotice />;
