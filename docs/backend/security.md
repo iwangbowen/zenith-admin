@@ -201,7 +201,7 @@ REQUEST_TIMEOUT_MS=0
 }
 ```
 
-以下长耗时路径不应用超时中间件：`/api/ws`、`/api/files`、`/api/db-backups`、`/api/db-admin`、`/api/log-files`、`/api/monitor/stream`、`/api/ai/conversations`，以及所有以 `/export` 结尾的导出接口。
+以下长耗时路径不应用超时中间件：`/api/ws`、`/api/files`、`/api/db-backups`、`/api/db-admin`、`/api/log-files`、`/api/monitor/stream`、`/api/ai/conversations`。业务导出统一通过导出中心创建任务；同步导出受请求超时配置影响，大数据导出应配置为异步任务。
 
 ---
 

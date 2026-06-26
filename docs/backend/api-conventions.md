@@ -328,8 +328,9 @@ Server-Timing: total;dur=45.2;desc="Total Response Time", db;dur=12.3
   - `/api/log-files/*` — 日志文件读取
   - `/api/monitor/stream/*` — 监控流
   - `/api/ai/conversations/*` — AI 对话流
-  - 所有以 `/export` 结尾的导出接口（如 `/api/users/export`、`/api/operation-logs/export` 等）
 - 超时后返回：`{ code: 408, message: '请求处理超时（Xms）', data: null }`（HTTP 408）。
+
+业务导出统一通过 [导出中心](/backend/export-center) 创建任务。同步导出会在创建任务时生成文件，仍受请求超时配置影响；大数据导出应在实体定义中配置 `execution.mode` 为 `auto` 或 `async`。
 
 **环境变量配置：**
 

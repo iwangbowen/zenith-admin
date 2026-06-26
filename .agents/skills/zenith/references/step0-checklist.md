@@ -27,7 +27,7 @@
 1. **是否需要 MSW Mock 数据？** Demo 演示模式使用。「是否需要同步添加 MSW Mock 数据以支持 Demo 演示模式？」
 2. **是否有状态字段？** 如 `status: enabled/disabled`，确认复用现有 `statusEnum` 还是新建枚举。
 3. **是否有关联实体？** 外键关联部门、角色等，明确关联方式：多对一 FK 还是多对多联表。
-4. **是否需要数据导出（Excel / CSV）？** 若需要，后端需同时加 `/export` 与 `/export/csv` 端点，前端导出按钮使用分裂按钮（主按钮 Excel，下拉 CSV）。
+4. **是否需要数据导出（Excel / CSV）？** 若需要，后端新增导出中心实体定义并注册，前端使用 `ExportButton` 按实体编码发起导出。
 5. **是否需要时间范围筛选？** 列表页搜索栏是否加时间范围。
 6. **是否需要数据权限过滤（dataScope）？** 业务数据需要，配置数据不需要。详见下方「数据权限决策」。
 7. **是否需要表格批量操作？** 批量删除等。实现见 [crud-backend.md](./crud-backend.md) + [crud-frontend.md](./crud-frontend.md)。

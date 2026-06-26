@@ -206,7 +206,7 @@
 
 | 路由 | 接口 | 权限码 |
 |------|------|--------|
-| `/api/members` | `GET /`、`GET /{id}`、`GET /{id}/overview`、`GET /export`、`GET /export/csv` | `member:member:list` |
+| `/api/members` | `GET /`、`GET /{id}`、`GET /{id}/overview` | `member:member:list` |
 | `/api/members` | `POST /` | `member:member:create` |
 | `/api/members` | `PUT /{id}`、`PUT /{id}/status`、`POST /{id}/reset-password`、`PUT /batch-status`、`PUT /batch-level` | `member:member:update` |
 | `/api/members` | `DELETE /{id}` | `member:member:delete` |
@@ -230,6 +230,8 @@
 | `/api/checkin-rules` | `PUT /{id}` | `member:checkin:rule:update` |
 | `/api/checkin-rules` | `DELETE /{id}` | `member:checkin:rule:delete` |
 | `/api/member-checkins` | `GET /` | `member:checkin:log:list` |
+
+会员列表导出统一通过导出中心创建任务，筛选条件沿用会员管理列表当前提交查询参数。
 
 会员中心后台菜单种子位于 `SEED_MENUS` 的 800 段，包括会员管理、会员等级、积分管理、钱包管理、优惠券、领券记录、签到配置与签到记录。
 

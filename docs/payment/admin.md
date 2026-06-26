@@ -45,8 +45,8 @@
 | `GET /api/payment/trend?days=N` | 收款趋势：近 N 天（默认 30，最大 365）按天聚合成功金额 / 笔数 / 退款金额，无数据日期补 0 |
 | `POST /api/payment/channels/{id}/default` | 设为该渠道默认（同租户同渠道互斥，自动启用） |
 | `POST /api/payment/refunds/{id}/query` | 退款主动查单并同步本地状态 |
-| `GET /api/payment/orders/export` / `GET /api/payment/orders/export/csv` | 导出支付订单 Excel / CSV（随当前筛选条件） |
-| `GET /api/payment/refunds/export` / `GET /api/payment/refunds/export/csv` | 导出退款记录 Excel / CSV（随当前筛选条件） |
+
+支付订单与退款记录导出统一通过导出中心创建任务，筛选条件沿用当前列表提交的查询参数。
 
 ### 收款趋势看板
 

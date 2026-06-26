@@ -19,13 +19,14 @@ packages/web/src/pages/xxx/XxxPage.tsx
 ```tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Button, Form, Input, Select, Spin, SplitButtonGroup, Dropdown,
+  Button, Form, Input, Select, Spin,
   Toast, Modal, Switch,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus, Download, ChevronDown } from 'lucide-react';
+import { Search, RotateCcw, Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
@@ -60,8 +61,6 @@ export default function XxxPage() {
   // ─── 状态 ──────────────────────────────────────────────────────────────
   const [data, setData] = useState<PaginatedResponse<Xxx> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   // ⚠️ ref 同步最新搜索参数，避免 fetchXxxs 将 searchParams 放入 deps 导致输入时自动触发搜索
@@ -145,23 +144,13 @@ export default function XxxPage() {
     void fetchXxxs(1, pageSize, defaultSearchParams);  // 重置后立即传入默认值
   }
 
-  // ─── 导出（Excel + CSV）────────────────────────────────────────────────
-  async function handleExportExcel() {
-    setExportLoading(true);
-    try {
-      await request.download('/api/xxxs/export', 'xxx列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  }
-
-  async function handleExportCsv() {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/xxxs/export/csv', 'xxx列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
+  // ─── 导出（导出中心）──────────────────────────────────────────────────
+  function buildExportQuery(): Record<string, unknown> {
+    const params = searchParamsRef.current;
+    return {
+      keyword: params.keyword || undefined,
+      status: params.status || undefined,
+    };
   }
 
   // ─── 新增 / 编辑 ──────────────────────────────────────────────────────
@@ -359,31 +348,13 @@ export default function XxxPage() {
     <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
   ) : null;
 
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
+  const renderExportButtons = () => hasPermission('system:xxx:export') ? (
+    <ExportButton entity="system.xxxs" query={buildExportQuery()} />
+  ) : null;
 
-  const renderMobileExportActions = () => (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
-  );
+  const renderMobileExportActions = () => hasPermission('system:xxx:export') ? (
+    <ExportButton entity="system.xxxs" query={buildExportQuery()} label="导出" />
+  ) : null;
 
   // ════════════════════════════════════════════════════════════════════════
   // 渲染
@@ -889,12 +860,10 @@ export default function XxxPage() {
 
 ---
 
-## 导出规范（Excel + CSV）
+## 导出规范（导出中心）
 
-- 若模块需要导出，后端路由默认同时提供：
-  - `GET /api/xxxs/export`（Excel）
-  - `GET /api/xxxs/export/csv`（CSV）
-- 前端导出按钮统一使用 `SplitButtonGroup`：
-  - 主按钮：导出（Excel）
-  - 下拉菜单：导出 Excel / 导出 CSV
+- 若模块需要导出，后端统一在 `packages/server/src/lib/export-center/definitions/` 中新增 `defineExport` 实体定义，并在 `definitions/index.ts` 注册。
+- 导出字段、Excel / CSV 格式、权限、同步 / 异步策略、文件留存、合并表头与自定义样式均写在导出实体定义中。
+- 前端统一使用 `ExportButton`，通过 `entity` 指定导出实体编码，通过 `query` 传递当前提交的筛选条件。
+- 列表页默认同步明文导出；大数据或特殊敏感场景由实体定义的 `execution` 策略调整。
 - 若导出需带筛选条件，统一使用“当前提交查询参数”（通常来自 `searchParamsRef.current`）构造 query，避免 stale closure。

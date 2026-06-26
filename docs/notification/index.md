@@ -116,7 +116,7 @@
 
 短信发送记录保存在 `sms_send_logs` 表。字段包括 `config_id`、`template_id`、`provider`、`phone`、`content`、`status`、`error_msg`、`biz_id`、`delivery_status`、`delivered_at`、`source`、`user_id`、`ip`、`sent_at`、`created_at`。
 
-当前发送流程以服务商同步返回结果更新 `status`、`biz_id`、`error_msg` 和 `sent_at`；`delivery_status`、`delivered_at` 字段用于保存送达状态数据。发送记录支持按内容关键词、手机号、服务商、状态、来源筛选，并支持 Excel / CSV 导出。
+当前发送流程以服务商同步返回结果更新 `status`、`biz_id`、`error_msg` 和 `sent_at`；`delivery_status`、`delivered_at` 字段用于保存送达状态数据。发送记录支持按内容关键词、手机号、服务商、状态、来源筛选，并通过导出中心导出 Excel / CSV。
 
 ---
 
@@ -232,9 +232,9 @@
 | `DELETE` | `/api/email-templates/{id}` | 删除邮件模板 |
 | `GET` | `/api/email-send-logs` | 邮件发送记录列表 |
 | `POST` | `/api/email-send-logs/test-send` | 测试发送邮件并写入发送记录 |
-| `GET` | `/api/email-send-logs/export` | 导出邮件发送记录 Excel |
-| `GET` | `/api/email-send-logs/export/csv` | 导出邮件发送记录 CSV |
 | `DELETE` | `/api/email-send-logs/{id}` | 删除邮件发送记录 |
+
+邮件发送记录导出统一通过导出中心创建任务，筛选条件沿用邮件发送记录列表当前提交查询参数。
 
 ### 短信
 
@@ -253,9 +253,9 @@
 | `DELETE` | `/api/sms-templates/{id}` | 删除短信模板 |
 | `GET` | `/api/sms-send-logs` | 短信发送记录列表 |
 | `POST` | `/api/sms-send-logs/test-send` | 测试发送短信并写入发送记录 |
-| `GET` | `/api/sms-send-logs/export` | 导出短信发送记录 Excel |
-| `GET` | `/api/sms-send-logs/export/csv` | 导出短信发送记录 CSV |
 | `DELETE` | `/api/sms-send-logs/{id}` | 删除短信发送记录 |
+
+短信发送记录导出统一通过导出中心创建任务，筛选条件沿用短信发送记录列表当前提交查询参数。
 
 ### 站内信
 
@@ -293,8 +293,8 @@
 | `DELETE` | `/api/announcements/{id}` | 删除公告 |
 | `DELETE` | `/api/announcements/batch` | 批量删除公告 |
 | `GET` | `/api/announcements/{id}/read-stats` | 公告阅读统计 |
-| `GET` | `/api/announcements/export` | 导出公告 Excel |
-| `GET` | `/api/announcements/export/csv` | 导出公告 CSV |
+
+公告列表导出统一通过导出中心创建任务，筛选条件沿用公告管理列表当前提交查询参数。
 
 ---
 

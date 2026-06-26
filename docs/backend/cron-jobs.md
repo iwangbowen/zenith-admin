@@ -92,8 +92,8 @@ handlerRegistry.set('myNewTask', async (params) => {
 | `GET /api/cron-jobs/handlers` | 获取已注册的 Handler 列表 |
 | `POST /api/cron-jobs/validate` | 校验 Cron 表达式格式 |
 | `GET /api/cron-jobs/stats` | 获取任务统计概览 |
-| `GET /api/cron-jobs/export` | 导出任务列表 |
-| `GET /api/cron-jobs/export/csv` | 导出任务列表 CSV |
+
+任务列表导出统一通过导出中心创建任务，筛选条件沿用定时任务列表当前提交查询参数。
 
 ## 数据库表
 

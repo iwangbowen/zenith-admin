@@ -13,7 +13,7 @@
 
 ### 导出与清理
 
-- 导出 Excel：`GET /api/analytics/events/export`；导出 CSV：`GET /api/analytics/events/export/csv`（权限 `analytics:export`），沿用事件列表筛选条件。
+- 事件明细导出统一通过导出中心创建任务，权限 `analytics:export`，筛选条件沿用事件列表当前提交查询参数。
 - 清除数据：`DELETE /api/analytics/clean?days=N`（删除 N 天前数据，`days=0` 清空），同步清理会话。
 
 ## 事件字典（埋点治理）

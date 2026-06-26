@@ -250,8 +250,8 @@ await getDataScopeCondition({
 | 批量重置密码 | `PUT /api/users/batch-password` | 请求体 `ids`、`password` |
 | 下载导入模板 | `GET /api/users/import-template` | 返回 `user_import_template.xlsx` |
 | 导入用户 | `POST /api/users/import` | `multipart/form-data` 上传 `file` |
-| 导出 Excel | `GET /api/users/export` | 返回 `users.xlsx` |
-| 导出 CSV | `GET /api/users/export/csv` | 返回 `users.csv` |
+
+用户列表导出统一通过导出中心发起，实体编码为 `system.users`，权限为 `system:user:export`，筛选条件沿用用户列表当前提交的查询参数。
 
 导入模板列：
 
@@ -290,8 +290,6 @@ await getDataScopeCondition({
 | `PUT` | `/api/users/batch-status` | 批量修改用户状态 | `system:user:update` |
 | `GET` | `/api/users/import-template` | 下载导入模板 | `system:user:import` |
 | `POST` | `/api/users/import` | 导入用户 | `system:user:import` |
-| `GET` | `/api/users/export` | 导出用户 Excel | `system:user:list` |
-| `GET` | `/api/users/export/csv` | 导出用户 CSV | `system:user:list` |
 | `PUT` | `/api/users/{id}/password` | 修改指定用户密码 | `system:user:update` |
 | `POST` | `/api/users/{id}/unlock` | 解锁账号 | `system:user:update` |
 | `GET` | `/api/users/{id}` | 用户详情 | `system:user:list` |
@@ -303,6 +301,8 @@ await getDataScopeCondition({
 | `GET` | `/api/users/{id}/data-permission` | 获取用户数据权限 | `system:user:assign` |
 | `PUT` | `/api/users/{id}/data-permission` | 设置用户数据权限 | `system:user:assign` |
 | `GET` | `/api/users/{id}/effective-permissions` | 获取最终有效权限 | `system:user:assign` |
+
+用户导出通过导出中心实体 `system.users` 创建任务，默认同步明文导出 Excel / CSV。
 
 ### 角色
 
@@ -317,8 +317,8 @@ await getDataScopeCondition({
 | `PUT` | `/api/roles/{id}/menus` | 分配角色菜单 | `system:role:assign` |
 | `GET` | `/api/roles/{id}/users` | 获取角色关联用户 | `system:role:list` |
 | `PUT` | `/api/roles/{id}/users` | 分配角色用户 | `system:role:assign` |
-| `GET` | `/api/roles/export` | 导出角色 Excel | `system:role:list` |
-| `GET` | `/api/roles/export/csv` | 导出角色 CSV | `system:role:list` |
+
+角色列表导出统一通过导出中心创建任务，筛选条件沿用角色列表当前提交查询参数。
 
 ### 菜单
 
@@ -342,8 +342,8 @@ await getDataScopeCondition({
 | `POST` | `/api/departments` | 创建部门 | `system:department:create` |
 | `PUT` | `/api/departments/{id}` | 更新部门 | `system:department:update` |
 | `DELETE` | `/api/departments/{id}` | 删除部门 | `system:department:delete` |
-| `GET` | `/api/departments/export` | 导出部门 Excel | `system:department:list` |
-| `GET` | `/api/departments/export/csv` | 导出部门 CSV | `system:department:list` |
+
+部门列表导出统一通过导出中心创建任务，筛选条件沿用部门列表当前提交查询参数。
 
 ### 岗位
 
@@ -356,10 +356,10 @@ await getDataScopeCondition({
 | `PUT` | `/api/positions/{id}` | 更新岗位 | `system:position:update` |
 | `DELETE` | `/api/positions/batch` | 批量删除岗位 | `system:position:delete` |
 | `DELETE` | `/api/positions/{id}` | 删除岗位 | `system:position:delete` |
-| `GET` | `/api/positions/export` | 导出岗位 Excel | `system:position:list` |
-| `GET` | `/api/positions/export/csv` | 导出岗位 CSV | `system:position:list` |
 | `GET` | `/api/positions/{id}/members` | 获取岗位成员 | `system:position:list` |
 | `PUT` | `/api/positions/{id}/members` | 设置岗位成员 | `system:position:update` |
+
+岗位列表导出统一通过导出中心创建任务，筛选条件沿用岗位列表当前提交查询参数。
 
 ### 用户组
 
