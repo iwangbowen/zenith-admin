@@ -778,7 +778,7 @@ function RetentionTab() {
                           borderRadius: 6,
                           fontSize: 12,
                           fontVariantNumeric: 'tabular-nums',
-                          background: value == null ? 'transparent' : `rgba(59, 130, 246, ${opacity})`,
+                          background: value == null ? 'transparent' : `color-mix(in srgb, var(--semi-color-primary) ${Math.round(opacity * 100)}%, transparent)`,
                           color: value == null ? 'var(--semi-color-text-3)' : ratio > 0.55 ? '#ffffff' : 'var(--semi-color-text-0)',
                         }}
                       >
