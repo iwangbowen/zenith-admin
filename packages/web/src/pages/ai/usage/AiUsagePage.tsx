@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, DatePicker, Row, Col, Spin, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { CommonChart, chartOptions, makeCommonCartesianSpec, makeCommonTooltip, useChartPalette, axisNumber, datumNumber, datumText, type ICommonChartSpec } from '@/components/charts';
+import { CommonChart, chartOptions, makeMixedBarLineSpec, useChartPalette } from '@/components/charts';
 import { Bot, Coins, MessageCircle, Search, RotateCcw, Users } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -175,30 +175,24 @@ export default function AiUsagePage() {
 
   const trendChartData = (stats?.trend ?? []).map((item) => ({ ...item, shortDate: shortDate(item.date) }));
 
-  const trendSpec: Partial<ICommonChartSpec> = {
-    ...makeCommonCartesianSpec(palette),
-    data: [{ id: 'aiTrend', values: trendChartData }],
-    series: [
-      { type: 'bar', id: 'messages', xField: 'shortDate', yField: 'messages', name: '消息数', bar: { style: { fill: '#4A90E2', cornerRadius: [4, 4, 0, 0], fillOpacity: 0.92 } } },
-      { type: 'line', id: 'tokens', xField: 'shortDate', yField: 'totalTokens', name: '总Token', line: { style: { stroke: '#FA8C16', lineWidth: 2, curveType: 'monotone' } }, point: { style: { fill: '#FA8C16', size: 5 } } },
-    ],
-    axes: [
-      { orient: 'bottom', type: 'band', tick: { visible: false }, domainLine: { visible: false }, grid: { visible: false }, label: { style: { fill: palette.text2, fontSize: 11 } } },
-      { orient: 'left', type: 'linear', seriesId: ['messages'], tick: { visible: false }, domainLine: { visible: false }, grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } }, label: { style: { fill: palette.text2, fontSize: 11 }, formatMethod: (v) => formatNumber(axisNumber(v)) } },
-      { orient: 'right', type: 'linear', seriesId: ['tokens'], tick: { visible: false }, domainLine: { visible: false }, grid: { visible: false }, label: { style: { fill: palette.text2, fontSize: 11 }, formatMethod: (v) => formatNumber(axisNumber(v)) } },
-    ],
-    legends: { visible: true, orient: 'bottom', position: 'middle', item: { label: { style: { fill: palette.text1, fontSize: 12 } } } },
-    tooltip: {
-      ...makeCommonTooltip(palette),
-      dimension: {
-        title: { value: (d) => `日期：${datumText(d, 'date')}` },
-        content: [
-          { key: '消息数', value: (d) => formatNumber(datumNumber(d, 'messages')) },
-          { key: '总Token', value: (d) => formatNumber(datumNumber(d, 'totalTokens')) },
-        ],
-      },
+  const trendSpec = makeMixedBarLineSpec({
+    data: trendChartData,
+    dataId: 'aiTrend',
+    xField: 'shortDate',
+    palette,
+    bar: { id: 'messages', field: 'messages', name: '消息数', color: '#4A90E2' },
+    line: { id: 'tokens', field: 'totalTokens', name: '总Token', color: '#FA8C16' },
+    axis: {
+      leftLabel: formatNumber,
+      rightLabel: formatNumber,
     },
-  };
+    tooltip: {
+      titleField: 'date',
+      title: (value) => `日期：${value}`,
+      barValue: formatNumber,
+      lineValue: formatNumber,
+    },
+  });
 
   const renderDateRangeFilter = () => (
     <DatePicker

@@ -1,6 +1,7 @@
 import type {
   IAreaChartSpec,
   IBarChartSpec,
+  ICommonChartSpec,
   ILineChartSpec,
   IPieChartSpec,
 } from '@visactor/react-vchart';
@@ -48,7 +49,7 @@ function bandAxis(orient: 'bottom' | 'left', palette: ChartPalette, format?: (v:
   };
 }
 
-function linearAxis(orient: 'bottom' | 'left', palette: ChartPalette, format?: (v: number) => string) {
+function linearAxis(orient: 'bottom' | 'left' | 'right', palette: ChartPalette, format?: (v: number) => string) {
   return {
     orient,
     type: 'linear' as const,
@@ -400,4 +401,145 @@ export function makePieSpec(o: PieOptions): Partial<IPieChartSpec> {
   }
 
   return spec as Partial<IPieChartSpec>;
+}
+
+// ────────────────────────── 组合图：柱 + 线 + 双 Y 轴 ──────────────────────────
+
+interface MixedSeriesOptions {
+  readonly id?: string;
+  readonly field: string;
+  readonly name: string;
+  readonly color?: string;
+}
+
+interface MixedBarOptions extends MixedSeriesOptions {
+  readonly fillOpacity?: number;
+  readonly cornerRadius?: [number, number, number, number];
+}
+
+interface MixedLineOptions extends MixedSeriesOptions {
+  readonly smooth?: boolean;
+  readonly lineWidth?: number;
+  readonly pointSize?: number;
+  readonly showPoint?: boolean;
+}
+
+interface MixedBarLineTooltip {
+  readonly titleField?: string;
+  readonly title?: (value: string, datum: ChartDatum) => string;
+  readonly barValue?: (value: number, datum: ChartDatum) => string;
+  readonly lineValue?: (value: number, datum: ChartDatum) => string;
+}
+
+interface MixedBarLineAxis {
+  readonly xLabel?: (value: string) => string;
+  readonly leftLabel?: (value: number) => string;
+  readonly rightLabel?: (value: number) => string;
+}
+
+export interface MixedBarLineOptions {
+  readonly data: readonly unknown[];
+  readonly xField: string;
+  readonly palette: ChartPalette;
+  readonly dataId?: string;
+  readonly bar: MixedBarOptions;
+  readonly line: MixedLineOptions;
+  readonly legend?: boolean;
+  readonly axis?: MixedBarLineAxis;
+  readonly tooltip?: MixedBarLineTooltip;
+}
+
+export function makeMixedBarLineSpec(o: MixedBarLineOptions): Partial<ICommonChartSpec> {
+  const { palette } = o;
+  const barId = o.bar.id ?? o.bar.field;
+  const lineId = o.line.id ?? o.line.field;
+  const barColor = o.bar.color ?? palette.dataColors[0] ?? palette.primary;
+  const lineColor = o.line.color ?? palette.dataColors[2] ?? palette.active;
+  const curveType = o.line.smooth ?? true ? ('monotone' as const) : ('linear' as const);
+  const titleField = o.tooltip?.titleField ?? o.xField;
+  const barValueFmt = o.tooltip?.barValue ?? ((value: number) => compactCount(value));
+  const lineValueFmt = o.tooltip?.lineValue ?? ((value: number) => compactCount(value));
+
+  const leftAxis = {
+    ...linearAxis('left', palette, o.axis?.leftLabel),
+    seriesId: [barId],
+  };
+  const rightAxis = {
+    ...linearAxis('right', palette, o.axis?.rightLabel),
+    seriesId: [lineId],
+    grid: { visible: false },
+  };
+
+  return {
+    ...makeCommonCartesianSpec(palette),
+    data: [{ id: o.dataId ?? 'mixed', values: [...(o.data as readonly Record<string, unknown>[])] }],
+    series: [
+      {
+        type: 'bar',
+        id: barId,
+        xField: o.xField,
+        yField: o.bar.field,
+        name: o.bar.name,
+        bar: {
+          style: {
+            fill: barColor,
+            cornerRadius: o.bar.cornerRadius ?? [4, 4, 0, 0],
+            fillOpacity: o.bar.fillOpacity ?? 0.92,
+          },
+        },
+      },
+      {
+        type: 'line',
+        id: lineId,
+        xField: o.xField,
+        yField: o.line.field,
+        name: o.line.name,
+        line: {
+          style: {
+            stroke: lineColor,
+            lineWidth: o.line.lineWidth ?? 2,
+            curveType,
+          },
+        },
+        point: {
+          visible: o.line.showPoint ?? true,
+          style: { fill: lineColor, size: o.line.pointSize ?? 5 },
+        },
+      },
+    ],
+    axes: [
+      bandAxis('bottom', palette, o.axis?.xLabel),
+      leftAxis,
+      rightAxis,
+    ],
+    ...(o.legend === false ? {} : { legends: legendSpec(palette) }),
+    tooltip: {
+      ...makeCommonTooltip(palette),
+      dimension: {
+        title: {
+          value: (datum?: ChartDatum | ChartDatum[]) => {
+            const item = firstDatum(datum);
+            const titleValue = datumText(item, titleField);
+            return o.tooltip?.title ? o.tooltip.title(titleValue, item) : titleValue;
+          },
+        },
+        content: [
+          {
+            key: o.bar.name,
+            value: (datum?: ChartDatum | ChartDatum[]) => {
+              const item = firstDatum(datum);
+              return barValueFmt(datumNumber(item, o.bar.field), item);
+            },
+          },
+          {
+            key: o.line.name,
+            value: (datum?: ChartDatum | ChartDatum[]) => {
+              const item = firstDatum(datum);
+              return lineValueFmt(datumNumber(item, o.line.field), item);
+            },
+          },
+        ],
+      },
+    },
+  } as Partial<ICommonChartSpec>;
 }

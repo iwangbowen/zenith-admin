@@ -59,9 +59,11 @@ export {
   makeAreaSpec,
   makeBarSpec,
   makePieSpec,
+  makeMixedBarLineSpec,
   type LineAreaOptions,
   type BarOptions,
   type PieOptions,
+  type MixedBarLineOptions,
 } from './builders';
 
 // 空状态占位
