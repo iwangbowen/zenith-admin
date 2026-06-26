@@ -4,6 +4,7 @@ import type {
   ICommonChartSpec,
   ILineChartSpec,
   IPieChartSpec,
+  IScatterChartSpec,
 } from '@visactor/react-vchart';
 import type { ChartPalette } from './palette';
 import {
@@ -542,4 +543,96 @@ export function makeMixedBarLineSpec(o: MixedBarLineOptions): Partial<ICommonCha
       },
     },
   } as Partial<ICommonChartSpec>;
+}
+
+// ────────────────────────── 散点图 / 热区散点 ──────────────────────────
+
+interface ScatterAxisOptions {
+  readonly min?: number;
+  readonly max?: number;
+  readonly inverse?: boolean;
+  readonly label?: (value: number) => string;
+}
+
+interface ScatterTooltipItem {
+  readonly key: string;
+  readonly value: (datum: ChartDatum) => string;
+}
+
+interface ScatterTooltipOptions {
+  readonly title?: (datum: ChartDatum) => string;
+  readonly items?: readonly ScatterTooltipItem[];
+}
+
+interface ScatterPointOptions {
+  readonly size?: number | ((datum: ChartDatum) => number);
+  readonly fill?: string | ((datum: ChartDatum) => string);
+  readonly fillOpacity?: number;
+  readonly stroke?: string | ((datum: ChartDatum) => string);
+  readonly lineWidth?: number;
+}
+
+export interface ScatterOptions {
+  readonly data: readonly unknown[];
+  readonly xField: string;
+  readonly yField: string;
+  readonly palette: ChartPalette;
+  readonly dataId?: string;
+  readonly padding?: { readonly top?: number; readonly right?: number; readonly bottom?: number; readonly left?: number };
+  readonly xAxis?: ScatterAxisOptions;
+  readonly yAxis?: ScatterAxisOptions;
+  readonly point?: ScatterPointOptions;
+  readonly tooltip?: ScatterTooltipOptions;
+}
+
+function scatterLinearAxis(
+  orient: 'bottom' | 'left',
+  palette: ChartPalette,
+  options?: ScatterAxisOptions,
+) {
+  return {
+    ...linearAxis(orient, palette, options?.label),
+    ...(options?.min == null ? {} : { min: options.min }),
+    ...(options?.max == null ? {} : { max: options.max }),
+    ...(options?.inverse == null ? {} : { inverse: options.inverse }),
+  };
+}
+
+export function makeScatterSpec(o: ScatterOptions): Partial<IScatterChartSpec> {
+  const point = o.point ?? {};
+
+  return {
+    ...makeCommonCartesianSpec(o.palette),
+    ...(o.padding ? { padding: o.padding } : {}),
+    data: [{ id: o.dataId ?? 'scatter', values: [...(o.data as readonly Record<string, unknown>[])] }],
+    xField: o.xField,
+    yField: o.yField,
+    point: {
+      style: {
+        ...(point.size == null ? {} : { size: point.size }),
+        ...(point.fill == null ? {} : { fill: point.fill }),
+        ...(point.fillOpacity == null ? {} : { fillOpacity: point.fillOpacity }),
+        ...(point.stroke == null ? {} : { stroke: point.stroke }),
+        ...(point.lineWidth == null ? {} : { lineWidth: point.lineWidth }),
+      },
+    },
+    axes: [
+      scatterLinearAxis('bottom', o.palette, o.xAxis),
+      scatterLinearAxis('left', o.palette, o.yAxis),
+    ],
+    tooltip: {
+      ...makeCommonTooltip(o.palette),
+      mark: {
+        ...(o.tooltip?.title ? { title: { value: (datum?: ChartDatum) => o.tooltip!.title!(datum) } } : {}),
+        ...(o.tooltip?.items
+          ? {
+              content: o.tooltip.items.map((item) => ({
+                key: item.key,
+                value: (datum?: ChartDatum) => item.value(datum),
+              })),
+            }
+          : {}),
+      },
+    },
+  };
 }

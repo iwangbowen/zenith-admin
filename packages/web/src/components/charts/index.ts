@@ -60,10 +60,12 @@ export {
   makeBarSpec,
   makePieSpec,
   makeMixedBarLineSpec,
+  makeScatterSpec,
   type LineAreaOptions,
   type BarOptions,
   type PieOptions,
   type MixedBarLineOptions,
+  type ScatterOptions,
 } from './builders';
 
 // 空状态占位

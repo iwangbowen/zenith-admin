@@ -29,13 +29,10 @@ import {
   makeBarSpec,
   makeLineSpec,
   makePieSpec,
-  makeCommonCartesianSpec,
-  makeCommonTooltip,
-  axisNumber,
+  makeScatterSpec,
   datumNumber,
   useChartPalette,
   type ChartDatum,
-  type IScatterChartSpec,
 } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -1050,7 +1047,7 @@ function DimensionTab() {
 
 function ClickScatter({ data }: Readonly<{ data: HeatmapData }>) {
   const palette = useChartPalette();
-  const spec = useMemo<Partial<IScatterChartSpec>>(() => {
+  const spec = useMemo(() => {
     const maxValue = Math.max(1, ...data.points.map((point) => point.value));
     const intensity = (datum: ChartDatum) => Math.max(0.12, Math.min(1, datumNumber(datum, 'value') / maxValue));
     const heatColor = (t: number) => {
@@ -1059,43 +1056,27 @@ function ClickScatter({ data }: Readonly<{ data: HeatmapData }>) {
       if (t >= 0.25) return '#f59e0b';
       return '#fbbf24';
     };
-    return {
-      ...makeCommonCartesianSpec(palette),
-      padding: { top: 12, right: 16, bottom: 28, left: 36 },
-      data: [{ id: 'clicks', values: [...data.points] }],
+    return makeScatterSpec({
+      data: data.points,
+      dataId: 'clicks',
       xField: 'x',
       yField: 'y',
+      palette,
+      padding: { top: 12, right: 16, bottom: 28, left: 36 },
+      xAxis: { min: 0, max: 100, label: (value) => `${value}%` },
+      yAxis: { min: 0, max: 100, inverse: true, label: (value) => `${value}%` },
       point: {
-        style: {
-          size: (datum: ChartDatum) => 8 + 34 * intensity(datum),
-          fill: (datum: ChartDatum) => heatColor(intensity(datum)),
-          fillOpacity: 0.5,
-          stroke: palette.bg1,
-          lineWidth: 1,
-        },
+        size: (datum) => 8 + 34 * intensity(datum),
+        fill: (datum) => heatColor(intensity(datum)),
+        fillOpacity: 0.5,
+        stroke: palette.bg1,
+        lineWidth: 1,
       },
-      axes: [
-        {
-          orient: 'bottom', type: 'linear', min: 0, max: 100,
-          tick: { visible: false }, domainLine: { visible: false },
-          grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } },
-          label: { style: { fill: palette.text2, fontSize: 11 }, formatMethod: (v) => `${axisNumber(v)}%` },
-        },
-        {
-          orient: 'left', type: 'linear', min: 0, max: 100, inverse: true,
-          tick: { visible: false }, domainLine: { visible: false },
-          grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } },
-          label: { style: { fill: palette.text2, fontSize: 11 }, formatMethod: (v) => `${axisNumber(v)}%` },
-        },
-      ],
       tooltip: {
-        ...makeCommonTooltip(palette),
-        mark: {
-          title: { value: (datum?: ChartDatum) => `位置 (${datumNumber(datum, 'x')}%, ${datumNumber(datum, 'y')}%)` },
-          content: [{ key: '点击', value: (datum?: ChartDatum) => `${datumNumber(datum, 'value')} 次` }],
-        },
+        title: (datum) => `位置 (${datumNumber(datum, 'x')}%, ${datumNumber(datum, 'y')}%)`,
+        items: [{ key: '点击', value: (datum) => `${datumNumber(datum, 'value')} 次` }],
       },
-    };
+    });
   }, [data, palette]);
 
   return <ScatterChart {...spec} options={chartOptions} height={360} />;
