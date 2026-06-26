@@ -185,12 +185,18 @@ export default function TerminalRecordingsPage() {
     {
       title: '标题',
       dataIndex: 'title',
-      render: (v: string) => v || '（无标题）',
+      width: 360,
+      ellipsis: { showTitle: false },
+      render: (v: string) => (
+        <Typography.Text ellipsis={{ showTooltip: true }} style={{ display: 'block', maxWidth: 340 }}>
+          {v || '（无标题）'}
+        </Typography.Text>
+      ),
     },
     {
       title: 'Shell',
       dataIndex: 'shell',
-      width: 120,
+      width: 220,
       render: (v: string | null) => (v ? <Tag color="blue" size="small">{v}</Tag> : '-'),
     },
     {
