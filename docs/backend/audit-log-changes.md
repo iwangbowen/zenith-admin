@@ -142,8 +142,6 @@ setAuditBeforeData(c, safeRecord);
 | `GET /api/operation-logs/stats` | 统计总量、成功/失败、模块、用户、方法、小时分布与耗时 |
 | `DELETE /api/operation-logs/clean?months=0` | 清理操作日志，`months=0` 表示清空全部 |
 
-操作日志导出统一通过导出中心创建任务，筛选条件沿用操作日志列表当前提交查询参数。
-
 ---
 
 ## 登录日志采集字段

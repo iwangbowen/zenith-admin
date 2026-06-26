@@ -241,7 +241,7 @@ await getDataScopeCondition({
 - 同一租户下 `username` 与 `email` 不重复。
 - `admin` 用户不允许删除、禁用或参与批量重置密码。
 
-### 批量与导入导出
+### 批量与导入
 
 | 能力 | 接口 | 说明 |
 |------|------|------|
@@ -250,8 +250,6 @@ await getDataScopeCondition({
 | 批量重置密码 | `PUT /api/users/batch-password` | 请求体 `ids`、`password` |
 | 下载导入模板 | `GET /api/users/import-template` | 返回 `user_import_template.xlsx` |
 | 导入用户 | `POST /api/users/import` | `multipart/form-data` 上传 `file` |
-
-用户列表导出统一通过导出中心发起，实体编码为 `system.users`，权限为 `system:user:export`，筛选条件沿用用户列表当前提交的查询参数。
 
 导入模板列：
 
@@ -302,8 +300,6 @@ await getDataScopeCondition({
 | `PUT` | `/api/users/{id}/data-permission` | 设置用户数据权限 | `system:user:assign` |
 | `GET` | `/api/users/{id}/effective-permissions` | 获取最终有效权限 | `system:user:assign` |
 
-用户导出通过导出中心实体 `system.users` 创建任务，默认同步明文导出 Excel / CSV。
-
 ### 角色
 
 | 方法 | 路径 | 说明 | 权限 |
@@ -317,8 +313,6 @@ await getDataScopeCondition({
 | `PUT` | `/api/roles/{id}/menus` | 分配角色菜单 | `system:role:assign` |
 | `GET` | `/api/roles/{id}/users` | 获取角色关联用户 | `system:role:list` |
 | `PUT` | `/api/roles/{id}/users` | 分配角色用户 | `system:role:assign` |
-
-角色列表导出统一通过导出中心创建任务，筛选条件沿用角色列表当前提交查询参数。
 
 ### 菜单
 
@@ -343,8 +337,6 @@ await getDataScopeCondition({
 | `PUT` | `/api/departments/{id}` | 更新部门 | `system:department:update` |
 | `DELETE` | `/api/departments/{id}` | 删除部门 | `system:department:delete` |
 
-部门列表导出统一通过导出中心创建任务，筛选条件沿用部门列表当前提交查询参数。
-
 ### 岗位
 
 | 方法 | 路径 | 说明 | 权限 |
@@ -358,8 +350,6 @@ await getDataScopeCondition({
 | `DELETE` | `/api/positions/{id}` | 删除岗位 | `system:position:delete` |
 | `GET` | `/api/positions/{id}/members` | 获取岗位成员 | `system:position:list` |
 | `PUT` | `/api/positions/{id}/members` | 设置岗位成员 | `system:position:update` |
-
-岗位列表导出统一通过导出中心创建任务，筛选条件沿用岗位列表当前提交查询参数。
 
 ### 用户组
 

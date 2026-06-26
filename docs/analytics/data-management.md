@@ -11,9 +11,8 @@
 
 点击某条事件打开详情侧边栏（`GET /api/analytics/events/{id}`），展示完整字段：身份（distinctId / anonymousId）、属性袋 `properties`、来源（referrer / UTM）、环境（浏览器 / 系统 / 设备 / 分辨率 / 语言 / UA）、地域（IP / 国家 / 城市）、性能指标等。
 
-### 导出与清理
+### 数据清理
 
-- 事件明细导出统一通过导出中心创建任务，权限 `analytics:export`，筛选条件沿用事件列表当前提交查询参数。
 - 清除数据：`DELETE /api/analytics/clean?days=N`（删除 N 天前数据，`days=0` 清空），同步清理会话。
 
 ## 事件字典（埋点治理）

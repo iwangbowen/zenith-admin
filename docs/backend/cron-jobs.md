@@ -93,8 +93,6 @@ handlerRegistry.set('myNewTask', async (params) => {
 | `POST /api/cron-jobs/validate` | 校验 Cron 表达式格式 |
 | `GET /api/cron-jobs/stats` | 获取任务统计概览 |
 
-任务列表导出统一通过导出中心创建任务，筛选条件沿用定时任务列表当前提交查询参数。
-
 ## 数据库表
 
 - `cron_jobs`：任务定义（名称、Handler、Cron 表达式、状态、描述、重试次数、重试间隔、指数退避、监控超时、最后执行状态）

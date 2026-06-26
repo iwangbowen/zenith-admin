@@ -353,7 +353,7 @@ export default function XxxPage() {
   ) : null;
 
   const renderMobileExportActions = () => hasPermission('system:xxx:export') ? (
-    <ExportButton entity="system.xxxs" query={buildExportQuery()} label="导出" />
+    <ExportButton entity="system.xxxs" query={buildExportQuery()} label="导出" variant="flat" />
   ) : null;
 
   // ════════════════════════════════════════════════════════════════════════

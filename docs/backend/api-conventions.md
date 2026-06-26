@@ -191,7 +191,7 @@ const listXxxRoute = defineOpenAPIRoute({
 **约束：**
 
 - ❌ **禁止**在路由文件中本地声明带 `.openapi('EntityName')` 的实体 DTO（会导致 Swagger Components 重复或冲突）
-- ✅ 所有实体 DTO 按业务域拆分在 `packages/server/src/lib/dtos/` 子目录，当前导出文件包括：`roles.ts`、`positions.ts`、`user-groups.ts`、`users.ts`、`menus.ts`、`departments.ts`、`tenants.ts`、`api-tokens.ts`、`auth.ts`、`dict.ts`、`files.ts`、`business-files.ts`、`logs.ts`、`announcements.ts`、`system-configs.ts`、`cron-jobs.ts`、`email-config.ts`、`cache.ts`、`db-backups.ts`、`db-admin.ts`、`monitor.ts`、`sessions.ts`、`workflow.ts`、`workflow-events.ts`、`dashboard.ts`、`region.ts`、`sms.ts`、`email.ts`、`in-app.ts`、`chat.ts`、`tags.ts`、`rate-limit.ts`、`ai.ts`、`data-mask.ts`、`oauth2.ts`、`maintenance.ts`、`terminal-files.ts`、`terminal-recordings.ts`、`processes.ts`、`analytics.ts`、`ssh-profiles.ts`、`ssh-sftp.ts`、`terminal-sessions.ts`、`frontend-errors.ts`、`payment.ts`、`member.ts`；`_audit.ts` 供 DTO 审计字段复用，`index.ts` 统一 re-export
+- ✅ 所有实体 DTO 按业务域拆分在 `packages/server/src/lib/dtos/` 子目录，当前 DTO 文件包括：`roles.ts`、`positions.ts`、`user-groups.ts`、`users.ts`、`menus.ts`、`departments.ts`、`tenants.ts`、`api-tokens.ts`、`auth.ts`、`dict.ts`、`files.ts`、`business-files.ts`、`logs.ts`、`announcements.ts`、`system-configs.ts`、`cron-jobs.ts`、`email-config.ts`、`cache.ts`、`db-backups.ts`、`db-admin.ts`、`monitor.ts`、`sessions.ts`、`workflow.ts`、`workflow-events.ts`、`dashboard.ts`、`region.ts`、`sms.ts`、`email.ts`、`in-app.ts`、`chat.ts`、`tags.ts`、`rate-limit.ts`、`ai.ts`、`data-mask.ts`、`oauth2.ts`、`maintenance.ts`、`terminal-files.ts`、`terminal-recordings.ts`、`processes.ts`、`analytics.ts`、`ssh-profiles.ts`、`ssh-sftp.ts`、`terminal-sessions.ts`、`frontend-errors.ts`、`payment.ts`、`member.ts`；`_audit.ts` 供 DTO 审计字段复用，`index.ts` 统一 re-export
 - ✅ 内联使用的 request body schema、不作为 Component 的一次性匿名对象无需搬到中心文件
 - ✅ 新增实体模块时，先在 `packages/server/src/lib/dtos/` 下对应的子文件（或新建子文件）中添加 `export const XxxDTO = z.object({...}).openapi('Xxx');`，再在路由中从 `'../lib/openapi-dtos'` 导入
 
@@ -329,8 +329,6 @@ Server-Timing: total;dur=45.2;desc="Total Response Time", db;dur=12.3
   - `/api/monitor/stream/*` — 监控流
   - `/api/ai/conversations/*` — AI 对话流
 - 超时后返回：`{ code: 408, message: '请求处理超时（Xms）', data: null }`（HTTP 408）。
-
-业务导出统一通过 [导出中心](/backend/export-center) 创建任务。同步导出会在创建任务时生成文件，仍受请求超时配置影响；大数据导出应在实体定义中配置 `execution.mode` 为 `auto` 或 `async`。
 
 **环境变量配置：**
 
