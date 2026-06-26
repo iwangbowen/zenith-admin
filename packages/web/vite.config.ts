@@ -109,7 +109,7 @@ export default defineConfig(({ mode }) => {
               return 'vendor-editor-core';
             }
 
-            if (normalizedId.includes('/node_modules/recharts/')) {
+            if (normalizedId.includes('/node_modules/@visactor/')) {
               return 'vendor-charts';
             }
 
@@ -140,10 +140,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     optimizeDeps: {
-      // decimal.js 是 CJS 包，Vite 有时在 HMR 热更新时无法保证初始化顺序，
-      // 导致 recharts -> victory-vendor -> decimal.js 出现 "not a constructor" 报错。
-      // 强制预构建后，模块始终以 ESM 形式完整初始化，消除该竞态问题。
-      // victory-vendor 也一并加入，确保整个依赖链在同一预构建批次中完成初始化。
+      // decimal.js 是 CJS 包（经 @univerjs 公式引擎等间接引入），Vite 在 HMR 热更新时
+      // 有时无法保证其初始化顺序，导致 "not a constructor" 报错。强制预构建后，
+      // 模块始终以 ESM 形式完整初始化，消除该竞态问题。
       include: ['decimal.js'],
     },
     server: {

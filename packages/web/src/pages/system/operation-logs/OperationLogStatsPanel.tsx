@@ -1,22 +1,21 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Spin, Select } from '@douyinfe/semi-ui';
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
   AreaChart,
-  Area,
-  CartesianGrid,
+  BarChart,
   PieChart,
-  Pie,
-  Legend,
-} from 'recharts';
-import dayjs from 'dayjs';
+  HeatmapChart,
+  EmptyChart,
+  HeatmapLegend,
+  useChartPalette,
+  chartOptions,
+  makeAreaSpec,
+  makeBarSpec,
+  makePieSpec,
+  buildCalendarHeatmap,
+  makeCalendarHeatmapSpec,
+} from '@/components/charts';
 import { request } from '@/utils/request';
-import { formatDate } from '@/utils/date';
 import type { OperationLogStats } from '@zenith/shared';
 
 const DAYS_OPTIONS = [
@@ -24,8 +23,6 @@ const DAYS_OPTIONS = [
   { label: '最近 30 天', value: 30 },
   { label: '最近 90 天', value: 90 },
 ];
-
-const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 const METHOD_COLORS: Record<string, string> = {
   GET: '#3b82f6',
@@ -37,15 +34,6 @@ const METHOD_COLORS: Record<string, string> = {
 const DEFAULT_METHOD_COLOR = '#6b7280';
 const SUCCESS_COLOR = '#10b981';
 const FAIL_COLOR = '#ef4444';
-
-function getHeatColor(count: number, max: number): string {
-  if (count === 0 || max === 0) return 'var(--semi-color-fill-1)';
-  const pct = count / max;
-  if (pct < 0.25) return '#dbeafe';
-  if (pct < 0.5) return '#93c5fd';
-  if (pct < 0.75) return '#3b82f6';
-  return '#1d4ed8';
-}
 
 const sectionStyle: React.CSSProperties = {
   background: 'var(--semi-color-bg-1)',
@@ -59,13 +47,6 @@ const sectionTitleStyle: React.CSSProperties = {
   fontWeight: 600,
   color: 'var(--semi-color-text-0)',
   marginBottom: 12,
-};
-
-const tooltipStyle: React.CSSProperties = {
-  backgroundColor: 'var(--semi-color-bg-2)',
-  border: '1px solid var(--semi-color-border)',
-  borderRadius: 6,
-  fontSize: 12,
 };
 
 interface StatCardProps {
@@ -101,7 +82,16 @@ function StatCard({ title, value, sub, color: _color }: StatCardProps) {
   );
 }
 
+const EMPTY_PLACEHOLDER_STYLE: React.CSSProperties = {
+  height: 260,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'var(--semi-color-text-2)',
+};
+
 export default function OperationLogStatsPanel() {
+  const palette = useChartPalette();
   const [days, setDays] = useState<number>(30);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<OperationLogStats | null>(null);
@@ -122,43 +112,6 @@ export default function OperationLogStatsPanel() {
     void fetchStats(days);
   }, [days, fetchStats]);
 
-  // Fill missing dates for continuous daily series
-  const filledDailyStats = useMemo(() => {
-    if (!stats) return [];
-    const dataMap = new Map(stats.dailyStats.map((d) => [d.date, d]));
-    const today = dayjs();
-    return Array.from({ length: days }, (_, i) => {
-      const date = today.subtract(days - 1 - i, 'day').format('YYYY-MM-DD');
-      return dataMap.get(date) ?? { date, count: 0, successCount: 0, failCount: 0 };
-    });
-  }, [stats, days]);
-
-  // Build calendar heatmap grid (weeks × 7 days, aligned to Monday)
-  const heatmapGrid = useMemo(() => {
-    if (!stats) return [];
-    const dataMap = new Map(stats.dailyStats.map((d) => [d.date, d.count]));
-    const today = dayjs().startOf('day');
-    const startDay = today.subtract(days - 1, 'day');
-    const startMon = startDay.subtract((startDay.day() + 6) % 7, 'day');
-    const weeks: { date: string; count: number; inRange: boolean }[][] = [];
-    let cur = startMon;
-    while (!cur.isAfter(today)) {
-      const week: { date: string; count: number; inRange: boolean }[] = [];
-      for (let di = 0; di < 7; di++) {
-        const dt = cur.add(di, 'day');
-        const dateStr = formatDate(dt.valueOf());
-        week.push({ date: dateStr, count: dataMap.get(dateStr) ?? 0, inRange: !dt.isBefore(startDay) && !dt.isAfter(today) });
-      }
-      weeks.push(week);
-      cur = cur.add(7, 'day');
-    }
-    return weeks;
-  }, [stats, days]);
-
-  const maxDailyCount = useMemo(
-    () => Math.max(1, ...(stats?.dailyStats.map((d) => d.count) ?? [])),
-    [stats],
-  );
   const moduleChartData = useMemo(() => [...(stats?.moduleStats ?? [])].slice(0, 10).reverse(), [stats]);
   const userChartData = useMemo(() => [...(stats?.userStats ?? [])].reverse(), [stats]);
   const moduleTimingChartData = useMemo(() => [...(stats?.moduleTimingStats ?? [])].slice(0, 10).reverse(), [stats]);
@@ -166,19 +119,93 @@ export default function OperationLogStatsPanel() {
     () => (stats?.methodStats ?? []).map((m) => ({ ...m, fill: METHOD_COLORS[m.method] ?? DEFAULT_METHOD_COLOR })),
     [stats],
   );
+  const hourlyChartData = useMemo(() => [...(stats?.hourlyStats ?? [])], [stats]);
+  const dailyChartData = useMemo(() => [...(stats?.dailyStats ?? [])], [stats]);
+
+  const heatmap = useMemo(() => buildCalendarHeatmap(stats?.dailyStats ?? [], days), [stats, days]);
 
   const summary = stats?.summary;
-
   const successRate = summary == null || summary.total === 0
     ? null
     : ((summary.successCount / summary.total) * 100).toFixed(1);
   const avgDuration = summary?.avgDurationMs == null ? null : formatAvgDuration(summary.avgDurationMs);
 
-  const xTickInterval = (() => {
-    if (days <= 7) return 0;
-    if (days <= 30) return 4;
-    return 12;
-  })();
+  const moduleSpec = useMemo(() => makeBarSpec({
+    data: moduleChartData,
+    xField: 'module',
+    series: [{ field: 'count', name: '操作次数', color: '#3b82f6' }],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 88,
+    showLabel: true,
+    tooltip: { value: (v) => `${v} 次` },
+  }), [moduleChartData, palette]);
+
+  const userSpec = useMemo(() => makeBarSpec({
+    data: userChartData,
+    xField: 'username',
+    series: [{ field: 'count', name: '操作次数', color: '#10b981' }],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 88,
+    showLabel: true,
+    tooltip: { value: (v) => `${v} 次` },
+  }), [userChartData, palette]);
+
+  const timingSpec = useMemo(() => makeBarSpec({
+    data: moduleTimingChartData,
+    xField: 'module',
+    series: [
+      { field: 'avgMs', name: '平均耗时', color: '#f59e0b' },
+      { field: 'maxMs', name: '最大耗时', color: 'rgba(239, 68, 68, 0.5)' },
+    ],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 88,
+    axis: { xLabel: (v) => `${v}ms` },
+    tooltip: { value: (v) => `${v} ms` },
+  }), [moduleTimingChartData, palette]);
+
+  const methodSpec = useMemo(() => makePieSpec({
+    data: methodChartData,
+    categoryField: 'method',
+    valueField: 'count',
+    donut: true,
+    colors: methodChartData.map((d) => d.fill),
+    palette,
+    label: 'none',
+    valueUnit: '次',
+  }), [methodChartData, palette]);
+
+  const hourlySpec = useMemo(() => makeBarSpec({
+    data: hourlyChartData,
+    xField: 'hour',
+    series: [{ field: 'count', name: '操作次数', color: '#8b5cf6' }],
+    palette,
+    axis: { xLabel: (v) => `${String(v).padStart(2, '0')}h` },
+    tooltip: {
+      title: (x) => `${String(x).padStart(2, '0')}:00 – ${String(x).padStart(2, '0')}:59`,
+      value: (v) => `${v} 次`,
+    },
+  }), [hourlyChartData, palette]);
+
+  const dailySpec = useMemo(() => makeAreaSpec({
+    data: dailyChartData,
+    xField: 'date',
+    series: [
+      { field: 'successCount', name: '成功', color: SUCCESS_COLOR },
+      { field: 'failCount', name: '失败', color: FAIL_COLOR },
+    ],
+    palette,
+    fillOpacity: 0.28,
+    axis: { xLabel: (v) => v.slice(5) },
+    tooltip: { title: (x) => `日期：${x}`, value: (v) => `${v} 次` },
+  }), [dailyChartData, palette]);
+
+  const heatmapSpec = useMemo(
+    () => makeCalendarHeatmapSpec(heatmap.data, heatmap.maxCount, palette, { valueLabel: '操作次数' }),
+    [heatmap, palette],
+  );
 
   return (
     <div>
@@ -210,33 +237,17 @@ export default function OperationLogStatsPanel() {
           <div style={sectionStyle}>
             <div style={sectionTitleStyle}>按模块操作统计（Top 10）</div>
             {moduleChartData.length === 0 ? (
-              <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)' }}>暂无数据</div>
+              <div style={EMPTY_PLACEHOLDER_STYLE}>暂无数据</div>
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={moduleChartData} layout="vertical" margin={{ left: 4, right: 36, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="module" width={88} tick={{ fontSize: 12 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 次`, '操作次数']} />
-                  <Bar dataKey="count" fill="#3b82f6" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--semi-color-text-2)' }} />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarChart {...moduleSpec} options={chartOptions} height={260} />
             )}
           </div>
           <div style={sectionStyle}>
             <div style={sectionTitleStyle}>Top 10 操作用户</div>
             {userChartData.length === 0 ? (
-              <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)' }}>暂无数据</div>
+              <div style={EMPTY_PLACEHOLDER_STYLE}>暂无数据</div>
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={userChartData} layout="vertical" margin={{ left: 4, right: 36, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="username" width={88} tick={{ fontSize: 12 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 次`, '操作次数']} />
-                  <Bar dataKey="count" fill="#10b981" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 11, fill: 'var(--semi-color-text-2)' }} />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarChart {...userSpec} options={chartOptions} height={260} />
             )}
           </div>
         </div>
@@ -245,22 +256,9 @@ export default function OperationLogStatsPanel() {
         <div style={{ ...sectionStyle, marginBottom: 16 }}>
           <div style={sectionTitleStyle}>各模块平均响应时间（取有耗时记录的请求，Top 10）</div>
           {moduleTimingChartData.length === 0 ? (
-            <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)' }}>暂无耗时数据</div>
+            <div style={EMPTY_PLACEHOLDER_STYLE}>暂无耗时数据</div>
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={moduleTimingChartData} layout="vertical" margin={{ left: 4, right: 60, top: 4, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => `${v}ms`} />
-                <YAxis type="category" dataKey="module" width={88} tick={{ fontSize: 12 }} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v, name) => [`${v} ms`, name === 'avgMs' ? '平均耗时' : '最大耗时']}
-                />
-                <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value: string) => value === 'avgMs' ? '平均耗时 (ms)' : '最大耗时 (ms)'} />
-                <Bar dataKey="avgMs" name="avgMs" fill="#f59e0b" radius={[0, 3, 3, 0]} />
-                <Bar dataKey="maxMs" name="maxMs" fill="#ef444466" radius={[0, 3, 3, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <BarChart {...timingSpec} options={chartOptions} height={260} />
           )}
         </div>
 
@@ -269,111 +267,34 @@ export default function OperationLogStatsPanel() {
           <div style={sectionStyle}>
             <div style={sectionTitleStyle}>HTTP 方法分布</div>
             {methodChartData.length === 0 ? (
-              <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)' }}>暂无数据</div>
+              <div style={{ ...EMPTY_PLACEHOLDER_STYLE, height: 240 }}>暂无数据</div>
             ) : (
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={methodChartData} nameKey="method" dataKey="count" cx="50%" cy="50%" innerRadius={60} outerRadius={92} paddingAngle={2} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [`${value} 次`, name]} />
-                  <Legend wrapperStyle={{ fontSize: 12, color: 'var(--semi-color-text-1)' }} />
-                </PieChart>
-              </ResponsiveContainer>
+              <PieChart {...methodSpec} options={chartOptions} height={240} />
             )}
           </div>
           <div style={sectionStyle}>
             <div style={sectionTitleStyle}>按小时操作分布</div>
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={stats?.hourlyStats ?? []} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="hour" tick={{ fontSize: 11 }} tickFormatter={(h: number) => `${String(h).padStart(2, '0')}h`} interval={2} />
-                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} width={40} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v) => [`${v} 次`, '操作次数']}
-                  labelFormatter={(l) => `${String(l).padStart(2, '0')}:00 – ${String(l).padStart(2, '0')}:59`}
-                />
-                <Bar dataKey="count" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <BarChart {...hourlySpec} options={chartOptions} height={240} />
           </div>
         </div>
 
-        {/* ── 每日操作趋势（成功/失败堆叠面积） ── */}
+        {/* ── 每日操作趋势（成功/失败面积） ── */}
         <div style={{ ...sectionStyle, marginBottom: 16 }}>
           <div style={sectionTitleStyle}>每日操作趋势（成功 / 失败）</div>
-          <ResponsiveContainer width="100%" height={210}>
-            <AreaChart data={filledDailyStats} margin={{ left: 0, right: 12, top: 4, bottom: 4 }}>
-              <defs>
-                <linearGradient id="areaSuccess" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={SUCCESS_COLOR} stopOpacity={0.35} />
-                  <stop offset="95%" stopColor={SUCCESS_COLOR} stopOpacity={0.04} />
-                </linearGradient>
-                <linearGradient id="areaFail" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={FAIL_COLOR} stopOpacity={0.6} />
-                  <stop offset="95%" stopColor={FAIL_COLOR} stopOpacity={0.1} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={xTickInterval} tickFormatter={(v: string) => v.slice(5)} />
-              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                formatter={(v, name) => [`${v} 次`, name === 'successCount' ? '成功' : '失败']}
-                labelFormatter={(l) => `日期：${l}`}
-              />
-              <Legend formatter={(value) => (value === 'successCount' ? '成功' : '失败')} wrapperStyle={{ fontSize: 12 }} />
-              <Area type="monotone" dataKey="successCount" stroke={SUCCESS_COLOR} fill="url(#areaSuccess)" strokeWidth={2} dot={false} />
-              <Area type="monotone" dataKey="failCount" stroke={FAIL_COLOR} fill="url(#areaFail)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
+          <AreaChart {...dailySpec} options={chartOptions} height={210} />
         </div>
 
         {/* ── 操作热力图 ── */}
         <div style={sectionStyle}>
           <div style={sectionTitleStyle}>操作热力图（近 {days} 天）</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingTop: 22, flexShrink: 0 }}>
-              {WEEKDAY_LABELS.map((label) => (
-                <div key={label} style={{ height: 14, lineHeight: '14px', fontSize: 11, color: 'var(--semi-color-text-2)', width: 28, textAlign: 'right' }}>
-                  {label}
-                </div>
-              ))}
-            </div>
-            <div style={{ flex: 1, overflowX: 'auto' }}>
-              <div style={{ display: 'flex', gap: 3, minWidth: 'max-content' }}>
-                {heatmapGrid.map((week) => {
-                  const firstDate = week[0].date;
-                  const prevWeekIdx = heatmapGrid.indexOf(week) - 1;
-                  const prevFirst = heatmapGrid[prevWeekIdx]?.[0]?.date;
-                  const monthLabel = firstDate.slice(5, 7) === prevFirst?.slice(5, 7) ? '' : `${firstDate.slice(5, 7)}月`;
-                  return (
-                    <div key={firstDate} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <div style={{ height: 18, fontSize: 11, color: 'var(--semi-color-text-2)', whiteSpace: 'nowrap' }}>{monthLabel}</div>
-                      {week.map((cell) => (
-                        <div
-                          key={cell.date}
-                          title={cell.inRange ? `${cell.date}：${cell.count} 次操作` : ''}
-                          style={{
-                            width: 14,
-                            height: 14,
-                            borderRadius: 2,
-                            background: cell.inRange ? getHeatColor(cell.count, maxDailyCount) : 'transparent',
-                          }}
-                        />
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 11, color: 'var(--semi-color-text-2)' }}>
-                <span>少</span>
-                {['var(--semi-color-fill-1)', '#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8'].map((c) => (
-                  <div key={c} style={{ width: 12, height: 12, borderRadius: 2, background: c }} />
-                ))}
-                <span>多</span>
-              </div>
-            </div>
-          </div>
+          {!stats ? (
+            <EmptyChart height={220} />
+          ) : (
+            <>
+              <HeatmapChart {...heatmapSpec} options={chartOptions} height={220} />
+              <HeatmapLegend palette={palette} />
+            </>
+          )}
         </div>
       </Spin>
     </div>

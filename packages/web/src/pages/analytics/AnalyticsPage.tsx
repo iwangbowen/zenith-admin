@@ -20,22 +20,17 @@ import {
   Zap,
 } from 'lucide-react';
 import {
-  Area,
   AreaChart,
-  Bar,
   BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
   LineChart,
-  Pie,
   PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  chartOptions,
+  makeAreaSpec,
+  makeBarSpec,
+  makeLineSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTime } from '@/utils/date';
@@ -164,6 +159,7 @@ function emptyOrSpin(loading: boolean, description = '暂无数据') {
 type ChartRow = Record<string, number | string>;
 
 function OverviewTab() {
+  const palette = useChartPalette();
   const [days, setDays] = useState(7);
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [trends, setTrends] = useState<TrendSeries | null>(null);
@@ -192,6 +188,13 @@ function OverviewTab() {
       ...Object.fromEntries(trends.series.map((item) => [item.key, item.data[index] ?? 0])),
     }));
   }, [trends]);
+
+  const trendSpec = useMemo(() => makeLineSpec({
+    data: chartData,
+    xField: 'date',
+    series: (trends?.series ?? []).map((item, index) => ({ field: item.key, name: item.name, color: COLORS[index % COLORS.length] })),
+    palette,
+  }), [chartData, palette, trends?.series]);
 
   const cards = overview ? [
     { label: '浏览量 PV', value: numberText(overview.pv), icon: <Eye size={19} />, color: '#3b82f6', sub: <DeltaText value={overview.pvDelta} /> },
@@ -235,18 +238,7 @@ function OverviewTab() {
       ) : <div style={gridStyle}>{cards.map((card) => <StatCard key={card.label} {...card} />)}</div>}
       <Card title="访问趋势" bodyStyle={{ padding: 16 }}>
         {chartData.length === 0 ? emptyOrSpin(loading) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {trends?.series.map((item, index) => (
-                <Line key={item.key} type="monotone" dataKey={item.key} name={item.name} stroke={COLORS[index % COLORS.length]} strokeWidth={2} dot={false} />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+          <LineChart {...trendSpec} options={chartOptions} height={300} />
         )}
       </Card>
     </div>
@@ -254,6 +246,7 @@ function OverviewTab() {
 }
 
 function RealtimeTab() {
+  const palette = useChartPalette();
   const [data, setData] = useState<RealtimeStats | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -273,6 +266,13 @@ function RealtimeTab() {
     return () => globalThis.clearInterval(timer);
   }, [fetchData]);
 
+  const realtimeAreaSpec = useMemo(() => makeAreaSpec({
+    data: data?.perMinute ?? [],
+    xField: 'minute',
+    series: [{ field: 'events', name: '事件数', color: '#3b82f6' }],
+    palette,
+  }), [data?.perMinute, palette]);
+
   return (
     <div style={sectionStyle}>
       <SectionHeader title="实时看板" description="每 10 秒自动刷新" extra={<Button icon={<RefreshCcw size={14} />} onClick={() => void fetchData()} loading={loading}>刷新</Button>} />
@@ -284,21 +284,7 @@ function RealtimeTab() {
       <div style={chartGridStyle}>
         <Card title="事件脉冲" bodyStyle={{ padding: 16 }}>
           {!data?.perMinute.length ? emptyOrSpin(loading) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={data.perMinute}>
-                <defs>
-                  <linearGradient id="eventsGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.36} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.03} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="minute" />
-                <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="events" name="事件数" stroke="#3b82f6" fill="url(#eventsGradient)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <AreaChart {...realtimeAreaSpec} options={chartOptions} height={300} />
           )}
         </Card>
         <Card title="热门在线页面" bodyStyle={{ padding: 16 }}>
@@ -626,6 +612,7 @@ interface FunnelStepDraft {
 }
 
 function FunnelTab() {
+  const palette = useChartPalette();
   const [days, setDays] = useState(7);
   const [steps, setSteps] = useState<FunnelStepDraft[]>([
     { id: 'step-1', label: '进入首页', pagePath: '/' },
@@ -645,6 +632,23 @@ function FunnelTab() {
   const removeStep = (id: string) => {
     setSteps((prev) => (prev.length <= 2 ? prev : prev.filter((item) => item.id !== id)));
   };
+
+  const funnelChartData = useMemo(() => (result?.steps ?? []).map((step, index) => ({
+    ...step,
+    __fill: COLORS[index % COLORS.length],
+  })), [result?.steps]);
+
+  const funnelBarSpec = useMemo(() => makeBarSpec({
+    data: funnelChartData,
+    xField: 'label',
+    series: [{ field: 'conversionRate', name: '总转化率', color: COLORS[0] }],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 96,
+    colorByDatum: (datum) => String(datum?.__fill ?? COLORS[0]),
+    tooltip: { value: (value) => `${Number(value).toFixed(1)}%` },
+    axis: { yLabel: (value) => `${value}%` },
+  }), [funnelChartData, palette]);
 
   const analyze = async () => {
     setLoading(true);
@@ -695,17 +699,7 @@ function FunnelTab() {
               <Tag color="blue">总用户 {numberText(result.totalUsers)}</Tag>
               <Tag color="green">整体转化 {percentText(result.overallConversionRate)}</Tag>
             </div>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={result.steps} layout="vertical" margin={{ top: 8, right: 24, left: 24, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" domain={[0, 100]} unit="%" />
-                <YAxis type="category" dataKey="label" width={96} />
-                <Tooltip formatter={(value) => `${Number(value).toFixed(1)}%`} />
-                <Bar dataKey="conversionRate" name="总转化率" radius={[0, 8, 8, 0]}>
-                  {result.steps.map((step, index) => <Cell key={step.label} fill={COLORS[index % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <BarChart {...funnelBarSpec} options={chartOptions} height={300} />
             {result.steps.map((step, index) => (
               <div key={`${step.label}-${index}`}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
@@ -977,6 +971,7 @@ function UsersTab() {
 type DimensionRow = DimensionBreakdown['items'][number] & { id: string };
 
 function DimensionTab() {
+  const palette = useChartPalette();
   const [days, setDays] = useState(7);
   const [dimension, setDimension] = useState('browser');
   const [data, setData] = useState<DimensionBreakdown | null>(null);
@@ -995,6 +990,14 @@ function DimensionTab() {
   useEffect(() => { void fetchData(); }, [fetchData]);
 
   const rows = useMemo<DimensionRow[]>(() => (data?.items ?? []).map((item) => ({ ...item, id: item.name })), [data]);
+  const dimensionPieSpec = useMemo(() => makePieSpec({
+    data: rows,
+    categoryField: 'name',
+    valueField: 'value',
+    donut: true,
+    colors: rows.map((_, index) => COLORS[index % COLORS.length]),
+    palette,
+  }), [palette, rows]);
   const columns: ColumnProps<DimensionRow>[] = [
     { title: '名称', dataIndex: 'name', render: (value) => <Typography.Text ellipsis={{ showTooltip: true }}>{String(value)}</Typography.Text> },
     { title: '数量', dataIndex: 'value', width: 120, render: (value) => numberText(Number(value)) },
@@ -1016,15 +1019,7 @@ function DimensionTab() {
       <div style={chartGridStyle}>
         <Card title="占比" bodyStyle={{ padding: 16 }}>
           {!rows.length ? emptyOrSpin(loading) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Tooltip />
-                <Legend />
-                <Pie data={rows} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={58} outerRadius={100} paddingAngle={2}>
-                  {rows.map((item, index) => <Cell key={item.id} fill={COLORS[index % COLORS.length]} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
+            <PieChart {...dimensionPieSpec} options={chartOptions} height={300} />
           )}
         </Card>
         <ConfigurableTable<DimensionRow>

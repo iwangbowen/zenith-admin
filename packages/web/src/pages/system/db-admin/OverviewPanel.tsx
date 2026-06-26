@@ -1,15 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Empty, Spin, Typography, Tag, Space } from '@douyinfe/semi-ui';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RTooltip,
-  Cell,
-} from 'recharts';
+import { BarChart, chartOptions, makeBarSpec, useChartPalette, datumNumber, datumText } from '@/components/charts';
 import { RefreshCw, Database, Table as TableIcon, Eye, KeyRound, Network, Activity, HardDrive, Server } from 'lucide-react';
 import { request } from '@/utils/request';
 
@@ -91,6 +82,7 @@ function StatCard({ icon, label, value, sub, accent }: Readonly<StatCardProps>) 
 export function OverviewPanel({ onSelectTable }: Readonly<{ onSelectTable?: (schema: string, name: string) => void }>) {
   const [data, setData] = useState<DbOverview | null>(null);
   const [loading, setLoading] = useState(false);
+  const palette = useChartPalette();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,13 +93,33 @@ export function OverviewPanel({ onSelectTable }: Readonly<{ onSelectTable?: (sch
 
   useEffect(() => { void load(); }, [load]);
 
-  const chartData = (data?.topTables ?? []).map((t) => ({
+  const chartData = (data?.topTables ?? []).map((t, i) => ({
     label: t.name,
     full: `${t.schema}.${t.name}`,
     sizeMB: Number((t.sizeBytes / 1024 / 1024).toFixed(2)),
     sizeText: t.sizeText,
     rowEstimate: t.rowEstimate,
+    __fill: BAR_COLORS[i % BAR_COLORS.length],
   }));
+
+  const tableSpec = makeBarSpec({
+    data: chartData,
+    xField: 'label',
+    series: [{ field: 'sizeMB', name: '大小', color: BAR_COLORS[0] }],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 140,
+    colorByDatum: (d) => datumText(d, '__fill') || BAR_COLORS[0],
+    axis: { xLabel: (v) => `${v} MB` },
+    tooltip: { value: (_v, _name, d) => `${datumText(d, 'sizeText')} · 约 ${datumNumber(d, 'rowEstimate').toLocaleString()} 行` },
+  });
+
+  function handleBarClick(full?: string) {
+    if (full && onSelectTable) {
+      const [s, n] = full.split('.');
+      onSelectTable(s, n);
+    }
+  }
 
   const connPercent = data && data.maxConnections > 0
     ? Math.round((data.activeConnections / data.maxConnections) * 100)
@@ -161,47 +173,12 @@ export function OverviewPanel({ onSelectTable }: Readonly<{ onSelectTable?: (sch
             {chartData.length === 0 ? (
               <Empty title="无数据" />
             ) : (
-              <ResponsiveContainer width="100%" height={Math.max(220, chartData.length * 34)}>
-                <BarChart layout="vertical" data={chartData} margin={{ left: 12, right: 24, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--semi-color-border)" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} unit=" MB" />
-                  <YAxis
-                    type="category"
-                    dataKey="label"
-                    tick={{ fontSize: 11 }}
-                    width={140}
-                    onClick={(e: { value?: string }) => {
-                      const hit = chartData.find((c) => c.label === e?.value);
-                      if (hit && onSelectTable) {
-                        const [s, n] = hit.full.split('.');
-                        onSelectTable(s, n);
-                      }
-                    }}
-                  />
-                  <RTooltip
-                    cursor={{ fill: 'var(--semi-color-fill-0)' }}
-                    formatter={(_value, _name, item) => {
-                      const p = (item as { payload?: { sizeText?: string; rowEstimate?: number } } | undefined)?.payload;
-                      return [`${p?.sizeText ?? ''} · 约 ${(p?.rowEstimate ?? 0).toLocaleString()} 行`, '大小'];
-                    }}
-                    contentStyle={{ background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 6, fontSize: 12 }}
-                  />
-                  <Bar dataKey="sizeMB" radius={[0, 4, 4, 0]} barSize={18} cursor="pointer">
-                    {chartData.map((c, i) => (
-                      <Cell
-                        key={c.full}
-                        fill={BAR_COLORS[i % BAR_COLORS.length]}
-                        onClick={() => {
-                          if (onSelectTable) {
-                            const [s, n] = c.full.split('.');
-                            onSelectTable(s, n);
-                          }
-                        }}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BarChart
+                {...tableSpec}
+                options={chartOptions}
+                height={Math.max(220, chartData.length * 34)}
+                onClick={(e) => handleBarClick((e?.datum as { full?: string } | undefined)?.full)}
+              />
             )}
             <div style={{ marginTop: 8 }}>
               <Text type="tertiary" size="small">提示：点击柱状图或纵轴标签可跳转到对应表</Text>

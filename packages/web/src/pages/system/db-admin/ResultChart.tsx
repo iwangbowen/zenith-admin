@@ -1,9 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Empty, RadioGroup, Radio, Select, Space, Typography } from '@douyinfe/semi-ui';
 import {
-  ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend,
-} from 'recharts';
+  BarChart,
+  LineChart,
+  PieChart,
+  chartOptions,
+  makeBarSpec,
+  makeLineSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 
 const { Text } = Typography;
 
@@ -23,6 +29,7 @@ function isNumericValue(v: unknown): boolean {
 }
 
 export function ResultChart({ columns, rows }: Readonly<Props>) {
+  const palette = useChartPalette();
   const dataCols = columns.filter((c) => !c.name.startsWith('__'));
 
   // 推断数值列（取样前若干行判断）
@@ -44,6 +51,32 @@ export function ResultChart({ columns, rows }: Readonly<Props>) {
       y: typeof r[yCol] === 'number' ? r[yCol] : Number(r[yCol]) || 0,
     }));
   }, [rows, xCol, yCol]);
+
+  const barSpec = useMemo(() => makeBarSpec({
+    data: chartData,
+    xField: 'x',
+    series: [{ field: 'y', name: yCol, color: '#3b82f6' }],
+    palette,
+  }), [chartData, palette, yCol]);
+
+  const lineSpec = useMemo(() => makeLineSpec({
+    data: chartData,
+    xField: 'x',
+    series: [{ field: 'y', name: yCol, color: '#3b82f6' }],
+    palette,
+  }), [chartData, palette, yCol]);
+
+  const pieSpec = useMemo(() => {
+    const pieData = chartData.slice(0, 12);
+    return makePieSpec({
+      data: pieData,
+      categoryField: 'x',
+      valueField: 'y',
+      donut: false,
+      colors: pieData.map((_, i) => COLORS[i % COLORS.length]),
+      palette,
+    });
+  }, [chartData, palette]);
 
   const allCols = dataCols.map((c) => ({ label: c.name, value: c.name }));
   const yOptions = (numericCols.length > 0 ? numericCols : dataCols.map((c) => c.name)).map((n) => ({ label: n, value: n }));
@@ -72,33 +105,9 @@ export function ResultChart({ columns, rows }: Readonly<Props>) {
       </Space>
 
       {!xCol || !yCol ? <Empty title="请选择坐标轴列" /> : (
-        <ResponsiveContainer width="100%" height={360}>
-          {type === 'bar' ? (
-            <BarChart data={chartData} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-              <XAxis dataKey="x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 11 }} />
-              <RTooltip contentStyle={{ background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 6, fontSize: 12 }} />
-              <Bar dataKey="y" name={yCol} fill="#3b82f6" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          ) : type === 'line' ? (
-            <LineChart data={chartData} margin={{ left: 4, right: 16, top: 8, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-              <XAxis dataKey="x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 11 }} />
-              <RTooltip contentStyle={{ background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 6, fontSize: 12 }} />
-              <Line type="monotone" dataKey="y" name={yCol} stroke="#3b82f6" strokeWidth={2} dot={false} />
-            </LineChart>
-          ) : (
-            <PieChart>
-              <Pie data={chartData.slice(0, 12)} dataKey="y" nameKey="x" cx="50%" cy="50%" outerRadius={120} label>
-                {chartData.slice(0, 12).map((d, i) => <Cell key={`${d.x}-${i}`} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <RTooltip contentStyle={{ background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 6, fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-            </PieChart>
-          )}
-        </ResponsiveContainer>
+        type === 'bar' ? <BarChart {...barSpec} options={chartOptions} height={360} />
+          : type === 'line' ? <LineChart {...lineSpec} options={chartOptions} height={360} />
+            : <PieChart {...pieSpec} options={chartOptions} height={360} />
       )}
     </div>
   );

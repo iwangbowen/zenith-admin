@@ -1,16 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Spin, Row, Col } from '@douyinfe/semi-ui';
 import {
-  ResponsiveContainer,
   BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
   LineChart,
-  Line,
-  CartesianGrid,
-} from 'recharts';
+  chartOptions,
+  makeBarSpec,
+  makeLineSpec,
+  useChartPalette,
+} from '@/components/charts';
 import { FileImage, Video, Music, FileText, File } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatFileSize } from '@/utils/file-utils';
@@ -49,13 +46,6 @@ const sectionTitleStyle: React.CSSProperties = {
   marginBottom: 12,
 };
 
-const tooltipStyle: React.CSSProperties = {
-  backgroundColor: 'var(--semi-color-bg-2)',
-  border: '1px solid var(--semi-color-border)',
-  borderRadius: 6,
-  fontSize: 12,
-};
-
 interface StatCardProps {
   readonly title: string;
   readonly value: string | number;
@@ -75,6 +65,7 @@ function StatCard({ title, value, sub }: StatCardProps) {
 }
 
 export default function FileStatsPanel() {
+  const palette = useChartPalette();
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<FileStats | null>(null);
 
@@ -94,6 +85,52 @@ export default function FileStatsPanel() {
 
   const summary = stats?.summary;
   const totalFiles = summary?.totalFiles ?? 0;
+  const providerData = useMemo(
+    () => (stats?.providerStats ?? []).map((p, i) => ({
+      ...p,
+      providerLabel: PROVIDER_LABELS[p.provider] ?? p.provider,
+      fill: PROVIDER_COLORS[i % PROVIDER_COLORS.length],
+    })),
+    [stats],
+  );
+  const uploaderData = useMemo(
+    () => (stats?.uploaderStats ?? []).map((u) => ({ ...u, sizeLabel: formatFileSize(u.size) })),
+    [stats],
+  );
+  const providerSpec = useMemo(() => makeBarSpec({
+    data: providerData,
+    xField: 'providerLabel',
+    series: [{ field: 'count', name: '文件数', color: '#3b82f6' }],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 80,
+    colorByDatum: (d) => String(d?.fill),
+    tooltip: { value: (v) => `${v} 个文件` },
+  }), [palette, providerData]);
+  const monthlySpec = useMemo(() => makeLineSpec({
+    data: stats?.monthlyStats ?? [],
+    xField: 'month',
+    series: [{ field: 'count', name: '新增文件', color: '#3b82f6' }],
+    palette,
+    point: true,
+    tooltip: { value: (v) => `${v} 个` },
+  }), [palette, stats]);
+  const sizeRangeSpec = useMemo(() => makeBarSpec({
+    data: stats?.sizeRangeStats ?? [],
+    xField: 'range',
+    series: [{ field: 'count', name: '文件数', color: '#10b981' }],
+    palette,
+    tooltip: { value: (v) => `${v} 个` },
+  }), [palette, stats]);
+  const uploaderSpec = useMemo(() => makeBarSpec({
+    data: uploaderData,
+    xField: 'username',
+    series: [{ field: 'count', name: '文件数', color: '#8b5cf6' }],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 80,
+    tooltip: { value: (v) => `${v} 个文件` },
+  }), [palette, uploaderData]);
 
   return (
     <Spin spinning={loading}>
@@ -166,37 +203,13 @@ export default function FileStatsPanel() {
           <Col xs={24} md={12}>
             <div style={{ ...sectionStyle }}>
               <div style={sectionTitleStyle}>存储类型分布</div>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart
-                  layout="vertical"
-                  data={stats?.providerStats.map((p, i) => ({
-                    ...p,
-                    providerLabel: PROVIDER_LABELS[p.provider] ?? p.provider,
-                    fill: PROVIDER_COLORS[i % PROVIDER_COLORS.length],
-                  }))}
-                  margin={{ left: 8, right: 24 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--semi-color-border)" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="providerLabel" tick={{ fontSize: 11 }} width={80} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 个文件`, '文件数']} />
-                  <Bar dataKey="count" radius={[0, 3, 3, 0]} fill="#3b82f6" />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarChart {...providerSpec} options={chartOptions} height={220} />
             </div>
           </Col>
           <Col xs={24} md={12}>
             <div style={{ ...sectionStyle }}>
               <div style={sectionTitleStyle}>月度上传趋势（近 12 个月）</div>
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={stats?.monthlyStats} margin={{ left: -8, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 个`, '新增文件']} />
-                  <Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} name="新增文件" />
-                </LineChart>
-              </ResponsiveContainer>
+              <LineChart {...monthlySpec} options={chartOptions} height={220} />
             </div>
           </Col>
         </Row>
@@ -206,34 +219,14 @@ export default function FileStatsPanel() {
           <Col xs={24} md={12}>
             <div style={{ ...sectionStyle }}>
               <div style={sectionTitleStyle}>文件大小分布</div>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={stats?.sizeRangeStats} margin={{ left: -8, right: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-                  <XAxis dataKey="range" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 个`, '文件数']} />
-                  <Bar dataKey="count" fill="#10b981" radius={[3, 3, 0, 0]} name="文件数" />
-                </BarChart>
-              </ResponsiveContainer>
+              <BarChart {...sizeRangeSpec} options={chartOptions} height={220} />
             </div>
           </Col>
           {stats && stats.uploaderStats.length > 0 && (
             <Col xs={24} md={12}>
               <div style={{ ...sectionStyle }}>
                 <div style={sectionTitleStyle}>Top 上传人（按文件数）</div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    layout="vertical"
-                    data={stats.uploaderStats.map((u) => ({ ...u, sizeLabel: formatFileSize(u.size) }))}
-                    margin={{ left: 8, right: 24 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--semi-color-border)" />
-                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="username" tick={{ fontSize: 11 }} width={80} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [`${v} 个文件`, n === 'count' ? '文件数' : n]} />
-                    <Bar dataKey="count" fill="#8b5cf6" radius={[0, 3, 3, 0]} name="count" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarChart {...uploaderSpec} options={chartOptions} height={220} />
               </div>
             </Col>
           )}

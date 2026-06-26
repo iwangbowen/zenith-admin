@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Descriptions, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table } from '@douyinfe/semi-ui';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
+import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi, History, Thermometer, ListTree } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -226,6 +224,7 @@ const SSE_STATUS_META: Record<'idle' | 'connecting' | 'open' | 'error', { color:
 };
 
 export default function MonitorPage() {
+  const palette = useChartPalette();
   const [data, setData] = useState<MonitorData | null>(null);
   const [series, setSeries] = useState<TimeseriesPoint[]>([]);
   const [wsMetrics, setWsMetrics] = useState<WsMetrics | null>(null);
@@ -420,6 +419,14 @@ export default function MonitorPage() {
   }
 
   function renderTrendChart(title: string, lines: { dataKey: keyof TimeseriesPoint; label: string; color: string }[], unit?: string) {
+    const trendSpec = makeLineSpec({
+      data: chartData,
+      xField: 'time',
+      series: lines.map((line) => ({ field: String(line.dataKey), name: line.label, color: line.color })),
+      palette,
+      axis: { yLabel: (value) => (unit ? `${value}${unit}` : String(value)) },
+    });
+
     return (
       <div className="monitor-chart-card">
         <div className="monitor-chart-card__header">
@@ -427,51 +434,35 @@ export default function MonitorPage() {
           <Text type="tertiary" size="small">最近 1 小时（10 秒/点）</Text>
         </div>
         <div style={{ width: '100%', height: 220 }}>
-          <ResponsiveContainer>
-            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="time" tick={{ fontSize: 11 }} minTickGap={32} />
-              <YAxis tick={{ fontSize: 11 }} unit={unit} />
-              <Tooltip />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              {lines.map((l) => (
-                <Line
-                  key={l.dataKey as string}
-                  type="monotone"
-                  dataKey={l.dataKey as string}
-                  name={l.label}
-                  stroke={l.color}
-                  strokeWidth={2}
-                  dot={false}
-                  isAnimationActive={false}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+          <LineChart {...trendSpec} options={chartOptions} height={220} />
         </div>
       </div>
     );
   }
 
   function renderHistoryChart(title: string, lines: { dataKey: keyof HistoryPoint; label: string; color: string }[], opts?: { unit?: string; bytes?: boolean }) {
+    const axis = opts?.bytes
+      ? { yLabel: (value: number) => formatBytes(value) }
+      : opts?.unit
+        ? { yLabel: (value: number) => `${value}${opts.unit}` }
+        : undefined;
+    const tooltip = opts?.bytes ? { value: (value: number) => `${formatBytes(Number(value))}/s` } : undefined;
+    const historySpec = makeLineSpec({
+      data: historyChartData,
+      xField: 'time',
+      series: lines.map((line) => ({ field: String(line.dataKey), name: line.label, color: line.color })),
+      palette,
+      ...(axis ? { axis } : {}),
+      ...(tooltip ? { tooltip } : {}),
+    });
+
     return (
       <div className="monitor-chart-card">
         <div className="monitor-chart-card__header">
           <span className="monitor-chart-card__title"><Activity size={14} />{title}</span>
         </div>
         <div style={{ width: '100%', height: 240 }}>
-          <ResponsiveContainer>
-            <LineChart data={historyChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="time" tick={{ fontSize: 11 }} minTickGap={48} />
-              <YAxis tick={{ fontSize: 11 }} unit={opts?.unit} tickFormatter={opts?.bytes ? (v) => formatBytes(Number(v)) : undefined} width={opts?.bytes ? 64 : undefined} />
-              <Tooltip formatter={opts?.bytes ? (value) => `${formatBytes(Number(value))}/s` : undefined} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              {lines.map((l) => (
-                <Line key={l.dataKey as string} type="monotone" dataKey={l.dataKey as string} name={l.label} stroke={l.color} strokeWidth={2} dot={false} isAnimationActive={false} />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+          <LineChart {...historySpec} options={chartOptions} height={240} />
         </div>
       </div>
     );

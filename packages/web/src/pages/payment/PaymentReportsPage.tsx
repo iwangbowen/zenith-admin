@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { Banner, Button, DatePicker, Row, Col, Select, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
+import { BarChart, chartOptions, makeBarSpec, useChartPalette } from '@/components/charts';
 import { Search, RotateCcw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -16,7 +16,6 @@ const yuan = (cents: number) => `¥${((Number(cents) || 0) / 100).toFixed(2)}`;
 const groupByOptions = Object.entries(PAYMENT_REPORT_GROUP_BY_LABELS).map(([value, label]) => ({ value, label }));
 
 const sectionStyle: CSSProperties = { background: 'var(--semi-color-bg-1)', border: '1px solid var(--semi-color-border)', borderRadius: 6, padding: '16px 20px' };
-const tooltipStyle: CSSProperties = { backgroundColor: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 6, fontSize: 12 };
 
 interface StatCardProps { readonly title: string; readonly value: string | number; readonly accent?: string; }
 function StatCard({ title, value, accent }: StatCardProps) {
@@ -41,6 +40,7 @@ interface ReportSummary {
 export default function PaymentReportsPage() {
   const { hasPermission } = usePermission();
   const canView = hasPermission('payment:report:view');
+  const palette = useChartPalette();
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [groupBy, setGroupBy] = useState<PaymentReportGroupBy>('bizType');
@@ -70,6 +70,17 @@ export default function PaymentReportsPage() {
   function handleReset() { setGroupBy('bizType'); setTimeRange(null); stateRef.current = { groupBy: 'bizType', timeRange: null }; void fetchSummary(); }
 
   const chartData = (summary?.rows ?? []).map((r) => ({ name: r.label, 收款: Number((r.gross / 100).toFixed(2)), 净额: Number((r.net / 100).toFixed(2)) }));
+  const barSpec = makeBarSpec({
+    data: chartData,
+    xField: 'name',
+    series: [
+      { field: '收款', name: '收款', color: '#10b981' },
+      { field: '净额', name: '净额', color: '#3b82f6' },
+    ],
+    palette,
+    tooltip: { value: (v) => `¥${v}` },
+    axis: { yLabel: (v) => `¥${v}` },
+  });
 
   const columns: ColumnProps<PaymentReportRow>[] = [
     { title: PAYMENT_REPORT_GROUP_BY_LABELS[summary?.groupBy ?? 'bizType'], dataIndex: 'label', width: 160 },
@@ -148,17 +159,7 @@ export default function PaymentReportsPage() {
 
           <div style={sectionStyle}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>收款 / 净额分布</div>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData} margin={{ left: -6, right: 16 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} minTickGap={8} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v) => `¥${v}`} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="收款" fill="#10b981" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="净额" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <BarChart {...barSpec} options={chartOptions} height={300} />
           </div>
 
           <ConfigurableTable

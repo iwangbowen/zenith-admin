@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, Progress, Skeleton, Table, Typography } from '@douyinfe/semi-ui';
 import {
-  LineChart, Line,
-  PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
-  type PieLabelRenderProps,
-} from 'recharts';
+  LineChart,
+  PieChart,
+  chartOptions,
+  makeLineSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 import { Radio, Users, MessageSquare, Send, Inbox, Clock, RotateCcw, Reply, BarChart3 } from 'lucide-react';
 import { request } from '@/utils/request';
 import {
@@ -39,6 +40,7 @@ function shortDate(dateStr: string) {
 }
 
 export default function ChannelDashboardPage() {
+  const palette = useChartPalette();
   const [data, setData] = useState<ChannelDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -71,15 +73,35 @@ export default function ChannelDashboardPage() {
     },
   ];
 
-  const statusData = data
+  const statusData = useMemo(() => (data
     ? (Object.keys(data.statusDist) as Array<keyof ChannelDashboard['statusDist']>).map((k) => ({
         key: k,
         name: CHANNEL_CONVERSATION_STATUS_LABELS[k],
         value: data.statusDist[k],
         fill: STATUS_COLORS[k],
       }))
-    : [];
+    : []), [data]);
   const statusTotal = statusData.reduce((sum, item) => sum + item.value, 0);
+  const trendSpec = useMemo(() => makeLineSpec({
+    data: data?.trend ?? [],
+    xField: 'date',
+    series: [
+      { field: 'inbound', name: '用户来信', color: '#4A90E2' },
+      { field: 'outbound', name: '频道发出', color: '#52C41A' },
+    ],
+    palette,
+    point: true,
+    axis: { xLabel: shortDate },
+  }), [data, palette]);
+  const statusPieSpec = useMemo(() => makePieSpec({
+    data: statusData,
+    categoryField: 'name',
+    valueField: 'value',
+    donut: false,
+    colors: statusData.map((d) => d.fill),
+    palette,
+    label: 'percent',
+  }), [palette, statusData]);
 
   const replyColumns = [
     { title: '频道', dataIndex: 'channelName', key: 'channelName', ellipsis: true },
@@ -188,20 +210,7 @@ export default function ChannelDashboardPage() {
           bodyStyle={{ padding: '12px 16px 8px' }}
         >
           {loading ? chartSkeleton : (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={data?.trend ?? []} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip
-                  labelFormatter={(l) => `日期：${l}`}
-                  formatter={(value, name) => [value, name === 'inbound' ? '用户来信' : '频道发出']}
-                />
-                <Legend formatter={(v) => v === 'inbound' ? '用户来信' : '频道发出'} wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="inbound" stroke="#4A90E2" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="outbound" stroke="#52C41A" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
+            <LineChart {...trendSpec} options={chartOptions} height={220} />
           )}
         </Card>
 
@@ -214,25 +223,7 @@ export default function ChannelDashboardPage() {
           {loading ? chartSkeleton : statusTotal === 0 ? (
             <div className="channel-dashboard-chart-placeholder"><Empty description="暂无会话数据" /></div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={78}
-                  label={({ name, percent }: PieLabelRenderProps) => `${String(name)} ${(((percent as number) ?? 0) * 100).toFixed(0)}%`}
-                  labelLine={false}
-                >
-                  {statusData.map((item) => (
-                    <Cell key={item.key} fill={item.fill} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value, name) => [value, name]} />
-              </PieChart>
-            </ResponsiveContainer>
+            <PieChart {...statusPieSpec} options={chartOptions} height={220} />
           )}
         </Card>
 

@@ -43,19 +43,15 @@ import {
   Zap,
 } from 'lucide-react';
 import {
-  Bar,
   BarChart,
-  Cell,
-  Legend,
-  Line,
   LineChart,
-  Pie,
   PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  chartOptions,
+  makeBarSpec,
+  makeLineSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 import type {
   ErrorAlertCondition,
   ErrorAlertRule,
@@ -345,6 +341,7 @@ function BreadcrumbTimeline({ breadcrumbs }: { readonly breadcrumbs: ErrorBreadc
 }
 
 export default function FrontendErrorsPage() {
+  const palette = useChartPalette();
 
   const [activeTab, setActiveTab] = useState<TabKey>('issues');
 
@@ -949,6 +946,42 @@ export default function FrontendErrorsPage() {
     groups: item.groups,
   }));
 
+  const overviewTrendSpec = useMemo(() => makeLineSpec({
+    data: overview?.trend ?? [],
+    xField: 'date',
+    series: [
+      { field: 'occurrences', name: '发生次数', color: '#f93920' },
+      { field: 'groups', name: '错误种类', color: '#6a5af9' },
+    ],
+    palette,
+  }), [overview?.trend, palette]);
+
+  const overviewTypePieSpec = useMemo(() => makePieSpec({
+    data: overviewTypeData,
+    categoryField: 'name',
+    valueField: 'value',
+    donut: false,
+    colors: overviewTypeData.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]),
+    palette,
+  }), [overviewTypeData, palette]);
+
+  const overviewLevelBarSpec = useMemo(() => makeBarSpec({
+    data: overviewLevelData,
+    xField: 'name',
+    series: [
+      { field: 'occurrences', name: '发生次数', color: '#f93920' },
+      { field: 'groups', name: '错误种类', color: '#6a5af9' },
+    ],
+    palette,
+  }), [overviewLevelData, palette]);
+
+  const detailTrendSpec = useMemo(() => makeLineSpec({
+    data: detail?.trend ?? [],
+    xField: 'date',
+    series: [{ field: 'count', name: '次数', color: '#f93920' }],
+    palette,
+  }), [detail?.trend, palette]);
+
   const renderOverviewDaysFilter = () => (
     <Select
       value={overviewDays}
@@ -1084,16 +1117,7 @@ export default function FrontendErrorsPage() {
 
               <Card title="趋势分析" style={{ width: '100%' }}>
                 <div style={{ height: 320 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={overview.trend}>
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" name="发生次数" dataKey="occurrences" stroke="#f93920" strokeWidth={2} dot={false} />
-                      <Line type="monotone" name="错误种类" dataKey="groups" stroke="#6a5af9" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <LineChart {...overviewTrendSpec} options={chartOptions} height={320} />
                 </div>
               </Card>
 
@@ -1101,15 +1125,7 @@ export default function FrontendErrorsPage() {
                 <Card title="错误类型分布">
                   <div style={{ height: 260 }}>
                     {overviewTypeData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={overviewTypeData} dataKey="value" nameKey="name" outerRadius={85} label>
-                            {overviewTypeData.map((item, index) => <Cell key={item.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
-                          </Pie>
-                          <Tooltip />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      <PieChart {...overviewTypePieSpec} options={chartOptions} height={260} />
                     ) : <Empty title="暂无数据" />}
                   </div>
                 </Card>
@@ -1117,16 +1133,7 @@ export default function FrontendErrorsPage() {
                 <Card title="错误级别分布">
                   <div style={{ height: 260 }}>
                     {overviewLevelData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={overviewLevelData}>
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Bar name="发生次数" dataKey="occurrences" fill="#f93920" radius={[6, 6, 0, 0]} />
-                          <Bar name="错误种类" dataKey="groups" fill="#6a5af9" radius={[6, 6, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <BarChart {...overviewLevelBarSpec} options={chartOptions} height={260} />
                     ) : <Empty title="暂无数据" />}
                   </div>
                 </Card>
@@ -1325,14 +1332,7 @@ export default function FrontendErrorsPage() {
 
             <Card title="发生趋势" style={{ width: '100%' }}>
               <div style={{ height: 180 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={detail.trend}>
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
-                    <Line type="monotone" name="次数" dataKey="count" stroke="#f93920" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
+                <LineChart {...detailTrendSpec} options={chartOptions} height={180} />
               </div>
             </Card>
 

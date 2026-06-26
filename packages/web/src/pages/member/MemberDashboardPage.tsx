@@ -1,13 +1,18 @@
-import { useEffect, useState } from 'react';
+import type React from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, Typography, Skeleton, Empty } from '@douyinfe/semi-ui';
 import {
-  LineChart, Line,
-  AreaChart, Area,
-  PieChart, Pie, Cell,
-  BarChart, Bar,
-  XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
+  AreaChart,
+  BarChart,
+  LineChart,
+  PieChart,
+  chartOptions,
+  makeAreaSpec,
+  makeBarSpec,
+  makeLineSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 import { Users, UserPlus, CalendarPlus, Activity, Coins, Wallet, CalendarCheck, Ticket } from 'lucide-react';
 import type { MemberStatsOverview, MemberStatsCharts } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -64,6 +69,7 @@ function ChartCard({ title, children }: Readonly<{ title: string; children: Reac
 }
 
 export default function MemberDashboardPage() {
+  const palette = useChartPalette();
   const [overview, setOverview] = useState<MemberStatsOverview | null>(null);
   const [charts, setCharts] = useState<MemberStatsCharts | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,6 +86,42 @@ export default function MemberDashboardPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const registerSpec = useMemo(() => makeAreaSpec({
+    data: charts?.registerTrend ?? [],
+    xField: 'date',
+    series: [{ field: 'count', name: '注册数', color: '#07c160' }],
+    palette,
+    axis: { xLabel: shortDate },
+  }), [charts?.registerTrend, palette]);
+
+  const levelSpec = useMemo(() => makePieSpec({
+    data: charts?.levelDistribution ?? [],
+    categoryField: 'name',
+    valueField: 'value',
+    donut: false,
+    colors: (charts?.levelDistribution ?? []).map((_, i) => PIE_COLORS[i % PIE_COLORS.length]),
+    palette,
+  }), [charts?.levelDistribution, palette]);
+
+  const pointSpec = useMemo(() => makeLineSpec({
+    data: charts?.pointTrend ?? [],
+    xField: 'date',
+    series: [
+      { field: 'earned', name: '发放', color: '#07c160' },
+      { field: 'spent', name: '消耗', color: '#F5222D' },
+    ],
+    palette,
+    axis: { xLabel: shortDate },
+  }), [charts?.pointTrend, palette]);
+
+  const checkinSpec = useMemo(() => makeBarSpec({
+    data: charts?.checkinTrend ?? [],
+    xField: 'date',
+    series: [{ field: 'count', name: '签到人数', color: '#07c160' }],
+    palette,
+    axis: { xLabel: shortDate },
+  }), [charts?.checkinTrend, palette]);
 
   if (loading) {
     const skeletonPlaceholder = (
@@ -125,61 +167,21 @@ export default function MemberDashboardPage() {
       {/* 图表区 */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         <ChartCard title="近30天注册趋势">
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={charts?.registerTrend ?? []} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
-              <defs>
-                <linearGradient id="memReg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#07c160" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#07c160" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-              <XAxis dataKey="date" tickFormatter={shortDate} fontSize={12} interval="preserveStartEnd" />
-              <YAxis allowDecimals={false} fontSize={12} />
-              <Tooltip />
-              <Area type="monotone" dataKey="count" name="注册数" stroke="#07c160" fill="url(#memReg)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <AreaChart {...registerSpec} options={chartOptions} height={260} />
         </ChartCard>
 
         <ChartCard title="会员等级分布">
           {(charts?.levelDistribution?.length ?? 0) > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={charts?.levelDistribution ?? []} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={(p) => `${p.name}: ${p.value}`}>
-                  {(charts?.levelDistribution ?? []).map((entry, i) => <Cell key={entry.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <PieChart {...levelSpec} options={chartOptions} height={260} />
           ) : <Empty description="暂无数据" style={{ padding: '60px 0' }} />}
         </ChartCard>
 
         <ChartCard title="近30天积分收支">
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={charts?.pointTrend ?? []} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-              <XAxis dataKey="date" tickFormatter={shortDate} fontSize={12} interval="preserveStartEnd" />
-              <YAxis allowDecimals={false} fontSize={12} />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="earned" name="发放" stroke="#07c160" dot={false} />
-              <Line type="monotone" dataKey="spent" name="消耗" stroke="#F5222D" dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          <LineChart {...pointSpec} options={chartOptions} height={260} />
         </ChartCard>
 
         <ChartCard title="近7天签到人数">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts?.checkinTrend ?? []} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-              <XAxis dataKey="date" tickFormatter={shortDate} fontSize={12} />
-              <YAxis allowDecimals={false} fontSize={12} />
-              <Tooltip />
-              <Bar dataKey="count" name="签到人数" fill="#07c160" radius={[4, 4, 0, 0]} maxBarSize={40} />
-            </BarChart>
-          </ResponsiveContainer>
+          <BarChart {...checkinSpec} options={chartOptions} height={260} />
         </ChartCard>
       </div>
 

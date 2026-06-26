@@ -6,15 +6,30 @@ import {
   BarChart,
   HeatmapChart,
   PieChart,
+  EmptyChart,
+  HeatmapLegend,
+  useChartPalette,
+  chartOptions,
+  compactCount,
+  sectionStyle,
+  sectionTitleStyle,
+  makeCommonTooltip,
+  makeCommonCartesianSpec,
+  buildCalendarHeatmap,
+  makeCalendarHeatmapSpec,
+  axisText,
+  axisNumber,
+  datumText,
+  datumNumber,
+  isEmptyValues,
+  type ChartPalette,
+  type ChartDatum,
   type IAreaChartSpec,
   type IBarChartSpec,
-  type IHeatmapChartSpec,
   type IPieChartSpec,
-} from '@visactor/react-vchart';
+} from '@/components/charts';
 import dayjs from 'dayjs';
 import { request } from '@/utils/request';
-import { formatDate } from '@/utils/date';
-import { useThemeController } from '@/providers/theme-controller';
 import type { LoginLogStats } from '@zenith/shared';
 
 const DAYS_OPTIONS = [
@@ -23,11 +38,7 @@ const DAYS_OPTIONS = [
   { label: '最近 90 天', value: 90 },
 ];
 
-const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-
-const SUCCESS_COLOR = 'var(--semi-color-success)';
 const FAIL_COLOR = 'var(--semi-color-danger)';
-const RISK_COLOR = '#f43f5e';
 
 interface TrendDatum {
   readonly date: string;
@@ -43,193 +54,6 @@ interface BarDatum {
 interface PieDatum {
   readonly name: string;
   readonly value: number;
-}
-
-interface HeatmapDatum {
-  readonly week: string;
-  readonly weekday: string;
-  readonly date: string;
-  readonly count: number;
-  readonly inRange: boolean;
-  readonly monthLabel: string;
-}
-
-type ChartDatum = Record<string, unknown> | undefined;
-
-interface ChartPalette {
-  readonly success: string;
-  readonly danger: string;
-  readonly risk: string;
-  readonly active: string;
-  readonly primary: string;
-  readonly text0: string;
-  readonly text1: string;
-  readonly text2: string;
-  readonly border: string;
-  readonly fill1: string;
-  readonly grid: string;
-  readonly tooltipBg: string;
-  readonly tooltipShadow: string;
-  readonly dataColors: string[];
-  readonly heatColors: string[];
-}
-
-function cssVar(name: string, fallback: string): string {
-  const fromBody = getComputedStyle(document.body).getPropertyValue(name).trim();
-  if (fromBody) return fromBody;
-  const fromRoot = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return fromRoot || fallback;
-}
-
-function readChartPalette(isDark: boolean): ChartPalette {
-  const primary = cssVar('--semi-color-primary', isDark ? '#6aa1ff' : '#1664ff');
-  const fill1 = cssVar('--semi-color-fill-1', isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(28, 31, 35, 0.06)');
-
-  return {
-    success: cssVar('--semi-color-success', isDark ? '#37d196' : '#00b42a'),
-    danger: cssVar('--semi-color-danger', isDark ? '#ff7875' : '#f53f3f'),
-    risk: isDark ? '#ff6b8a' : RISK_COLOR,
-    active: cssVar('--semi-color-data-2', isDark ? '#74d8ff' : '#1ac6ff'),
-    primary,
-    text0: cssVar('--semi-color-text-0', isDark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.9)'),
-    text1: cssVar('--semi-color-text-1', isDark ? 'rgba(255, 255, 255, 0.75)' : 'rgba(0, 0, 0, 0.62)'),
-    text2: cssVar('--semi-color-text-2', isDark ? 'rgba(255, 255, 255, 0.55)' : 'rgba(0, 0, 0, 0.36)'),
-    border: cssVar('--semi-color-border', isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(28, 31, 35, 0.12)'),
-    fill1,
-    grid: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(28, 31, 35, 0.10)',
-    tooltipBg: cssVar('--semi-color-bg-2', isDark ? '#2f3037' : '#ffffff'),
-    tooltipShadow: isDark ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.10)',
-    dataColors: Array.from({ length: 10 }, (_, i) => cssVar(`--semi-color-data-${i}`, [
-      '#1664ff',
-      '#1ac6ff',
-      '#ff8a00',
-      '#3cc780',
-      '#7442d4',
-      '#f54f63',
-      '#00a8a8',
-      '#b88400',
-      '#7c5cff',
-      '#6b7280',
-    ][i])),
-    heatColors: isDark
-      ? [fill1, 'rgba(106, 161, 255, 0.22)', 'rgba(106, 161, 255, 0.42)', 'rgba(106, 161, 255, 0.66)', primary]
-      : [fill1, 'rgba(22, 100, 255, 0.14)', 'rgba(22, 100, 255, 0.30)', 'rgba(22, 100, 255, 0.56)', primary],
-  };
-}
-
-function useChartPalette(): ChartPalette {
-  const { isDark, themeColor } = useThemeController();
-  const [palette, setPalette] = useState(() => readChartPalette(isDark));
-
-  useEffect(() => {
-    const refresh = () => setPalette(readChartPalette(isDark));
-    refresh();
-    const raf = window.requestAnimationFrame(refresh);
-    return () => window.cancelAnimationFrame(raf);
-  }, [isDark, themeColor]);
-
-  return palette;
-}
-
-const sectionStyle: React.CSSProperties = {
-  background: 'var(--semi-color-bg-1)',
-  border: '1px solid var(--semi-color-border)',
-  borderRadius: 6,
-  padding: '16px 20px',
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 14,
-  fontWeight: 600,
-  color: 'var(--semi-color-text-0)',
-  marginBottom: 12,
-};
-
-const chartOptions = {
-  mode: 'desktop-browser' as const,
-  dpr: window.devicePixelRatio,
-};
-
-function compactCount(value: number): string {
-  return value >= 10000 ? `${(value / 10000).toFixed(1)}万` : String(value);
-}
-
-function makeCommonTooltip(palette: ChartPalette): NonNullable<IAreaChartSpec['tooltip']> {
-  return {
-    style: {
-      panel: {
-        backgroundColor: palette.tooltipBg,
-        border: { color: palette.border, width: 1 },
-        shadow: { x: 0, y: 8, blur: 10, spread: 0, color: palette.tooltipShadow },
-      },
-      titleLabel: { fill: palette.text1 },
-      keyLabel: { fill: palette.text2 },
-      valueLabel: { fill: palette.text0 },
-    },
-  };
-}
-
-function makeCommonCartesianSpec(palette: ChartPalette) {
-  return {
-    padding: { top: 8, right: 12, bottom: 8, left: 8 },
-    background: 'transparent',
-    animation: true,
-    tooltip: makeCommonTooltip(palette),
-  };
-}
-
-function axisText(value: string | string[]): string {
-  return Array.isArray(value) ? value.join('') : value;
-}
-
-function axisNumber(value: string | string[]): number {
-  return Number(axisText(value)) || 0;
-}
-
-function datumText(datum: ChartDatum, field: string): string {
-  const value = datum?.[field];
-  return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
-}
-
-function datumNumber(datum: ChartDatum, field: string): number {
-  const value = datum?.[field];
-  return typeof value === 'number' ? value : Number(value) || 0;
-}
-
-function datumBoolean(datum: ChartDatum, field: string): boolean {
-  return datum?.[field] === true;
-}
-
-function getHeatmapFill(datum: ChartDatum, max: number, palette: ChartPalette): string {
-  if (!datumBoolean(datum, 'inRange')) return 'rgba(0, 0, 0, 0)';
-  const count = datumNumber(datum, 'count');
-  if (count <= 0 || max <= 0) return palette.heatColors[0];
-  const pct = count / max;
-  if (pct < 0.25) return palette.heatColors[1];
-  if (pct < 0.5) return palette.heatColors[2];
-  if (pct < 0.75) return palette.heatColors[3];
-  return palette.heatColors[4];
-}
-
-function isEmptyValues(values: readonly { readonly count?: number; readonly value?: number }[]): boolean {
-  return values.length === 0 || values.every((d) => (d.count ?? d.value ?? 0) === 0);
-}
-
-function EmptyChart({ height = 260, tone = 'muted' }: { readonly height?: number; readonly tone?: 'muted' | 'success' }) {
-  return (
-    <div
-      style={{
-        height,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: tone === 'success' ? SUCCESS_COLOR : 'var(--semi-color-text-2)',
-        fontSize: 13,
-      }}
-    >
-      {tone === 'success' ? '该时间段无失败登录' : '暂无数据'}
-    </div>
-  );
 }
 
 interface StatCardProps {
@@ -571,71 +395,6 @@ function makeCategoryDonutSpec(data: readonly PieDatum[], palette: ChartPalette)
   };
 }
 
-function makeCalendarHeatmapSpec(data: readonly HeatmapDatum[], maxCount: number, palette: ChartPalette): Partial<IHeatmapChartSpec> {
-  const commonTooltip = makeCommonTooltip(palette);
-  const monthLabelByWeek = new Map(data.map((d) => [d.week, d.monthLabel]));
-
-  return {
-    ...makeCommonCartesianSpec(palette),
-    padding: { top: 8, right: 12, bottom: 22, left: 38 },
-    data: [{ id: 'calendar-heatmap', values: [...data] }],
-    xField: 'week',
-    yField: 'weekday',
-    valueField: 'count',
-    cell: {
-      style: {
-        fill: (datum: ChartDatum) => getHeatmapFill(datum, maxCount, palette),
-        stroke: (datum: ChartDatum) => (datumBoolean(datum, 'inRange') ? palette.tooltipBg : 'rgba(0, 0, 0, 0)'),
-        lineWidth: 2,
-        cornerRadius: 4,
-      },
-    },
-    label: { visible: false },
-    axes: [
-      {
-        orient: 'bottom',
-        type: 'band',
-        tick: { visible: false },
-        domainLine: { visible: false },
-        grid: { visible: false },
-        label: {
-          style: { fill: palette.text2, fontSize: 11 },
-          space: 8,
-          formatMethod: (value) => monthLabelByWeek.get(axisText(value)) ?? '',
-        },
-      },
-      {
-        orient: 'left',
-        type: 'band',
-        inverse: true,
-        tick: { visible: false },
-        domainLine: { visible: false },
-        grid: { visible: false },
-        label: {
-          style: { fill: palette.text2, fontSize: 11 },
-        },
-      },
-    ],
-    tooltip: {
-      ...commonTooltip,
-      mark: {
-        title: {
-          value: (datum?: ChartDatum) => {
-            const date = datumText(datum, 'date');
-            return datumBoolean(datum, 'inRange') ? date : `${date}（范围外）`;
-          },
-        },
-        content: [
-          {
-            key: '登录次数',
-            value: (datum?: ChartDatum) => `${datumNumber(datum, 'count')} 次`,
-          },
-        ],
-      },
-    },
-  };
-}
-
 export default function LoginLogStatsPanel() {
   const palette = useChartPalette();
   const [days, setDays] = useState<number>(30);
@@ -676,42 +435,7 @@ export default function LoginLogStatsPanel() {
     [filledDailyStats],
   );
 
-  const heatmapData = useMemo<HeatmapDatum[]>(() => {
-    if (!stats) return [];
-    const dataMap = new Map(stats.dailyStats.map((d) => [d.date, d.count]));
-    const today = dayjs().startOf('day');
-    const startDay = today.subtract(days - 1, 'day');
-    const startMon = startDay.subtract((startDay.day() + 6) % 7, 'day');
-    const data: HeatmapDatum[] = [];
-    let cur = startMon;
-    let weekIndex = 0;
-    while (!cur.isAfter(today)) {
-      const week = String(weekIndex + 1);
-      const firstDate = formatDate(cur.valueOf());
-      const prevFirstDate = weekIndex === 0 ? null : formatDate(cur.subtract(7, 'day').valueOf());
-      const monthLabel = firstDate.slice(5, 7) === prevFirstDate?.slice(5, 7) ? '' : `${firstDate.slice(5, 7)}月`;
-      for (let di = 0; di < 7; di++) {
-        const dt = cur.add(di, 'day');
-        const dateStr = formatDate(dt.valueOf());
-        data.push({
-          week,
-          weekday: WEEKDAY_LABELS[di],
-          date: dateStr,
-          count: dataMap.get(dateStr) ?? 0,
-          inRange: !dt.isBefore(startDay) && !dt.isAfter(today),
-          monthLabel,
-        });
-      }
-      cur = cur.add(7, 'day');
-      weekIndex += 1;
-    }
-    return data;
-  }, [stats, days]);
-
-  const heatmapMaxCount = useMemo(
-    () => Math.max(1, ...heatmapData.filter((d) => d.inRange).map((d) => d.count)),
-    [heatmapData],
-  );
+  const heatmap = useMemo(() => buildCalendarHeatmap(stats?.dailyStats ?? [], days), [stats, days]);
 
   const userChartData = useMemo<BarDatum[]>(
     () => [...(stats?.userStats ?? [])].reverse().map((d) => ({ name: d.username, count: d.count })),
@@ -756,7 +480,7 @@ export default function LoginLogStatsPanel() {
   const statusSpec = useMemo(() => makeDonutSpec(statusPieData, successRate, palette), [palette, statusPieData, successRate]);
   const browserSpec = useMemo(() => makeCategoryDonutSpec(browserData, palette), [browserData, palette]);
   const osSpec = useMemo(() => makeCategoryDonutSpec(osData, palette), [osData, palette]);
-  const heatmapSpec = useMemo(() => makeCalendarHeatmapSpec(heatmapData, heatmapMaxCount, palette), [heatmapData, heatmapMaxCount, palette]);
+  const heatmapSpec = useMemo(() => makeCalendarHeatmapSpec(heatmap.data, heatmap.maxCount, palette, { valueLabel: '登录次数' }), [heatmap, palette]);
 
   return (
     <div>
@@ -809,7 +533,7 @@ export default function LoginLogStatsPanel() {
               </>
             )}
           >
-            {ipFailChartData.length === 0 ? <EmptyChart tone="success" /> : (
+            {ipFailChartData.length === 0 ? <EmptyChart tone="success" text="该时间段无失败登录" /> : (
               <BarChart {...ipFailBarSpec} options={chartOptions} height={260} />
             )}
           </ChartShell>
@@ -842,16 +566,10 @@ export default function LoginLogStatsPanel() {
         </div>
 
         <ChartShell title={`登录热力图（近 ${days} 天）`}>
-          {heatmapData.length === 0 ? <EmptyChart height={220} /> : (
+          {heatmap.data.length === 0 ? <EmptyChart height={220} /> : (
             <>
               <HeatmapChart {...heatmapSpec} options={chartOptions} height={220} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: 'var(--semi-color-text-2)' }}>
-                <span>少</span>
-                {palette.heatColors.map((color) => (
-                  <div key={color} style={{ width: 12, height: 12, borderRadius: 3, background: color }} />
-                ))}
-                <span>多</span>
-              </div>
+              <HeatmapLegend palette={palette} />
             </>
           )}
         </ChartShell>

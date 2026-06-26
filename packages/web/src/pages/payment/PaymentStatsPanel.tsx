@@ -1,20 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Spin, Row, Col, Select } from '@douyinfe/semi-ui';
 import {
-  ResponsiveContainer,
   AreaChart,
-  Area,
   BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
   PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from 'recharts';
+  chartOptions,
+  makeAreaSpec,
+  makeBarSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 import { request } from '@/utils/request';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared';
 import type { PaymentChannel, PaymentOrderStatus, PaymentStats, PaymentTrendPoint } from '@zenith/shared';
@@ -42,9 +37,6 @@ const sectionStyle: React.CSSProperties = {
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: 14, fontWeight: 600, color: 'var(--semi-color-text-0)', marginBottom: 12,
 };
-const tooltipStyle: React.CSSProperties = {
-  backgroundColor: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 6, fontSize: 12,
-};
 
 interface StatCardProps {
   readonly title: string;
@@ -63,6 +55,7 @@ function StatCard({ title, value, sub, accent }: StatCardProps) {
 }
 
 export default function PaymentStatsPanel() {
+  const palette = useChartPalette();
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<PaymentStats | null>(null);
   const [trend, setTrend] = useState<PaymentTrendPoint[]>([]);
@@ -107,6 +100,37 @@ export default function PaymentStatsPanel() {
     count: p.count,
   }));
 
+  const trendSpec = useMemo(() => makeAreaSpec({
+    data: trendData,
+    xField: 'date',
+    series: [
+      { field: 'amount', name: '收款金额', color: '#10b981' },
+      { field: 'refundAmount', name: '退款金额', color: '#f97316' },
+    ],
+    palette,
+    fillOpacity: 0.25,
+    tooltip: { value: (v) => `¥${v}` },
+  }), [palette, trendData]);
+
+  const channelSpec = useMemo(() => makeBarSpec({
+    data: channelData,
+    xField: 'name',
+    series: [{ field: 'amount', name: '成功金额', color: '#10b981' }],
+    palette,
+    colorByDatum: (d) => String(d?.['fill'] ?? '#6b7280'),
+    tooltip: { value: (v) => yuan(Number(v)) },
+  }), [channelData, palette]);
+
+  const statusSpec = useMemo(() => makePieSpec({
+    data: statusData,
+    categoryField: 'name',
+    valueField: 'value',
+    donut: true,
+    colors: statusData.map((d) => d.fill),
+    palette,
+    valueUnit: '单',
+  }), [palette, statusData]);
+
   return (
     <Spin spinning={loading}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -138,27 +162,7 @@ export default function PaymentStatsPanel() {
             <div style={{ ...sectionTitleStyle, marginBottom: 0 }}>收款趋势</div>
             <Select size="small" value={days} onChange={(v) => handleDaysChange(v as number)} optionList={DAYS_OPTIONS} style={{ width: 130 }} />
           </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={trendData} margin={{ left: -6, right: 16 }}>
-              <defs>
-                <linearGradient id="payAmt" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="payRefund" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={16} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [`¥${v}`, n === 'amount' ? '收款金额' : '退款金额']} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Area type="monotone" dataKey="amount" name="收款金额" stroke="#10b981" strokeWidth={2} fill="url(#payAmt)" />
-              <Area type="monotone" dataKey="refundAmount" name="退款金额" stroke="#f97316" strokeWidth={2} fill="url(#payRefund)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <AreaChart {...trendSpec} options={chartOptions} height={280} />
         </div>
 
         {/* 渠道金额分布 + 订单状态分布 */}
@@ -166,31 +170,13 @@ export default function PaymentStatsPanel() {
           <Col xs={24} md={12}>
             <div style={sectionStyle}>
               <div style={sectionTitleStyle}>渠道成功金额分布</div>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={channelData} margin={{ left: -6, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => (n === 'amount' ? [yuan(Number(v)), '成功金额'] : [`${v} 单`, '订单数'])} />
-                  <Bar dataKey="amount" name="amount" radius={[3, 3, 0, 0]}>
-                    {channelData.map((d) => <Cell key={d.name} fill={d.fill} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BarChart {...channelSpec} options={chartOptions} height={240} />
             </div>
           </Col>
           <Col xs={24} md={12}>
             <div style={sectionStyle}>
               <div style={sectionTitleStyle}>订单状态分布</div>
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={86} paddingAngle={2}>
-                    {statusData.map((d) => <Cell key={d.name} fill={d.fill} />)}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [`${v} 单`, n]} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
+              <PieChart {...statusSpec} options={chartOptions} height={240} />
             </div>
           </Col>
         </Row>

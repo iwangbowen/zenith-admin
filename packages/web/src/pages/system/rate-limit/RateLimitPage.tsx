@@ -18,15 +18,11 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import {
-  CartesianGrid,
-  Legend,
-  Line,
   LineChart,
-  ResponsiveContainer,
-  Tooltip as ChartTooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  chartOptions,
+  makeLineSpec,
+  useChartPalette,
+} from '@/components/charts';
 
 const { Title, Text } = Typography;
 
@@ -110,6 +106,7 @@ function formatWindow(ms: number): string {
 export default function RateLimitPage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:rate-limit:manage');
+  const palette = useChartPalette();
   const [rules, setRules] = useState<RateLimitRule[]>([]);
   const [stats, setStats] = useState<RateLimitStats>({ items: [] });
   const [loading, setLoading] = useState(false);
@@ -301,6 +298,16 @@ export default function RateLimitPage() {
         {stats.items.map((item) => {
           const totalHits = item.hourlySeries.reduce((acc, p) => acc + p.hits, 0);
           const totalBlocked = item.hourlySeries.reduce((acc, p) => acc + p.blocked, 0);
+          const lineSpec = makeLineSpec({
+            data: item.hourlySeries,
+            xField: 'hour',
+            series: [
+              { field: 'hits', name: '命中', color: '#3b82f6' },
+              { field: 'blocked', name: '拦截', color: '#ef4444' },
+            ],
+            palette,
+            axis: { xLabel: (h) => h },
+          });
           return (
             <Card
               key={`trend-${item.name}`}
@@ -313,17 +320,7 @@ export default function RateLimitPage() {
               }
               bodyStyle={{ padding: '8px 12px 12px' }}
             >
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={item.hourlySeries} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
-                  <XAxis dataKey="hour" tick={{ fontSize: 11 }} interval={3} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="hits" name="命中" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="blocked" name="拦截" stroke="#ef4444" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
+              <LineChart {...lineSpec} options={chartOptions} height={200} />
             </Card>
           );
         })}

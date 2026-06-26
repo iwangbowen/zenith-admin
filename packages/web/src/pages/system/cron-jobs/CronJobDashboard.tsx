@@ -2,18 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Row, Col, Card, Table, Typography, Tag, Empty, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import {
-  ResponsiveContainer,
   AreaChart,
-  Area,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
   PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
+  chartOptions,
+  makeAreaSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 import { CronExpressionParser } from 'cron-parser';
 import type { CronJob, CronJobStats, CronJobStatsPerJob, CronJobRecentLog, CronRunStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -25,13 +20,6 @@ const RUNNING_COLOR = '#3b82f6';
 const TREND_DAYS = 14;
 const PANEL_TABLE_SCROLL_Y = 392;
 const PANEL_PREVIEW_HEIGHT = 428;
-
-const tooltipStyle: React.CSSProperties = {
-  backgroundColor: 'var(--semi-color-bg-2)',
-  border: '1px solid var(--semi-color-border)',
-  borderRadius: 6,
-  fontSize: 12,
-};
 
 interface UpcomingItem {
   key: string;
@@ -87,6 +75,7 @@ function calcUpcoming(jobs: CronJob[], total = 30): UpcomingItem[] {
 }
 
 export default function CronJobDashboard({ jobs }: Readonly<Props>) {
+  const palette = useChartPalette();
   const [stats, setStats] = useState<CronJobStats | null>(null);
   const [loading, setLoading] = useState(false);
   const upcoming = useMemo(() => calcUpcoming(jobs, 30), [jobs]);
@@ -134,6 +123,19 @@ export default function CronJobDashboard({ jobs }: Readonly<Props>) {
     });
   }, [stats]);
 
+  const trendSpec = useMemo(() => makeAreaSpec({
+    data: filledDaily,
+    xField: 'date',
+    series: [
+      { field: 'successCount', name: '成功', color: SUCCESS_COLOR },
+      { field: 'failCount', name: '失败', color: FAIL_COLOR },
+    ],
+    palette,
+    fillOpacity: 0.25,
+    axis: { xLabel: (d) => d.slice(5) },
+    tooltip: { title: (x) => `日期：${x}`, value: (v) => `${v} 次` },
+  }), [filledDaily, palette]);
+
   const donutData = useMemo(() => {
     if (!stats) return [];
     return [
@@ -142,6 +144,17 @@ export default function CronJobDashboard({ jobs }: Readonly<Props>) {
       { name: '运行中', value: todayRunning, fill: RUNNING_COLOR },
     ].filter((d) => d.value > 0);
   }, [stats, todayRunning]);
+
+  const donutSpec = useMemo(() => makePieSpec({
+    data: donutData,
+    categoryField: 'name',
+    valueField: 'value',
+    donut: true,
+    colors: donutData.map((d) => d.fill),
+    palette,
+    indicator: { title: String(stats?.todayRuns ?? 0), subtitle: '今日执行' },
+    valueUnit: '次',
+  }), [donutData, palette, stats?.todayRuns]);
 
   const perJobColumns: ColumnProps<CronJobStatsPerJob>[] = [
     { title: '任务名称', dataIndex: 'jobName', ellipsis: { showTitle: true } },
@@ -231,31 +244,7 @@ export default function CronJobDashboard({ jobs }: Readonly<Props>) {
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={14}>
           <Card title={`近 ${TREND_DAYS} 天执行趋势`}>
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={filledDaily} margin={{ left: 0, right: 12, top: 4, bottom: 4 }}>
-                <defs>
-                  <linearGradient id="cronAreaSuccess" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={SUCCESS_COLOR} stopOpacity={0.35} />
-                    <stop offset="95%" stopColor={SUCCESS_COLOR} stopOpacity={0.04} />
-                  </linearGradient>
-                  <linearGradient id="cronAreaFail" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={FAIL_COLOR} stopOpacity={0.6} />
-                    <stop offset="95%" stopColor={FAIL_COLOR} stopOpacity={0.1} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={1} tickFormatter={(v: string) => v.slice(5)} />
-                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} width={32} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v, name) => [`${v} 次`, name === 'successCount' ? '成功' : '失败']}
-                  labelFormatter={(l) => `日期：${l}`}
-                />
-                <Legend formatter={(value) => (value === 'successCount' ? '成功' : '失败')} wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="successCount" stroke={SUCCESS_COLOR} fill="url(#cronAreaSuccess)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="failCount" stroke={FAIL_COLOR} fill="url(#cronAreaFail)" strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <AreaChart {...trendSpec} options={chartOptions} height={260} />
           </Card>
         </Col>
         <Col span={10}>
@@ -265,25 +254,7 @@ export default function CronJobDashboard({ jobs }: Readonly<Props>) {
                 <Empty description="今日暂无执行" />
               </div>
             ) : (
-              <div style={{ position: 'relative' }}>
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={donutData} nameKey="name" dataKey="value" cx="50%" cy="50%" innerRadius={64} outerRadius={96} paddingAngle={2}>
-                      {donutData.map((entry) => <Cell key={entry.name} fill={entry.fill} />)}
-                    </Pie>
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => [`${value} 次`, name]} />
-                    <Legend wrapperStyle={{ fontSize: 12, color: 'var(--semi-color-text-1)' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={{
-                  position: 'absolute', top: 0, left: 0, right: 0,
-                  height: 232, display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
-                }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.1 }}>{stats.todayRuns}</div>
-                  <Typography.Text type="tertiary" size="small">今日执行</Typography.Text>
-                </div>
-              </div>
+              <PieChart {...donutSpec} options={chartOptions} height={260} />
             )}
           </Card>
         </Col>

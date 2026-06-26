@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, Empty, Spin, Typography, Select, Tag } from '@douyinfe/semi-ui';
 import {
-  ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-} from 'recharts';
+  BarChart,
+  LineChart,
+  PieChart,
+  chartOptions,
+  makeBarSpec,
+  makeLineSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 import type { WorkflowAnalytics, WorkflowDefinition, WorkflowOverdueTask, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -47,6 +53,7 @@ function ChartCard({ title, children }: Readonly<{ title: string; children: Reac
 }
 
 export default function WorkflowAnalyticsView({ definitions }: Readonly<{ definitions: WorkflowDefinition[] }>) {
+  const palette = useChartPalette();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WorkflowAnalytics | null>(null);
   const [overdue, setOverdue] = useState<WorkflowOverdueTask[]>([]);
@@ -65,16 +72,66 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
     return () => { cancelled = true; };
   }, [definitionId]);
 
+  const statusPie = useMemo(
+    () => (data?.statusCounts ?? [])
+      .filter((s) => s.count > 0)
+      .map((s) => ({ name: STATUS_META[s.status]?.text ?? s.status, value: s.count, color: STATUS_META[s.status]?.color ?? '#999' })),
+    [data],
+  );
+
+  const defBar = useMemo(
+    () => (data?.definitionStats ?? []).map((d) => ({ name: d.definitionName, 进行中: d.running, 已通过: d.approved, 已驳回: d.rejected })),
+    [data],
+  );
+  const approverWorkloadData = useMemo(
+    () => (data?.approverWorkloads ?? []).map((a) => ({ name: a.userName, 待办: a.pendingCount })),
+    [data],
+  );
+  const trendSpec = useMemo(() => makeLineSpec({
+    data: data?.trend ?? [],
+    xField: 'date',
+    series: [
+      { field: 'created', name: '发起', color: '#3370ff' },
+      { field: 'completed', name: '完结', color: '#0dc87c' },
+    ],
+    palette,
+    axis: { xLabel: (d) => d.slice(5) },
+  }), [data, palette]);
+  const statusPieSpec = useMemo(() => makePieSpec({
+    data: statusPie,
+    categoryField: 'name',
+    valueField: 'value',
+    donut: false,
+    colors: statusPie.map((s) => s.color),
+    palette,
+    label: 'value',
+  }), [palette, statusPie]);
+  const defBarSpec = useMemo(() => makeBarSpec({
+    data: defBar,
+    xField: 'name',
+    series: [
+      { field: '进行中', name: '进行中', color: '#3370ff' },
+      { field: '已通过', name: '已通过', color: '#0dc87c' },
+      { field: '已驳回', name: '已驳回', color: '#ff4d4f' },
+    ],
+    palette,
+    horizontal: true,
+    stack: true,
+    categoryAxisWidth: 120,
+  }), [defBar, palette]);
+  const approverWorkloadSpec = useMemo(() => makeBarSpec({
+    data: approverWorkloadData,
+    xField: 'name',
+    series: [{ field: '待办', name: '待办', color: '#3370ff' }],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 100,
+  }), [approverWorkloadData, palette]);
+
   if (loading && !data) {
     return <div style={{ textAlign: 'center', padding: 60 }}><Spin /></div>;
   }
   if (!data) return <Empty title="暂无分析数据" style={{ padding: 60 }} />;
-
-  const statusPie = data.statusCounts
-    .filter((s) => s.count > 0)
-    .map((s) => ({ name: STATUS_META[s.status]?.text ?? s.status, value: s.count, color: STATUS_META[s.status]?.color ?? '#999' }));
-
-  const defBar = data.definitionStats.map((d) => ({ name: d.definitionName, 进行中: d.running, 已通过: d.approved, 已驳回: d.rejected }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -138,29 +195,11 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
       {/* 趋势 + 状态分布 */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <ChartCard title="近 14 天发起 / 完结趋势">
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={data.trend} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" tickFormatter={(d: string) => d.slice(5)} fontSize={12} />
-              <YAxis allowDecimals={false} fontSize={12} />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="created" name="发起" stroke="#3370ff" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="completed" name="完结" stroke="#0dc87c" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          <LineChart {...trendSpec} options={chartOptions} height={260} />
         </ChartCard>
         <ChartCard title="状态分布">
           {statusPie.length === 0 ? <Empty title="暂无数据" style={{ padding: 40 }} /> : (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={statusPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
-                  {statusPie.map((s) => <Cell key={s.name} fill={s.color} />)}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <PieChart {...statusPieSpec} options={chartOptions} height={260} />
           )}
         </ChartCard>
       </div>
@@ -169,18 +208,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <ChartCard title="各流程实例量（Top 12）">
           {defBar.length === 0 ? <Empty title="暂无数据" style={{ padding: 40 }} /> : (
-            <ResponsiveContainer width="100%" height={Math.max(220, defBar.length * 34)}>
-              <BarChart data={defBar} layout="vertical" margin={{ top: 4, right: 12, left: 12, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" allowDecimals={false} fontSize={12} />
-                <YAxis type="category" dataKey="name" width={120} fontSize={12} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="进行中" stackId="a" fill="#3370ff" />
-                <Bar dataKey="已通过" stackId="a" fill="#0dc87c" />
-                <Bar dataKey="已驳回" stackId="a" fill="#ff4d4f" />
-              </BarChart>
-            </ResponsiveContainer>
+            <BarChart {...defBarSpec} options={chartOptions} height={Math.max(220, defBar.length * 34)} />
           )}
         </ChartCard>
         <ChartCard title="节点瓶颈（平均处理时长 / 待办数）">
@@ -214,15 +242,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
       {/* 审批人工作量 */}
       <ChartCard title="审批人待办工作量（Top 10）">
         {data.approverWorkloads.length === 0 ? <Empty title="暂无待办" style={{ padding: 40 }} /> : (
-          <ResponsiveContainer width="100%" height={Math.max(200, data.approverWorkloads.length * 32)}>
-            <BarChart data={data.approverWorkloads.map((a) => ({ name: a.userName, 待办: a.pendingCount }))} layout="vertical" margin={{ top: 4, right: 12, left: 12, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" allowDecimals={false} fontSize={12} />
-              <YAxis type="category" dataKey="name" width={100} fontSize={12} />
-              <Tooltip />
-              <Bar dataKey="待办" fill="#3370ff" />
-            </BarChart>
-          </ResponsiveContainer>
+          <BarChart {...approverWorkloadSpec} options={chartOptions} height={Math.max(200, data.approverWorkloads.length * 32)} />
         )}
       </ChartCard>
     </div>

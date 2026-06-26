@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Calendar, Typography, Tag, Space, Skeleton, Empty, List, Avatar, Descriptions } from '@douyinfe/semi-ui';
 import {
-  LineChart, Line,
-  AreaChart, Area,
-  PieChart, Pie,
-  XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
-  type PieLabelRenderProps,
-} from 'recharts';
+  AreaChart,
+  LineChart,
+  PieChart,
+  chartOptions,
+  makeAreaSpec,
+  makeLineSpec,
+  makePieSpec,
+  useChartPalette,
+} from '@/components/charts';
 import { Bell, BookOpen, MonitorPlay, Users, UserCheck, Wifi, LogIn, Activity, MapPin, Clock } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -94,6 +96,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { permissions } = usePermission();
   const { user } = useAuth();
+  const palette = useChartPalette();
   const isAdmin = permissions.includes('*');
   const [notices, setNotices] = useState<AnnouncementWithRead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,6 +144,29 @@ export default function DashboardPage() {
       .finally(() => setChartsLoading(false));
   }, [isAdmin]);
 
+  const loginTrendSpec = useMemo(() => makeLineSpec({
+    data: charts?.loginTrend ?? [],
+    xField: 'date',
+    series: [
+      { field: 'successCount', name: '成功', color: '#52C41A' },
+      { field: 'failCount', name: '失败', color: '#F5222D' },
+    ],
+    palette,
+    point: true,
+    axis: { xLabel: shortDate },
+    tooltip: { title: (x) => `日期：${x}` },
+  }), [charts?.loginTrend, palette]);
+
+  const userActivitySpec = useMemo(() => makeAreaSpec({
+    data: charts?.userActivity ?? [],
+    xField: 'date',
+    series: [{ field: 'activeUsers', name: '活跃用户', color: '#4A90E2' }],
+    palette,
+    point: true,
+    axis: { xLabel: shortDate },
+    tooltip: { title: (x) => `日期：${x}` },
+  }), [charts?.userActivity, palette]);
+
   function markAsRead(id: number) {
     request.post(`/api/announcements/${id}/read`, undefined, { silent: true }).then((res) => {
       if (res.code !== 0) return;
@@ -179,22 +205,18 @@ export default function DashboardPage() {
       return <div className="dashboard-chart-placeholder"><Empty description="今日暂无操作记录" /></div>;
     }
     const coloredData = pieData.map((item, idx) => ({ ...item, fill: PIE_COLORS[idx % PIE_COLORS.length] }));
+    const operationPieSpec = makePieSpec({
+      data: coloredData,
+      categoryField: 'module',
+      valueField: 'count',
+      donut: false,
+      colors: coloredData.map((d) => d.fill),
+      palette,
+      label: 'percent',
+      valueUnit: '次',
+    });
     return (
-      <ResponsiveContainer width="100%" height={200}>
-        <PieChart>
-          <Pie
-            data={coloredData}
-            dataKey="count"
-            nameKey="module"
-            cx="50%"
-            cy="50%"
-            outerRadius={72}
-            label={({ name, percent }: PieLabelRenderProps) => `${String(name)} ${(((percent as number) ?? 0) * 100).toFixed(0)}%`}
-            labelLine={false}
-          />
-          <Tooltip formatter={(value, name) => [value, name === 'count' ? '次数' : name]} />
-        </PieChart>
-      </ResponsiveContainer>
+      <PieChart {...operationPieSpec} options={chartOptions} height={200} />
     );
   }
 
@@ -376,20 +398,7 @@ export default function DashboardPage() {
                   } />
                 </div>
               : (
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={charts?.loginTrend ?? []} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                    <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      labelFormatter={(l) => `日期：${l}`}
-                      formatter={(value, name) => [value, name === 'successCount' ? '成功' : '失败']}
-                    />
-                    <Legend formatter={(v) => v === 'successCount' ? '成功' : '失败'} wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="successCount" stroke="#52C41A" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                    <Line type="monotone" dataKey="failCount" stroke="#F5222D" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                <LineChart {...loginTrendSpec} options={chartOptions} height={200} />
               )
             }
           </Card>
@@ -418,24 +427,7 @@ export default function DashboardPage() {
                   } />
                 </div>
               : (
-                <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={charts?.userActivity ?? []} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorActivity" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#4A90E2" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#4A90E2" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                    <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      labelFormatter={(l) => `日期：${l}`}
-                      formatter={(value) => [value, '活跃用户']}
-                    />
-                    <Area type="monotone" dataKey="activeUsers" stroke="#4A90E2" strokeWidth={2} fill="url(#colorActivity)" dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <AreaChart {...userActivitySpec} options={chartOptions} height={200} />
               )
             }
           </Card>
