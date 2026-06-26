@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Calendar, Typography, Tag, Space, Skeleton, Empty, List, Avatar, Descriptions } from '@douyinfe/semi-ui';
+import { Button, Card, Typography, Tag, Space, Skeleton, Empty, List, Avatar, Descriptions } from '@douyinfe/semi-ui';
 import {
   AreaChart,
   LineChart,
@@ -24,6 +24,7 @@ import { formatDateTime } from '@/utils/date';
 import type { Announcement } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
+import MonthCalendar from '@/components/MonthCalendar';
 import './DashboardPage.css';
 
 const { Text } = Typography;
@@ -458,7 +459,7 @@ export default function DashboardPage() {
             style={{ marginTop: 16 }}
             bodyStyle={{ padding: '8px 0 4px' }}
           >
-            <Calendar mode="month" />
+            <MonthCalendar />
           </Card>
         </div>
 

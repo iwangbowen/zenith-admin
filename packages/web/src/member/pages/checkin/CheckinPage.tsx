@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import dayjs from 'dayjs';
-import { Button, Calendar, DatePicker, Modal, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, DatePicker, Modal, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
 import type { MemberCheckin, MemberCheckinStatus, MemberMilestoneStatus, MakeupCheckinResult, PaginatedResponse } from '@zenith/shared';
-import { CalendarCheck, CalendarPlus, ChevronLeft, ChevronRight, Flame, Gift, Trophy } from 'lucide-react';
+import { CalendarCheck, CalendarPlus, Flame, Gift, Trophy } from 'lucide-react';
+import MonthCalendar from '@/components/MonthCalendar';
 import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
@@ -31,7 +32,6 @@ export default function CheckinPage() {
   const [makeupVisible, setMakeupVisible] = useState(false);
   const [makeupDate, setMakeupDate] = useState<Date | null>(null);
   const [makeupLoading, setMakeupLoading] = useState(false);
-  const isCurrentMonth = displayMonth.isSame(dayjs().startOf('month'), 'month');
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -85,9 +85,12 @@ export default function CheckinPage() {
   useEffect(() => {
     void loadStatus();
     void loadHistory(1);
-    void loadCalendarDates(displayMonth);
     void loadMilestones();
-  }, [loadHistory, loadStatus, loadCalendarDates, loadMilestones, displayMonth]);
+  }, [loadHistory, loadStatus, loadMilestones]);
+
+  useEffect(() => {
+    void loadCalendarDates(displayMonth);
+  }, [loadCalendarDates, displayMonth]);
 
   const handleCheckin = async () => {
     const res = await memberRequest.post<CheckinResult>('/api/member/checkin', {});
@@ -118,28 +121,9 @@ export default function CheckinPage() {
     }
   };
 
-  const handlePrevMonth = () => {
-    const prev = displayMonth.subtract(1, 'month');
-    setDisplayMonth(prev);
-    void loadCalendarDates(prev);
+  const handleCalendarMonthChange = (month: typeof displayMonth) => {
+    setDisplayMonth(month);
   };
-
-  const handleNextMonth = () => {
-    const next = displayMonth.add(1, 'month');
-    if (next.isAfter(dayjs().startOf('month'), 'month')) return;
-    setDisplayMonth(next);
-    void loadCalendarDates(next);
-  };
-
-  const calendarHeader = (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px 10px' }}>
-      <span style={{ fontWeight: 600, fontSize: 15 }}>{displayMonth.format('YYYY年M月')}</span>
-      <div style={{ display: 'flex', gap: 4 }}>
-        <Button size="small" theme="borderless" icon={<ChevronLeft size={16} />} onClick={handlePrevMonth} />
-        <Button size="small" theme="borderless" disabled={isCurrentMonth} icon={<ChevronRight size={16} />} onClick={handleNextMonth} />
-      </div>
-    </div>
-  );
 
   return (
     <MemberPage title="每日签到">
@@ -244,12 +228,12 @@ export default function CheckinPage() {
 
       <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
         <Spin spinning={calendarLoading} size="middle">
-          <Calendar
-            mode="month"
-            displayValue={displayMonth.toDate()}
-            weekStartsOn={1}
+          <MonthCalendar
+            month={displayMonth}
+            onMonthChange={handleCalendarMonthChange}
+            showToday={false}
+            disableNext={(nextMonth) => nextMonth.isAfter(dayjs().startOf('month'), 'month')}
             height={360}
-            header={calendarHeader}
             dateGridRender={(_, date) => {
               const dateStr = dayjs(date).format('YYYY-MM-DD');
               if (!calendarDates.has(dateStr)) return null;

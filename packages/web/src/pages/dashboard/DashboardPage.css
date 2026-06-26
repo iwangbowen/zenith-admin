@@ -248,7 +248,6 @@
   color: var(--semi-color-primary);
 }
 
-/* 日历卡片 */
 .dashboard-card--calendar .semi-calendar-month {
   border: none;
   background: transparent;

@@ -1,0 +1,25 @@
+.month-calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px 8px;
+}
+
+.month-calendar__title {
+  font-size: 14px;
+  line-height: 24px;
+}
+
+.month-calendar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@media (--sm-down) {
+  .month-calendar__header {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
