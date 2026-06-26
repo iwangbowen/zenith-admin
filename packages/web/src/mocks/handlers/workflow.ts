@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSimulationDecision, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -95,7 +95,11 @@ function resolveDefinitionFormSnapshot(definition: WorkflowDefinition): Workflow
   };
 }
 
-function buildMockSimulationResult(flowData: WorkflowFlowData | null | undefined, starterUserId?: number): WorkflowSimulationResult {
+function buildMockSimulationResult(
+  flowData: WorkflowFlowData | null | undefined,
+  starterUserId?: number,
+  decisions: WorkflowSimulationDecision[] = [],
+): WorkflowSimulationResult {
   if (!flowData?.nodes?.length) {
     return {
       valid: false,
@@ -104,14 +108,17 @@ function buildMockSimulationResult(flowData: WorkflowFlowData | null | undefined
       timeline: [],
       edgeResults: [],
       nodeStates: {},
+      healthIssues: [{ level: 'error', scope: 'flow', message: '流程未配置，无法仿真', suggestion: '请先完成流程设计' }],
+      pathSignature: [],
     };
   }
   const nodeStates: WorkflowSimulationResult['nodeStates'] = {};
   const visited = new Set<string>();
   const timeline: WorkflowSimulationResult['timeline'] = [];
+  let result: WorkflowSimulationResult['result'] = 'finished';
   const starterName = starterUserId ? `用户${starterUserId}` : '当前用户';
   const sortedNodes = flowData.nodes.filter((node) => node.data.type !== 'end');
-  sortedNodes.forEach((node, index) => {
+  for (const [index, node] of sortedNodes.entries()) {
     const key = node.data.key;
     visited.add(key);
     if (node.data.type === 'start') {
@@ -123,25 +130,61 @@ function buildMockSimulationResult(flowData: WorkflowFlowData | null | undefined
         status: 'entered',
         assignees: [{ id: starterUserId ?? 1, name: starterName }],
         reason: 'Demo 仿真开始',
+        nextNodeKeys: sortedNodes[index + 1]?.data.key ? [sortedNodes[index + 1].data.key] : undefined,
       });
       nodeStates[key] = { status: 'done' };
-      return;
+      continue;
     }
     const assigneeIds = node.data.assigneeIds ?? (node.data.assigneeId ? [node.data.assigneeId] : []);
     const assignees = assigneeIds.map((id) => ({ id, name: node.data.assigneeNames?.[0] ?? node.data.assigneeName ?? `用户${id}` }));
     const waiting = node.data.type === 'delay' || node.data.type === 'trigger' || node.data.type === 'subProcess';
+    const decision = decisions.find((item) => item.nodeKey === key);
+    if (decision?.action === 'reject') {
+      timeline.push({
+        step: timeline.length + 1,
+        nodeKey: key,
+        nodeName: node.data.label || key,
+        nodeType: node.data.type,
+        status: 'rejected',
+        assignees,
+        decision: 'reject',
+        reason: decision.reason ?? 'Demo 调试器手动拒绝',
+        detail: 'Demo 模式按预设动作终止',
+      });
+      nodeStates[key] = { status: 'error', message: 'Demo 调试器手动拒绝' };
+      result = 'rejected';
+      break;
+    }
+    if (decision?.action === 'wait') {
+      timeline.push({
+        step: timeline.length + 1,
+        nodeKey: key,
+        nodeName: node.data.label || key,
+        nodeType: node.data.type,
+        status: 'waiting',
+        assignees,
+        decision: 'wait',
+        reason: decision.reason ?? 'Demo 调试器暂停等待',
+        detail: 'Demo 模式按预设动作停在当前节点',
+      });
+      nodeStates[key] = { status: 'active', message: 'Demo 调试器暂停等待' };
+      result = 'waiting';
+      break;
+    }
     timeline.push({
       step: timeline.length + 1,
       nodeKey: key,
       nodeName: node.data.label || key,
       nodeType: node.data.type,
-      status: waiting ? 'waiting' : index === 0 ? 'entered' : 'approved',
+      status: decision?.action === 'skip' ? 'skipped' : waiting ? 'waiting' : index === 0 ? 'entered' : 'approved',
       assignees,
-      decision: waiting ? undefined : 'approve',
-      reason: waiting ? 'Demo 模式模拟等待后继续' : 'Demo 模式默认通过',
+      decision: decision?.action === 'skip' ? 'skip' : waiting ? undefined : 'approve',
+      reason: decision?.action === 'skip' ? 'Demo 调试器手动跳过' : waiting ? 'Demo 模式模拟等待后继续' : decision?.action === 'approve' ? 'Demo 调试器手动通过' : 'Demo 模式默认通过',
+      detail: decision ? 'Demo 模式按预设动作重放' : undefined,
+      nextNodeKeys: sortedNodes[index + 1]?.data.key ? [sortedNodes[index + 1].data.key] : undefined,
     });
-    nodeStates[key] = { status: 'done', message: waiting ? 'Demo 模式模拟继续' : undefined };
-  });
+    nodeStates[key] = { status: decision?.action === 'skip' ? 'skipped' : 'done', message: waiting ? 'Demo 模式模拟继续' : undefined };
+  }
   flowData.nodes
     .filter((node) => !nodeStates[node.data.key])
     .forEach((node) => { nodeStates[node.data.key] = { status: node.data.type === 'end' ? 'done' : 'skipped' }; });
@@ -149,7 +192,7 @@ function buildMockSimulationResult(flowData: WorkflowFlowData | null | undefined
   return {
     valid: true,
     warnings: ['Demo 模式使用轻量仿真，真实环境以后端流程引擎结果为准'],
-    result: 'finished',
+    result,
     timeline,
     edgeResults: flowData.edges.map((edge) => {
       const source = nodeById.get(edge.source);
@@ -163,10 +206,15 @@ function buildMockSimulationResult(flowData: WorkflowFlowData | null | undefined
         targetKey: target?.key,
         label: edge.label ?? null,
         taken,
-        reason: taken ? 'Demo 仿真路径经过此连线' : undefined,
+        reason: edge.conditions?.length || edge.condition ? (taken ? 'Demo 条件命中' : 'Demo 条件未命中') : (taken ? 'Demo 仿真路径经过此连线' : 'Demo 仿真未经过此连线'),
+        conditionMatched: edge.conditions?.length || edge.condition ? taken : null,
+        conditionSummary: edge.label ?? null,
+        actualValue: null,
       };
     }),
     nodeStates,
+    healthIssues: [],
+    pathSignature: timeline.map((item) => item.nodeKey),
   };
 }
 
@@ -830,10 +878,10 @@ export const workflowHandlers = [
 
   // 流程仿真（Demo 模式轻量实现）
   http.post('/api/workflows/definitions/simulate', async ({ request }) => {
-    const body = await request.json().catch(() => ({})) as { definitionId?: number; flowData?: WorkflowFlowData | null; starterUserId?: number };
+    const body = await request.json().catch(() => ({})) as { definitionId?: number; flowData?: WorkflowFlowData | null; starterUserId?: number; decisions?: WorkflowSimulationDecision[] };
     const definition = body.definitionId ? mockWorkflowDefinitions.find((item) => item.id === body.definitionId) : undefined;
     const flowData = body.flowData ?? definition?.flowData ?? null;
-    return ok(buildMockSimulationResult(flowData, body.starterUserId));
+    return ok(buildMockSimulationResult(flowData, body.starterUserId, body.decisions ?? []));
   }),
 
   // 获取单个流程定义
