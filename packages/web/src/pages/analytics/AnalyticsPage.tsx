@@ -1151,8 +1151,8 @@ function HeatmapTab() {
   return (
     <div style={sectionStyle}>
       <SectionHeader
-        title="点击热力图"
-        description="页面区域点击密度"
+        title="点击分布"
+        description="页面区域点击落点分布"
         extra={(
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />
@@ -1163,7 +1163,7 @@ function HeatmapTab() {
       />
       <Card bodyStyle={{ padding: 16 }}>
         <Spin spinning={loading}>
-          {!data?.points.length ? <Empty description="暂无点击热力数据" /> : (
+          {!data?.points.length ? <Empty description="暂无点击数据" /> : (
             <div>
               <ClickScatter data={data} />
               <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 10 }}>
@@ -1191,7 +1191,7 @@ export default function AnalyticsPage() {
         <TabPane tab="路径" itemKey="path"><PathTab /></TabPane>
         <TabPane tab="用户分析" itemKey="users"><UsersTab /></TabPane>
         <TabPane tab="维度分布" itemKey="dimension"><DimensionTab /></TabPane>
-        <TabPane tab="点击热力图" itemKey="heatmap"><HeatmapTab /></TabPane>
+        <TabPane tab="点击分布" itemKey="heatmap"><HeatmapTab /></TabPane>
       </Tabs>
     </div>
   );

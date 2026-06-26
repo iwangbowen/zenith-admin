@@ -4,10 +4,8 @@ import { LogIn, CheckCircle2, XCircle, Users } from 'lucide-react';
 import {
   AreaChart,
   BarChart,
-  HeatmapChart,
   PieChart,
   EmptyChart,
-  HeatmapLegend,
   useChartPalette,
   chartOptions,
   compactCount,
@@ -15,8 +13,7 @@ import {
   sectionTitleStyle,
   makeCommonTooltip,
   makeCommonCartesianSpec,
-  buildCalendarHeatmap,
-  makeCalendarHeatmapSpec,
+  makeBarSpec,
   axisText,
   axisNumber,
   datumText,
@@ -39,6 +36,8 @@ const DAYS_OPTIONS = [
 ];
 
 const FAIL_COLOR = 'var(--semi-color-danger)';
+
+const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 interface TrendDatum {
   readonly date: string;
@@ -435,7 +434,13 @@ export default function LoginLogStatsPanel() {
     [filledDailyStats],
   );
 
-  const heatmap = useMemo(() => buildCalendarHeatmap(stats?.dailyStats ?? [], days), [stats, days]);
+  const weekdayChartData = useMemo<BarDatum[]>(() => {
+    const buckets = new Array(7).fill(0);
+    for (const d of stats?.dailyStats ?? []) {
+      buckets[(dayjs(d.date).day() + 6) % 7] += d.count;
+    }
+    return WEEKDAY_LABELS.map((name, i) => ({ name, count: buckets[i] }));
+  }, [stats]);
 
   const userChartData = useMemo<BarDatum[]>(
     () => [...(stats?.userStats ?? [])].reverse().map((d) => ({ name: d.username, count: d.count })),
@@ -480,7 +485,14 @@ export default function LoginLogStatsPanel() {
   const statusSpec = useMemo(() => makeDonutSpec(statusPieData, successRate, palette), [palette, statusPieData, successRate]);
   const browserSpec = useMemo(() => makeCategoryDonutSpec(browserData, palette), [browserData, palette]);
   const osSpec = useMemo(() => makeCategoryDonutSpec(osData, palette), [osData, palette]);
-  const heatmapSpec = useMemo(() => makeCalendarHeatmapSpec(heatmap.data, heatmap.maxCount, palette, { valueLabel: '登录次数' }), [heatmap, palette]);
+  const weekdaySpec = useMemo(() => makeBarSpec({
+    data: weekdayChartData,
+    xField: 'name',
+    series: [{ field: 'count', name: '登录次数', color: palette.primary }],
+    palette,
+    showLabel: true,
+    tooltip: { value: (v) => `${v} 次` },
+  }), [weekdayChartData, palette]);
 
   return (
     <div>
@@ -565,12 +577,9 @@ export default function LoginLogStatsPanel() {
           </ChartShell>
         </div>
 
-        <ChartShell title={`登录热力图（近 ${days} 天）`}>
-          {heatmap.data.length === 0 ? <EmptyChart height={220} /> : (
-            <>
-              <HeatmapChart {...heatmapSpec} options={chartOptions} height={220} />
-              <HeatmapLegend palette={palette} />
-            </>
+        <ChartShell title={`按星期登录分布（近 ${days} 天）`}>
+          {isEmptyValues(weekdayChartData) ? <EmptyChart height={220} /> : (
+            <BarChart {...weekdaySpec} options={chartOptions} height={220} />
           )}
         </ChartShell>
       </Spin>
