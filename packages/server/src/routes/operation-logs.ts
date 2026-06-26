@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditAfterData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody, okMsg } from '../lib/openapi-schemas';
 import { OperationLogDTO, OperationLogStatsDTO } from '../lib/openapi-dtos';
-import { listOperationLogs, operationLogStats, exportOperationLogs, exportOperationLogsAsCsv, cleanOperationLogs } from '../services/operation-logs.service';
+import { listOperationLogs, operationLogStats, exportOperationLogs, exportOperationLogsAsCsv, cleanOperationLogs, getCleanOperationLogsBeforeAudit } from '../services/operation-logs.service';
 
 const operationLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -98,6 +98,8 @@ const cleanRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { months } = c.req.valid('query');
+    const before = await getCleanOperationLogsBeforeAudit(months);
+    setAuditBeforeData(c, before);
     const deleted = await cleanOperationLogs(months);
     setAuditAfterData(c, { months, deleted });
     return c.json(okBody(null, `共删除 ${deleted} 条操作日志`), 200);

@@ -17,6 +17,7 @@ import {
   listCronJobLogs,
   clearCronJobLogs,
   getCronJobBeforeAudit,
+  getClearCronJobLogsBeforeAudit,
   getCronJob,
   getCronJobStats,
 } from '../services/cron-jobs.service';
@@ -200,6 +201,8 @@ const clearAllLogsRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { months } = c.req.valid('query');
+    const before = await getClearCronJobLogsBeforeAudit(months);
+    setAuditBeforeData(c, before);
     const count = await clearCronJobLogs(months);
     setAuditAfterData(c, { months, deleted: count });
     return c.json(okBody(null, `已清除 ${count} 条日志`), 200);
@@ -217,6 +220,8 @@ const clearJobLogsRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { months } = c.req.valid('query');
+    const before = await getClearCronJobLogsBeforeAudit(months, id);
+    setAuditBeforeData(c, before);
     const count = await clearCronJobLogs(months, id);
     setAuditAfterData(c, { jobId: id, months, deleted: count });
     return c.json(okBody(null, `已清除 ${count} 条日志`), 200);

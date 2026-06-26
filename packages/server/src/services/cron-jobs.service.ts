@@ -149,8 +149,7 @@ export async function listCronJobLogs(jobId: number, q: { page: number; pageSize
   return { list: rows.map(mapLog), total, page, pageSize };
 }
 
-export async function clearCronJobLogs(months: number, jobId?: number) {
-  // months=0 表示清除全部
+function buildClearCronJobLogsWhere(months: number, jobId?: number) {
   const conditions: ReturnType<typeof eq>[] = [];
   if (months > 0) {
     const cutoff = new Date();
@@ -158,7 +157,21 @@ export async function clearCronJobLogs(months: number, jobId?: number) {
     conditions.push(lt(cronJobLogs.startedAt, cutoff));
   }
   if (jobId) conditions.push(eq(cronJobLogs.jobId, jobId));
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+export async function getClearCronJobLogsBeforeAudit(months: number, jobId?: number) {
+  const where = buildClearCronJobLogsWhere(months, jobId);
+  const [total, sample] = await Promise.all([
+    db.$count(cronJobLogs, where),
+    db.select().from(cronJobLogs).where(where).orderBy(desc(cronJobLogs.startedAt)).limit(20),
+  ]);
+  return { jobId, months, total, sample: sample.map(mapLog) };
+}
+
+export async function clearCronJobLogs(months: number, jobId?: number) {
+  // months=0 表示清除全部
+  const where = buildClearCronJobLogsWhere(months, jobId);
   const deleted = await db.delete(cronJobLogs).where(where).returning({ id: cronJobLogs.id });
   return deleted.length;
 }

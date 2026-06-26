@@ -158,13 +158,38 @@ export async function exportLoginLogsAsCsv(): Promise<{ stream: ReadableStream; 
   return { stream, filename: 'login-logs.csv' };
 }
 
-export async function cleanLoginLogs(months: number) {
-  if (months === 0) {
-    const result = await db.delete(loginLogs).returning({ id: loginLogs.id });
-    return result.length;
-  }
+function buildCleanLoginLogsWhere(months: number) {
+  if (months === 0) return undefined;
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - months);
-  const result = await db.delete(loginLogs).where(lte(loginLogs.createdAt, cutoff)).returning({ id: loginLogs.id });
+  return lte(loginLogs.createdAt, cutoff);
+}
+
+function mapLoginLogForAudit(row: typeof loginLogs.$inferSelect) {
+  return {
+    id: row.id,
+    username: row.username,
+    eventType: row.eventType,
+    ip: row.ip,
+    status: row.status,
+    message: row.message,
+    createdAt: formatDateTime(row.createdAt),
+  };
+}
+
+export async function getCleanLoginLogsBeforeAudit(months: number) {
+  const where = buildCleanLoginLogsWhere(months);
+  const [total, sample] = await Promise.all([
+    db.$count(loginLogs, where),
+    db.select().from(loginLogs).where(where).orderBy(desc(loginLogs.createdAt)).limit(20),
+  ]);
+  return { months, total, sample: sample.map(mapLoginLogForAudit) };
+}
+
+export async function cleanLoginLogs(months: number) {
+  const where = buildCleanLoginLogsWhere(months);
+  const result = where
+    ? await db.delete(loginLogs).where(where).returning({ id: loginLogs.id })
+    : await db.delete(loginLogs).returning({ id: loginLogs.id });
   return result.length;
 }
