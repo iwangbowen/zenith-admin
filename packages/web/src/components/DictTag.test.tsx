@@ -36,19 +36,19 @@ describe('DictTag', () => {
       getColor: () => 'green',
     });
     render(<DictTag dictCode="test" value="yes" />);
-    expect(screen.getByText('是')).toBeInTheDocument();
+    expect(screen.getByText('是')).toBeTruthy();
   });
 
   it('should render original value when value is not found and no fallback provided', () => {
     vi.mocked(useDictItems).mockReturnValue({ items: [], loading: false, getLabel: (v: string) => v, getColor: () => undefined });
     render(<DictTag dictCode="test" value="unknown" />);
-    expect(screen.getByText('unknown')).toBeInTheDocument();
+    expect(screen.getByText('unknown')).toBeTruthy();
   });
 
   it('should render fallback text when value is not found and fallback is provided', () => {
     vi.mocked(useDictItems).mockReturnValue({ items: [], loading: false, getLabel: (v: string) => v, getColor: () => undefined });
     render(<DictTag dictCode="test" value="unknown" fallback="未知" />);
-    expect(screen.getByText('未知')).toBeInTheDocument();
+    expect(screen.getByText('未知')).toBeTruthy();
   });
 
   it('should pass size prop to Tag', () => {
@@ -61,6 +61,6 @@ describe('DictTag', () => {
     const { container } = render(<DictTag dictCode="test" value="1" size="large" />);
     // Testing specific DOM structure based on Semi-UI might be brittle,
     // but at least it should render safely without crashing.
-    expect(container).toBeInTheDocument();
+    expect(container).toBeTruthy();
   });
 });

@@ -38,7 +38,7 @@ describe('icons utility', () => {
     expect(el).not.toBeNull();
     if (el) {
       const { container } = render(el);
-      expect(container.querySelector('svg')).toBeInTheDocument();
+      expect(container.querySelector('svg')).not.toBeNull();
     }
   });
 
@@ -47,7 +47,7 @@ describe('icons utility', () => {
     if (el) {
       const { container } = render(el);
       const svg = container.querySelector('svg');
-      expect(svg).toHaveAttribute('width', '24');
+      expect(svg?.getAttribute('width')).toBe('24');
     }
   });
 
@@ -56,7 +56,7 @@ describe('icons utility', () => {
     if (el) {
       const { container } = render(el);
       const svg = container.querySelector('svg');
-      expect(svg).toHaveAttribute('width', '16');
+      expect(svg?.getAttribute('width')).toBe('16');
     }
   });
 });

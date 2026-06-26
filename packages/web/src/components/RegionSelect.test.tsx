@@ -33,7 +33,7 @@ describe('RegionSelect', () => {
     vi.mocked(request.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: [] });
     const { container } = renderRegionSelect();
     await waitForRegionsLoaded(container);
-    expect(container).toBeInTheDocument();
+    expect(container).toBeTruthy();
   });
 
   it('should load regions from API', async () => {

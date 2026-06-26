@@ -33,7 +33,7 @@ describe('NProgress', () => {
 
   it('renders nothing initially when route is not changing', () => {
     const { container } = setup();
-    expect(container.querySelector('.nprogress-bar')).not.toBeInTheDocument();
+    expect(container.querySelector('.nprogress-bar')).toBeNull();
   });
 
   it('shows progress bar on route change', async () => {
@@ -43,7 +43,7 @@ describe('NProgress', () => {
       getByText('Go 1').click();
     });
 
-    expect(container.querySelector('.nprogress-bar')).toBeInTheDocument();
+    expect(container.querySelector('.nprogress-bar')).not.toBeNull();
   });
 
   it('animates back to 0 width and hidden after timeout', async () => {
@@ -53,7 +53,7 @@ describe('NProgress', () => {
       getByText('Go 1').click();
     });
     
-    expect(container.querySelector('.nprogress-bar')).toBeInTheDocument();
+    expect(container.querySelector('.nprogress-bar')).not.toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(200);
@@ -68,7 +68,7 @@ describe('NProgress', () => {
       vi.advanceTimersByTime(300);
     });
 
-    expect(container.querySelector('.nprogress-bar')).not.toBeInTheDocument();
+    expect(container.querySelector('.nprogress-bar')).toBeNull();
   });
 
   it('clears timers on unmount', () => {
@@ -107,6 +107,6 @@ describe('NProgress', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(container.querySelector('.nprogress-bar')).not.toBeInTheDocument();
+    expect(container.querySelector('.nprogress-bar')).toBeNull();
   });
 });
