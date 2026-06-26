@@ -10,14 +10,18 @@ import {
   okMsg,
   okBody,
   jsonContent,
+  okFile,
+  fileBody,
   IdParam,
   PaginationQuery,
 } from '../lib/openapi-schemas';
+import { parseDateRangeStart, parseDateRangeEnd } from '../lib/datetime';
 import { TerminalRecordingDTO, TerminalRecordingDetailDTO } from '../lib/openapi-dtos';
 import {
   createRecording,
   listRecordings,
   getRecording,
+  exportRecordingAsciinema,
   deleteRecording,
   cleanRecordings,
 } from '../services/terminal-recordings.service';
@@ -35,20 +39,30 @@ const CreateRecordingBody = z.object({
   events: z.array(z.tuple([z.number(), z.enum(['o', 'i']), z.string()])),
 });
 
+const RecordingListQuery = PaginationQuery.extend({
+  keyword: z.string().optional(),
+  operatorUserId: z.coerce.number().int().positive().optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+});
+
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/', tags: ['TerminalRecordings'], summary: '我的录屏列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: PERM })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional() }) },
+    request: { query: RecordingListQuery },
     responses: { ...commonErrorResponses, ...okPaginated(TerminalRecordingDTO, '录屏列表') },
   }),
   handler: async (c) => {
-    const { page = 1, pageSize = 20, keyword } = c.req.valid('query');
+    const { page = 1, pageSize = 20, keyword, operatorUserId, startTime, endTime } = c.req.valid('query');
     return c.json(okBody(await listRecordings({
       page: Number(page),
       pageSize: Number(pageSize),
       keyword,
+      operatorUserId,
+      startDate: parseDateRangeStart(startTime) ?? undefined,
+      endDate: parseDateRangeEnd(endTime) ?? undefined,
     })), 200);
   },
 });
@@ -104,6 +118,20 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
+const exportAsciinemaRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/:id/asciinema', tags: ['TerminalRecordings'], summary: '导出 asciinema 录屏',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: PERM })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okFile('asciinema cast 文件') },
+  }),
+  handler: async (c) => {
+    const result = await exportRecordingAsciinema(Number(c.req.valid('param').id));
+    return fileBody(result.content, result.filename, result.contentType);
+  },
+});
+
 const cleanRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete', path: '/clean', tags: ['TerminalRecordings'], summary: '清除录屏记录',
@@ -119,6 +147,6 @@ const cleanRoute = defineOpenAPIRoute({
   },
 });
 
-recordingsRouter.openapiRoutes([listRoute, createRoute_, cleanRoute, getRoute, deleteRoute] as const);
+recordingsRouter.openapiRoutes([listRoute, createRoute_, cleanRoute, exportAsciinemaRoute, getRoute, deleteRoute] as const);
 
 export default recordingsRouter;

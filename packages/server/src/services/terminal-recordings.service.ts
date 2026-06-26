@@ -145,6 +145,52 @@ export async function getRecording(id: number) {
   return { ...mapRow({ ...row, nickname: row.nickname ?? null }), events: row.events };
 }
 
+function toAsciinemaCast(row: {
+  id: number;
+  title: string;
+  shell: string | null;
+  cols: number;
+  rows: number;
+  events: RecordingEvent[];
+  createdAt: Date;
+}) {
+  const header = {
+    version: 2,
+    width: row.cols,
+    height: row.rows,
+    timestamp: Math.floor(row.createdAt.getTime() / 1000),
+    title: row.title || `Terminal recording #${row.id}`,
+    env: row.shell ? { SHELL: row.shell } : undefined,
+  };
+  const lines = [
+    JSON.stringify(header),
+    ...row.events.map(([time, type, data]) => JSON.stringify([Number(time.toFixed(3)), type, data])),
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
+/** 导出 asciinema v2 cast 文件。 */
+export async function exportRecordingAsciinema(id: number) {
+  const [row] = await db
+    .select({
+      id: terminalRecordings.id,
+      title: terminalRecordings.title,
+      shell: terminalRecordings.shell,
+      cols: terminalRecordings.cols,
+      rows: terminalRecordings.rows,
+      events: terminalRecordings.events,
+      createdAt: terminalRecordings.createdAt,
+    })
+    .from(terminalRecordings)
+    .where(eq(terminalRecordings.id, id));
+  if (!row) throw new HTTPException(404, { message: '录屏不存在' });
+  return {
+    content: toAsciinemaCast(row),
+    filename: `terminal-recording-${row.id}.cast`,
+    contentType: 'application/x-asciicast; charset=utf-8',
+  };
+}
+
 /** 删除录屏。管理员审计，可删除任意录屏。 */
 export async function deleteRecording(id: number) {
   const result = await db

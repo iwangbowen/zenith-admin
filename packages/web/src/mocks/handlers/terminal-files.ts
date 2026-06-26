@@ -86,6 +86,16 @@ export const terminalFilesHandlers = [
     return HttpResponse.json({ code: 404, message: '录屏记录不存在', data: null }, { status: 404 });
   }),
 
+  http.get('/api/terminal-recordings/:id/asciinema', () => {
+    const content = `${JSON.stringify({ version: 2, width: 80, height: 24, title: 'Demo recording' })}\n`;
+    return new HttpResponse(content, {
+      headers: {
+        'Content-Type': 'application/x-asciicast; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="terminal-recording-demo.cast"',
+      },
+    });
+  }),
+
   http.delete('/api/terminal-recordings/:id', () => {
     return HttpResponse.json({ code: 403, message: '演示模式下不支持删除录屏', data: null }, { status: 403 });
   }),

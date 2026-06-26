@@ -21,6 +21,7 @@ interface RecordingPlayerProps {
   readonly rows: number;
   readonly duration: number;
   readonly events: RecordingEvent[];
+  readonly initialTime?: number;
 }
 
 const SPEED_OPTIONS = [
@@ -37,7 +38,7 @@ function formatTime(secs: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function RecordingPlayer({ cols, rows, duration, events }: RecordingPlayerProps) {
+export default function RecordingPlayer({ cols, rows, duration, events, initialTime = 0 }: RecordingPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -200,6 +201,16 @@ export default function RecordingPlayer({ cols, rows, duration, events }: Record
       schedulePlay(elapsedRef.current, newSpeed);
     }
   };
+
+  useEffect(() => {
+    const nextTime = Math.min(Math.max(initialTime, 0), duration);
+    clearTimers();
+    setPlaying(false);
+    setElapsed(nextTime);
+    elapsedRef.current = nextTime;
+    resetTerm(nextTime);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTime, duration]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>

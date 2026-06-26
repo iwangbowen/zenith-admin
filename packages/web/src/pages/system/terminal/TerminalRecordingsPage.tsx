@@ -1,12 +1,14 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Button, Input, Modal, Tag, Toast, Dropdown, SplitButtonGroup, Typography, Space } from '@douyinfe/semi-ui';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Button, Input, Modal, Tag, Toast, Dropdown, SplitButtonGroup, Typography, Space, DatePicker, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, RotateCcw, Trash2, ChevronDown, Copy, Terminal } from 'lucide-react';
+import { Search, RotateCcw, Trash2, ChevronDown, Copy, Terminal, Star } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
+import { useUserOptions } from '@/hooks/useUserOptions';
+import { formatDateTimeForApi } from '@/utils/date';
 import RecordingPlayer from './RecordingPlayer';
 
 type RecordingEvent = [number, 'o' | 'i', string];
@@ -27,6 +29,19 @@ interface RecordingDetail extends Recording {
   events: RecordingEvent[];
 }
 
+interface SearchParams {
+  keyword: string;
+  operatorUserId: number | null;
+  timeRange: [Date, Date] | null;
+}
+
+interface CommandItem {
+  time: number;
+  cmd: string;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '', operatorUserId: null, timeRange: null };
+
 function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60);
   const s = Math.floor(secs % 60);
@@ -34,8 +49,8 @@ function formatDuration(secs: number): string {
 }
 
 /** 从录屏事件中还原用户执行的命令列表（按行切割 'i' 输入事件，处理退格和 ANSI 转义序列）。 */
-function extractCommands(events: RecordingEvent[]): Array<{ time: number; cmd: string }> {
-  const commands: Array<{ time: number; cmd: string }> = [];
+function extractCommands(events: RecordingEvent[]): CommandItem[] {
+  const commands: CommandItem[] = [];
   let buf = '';
   let cmdStart = 0;
   // 简单 VT100 转义序列状态机：normal → esc → csi|ss3
@@ -90,26 +105,46 @@ function formatTimestamp(secs: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function getKeyCommandLabel(cmd: string): string | null {
+  const normalized = cmd.trim();
+  if (/^(sudo\s+)?rm\s+(-[^\s]*r[^\s]*f|-rf|-fr)\b/.test(normalized)) return '危险删除';
+  if (/^(sudo\s+)?(shutdown|reboot|halt|poweroff)\b/.test(normalized)) return '主机控制';
+  if (/^(sudo\s+)?(systemctl|service)\s+(stop|restart|reload)\b/.test(normalized)) return '服务变更';
+  if (/^(sudo\s+)?(chmod|chown)\b/.test(normalized)) return '权限变更';
+  if (/\b(drop|truncate|delete)\b.+\b(table|from)\b/i.test(normalized)) return '数据变更';
+  if (/\b(kubectl\s+delete|docker\s+(rm|rmi|system\s+prune))\b/.test(normalized)) return '资源删除';
+  return null;
+}
+
 export default function TerminalRecordingsPage() {
   const [list, setList] = useState<Recording[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [keyword, setKeyword] = useState('');
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [playRec, setPlayRec] = useState<RecordingDetail | null>(null);
+  const [playStartTime, setPlayStartTime] = useState(0);
   const [playLoading, setPlayLoading] = useState(false);
   const [detailRec, setDetailRec] = useState<RecordingDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
+  const [exportingId, setExportingId] = useState<number | null>(null);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
+  const { userOptions, loading: userOptionsLoading, ensureLoaded } = useUserOptions({ immediate: true });
 
   const { page, pageSize, resetPage, buildPagination } = usePagination();
 
-  const fetchList = useCallback(async (p: number, ps: number, kw = searchKeyword) => {
+  const fetchList = useCallback(async (p: number, ps: number, filters = searchParamsRef.current) => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-    if (kw) params.set('keyword', kw);
+    const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+    if (filters.keyword) query.set('keyword', filters.keyword);
+    if (filters.operatorUserId) query.set('operatorUserId', String(filters.operatorUserId));
+    if (filters.timeRange) {
+      query.set('startTime', formatDateTimeForApi(filters.timeRange[0]));
+      query.set('endTime', formatDateTimeForApi(filters.timeRange[1]));
+    }
     const res = await request.get<{ list: Recording[]; total: number; page: number; pageSize: number }>(
-      `/api/terminal-recordings?${params.toString()}`,
+      `/api/terminal-recordings?${query.toString()}`,
     );
     setLoading(false);
     if (res.code === 0 && res.data) {
@@ -120,26 +155,27 @@ export default function TerminalRecordingsPage() {
   }, []);
 
   // 初始加载
-  useEffect(() => { void fetchList(1, pageSize, ''); }, [fetchList, pageSize]);
+  useEffect(() => { void fetchList(1, pageSize); }, [fetchList, pageSize]);
 
   const handleSearch = () => {
-    setSearchKeyword(keyword);
     resetPage();
-    void fetchList(1, pageSize, keyword);
+    void fetchList(1, pageSize, searchParams);
   };
 
   const handleReset = () => {
-    setKeyword('');
-    setSearchKeyword('');
+    setSearchParams(defaultSearchParams);
     resetPage();
-    void fetchList(1, pageSize, '');
+    void fetchList(1, pageSize, defaultSearchParams);
   };
 
-  const handlePlay = async (id: number) => {
+  const handlePlay = async (id: number, startTime = 0) => {
     setPlayLoading(true);
     const res = await request.get<RecordingDetail>(`/api/terminal-recordings/${id}`);
     setPlayLoading(false);
-    if (res.code === 0 && res.data) setPlayRec(res.data);
+    if (res.code === 0 && res.data) {
+      setPlayStartTime(startTime);
+      setPlayRec(res.data);
+    }
   };
 
   const handleDetail = async (id: number) => {
@@ -153,7 +189,7 @@ export default function TerminalRecordingsPage() {
     const res = await request.delete(`/api/terminal-recordings/${id}`);
     if (res.code === 0) {
       Toast.success('已删除');
-      void fetchList(page, pageSize, searchKeyword);
+      void fetchList(page, pageSize);
     }
   };
 
@@ -175,10 +211,22 @@ export default function TerminalRecordingsPage() {
         if (res.code === 0) {
           Toast.success(res.message ?? '清除成功');
           resetPage();
-          void fetchList(1, pageSize, searchKeyword);
+          void fetchList(1, pageSize);
         }
       },
     });
+  };
+
+  const handleExportAsciinema = async (record: Recording) => {
+    setExportingId(record.id);
+    try {
+      await request.download(
+        `/api/terminal-recordings/${record.id}/asciinema`,
+        `terminal-recording-${record.id}.cast`,
+      );
+    } finally {
+      setExportingId(null);
+    }
   };
 
   const columns: ColumnProps<Recording>[] = [
@@ -243,6 +291,12 @@ export default function TerminalRecordingsPage() {
           onClick: () => { void handleDetail(record.id); },
         },
         {
+          key: 'export',
+          label: '导出',
+          loading: exportingId === record.id,
+          onClick: () => { void handleExportAsciinema(record); },
+        },
+        {
           key: 'delete',
           label: '删除',
           danger: true,
@@ -266,11 +320,29 @@ export default function TerminalRecordingsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索标题"
-              value={keyword}
-              onChange={setKeyword}
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 220 }}
+            />
+            <Select
+              placeholder="操作人"
+              value={searchParams.operatorUserId ?? undefined}
+              optionList={userOptions}
+              loading={userOptionsLoading}
+              filter
+              showClear
+              onFocus={() => { void ensureLoaded(); }}
+              onChange={(v) => setSearchParams({ ...searchParams, operatorUserId: typeof v === 'number' ? v : null })}
+              style={{ width: 180 }}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
+              style={{ width: 360 }}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -312,8 +384,8 @@ export default function TerminalRecordingsPage() {
             <Input
               prefix={<Search size={14} />}
               placeholder="搜索标题"
-              value={keyword}
-              onChange={setKeyword}
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
               onEnterPress={handleSearch}
               showClear
               style={{ width: 220 }}
@@ -323,6 +395,24 @@ export default function TerminalRecordingsPage() {
         )}
         mobileActions={(
           <>
+            <Select
+              placeholder="操作人"
+              value={searchParams.operatorUserId ?? undefined}
+              optionList={userOptions}
+              loading={userOptionsLoading}
+              filter
+              showClear
+              onFocus={() => { void ensureLoaded(); }}
+              onChange={(v) => setSearchParams({ ...searchParams, operatorUserId: typeof v === 'number' ? v : null })}
+              style={{ width: 220 }}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
+              style={{ width: 260 }}
+            />
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
             {([12, 6, 3, 1] as const).map((m) => (
               <Button
@@ -351,7 +441,7 @@ export default function TerminalRecordingsPage() {
         columns={columns}
         loading={loading}
         pagination={buildPagination(total, fetchList)}
-        onRefresh={() => void fetchList(page, pageSize, searchKeyword)}
+        onRefresh={() => void fetchList(page, pageSize)}
         refreshLoading={loading}
         empty="暂无录屏记录，使用 Web 终端后会自动保存"
       />
@@ -372,6 +462,7 @@ export default function TerminalRecordingsPage() {
             rows={playRec.rows}
             duration={playRec.duration}
             events={playRec.events}
+            initialTime={playStartTime}
           />
         )}
       </Modal>
@@ -379,6 +470,13 @@ export default function TerminalRecordingsPage() {
       {/* 命令详情弹窗 */}
       {detailRec && (() => {
         const cmds = extractCommands(detailRec.events);
+        const keyCommandCount = cmds.filter((cmd) => getKeyCommandLabel(cmd.cmd)).length;
+        const jumpToCommand = (cmd: CommandItem) => {
+          const record = detailRec;
+          setDetailRec(null);
+          setPlayStartTime(cmd.time);
+          setPlayRec(record);
+        };
         const copyAll = () => {
           void navigator.clipboard.writeText(cmds.map((c) => c.cmd).join('\n'));
           Toast.success('已复制全部命令');
@@ -404,6 +502,7 @@ export default function TerminalRecordingsPage() {
             <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography.Text type="tertiary" size="small">
                 共 {cmds.length} 条命令
+                {keyCommandCount > 0 ? `，关键命令 ${keyCommandCount} 条` : ''}
               </Typography.Text>
               {cmds.length > 0 && (
                 <Button size="small" theme="borderless" icon={<Copy size={12} />} onClick={copyAll}>
@@ -417,28 +516,42 @@ export default function TerminalRecordingsPage() {
                   未检测到命令输入
                 </div>
               ) : (
-                cmds.map((c) => (
-                  <div
-                    key={`${c.time}-${c.cmd}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'baseline',
-                      gap: 12,
-                      padding: '5px 16px',
-                      borderRadius: 4,
-                    }}
-                  >
-                    <Typography.Text type="tertiary" size="small" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums', width: 36 }}>
-                      {formatTimestamp(c.time)}
-                    </Typography.Text>
-                    <Typography.Text
-                      copyable={{ content: c.cmd }}
-                      style={{ fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-all' }}
+                cmds.map((c) => {
+                  const keyLabel = getKeyCommandLabel(c.cmd);
+                  return (
+                    <div
+                      key={`${c.time}-${c.cmd}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: 12,
+                        padding: '5px 16px',
+                        borderRadius: 4,
+                        background: keyLabel ? 'var(--semi-color-danger-light-default)' : undefined,
+                      }}
                     >
-                      {c.cmd}
-                    </Typography.Text>
-                  </div>
-                ))
+                      <Button
+                        size="small"
+                        theme="borderless"
+                        style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums', width: 44, padding: '0 4px' }}
+                        onClick={() => jumpToCommand(c)}
+                      >
+                        {formatTimestamp(c.time)}
+                      </Button>
+                      {keyLabel && (
+                        <Tag color="red" size="small" prefixIcon={<Star size={10} />}>
+                          {keyLabel}
+                        </Tag>
+                      )}
+                      <Typography.Text
+                        copyable={{ content: c.cmd }}
+                        style={{ fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-all', flex: 1 }}
+                      >
+                        {c.cmd}
+                      </Typography.Text>
+                    </div>
+                  );
+                })
               )}
             </div>
           </Modal>
