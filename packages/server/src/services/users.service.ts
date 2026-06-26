@@ -1,4 +1,4 @@
-import { eq, and, ne, isNull, inArray, like, or, gte, lte } from 'drizzle-orm';
+import { eq, and, ne, isNull, inArray, like, or, gte, lte, type SQL } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import ExcelJS from 'exceljs';
 import { db } from '../db';
@@ -198,11 +198,10 @@ export interface ListUsersQuery {
   startTime?: string; endTime?: string;
 }
 
-export async function listUsers(q: ListUsersQuery) {
-  const user = currentUser();
-  const { page = 1, pageSize = 10, keyword, phone, departmentId, status, startTime, endTime } = q;
-  const conditions = [];
-  if (keyword) conditions.push(or(like(users.username, `%${escapeLike(keyword)}%`), like(users.nickname, `%${escapeLike(keyword)}%`), like(users.email, `%${escapeLike(keyword)}%`)));
+export async function buildUsersListWhere(q: ListUsersQuery, user: JwtPayload): Promise<SQL | undefined> {
+  const { keyword, phone, departmentId, status, startTime, endTime } = q;
+  const conditions: SQL[] = [];
+  if (keyword) conditions.push(or(like(users.username, `%${escapeLike(keyword)}%`), like(users.nickname, `%${escapeLike(keyword)}%`), like(users.email, `%${escapeLike(keyword)}%`))!);
   if (phone) conditions.push(like(users.phone, `%${escapeLike(phone)}%`));
   if (departmentId) conditions.push(eq(users.departmentId, departmentId));
   if (status) conditions.push(eq(users.status, status));
@@ -216,7 +215,13 @@ export async function listUsers(q: ListUsersQuery) {
   if (scopeCondition) conditions.push(scopeCondition);
   const tc = tenantCondition(users, user);
   if (tc) conditions.push(tc);
-  const where = and(...conditions);
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+export async function listUsers(q: ListUsersQuery) {
+  const user = currentUser();
+  const { page = 1, pageSize = 10 } = q;
+  const where = await buildUsersListWhere(q, user);
   const [total, rawList] = await Promise.all([
     db.$count(users, where),
     findUsersWithRelations({ where, limit: pageSize, offset: pageOffset(page, pageSize), orderBy: users.id }),

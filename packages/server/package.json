@@ -38,6 +38,7 @@
 		"bcryptjs": "^3.0.3",
 		"china-division": "^2.7.0",
 		"cos-nodejs-sdk-v5": "^2.15.4",
+		"cron-parser": "^5.6.1",
 		"dayjs": "^1.11.21",
 		"dockerode": "^5.0.0",
 		"dotenv": "^17.4.2",

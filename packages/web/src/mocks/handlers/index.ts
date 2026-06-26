@@ -9,6 +9,7 @@ import { dictsHandlers } from './dicts';
 import { systemConfigsHandlers } from './system-configs';
 import { announcementsHandlers } from './announcements';
 import { filesHandlers } from './files';
+import { exportJobsHandlers } from './export-jobs';
 import { cronJobsHandlers } from './cron-jobs';
 import { monitorHandlers } from './monitor';
 import { monitorAlertsHandlers } from './monitor-alerts';
@@ -106,6 +107,7 @@ export const handlers = [
   ...systemConfigsHandlers,
   ...announcementsHandlers,
   ...filesHandlers,
+  ...exportJobsHandlers,
   ...cronJobsHandlers,
   ...monitorHandlers,
   ...monitorAlertsHandlers,

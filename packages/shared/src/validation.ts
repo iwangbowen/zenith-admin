@@ -57,6 +57,16 @@ export const resetUserPasswordSchema = z.object({
   password: z.string().min(6, '新密码至少6个字符').max(64),
 });
 
+export const createExportJobSchema = z.object({
+  entity: z.string().min(1, '导出实体不能为空').max(128),
+  format: z.enum(['xlsx', 'csv']).default('xlsx'),
+  query: z.record(z.string(), z.unknown()).optional().default({}),
+  columns: z.array(z.string().min(1).max(128)).optional(),
+  raw: z.boolean().optional().default(false),
+  watermark: z.boolean().optional().default(true),
+  executionMode: z.enum(['sync', 'async', 'auto']).optional().default('auto'),
+});
+
 export const updateProfileSchema = z.object({
   nickname: z.string().min(1, '昵称不能为空').max(32).optional(),
   email: z.email('邮箱格式不正确').optional(),

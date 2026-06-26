@@ -191,16 +191,6 @@ export default function ExportJobsPage() {
     { title: '任务ID', dataIndex: 'id', width: 90 },
     { title: '模块', dataIndex: 'moduleName', width: 120 },
     { title: '文件名', dataIndex: 'filename', width: 260, render: renderEllipsis },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      fixed: 'right',
-      render: (value: ExportJobStatus) => {
-        const meta = statusTagMap[value];
-        return <Tag color={meta.color}>{meta.label}</Tag>;
-      },
-    },
     { title: '格式', dataIndex: 'format', width: 80, render: (value: ExportJobFormat) => value.toUpperCase() },
     { title: '模式', dataIndex: 'executionMode', width: 90, render: (value: string) => (value === 'sync' ? '同步' : '异步') },
     { title: '行数', dataIndex: 'rowCount', width: 100, render: (value: number | null) => value ?? '-' },
@@ -226,6 +216,16 @@ export default function ExportJobsPage() {
       dataIndex: 'errorMessage',
       width: 240,
       render: (value: string | null) => value ? <Typography.Text type="danger" ellipsis={{ showTooltip: true }}>{value}</Typography.Text> : '-',
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 100,
+      fixed: 'right',
+      render: (value: ExportJobStatus) => {
+        const meta = statusTagMap[value];
+        return <Tag color={meta.color}>{meta.label}</Tag>;
+      },
     },
     createOperationColumn<ExportJob>({
       width: 220,

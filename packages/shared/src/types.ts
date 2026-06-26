@@ -313,6 +313,91 @@ export interface ManagedFile {
   updatedAt: string;
 }
 
+// ─── Export Center ───────────────────────────────────────────────────────
+
+export type ExportJobFormat = 'xlsx' | 'csv';
+export type ExportJobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'expired';
+export type ExportJobExecutionMode = 'sync' | 'async';
+export type ExportJobRequestMode = 'sync' | 'async' | 'auto';
+export type ExportJobDeleteReason = 'expired' | 'manual' | 'file_missing';
+
+export interface ExportColumnMeta {
+  key: string;
+  header: string;
+  width?: number;
+  type?: 'string' | 'number' | 'datetime' | 'date' | 'enum' | 'money' | 'boolean';
+  sensitive?: boolean;
+  children?: ExportColumnMeta[];
+}
+
+export interface ExportEntityMeta {
+  entity: string;
+  moduleName: string;
+  filenamePrefix: string;
+  formats: ExportJobFormat[];
+  renderMode: 'table' | 'layout' | 'custom';
+  columns: ExportColumnMeta[];
+  sensitive: boolean;
+  execution: {
+    mode: ExportJobRequestMode;
+    syncMaxRows: number;
+    forceAsyncWhenSensitive: boolean;
+    forceAsyncWhenRaw: boolean;
+  };
+  permissions: {
+    export: string;
+    exportRaw?: string;
+  };
+}
+
+export interface ExportJob {
+  id: number;
+  entity: string;
+  moduleName: string;
+  format: ExportJobFormat;
+  status: ExportJobStatus;
+  executionMode: ExportJobExecutionMode;
+  query: Record<string, unknown>;
+  columns: string[] | null;
+  rowCount: number | null;
+  fileId: string | null;
+  filename: string | null;
+  fileSize: number | null;
+  raw: boolean;
+  masked: boolean;
+  sensitive: boolean;
+  watermark: boolean;
+  errorMessage: string | null;
+  expiresAt: string | null;
+  fileDeletedAt: string | null;
+  deleteReason: ExportJobDeleteReason | null;
+  downloadCount: number;
+  lastDownloadedAt: string | null;
+  tenantId: number | null;
+  createdBy: number | null;
+  createdByName: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExportJobCreateResult {
+  mode: ExportJobExecutionMode;
+  job: ExportJob;
+}
+
+export interface ExportJobDownload {
+  id: number;
+  jobId: number;
+  downloadedBy: number | null;
+  downloadedByName: string | null;
+  tenantId: number | null;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
 // ─── Storage Browse ──────────────────────────────────────
 export interface FolderEntry {
   name: string;
