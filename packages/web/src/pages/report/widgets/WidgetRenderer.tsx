@@ -171,14 +171,22 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
         dataIndex: c.name,
         render: (val: unknown) => <span style={cellStyle(c.name, val, o.conditionalFormats)}>{val == null ? '' : String(val)}</span>,
       }));
-      const dataSource = rows.map((r, i) => ({ ...r, __rk: i }));
+      const dataSource: Record<string, unknown>[] = rows.map((r, i) => ({ ...r, __rk: i }));
+      if (o.showSummary && cols.length) {
+        const totalRow: Record<string, unknown> = { __rk: '__summary', [cols[0].name]: '合计' };
+        for (let i = 1; i < cols.length; i++) {
+          const c = cols[i];
+          const isNum = c.type === 'number' || rows.some((r) => typeof r[c.name] === 'number');
+          if (isNum) totalRow[c.name] = rows.reduce((s, r) => s + toNumber(r[c.name]), 0);
+        }
+        dataSource.push(totalRow);
+      }
       return (
         <div style={{ height: '100%', overflow: 'auto' }}>
           <Table
             size="small" bordered={false} columns={tableColumns} dataSource={dataSource} rowKey="__rk"
             pagination={o.pageSize && o.pageSize > 0 ? { pageSize: o.pageSize } : false}
             onRow={onCategoryClick ? (record) => ({ onClick: () => onCategoryClick(String((record as Record<string, unknown>)[cols[0]?.name] ?? '')), style: { cursor: 'pointer' } }) : undefined}
-            summary={o.showSummary ? () => <SummaryRow rows={rows} cols={cols} /> : undefined}
           />
         </div>
       );
@@ -295,18 +303,6 @@ function Sparkline({ values }: { readonly values: number[] }) {
     <svg width={w} height={h} style={{ marginTop: 4 }}>
       <polyline points={pts} fill="none" stroke="var(--semi-color-primary)" strokeWidth={1.5} />
     </svg>
-  );
-}
-
-function SummaryRow({ rows, cols }: { readonly rows: Record<string, unknown>[]; readonly cols: ReportField[] }) {
-  return (
-    <Table.Summary.Row>
-      {cols.map((c, idx) => {
-        const isNum = c.type === 'number' || rows.some((r) => typeof r[c.name] === 'number');
-        const total = isNum ? rows.reduce((s, r) => s + toNumber(r[c.name]), 0) : '';
-        return <Table.Summary.Cell key={c.name} index={idx}>{idx === 0 ? '合计' : (isNum ? fmtNumber(total as number) : '')}</Table.Summary.Cell>;
-      })}
-    </Table.Summary.Row>
   );
 }
 
