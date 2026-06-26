@@ -43,6 +43,8 @@ export default function PaneTreeView({
     return (
       <div
         className="terminal-pane"
+        data-kind={leaf.kind}
+        data-closeable={leafCount > 1 ? 'true' : 'false'}
         data-focused={showFocus && focused ? 'true' : 'false'}
         onMouseDownCapture={() => onFocusPane(leaf.id)}
       >

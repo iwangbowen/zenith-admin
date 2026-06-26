@@ -14,6 +14,7 @@ import { Terminal, type ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { request } from '@/utils/request';
@@ -136,6 +137,17 @@ function parseOsc7Cwd(data: string): string | null {
   return decoded;
 }
 
+function loadWebglRenderer(term: Terminal, rendererType?: 'canvas' | 'webgl'): void {
+  if (rendererType !== 'webgl') return;
+  try {
+    const webglAddon = new WebglAddon();
+    webglAddon.onContextLoss(() => webglAddon.dispose());
+    term.loadAddon(webglAddon);
+  } catch {
+    // Keep xterm's default canvas renderer when WebGL is unavailable.
+  }
+}
+
 class TerminalSessionStore {
   private readonly sessions = new Map<string, SessionState>();
   private readonly cwdCallbacks = new Map<string, (cwd: string) => void>();
@@ -246,6 +258,7 @@ class TerminalSessionStore {
     term.loadAddon(searchAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(container);
+    loadWebglRenderer(term, options.rendererType);
 
     const ws = new WebSocket(buildWsUrl(sessionId, options.shell, options.cwd));
     const { shell, cwd } = options;

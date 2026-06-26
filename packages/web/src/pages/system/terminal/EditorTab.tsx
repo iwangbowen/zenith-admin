@@ -264,16 +264,7 @@ export default function EditorTab({ filePath, active, onDirtyChange }: EditorTab
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '4px 8px',
-          borderBottom: '1px solid var(--semi-color-border)',
-          flexShrink: 0,
-        }}
-      >
+      <div className="terminal-editor-header">
         <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ flex: 1 }}>
           {fileRef.kind === 'sftp' ? `🌐 ${fileRef.displayPath}` : fileRef.displayPath}
           {dirty ? ' ●' : ''}
