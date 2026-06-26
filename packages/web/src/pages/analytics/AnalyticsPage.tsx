@@ -33,9 +33,11 @@ import {
   makeCommonTooltip,
   axisNumber,
   datumNumber,
+  datumText,
   useChartPalette,
   type ChartDatum,
   type IScatterChartSpec,
+  type ILineChartSpec,
 } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -725,6 +727,7 @@ function FunnelTab() {
 }
 
 function RetentionTab() {
+  const palette = useChartPalette();
   const [days, setDays] = useState(14);
   const [data, setData] = useState<RetentionResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -741,6 +744,38 @@ function RetentionTab() {
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
+  const retentionSpec = useMemo<Partial<ILineChartSpec>>(() => {
+    const cohorts = data?.cohorts ?? [];
+    const periods = data?.periods ?? [];
+    const values: { period: string; cohort: string; value: number }[] = [];
+    cohorts.forEach((cohort) => {
+      periods.forEach((period, index) => {
+        const v = cohort.values[index];
+        if (v != null) values.push({ period: `Day${period}`, cohort: cohort.cohortDate, value: v });
+      });
+    });
+    return {
+      ...makeCommonCartesianSpec(palette),
+      data: [{ id: 'retention', values }],
+      xField: 'period',
+      yField: 'value',
+      seriesField: 'cohort',
+      color: cohorts.map((_, i) => COLORS[i % COLORS.length]),
+      line: { style: { lineWidth: 2, curveType: 'monotone' } },
+      point: { visible: true, style: { size: 4 } },
+      axes: [
+        { orient: 'bottom', type: 'band', tick: { visible: false }, domainLine: { visible: false }, grid: { visible: false }, label: { style: { fill: palette.text2, fontSize: 11 } } },
+        { orient: 'left', type: 'linear', min: 0, max: 100, tick: { visible: false }, domainLine: { visible: false }, grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } }, label: { style: { fill: palette.text2, fontSize: 11 }, formatMethod: (v) => `${axisNumber(v)}%` } },
+      ],
+      legends: { visible: true, orient: 'bottom', position: 'middle', item: { label: { style: { fill: palette.text1, fontSize: 11 } } } },
+      tooltip: {
+        ...makeCommonTooltip(palette),
+        dimension: { title: { value: (d?: ChartDatum) => datumText(d, 'period') } },
+        mark: { content: [{ key: (d?: ChartDatum) => datumText(d, 'cohort'), value: (d?: ChartDatum) => `${datumNumber(d, 'value').toFixed(1)}%` }] },
+      },
+    };
+  }, [data, palette]);
+
   return (
     <div style={sectionStyle}>
       <SectionHeader
@@ -748,43 +783,9 @@ function RetentionTab() {
         description="按首访日期形成 cohort"
         extra={<Select value={days} optionList={RETENTION_DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />}
       />
-      <Card bodyStyle={{ padding: 16, overflowX: 'auto' }}>
+      <Card bodyStyle={{ padding: 16 }}>
         {loading && !data ? emptyOrSpin(true) : !data?.cohorts.length ? <Empty description="暂无留存数据" /> : (
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 4, minWidth: 720 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: 8 }}>同期群</th>
-                <th style={{ textAlign: 'left', padding: 8 }}>人数</th>
-                {data.periods.map((period) => <th key={period} style={{ textAlign: 'center', padding: 8 }}>Day{period}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {data.cohorts.map((cohort) => (
-                <tr key={cohort.cohortDate}>
-                  <td style={{ padding: 8, fontWeight: 600 }}>{cohort.cohortDate}</td>
-                  <td style={{ padding: 8 }}>{numberText(cohort.cohortSize)}</td>
-                  {data.periods.map((period, index) => {
-                    const value = cohort.values[index];
-                    const opacity = value == null ? 0 : Math.max(0.08, Math.min(0.85, value / 100));
-                    return (
-                      <td
-                        key={period}
-                        style={{
-                          textAlign: 'center',
-                          padding: 8,
-                          borderRadius: 8,
-                          background: value == null ? 'transparent' : `rgba(59,130,246,${opacity})`,
-                          color: value != null && value > 55 ? '#fff' : 'var(--semi-color-text-0)',
-                        }}
-                      >
-                        {value == null ? '' : `${value.toFixed(1)}%`}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <LineChart {...retentionSpec} options={chartOptions} height={360} />
         )}
       </Card>
     </div>

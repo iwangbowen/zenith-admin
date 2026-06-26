@@ -15,7 +15,6 @@ export {
   LineChart,
   PieChart,
   ScatterChart,
-  HeatmapChart,
   CommonChart,
   VChart,
 } from '@visactor/react-vchart';
@@ -27,7 +26,6 @@ export type {
   ILineChartSpec,
   IPieChartSpec,
   IScatterChartSpec,
-  IHeatmapChartSpec,
   ICommonChartSpec,
 } from '@visactor/react-vchart';
 
@@ -68,11 +66,3 @@ export {
 
 // 空状态占位
 export { EmptyChart } from './EmptyChart';
-
-// 日历热力图
-export {
-  buildCalendarHeatmap,
-  makeCalendarHeatmapSpec,
-  type HeatmapDatum,
-} from './heatmap';
-export { HeatmapLegend } from './HeatmapLegend';

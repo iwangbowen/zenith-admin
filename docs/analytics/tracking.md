@@ -40,7 +40,7 @@ trackEvent('order_submit', { amount: 199, channel: 'wechat' });
 // 功能点击（稳定 key + 标签 + 区域）
 trackFeature('export-btn', '导出', 'search-toolbar');
 
-// 区域点击（热力图）
+// 区域点击（点击分布）
 const ref = useRef<HTMLDivElement>(null);
 <div ref={ref} onClick={(e) => ref.current && trackAreaClick(e, ref.current, 'table')}>…</div>
 ```

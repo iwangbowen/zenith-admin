@@ -23,7 +23,6 @@ export interface ChartPalette {
   readonly tooltipBg: string;
   readonly tooltipShadow: string;
   readonly dataColors: string[];
-  readonly heatColors: string[];
 }
 
 export function cssVar(name: string, fallback: string): string {
@@ -73,9 +72,6 @@ export function readChartPalette(isDark: boolean): ChartPalette {
     dataColors: SEMI_SMALL_DATA_COLOR_INDICES.map((index, i) => (
       cssVar(`--semi-color-data-${index}`, SEMI_SMALL_DATA_COLOR_FALLBACKS[i])
     )),
-    heatColors: isDark
-      ? [fill1, 'rgba(106, 161, 255, 0.22)', 'rgba(106, 161, 255, 0.42)', 'rgba(106, 161, 255, 0.66)', primary]
-      : [fill1, 'rgba(22, 100, 255, 0.14)', 'rgba(22, 100, 255, 0.30)', 'rgba(22, 100, 255, 0.56)', primary],
   };
 }
 

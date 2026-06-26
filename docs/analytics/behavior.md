@@ -48,7 +48,7 @@
 
 ## 留存分析
 
-`GET /api/analytics/retention?days=N` —— 按首次访问日期分群的 cohort 留存热力表（Day0…最多 Day7），单元格颜色深浅表示留存率。
+`GET /api/analytics/retention?days=N` —— 按首次访问日期分群的 cohort 留存数据（Day0…最多 Day7），前端以折线图展示，每条折线为一个同期群的留存率衰减曲线。
 
 ## 路径分析
 
@@ -68,10 +68,10 @@
 
 `GET /api/analytics/perf-stats` —— 各性能指标的样本数、均值、P75 / P90 / P99 及评级（good / needs-improvement / poor，按 Web Vitals 阈值）。
 
-## 点击热力图
+## 点击分布
 
 - `GET /api/analytics/heatmap-pages` 列出有区域点击数据的页面与区域；
 - `GET /api/analytics/heatmap?pagePath=&componentArea=` 返回归一化坐标点；
-- 前端用 Canvas 绘制热点图。
+- 前端以散点图展示点击落点分布（点大小 / 颜色随点击次数变化）。
 
-> 热力图依赖手动接入 `trackAreaClick`（见 [埋点采集 SDK](./tracking#手动埋点-api)）。
+> 点击分布依赖手动接入 `trackAreaClick`（见 [埋点采集 SDK](./tracking#手动埋点-api)）。

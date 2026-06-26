@@ -341,7 +341,7 @@ export function trackEvent(eventName: string, properties?: Record<string, unknow
   tracker.track({ eventType: 'custom', eventName, pagePath: globalThis.location.pathname, properties });
 }
 
-/** 区域点击（热力图）。 */
+/** 区域点击采集（用于点击分布图）。 */
 export function trackAreaClick(e: { clientX: number; clientY: number }, containerEl: HTMLElement, componentArea: string): void {
   const rect = containerEl.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return;
