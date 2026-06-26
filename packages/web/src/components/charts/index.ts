@@ -15,6 +15,7 @@ export {
   LineChart,
   PieChart,
   ScatterChart,
+  TreemapChart,
   CommonChart,
   VChart,
 } from '@visactor/react-vchart';
@@ -26,6 +27,7 @@ export type {
   ILineChartSpec,
   IPieChartSpec,
   IScatterChartSpec,
+  ITreemapChartSpec,
   ICommonChartSpec,
 } from '@visactor/react-vchart';
 
@@ -61,11 +63,14 @@ export {
   makePieSpec,
   makeMixedBarLineSpec,
   makeScatterSpec,
+  makeTreemapSpec,
   type LineAreaOptions,
   type BarOptions,
   type PieOptions,
   type MixedBarLineOptions,
   type ScatterOptions,
+  type TreemapNode,
+  type TreemapOptions,
 } from './builders';
 
 // 空状态占位

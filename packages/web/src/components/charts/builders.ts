@@ -5,6 +5,7 @@ import type {
   ILineChartSpec,
   IPieChartSpec,
   IScatterChartSpec,
+  ITreemapChartSpec,
 } from '@visactor/react-vchart';
 import type { ChartPalette } from './palette';
 import {
@@ -402,6 +403,109 @@ export function makePieSpec(o: PieOptions): Partial<IPieChartSpec> {
   }
 
   return spec as Partial<IPieChartSpec>;
+}
+
+// ────────────────────────── 矩形树图 ──────────────────────────
+
+export interface TreemapNode {
+  readonly name: string;
+  readonly value?: number;
+  readonly children?: TreemapNode[];
+  readonly [key: string]: unknown;
+}
+
+export interface TreemapOptions {
+  readonly data: TreemapNode | readonly TreemapNode[];
+  readonly palette: ChartPalette;
+  readonly categoryField?: string;
+  readonly valueField?: string;
+  readonly colors?: readonly string[];
+  readonly drill?: boolean;
+  readonly minVisibleArea?: number;
+  readonly minChildrenVisibleArea?: number;
+  readonly labelFontSize?: number;
+  readonly valueFormatter?: (value: number) => string;
+}
+
+function treemapPath(datum: ChartDatum): string {
+  const path = datum?.datum;
+  if (!Array.isArray(path)) return datumText(datum, 'name');
+  return path
+    .map((item) => (typeof item?.name === 'string' || typeof item?.name === 'number' ? String(item.name) : ''))
+    .filter(Boolean)
+    .join(' / ');
+}
+
+export function makeTreemapSpec(o: TreemapOptions): Partial<ITreemapChartSpec> {
+  const categoryField = o.categoryField ?? 'name';
+  const valueField = o.valueField ?? 'value';
+  const valueFmt = o.valueFormatter ?? ((value: number) => compactCount(value));
+  const values = Array.isArray(o.data) ? [...o.data] : [...(o.data.children ?? [])];
+
+  return {
+    type: 'treemap',
+    background: 'transparent',
+    animation: true,
+    data: { id: 'treemap', values } as ITreemapChartSpec['data'],
+    categoryField,
+    valueField,
+    color: o.colors ? [...o.colors] : o.palette.dataColors,
+    drill: o.drill ?? true,
+    gapWidth: 2,
+    nodePadding: 2,
+    minVisibleArea: o.minVisibleArea ?? 8,
+    minChildrenVisibleArea: o.minChildrenVisibleArea ?? 36,
+    leaf: {
+      style: {
+        fillOpacity: 0.9,
+        stroke: o.palette.bg1,
+        lineWidth: 1,
+      },
+    },
+    nonLeaf: {
+      visible: true,
+      style: {
+        fillOpacity: 0.1,
+        stroke: o.palette.border,
+        lineWidth: 1,
+      },
+    },
+    label: {
+      visible: true,
+      style: {
+        fill: '#ffffff',
+        fontSize: o.labelFontSize ?? 12,
+        fontWeight: 600,
+      },
+    },
+    nonLeafLabel: {
+      visible: true,
+      position: 'top',
+      padding: 22,
+      style: {
+        fill: o.palette.text1,
+        fontSize: 12,
+        fontWeight: 600,
+        textAlign: 'left',
+        x: (datum: ChartDatum) => {
+          const rect = datum?.labelRect as { x0?: number } | undefined;
+          return (rect?.x0 ?? 0) + 4;
+        },
+      },
+    },
+    tooltip: {
+      ...makeCommonTooltip(o.palette),
+      mark: {
+        title: { value: (datum?: ChartDatum) => treemapPath(datum) },
+        content: [
+          {
+            key: '使用次数',
+            value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, valueField)),
+          },
+        ],
+      },
+    },
+  };
 }
 
 // ────────────────────────── 组合图：柱 + 线 + 双 Y 轴 ──────────────────────────
