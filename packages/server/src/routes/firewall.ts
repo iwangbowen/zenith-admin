@@ -9,7 +9,7 @@ import {
   commonErrorResponses,
 } from '../lib/openapi-schemas';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   addFirewallRule,
   deleteFirewallRule,
@@ -66,7 +66,9 @@ const addRuleRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('规则已添加') },
   }),
   handler: async (c) => {
+    setAuditBeforeData(c, await listFirewallRules());
     await addFirewallRule(c.req.valid('json'));
+    setAuditAfterData(c, await listFirewallRules());
     return c.json(okBody(null, '规则已添加'), 200);
   },
 });
@@ -84,7 +86,9 @@ const deleteRuleRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await listFirewallRules());
     await deleteFirewallRule(id);
+    setAuditAfterData(c, await listFirewallRules());
     return c.json(okBody(null, '规则已删除'), 200);
   },
 });
@@ -100,7 +104,9 @@ const enableRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('防火墙已启用') },
   }),
   handler: async (c) => {
+    setAuditBeforeData(c, await getFirewallStatus());
     await setFirewallEnabled(true);
+    setAuditAfterData(c, await getFirewallStatus());
     return c.json(okBody(null, '防火墙已启用'), 200);
   },
 });
@@ -116,7 +122,9 @@ const disableRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('防火墙已关闭') },
   }),
   handler: async (c) => {
+    setAuditBeforeData(c, await getFirewallStatus());
     await setFirewallEnabled(false);
+    setAuditAfterData(c, await getFirewallStatus());
     return c.json(okBody(null, '防火墙已关闭'), 200);
   },
 });

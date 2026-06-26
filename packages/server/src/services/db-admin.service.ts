@@ -727,6 +727,37 @@ export async function updateTableRow(
   }
 }
 
+export async function getTableRowBeforeAudit(
+  schema: string,
+  name: string,
+  pkValues: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  assertIdent(schema, 'schema');
+  assertIdent(name, 'table');
+
+  const struct = await getTableStructure(schema, name);
+  if (struct.primaryKey.length === 0) {
+    throw new HTTPException(400, { message: '该表没有主键，无法定位记录' });
+  }
+  const colMap = new Map(struct.columns.map((c) => [c.name, c]));
+  const pkCols = struct.primaryKey;
+  for (const pk of pkCols) {
+    if (!(pk in pkValues)) throw new HTTPException(400, { message: `缺少主键值：${pk}` });
+    assertIdent(pk, '主键列');
+  }
+  const wheres = pkCols.map(
+    (c) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(pkValues[c], colMap.get(c)!.dataType)}`,
+  );
+  const full = sql.raw(`${quoteIdent(schema)}.${quoteIdent(name)}`);
+  const rows = await db.execute(sql`
+    SELECT * FROM ${full}
+    WHERE ${sql.join(wheres, sql.raw(' AND '))}
+    LIMIT 1
+  `);
+  const row = (rows as unknown as Array<Record<string, unknown>>)[0];
+  return row ? serializeRow(row) : null;
+}
+
 export async function deleteTableRow(
   schema: string, name: string, pkValues: Record<string, unknown>,
 ): Promise<void> {
@@ -1241,6 +1272,46 @@ export async function listQueryHistory(page: number, pageSize: number): Promise<
     total,
     page,
     pageSize,
+  };
+}
+
+export async function getQueryHistoryBeforeAudit(id: number) {
+  const userId = currentUserId();
+  const [row] = await db.select().from(dbAdminQueryHistory)
+    .where(and(eq(dbAdminQueryHistory.id, id), eq(dbAdminQueryHistory.userId, userId)))
+    .limit(1);
+  if (!row) return null;
+  return {
+    id: row.id,
+    sqlText: row.sqlText,
+    durationMs: row.durationMs,
+    rowCount: row.rowCount,
+    success: row.success,
+    errorMessage: row.errorMessage,
+    executedAt: formatDateTime(row.executedAt),
+  };
+}
+
+export async function getQueryHistoryClearBeforeAudit() {
+  const userId = currentUserId();
+  const [total, rows] = await Promise.all([
+    db.$count(dbAdminQueryHistory, eq(dbAdminQueryHistory.userId, userId)),
+    db.select().from(dbAdminQueryHistory)
+      .where(eq(dbAdminQueryHistory.userId, userId))
+      .orderBy(desc(dbAdminQueryHistory.id))
+      .limit(20),
+  ]);
+  return {
+    total,
+    sample: rows.map((row) => ({
+      id: row.id,
+      sqlText: row.sqlText,
+      durationMs: row.durationMs,
+      rowCount: row.rowCount,
+      success: row.success,
+      errorMessage: row.errorMessage,
+      executedAt: formatDateTime(row.executedAt),
+    })),
   };
 }
 

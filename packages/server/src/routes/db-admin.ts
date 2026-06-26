@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   PaginationQuery,
   jsonContent,
@@ -48,8 +48,11 @@ import {
   exportTableSql,
   truncateTable,
   listQueryHistory,
+  getQueryHistoryBeforeAudit,
+  getQueryHistoryClearBeforeAudit,
   clearQueryHistory,
   deleteQueryHistory,
+  getTableRowBeforeAudit,
   listAllForeignKeys,
   getErSchema,
   listQueryFavorites,
@@ -213,6 +216,8 @@ const updateRowRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { schema, name } = c.req.valid('param');
     const { pk, changes } = c.req.valid('json');
+    const before = await getTableRowBeforeAudit(schema, name, pk);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await updateTableRow(schema, name, pk, changes)), 200);
   },
 });
@@ -234,7 +239,10 @@ const deleteRowRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { schema, name } = c.req.valid('param');
     const { pk } = c.req.valid('json');
+    const before = await getTableRowBeforeAudit(schema, name, pk);
+    if (before) setAuditBeforeData(c, before);
     await deleteTableRow(schema, name, pk);
+    setAuditAfterData(c, { schema, name, pk, deleted: true });
     return c.json(okBody(null, '已删除'), 200);
   },
 });
@@ -338,7 +346,10 @@ const deleteHistoryRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getQueryHistoryBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await deleteQueryHistory(id);
+    setAuditAfterData(c, { id, deleted: true });
     return c.json(okBody(null, '已删除'), 200);
   },
 });
@@ -354,7 +365,10 @@ const clearHistoryRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('已清空') },
   }),
   handler: async (c) => {
+    const before = await getQueryHistoryClearBeforeAudit();
+    if (before.total > 0) setAuditBeforeData(c, before);
     await clearQueryHistory();
+    setAuditAfterData(c, { deleted: before.total });
     return c.json(okBody(null, '已清空'), 200);
   },
 });
@@ -373,6 +387,7 @@ const truncateTableRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { schema, name } = c.req.valid('param');
     await truncateTable(schema, name);
+    setAuditAfterData(c, { schema, name, truncated: true });
     return c.json(okBody(null, '已截断'), 200);
   },
 });

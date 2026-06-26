@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, errBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO, StorageBrowseResultDTO, FileStatsDTO, SheetPreviewDTO, UploadSessionInitDTO, UploadChunkResultDTO, UploadSessionStatusDTO } from '../lib/openapi-dtos';
 import { initChunkUploadSchema, completeChunkUploadSchema } from '@zenith/shared';
@@ -393,7 +393,11 @@ const uploadAbortRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('已中止') },
   }),
   handler: async (c) => {
-    await abortChunkUpload(c.req.valid('param').uploadId);
+    const { uploadId } = c.req.valid('param');
+    const before = await getUploadStatus(uploadId);
+    setAuditBeforeData(c, before);
+    await abortChunkUpload(uploadId);
+    setAuditAfterData(c, { uploadId, status: 'aborted' });
     return c.json(okBody(null, '已中止'), 200);
   },
 });

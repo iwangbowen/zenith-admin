@@ -9,7 +9,7 @@ import {
 } from '../lib/openapi-dtos';
 import { ok, okMsg, okBody, validationHook, commonErrorResponses, jsonContent } from '../lib/openapi-schemas';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   getNginxInfo,
   listNginxSites,
@@ -113,7 +113,9 @@ const createRouteDef = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('站点已创建') },
   }),
   handler: async (c) => {
-    await createNginxSite(c.req.valid('json'));
+    const input = c.req.valid('json');
+    await createNginxSite(input);
+    setAuditAfterData(c, await getNginxSiteDetail(input.name));
     return c.json(okBody(null, '站点已创建'), 200);
   },
 });
@@ -135,7 +137,9 @@ const updateRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { name } = c.req.valid('param');
     const { content } = c.req.valid('json');
+    setAuditBeforeData(c, await getNginxSiteDetail(name));
     await updateNginxSiteContent(name, content);
+    setAuditAfterData(c, await getNginxSiteDetail(name));
     return c.json(okBody(null, '配置已保存'), 200);
   },
 });
@@ -152,7 +156,10 @@ const deleteRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('站点已删除') },
   }),
   handler: async (c) => {
-    await deleteNginxSite(c.req.valid('param').name);
+    const { name } = c.req.valid('param');
+    setAuditBeforeData(c, await getNginxSiteDetail(name));
+    await deleteNginxSite(name);
+    setAuditAfterData(c, { name, deleted: true });
     return c.json(okBody(null, '站点已删除'), 200);
   },
 });
@@ -169,7 +176,10 @@ const enableRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('站点已启用') },
   }),
   handler: async (c) => {
-    await enableNginxSite(c.req.valid('param').name);
+    const { name } = c.req.valid('param');
+    setAuditBeforeData(c, await getNginxSiteDetail(name));
+    await enableNginxSite(name);
+    setAuditAfterData(c, await getNginxSiteDetail(name));
     return c.json(okBody(null, '站点已启用'), 200);
   },
 });
@@ -186,7 +196,10 @@ const disableRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('站点已禁用') },
   }),
   handler: async (c) => {
-    await disableNginxSite(c.req.valid('param').name);
+    const { name } = c.req.valid('param');
+    setAuditBeforeData(c, await getNginxSiteDetail(name));
+    await disableNginxSite(name);
+    setAuditAfterData(c, await getNginxSiteDetail(name));
     return c.json(okBody(null, '站点已禁用'), 200);
   },
 });

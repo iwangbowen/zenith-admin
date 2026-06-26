@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   validationHook,
   commonErrorResponses,
@@ -9,7 +9,7 @@ import {
   okBody,
 } from '../lib/openapi-schemas';
 import { getListeningPorts } from '../services/ports.service';
-import { killProcess } from '../services/processes.service';
+import { getProcessDetail, killProcess } from '../services/processes.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -46,7 +46,16 @@ const killRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { pid } = c.req.valid('param');
+    const [ports, process] = await Promise.all([
+      getListeningPorts(),
+      getProcessDetail(pid),
+    ]);
+    setAuditBeforeData(c, {
+      process,
+      ports: ports.filter((item) => item.pid === pid),
+    });
     await killProcess(pid, 'SIGTERM');
+    setAuditAfterData(c, { pid, signal: 'SIGTERM', killed: true });
     return c.json(okBody(null, '进程已结束'), 200);
   },
 });

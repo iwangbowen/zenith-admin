@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { validationHook, okBody } from '../lib/openapi-schemas';
 import { CacheItemDTO, CacheOverviewDTO } from '../lib/openapi-dtos';
 import { getCacheList, deleteCacheKey, deleteCacheByCategory, deleteAllCache, getCacheBeforeAudit, getCachesByCategoryBeforeAudit, getAllCachesBeforeAudit, getCacheFullValue, getCacheOverview, updateCacheTtl, updateCacheValue, deleteCacheKeys, getCacheKeysBeforeAudit } from '../services/cache.service';
@@ -108,6 +108,8 @@ const updateTtlRoute = defineOpenAPIRoute({
     const before = await getCacheBeforeAudit(key);
     if (before) setAuditBeforeData(c, before);
     await updateCacheTtl(key, ttl);
+    const after = await getCacheBeforeAudit(key);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '修改成功'), 200);
   },
 });
@@ -130,6 +132,8 @@ const updateValueRoute = defineOpenAPIRoute({
     const before = await getCacheBeforeAudit(key);
     if (before) setAuditBeforeData(c, before);
     await updateCacheValue(key, value, ttl);
+    const after = await getCacheBeforeAudit(key);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '修改成功'), 200);
   },
 });

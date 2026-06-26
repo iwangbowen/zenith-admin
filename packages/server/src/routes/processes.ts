@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   validationHook, commonErrorResponses, ok, okMsg,
   jsonContent, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody,
@@ -105,7 +105,9 @@ const killRoute = defineOpenAPIRoute({
       const body = await c.req.json<{ signal?: string }>();
       if (body?.signal) signal = body.signal;
     } catch { /* body is optional */ }
+    setAuditBeforeData(c, await getProcessDetail(pid));
     await killProcess(pid, signal);
+    setAuditAfterData(c, { pid, signal, killed: true });
     return c.json(okBody(null, '已发送结束信号'), 200);
   },
 });
@@ -129,7 +131,9 @@ const priorityRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { pid } = c.req.valid('param');
     const input = c.req.valid('json');
+    setAuditBeforeData(c, await getProcessDetail(pid));
     await setProcessPriority(pid, input);
+    setAuditAfterData(c, await getProcessDetail(pid));
     return c.json(okBody(null, '优先级已调整'), 200);
   },
 });

@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { validateCronExpression, getRegisteredHandlers } from '../lib/pg-boss-scheduler';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
@@ -142,6 +142,8 @@ const statusRoute = defineOpenAPIRoute({
     const before = await getCronJobBeforeAudit(id);
     if (before) setAuditBeforeData(c, before);
     const msg = await setCronJobStatus(id, status);
+    const after = await getCronJobBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, msg), 200);
   },
 });
@@ -199,6 +201,7 @@ const clearAllLogsRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { months } = c.req.valid('query');
     const count = await clearCronJobLogs(months);
+    setAuditAfterData(c, { months, deleted: count });
     return c.json(okBody(null, `已清除 ${count} 条日志`), 200);
   },
 });
@@ -215,6 +218,7 @@ const clearJobLogsRoute = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const { months } = c.req.valid('query');
     const count = await clearCronJobLogs(months, id);
+    setAuditAfterData(c, { jobId: id, months, deleted: count });
     return c.json(okBody(null, `已清除 ${count} 条日志`), 200);
   },
 });
