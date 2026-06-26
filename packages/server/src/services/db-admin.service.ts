@@ -1397,6 +1397,17 @@ export async function listQueryFavorites() {
   return rows.map(mapDbQueryFavorite);
 }
 
+export async function getQueryFavoriteBeforeAudit(id: number) {
+  const userId = currentUserId();
+  const [row] = await db
+    .select()
+    .from(dbQueryFavorites)
+    .where(and(eq(dbQueryFavorites.id, id), eq(dbQueryFavorites.userId, userId)))
+    .limit(1);
+  if (!row) throw new HTTPException(404, { message: '收藏记录不存在' });
+  return mapDbQueryFavorite(row);
+}
+
 export async function createQueryFavorite(input: {
   name: string;
   sql: string;

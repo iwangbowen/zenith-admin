@@ -36,6 +36,12 @@ export async function getTag(id: number) {
   return mapTag(await ensureTagExists(id));
 }
 
+export async function getTagsBeforeAudit(ids: number[]) {
+  if (ids.length === 0) return [];
+  const rows = await db.select().from(tags).where(inArray(tags.id, ids));
+  return rows.map(mapTag);
+}
+
 // ─── 列表查询 ─────────────────────────────────────────────────────────────────
 
 export interface ListTagsQuery {

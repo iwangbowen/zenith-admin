@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { validationHook, commonErrorResponses, PaginationQuery, okPaginated, okBody, okMsg, IdParam } from '../lib/openapi-schemas';
 import { OnlineSessionDTO } from '../lib/openapi-dtos';
-import { listSessions, forceLogoutSession, forceLogoutAllUserSessions, getSessionBeforeAudit } from '../services/sessions.service';
+import { listSessions, forceLogoutSession, forceLogoutAllUserSessions, getSessionBeforeAudit, getUserSessionsBeforeAudit } from '../services/sessions.service';
 
 const sessionsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -45,6 +45,8 @@ const forceLogoutAllRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    const before = await getUserSessionsBeforeAudit(id);
+    if (before.length > 0) setAuditBeforeData(c, before);
     await forceLogoutAllUserSessions(id);
     return c.json(okBody(null, '已强制下线全部会话'), 200);
   },

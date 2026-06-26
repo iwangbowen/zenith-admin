@@ -24,6 +24,7 @@ import {
   listTagGroups,
   ensureTagExists,
   getTag,
+  getTagsBeforeAudit,
 } from '../services/tags.service';
 
 const tagsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -130,6 +131,8 @@ const batchDeleteTagsRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getTagsBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     await batchDeleteTags(ids);
     return c.json(okBody(null, '批量删除成功'), 200);
   },

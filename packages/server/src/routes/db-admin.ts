@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   PaginationQuery,
   jsonContent,
@@ -53,6 +53,7 @@ import {
   listAllForeignKeys,
   getErSchema,
   listQueryFavorites,
+  getQueryFavoriteBeforeAudit,
   createQueryFavorite,
   updateQueryFavorite,
   deleteQueryFavorite,
@@ -532,7 +533,10 @@ const createFavoriteRoute = defineOpenAPIRoute({
     method: 'post', path: '/query-favorites',
     tags: ['数据库管理'], summary: '新增 SQL 收藏',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:view',
+      audit: { description: '新增 SQL 收藏', module: '数据库管理' },
+    })] as const,
     request: { body: { content: { 'application/json': { schema: favoritesCreateBody } }, required: true } },
     responses: {
       ...commonErrorResponses,
@@ -551,7 +555,10 @@ const updateFavoriteRoute = defineOpenAPIRoute({
     method: 'put', path: '/query-favorites/{id}',
     tags: ['数据库管理'], summary: '更新 SQL 收藏',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:view',
+      audit: { description: '更新 SQL 收藏', module: '数据库管理' },
+    })] as const,
     request: {
       params: IdParam,
       body: { content: { 'application/json': { schema: favoritesUpdateBody } }, required: true },
@@ -564,6 +571,7 @@ const updateFavoriteRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
+    setAuditBeforeData(c, await getQueryFavoriteBeforeAudit(id));
     const row = await updateQueryFavorite(id, body);
     return c.json(okBody(row), 200);
   },
@@ -574,7 +582,10 @@ const deleteFavoriteRoute = defineOpenAPIRoute({
     method: 'delete', path: '/query-favorites/{id}',
     tags: ['数据库管理'], summary: '删除 SQL 收藏',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:db-admin:view' })] as const,
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:view',
+      audit: { description: '删除 SQL 收藏', module: '数据库管理' },
+    })] as const,
     request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
@@ -583,6 +594,7 @@ const deleteFavoriteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getQueryFavoriteBeforeAudit(id));
     await deleteQueryFavorite(id);
     return c.json(okBody(null, '删除成功'), 200);
   },

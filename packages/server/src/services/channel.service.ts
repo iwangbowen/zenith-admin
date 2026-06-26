@@ -333,6 +333,17 @@ export async function listChannelsAdmin(page: number, pageSize: number, keyword?
   return { list, total, page, pageSize };
 }
 
+export async function getChannelBeforeAudit(id: number): Promise<ChannelAdmin> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, id) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  const userCount = await db.$count(users);
+  const [subscriberCount, messageCount] = await Promise.all([
+    countSubscribers(ch, userCount),
+    db.$count(channelMessages, eq(channelMessages.channelId, id)),
+  ]);
+  return mapChannelAdmin(ch, subscriberCount, messageCount);
+}
+
 export async function createChannel(input: CreateChannelInput): Promise<ChannelAdmin> {
   try {
     const [row] = await db.insert(channels).values({
@@ -531,6 +542,12 @@ export async function listChannelMessageRecords(
       .orderBy(desc(channelMessages.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
   ]);
   return { list: rows.map((r) => mapChannelMessage(r, true)), total, page, pageSize };
+}
+
+export async function getChannelMessageBeforeAudit(messageId: number): Promise<ChannelMessage> {
+  const row = await db.query.channelMessages.findFirst({ where: eq(channelMessages.id, messageId) });
+  if (!row) throw new HTTPException(404, { message: '消息不存在' });
+  return mapChannelMessage(row, true);
 }
 
 /** 取出一条可编辑的延迟消息（草稿/定时），已发拒绝 */

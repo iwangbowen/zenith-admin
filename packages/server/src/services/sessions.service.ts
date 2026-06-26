@@ -67,3 +67,20 @@ export async function getSessionBeforeAudit(tokenId: string) {
     loginAt: formatDateTime(session.loginAt),
   };
 }
+
+export async function getUserSessionsBeforeAudit(userId: number) {
+  const allSessions = await getOnlineSessions();
+  return allSessions
+    .filter((s) => s.userId === userId)
+    .map((session) => ({
+      tokenId: session.tokenId,
+      userId: session.userId,
+      username: session.username,
+      nickname: session.nickname,
+      ip: session.ip,
+      location: session.location ?? null,
+      browser: session.browser,
+      os: session.os,
+      loginAt: formatDateTime(session.loginAt),
+    }));
+}

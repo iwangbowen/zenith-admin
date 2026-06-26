@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { currentUser } from '../lib/context';
 import {
   validationHook,
@@ -21,6 +21,7 @@ import {
   createRecording,
   listRecordings,
   getRecording,
+  getRecordingBeforeAudit,
   exportRecordingAsciinema,
   deleteRecording,
   cleanRecordings,
@@ -71,7 +72,7 @@ const createRoute_ = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/', tags: ['TerminalRecordings'], summary: '保存录屏',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: PERM })] as const,
+    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '保存终端录屏', module: 'Web 终端', recordBody: false } })] as const,
     request: { body: { content: jsonContent(CreateRecordingBody), required: true } },
     responses: { ...commonErrorResponses, ...ok(TerminalRecordingDTO, '保存成功') },
   }),
@@ -86,6 +87,7 @@ const createRoute_ = defineOpenAPIRoute({
       duration: body.duration,
       events: body.events,
     });
+    setAuditAfterData(c, result);
     return c.json(okBody(result, '保存成功'), 200);
   },
 });
@@ -113,7 +115,9 @@ const deleteRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okMsg('删除成功') },
   }),
   handler: async (c) => {
-    await deleteRecording(Number(c.req.valid('param').id));
+    const id = Number(c.req.valid('param').id);
+    setAuditBeforeData(c, await getRecordingBeforeAudit(id));
+    await deleteRecording(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
@@ -143,6 +147,7 @@ const cleanRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { months } = c.req.valid('query');
     const deleted = await cleanRecordings(months);
+    setAuditAfterData(c, { months, deleted });
     return c.json(okBody(null, `共删除 ${deleted} 条录屏记录`), 200);
   },
 });

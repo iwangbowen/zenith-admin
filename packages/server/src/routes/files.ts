@@ -5,7 +5,7 @@ import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErro
 import { ManagedFileDTO, StorageBrowseResultDTO, FileStatsDTO, SheetPreviewDTO, UploadSessionInitDTO, UploadChunkResultDTO, UploadSessionStatusDTO } from '../lib/openapi-dtos';
 import { initChunkUploadSchema, completeChunkUploadSchema } from '@zenith/shared';
 import {
-  getStoredFileForRead, listManagedFiles, getManagedFile, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, getManagedFileBeforeAudit, batchDownloadFilesAsZip, browseStorageFiles, getFileStats, getSheetPreview,
+  getStoredFileForRead, listManagedFiles, getManagedFile, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, getManagedFileBeforeAudit, getManagedFilesBeforeAudit, batchDownloadFilesAsZip, browseStorageFiles, getFileStats, getSheetPreview,
 } from '../services/files.service';
 import { initChunkUpload, uploadChunk, completeChunkUpload, getUploadStatus, abortChunkUpload } from '../services/upload-sessions.service';
 import { readStoredFile } from '../lib/file-storage';
@@ -265,6 +265,8 @@ const batchDeleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getManagedFilesBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     const count = await batchDeleteFiles(ids);
     return c.json(okBody(null, `已删除 ${count} 个文件`), 200);
   },
@@ -274,7 +276,7 @@ const uploadOneRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/upload-one', tags: ['Files'], summary: '上传单个文件',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:file:upload', audit: { description: '上传单个文件', module: '文件管理', recordBody: false } })] as const,
     request: {
       body: {
         content: {
@@ -304,7 +306,7 @@ const uploadInitRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/upload/init', tags: ['Files'], summary: '初始化分片上传',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:file:upload', audit: { description: '初始化分片上传', module: '文件管理' } })] as const,
     request: { body: { content: jsonContent(initChunkUploadSchema), required: true } },
     responses: {
       ...commonErrorResponses,
@@ -356,7 +358,7 @@ const uploadCompleteRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/upload/complete', tags: ['Files'], summary: '完成分片上传',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:file:upload', audit: { description: '完成分片上传', module: '文件管理' } })] as const,
     request: { body: { content: jsonContent(completeChunkUploadSchema), required: true } },
     responses: {
       ...commonErrorResponses,
@@ -386,7 +388,7 @@ const uploadAbortRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete', path: '/upload/{uploadId}', tags: ['Files'], summary: '中止分片上传',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:file:upload', audit: { description: '中止分片上传', module: '文件管理' } })] as const,
     request: { params: z.object({ uploadId: z.string() }) },
     responses: { ...commonErrorResponses, ...okMsg('已中止') },
   }),

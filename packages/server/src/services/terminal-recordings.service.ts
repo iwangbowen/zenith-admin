@@ -145,6 +145,34 @@ export async function getRecording(id: number) {
   return { ...mapRow({ ...row, nickname: row.nickname ?? null }), events: row.events };
 }
 
+export async function getRecordingBeforeAudit(id: number) {
+  const [row] = await db
+    .select({
+      id: terminalRecordings.id,
+      title: terminalRecordings.title,
+      userId: terminalRecordings.userId,
+      nickname: users.nickname,
+      shell: terminalRecordings.shell,
+      cols: terminalRecordings.cols,
+      rows: terminalRecordings.rows,
+      duration: terminalRecordings.duration,
+      sizeBytes: sizeExpr,
+      commandCount: sql<number>`(
+        select count(*)::int
+        from jsonb_array_elements(${terminalRecordings.events}) as e
+        where (e->>1) = 'i'
+          and (position(chr(13) in (e->>2)) > 0 or position(chr(10) in (e->>2)) > 0)
+      )`,
+      createdAt: terminalRecordings.createdAt,
+      updatedAt: terminalRecordings.updatedAt,
+    })
+    .from(terminalRecordings)
+    .leftJoin(users, eq(terminalRecordings.userId, users.id))
+    .where(eq(terminalRecordings.id, id));
+  if (!row) throw new HTTPException(404, { message: '录屏不存在' });
+  return mapRow({ ...row, nickname: row.nickname ?? null });
+}
+
 function toAsciinemaCast(row: {
   id: number;
   title: string;

@@ -302,6 +302,15 @@ export async function getManagedFileBeforeAudit(id: string) {
   return mapManagedFile(file);
 }
 
+export async function getManagedFilesBeforeAudit(ids: string[]) {
+  const user = currentUser();
+  const tc = tenantCondition(managedFiles, user);
+  const idCondition = inArray(managedFiles.id, ids);
+  const where = tc ? and(idCondition, tc) : idCondition;
+  const rows = await db.select().from(managedFiles).where(where);
+  return rows.map(mapManagedFile);
+}
+
 function deduplicateEntryName(name: string, count: number): string {
   const lastDot = name.lastIndexOf('.');
   if (lastDot === -1) return `${name}_${count}`;
