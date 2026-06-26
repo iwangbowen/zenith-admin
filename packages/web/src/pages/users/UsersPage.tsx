@@ -973,14 +973,21 @@ export default function UsersPage() {
         >
           <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
           {editingUser ? (
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Input field="nickname" label="昵称" placeholder="请输入昵称" rules={[{ required: true, message: '请输入昵称' }]} />
-              </Col>
-              <Col span={12}>
-                <Form.Input field="email" label="邮箱" placeholder="请输入邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
-              </Col>
-            </Row>
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="username" label="用户名" disabled />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="nickname" label="昵称" placeholder="请输入昵称" rules={[{ required: true, message: '请输入昵称' }]} />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="email" label="邮箱" placeholder="请输入邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+                </Col>
+              </Row>
+            </>
           ) : (
             <>
               <Row gutter={16}>
