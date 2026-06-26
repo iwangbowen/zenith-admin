@@ -304,23 +304,19 @@ function KpiCard({
 }
 
 function SmallDistribution({ data }: { readonly data: { name: string; value: number }[] }) {
+  const palette = useChartPalette();
   if (data.length === 0) return <Empty title="暂无分布数据" style={{ padding: 16 }} />;
-  const max = Math.max(...data.map((item) => item.value), 1);
-  return (
-    <Space vertical align="start" style={{ width: '100%' }}>
-      {data.map((item) => (
-        <div key={item.name} style={{ width: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text size="small">{item.name}</Text>
-            <Text size="small" type="tertiary">{item.value}</Text>
-          </div>
-          <div style={{ background: 'var(--semi-color-fill-0)', borderRadius: 999, height: 8, overflow: 'hidden' }}>
-            <div style={{ background: 'var(--semi-color-primary)', borderRadius: 999, height: 8, width: `${(item.value / max) * 100}%` }} />
-          </div>
-        </div>
-      ))}
-    </Space>
-  );
+  const spec = makeBarSpec({
+    data,
+    xField: 'name',
+    series: [{ field: 'value', name: '次数', color: palette.primary }],
+    palette,
+    horizontal: true,
+    categoryAxisWidth: 90,
+    showLabel: true,
+    tooltip: { value: (v) => `${v} 次` },
+  });
+  return <BarChart {...spec} options={chartOptions} height={Math.max(140, data.length * 34)} />;
 }
 
 function BreadcrumbTimeline({ breadcrumbs }: { readonly breadcrumbs: ErrorBreadcrumb[] | null }) {

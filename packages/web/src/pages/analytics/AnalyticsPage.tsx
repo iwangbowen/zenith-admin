@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Avatar, Button, Card, Empty, Input, Progress, Select, SideSheet, Skeleton, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -8,7 +8,6 @@ import {
   Clock,
   Eye,
   Flame,
-  MousePointerClick,
   Plus,
   RefreshCcw,
   RotateCcw,
@@ -24,12 +23,19 @@ import {
   BarChart,
   LineChart,
   PieChart,
+  ScatterChart,
   chartOptions,
   makeAreaSpec,
   makeBarSpec,
   makeLineSpec,
   makePieSpec,
+  makeCommonCartesianSpec,
+  makeCommonTooltip,
+  axisNumber,
+  datumNumber,
   useChartPalette,
+  type ChartDatum,
+  type IScatterChartSpec,
 } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -1037,43 +1043,57 @@ function DimensionTab() {
   );
 }
 
-function HeatmapCanvas({ data }: Readonly<{ data: HeatmapData | null }>) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const width = canvas.width;
-    const height = canvas.height;
-    ctx.clearRect(0, 0, width, height);
-    if (!data?.points.length) return;
-
+function ClickScatter({ data }: Readonly<{ data: HeatmapData }>) {
+  const palette = useChartPalette();
+  const spec = useMemo<Partial<IScatterChartSpec>>(() => {
     const maxValue = Math.max(1, ...data.points.map((point) => point.value));
-    data.points.forEach((point) => {
-      // 坐标为区域内百分比（0-100），与采集端 trackAreaClick、后端聚合、Mock 保持一致
-      const x = (point.x / 100) * width;
-      const y = (point.y / 100) * height;
-      const intensity = Math.max(0.12, Math.min(1, point.value / maxValue));
-      const radius = 22 + 44 * intensity;
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      gradient.addColorStop(0, `rgba(239,68,68,${0.72 * intensity})`);
-      gradient.addColorStop(0.45, `rgba(245,158,11,${0.34 * intensity})`);
-      gradient.addColorStop(1, 'rgba(59,130,246,0)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(Math.max(0, x - radius), Math.max(0, y - radius), radius * 2, radius * 2);
-    });
-  }, [data]);
+    const intensity = (datum: ChartDatum) => Math.max(0.12, Math.min(1, datumNumber(datum, 'value') / maxValue));
+    const heatColor = (t: number) => {
+      if (t >= 0.75) return '#ef4444';
+      if (t >= 0.5) return '#f97316';
+      if (t >= 0.25) return '#f59e0b';
+      return '#fbbf24';
+    };
+    return {
+      ...makeCommonCartesianSpec(palette),
+      padding: { top: 12, right: 16, bottom: 28, left: 36 },
+      data: [{ id: 'clicks', values: [...data.points] }],
+      xField: 'x',
+      yField: 'y',
+      point: {
+        style: {
+          size: (datum: ChartDatum) => 8 + 34 * intensity(datum),
+          fill: (datum: ChartDatum) => heatColor(intensity(datum)),
+          fillOpacity: 0.5,
+          stroke: palette.bg1,
+          lineWidth: 1,
+        },
+      },
+      axes: [
+        {
+          orient: 'bottom', type: 'linear', min: 0, max: 100,
+          tick: { visible: false }, domainLine: { visible: false },
+          grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } },
+          label: { style: { fill: palette.text2, fontSize: 11 }, formatMethod: (v) => `${axisNumber(v)}%` },
+        },
+        {
+          orient: 'left', type: 'linear', min: 0, max: 100, inverse: true,
+          tick: { visible: false }, domainLine: { visible: false },
+          grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } },
+          label: { style: { fill: palette.text2, fontSize: 11 }, formatMethod: (v) => `${axisNumber(v)}%` },
+        },
+      ],
+      tooltip: {
+        ...makeCommonTooltip(palette),
+        mark: {
+          title: { value: (datum?: ChartDatum) => `位置 (${datumNumber(datum, 'x')}%, ${datumNumber(datum, 'y')}%)` },
+          content: [{ key: '点击', value: (datum?: ChartDatum) => `${datumNumber(datum, 'value')} 次` }],
+        },
+      },
+    };
+  }, [data, palette]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      width={800}
-      height={360}
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 16 }}
-    />
-  );
+  return <ScatterChart {...spec} options={chartOptions} height={360} />;
 }
 
 function HeatmapTab() {
@@ -1145,16 +1165,7 @@ function HeatmapTab() {
         <Spin spinning={loading}>
           {!data?.points.length ? <Empty description="暂无点击热力数据" /> : (
             <div>
-              <div style={{ position: 'relative', width: '100%', paddingBottom: '45%', borderRadius: 18, overflow: 'hidden', background: 'linear-gradient(135deg, var(--semi-color-fill-0), var(--semi-color-fill-1))', border: '1px solid var(--semi-color-border)' }}>
-                <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--semi-color-text-2)' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <MousePointerClick size={30} />
-                    <div>{data.pagePath}</div>
-                    <Typography.Text type="tertiary">{data.componentArea}</Typography.Text>
-                  </div>
-                </div>
-                <HeatmapCanvas data={data} />
-              </div>
+              <ClickScatter data={data} />
               <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 10 }}>
                 {numberText(data.total)} 次点击 · {data.pagePath} · {data.componentArea}
               </Typography.Text>

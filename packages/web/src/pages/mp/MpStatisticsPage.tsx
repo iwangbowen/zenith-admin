@@ -6,6 +6,7 @@ import { request } from '@/utils/request';
 import { formatDateForApi } from '@/utils/date';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
+import { BarChart, chartOptions, makeBarSpec, useChartPalette } from '@/components/charts';
 
 const CARD_DEFS: { key: keyof MpStats; label: string; icon: React.ReactNode; color: string }[] = [
   { key: 'fanTotal', label: '粉丝总数', icon: <Users size={20} />, color: '#3b82f6' },
@@ -61,8 +62,26 @@ export default function MpStatisticsPage() {
 
   useEffect(() => { setDatacube(null); }, [currentId]);
 
-  const maxFan = Math.max(1, ...(stats?.fanTrend.map((d) => d.count) ?? [0]));
-  const maxMsg = Math.max(1, ...(stats?.messageTrend.flatMap((d) => [d.in, d.out]) ?? [0]));
+  const palette = useChartPalette();
+  const fanSpec = makeBarSpec({
+    data: stats?.fanTrend ?? [],
+    xField: 'date',
+    series: [{ field: 'count', name: '粉丝数', color: '#3b82f6' }],
+    palette,
+    axis: { xLabel: (v) => v.slice(5) },
+    tooltip: { value: (v) => `${v} 人` },
+  });
+  const msgSpec = makeBarSpec({
+    data: stats?.messageTrend ?? [],
+    xField: 'date',
+    series: [
+      { field: 'in', name: '收到', color: '#ec4899' },
+      { field: 'out', name: '发出', color: '#10b981' },
+    ],
+    palette,
+    axis: { xLabel: (v) => v.slice(5) },
+    tooltip: { value: (v) => `${v} 条` },
+  });
 
   return (
     <div className="page-container">
@@ -120,28 +139,10 @@ export default function MpStatisticsPage() {
         {/* 趋势 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
           <TrendCard title="近 7 日粉丝增长">
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 160, paddingTop: 12 }}>
-              {(stats?.fanTrend ?? []).map((d) => (
-                <Bar key={d.date} label={d.date.slice(5)} value={d.count} ratio={d.count / maxFan} color="#3b82f6" />
-              ))}
-            </div>
+            <BarChart {...fanSpec} options={chartOptions} height={160} />
           </TrendCard>
           <TrendCard title="近 7 日消息收发">
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 160, paddingTop: 12 }}>
-              {(stats?.messageTrend ?? []).map((d) => (
-                <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 120 }}>
-                    <span style={{ width: 10, height: `${Math.round((d.in / maxMsg) * 100)}%`, minHeight: 2, background: '#ec4899', borderRadius: 2 }} title={`收 ${d.in}`} />
-                    <span style={{ width: 10, height: `${Math.round((d.out / maxMsg) * 100)}%`, minHeight: 2, background: '#10b981', borderRadius: 2 }} title={`发 ${d.out}`} />
-                  </div>
-                  <span style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>{d.date.slice(5)}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 8 }}>
-              <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#ec4899', borderRadius: 2, marginRight: 4 }} />收到</span>
-              <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#10b981', borderRadius: 2, marginRight: 4 }} />发出</span>
-            </div>
+            <BarChart {...msgSpec} options={chartOptions} height={160} />
           </TrendCard>
         </div>
           </>
@@ -203,16 +204,6 @@ function TrendCard({ title, children }: Readonly<{ title: string; children: Reac
     <div style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: 16, background: 'var(--semi-color-bg-1)' }}>
       <Typography.Text strong>{title}</Typography.Text>
       {children}
-    </div>
-  );
-}
-
-function Bar({ label, value, ratio, color }: Readonly<{ label: string; value: number; ratio: number; color: string }>) {
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <span style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>{value}</span>
-      <div style={{ width: 16, height: `${Math.round(ratio * 110)}px`, minHeight: 2, background: color, borderRadius: 3 }} />
-      <span style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>{label}</span>
     </div>
   );
 }
