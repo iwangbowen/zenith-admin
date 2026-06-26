@@ -28,6 +28,8 @@
 		"@types/dompurify": "^3.2.0",
 		"@univerjs/preset-sheets-core": "^0.25.0",
 		"@univerjs/presets": "^0.25.0",
+		"@visactor/react-vchart": "^2.1.1",
+		"@visactor/vchart-semi-theme": "^1.13.1",
 		"@wangeditor/editor": "^5.1.23",
 		"@wangeditor/editor-for-react": "^1.0.6",
 		"@xterm/addon-fit": "^0.11.0",
