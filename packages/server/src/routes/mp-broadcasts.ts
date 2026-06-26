@@ -102,6 +102,7 @@ const previewRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getMpBroadcastBeforeAudit(id));
     await previewMpBroadcast(id, c.req.valid('json').openid);
     return c.json(okBody(null, '预览已发送'), 200);
   },

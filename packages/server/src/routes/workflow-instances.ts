@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { idempotencyGuard } from '../middleware/idempotency';
 import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceWithDraftSchema, updateWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema, urgeWorkflowTaskSchema, addInstanceCcSchema, batchApproveWorkflowTaskSchema, batchRejectWorkflowTaskSchema, batchWithdrawWorkflowInstanceSchema, batchUrgeWorkflowInstanceSchema, forwardInstanceSchema, createWorkflowCommentSchema, jumpWorkflowInstanceSchema, reassignWorkflowTaskSchema, createWorkflowConsultSchema, replyWorkflowConsultSchema, recallWorkflowTaskSchema } from '@zenith/shared';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
@@ -9,7 +9,7 @@ import {
   listMyInstances, listPendingMine, listAllInstances, listMyCc, listMyHandled, getInstanceDetail,
   getInstanceRuntimeDiagnostics,
   createInstance, withdrawInstance, cancelInstance, deleteInstance, getInstanceForAdminAudit,
-  approveTask, rejectTask, getWorkflowInstanceBeforeAudit, getWorkflowTaskBeforeAudit,
+  approveTask, rejectTask, getWorkflowInstanceBeforeAudit, getWorkflowTaskBeforeAudit, getWorkflowTaskForAdminAudit,
   transferTask, delegateTask, addSignTask, reduceSignTask, returnTask,
   urgeTask, listTaskUrges, listInstanceUrges, urgeInstance, addInstanceCc,
   updateInstanceDraft, submitDraftInstance, resubmitInstance,
@@ -17,10 +17,13 @@ import {
   countMyCcUnread, markCcRead, forwardInstance, listRelationOptions,
 } from '../services/workflow-instances.service';
 import { listInstanceComments, addInstanceComment } from '../services/workflow-comments.service';
-import { createConsult, replyConsult, listMyConsults } from '../services/workflow-consults.service';
+import { createConsult, replyConsult, listMyConsults, getConsultInstanceIdForAudit } from '../services/workflow-consults.service';
 import { getWorkflowAnalytics, listOverdueTasks, exportInstances } from '../services/workflow-analytics.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+
+const compactAuditData = <T>(items: Array<T | null | undefined>) =>
+  items.filter((item): item is T => item != null);
 
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -123,7 +126,11 @@ const forwardRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { userIds, note } = c.req.valid('json');
+    const before = await getWorkflowInstanceBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     const r = await forwardInstance(id, userIds, note);
+    const after = await getWorkflowInstanceBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, r.message), 200);
   },
 });
@@ -321,6 +328,8 @@ const transferRoute = defineOpenAPIRoute({
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
     const r = await transferTask(taskId, targetUserId, comment);
+    const after = await getWorkflowTaskBeforeAudit(taskId);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(r, '已转办'), 200);
   },
 });
@@ -344,6 +353,8 @@ const delegateRoute = defineOpenAPIRoute({
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
     const r = await delegateTask(taskId, targetUserId, comment);
+    const after = await getWorkflowTaskBeforeAudit(taskId);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(r, '已委派'), 200);
   },
 });
@@ -367,6 +378,8 @@ const addSignRoute = defineOpenAPIRoute({
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
     const r = await addSignTask(taskId, targetUserIds, position, comment, signMode);
+    const after = await getWorkflowTaskBeforeAudit(taskId);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, r.message), 200);
   },
 });
@@ -390,6 +403,8 @@ const reduceSignRoute = defineOpenAPIRoute({
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
     const r = await reduceSignTask(taskId, targetTaskIds, comment);
+    const after = await getWorkflowTaskBeforeAudit(taskId);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, r.message), 200);
   },
 });
@@ -501,7 +516,11 @@ const addInstanceCcRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { nodeKey, userIds } = c.req.valid('json');
+    const before = await getWorkflowInstanceBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     const r = await addInstanceCc(id, nodeKey, userIds);
+    const after = await getWorkflowInstanceBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(r.list, r.message), 200);
   },
 });
@@ -583,7 +602,12 @@ const updateDraftRoute = defineOpenAPIRoute({
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
-  handler: async (c) => c.json(okBody(await updateInstanceDraft(c.req.valid('param').id, c.req.valid('json')), '草稿已保存'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getWorkflowInstanceBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await updateInstanceDraft(id, c.req.valid('json')), '草稿已保存'), 200);
+  },
 });
 
 const submitDraftRoute = defineOpenAPIRoute({
@@ -600,7 +624,12 @@ const submitDraftRoute = defineOpenAPIRoute({
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
-  handler: async (c) => c.json(okBody(await submitDraftInstance(c.req.valid('param').id), '申请已提交'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getWorkflowInstanceBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await submitDraftInstance(id), '申请已提交'), 200);
+  },
 });
 
 const resubmitRoute = defineOpenAPIRoute({
@@ -617,7 +646,12 @@ const resubmitRoute = defineOpenAPIRoute({
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
-  handler: async (c) => c.json(okBody(await resubmitInstance(c.req.valid('param').id), '已生成草稿'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getWorkflowInstanceBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await resubmitInstance(id), '已生成草稿'), 200);
+  },
 });
 
 const batchApproveRoute = defineOpenAPIRoute({
@@ -630,7 +664,11 @@ const batchApproveRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { taskIds, comment } = c.req.valid('json');
+    const before = compactAuditData(await Promise.all(taskIds.map((id) => getWorkflowTaskBeforeAudit(id))));
+    if (before.length > 0) setAuditBeforeData(c, before);
     const results = await batchApproveTasks(taskIds, comment);
+    const after = compactAuditData(await Promise.all(taskIds.map((id) => getWorkflowTaskBeforeAudit(id))));
+    if (after.length > 0) setAuditAfterData(c, after);
     const succeeded = results.filter((r) => r.success).length;
     return c.json(okBody({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条，失败 ${results.length - succeeded} 条`), 200);
   },
@@ -646,7 +684,11 @@ const batchRejectRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { taskIds, comment } = c.req.valid('json');
+    const before = compactAuditData(await Promise.all(taskIds.map((id) => getWorkflowTaskBeforeAudit(id))));
+    if (before.length > 0) setAuditBeforeData(c, before);
     const results = await batchRejectTasks(taskIds, comment);
+    const after = compactAuditData(await Promise.all(taskIds.map((id) => getWorkflowTaskBeforeAudit(id))));
+    if (after.length > 0) setAuditAfterData(c, after);
     const succeeded = results.filter((r) => r.success).length;
     return c.json(okBody({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条，失败 ${results.length - succeeded} 条`), 200);
   },
@@ -662,7 +704,11 @@ const batchWithdrawRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { instanceIds, comment } = c.req.valid('json');
+    const before = compactAuditData(await Promise.all(instanceIds.map((id) => getWorkflowInstanceBeforeAudit(id))));
+    if (before.length > 0) setAuditBeforeData(c, before);
     const results = await batchWithdrawInstances(instanceIds, comment);
+    const after = compactAuditData(await Promise.all(instanceIds.map((id) => getWorkflowInstanceBeforeAudit(id))));
+    if (after.length > 0) setAuditAfterData(c, after);
     const succeeded = results.filter((r) => r.success).length;
     return c.json(okBody({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条，失败 ${results.length - succeeded} 条`), 200);
   },
@@ -722,7 +768,12 @@ const reassignRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const { targetUserId, comment } = c.req.valid('json');
-    return c.json(okBody(await reassignTask(taskId, targetUserId, comment), '已改派'), 200);
+    const before = await getWorkflowTaskForAdminAudit(taskId);
+    if (before) setAuditBeforeData(c, before);
+    const row = await reassignTask(taskId, targetUserId, comment);
+    const after = await getWorkflowTaskForAdminAudit(taskId);
+    if (after) setAuditAfterData(c, after);
+    return c.json(okBody(row, '已改派'), 200);
   },
 });
 
@@ -742,6 +793,8 @@ const recallRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
     const body = c.req.valid('json');
+    const before = await getWorkflowTaskBeforeAudit(taskId);
+    if (before) setAuditBeforeData(c, before);
     return c.json(okBody(await recallTask(taskId, body?.comment), '已撤回'), 200);
   },
 });
@@ -759,7 +812,15 @@ const consultRoute = defineOpenAPIRoute({
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
-  handler: async (c) => c.json(okBody(await createConsult(c.req.valid('param').taskId, c.req.valid('json')), '已发起协办'), 200),
+  handler: async (c) => {
+    const { taskId } = c.req.valid('param');
+    const before = await getWorkflowTaskBeforeAudit(taskId);
+    if (before) setAuditBeforeData(c, before);
+    const result = await createConsult(taskId, c.req.valid('json'));
+    const after = await getWorkflowTaskBeforeAudit(taskId);
+    if (after) setAuditAfterData(c, after);
+    return c.json(okBody(result, '已发起协办'), 200);
+  },
 });
 
 const myConsultsRoute = defineOpenAPIRoute({
@@ -786,7 +847,16 @@ const replyConsultRoute = defineOpenAPIRoute({
       403: { content: jsonContent(ErrorResponse), description: '无权操作' },
     },
   }),
-  handler: async (c) => c.json(okBody(await replyConsult(c.req.valid('param').id, c.req.valid('json')), '已回复'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const instanceId = await getConsultInstanceIdForAudit(id);
+    const before = instanceId ? await getWorkflowInstanceBeforeAudit(instanceId) : null;
+    if (before) setAuditBeforeData(c, before);
+    const result = await replyConsult(id, c.req.valid('json'));
+    const after = instanceId ? await getWorkflowInstanceBeforeAudit(instanceId) : null;
+    if (after) setAuditAfterData(c, after);
+    return c.json(okBody(result, '已回复'), 200);
+  },
 });
 
 router.openapiRoutes([listRoute, pendingMineRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, relationOptionsRoute, analyticsRoute, overdueRoute, exportRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, diagnosticsRoute, detailRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);

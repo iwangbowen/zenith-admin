@@ -142,6 +142,16 @@ export async function replyConsult(consultId: number, input: ReplyWorkflowConsul
   });
 }
 
+export async function getConsultInstanceIdForAudit(consultId: number): Promise<number | null> {
+  const user = currentUser();
+  const [row] = await db
+    .select({ instanceId: workflowTaskConsults.instanceId })
+    .from(workflowTaskConsults)
+    .where(and(eq(workflowTaskConsults.id, consultId), eq(workflowTaskConsults.consulteeId, user.userId)))
+    .limit(1);
+  return row?.instanceId ?? null;
+}
+
 /** 我收到的协办邀请（待我协办） */
 export async function listMyConsults(query: { page?: number; pageSize?: number; status?: string } = {}) {
   const user = currentUser();

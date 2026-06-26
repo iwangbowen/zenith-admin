@@ -12,7 +12,7 @@ const listRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/', tags: ['WorkflowSavedViews'], summary: '保存视图列表',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list', audit: { description: '保存工作流视图', module: '工作流管理' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list' })] as const,
     request: { query: z.object({ pageKey: z.string().min(1) }) },
     responses: { ...commonErrorResponses, ...ok(z.array(WorkflowSavedViewDTO), 'ok') },
   }),
@@ -23,7 +23,7 @@ const createRouteDef = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/', tags: ['WorkflowSavedViews'], summary: '保存视图',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list', audit: { description: '更新工作流视图', module: '工作流管理' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list', audit: { description: '保存工作流视图', module: '工作流管理' } })] as const,
     request: { body: { content: jsonContent(createWorkflowSavedViewSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(WorkflowSavedViewDTO, '已保存') },
   }),
@@ -34,7 +34,7 @@ const updateRouteDef = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}', tags: ['WorkflowSavedViews'], summary: '更新视图',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list' })] as const,
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list', audit: { description: '更新工作流视图', module: '工作流管理' } })] as const,
     request: { params: IdParam, body: { content: jsonContent(updateWorkflowSavedViewSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(WorkflowSavedViewDTO, '已更新'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   }),
