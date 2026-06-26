@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { validationHook, commonErrorResponses, ok, okMsg, okBody } from '../lib/openapi-schemas';
 import { BusinessFileDTO } from '../lib/openapi-dtos';
 import { listBusinessFiles, removeBusinessFile, type BusinessFileType } from '../services/business-files.service';
@@ -34,7 +34,10 @@ const removeRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete', path: '/{businessType}/{businessId}/{fileId}', tags: ['Business Files'], summary: '移除业务附件',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:file:delete' })] as const,
+    middleware: [authMiddleware, guard({
+      permission: 'system:file:delete',
+      audit: { description: '移除业务附件', module: '文件管理' },
+    })] as const,
     request: {
       params: BusinessTypeParam.extend({ fileId: z.string().uuid().openapi({ example: '018f6f8a-5f76-7d8c-9a1b-2c3d4e5f6789' }) }),
     },
@@ -42,7 +45,11 @@ const removeRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { businessType, businessId, fileId } = c.req.valid('param');
-    await removeBusinessFile(assertBusinessType(businessType), businessId, fileId);
+    const type = assertBusinessType(businessType);
+    const beforeFiles = await listBusinessFiles(type, businessId);
+    setAuditBeforeData(c, beforeFiles.find((item) => item.fileId === fileId) ?? { businessType, businessId, fileId });
+    await removeBusinessFile(type, businessId, fileId);
+    setAuditAfterData(c, { businessType, businessId, fileId, removed: true });
     return c.json(okBody(null, '移除成功'), 200);
   },
 });

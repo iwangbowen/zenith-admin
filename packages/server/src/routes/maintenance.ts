@@ -28,10 +28,7 @@ const getRoute = defineOpenAPIRoute({
     tags: ['维护模式'],
     summary: '获取维护模式详情',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:maintenance:manage',
-      audit: { description: '更新维护模式', module: '维护模式' },
-    })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:maintenance:manage' })] as const,
     responses: { ...ok(MaintenanceStatusDTO, '维护模式状态'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await getMaintenanceStatus()), 200),
@@ -51,7 +48,10 @@ const updateRoute = defineOpenAPIRoute({
     tags: ['维护模式'],
     summary: '开启 / 关闭维护模式',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:maintenance:manage' })] as const,
+    middleware: [authMiddleware, guard({
+      permission: 'system:maintenance:manage',
+      audit: { description: '更新维护模式', module: '维护模式' },
+    })] as const,
     request: { body: { content: { 'application/json': { schema: UpdateBody } } } },
     responses: { ...ok(MaintenanceStatusDTO, '更新后的维护模式状态'), ...commonErrorResponses },
   }),

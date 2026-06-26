@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, PaginationQuery, BatchIdsBody, okBody } from '../lib/openapi-schemas';
 import {
   WorkflowEventSubscriptionDTO,
@@ -20,6 +20,8 @@ import {
   getDelivery,
   retryDelivery,
   retryDeliveries,
+  getDeliveryBeforeAudit,
+  getDeliveriesBeforeAudit,
 } from '../services/workflow-event-subscriptions.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -78,7 +80,11 @@ const getSecret = defineOpenAPIRoute({
     request: { params: IdParam },
     responses: { ...commonErrorResponses, ...ok(WorkflowEventSubscriptionSecretDTO, 'secret 明文') },
   }),
-  handler: async (c) => c.json(okBody(await getSubscriptionSecret(c.req.valid('param').id)), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditAfterData(c, { id, secretViewed: true });
+    return c.json(okBody(await getSubscriptionSecret(id)), 200);
+  },
 });
 
 const create = defineOpenAPIRoute({
@@ -179,7 +185,12 @@ const retryDeliveryRoute = defineOpenAPIRoute({
     request: { params: IdParam },
     responses: { ...commonErrorResponses, ...ok(WorkflowEventDeliveryDTO, '已加入重试队列') },
   }),
-  handler: async (c) => c.json(okBody(await retryDelivery(c.req.valid('param').id), '已加入重试队列'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getDeliveryBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await retryDelivery(id), '已加入重试队列'), 200);
+  },
 });
 
 const batchRetryRoute = defineOpenAPIRoute({
@@ -192,7 +203,11 @@ const batchRetryRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getDeliveriesBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     const count = await retryDeliveries(ids);
+    const after = await getDeliveriesBeforeAudit(ids);
+    if (after.length > 0) setAuditAfterData(c, after);
     return c.json(okBody({ count }, '已加入重试队列'), 200);
   },
 });

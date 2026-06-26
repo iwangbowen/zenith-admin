@@ -1,12 +1,13 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, BatchIdsBody, okBody } from '../lib/openapi-schemas';
 import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO, WorkflowDefinitionExportDTO, WorkflowVersionDiffDTO, WorkflowApproverPreviewNodeDTO } from '../lib/openapi-dtos';
 import { importWorkflowDefinitionSchema, previewWorkflowSchema, workflowCustomFormConfigSchema, workflowFormTypeSchema } from '@zenith/shared';
 import {
   listDefinitions, listPublishedDefinitions, getDefinition, createDefinition,
   updateDefinition, publishDefinition, disableDefinition, enableDefinition, deleteDefinition, getWorkflowDefinitionBeforeAudit,
+  getWorkflowDefinitionsBeforeAudit,
   batchDisableDefinitions, batchEnableDefinitions, batchDeleteDefinitions,
   listVersions, restoreVersion, duplicateDefinition, exportDefinition, importDefinition, diffVersions,
 } from '../services/workflow-definitions.service';
@@ -196,7 +197,11 @@ const batchDisableRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getWorkflowDefinitionsBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     const { updated, skipped } = await batchDisableDefinitions(ids);
+    const after = await getWorkflowDefinitionsBeforeAudit(ids);
+    if (after.length > 0) setAuditAfterData(c, after);
     const message = skipped > 0 ? `成功禁用 ${updated} 条，${skipped} 条已跳过（非已发布状态）` : `成功禁用 ${updated} 条`;
     return c.json(okBody(null, message), 200);
   },
@@ -212,7 +217,11 @@ const batchEnableRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getWorkflowDefinitionsBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     const { updated, skipped } = await batchEnableDefinitions(ids);
+    const after = await getWorkflowDefinitionsBeforeAudit(ids);
+    if (after.length > 0) setAuditAfterData(c, after);
     const message = skipped > 0 ? `成功启用 ${updated} 条，${skipped} 条已跳过（非已禁用状态）` : `成功启用 ${updated} 条`;
     return c.json(okBody(null, message), 200);
   },
@@ -228,6 +237,8 @@ const batchDeleteRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getWorkflowDefinitionsBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     const { deleted, skipped } = await batchDeleteDefinitions(ids);
     const message = skipped > 0 ? `成功删除 ${deleted} 条，${skipped} 条已跳过（已发布或存在发起实例）` : `成功删除 ${deleted} 条`;
     return c.json(okBody(null, message), 200);

@@ -281,7 +281,10 @@ const cancelQueryRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/query/cancel', tags: ['DbAdmin'], summary: '取消正在执行的查询',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:db-admin:query' })] as const,
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:query',
+      audit: { description: '取消正在执行的 SQL 查询', module: '数据库管理' },
+    })] as const,
     request: { body: { content: jsonContent(z.object({ queryId: z.string().min(1).max(64) })), required: true } },
     responses: { ...commonErrorResponses, ...ok(DbAdminOpResultDTO, '取消结果') },
   }),

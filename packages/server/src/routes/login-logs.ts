@@ -11,10 +11,7 @@ const listRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/', tags: ['LoginLogs'], summary: '登录日志分页查询',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({
-      permission: 'system:log:login',
-      audit: { description: '清除登录日志', module: '登录日志' },
-    })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:log:login' })] as const,
     request: {
       query: PaginationQuery.extend({
         username: z.string().optional(),
@@ -33,7 +30,10 @@ const statsRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/stats', tags: ['LoginLogs'], summary: '登录日志统计',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:log:login' })] as const,
+    middleware: [authMiddleware, guard({
+      permission: 'system:log:login',
+      audit: { description: '清除登录日志', module: '登录日志' },
+    })] as const,
     request: { query: z.object({ days: z.coerce.number().optional() }) },
     responses: { ...ok(LoginLogStatsDTO, '统计结果'), ...commonErrorResponses },
   }),
