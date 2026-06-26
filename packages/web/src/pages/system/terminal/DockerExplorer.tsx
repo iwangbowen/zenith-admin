@@ -8,7 +8,7 @@
  *  - 容器操作：启动 / 停止 / 重启 / logs / stats / attach shell
  */
 import { useState, useCallback, useEffect } from 'react';
-import { Tree, Typography, Button, Toast, Tooltip, Spin, Dropdown, Modal, Space } from '@douyinfe/semi-ui';
+import { Tree, Typography, Button, Toast, Spin, Dropdown, Modal, Space } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import {
   Activity,
@@ -432,33 +432,27 @@ export default function DockerExplorer({ active, onOpenFile, onAttachShell }: Do
             {label}
           </Typography.Text>
           {container && isRunning && (
-            <Dropdown trigger="click" position="bottomLeft" render={renderAttachMenu(container)}>
-              <Tooltip content="Attach Shell" position="top">
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="docker-tree-row-action"
-                  style={{ cursor: 'pointer', opacity: 0, transition: 'opacity 0.15s', flexShrink: 0 }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <TerminalSquare size={13} style={{ color: 'var(--semi-color-primary)', verticalAlign: 'middle' }} />
-                </span>
-              </Tooltip>
+            <Dropdown trigger="click" clickToHide stopPropagation position="bottomRight" render={renderAttachMenu(container)}>
+              <Button
+                className="docker-tree-row-action"
+                size="small"
+                theme="borderless"
+                type="tertiary"
+                icon={<TerminalSquare size={13} style={{ color: 'var(--semi-color-primary)' }} />}
+                onClick={(e) => e.stopPropagation()}
+              />
             </Dropdown>
           )}
           {container && (
-            <Dropdown trigger="click" position="bottomLeft" render={renderContainerMenu(container)}>
-              <Tooltip content="容器操作" position="top">
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="docker-tree-row-action"
-                  style={{ cursor: 'pointer', opacity: 0, transition: 'opacity 0.15s', flexShrink: 0 }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <MoreHorizontal size={13} style={{ color: 'var(--semi-color-text-2)', verticalAlign: 'middle' }} />
-                </span>
-              </Tooltip>
+            <Dropdown trigger="click" clickToHide stopPropagation position="bottomRight" render={renderContainerMenu(container)}>
+              <Button
+                className="docker-tree-row-action"
+                size="small"
+                theme="borderless"
+                type="tertiary"
+                icon={<MoreHorizontal size={13} />}
+                onClick={(e) => e.stopPropagation()}
+              />
             </Dropdown>
           )}
         </span>
