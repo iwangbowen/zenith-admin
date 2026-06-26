@@ -28,6 +28,12 @@ export async function listChannelTemplates(): Promise<ChannelMessageTemplate[]> 
   return rows.map(mapTemplate);
 }
 
+export async function getChannelTemplateBeforeAudit(id: number): Promise<ChannelMessageTemplate> {
+  const row = await db.query.channelMessageTemplates.findFirst({ where: eq(channelMessageTemplates.id, id) });
+  if (!row) throw new HTTPException(404, { message: '模板不存在' });
+  return mapTemplate(row);
+}
+
 export async function createChannelTemplate(input: CreateChannelTemplateInput): Promise<ChannelMessageTemplate> {
   const [row] = await db.insert(channelMessageTemplates).values({
     name: input.name,

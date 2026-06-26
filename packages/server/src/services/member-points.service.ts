@@ -55,6 +55,12 @@ export async function getPointAccount(memberId: number) {
   return mapPointAccount(await ensurePointAccount(memberId));
 }
 
+export async function getPointAccountBeforeAudit(memberId: number) {
+  const [acc] = await db.select().from(memberPointAccounts).where(eq(memberPointAccounts.memberId, memberId)).limit(1);
+  if (!acc) throw new HTTPException(404, { message: '积分账户不存在' });
+  return mapPointAccount(acc);
+}
+
 export async function getMyPointAccount() {
   return getPointAccount(currentMemberId());
 }

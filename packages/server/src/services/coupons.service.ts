@@ -108,6 +108,15 @@ export async function getCoupon(id: number) {
   return mapCoupon(await ensureCouponExists(id));
 }
 
+export async function getMemberCouponBeforeAudit(id: number) {
+  const row = await db.query.memberCoupons.findFirst({
+    where: eq(memberCoupons.id, id),
+    with: { coupon: true, member: { columns: { nickname: true } } },
+  });
+  if (!row) throw new HTTPException(404, { message: '领券记录不存在' });
+  return mapMemberCoupon(row, row.coupon, row.member?.nickname);
+}
+
 export async function createCoupon(input: CreateCouponInput) {
   try {
     const [row] = await db

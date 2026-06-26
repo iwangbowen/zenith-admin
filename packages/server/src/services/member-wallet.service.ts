@@ -60,6 +60,12 @@ export async function getWallet(memberId: number) {
   return mapWallet(await ensureWallet(memberId));
 }
 
+export async function getWalletBeforeAudit(memberId: number) {
+  const [wallet] = await db.select().from(memberWallets).where(eq(memberWallets.memberId, memberId)).limit(1);
+  if (!wallet) throw new HTTPException(404, { message: '钱包不存在' });
+  return mapWallet(wallet);
+}
+
 export async function getMyWallet() {
   return getWallet(currentMemberId());
 }

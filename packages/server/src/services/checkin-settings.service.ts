@@ -28,6 +28,10 @@ export async function getCheckinSettings() {
   return mapSettings(await getCheckinSettingsRow());
 }
 
+export async function getCheckinSettingsBeforeAudit() {
+  return getCheckinSettings();
+}
+
 export async function updateCheckinSettings(data: {
   makeupEnabled?: boolean;
   makeupCostPoints?: number;

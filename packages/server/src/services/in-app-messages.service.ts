@@ -213,6 +213,23 @@ export async function adminMarkAsRead(id: number) {
   return { count: 1 };
 }
 
+/** 管理员视角：将当前租户所有未读站内信标记为已读。 */
+export async function adminMarkAllAsRead() {
+  const where = mergeWhere(and(
+    eq(inAppMessages.isRead, false),
+    tenantScope(inAppMessages),
+  ));
+  const result = await db.update(inAppMessages)
+    .set({ isRead: true, readAt: new Date() })
+    .where(where ?? sql`true`)
+    .returning({ id: inAppMessages.id, userId: inAppMessages.userId });
+  const userIds = [...new Set(result.map((row) => row.userId))];
+  if (userIds.length > 0) {
+    scheduleSendToUsers(userIds.map((userId) => ({ userId })), { type: 'in-app-message:read-all', payload: {} });
+  }
+  return { count: result.length };
+}
+
 export async function unreadCount(userId?: number) {
   const me = currentUser();
   const targetId = userId ?? me.userId;

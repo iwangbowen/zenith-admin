@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg,
   IdParam, PaginationQuery, okBody,
@@ -25,19 +25,20 @@ import {
   listChannelMessageRecords, updateDeferredMessage, deleteDeferredMessage, publishDeferredMessageNow,
   estimateAudience, retractMessage, testSend,
   listChannelSubscribers, addChannelSubscribers, removeChannelSubscriber, exportChannelSubscribers,
+  getChannelBeforeAudit, getChannelMessageBeforeAudit,
 } from '../services/channel.service';
 import { getChannelDashboard } from '../services/channel-dashboard.service';
 import {
-  listChannelTemplates, createChannelTemplate, updateChannelTemplate, deleteChannelTemplate,
+  listChannelTemplates, createChannelTemplate, updateChannelTemplate, deleteChannelTemplate, getChannelTemplateBeforeAudit,
 } from '../services/channel-template.service';
 import {
   getChannelMenus, saveChannelMenus,
-  listChannelAutoReplies, createChannelAutoReply, updateChannelAutoReply, deleteChannelAutoReply,
+  listChannelAutoReplies, createChannelAutoReply, updateChannelAutoReply, deleteChannelAutoReply, getChannelAutoReplyBeforeAudit,
   sendUserMessage, replyAsAgent, handleSubscribeAutoReply,
   listCsChannels, listChannelConversations, listConversationMessages,
-  listChannelQuickReplies, createChannelQuickReply, updateChannelQuickReply, deleteChannelQuickReply,
+  listChannelQuickReplies, createChannelQuickReply, updateChannelQuickReply, deleteChannelQuickReply, getChannelQuickReplyBeforeAudit,
   assignConversation, resolveConversation, setConversationTags, listCsAgents,
-  rateConversation, getCsPerformance,
+  rateConversation, getCsPerformance, getConversationBeforeAudit,
 } from '../services/channel-cs.service';
 
 const channelsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -137,6 +138,7 @@ const update = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelBeforeAudit(id));
     return c.json(okBody(await updateChannel(id, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -151,6 +153,7 @@ const remove = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelBeforeAudit(id));
     await deleteChannel(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
@@ -257,6 +260,7 @@ const saveMenus = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelMenus(id));
     return c.json(okBody(await saveChannelMenus(id, c.req.valid('json')), '保存成功'), 200);
   },
 });
@@ -301,6 +305,7 @@ const updateAutoReply = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { replyId } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelAutoReplyBeforeAudit(replyId));
     return c.json(okBody(await updateChannelAutoReply(replyId, c.req.valid('json')), '更新成功'), 200);
   },
 });
@@ -315,6 +320,7 @@ const removeAutoReply = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { replyId } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelAutoReplyBeforeAudit(replyId));
     await deleteChannelAutoReply(replyId);
     return c.json(okBody(null, '删除成功'), 200);
   },
@@ -412,6 +418,7 @@ const updateDraft = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelMessageBeforeAudit(id));
     return c.json(okBody(await updateDeferredMessage(id, c.req.valid('json')), '已保存'), 200);
   },
 });
@@ -426,6 +433,7 @@ const deleteDraft = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelMessageBeforeAudit(id));
     await deleteDeferredMessage(id);
     return c.json(okBody(null, '已删除'), 200);
   },
@@ -441,6 +449,7 @@ const publishDraftNow = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelMessageBeforeAudit(id));
     return c.json(okBody(await publishDeferredMessageNow(id), '已发送'), 200);
   },
 });
@@ -455,7 +464,9 @@ const retract = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelMessageBeforeAudit(id));
     await retractMessage(id);
+    setAuditAfterData(c, await getChannelMessageBeforeAudit(id));
     return c.json(okBody(null, '已撤回'), 200);
   },
 });
@@ -497,7 +508,9 @@ const addSubscribers = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await exportChannelSubscribers(id));
     await addChannelSubscribers(id, c.req.valid('json').userIds);
+    setAuditAfterData(c, await exportChannelSubscribers(id));
     return c.json(okBody(null, '已添加'), 200);
   },
 });
@@ -512,7 +525,9 @@ const removeSubscriber = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id, userId } = c.req.valid('param');
+    setAuditBeforeData(c, await exportChannelSubscribers(id));
     await removeChannelSubscriber(id, userId);
+    setAuditAfterData(c, await exportChannelSubscribers(id));
     return c.json(okBody(null, '已移除'), 200);
   },
 });
@@ -564,6 +579,7 @@ const updateTemplate = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelTemplateBeforeAudit(id));
     return c.json(okBody(await updateChannelTemplate(id, c.req.valid('json')), '已保存'), 200);
   },
 });
@@ -578,6 +594,7 @@ const removeTemplate = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelTemplateBeforeAudit(id));
     await deleteChannelTemplate(id);
     return c.json(okBody(null, '已删除'), 200);
   },
@@ -657,6 +674,7 @@ const updateQuickReply = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelQuickReplyBeforeAudit(id));
     return c.json(okBody(await updateChannelQuickReply(id, c.req.valid('json')), '已保存'), 200);
   },
 });
@@ -671,6 +689,7 @@ const deleteQuickReply = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelQuickReplyBeforeAudit(id));
     await deleteChannelQuickReply(id);
     return c.json(okBody(null, '已删除'), 200);
   },
@@ -698,7 +717,11 @@ const csAssign = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id, userId } = c.req.valid('param');
+    const before = await getConversationBeforeAudit(id, userId);
+    if (before) setAuditBeforeData(c, before);
     await assignConversation(id, userId, c.req.valid('json').assigneeId);
+    const after = await getConversationBeforeAudit(id, userId);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '已指派'), 200);
   },
 });
@@ -713,7 +736,11 @@ const csResolve = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id, userId } = c.req.valid('param');
+    const before = await getConversationBeforeAudit(id, userId);
+    if (before) setAuditBeforeData(c, before);
     await resolveConversation(id, userId);
+    const after = await getConversationBeforeAudit(id, userId);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '已解决'), 200);
   },
 });
@@ -728,7 +755,11 @@ const csTags = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id, userId } = c.req.valid('param');
+    const before = await getConversationBeforeAudit(id, userId);
+    if (before) setAuditBeforeData(c, before);
     await setConversationTags(id, userId, c.req.valid('json').tags);
+    const after = await getConversationBeforeAudit(id, userId);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '已保存'), 200);
   },
 });

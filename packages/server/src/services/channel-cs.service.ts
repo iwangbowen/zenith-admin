@@ -144,6 +144,12 @@ export async function listChannelAutoReplies(channelId: number): Promise<Channel
   return rows.map(mapAutoReply);
 }
 
+export async function getChannelAutoReplyBeforeAudit(id: number): Promise<ChannelAutoReply> {
+  const row = await db.query.channelAutoReplies.findFirst({ where: eq(channelAutoReplies.id, id) });
+  if (!row) throw new HTTPException(404, { message: '自动回复规则不存在' });
+  return mapAutoReply(row);
+}
+
 export async function createChannelAutoReply(channelId: number, input: CreateChannelAutoReplyInput): Promise<ChannelAutoReply> {
   await ensureBusinessChannel(channelId);
   const [row] = await db.insert(channelAutoReplies).values({
@@ -456,6 +462,11 @@ export async function listChannelConversations(channelId: number, filter: Conver
   return convos;
 }
 
+export async function getConversationBeforeAudit(channelId: number, userId: number): Promise<ChannelConversation | null> {
+  const list = await listChannelConversations(channelId, { assignee: 'all' });
+  return list.find((item) => item.userId === userId) ?? null;
+}
+
 /** upsert 会话属性行（写操作前确保行存在），返回更新后的行。 */
 async function upsertConversation(channelId: number, userId: number, set: Partial<ChannelConversationRow>): Promise<ChannelConversationRow> {
   const [row] = await db.insert(channelConversations)
@@ -624,6 +635,15 @@ export async function listChannelQuickReplies(channelId?: number): Promise<Chann
     with: { channel: { columns: { name: true } } },
   });
   return rows.map((r) => mapQuickReply(r, r.channel?.name ?? null));
+}
+
+export async function getChannelQuickReplyBeforeAudit(id: number): Promise<ChannelQuickReply> {
+  const row = await db.query.channelQuickReplies.findFirst({
+    where: eq(channelQuickReplies.id, id),
+    with: { channel: { columns: { name: true } } },
+  });
+  if (!row) throw new HTTPException(404, { message: '快捷回复不存在' });
+  return mapQuickReply(row, row.channel?.name ?? null);
 }
 
 /** 新建快捷回复 */

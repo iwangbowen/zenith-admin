@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, PaginationQuery, okBody,
 } from '../lib/openapi-schemas';
@@ -8,7 +8,7 @@ import {
   MonitorAlertRuleDTO, MonitorAlertEventDTO, CreateMonitorAlertRuleDTO, UpdateMonitorAlertRuleDTO,
 } from '../lib/openapi-dtos';
 import {
-  listRules, createRule, updateRule, deleteRule, setRuleEnabled, listEvents,
+  listRules, createRule, updateRule, deleteRule, setRuleEnabled, listEvents, getMonitorAlertRuleBeforeAudit,
 } from '../services/monitor-alert.service';
 
 const monitorAlertsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -68,7 +68,11 @@ const ruleUpdate = defineOpenAPIRoute({
     request: { params: IdParam, body: { content: jsonContent(UpdateMonitorAlertRuleDTO), required: true } },
     responses: { ...ok(MonitorAlertRuleDTO, '更新成功'), ...commonErrorResponses },
   }),
-  handler: async (c) => c.json(okBody(await updateRule(c.req.valid('param').id, c.req.valid('json')), '更新成功'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getMonitorAlertRuleBeforeAudit(id));
+    return c.json(okBody(await updateRule(id, c.req.valid('json')), '更新成功'), 200);
+  },
 });
 
 const ruleToggle = defineOpenAPIRoute({
@@ -79,7 +83,11 @@ const ruleToggle = defineOpenAPIRoute({
     request: { params: IdParam, body: { content: jsonContent(EnabledBody), required: true } },
     responses: { ...ok(MonitorAlertRuleDTO, '操作成功'), ...commonErrorResponses },
   }),
-  handler: async (c) => c.json(okBody(await setRuleEnabled(c.req.valid('param').id, c.req.valid('json').enabled), '操作成功'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getMonitorAlertRuleBeforeAudit(id));
+    return c.json(okBody(await setRuleEnabled(id, c.req.valid('json').enabled), '操作成功'), 200);
+  },
 });
 
 const ruleDelete = defineOpenAPIRoute({
@@ -91,7 +99,9 @@ const ruleDelete = defineOpenAPIRoute({
     responses: { ...okMsg('删除成功'), ...commonErrorResponses },
   }),
   handler: async (c) => {
-    await deleteRule(c.req.valid('param').id);
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getMonitorAlertRuleBeforeAudit(id));
+    await deleteRule(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });

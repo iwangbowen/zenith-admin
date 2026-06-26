@@ -128,6 +128,10 @@ export async function ensureRuleExists(id: number) {
   return row;
 }
 
+export async function getMonitorAlertRuleBeforeAudit(id: number) {
+  return mapRule(await ensureRuleExists(id));
+}
+
 export async function createRule(input: CreateMonitorAlertRuleInput) {
   const [row] = await db
     .insert(monitorAlertRules)

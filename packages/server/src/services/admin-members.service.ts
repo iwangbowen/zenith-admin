@@ -3,7 +3,7 @@
  * 复用 member-auth.service 的 mapMember / ensureMemberExists。
  */
 import bcrypt from 'bcryptjs';
-import { and, desc, eq, gte, lte, inArray, ilike, or, count, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, inArray, ilike, or, count, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { members, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs } from '../db/schema';
@@ -104,6 +104,31 @@ export async function getMemberDetail(id: number) {
     pointBalance: row.pointAccount?.balance ?? 0,
     walletBalance: row.wallet?.balance ?? 0,
   });
+}
+
+export async function getMemberBeforeAudit(id: number) {
+  return getMemberDetail(id);
+}
+
+export async function getMembersBeforeAudit(ids: number[]) {
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) return [];
+  const rows = await db.query.members.findMany({
+    where: inArray(members.id, validIds),
+    with: {
+      level: { columns: { name: true } },
+      pointAccount: { columns: { balance: true } },
+      wallet: { columns: { balance: true } },
+    },
+    orderBy: asc(members.id),
+  });
+  return rows.map((r) =>
+    mapMember(r, {
+      levelName: r.level?.name ?? null,
+      pointBalance: r.pointAccount?.balance ?? 0,
+      walletBalance: r.wallet?.balance ?? 0,
+    }),
+  );
 }
 
 // ─── 写操作 ───────────────────────────────────────────────────────────────────
