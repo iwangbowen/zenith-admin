@@ -53,3 +53,4 @@ export * from './mp';
 export * from './ssl-certificates';
 export * from './nginx-sites';
 export * from './firewall';
+export * from './report';

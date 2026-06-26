@@ -1,6 +1,8 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, bigint, boolean, primaryKey, unique, text, uniqueIndex, index, jsonb, smallint, real, date, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
+// 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
+import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget } from '@zenith/shared';
 
 export const statusEnum = pgEnum('status', ['enabled', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -4376,4 +4378,69 @@ export const mpKfSessionEventsRelations = relations(mpKfSessionEvents, ({ one })
 export const mpKfRoutingConfigsRelations = relations(mpKfRoutingConfigs, ({ one }) => ({
   account: one(mpAccounts, { fields: [mpKfRoutingConfigs.accountId], references: [mpAccounts.id] }),
   tenant: one(tenants, { fields: [mpKfRoutingConfigs.tenantId], references: [tenants.id] }),
+}));
+
+// ════════════════════════════════════════════════════════════════════════════
+// 报表中心（Report Center）—— 通用报表设计器 / 数据大屏
+// ════════════════════════════════════════════════════════════════════════════
+export const reportDatasourceTypeEnum = pgEnum('report_datasource_type', ['api', 'sql']);
+
+/** 报表数据源：api=远程 HTTP；sql=内置只读主库 */
+export const reportDatasources = pgTable('report_datasources', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull().unique(),
+  type: reportDatasourceTypeEnum('type').notNull(),
+  /** 连接配置：api→{url,method,headers}；sql→{connection:'internal'} */
+  config: jsonb('config').$type<ReportDatasourceConfig>().notNull().default(sql`'{}'::jsonb`),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ReportDatasourceRow = typeof reportDatasources.$inferSelect;
+export type NewReportDatasource = typeof reportDatasources.$inferInsert;
+
+/** 报表数据集：绑定数据源 + 查询内容 + 字段定义 */
+export const reportDatasets = pgTable('report_datasets', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull().unique(),
+  datasourceId: integer('datasource_id').notNull().references(() => reportDatasources.id, { onDelete: 'restrict' }),
+  /** 从数据源继承的类型（冗余，便于取数无需 JOIN） */
+  type: reportDatasourceTypeEnum('type').notNull(),
+  /** 查询内容：sql→{sql}；api→{itemsPath,params} */
+  content: jsonb('content').$type<ReportDatasetContent>().notNull().default(sql`'{}'::jsonb`),
+  /** 字段（列）定义 */
+  fields: jsonb('fields').$type<ReportField[]>().notNull().default(sql`'[]'::jsonb`),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ReportDatasetRow = typeof reportDatasets.$inferSelect;
+export type NewReportDataset = typeof reportDatasets.$inferInsert;
+
+/** 报表仪表盘：网格布局 + 组件配置 */
+export const reportDashboards = pgTable('report_dashboards', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull().unique(),
+  /** react-grid-layout 布局数组 */
+  layout: jsonb('layout').$type<ReportGridItem[]>().notNull().default(sql`'[]'::jsonb`),
+  /** 组件配置数组 */
+  widgets: jsonb('widgets').$type<ReportWidget[]>().notNull().default(sql`'[]'::jsonb`),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ReportDashboardRow = typeof reportDashboards.$inferSelect;
+export type NewReportDashboard = typeof reportDashboards.$inferInsert;
+
+export const reportDatasourcesRelations = relations(reportDatasources, ({ many }) => ({
+  datasets: many(reportDatasets),
+}));
+export const reportDatasetsRelations = relations(reportDatasets, ({ one }) => ({
+  datasource: one(reportDatasources, { fields: [reportDatasets.datasourceId], references: [reportDatasources.id] }),
 }));

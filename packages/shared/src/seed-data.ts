@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus, ReportDatasource, ReportDataset, ReportDashboard } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -445,6 +445,21 @@ export const SEED_MENUS: Menu[] = [
   { id: 900, parentId: 0,   title: '业务示例', name: 'BizDemo',          path: undefined,        component: undefined,            icon: 'Briefcase',     type: 'directory', sort: 12, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 901, parentId: 900, title: '请假管理', name: 'BizLeave',         path: '/biz/leave',     component: 'biz/leave/LeavePage', icon: 'CalendarClock', type: 'menu',      sort: 1,  status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 902, parentId: 900, title: '支付接入示例', name: 'BizPayDemo',     path: '/biz/pay-demo',  component: 'biz/pay-demo/PayDemoPage', icon: 'Wallet',     type: 'menu',      sort: 2,  status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+
+  // ── 报表中心（通用报表设计器 / 数据大屏）──────────────────────────────────────
+  { id: 1200, parentId: 0,    title: '报表中心', name: 'ReportCenter',      path: undefined,              component: undefined,                  icon: 'BarChart3',      type: 'directory', sort: 13, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1210, parentId: 1200, title: '数据源',   name: 'ReportDatasources', path: '/report/datasources',  component: 'report/DataSourcesPage',   icon: 'Database',       type: 'menu',      sort: 1,  status: 'enabled', visible: true,  permission: 'report:datasource:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1211, parentId: 1210, title: '新增数据源', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'report:datasource:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1212, parentId: 1210, title: '编辑数据源', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'report:datasource:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1213, parentId: 1210, title: '删除数据源', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'report:datasource:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1220, parentId: 1200, title: '数据集',   name: 'ReportDatasets',    path: '/report/datasets',     component: 'report/DatasetsPage',      icon: 'Layers',         type: 'menu',      sort: 2,  status: 'enabled', visible: true,  permission: 'report:dataset:list',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1221, parentId: 1220, title: '新增数据集', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'report:dataset:create',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1222, parentId: 1220, title: '编辑数据集', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'report:dataset:update',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1223, parentId: 1220, title: '删除数据集', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'report:dataset:delete',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1230, parentId: 1200, title: '仪表盘',   name: 'ReportDashboards',  path: '/report/dashboards',   component: 'report/DashboardListPage', icon: 'LayoutDashboard', type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'report:dashboard:list',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1231, parentId: 1230, title: '新增仪表盘', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'report:dashboard:create',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1232, parentId: 1230, title: '编辑仪表盘', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'report:dashboard:update',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1233, parentId: 1230, title: '删除仪表盘', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'report:dashboard:delete',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -1660,4 +1675,48 @@ export const SEED_CHANNEL_QUICK_REPLIES: SeedChannelQuickReply[] = [
   { channelId: null, title: '稍等', content: '请稍等，正在为您查询，马上回复您～', sort: 2 },
   { channelId: null, title: '结束语', content: '感谢您的咨询，祝您生活愉快！如有问题随时联系我们。', sort: 3 },
   { channelId: null, title: '工作时间', content: '我们的客服工作时间为工作日 9:00-18:00，非工作时间留言我们会尽快回复。', sort: 4 },
+];
+
+// ─── 报表中心：示例数据源 / 数据集 / 仪表盘 ─────────────────────────────────────
+export const SEED_REPORT_DATASOURCES: ReportDatasource[] = [
+  { id: 1, name: '内置主库', type: 'sql', config: { connection: 'internal' }, status: 'enabled', remark: '应用 PostgreSQL 主库（只读）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+export const SEED_REPORT_DATASETS: ReportDataset[] = [
+  {
+    id: 1,
+    name: '菜单类型分布',
+    datasourceId: 1,
+    type: 'sql',
+    content: { sql: 'SELECT type AS name, count(*)::int AS value FROM menus GROUP BY type ORDER BY value DESC' },
+    fields: [
+      { name: 'name', label: '类型', type: 'string' },
+      { name: 'value', label: '数量', type: 'number' },
+    ],
+    status: 'enabled',
+    remark: '示例：按类型统计菜单数量',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_REPORT_DASHBOARDS: ReportDashboard[] = [
+  {
+    id: 1,
+    name: '示例仪表盘',
+    layout: [
+      { i: 'w1', x: 0, y: 0, w: 3, h: 3, minW: 2, minH: 2 },
+      { i: 'w2', x: 3, y: 0, w: 5, h: 6, minW: 2, minH: 2 },
+      { i: 'w3', x: 8, y: 0, w: 4, h: 6, minW: 2, minH: 2 },
+    ],
+    widgets: [
+      { i: 'w1', type: 'kpi', title: '菜单总数', datasetId: 1, options: { valueField: 'value', aggregate: 'sum', unit: '个' } },
+      { i: 'w2', type: 'bar', title: '菜单类型分布', datasetId: 1, options: { categoryField: 'name', valueFields: ['value'] } },
+      { i: 'w3', type: 'pie', title: '类型占比', datasetId: 1, options: { categoryField: 'name', valueFields: ['value'] } },
+    ],
+    status: 'enabled',
+    remark: '内置示例，可直接编辑或删除',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
 ];

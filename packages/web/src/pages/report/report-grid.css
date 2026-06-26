@@ -1,0 +1,205 @@
+/* react-grid-layout 样式覆盖 —— 统一对齐 Semi Design token */
+.report-grid {
+  position: relative;
+}
+
+.report-grid .react-grid-item {
+  background: var(--semi-color-bg-1);
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.report-grid .react-grid-item:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.report-grid .react-grid-item.report-widget--selected {
+  border-color: var(--semi-color-primary);
+  box-shadow: 0 0 0 2px var(--semi-color-primary-light-default);
+}
+
+.report-grid .react-grid-item.react-grid-placeholder {
+  background: var(--semi-color-primary-light-default);
+  border: 1px dashed var(--semi-color-primary);
+  border-radius: 8px;
+  opacity: 0.7;
+}
+
+/* 缩放手柄：用 Semi 边框色画一个小角标，替换默认背景图 */
+.report-grid .react-resizable-handle {
+  background: none;
+  padding: 0;
+}
+.report-grid .react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--semi-color-text-2);
+  border-bottom: 2px solid var(--semi-color-text-2);
+  opacity: 0.5;
+}
+
+/* ── 组件卡片 ── */
+.report-widget-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.report-widget-card__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--semi-color-border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+  background: var(--semi-color-bg-2);
+}
+
+.report-widget-card__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-widget-card__drag {
+  cursor: move;
+}
+
+.report-widget-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.report-widget-card__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 10px;
+  position: relative;
+}
+
+/* ── KPI 指标卡 ── */
+.report-kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  gap: 6px;
+}
+.report-kpi__value {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--semi-color-text-0);
+  word-break: break-all;
+}
+.report-kpi__unit {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--semi-color-text-2);
+  margin-left: 4px;
+}
+
+/* ── 组件空态/提示 ── */
+.report-widget-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+  text-align: center;
+  padding: 0 12px;
+}
+
+/* ── 设计器布局 ── */
+.report-designer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.report-designer__topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-1);
+}
+.report-designer__main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.report-designer__palette {
+  flex-shrink: 0;
+  width: 180px;
+  border-right: 1px solid var(--semi-color-border);
+  padding: 12px;
+  overflow-y: auto;
+  background: var(--semi-color-bg-1);
+}
+.report-designer__canvas {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 16px;
+  background: var(--semi-color-fill-0);
+}
+.report-designer__config {
+  flex-shrink: 0;
+  width: 300px;
+  border-left: 1px solid var(--semi-color-border);
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--semi-color-bg-1);
+}
+.report-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--semi-color-text-0);
+  background: var(--semi-color-bg-2);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.report-palette-item:hover {
+  border-color: var(--semi-color-primary);
+  color: var(--semi-color-primary);
+}
+
+/* ── 预览/大屏 ── */
+.report-view {
+  min-height: 100%;
+  padding: 16px;
+  background: var(--semi-color-fill-0);
+}
+.report-view__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--semi-color-text-0);
+  margin-bottom: 12px;
+}

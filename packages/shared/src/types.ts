@@ -2242,6 +2242,66 @@ export interface WorkflowApproverPreviewNode {
   empty?: boolean;
 }
 
+/** 流程仿真中对指定节点预设的处理动作 */
+export interface WorkflowSimulationDecision {
+  nodeKey: string;
+  action: 'approve' | 'reject';
+  assigneeId?: number;
+  formPatch?: Record<string, unknown>;
+}
+
+/** 流程仿真选项 */
+export interface WorkflowSimulationOptions {
+  maxSteps?: number;
+  mockDelay?: boolean;
+  mockTrigger?: boolean;
+  expandSubProcess?: boolean;
+}
+
+export type WorkflowSimulationResultStatus = 'finished' | 'rejected' | 'waiting' | 'blocked' | 'invalid' | 'stepLimit';
+export type WorkflowSimulationTimelineStatus = 'entered' | 'waiting' | 'approved' | 'rejected' | 'autoApproved' | 'skipped' | 'blocked';
+export type WorkflowSimulationNodeStateStatus = 'pending' | 'active' | 'done' | 'skipped' | 'error';
+
+/** 流程仿真时间线节点 */
+export interface WorkflowSimulationTimelineItem {
+  step: number;
+  nodeKey: string;
+  nodeName: string;
+  nodeType: WorkflowNodeType | string;
+  status: WorkflowSimulationTimelineStatus;
+  assignees?: Array<{ id: number; name: string }>;
+  decision?: 'approve' | 'reject' | 'auto';
+  reason?: string;
+}
+
+/** 流程仿真连线命中结果 */
+export interface WorkflowSimulationEdgeResult {
+  edgeId: string;
+  source: string;
+  target: string;
+  sourceKey?: string;
+  targetKey?: string;
+  label?: string | null;
+  taken: boolean;
+  reason?: string;
+}
+
+/** 流程仿真节点状态 */
+export interface WorkflowSimulationNodeState {
+  status: WorkflowSimulationNodeStateStatus;
+  message?: string;
+}
+
+/** 流程仿真结果 */
+export interface WorkflowSimulationResult {
+  valid: boolean;
+  warnings: string[];
+  result: WorkflowSimulationResultStatus;
+  timeline: WorkflowSimulationTimelineItem[];
+  edgeResults: WorkflowSimulationEdgeResult[];
+  nodeStates: Record<string, WorkflowSimulationNodeState>;
+}
+
 /** 关联审批单可选项（relation 字段检索结果） */
 export interface WorkflowRelationOption {
   instanceId: number;
@@ -5066,4 +5126,145 @@ export interface MpKfSessionReportItem {
   closed: number;
   avgWaitSeconds: number;
   avgRating: number;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// 报表中心（Report Center）—— 通用报表设计器 / 数据大屏
+// ════════════════════════════════════════════════════════════════════════════
+
+/** 数据源类型：api=远程 HTTP；sql=内置只读主库 */
+export type ReportDatasourceType = 'api' | 'sql';
+/** 数据集字段（列）数据类型 */
+export type ReportFieldType = 'string' | 'number' | 'date' | 'boolean';
+/** 仪表盘组件类型 */
+export type ReportWidgetType = 'kpi' | 'table' | 'bar' | 'line' | 'pie';
+
+/** API 数据源连接配置 */
+export interface ReportApiDatasourceConfig {
+  url: string;
+  method: 'GET' | 'POST';
+  headers?: Record<string, string> | null;
+}
+/** SQL 数据源连接配置（MVP 仅内置只读主库） */
+export interface ReportSqlDatasourceConfig {
+  connection: 'internal';
+}
+export type ReportDatasourceConfig =
+  | ReportApiDatasourceConfig
+  | ReportSqlDatasourceConfig
+  | Record<string, never>;
+
+export interface ReportDatasource {
+  id: number;
+  name: string;
+  type: ReportDatasourceType;
+  config: ReportDatasourceConfig;
+  status: 'enabled' | 'disabled';
+  remark?: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 数据集字段（列）定义 */
+export interface ReportField {
+  /** 列名（SQL 列名 / API 字段名） */
+  name: string;
+  /** 显示名 */
+  label: string;
+  type: ReportFieldType;
+}
+
+/** SQL 数据集内容 */
+export interface ReportSqlDatasetContent {
+  sql: string;
+}
+/** API 数据集内容 */
+export interface ReportApiDatasetContent {
+  /** 响应中数组所在路径，点分隔（如 data.list），留空表示根即数组 */
+  itemsPath?: string | null;
+  /** 附加查询参数 */
+  params?: Record<string, string> | null;
+}
+export type ReportDatasetContent =
+  | ReportSqlDatasetContent
+  | ReportApiDatasetContent
+  | Record<string, never>;
+
+export interface ReportDataset {
+  id: number;
+  name: string;
+  datasourceId: number;
+  /** JOIN 冗余：数据源名称 */
+  datasourceName?: string | null;
+  /** 从数据源继承的类型 */
+  type: ReportDatasourceType;
+  content: ReportDatasetContent;
+  fields: ReportField[];
+  status: 'enabled' | 'disabled';
+  remark?: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 数据集取数结果 */
+export interface ReportDataResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total?: number | null;
+}
+
+/** 网格布局项（对齐 react-grid-layout 的 Layout item） */
+export interface ReportGridItem {
+  /** 与 widget.i 对应 */
+  i: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  minW?: number;
+  minH?: number;
+}
+
+/** 组件字段映射 + 图表选项 */
+export interface ReportWidgetOptions {
+  /** 柱/线/饼：分类（x 轴）字段 */
+  categoryField?: string;
+  /** 柱/线/饼：指标（y 轴）字段，可多列 */
+  valueFields?: string[];
+  /** 指标卡：取值列 */
+  valueField?: string;
+  /** 指标卡：聚合方式 */
+  aggregate?: 'sum' | 'avg' | 'max' | 'min' | 'count' | 'first';
+  /** 指标卡：单位后缀 */
+  unit?: string;
+  /** 表格：展示列（留空=全部字段） */
+  columns?: ReportField[];
+  [key: string]: unknown;
+}
+
+/** 仪表盘组件配置 */
+export interface ReportWidget {
+  /** 组件 id（与 layout item 的 i 对应） */
+  i: string;
+  type: ReportWidgetType;
+  title: string;
+  datasetId?: number | null;
+  options: ReportWidgetOptions;
+}
+
+export interface ReportDashboard {
+  id: number;
+  name: string;
+  layout: ReportGridItem[];
+  widgets: ReportWidget[];
+  status: 'enabled' | 'disabled';
+  remark?: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -1020,6 +1020,33 @@ export const previewWorkflowSchema = z.object({
 });
 export type PreviewWorkflowInput = z.infer<typeof previewWorkflowSchema>;
 
+// ── 流程仿真 ──
+export const workflowSimulationDecisionSchema = z.object({
+  nodeKey: z.string().min(1, '节点标识不能为空'),
+  action: z.enum(['approve', 'reject']),
+  assigneeId: z.number().int().positive().optional(),
+  formPatch: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const workflowSimulationOptionsSchema = z.object({
+  maxSteps: z.number().int().min(1).max(500).optional(),
+  mockDelay: z.boolean().optional(),
+  mockTrigger: z.boolean().optional(),
+  expandSubProcess: z.boolean().optional(),
+});
+
+export const simulateWorkflowSchema = z.object({
+  definitionId: z.number().int().positive().optional(),
+  flowData: z.looseObject({}).nullable().optional(),
+  formData: z.record(z.string(), z.unknown()).nullable().optional(),
+  starterUserId: z.number().int().positive().optional(),
+  decisions: z.array(workflowSimulationDecisionSchema).max(200).optional(),
+  options: workflowSimulationOptionsSchema.optional(),
+}).refine((v) => v.definitionId || v.flowData, {
+  message: 'definitionId 和 flowData 至少需要提供一个',
+});
+export type SimulateWorkflowInput = z.infer<typeof simulateWorkflowSchema>;
+
 // ── 主动抄送 / 转发 ──
 export const forwardInstanceSchema = z.object({
   userIds: z.array(z.number().int().positive()).min(1, '请选择抄送人').max(50),
@@ -2520,3 +2547,81 @@ export type CloseMpKfSessionInput = z.infer<typeof closeMpKfSessionSchema>;
 export type RateMpKfSessionInput = z.infer<typeof rateMpKfSessionSchema>;
 export type ReplyMpKfSessionInput = z.infer<typeof replyMpKfSessionSchema>;
 export type UpdateMpKfRoutingConfigInput = z.infer<typeof updateMpKfRoutingConfigSchema>;
+
+// ════════════════════════════════════════════════════════════════════════════
+// 报表中心（Report Center）
+// ════════════════════════════════════════════════════════════════════════════
+export const reportDatasourceTypeSchema = z.enum(['api', 'sql']);
+export const reportFieldTypeSchema = z.enum(['string', 'number', 'date', 'boolean']);
+export const reportWidgetTypeSchema = z.enum(['kpi', 'table', 'bar', 'line', 'pie']);
+
+/** 数据集字段（列）定义 */
+export const reportFieldSchema = z.object({
+  name: z.string().min(1, '列名不能为空').max(128),
+  label: z.string().min(1, '显示名不能为空').max(128),
+  type: reportFieldTypeSchema.default('string'),
+});
+
+// ─── 数据源 ──────────────────────────────────────────────────────────────────
+// config 形态随 type 而定（api→{url,method,headers}；sql→{connection:'internal'}），
+// 这里用宽松对象，具体形态由 service 按 type 校验。
+export const createReportDatasourceSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(64),
+  type: reportDatasourceTypeSchema,
+  config: z.record(z.string(), z.unknown()).default({}),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(256).optional(),
+});
+export const updateReportDatasourceSchema = createReportDatasourceSchema.partial();
+export type CreateReportDatasourceInput = z.input<typeof createReportDatasourceSchema>;
+export type UpdateReportDatasourceInput = z.input<typeof updateReportDatasourceSchema>;
+
+// ─── 数据集 ──────────────────────────────────────────────────────────────────
+// type 由 datasource 继承，不接受用户传入；content 形态由 service 按 type 校验。
+export const createReportDatasetSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(64),
+  datasourceId: z.number().int().positive('请选择数据源'),
+  content: z.record(z.string(), z.unknown()).default({}),
+  fields: z.array(reportFieldSchema).default([]),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(256).optional(),
+});
+export const updateReportDatasetSchema = createReportDatasetSchema.partial();
+export type CreateReportDatasetInput = z.input<typeof createReportDatasetSchema>;
+export type UpdateReportDatasetInput = z.input<typeof updateReportDatasetSchema>;
+
+/** 试跑预览（不落库）：用未保存的数据源+content 直接取数 */
+export const reportDatasetPreviewSchema = z.object({
+  datasourceId: z.number().int().positive('请选择数据源'),
+  content: z.record(z.string(), z.unknown()).default({}),
+  limit: z.number().int().min(1).max(1000).default(100),
+});
+export type ReportDatasetPreviewInput = z.input<typeof reportDatasetPreviewSchema>;
+
+// ─── 仪表盘 ──────────────────────────────────────────────────────────────────
+export const reportGridItemSchema = z.object({
+  i: z.string().min(1),
+  x: z.number().int().min(0),
+  y: z.number().int().min(0),
+  w: z.number().int().min(1),
+  h: z.number().int().min(1),
+  minW: z.number().int().min(1).optional(),
+  minH: z.number().int().min(1).optional(),
+});
+export const reportWidgetSchema = z.object({
+  i: z.string().min(1),
+  type: reportWidgetTypeSchema,
+  title: z.string().max(128).default(''),
+  datasetId: z.number().int().positive().nullable().optional(),
+  options: z.record(z.string(), z.unknown()).default({}),
+});
+export const createReportDashboardSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(64),
+  layout: z.array(reportGridItemSchema).default([]),
+  widgets: z.array(reportWidgetSchema).default([]),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(256).optional(),
+});
+export const updateReportDashboardSchema = createReportDashboardSchema.partial();
+export type CreateReportDashboardInput = z.input<typeof createReportDashboardSchema>;
+export type UpdateReportDashboardInput = z.input<typeof updateReportDashboardSchema>;
