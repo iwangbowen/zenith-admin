@@ -24,6 +24,7 @@ import {
   LineChart,
   PieChart,
   ScatterChart,
+  HeatmapChart,
   chartOptions,
   makeAreaSpec,
   makeBarSpec,
@@ -37,7 +38,7 @@ import {
   useChartPalette,
   type ChartDatum,
   type IScatterChartSpec,
-  type ILineChartSpec,
+  type IHeatmapChartSpec,
 } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -744,37 +745,59 @@ function RetentionTab() {
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  const retentionSpec = useMemo<Partial<ILineChartSpec>>(() => {
+  const retentionSpec = useMemo<Partial<IHeatmapChartSpec>>(() => {
     const cohorts = data?.cohorts ?? [];
     const periods = data?.periods ?? [];
-    const values: { period: string; cohort: string; value: number }[] = [];
+    const sizeByCohort = new Map(cohorts.map((c) => [c.cohortDate, c.cohortSize]));
+    const cells: { period: string; cohort: string; value: number }[] = [];
     cohorts.forEach((cohort) => {
       periods.forEach((period, index) => {
         const v = cohort.values[index];
-        if (v != null) values.push({ period: `Day${period}`, cohort: cohort.cohortDate, value: v });
+        if (v != null) cells.push({ period: `Day${period}`, cohort: cohort.cohortDate, value: v });
       });
     });
+    const retentionColor = (v: number) => `rgba(59, 130, 246, ${Math.max(0.08, Math.min(0.85, v / 100))})`;
     return {
       ...makeCommonCartesianSpec(palette),
-      data: [{ id: 'retention', values }],
+      padding: { top: 8, right: 16, bottom: 8, left: 92 },
+      data: [{ id: 'retention', values: cells }],
       xField: 'period',
-      yField: 'value',
-      seriesField: 'cohort',
-      color: cohorts.map((_, i) => COLORS[i % COLORS.length]),
-      line: { style: { lineWidth: 2, curveType: 'monotone' } },
-      point: { visible: true, style: { size: 4 } },
+      yField: 'cohort',
+      valueField: 'value',
+      cell: {
+        style: {
+          fill: (datum: ChartDatum) => retentionColor(datumNumber(datum, 'value')),
+          stroke: palette.bg1,
+          lineWidth: 3,
+          cornerRadius: 6,
+        },
+      },
+      label: {
+        visible: true,
+        formatMethod: (_text: unknown, datum: ChartDatum) => `${datumNumber(datum, 'value').toFixed(1)}%`,
+        style: {
+          fontSize: 11,
+          fill: (datum: ChartDatum) => (datumNumber(datum, 'value') > 55 ? '#ffffff' : palette.text1),
+        },
+      },
       axes: [
-        { orient: 'bottom', type: 'band', tick: { visible: false }, domainLine: { visible: false }, grid: { visible: false }, label: { style: { fill: palette.text2, fontSize: 11 } } },
-        { orient: 'left', type: 'linear', min: 0, max: 100, tick: { visible: false }, domainLine: { visible: false }, grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } }, label: { style: { fill: palette.text2, fontSize: 11 }, formatMethod: (v) => `${axisNumber(v)}%` } },
+        { orient: 'top', type: 'band', tick: { visible: false }, domainLine: { visible: false }, grid: { visible: false }, label: { style: { fill: palette.text2, fontSize: 11 } } },
+        { orient: 'left', type: 'band', inverse: true, tick: { visible: false }, domainLine: { visible: false }, grid: { visible: false }, label: { style: { fill: palette.text1, fontSize: 11 } } },
       ],
-      legends: { visible: true, orient: 'bottom', position: 'middle', item: { label: { style: { fill: palette.text1, fontSize: 11 } } } },
       tooltip: {
         ...makeCommonTooltip(palette),
-        dimension: { title: { value: (d?: ChartDatum) => datumText(d, 'period') } },
-        mark: { content: [{ key: (d?: ChartDatum) => datumText(d, 'cohort'), value: (d?: ChartDatum) => `${datumNumber(d, 'value').toFixed(1)}%` }] },
+        mark: {
+          title: { value: (d?: ChartDatum) => `${datumText(d, 'cohort')} · ${datumText(d, 'period')}` },
+          content: [
+            { key: '同期群人数', value: (d?: ChartDatum) => String(sizeByCohort.get(datumText(d, 'cohort')) ?? 0) },
+            { key: '留存率', value: (d?: ChartDatum) => `${datumNumber(d, 'value').toFixed(1)}%` },
+          ],
+        },
       },
     };
   }, [data, palette]);
+
+  const retentionHeight = Math.max(280, (data?.cohorts.length ?? 0) * 40 + 64);
 
   return (
     <div style={sectionStyle}>
@@ -783,9 +806,9 @@ function RetentionTab() {
         description="按首访日期形成 cohort"
         extra={<Select value={days} optionList={RETENTION_DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />}
       />
-      <Card bodyStyle={{ padding: 16 }}>
+      <Card bodyStyle={{ padding: 16, overflowX: 'auto' }}>
         {loading && !data ? emptyOrSpin(true) : !data?.cohorts.length ? <Empty description="暂无留存数据" /> : (
-          <LineChart {...retentionSpec} options={chartOptions} height={360} />
+          <HeatmapChart {...retentionSpec} options={chartOptions} height={retentionHeight} />
         )}
       </Card>
     </div>

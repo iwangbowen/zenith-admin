@@ -15,6 +15,7 @@ export {
   LineChart,
   PieChart,
   ScatterChart,
+  HeatmapChart,
   CommonChart,
   VChart,
 } from '@visactor/react-vchart';
@@ -26,6 +27,7 @@ export type {
   ILineChartSpec,
   IPieChartSpec,
   IScatterChartSpec,
+  IHeatmapChartSpec,
   ICommonChartSpec,
 } from '@visactor/react-vchart';
 

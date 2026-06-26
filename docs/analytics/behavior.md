@@ -48,7 +48,7 @@
 
 ## 留存分析
 
-`GET /api/analytics/retention?days=N` —— 按首次访问日期分群的 cohort 留存数据（Day0…最多 Day7），前端以折线图展示，每条折线为一个同期群的留存率衰减曲线。
+`GET /api/analytics/retention?days=N` —— 按首次访问日期分群的 cohort 留存矩阵（Day0…最多 Day7），前端以热力矩阵呈现，行=同期群、列=第 N 日，单元格颜色深浅表示留存率。
 
 ## 路径分析
 
