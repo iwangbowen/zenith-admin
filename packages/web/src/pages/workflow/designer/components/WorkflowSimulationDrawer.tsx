@@ -4,7 +4,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Banner, Button, Empty, Select, SideSheet, Space, Spin, Tag, TextArea, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { AlertTriangle, CheckCircle2, CircleDashed, Clock, Flag, Play, Send, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, Flag, Play, RotateCcw, Send, XCircle } from 'lucide-react';
 import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationResult } from '@zenith/shared';
 import { request } from '@/utils/request';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
@@ -23,6 +23,8 @@ interface WorkflowSimulationDrawerProps {
   users: UserOption[];
   loading?: boolean;
   result: WorkflowSimulationResult | null;
+  activeStep: number;
+  onActiveStepChange: (step: number) => void;
   onResult: (result: WorkflowSimulationResult | null) => void;
   onClose: () => void;
 }
@@ -76,6 +78,8 @@ export default function WorkflowSimulationDrawer({
   users,
   loading = false,
   result,
+  activeStep,
+  onActiveStepChange,
   onResult,
   onClose,
 }: Readonly<WorkflowSimulationDrawerProps>) {
@@ -89,6 +93,10 @@ export default function WorkflowSimulationDrawer({
     () => users.map((user) => ({ value: user.id, label: `${user.nickname} (#${user.id})` })),
     [users],
   );
+  const totalSteps = result?.timeline.length ?? 0;
+  const currentStep = result && totalSteps > 0 ? Math.min(Math.max(activeStep, 1), totalSteps) : 0;
+  const currentItem = currentStep > 0 ? result?.timeline[currentStep - 1] : null;
+  const progressPercent = totalSteps > 0 ? Math.round((currentStep / totalSteps) * 100) : 0;
 
   const effectiveFormData = async () => {
     if (formFields.length > 0 && formApi.current) {
@@ -122,7 +130,7 @@ export default function WorkflowSimulationDrawer({
       });
       if (res.code === 0 && res.data) {
         onResult(res.data);
-        Toast.success('仿真完成');
+        Toast.success('仿真已启动');
       }
     } finally {
       setSubmitting(false);
@@ -131,9 +139,14 @@ export default function WorkflowSimulationDrawer({
 
   const resetResult = () => {
     onResult(null);
+    onActiveStepChange(0);
     setJsonDraft('{}');
     setFormData(defaultFormDataFromFields(formFields));
     formApi.current?.reset();
+  };
+
+  const moveStep = (nextStep: number) => {
+    onActiveStepChange(nextStep);
   };
 
   const renderTimeline = () => {
@@ -150,14 +163,20 @@ export default function WorkflowSimulationDrawer({
       <Timeline style={{ paddingLeft: 4 }}>
         {result.timeline.map((item) => {
           const meta = STATUS_META[item.status];
+          const active = item.step === currentStep;
+          const future = item.step > currentStep;
+          const statusLabel = active && !['rejected', 'waiting', 'blocked', 'skipped'].includes(item.status) ? '当前步骤' : meta.label;
           return (
-            <Timeline.Item key={`${item.step}-${item.nodeKey}-${item.status}`} dot={timelineDot(meta.icon, meta.color)}>
-              <div className="fd-simulation-timeline-item">
+            <Timeline.Item
+              key={`${item.step}-${item.nodeKey}-${item.status}`}
+              dot={timelineDot(future ? CircleDashed : meta.icon, future ? 'var(--semi-color-tertiary)' : meta.color)}
+            >
+              <div className={`fd-simulation-timeline-item${active ? ' fd-simulation-timeline-item--active' : ''}${future ? ' fd-simulation-timeline-item--future' : ''}`}>
                 <div className="fd-simulation-timeline-item__head">
                   <Typography.Text strong>{item.nodeName}</Typography.Text>
                   <Tag size="small" color="grey">{item.nodeType}</Tag>
-                  <Tag size="small" color={item.status === 'rejected' ? 'red' : item.status === 'waiting' ? 'orange' : 'green'}>
-                    {meta.label}
+                  <Tag size="small" color={future ? 'grey' : item.status === 'rejected' ? 'red' : item.status === 'waiting' ? 'orange' : active ? 'blue' : 'green'}>
+                    {statusLabel}
                   </Tag>
                 </div>
                 {item.assignees && item.assignees.length > 0 && (
@@ -174,8 +193,8 @@ export default function WorkflowSimulationDrawer({
             </Timeline.Item>
           );
         })}
-        <Timeline.Item dot={timelineDot(Flag, 'var(--semi-color-tertiary)')}>
-          <Typography.Text strong>仿真结束</Typography.Text>
+        <Timeline.Item dot={timelineDot(Flag, currentStep >= totalSteps ? 'var(--semi-color-success)' : 'var(--semi-color-tertiary)')}>
+          <Typography.Text strong type={currentStep >= totalSteps ? undefined : 'tertiary'}>仿真结束</Typography.Text>
         </Timeline.Item>
       </Timeline>
     );
@@ -193,12 +212,35 @@ export default function WorkflowSimulationDrawer({
       className="fd-simulation-drawer"
       footer={
         <div className="fd-simulation-drawer__footer">
-          <Button type="tertiary" theme="borderless" onClick={resetResult}>重置</Button>
+          <Button type="tertiary" theme="borderless" icon={<RotateCcw size={14} />} onClick={resetResult}>重置</Button>
           <Space>
             <Button onClick={onClose}>关闭</Button>
-            <Button type="primary" icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>
-              开始仿真
-            </Button>
+            {result && totalSteps > 0 ? (
+              <>
+                <Button
+                  icon={<ChevronLeft size={14} />}
+                  onClick={() => moveStep(currentStep - 1)}
+                  disabled={currentStep <= 1}
+                >
+                  上一步
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<ChevronRight size={14} />}
+                  onClick={() => moveStep(currentStep + 1)}
+                  disabled={currentStep >= totalSteps}
+                >
+                  {currentStep >= totalSteps ? '已到终点' : '下一步'}
+                </Button>
+                <Button icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>
+                  重新启动
+                </Button>
+              </>
+            ) : (
+              <Button type="primary" icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>
+                启动仿真
+              </Button>
+            )}
           </Space>
         </div>
       }
@@ -243,6 +285,22 @@ export default function WorkflowSimulationDrawer({
           {result?.warnings.length ? (
             <Banner type={result.valid ? 'warning' : 'danger'} description={result.warnings.join('；')} style={{ marginBottom: 12 }} />
           ) : null}
+          {result && totalSteps > 0 && (
+            <div className="fd-simulation-player">
+              <div className="fd-simulation-player__head">
+                <Typography.Text strong>第 {currentStep} / {totalSteps} 步</Typography.Text>
+                {currentItem && <Tag color="blue">{currentItem.nodeName}</Tag>}
+              </div>
+              <div className="fd-simulation-player__bar">
+                <span style={{ width: `${progressPercent}%` }} />
+              </div>
+              {currentItem?.reason && (
+                <Typography.Text size="small" type="tertiary">
+                  {currentItem.reason}
+                </Typography.Text>
+              )}
+            </div>
+          )}
           {renderTimeline()}
         </section>
       </div>

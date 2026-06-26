@@ -411,6 +411,50 @@ export const WorkflowApproverPreviewNodeDTO = z
   })
   .openapi('WorkflowApproverPreviewNode');
 
+export const WorkflowSimulationTimelineItemDTO = z
+  .object({
+    step: z.number().int(),
+    nodeKey: z.string(),
+    nodeName: z.string(),
+    nodeType: z.string(),
+    status: z.enum(['entered', 'waiting', 'approved', 'rejected', 'autoApproved', 'skipped', 'blocked']),
+    assignees: z.array(z.object({ id: z.number().int(), name: z.string() })).optional(),
+    decision: z.enum(['approve', 'reject', 'auto']).optional(),
+    reason: z.string().optional(),
+  })
+  .openapi('WorkflowSimulationTimelineItem');
+
+export const WorkflowSimulationEdgeResultDTO = z
+  .object({
+    edgeId: z.string(),
+    source: z.string(),
+    target: z.string(),
+    sourceKey: z.string().optional(),
+    targetKey: z.string().optional(),
+    label: z.string().nullable().optional(),
+    taken: z.boolean(),
+    reason: z.string().optional(),
+  })
+  .openapi('WorkflowSimulationEdgeResult');
+
+export const WorkflowSimulationNodeStateDTO = z
+  .object({
+    status: z.enum(['pending', 'active', 'done', 'skipped', 'error']),
+    message: z.string().optional(),
+  })
+  .openapi('WorkflowSimulationNodeState');
+
+export const WorkflowSimulationResultDTO = z
+  .object({
+    valid: z.boolean(),
+    warnings: z.array(z.string()),
+    result: z.enum(['finished', 'rejected', 'waiting', 'blocked', 'invalid', 'stepLimit']),
+    timeline: z.array(WorkflowSimulationTimelineItemDTO),
+    edgeResults: z.array(WorkflowSimulationEdgeResultDTO),
+    nodeStates: z.record(z.string(), WorkflowSimulationNodeStateDTO),
+  })
+  .openapi('WorkflowSimulationResult');
+
 export const WorkflowScheduleDTO = z
   .object({
     id: z.number().int(),

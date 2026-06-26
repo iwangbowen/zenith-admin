@@ -496,10 +496,63 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   background: var(--semi-color-bg-1);
 }
 
+.fd-simulation-player {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-fill-0);
+}
+
+.fd-simulation-player--toolbar {
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--semi-color-text-1);
+  background: var(--semi-color-bg-1);
+}
+
+.fd-simulation-player__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fd-simulation-player__bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--semi-color-fill-1);
+}
+
+.fd-simulation-player__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--semi-color-primary);
+  transition: width 160ms ease;
+}
+
 .fd-simulation-timeline-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: background 160ms ease, opacity 160ms ease;
+}
+
+.fd-simulation-timeline-item--active {
+  background: var(--semi-color-primary-light-default);
+}
+
+.fd-simulation-timeline-item--future {
+  opacity: 0.46;
 }
 
 .fd-simulation-timeline-item__head {
