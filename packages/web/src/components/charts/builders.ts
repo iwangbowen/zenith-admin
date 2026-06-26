@@ -436,11 +436,15 @@ function treemapPath(datum: ChartDatum): string {
     .join(' / ');
 }
 
+function isTreemapNodeArray(data: TreemapOptions['data']): data is readonly TreemapNode[] {
+  return Array.isArray(data);
+}
+
 export function makeTreemapSpec(o: TreemapOptions): Partial<ITreemapChartSpec> {
   const categoryField = o.categoryField ?? 'name';
   const valueField = o.valueField ?? 'value';
   const valueFmt = o.valueFormatter ?? ((value: number) => compactCount(value));
-  const values = Array.isArray(o.data) ? [...o.data] : [...(o.data.children ?? [])];
+  const values = isTreemapNodeArray(o.data) ? [...o.data] : [...(o.data.children ?? [])];
 
   return {
     type: 'treemap',

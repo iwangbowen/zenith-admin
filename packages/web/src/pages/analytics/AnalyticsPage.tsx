@@ -417,8 +417,7 @@ type FeatureStatsRow = FeatureStats['items'][number] & { id: string; rank: numbe
 
 function getFeaturePageLabel(pagePath: string): string {
   if (pagePath === '/') return '首页';
-  const part = pagePath.split('/').filter(Boolean).at(-1);
-  return part ? `/${part}` : pagePath;
+  return pagePath;
 }
 
 function buildFeatureTreemap(rows: readonly FeatureStatsRow[]): TreemapNode {
@@ -436,17 +435,19 @@ function buildFeatureTreemap(rows: readonly FeatureStatsRow[]): TreemapNode {
   const children = [...pageMap.entries()]
     .map(([pagePath, areaMap]) => {
       const areaChildren = [...areaMap.entries()]
-        .map(([area, items]) => ({
-          name: area,
-          value: items.reduce((sum, item) => sum + item.count, 0),
-          children: items.map((item) => ({
+        .reduce<TreemapNode[]>((result, [area, items]) => {
+          const children = items.map((item) => ({
             name: item.elementLabel || item.elementKey,
             value: item.count,
             pagePath: item.pagePath,
             componentArea: item.componentArea,
             elementKey: item.elementKey,
-          })),
-        }))
+          }));
+          const value = items.reduce((sum, item) => sum + item.count, 0);
+
+          if (area === '未标记区域') return result.concat(children);
+          return result.concat({ name: area, value, children });
+        }, [])
         .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 
       return {
