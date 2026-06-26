@@ -2425,6 +2425,16 @@ export async function getWorkflowTaskBeforeAudit(taskId: number) {
   return getWorkflowInstanceBeforeAudit(task.instanceId);
 }
 
+export async function getWorkflowTaskForAdminAudit(taskId: number) {
+  const [task] = await db
+    .select({ instanceId: workflowTasks.instanceId })
+    .from(workflowTasks)
+    .where(eq(workflowTasks.id, taskId))
+    .limit(1);
+  if (!task) return null;
+  return getInstanceForAdminAudit(task.instanceId);
+}
+
 export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean; priority?: import('@zenith/shared').WorkflowInstancePriority; ccUserIds?: number[]; bizType?: string | null; bizId?: string | null }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
   const user = callerOverride
     ? { userId: callerOverride.userId, username: callerOverride.username, roles: callerOverride.roles ?? [], tenantId: callerOverride.tenantId }

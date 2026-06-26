@@ -69,7 +69,11 @@ const pushRoute = defineOpenAPIRoute({
     request: { params: IdParam },
     responses: { ...commonErrorResponses, ...ok(MpDraftDTO, '推送成功') },
   }),
-  handler: async (c) => c.json(okBody(await pushMpDraft(c.req.valid('param').id), '推送成功'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getMpDraft(id));
+    return c.json(okBody(await pushMpDraft(id), '推送成功'), 200);
+  },
 });
 
 const deleteRoute = defineOpenAPIRoute({

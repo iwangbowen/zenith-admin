@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard } from '../middleware/guard';
+import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, IdParam, okBody,
@@ -16,6 +16,7 @@ import {
   listMpKfSessions, getMpKfSessionDetail, getMpKfSessionStats,
   acceptMpKfSession, transferMpKfSession, closeMpKfSession, replyMpKfSession,
   getMpKfRoutingConfig, updateMpKfRoutingConfig, rateMpKfSession, getMpKfSessionReport,
+  getMpKfRoutingConfigBeforeAudit, getMpKfSessionBeforeAudit,
 } from '../services/mp-kf-session.service';
 
 const mpKfSessionRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -70,7 +71,11 @@ const updateConfigRoute = defineOpenAPIRoute({
     request: { query: accountIdQuery, body: { content: jsonContent(updateMpKfRoutingConfigSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpKfRoutingConfigDTO, '保存成功') },
   }),
-  handler: async (c) => c.json(okBody(await updateMpKfRoutingConfig(c.req.valid('query').accountId, c.req.valid('json')), '保存成功'), 200),
+  handler: async (c) => {
+    const { accountId } = c.req.valid('query');
+    setAuditBeforeData(c, await getMpKfRoutingConfigBeforeAudit(accountId));
+    return c.json(okBody(await updateMpKfRoutingConfig(accountId, c.req.valid('json')), '保存成功'), 200);
+  },
 });
 
 const detailRoute = defineOpenAPIRoute({
@@ -92,7 +97,12 @@ const acceptRoute = defineOpenAPIRoute({
     request: { params: IdParam, body: { content: jsonContent(acceptMpKfSessionSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '接入成功') },
   }),
-  handler: async (c) => c.json(okBody(await acceptMpKfSession(c.req.valid('param').id, c.req.valid('json')), '接入成功'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getMpKfSessionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await acceptMpKfSession(id, c.req.valid('json')), '接入成功'), 200);
+  },
 });
 
 const transferRoute = defineOpenAPIRoute({
@@ -103,7 +113,12 @@ const transferRoute = defineOpenAPIRoute({
     request: { params: IdParam, body: { content: jsonContent(transferMpKfSessionSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '转接成功') },
   }),
-  handler: async (c) => c.json(okBody(await transferMpKfSession(c.req.valid('param').id, c.req.valid('json')), '转接成功'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getMpKfSessionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await transferMpKfSession(id, c.req.valid('json')), '转接成功'), 200);
+  },
 });
 
 const closeRoute = defineOpenAPIRoute({
@@ -114,7 +129,12 @@ const closeRoute = defineOpenAPIRoute({
     request: { params: IdParam, body: { content: jsonContent(closeMpKfSessionSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '已结束') },
   }),
-  handler: async (c) => c.json(okBody(await closeMpKfSession(c.req.valid('param').id, c.req.valid('json')), '已结束'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getMpKfSessionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await closeMpKfSession(id, c.req.valid('json')), '已结束'), 200);
+  },
 });
 
 const replyRoute = defineOpenAPIRoute({
@@ -125,7 +145,12 @@ const replyRoute = defineOpenAPIRoute({
     request: { params: IdParam, body: { content: jsonContent(replyMpKfSessionSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '已发送') },
   }),
-  handler: async (c) => c.json(okBody(await replyMpKfSession(c.req.valid('param').id, c.req.valid('json')), '已发送'), 200),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getMpKfSessionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await replyMpKfSession(id, c.req.valid('json')), '已发送'), 200);
+  },
 });
 
 const reportRoute = defineOpenAPIRoute({
@@ -147,7 +172,13 @@ const rateRoute = defineOpenAPIRoute({
     request: { params: IdParam, body: { content: jsonContent(rateMpKfSessionSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpKfSessionDTO, '已记录') },
   }),
-  handler: async (c) => { const { id } = c.req.valid('param'); const b = c.req.valid('json'); return c.json(okBody(await rateMpKfSession(id, b.rating, b.remark), '已记录'), 200); },
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const b = c.req.valid('json');
+    const before = await getMpKfSessionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await rateMpKfSession(id, b.rating, b.remark), '已记录'), 200);
+  },
 });
 
 mpKfSessionRouter.openapiRoutes([

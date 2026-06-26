@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, IdParam, okBody,
@@ -9,7 +9,7 @@ import { updateMpFanSchema, blacklistMpFansSchema } from '@zenith/shared';
 import { MpFanDTO, MpFanSyncResultDTO, MpFanBlacklistResultDTO } from '../lib/openapi-dtos';
 import {
   listMpFans, updateMpFan, getMpFanBeforeAudit, syncMpFans,
-  blacklistMpFans, unblacklistMpFans, syncMpBlacklist,
+  blacklistMpFans, unblacklistMpFans, syncMpBlacklist, getMpFansBlacklistAudit, getMpBlacklistStateAudit,
 } from '../services/mp-fan.service';
 import { createMemberForFan, bindFanToMember, unbindFanMember } from '../services/mp-member.service';
 
@@ -115,7 +115,13 @@ const blacklistRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(blacklistMpFansSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpFanBlacklistResultDTO, '已拉黑') },
   }),
-  handler: async (c) => { const b = c.req.valid('json'); return c.json(okBody(await blacklistMpFans(b.accountId, b.openids), '已拉黑'), 200); },
+  handler: async (c) => {
+    const b = c.req.valid('json');
+    setAuditBeforeData(c, await getMpFansBlacklistAudit(b.accountId, b.openids));
+    const result = await blacklistMpFans(b.accountId, b.openids);
+    setAuditAfterData(c, await getMpFansBlacklistAudit(b.accountId, b.openids));
+    return c.json(okBody(result, '已拉黑'), 200);
+  },
 });
 
 const unblacklistRoute = defineOpenAPIRoute({
@@ -126,7 +132,13 @@ const unblacklistRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(blacklistMpFansSchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpFanBlacklistResultDTO, '已移出') },
   }),
-  handler: async (c) => { const b = c.req.valid('json'); return c.json(okBody(await unblacklistMpFans(b.accountId, b.openids), '已移出'), 200); },
+  handler: async (c) => {
+    const b = c.req.valid('json');
+    setAuditBeforeData(c, await getMpFansBlacklistAudit(b.accountId, b.openids));
+    const result = await unblacklistMpFans(b.accountId, b.openids);
+    setAuditAfterData(c, await getMpFansBlacklistAudit(b.accountId, b.openids));
+    return c.json(okBody(result, '已移出'), 200);
+  },
 });
 
 const syncBlacklistRoute = defineOpenAPIRoute({
@@ -137,7 +149,13 @@ const syncBlacklistRoute = defineOpenAPIRoute({
     request: { body: { content: jsonContent(syncBodySchema), required: true } },
     responses: { ...commonErrorResponses, ...ok(MpFanSyncResultDTO, '同步完成') },
   }),
-  handler: async (c) => { const r = await syncMpBlacklist(c.req.valid('json').accountId); return c.json(okBody({ success: r.success, synced: r.total, total: r.total }, '同步完成'), 200); },
+  handler: async (c) => {
+    const { accountId } = c.req.valid('json');
+    setAuditBeforeData(c, await getMpBlacklistStateAudit(accountId));
+    const r = await syncMpBlacklist(accountId);
+    setAuditAfterData(c, await getMpBlacklistStateAudit(accountId));
+    return c.json(okBody({ success: r.success, synced: r.total, total: r.total }, '同步完成'), 200);
+  },
 });
 
 mpFansRouter.openapiRoutes([listRoute, syncRoute, blacklistRoute, unblacklistRoute, syncBlacklistRoute, updateRoute, createMemberRoute, bindMemberRoute, unbindMemberRoute] as const);

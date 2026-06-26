@@ -301,6 +301,26 @@ export async function getDelivery(id: number) {
   return mapDelivery(row);
 }
 
+export async function getDeliveryBeforeAudit(id: number) {
+  return getDelivery(id).catch((err) => {
+    if (err instanceof HTTPException && err.status === 404) return null;
+    throw err;
+  });
+}
+
+export async function getDeliveriesBeforeAudit(ids: number[]) {
+  if (!ids.length) return [];
+  const tc = tenantCondition(workflowEventDeliveries, currentUser());
+  const conds = [inArray(workflowEventDeliveries.id, ids)];
+  if (tc) conds.push(tc);
+  const rows = await db.select({ d: workflowEventDeliveries, subName: workflowEventSubscriptions.name })
+    .from(workflowEventDeliveries)
+    .leftJoin(workflowEventSubscriptions, eq(workflowEventDeliveries.subscriptionId, workflowEventSubscriptions.id))
+    .where(and(...conds))
+    .orderBy(desc(workflowEventDeliveries.id));
+  return rows.map((r) => mapDelivery(r.d, r.subName));
+}
+
 /** 候选重试任务：状态 retrying 且 nextRetryAt 已到 */
 export async function findRetryableDeliveries(limit = 50) {
   const rows = await db.select().from(workflowEventDeliveries)

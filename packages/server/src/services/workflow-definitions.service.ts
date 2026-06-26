@@ -574,3 +574,21 @@ export async function getWorkflowDefinitionBeforeAudit(id: number) {
   if (!row) return null;
   return mapDefinition(row, row.createdByUser?.nickname ?? null);
 }
+
+export async function getWorkflowDefinitionsBeforeAudit(ids: number[]) {
+  if (!ids.length) return [];
+  const user = currentUser();
+  const tc = tenantCondition(workflowDefinitions, user);
+  const conds = [inArray(workflowDefinitions.id, ids)];
+  if (tc) conds.push(tc);
+  const rows = await db.query.workflowDefinitions.findMany({
+    where: and(...conds),
+    with: {
+      createdByUser: { columns: { nickname: true } },
+      category: { columns: { name: true, color: true, icon: true } },
+      form: { columns: { name: true, schema: true } },
+    },
+    orderBy: desc(workflowDefinitions.id),
+  });
+  return rows.map((row) => mapDefinition(row, row.createdByUser?.nickname ?? null));
+}
