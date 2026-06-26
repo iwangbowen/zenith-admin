@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
-  Banner, Button, Collapse, Form, Input, Modal, Select, Space, Tag, Toast, Typography,
+  Banner, Button, Collapse, Form, Input, Modal, Select, Space, Tag, Toast, Tooltip, Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -208,17 +208,37 @@ export default function PayDemoPage() {
       title: '支付方式', dataIndex: 'payMethod', width: 130,
       render: (v: PaymentMethod | null) => (v ? PAYMENT_METHOD_LABELS[v] : <Typography.Text type="tertiary">—</Typography.Text>),
     },
-    { title: '支付时间', dataIndex: 'paidAt', width: 170, render: (v: string | null) => v ?? <Typography.Text type="tertiary">—</Typography.Text> },
+    {
+      title: '支付时间',
+      dataIndex: 'paidAt',
+      width: 190,
+      render: (v: string | null) => (
+        v
+          ? <span style={{ whiteSpace: 'nowrap' }}>{v}</span>
+          : <Typography.Text type="tertiary">—</Typography.Text>
+      ),
+    },
     createdAtColumn as ColumnProps<BizPayDemo>,
     {
       title: '状态', dataIndex: 'status', width: 100, fixed: 'right',
       render: (v: BizPayDemoStatus) => { const s = STATUS_MAP[v]; return s ? <Tag color={s.color}>{s.text}</Tag> : <span>{v}</span>; },
     },
     createOperationColumn<BizPayDemo>({
-      width: 230,
+      width: 300,
       emptyContent: (record) => (
         record.status === 'paid'
-          ? <Typography.Text type="tertiary" size="small">{record.fulfillRemark ?? '已履约'}</Typography.Text>
+          ? (
+            <Tooltip content={record.fulfillRemark ?? '已履约'}>
+              <Typography.Text
+                type="tertiary"
+                size="small"
+                ellipsis
+                style={{ maxWidth: 260 }}
+              >
+                {record.fulfillRemark ?? '已履约'}
+              </Typography.Text>
+            </Tooltip>
+          )
           : undefined
       ),
       actions: (record) => [
