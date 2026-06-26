@@ -1273,6 +1273,7 @@ export type WsMessage =
 export type TerminalMessage =
   | { type: 'terminal:input'; data: string }
   | { type: 'terminal:output'; data: string }
+  | { type: 'terminal:cwd'; cwd: string }
   | { type: 'terminal:resize'; cols: number; rows: number }
   | { type: 'terminal:close' }
   | { type: 'terminal:exit' }

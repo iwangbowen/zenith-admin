@@ -121,6 +121,21 @@ function buildWsUrl(sessionId: string, shell: string, cwd?: string): string {
   return `${wsBase}/api/ws/terminal?token=${encodeURIComponent(token)}&shell=${encodeURIComponent(shell)}${cwdPart}&sessionId=${encodeURIComponent(sessionId)}`;
 }
 
+function parseOsc7Cwd(data: string): string | null {
+  const match = /^file:\/\/[^/]*(\/[^?#]*)/.exec(data);
+  if (!match) return null;
+
+  const decoded = decodeURIComponent(match[1]);
+  const windowsDrive = /^\/([A-Za-z]:)(\/.*)?$/.exec(decoded);
+  if (windowsDrive) {
+    return `${windowsDrive[1]}${windowsDrive[2] ?? ''}`.replace(/\//g, '\\');
+  }
+  if (decoded.startsWith('//')) {
+    return decoded.replace(/\//g, '\\');
+  }
+  return decoded;
+}
+
 class TerminalSessionStore {
   private readonly sessions = new Map<string, SessionState>();
   private readonly cwdCallbacks = new Map<string, (cwd: string) => void>();
@@ -152,6 +167,12 @@ class TerminalSessionStore {
     if (!listeners || listeners.size === 0) return;
     const snapshot = this.snapshot(session);
     listeners.forEach((listener) => listener(snapshot));
+  }
+
+  private updateCwd(sessionId: string, session: SessionState, cwd: string): void {
+    session.currentCwd = cwd;
+    this.cwdCallbacks.get(sessionId)?.(cwd);
+    this.notifyStatus(sessionId);
   }
 
   getStatus(sessionId: string): TerminalStatusSnapshot | null {
@@ -257,16 +278,10 @@ class TerminalSessionStore {
     // OSC 7：Shell 报告当前工作目录（需 Shell 配置，如 bash/zsh PROMPT_COMMAND）
     term.parser.registerOscHandler(7, (data: string) => {
       try {
-        // 格式：file://hostname/path/to/dir
-        const match = /^file:\/\/[^/]*(\/[^?#]*)/.exec(data);
-        if (match) {
-          const newCwd = decodeURIComponent(match[1]);
-          session.currentCwd = newCwd;
-          this.cwdCallbacks.get(sessionId)?.(newCwd);
-          this.notifyStatus(sessionId);
-        }
+        const newCwd = parseOsc7Cwd(data);
+        if (newCwd) this.updateCwd(sessionId, session, newCwd);
       } catch { /* ignore */ }
-      return false;
+      return true;
     });
 
     this.setupWsHandlers(sessionId, ws, session, shell);
@@ -316,12 +331,15 @@ class TerminalSessionStore {
         const msg = JSON.parse(evt.data as string) as {
           type: string;
           data?: string;
+          cwd?: string;
           message?: string;
         };
         if (msg.type === 'terminal:reconnected') {
           session.connectionState = 'connected';
           session.statusMessage = undefined;
           this.notifyStatus(sessionId);
+        } else if (msg.type === 'terminal:cwd' && msg.cwd) {
+          this.updateCwd(sessionId, session, msg.cwd);
         } else if (msg.type === 'terminal:output' && msg.data) {
           session.recording?.events.push([(Date.now() - (session.recording?.startTime ?? 0)) / 1000, 'o', msg.data]);
           term.write(msg.data);
@@ -637,7 +655,8 @@ class TerminalSessionStore {
 
   /** 获取通过 OSC 7 追踪到的当前工作目录 */
   getCwd(sessionId: string): string | undefined {
-    return this.sessions.get(sessionId)?.currentCwd;
+    const session = this.sessions.get(sessionId);
+    return session?.currentCwd ?? session?.cwd;
   }
 
   /** 注册 CWD 变化回调（每次 OSC 7 触发时调用） */

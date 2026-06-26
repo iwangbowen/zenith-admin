@@ -32,6 +32,19 @@ import {
 /** 终端会话监控权限码 */
 const MONITOR_PERMISSION = 'system:terminal:monitor';
 
+const POWERSHELL_CWD_PROMPT = [
+  "$global:__zenith_original_prompt = if (Test-Path function:\\prompt) { (Get-Command prompt).ScriptBlock } else { { 'PS ' + (Get-Location) + '> ' } };",
+  'function global:prompt {',
+  'try {',
+  '$p = (Get-Location).ProviderPath;',
+  'if (-not $p) { $p = (Get-Location).Path; }',
+  "$u = [Uri]::EscapeDataString(($p -replace '\\\\', '/')).Replace('%2F', '/');",
+  '[Console]::Write("$([char]27)]7;file://localhost/$u$([char]7)");',
+  '} catch {}',
+  '& $global:__zenith_original_prompt',
+  '}',
+].join(' ');
+
 /**
  * 根据前端选择的 shell id 解析实际可执行文件与启动参数。
  * shell 列表由 listShells() 按当前平台动态探测；前端传入的 id 必须在白名单内，
@@ -62,6 +75,9 @@ function resolveShell(type: string | undefined): { file: string; args: string[] 
   // WSL 发行版：shell.args 已包含 ['-d', '<distro>']
   if (shell.args?.length) {
     return { file: shell.path, args: shell.args };
+  }
+  if (os.platform() === 'win32' && shell.id === 'powershell') {
+    return { file: shell.path, args: ['-NoExit', '-Command', POWERSHELL_CWD_PROMPT] };
   }
   // Windows 下 Git Bash 使用 login + interactive
   if (os.platform() === 'win32' && shell.id === 'bash') {
@@ -251,6 +267,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
 
           let termProcess: TerminalProcess;
           let label: string;
+          let initialCwd: string | undefined;
           try {
             if (isSsh) {
               // ── SSH 连接 ──
@@ -272,7 +289,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
 
               // 解析工作目录：优先使用前端传入的 cwd（须为已存在目录），否则回退用户主目录
               // WSL 会话使用 Windows 用户主目录作为 cwd（让 WSL 在自身 home 启动；传 Windows 路径给 wsl.exe 是安全的）
-              let cwd = isWsl ? os.homedir() : (process.env.HOME ?? process.cwd());
+              let cwd = os.homedir() || process.cwd();
               if (!isWsl && cwdParam) {
                 try {
                   if (fs.existsSync(cwdParam) && fs.statSync(cwdParam).isDirectory()) {
@@ -280,6 +297,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
                   }
                 } catch { /* 无效路径回退默认 */ }
               }
+              initialCwd = isWsl || isDocker ? undefined : cwd;
 
               const ptyProcess = pty.spawn(shellFile, shellArgs, {
                 name: 'xterm-256color',
@@ -290,13 +308,16 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
               });
 
               ptyProcess.onData((data) => {
-                appendOutput(session, data);
-                try { session.currentWs?.send(JSON.stringify({ type: 'terminal:output', data })); } catch { /* ignore */ }
+                const currentSession = sessionRef.current;
+                if (!currentSession) return;
+                appendOutput(currentSession, data);
+                try { currentSession.currentWs?.send(JSON.stringify({ type: 'terminal:output', data })); } catch { /* ignore */ }
               });
               ptyProcess.onExit(() => {
+                const currentSession = sessionRef.current;
                 try {
-                  session.currentWs?.send(JSON.stringify({ type: 'terminal:exit' }));
-                  session.currentWs?.close(1000, 'Process exited');
+                  currentSession?.currentWs?.send(JSON.stringify({ type: 'terminal:exit' }));
+                  currentSession?.currentWs?.close(1000, 'Process exited');
                 } catch { /* ignore */ }
                 if (sessionId) destroySession(sessionId);
               });
@@ -335,6 +356,9 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {  con
           };
           sessionRef.current = session;
           if (sessionId) setSession(sessionId, session);
+          if (initialCwd) {
+            try { ws.send(JSON.stringify({ type: 'terminal:cwd', cwd: initialCwd })); } catch { /* ignore */ }
+          }
         },
 
         onMessage(evt, _ws) {
