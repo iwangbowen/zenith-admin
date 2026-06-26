@@ -343,10 +343,12 @@ export interface ExportEntityMeta {
     syncMaxRows: number;
     forceAsyncWhenSensitive: boolean;
     forceAsyncWhenRaw: boolean;
+    syncModeOverridesAsyncPolicies: boolean;
   };
   permissions: {
     export: string;
     exportRaw?: string;
+    requireExportRawPermission?: boolean;
   };
 }
 

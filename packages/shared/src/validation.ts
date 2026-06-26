@@ -62,9 +62,9 @@ export const createExportJobSchema = z.object({
   format: z.enum(['xlsx', 'csv']).default('xlsx'),
   query: z.record(z.string(), z.unknown()).optional().default({}),
   columns: z.array(z.string().min(1).max(128)).optional(),
-  raw: z.boolean().optional().default(false),
+  raw: z.boolean().optional().default(true),
   watermark: z.boolean().optional().default(true),
-  executionMode: z.enum(['sync', 'async', 'auto']).optional().default('auto'),
+  executionMode: z.enum(['sync', 'async', 'auto']).optional().default('sync'),
 });
 
 export const updateProfileSchema = z.object({

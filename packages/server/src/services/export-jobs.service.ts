@@ -61,7 +61,7 @@ async function assertExportPermission(definition: AnyExportDefinition, raw: bool
   if (!await hasPermission(user, definition.permissions.export)) {
     throw new HTTPException(403, { message: '无导出权限' });
   }
-  if (raw && !await hasPermission(user, definition.permissions.exportRaw)) {
+  if (raw && definition.permissions.requireExportRawPermission && !await hasPermission(user, definition.permissions.exportRaw)) {
     throw new HTTPException(403, { message: '无明文导出权限' });
   }
 }
@@ -91,6 +91,7 @@ function resolveExecutionMode(
 ): ExportExecutionMode {
   const policy = normalizeExecution(definition);
   const mode = requested ?? policy.mode;
+  if (mode === 'sync' && policy.syncModeOverridesAsyncPolicies) return 'sync';
   if (policy.forceAsyncWhenRaw && raw) return 'async';
   if (policy.forceAsyncWhenSensitive && sensitive) return 'async';
   if (mode === 'sync') return 'sync';

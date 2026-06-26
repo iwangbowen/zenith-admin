@@ -31,10 +31,12 @@ export const ExportEntityMetaDTO = z
       syncMaxRows: z.number().int(),
       forceAsyncWhenSensitive: z.boolean(),
       forceAsyncWhenRaw: z.boolean(),
+      syncModeOverridesAsyncPolicies: z.boolean(),
     }),
     permissions: z.object({
       export: z.string(),
       exportRaw: z.string().optional(),
+      requireExportRawPermission: z.boolean().optional(),
     }),
   })
   .openapi('ExportEntityMeta');

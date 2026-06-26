@@ -1,9 +1,8 @@
 import { db } from '../../../db';
 import { users } from '../../../db/schema';
 import type { JwtPayload } from '../../../middleware/auth';
-import { buildUsersListWhere, findUsersWithRelations, mapUsers, mapUsersWithMask, type ListUsersQuery } from '../../../services/users.service';
+import { buildUsersListWhere, findUsersWithRelations, mapUsers, type ListUsersQuery } from '../../../services/users.service';
 import { defineExport } from '../registry';
-import type { ExportRuntimeContext } from '../types';
 
 interface UserExportRow extends Record<string, unknown> {
   id: number;
@@ -43,10 +42,10 @@ function normalizeQuery(query: Record<string, unknown>): ListUsersQuery {
   };
 }
 
-async function loadUserRows(query: Record<string, unknown>, user: JwtPayload, ctx: ExportRuntimeContext): Promise<UserExportRow[]> {
+async function loadUserRows(query: Record<string, unknown>, user: JwtPayload): Promise<UserExportRow[]> {
   const where = await buildUsersListWhere(normalizeQuery(query), user);
   const rawList = await findUsersWithRelations({ where, orderBy: users.id });
-  const list = ctx.raw ? mapUsers(rawList) : await mapUsersWithMask(rawList, []);
+  const list = mapUsers(rawList);
   return list.map((item) => ({
     id: item.id,
     username: item.username,
@@ -74,10 +73,11 @@ export const usersExportDefinition = defineExport<Record<string, unknown>, UserE
     exportRaw: 'system:user:export-raw',
   },
   execution: {
-    mode: 'auto',
+    mode: 'sync',
     syncMaxRows: 3000,
-    forceAsyncWhenRaw: true,
-    forceAsyncWhenSensitive: true,
+    forceAsyncWhenRaw: false,
+    forceAsyncWhenSensitive: false,
+    syncModeOverridesAsyncPolicies: true,
   },
   retention: {
     normalDays: 7,

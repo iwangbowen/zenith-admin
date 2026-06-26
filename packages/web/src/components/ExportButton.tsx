@@ -19,9 +19,9 @@ export function ExportButton({
   query,
   label = '导出',
   formats = ['xlsx', 'csv'],
-  raw = false,
+  raw = true,
   watermark = true,
-  executionMode = 'auto',
+  executionMode = 'sync',
 }: Readonly<ExportButtonProps>) {
   const [loadingFormat, setLoadingFormat] = useState<ExportJobFormat | null>(null);
 

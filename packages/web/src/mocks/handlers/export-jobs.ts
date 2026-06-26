@@ -32,14 +32,16 @@ const entities: ExportEntityMeta[] = [
       },
     ],
     execution: {
-      mode: 'auto',
+      mode: 'sync',
       syncMaxRows: 3000,
-      forceAsyncWhenSensitive: true,
-      forceAsyncWhenRaw: true,
+      forceAsyncWhenSensitive: false,
+      forceAsyncWhenRaw: false,
+      syncModeOverridesAsyncPolicies: true,
     },
     permissions: {
       export: 'system:user:export',
       exportRaw: 'system:user:export-raw',
+      requireExportRawPermission: false,
     },
   },
 ];
@@ -60,8 +62,8 @@ const jobs: ExportJob[] = [
     fileId: '018f6f8a-0005-7000-8000-000000000005',
     filename: '用户列表_20260626_090000_1.xlsx',
     fileSize: 76432,
-    raw: false,
-    masked: true,
+    raw: true,
+    masked: false,
     sensitive: true,
     watermark: true,
     errorMessage: null,
@@ -91,8 +93,8 @@ const jobs: ExportJob[] = [
     fileId: null,
     filename: '用户列表_20260626_100000_2.csv',
     fileSize: null,
-    raw: false,
-    masked: true,
+    raw: true,
+    masked: false,
     sensitive: true,
     watermark: true,
     errorMessage: null,
@@ -219,8 +221,8 @@ export const exportJobsHandlers = [
     const id = nextJobId++;
     const format = body.format ?? 'xlsx';
     const sensitive = entity.sensitive;
-    const raw = !!body.raw;
-    const forceAsync = raw || sensitive || body.executionMode === 'async';
+    const raw = body.raw ?? true;
+    const forceAsync = body.executionMode === 'async';
     const now = mockDateTime();
     const job: ExportJob = {
       id,
@@ -236,7 +238,7 @@ export const exportJobsHandlers = [
       filename: `${entity.filenamePrefix}_${id}.${format}`,
       fileSize: forceAsync ? null : 32768,
       raw,
-      masked: !raw,
+      masked: false,
       sensitive,
       watermark: body.watermark ?? true,
       errorMessage: null,

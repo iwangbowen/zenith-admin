@@ -12,6 +12,7 @@ export interface ExportExecutionPolicy {
   syncMaxRows: number;
   forceAsyncWhenSensitive: boolean;
   forceAsyncWhenRaw: boolean;
+  syncModeOverridesAsyncPolicies: boolean;
 }
 
 export interface ExportRetentionPolicy {
@@ -23,6 +24,7 @@ export interface ExportRetentionPolicy {
 export interface ExportPermissions {
   export: string;
   exportRaw?: string;
+  requireExportRawPermission?: boolean;
   manageJobs?: string;
   tenantManageJobs?: string;
 }
@@ -114,10 +116,11 @@ export interface ExportDefinition<
 export type AnyExportDefinition = ExportDefinition<Record<string, unknown>, Record<string, unknown>>;
 
 export const DEFAULT_EXPORT_EXECUTION: ExportExecutionPolicy = {
-  mode: 'auto',
+  mode: 'sync',
   syncMaxRows: 5000,
-  forceAsyncWhenSensitive: true,
-  forceAsyncWhenRaw: true,
+  forceAsyncWhenSensitive: false,
+  forceAsyncWhenRaw: false,
+  syncModeOverridesAsyncPolicies: true,
 };
 
 export const DEFAULT_EXPORT_RETENTION: ExportRetentionPolicy = {
