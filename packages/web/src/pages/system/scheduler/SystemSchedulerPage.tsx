@@ -12,6 +12,7 @@ import type {
 } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
@@ -348,9 +349,14 @@ export default function SystemSchedulerPage() {
           label: '执行',
           type: 'primary',
           loading: runningTaskName === record.name,
-          disabled: !record.allowManualRun || !canRun || record.running,
-          disabledReason: !record.allowManualRun ? '该任务未开放手动执行' : record.running ? '任务正在运行' : '缺少执行权限',
-          hidden: record.taskType !== 'recurring',
+          disabled: record.taskType !== 'recurring' || !record.allowManualRun || !canRun || record.running,
+          disabledReason: record.taskType !== 'recurring'
+            ? '队列 Worker 不支持手动执行'
+            : !record.allowManualRun
+              ? '该任务未开放手动执行'
+              : record.running
+                ? '任务正在运行'
+                : '缺少执行权限',
           onClick: () => handleRunTask(record),
         },
         { key: 'logs', label: '日志', onClick: () => openTaskRuns(record) },
@@ -567,14 +573,13 @@ export default function SystemSchedulerPage() {
         </TabPane>
       </Tabs>
 
-      <Modal
+      <AppModal
         visible={!!configTask}
         title={configTask ? `调度策略 - ${configTask.title}` : '调度策略'}
         width={560}
-        okText="保存"
         onCancel={() => setConfigTask(null)}
         footer={null}
-        closeOnEsc
+        fullscreenable={false}
       >
         {configTask && (
           <Form<TaskConfigForm>
@@ -602,7 +607,7 @@ export default function SystemSchedulerPage() {
             </Space>
           </Form>
         )}
-      </Modal>
+      </AppModal>
     </>
   );
 }
