@@ -530,18 +530,6 @@ export const workflowExtraHandlers = [
     return ok({ list: all.slice((page - 1) * pageSize, page * pageSize), total: all.length, page, pageSize });
   }),
 
-  // ── 导出（Demo 下返回占位 CSV）──
-  http.get('/api/workflows/instances/export', () => {
-    const header = '业务编号,申请标题,流程,发起人,状态\n';
-    const body = mockWorkflowInstances.map((i) => `${i.serialNo ?? ''},${i.title},${i.definitionName ?? ''},${i.initiatorName ?? ''},${i.status}`).join('\n');
-    return new HttpResponse(`\uFEFF${header}${body}`, {
-      headers: {
-        'Content-Type': 'text/csv;charset=utf-8',
-        'Content-Disposition': 'attachment; filename="workflow-instances.csv"',
-      },
-    });
-  }),
-
   // ── 流程评论 ──
   http.get('/api/workflows/instances/:id/comments', ({ params }) => {
     const list = mockComments.filter((c) => c.instanceId === Number(params.id));
