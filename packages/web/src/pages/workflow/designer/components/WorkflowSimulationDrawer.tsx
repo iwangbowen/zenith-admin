@@ -315,6 +315,30 @@ function cssAttrValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+function keepNodeVisibleInCanvas(canvas: HTMLElement, target: HTMLElement): void {
+  const canvasRect = canvas.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const margin = 48;
+  let topDelta = 0;
+  let leftDelta = 0;
+
+  if (targetRect.top < canvasRect.top + margin) {
+    topDelta = targetRect.top - canvasRect.top - margin;
+  } else if (targetRect.bottom > canvasRect.bottom - margin) {
+    topDelta = targetRect.bottom - canvasRect.bottom + margin;
+  }
+
+  if (targetRect.left < canvasRect.left + margin) {
+    leftDelta = targetRect.left - canvasRect.left - margin;
+  } else if (targetRect.right > canvasRect.right - margin) {
+    leftDelta = targetRect.right - canvasRect.right + margin;
+  }
+
+  if (topDelta !== 0 || leftDelta !== 0) {
+    canvas.scrollBy({ top: topDelta, left: leftDelta, behavior: 'smooth' });
+  }
+}
+
 function edgeMatchesSelectedBranch(
   edge: WorkflowSimulationResult['edgeResults'][number],
   selectedBranch: SelectedSimulationBranch,
@@ -383,7 +407,7 @@ export default function WorkflowSimulationDrawer({
     const canvas = graphCanvasRef.current;
     if (!canvas) return;
     const target = canvas.querySelector<HTMLElement>(`[data-fd-node-key="${cssAttrValue(currentItem.nodeKey)}"]`);
-    target?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+    if (target) keepNodeVisibleInCanvas(canvas, target);
   }, [currentItem?.nodeKey, currentStep, visible]);
 
   const currentEdges = useMemo(() => {

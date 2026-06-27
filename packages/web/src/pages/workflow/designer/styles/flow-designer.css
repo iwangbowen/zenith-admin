@@ -808,7 +808,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   grid-row: 2;
   min-height: 0;
   overflow: auto;
-  padding: 34px 0 80px;
+  padding: 20px 0 80px;
   background:
     radial-gradient(circle, var(--fd-canvas-dot) 1px, transparent 1px);
   background-size: 16px 16px;
@@ -956,7 +956,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
   }
 
   .fd-simulation-graph__canvas {
-    padding: 24px 0 64px;
+    padding: 18px 0 64px;
   }
 }
 
