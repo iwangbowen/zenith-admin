@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Form, Input, Modal, Select, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { AlertTriangle, RefreshCw, RotateCcw, Search, Settings, Trash2 } from 'lucide-react';
 import type {
@@ -120,6 +121,7 @@ export default function SystemSchedulerPage() {
   const [configTask, setConfigTask] = useState<SystemSchedulerTask | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
   const [cleanupLoading, setCleanupLoading] = useState(false);
+  const configFormApi = useRef<FormApi | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination(20);
 
   const canRun = hasPermission('system:scheduler:run');
@@ -243,6 +245,17 @@ export default function SystemSchedulerPage() {
     } finally {
       setSavingConfig(false);
     }
+  };
+
+  const handleConfigModalOk = async () => {
+    if (!configFormApi.current) return;
+    let values: TaskConfigForm;
+    try {
+      values = await configFormApi.current.validate() as unknown as TaskConfigForm;
+    } catch {
+      throw new Error('validation');
+    }
+    await handleSaveConfig(values);
   };
 
   const handleCleanupRuns = () => {
@@ -577,12 +590,19 @@ export default function SystemSchedulerPage() {
         visible={!!configTask}
         title={configTask ? `调度策略 - ${configTask.title}` : '调度策略'}
         width={560}
-        onCancel={() => setConfigTask(null)}
-        footer={null}
-        fullscreenable={false}
+        onCancel={() => {
+          setConfigTask(null);
+          configFormApi.current = null;
+        }}
+        onOk={handleConfigModalOk}
+        confirmLoading={savingConfig}
+        okText="保存"
+        cancelText="取消"
       >
         {configTask && (
           <Form<TaskConfigForm>
+            key={configTask.name}
+            getFormApi={(api) => { configFormApi.current = api; }}
             labelPosition="left"
             labelWidth={130}
             initValues={{
@@ -593,7 +613,6 @@ export default function SystemSchedulerPage() {
               alertEnabled: configTask.alertEnabled,
               manualSingleton: configTask.manualSingleton,
             }}
-            onSubmit={(values) => { void handleSaveConfig(values); }}
           >
             <Form.InputNumber field="logRetentionDays" label="留存天数" min={1} max={3650} style={{ width: '100%' }} rules={[{ required: true, message: '请输入留存天数' }]} />
             <Form.InputNumber field="logRetentionRuns" label="每任务保留条数" min={1} max={100000} style={{ width: '100%' }} rules={[{ required: true, message: '请输入保留条数' }]} />
@@ -601,10 +620,6 @@ export default function SystemSchedulerPage() {
             <Form.InputNumber field="failureAlertThreshold" label="连续失败阈值" min={1} max={100} style={{ width: '100%' }} rules={[{ required: true, message: '请输入失败阈值' }]} />
             <Form.Switch field="alertEnabled" label="启用告警" />
             <Form.Switch field="manualSingleton" label="手动执行防重" disabled={!configTask.allowManualRun} />
-            <Space style={{ width: '100%', justifyContent: 'flex-end', marginTop: 12 }}>
-              <Button onClick={() => setConfigTask(null)}>取消</Button>
-              <Button type="primary" htmlType="submit" loading={savingConfig}>保存</Button>
-            </Space>
           </Form>
         )}
       </AppModal>
