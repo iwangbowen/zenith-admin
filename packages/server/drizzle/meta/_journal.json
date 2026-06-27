@@ -1282,6 +1282,13 @@
       "when": 1782562600000,
       "tag": "0182_enterprise_identity_providers",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1782567323126,
+      "tag": "0183_ldap_identity_providers",
+      "breakpoints": true
     }
   ]
 }
