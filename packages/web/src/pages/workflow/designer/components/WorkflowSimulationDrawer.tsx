@@ -383,7 +383,6 @@ export default function WorkflowSimulationDrawer({
   const [selectedCaseId, setSelectedCaseId] = useState<string | undefined>(undefined);
   const [isPlaying, setIsPlaying] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
-  const [inputCollapsed, setInputCollapsed] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
 
   useEffect(() => () => {
@@ -534,7 +533,6 @@ export default function WorkflowSimulationDrawer({
         setDecisions(nextDecisions);
         setActiveStep(res.data.timeline.length > 0 ? 1 : 0);
         setSelectedBranch(null);
-        setInputCollapsed(true);
         setInspectorOpen(true);
         Toast.success(toastText);
       }
@@ -553,7 +551,6 @@ export default function WorkflowSimulationDrawer({
     setBreakpoints(new Set());
     setSelectedBranch(null);
     setSelectedCaseId(undefined);
-    setInputCollapsed(false);
     applyFormValues(defaultFormDataFromFields(formFields));
     formApi.current?.reset();
   };
@@ -959,63 +956,50 @@ export default function WorkflowSimulationDrawer({
     >
       <div className="fd-simulation-drawer__body">
         <aside className="fd-simulation-panel">
-          <section className={`fd-simulation-section fd-simulation-section--input${inputCollapsed ? ' is-collapsed' : ''}`}>
-            <div className="fd-simulation-section__title">
+          <section className="fd-simulation-section fd-simulation-section--input">
+            <div className="fd-simulation-section__title fd-simulation-section__title--stack">
               <span>仿真输入</span>
-              {inputCollapsed ? (
-                <Button size="small" type="tertiary" onClick={() => setInputCollapsed(false)}>重新编辑</Button>
-              ) : (
-                <Space spacing={4}>
-                  <Button size="small" type="tertiary" icon={<Wand2 size={13} />} onClick={generateTestData}>生成测试数据</Button>
-                  <Button size="small" type="tertiary" icon={<Save size={13} />} onClick={() => void saveCase()}>保存用例</Button>
-                </Space>
-              )}
+              <Space spacing={4} wrap>
+                <Button size="small" type="tertiary" icon={<Wand2 size={13} />} onClick={generateTestData}>生成测试数据</Button>
+                <Button size="small" type="tertiary" icon={<Save size={13} />} onClick={() => void saveCase()}>保存用例</Button>
+              </Space>
             </div>
-            {inputCollapsed ? (
-              <button type="button" className="fd-simulation-input-summary" onClick={() => setInputCollapsed(false)}>
-                <Wand2 size={14} />
-                <Typography.Text size="small" type="tertiary">输入已折叠，点击「重新编辑」可修改后重新运行。</Typography.Text>
-              </button>
+            <Select
+              style={{ width: '100%', marginBottom: 10 }}
+              placeholder="默认使用当前登录用户发起"
+              showClear
+              filter
+              optionList={userOptions}
+              value={starterUserId}
+              onChange={(v) => setStarterUserId(typeof v === 'number' ? v : undefined)}
+            />
+            <Select
+              style={{ width: '100%', marginBottom: 12 }}
+              placeholder="载入已保存的仿真用例"
+              showClear
+              filter
+              optionList={savedCaseOptions}
+              value={selectedCaseId}
+              onChange={loadCase}
+            />
+            {formFields.length > 0 ? (
+              <div className="fd-simulation-form-box">
+                <WorkflowFormRenderer
+                  key={formRenderKey}
+                  fields={formFields}
+                  initValues={formData}
+                  getFormApi={(api) => { formApi.current = api; }}
+                  onValueChange={setFormData}
+                  labelPosition="top"
+                />
+              </div>
             ) : (
-              <>
-                <Select
-                  style={{ width: '100%', marginBottom: 10 }}
-                  placeholder="默认使用当前登录用户发起"
-                  showClear
-                  filter
-                  optionList={userOptions}
-                  value={starterUserId}
-                  onChange={(v) => setStarterUserId(typeof v === 'number' ? v : undefined)}
-                />
-                <Select
-                  style={{ width: '100%', marginBottom: 12 }}
-                  placeholder="载入已保存的仿真用例"
-                  showClear
-                  filter
-                  optionList={savedCaseOptions}
-                  value={selectedCaseId}
-                  onChange={loadCase}
-                />
-                {formFields.length > 0 ? (
-                  <div className="fd-simulation-form-box">
-                    <WorkflowFormRenderer
-                      key={formRenderKey}
-                      fields={formFields}
-                      initValues={formData}
-                      getFormApi={(api) => { formApi.current = api; }}
-                      onValueChange={setFormData}
-                      labelPosition="top"
-                    />
-                  </div>
-                ) : (
-                  <TextArea value={jsonDraft} onChange={setJsonDraft} rows={8} placeholder={'{\n  "amount": 1200\n}'} />
-                )}
-                {!result && (
-                  <Button block type="primary" size="large" icon={<Play size={15} />} loading={submitting} onClick={() => void runSimulation()} className="fd-simulation-run-cta">
-                    启动仿真
-                  </Button>
-                )}
-              </>
+              <TextArea value={jsonDraft} onChange={setJsonDraft} rows={8} placeholder={'{\n  "amount": 1200\n}'} />
+            )}
+            {!result && (
+              <Button block type="primary" size="large" icon={<Play size={15} />} loading={submitting} onClick={() => void runSimulation()} className="fd-simulation-run-cta">
+                启动仿真
+              </Button>
             )}
           </section>
 

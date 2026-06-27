@@ -648,6 +648,15 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* 窄列时标题与操作按钮纵向堆叠，标题永不换行 */
+.fd-simulation-section__title--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .fd-simulation-form-box {
@@ -904,31 +913,9 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   border-radius: 50%;
 }
 
-/* 启动 CTA / 输入折叠摘要 */
+/* 启动 CTA */
 .fd-simulation-run-cta {
   margin-top: 12px;
-}
-
-.fd-simulation-section--input.is-collapsed {
-  overflow: visible;
-}
-
-.fd-simulation-input-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px dashed var(--semi-color-border);
-  border-radius: 8px;
-  background: var(--semi-color-fill-0);
-  color: var(--semi-color-text-2);
-  text-align: left;
-  cursor: pointer;
-}
-
-.fd-simulation-input-summary:hover {
-  border-color: var(--semi-color-primary);
 }
 
 /* ── 画布内：上下文检查器（贴近高亮节点） ───────────── */
