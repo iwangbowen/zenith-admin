@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button, Descriptions, Form, InputNumber,
-  Select, Spin, Tag, Toast, Typography, SplitButtonGroup, Dropdown,
+  Select, Spin, Tag, Toast, Typography,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import {
-  Activity, ChevronDown, Download, RefreshCw, Search, X,
+  Activity, RefreshCw, Search, X,
 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import AppModal from '@/components/AppModal';
 import { request } from '@/utils/request';
 import { config } from '@/config';
@@ -79,8 +80,6 @@ export default function ProcessesPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [sseStatus, setSseStatus] = useState<SseStatus>('idle');
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
 
   // ─── 搜索状态 ──────────────────────────────────────────────────────────
   const [keyword, setKeyword] = useState('');
@@ -138,6 +137,10 @@ export default function ProcessesPage() {
       return matchKw && matchStatus;
     });
   }, [processes, keyword, filterStatus]);
+  const buildExportQuery = () => ({
+    ...(keyword.trim() ? { keyword: keyword.trim() } : {}),
+    ...(filterStatus ? { status: filterStatus } : {}),
+  });
 
   // ─── SSE 连接 ──────────────────────────────────────────────────────────
   const connectSse = useCallback(() => {
@@ -249,19 +252,6 @@ export default function ProcessesPage() {
     } finally {
       setSettingPriority(false);
     }
-  }
-
-  // ─── 导出 ─────────────────────────────────────────────────────────────
-  async function handleExportExcel() {
-    setExportLoading(true);
-    try { await request.download('/api/processes/export', '进程列表.xlsx'); }
-    finally { setExportLoading(false); }
-  }
-
-  async function handleExportCsv() {
-    setExportCsvLoading(true);
-    try { await request.download('/api/processes/export/csv', '进程列表.csv'); }
-    finally { setExportCsvLoading(false); }
   }
 
   // ─── 表格列定义 ────────────────────────────────────────────────────────
@@ -468,26 +458,7 @@ export default function ProcessesPage() {
             )}
           </>
         )}
-        actions={(
-          <SplitButtonGroup>
-            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>
-              导出
-            </Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
-        )}
+        actions={<ExportButton entity="system.processes" query={buildExportQuery()} />}
         mobilePrimary={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 6,
             border: '1px solid var(--semi-color-border)', borderRadius: 6,
@@ -531,8 +502,7 @@ export default function ProcessesPage() {
             >
               刷新
             </Button>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+            <ExportButton entity="system.processes" query={buildExportQuery()} variant="flat" />
           </>
         )}
         filterTitle="进程筛选"

@@ -8,15 +8,13 @@ import {
   Row,
   Select,
   Spin,
-  SplitButtonGroup,
-  Dropdown,
   Switch,
   Tag,
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Plus, Search, RotateCcw, Download, ChevronDown, PlugZap } from 'lucide-react';
+import { Plus, Search, RotateCcw, PlugZap } from 'lucide-react';
 import type {
   CreateFileStorageConfigInput,
   FileStorageConfig,
@@ -29,6 +27,7 @@ import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { renderEllipsis } from '@/utils/table-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -210,8 +209,6 @@ export default function FileStorageConfigsPage() {
   const formApi = useRef<FormApi | null>(null);
   const [configs, setConfigs] = useState<FileStorageConfig[]>([]);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
@@ -265,24 +262,6 @@ export default function FileStorageConfigsPage() {
     setPage(1);
     setSearchParams(defaultSearchParams);
     void fetchConfigs(1, pageSize, defaultSearchParams);
-  };
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/file-storage-configs/export', '文件配置列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/file-storage-configs/export/csv', '文件配置列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
   };
 
   const openCreate = () => {
@@ -601,6 +580,15 @@ export default function FileStorageConfigsPage() {
       localRootPath: 'storage/local',
       remark: '',
     };
+  const buildExportQuery = () => ({
+    ...(searchParams.status ? { status: searchParams.status } : {}),
+    ...(searchParams.timeRange
+      ? {
+          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
+          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+        }
+      : {}),
+  });
 
   return (
     <div className="page-container">
@@ -630,22 +618,7 @@ export default function FileStorageConfigsPage() {
         )}
         actions={(
           <>
-            <SplitButtonGroup>
-              <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-              <Dropdown
-                trigger="click"
-                position="bottomRight"
-                clickToHide
-                render={(
-                  <Dropdown.Menu>
-                    <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-                    <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-                  </Dropdown.Menu>
-                )}
-              >
-                <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-              </Dropdown>
-            </SplitButtonGroup>
+            <ExportButton entity="system.file-storage-configs" query={buildExportQuery()} />
             {hasPermission('system:file:config:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
           </>
         )}
@@ -675,10 +648,7 @@ export default function FileStorageConfigsPage() {
           />
         )}
         mobileActions={(
-          <>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-          </>
+          <ExportButton entity="system.file-storage-configs" query={buildExportQuery()} variant="flat" />
         )}
         filterTitle="文件配置筛选"
         actionTitle="文件配置操作"

@@ -20,7 +20,7 @@ import {
   Tooltip,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
+import { Search, Plus, RotateCcw, ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
 import type { CronJob, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -30,6 +30,7 @@ import { CronExpressionParser } from 'cron-parser';
 import dayjs from 'dayjs';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -60,8 +61,6 @@ export default function CronJobsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [data, setData] = useState<CronJob[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -119,22 +118,10 @@ export default function CronJobsPage() {
 
   const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
   const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
-
-  const handleExport = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/cron-jobs/export', '定时任务.xlsx');
-      Toast.success('导出成功');
-    } catch { Toast.error('导出失败'); } finally { setExportLoading(false); }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/cron-jobs/export/csv', '定时任务.csv');
-      Toast.success('导出成功');
-    } catch { Toast.error('导出失败'); } finally { setExportCsvLoading(false); }
-  };
+  const buildExportQuery = () => ({
+    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
+    ...(searchParams.status ? { status: searchParams.status } : {}),
+  });
 
   const handleRunOnce = (id: number, name: string) => {
     Modal.confirm({
@@ -498,22 +485,7 @@ export default function CronJobsPage() {
             actions={(
               <>
                 <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); void fetchAllLogs(1, null); }}>全部执行日志</Button>
-                <SplitButtonGroup>
-                  <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-                  <Dropdown
-                    trigger="click"
-                    position="bottomRight"
-                    clickToHide
-                    render={(
-                      <Dropdown.Menu>
-                        <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
-                        <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-                      </Dropdown.Menu>
-                    )}
-                  >
-                    <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-                  </Dropdown>
-                </SplitButtonGroup>
+                <ExportButton entity="system.cron-jobs" query={buildExportQuery()} />
                 {hasPermission('system:cronjob:create') && (
                   <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
                 )}
@@ -552,8 +524,7 @@ export default function CronJobsPage() {
             mobileActions={(
               <>
                 <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); void fetchAllLogs(1, null); }}>全部执行日志</Button>
-                <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
-                <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+                <ExportButton entity="system.cron-jobs" query={buildExportQuery()} variant="flat" />
               </>
             )}
             filterTitle="定时任务筛选"

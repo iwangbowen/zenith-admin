@@ -4,7 +4,7 @@ import {
   Button, Divider, Empty, Input, InputNumber, Modal, Select, Space, Spin, Switch, Tabs, Tag, TextArea, Toast, Tooltip, Typography,
 } from '@douyinfe/semi-ui';
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
-import type { ICellData, IRange, IStyleData, IWorkbookData } from '@univerjs/presets';
+import type { IWorkbookData } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import { ArrowLeft, Eye, PanelRightOpen, Plus, Save, Settings2, Trash2 } from 'lucide-react';
@@ -15,13 +15,12 @@ import { usePermission } from '@/hooks/usePermission';
 import { useThemeController } from '@/providers/theme-controller';
 import AppModal from '@/components/AppModal';
 import PrintReportView from '../PrintReportView';
+import { createBlankWorkbook, gridToUniver, univerToGrid } from './print-univer';
 import type {
   PaginatedResponse,
   ReportDataset,
   ReportDatasetParam,
   ReportFieldType,
-  ReportPrintCellStyle,
-  ReportPrintGrid,
   ReportPrintPageConfig,
   ReportPrintRenderResult,
   ReportPrintTemplate,
@@ -30,15 +29,6 @@ import type {
 
 type UniverBundle = ReturnType<typeof createUniver>;
 type PanelKey = 'fields' | 'params' | 'page';
-type Matrix<T> = Record<string, Record<string, T | null | undefined>>;
-type SheetSnapshot = {
-  cellData?: Matrix<ICellData>;
-  mergeData?: IRange[];
-  columnData?: Record<string, { w?: number } | undefined>;
-  rowData?: Record<string, { h?: number } | undefined>;
-  rowCount?: number;
-  columnCount?: number;
-};
 
 const PARAM_TYPE_OPTIONS = [
   { value: 'string', label: '字符串' },
@@ -62,119 +52,6 @@ const DEFAULT_PAGE_CONFIG: ReportPrintPageConfig = {
 };
 
 const AGGREGATIONS = ['SUM', 'COUNT', 'AVG', 'MAX', 'MIN'] as const;
-
-function createBlankWorkbook(name: string): Partial<IWorkbookData> {
-  const sheetId = 'sheet-01';
-  return {
-    id: `print-${Date.now().toString(36)}`,
-    name,
-    locale: LocaleType.ZH_CN,
-    styles: {},
-    sheetOrder: [sheetId],
-    sheets: {
-      [sheetId]: {
-        id: sheetId,
-        name: 'Sheet1',
-        rowCount: 20,
-        columnCount: 8,
-        cellData: {},
-        mergeData: [],
-        rowData: {},
-        columnData: {},
-        defaultColumnWidth: 96,
-        defaultRowHeight: 24,
-      },
-    },
-  };
-}
-
-function hasValue(value: ICellData['v']) {
-  return value !== undefined && value !== null && value !== '';
-}
-
-function resolveStyle(style: ICellData['s'], styles: IWorkbookData['styles']): IStyleData | null {
-  if (!style) return null;
-  if (typeof style === 'string') return styles?.[style] ?? null;
-  return style;
-}
-
-function mapStyle(style: IStyleData | null): ReportPrintCellStyle | undefined {
-  if (!style) return undefined;
-  const mapped: ReportPrintCellStyle = {};
-  if (style.bl === 1) mapped.bold = true;
-  if (style.it === 1) mapped.italic = true;
-  if (typeof style.fs === 'number') mapped.fontSize = style.fs;
-  if (style.cl?.rgb) mapped.color = style.cl.rgb;
-  if (style.bg?.rgb) mapped.background = style.bg.rgb;
-  if (style.ht === 1) mapped.align = 'left';
-  if (style.ht === 2) mapped.align = 'center';
-  if (style.ht === 3) mapped.align = 'right';
-  if (style.vt === 1) mapped.valign = 'top';
-  if (style.vt === 2) mapped.valign = 'middle';
-  if (style.vt === 3) mapped.valign = 'bottom';
-  if (style.tb === 3) mapped.wrap = true;
-  if (style.bd) mapped.border = true;
-  return Object.keys(mapped).length ? mapped : undefined;
-}
-
-function univerToGrid(snapshot: IWorkbookData): ReportPrintGrid {
-  const firstSheetId = snapshot.sheetOrder?.[0] ?? Object.keys(snapshot.sheets ?? {})[0];
-  const sheet = (firstSheetId ? snapshot.sheets?.[firstSheetId] : undefined) as SheetSnapshot | undefined;
-  if (!sheet) return { rows: 1, cols: 1, cells: [] };
-
-  const cells: ReportPrintGrid['cells'] = [];
-  const colWidths: number[] = [];
-  const rowHeights: number[] = [];
-  let maxRow = -1;
-  let maxCol = -1;
-
-  Object.entries(sheet.cellData ?? {}).forEach(([rowKey, rowCells]) => {
-    const row = Number(rowKey);
-    if (!Number.isFinite(row)) return;
-    Object.entries(rowCells ?? {}).forEach(([colKey, cell]) => {
-      const col = Number(colKey);
-      if (!Number.isFinite(col) || !cell || !hasValue(cell.v)) return;
-      maxRow = Math.max(maxRow, row);
-      maxCol = Math.max(maxCol, col);
-      const style = mapStyle(resolveStyle(cell.s, snapshot.styles ?? {}));
-      cells.push({
-        row,
-        col,
-        v: cell.v as string | number | boolean | null,
-        ...(style ? { s: style } : {}),
-      });
-    });
-  });
-
-  const merges = (sheet.mergeData ?? []).map((m) => {
-    maxRow = Math.max(maxRow, m.endRow);
-    maxCol = Math.max(maxCol, m.endColumn);
-    return {
-      row: m.startRow,
-      col: m.startColumn,
-      rowSpan: m.endRow - m.startRow + 1,
-      colSpan: m.endColumn - m.startColumn + 1,
-    };
-  });
-
-  Object.entries(sheet.columnData ?? {}).forEach(([key, value]) => {
-    const col = Number(key);
-    if (Number.isFinite(col) && typeof value?.w === 'number') colWidths[col] = value.w;
-  });
-  Object.entries(sheet.rowData ?? {}).forEach(([key, value]) => {
-    const row = Number(key);
-    if (Number.isFinite(row) && typeof value?.h === 'number') rowHeights[row] = value.h;
-  });
-
-  return {
-    rows: Math.max(maxRow + 1, cells.length ? 1 : Math.min(sheet.rowCount ?? 20, 20)),
-    cols: Math.max(maxCol + 1, cells.length ? 1 : Math.min(sheet.columnCount ?? 8, 8)),
-    ...(colWidths.length ? { colWidths } : {}),
-    ...(rowHeights.length ? { rowHeights } : {}),
-    cells,
-    ...(merges.length ? { merges } : {}),
-  };
-}
 
 function parseDefaultValue(param: ReportDatasetParam): ReportDatasetParam['defaultValue'] {
   if (param.defaultValue === '' || param.defaultValue === undefined) return undefined;
@@ -262,7 +139,8 @@ export default function PrintDesignerPage() {
         setRemark(tpl.remark ?? '');
         setParams(tpl.params ?? []);
         setPageConfig({ ...DEFAULT_PAGE_CONFIG, ...(tpl.pageConfig ?? {}), margin: { ...DEFAULT_MARGIN, ...(tpl.pageConfig?.margin ?? {}) } });
-        setWorkbookSeed((tpl.content?.workbook as Partial<IWorkbookData> | undefined) ?? createBlankWorkbook(tpl.name));
+        const workbook = tpl.content?.workbook as Partial<IWorkbookData> | undefined;
+        setWorkbookSeed(workbook ?? (tpl.content?.grid ? gridToUniver(tpl.content.grid, tpl.name) : createBlankWorkbook(tpl.name)));
       } else {
         Toast.error(tplRes.message || '加载模板失败');
       }

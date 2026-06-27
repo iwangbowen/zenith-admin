@@ -6,12 +6,10 @@ import {
   Modal,
   Select,
   Spin,
-  SplitButtonGroup,
-  Dropdown,
   Toast,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { SystemConfig, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -20,6 +18,7 @@ import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -38,8 +37,6 @@ export default function SystemConfigsPage() {
   const { items: configTypeItems, loading: configTypeLoading } = useDictItems('system_config_type');
   const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [data, setData] = useState<SystemConfig[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -77,22 +74,6 @@ export default function SystemConfigsPage() {
 
   const handleSearch = () => { setPage(1); void fetchData(1); };
   const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
-
-  const handleExport = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/system-configs/export', '系统配置.xlsx');
-      Toast.success('导出成功');
-    } catch { Toast.error('导出失败'); } finally { setExportLoading(false); }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/system-configs/export/csv', '系统配置.csv');
-      Toast.success('导出成功');
-    } catch { Toast.error('导出失败'); } finally { setExportCsvLoading(false); }
-  };
 
   const handleModalOk = async () => {
     let values;
@@ -146,6 +127,10 @@ export default function SystemConfigsPage() {
     { value: '', label: '全部类型' },
     ...configTypeItems.map((item) => ({ value: item.value, label: item.label })),
   ];
+  const buildExportQuery = () => ({
+    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
+    ...(searchParams.configType ? { configType: searchParams.configType } : {}),
+  });
 
   const configTypeOptions = configTypeItems.map((item) => ({ value: item.value, label: item.label }));
 
@@ -217,22 +202,7 @@ export default function SystemConfigsPage() {
         )}
         actions={(
           <>
-          <SplitButtonGroup>
-            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
+          <ExportButton entity="system.configs" query={buildExportQuery()} />
           {hasPermission('system:config:create') && (
             <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingConfig(null); setModalVisible(true); }}>新增</Button>
           )}
@@ -266,10 +236,7 @@ export default function SystemConfigsPage() {
           />
         )}
         mobileActions={(
-          <>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
-            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-          </>
+          <ExportButton entity="system.configs" query={buildExportQuery()} variant="flat" />
         )}
         filterTitle="配置筛选"
         actionTitle="配置操作"

@@ -18,16 +18,15 @@ import {
   TabPane,
   Progress,
   Typography,
-  SplitButtonGroup,
-  Dropdown,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type { Announcement, AnnouncementRecipient, AnnouncementTargetType, PaginatedResponse, User, Role, Department, AnnouncementReadStats, AnnouncementAttachment } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import FileAttachment from '@/components/FileAttachment';
@@ -73,8 +72,6 @@ export default function AnnouncementsPage() {
   const { hasPermission } = usePermission();
   const [data, setData] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const defaultSearchParams: SearchParams = { title: '', type: '', publishStatus: '', timeRange: null };
@@ -174,24 +171,17 @@ export default function AnnouncementsPage() {
     setPage(1);
     fetchData(1, pageSize, empty);
   };
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/announcements/export', '公告列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/announcements/export/csv', '公告列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
-  };
+  const buildExportQuery = () => ({
+    ...(searchParams.title ? { title: searchParams.title } : {}),
+    ...(searchParams.type ? { type: searchParams.type } : {}),
+    ...(searchParams.publishStatus ? { publishStatus: searchParams.publishStatus } : {}),
+    ...(searchParams.timeRange
+      ? {
+          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
+          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+        }
+      : {}),
+  });
 
   const fetchStatsData = async (notice: Announcement, page: number, tab: 'read' | 'unread') => {
     setStatsLoading(true);
@@ -803,12 +793,7 @@ export default function AnnouncementsPage() {
         )}
         actions={(
           <>
-            <SplitButtonGroup>
-              <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-              <Dropdown trigger="click" position="bottomRight" clickToHide render={<Dropdown.Menu><Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item><Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item></Dropdown.Menu>}>
-                <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-              </Dropdown>
-            </SplitButtonGroup>
+            <ExportButton entity="system.announcements" query={buildExportQuery()} />
             {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
               <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
                 批量删除 ({selectedRowKeys.length})
@@ -861,8 +846,7 @@ export default function AnnouncementsPage() {
         )}
         mobileActions={(
           <>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+            <ExportButton entity="system.announcements" query={buildExportQuery()} variant="flat" />
             {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
               <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
                 批量删除 ({selectedRowKeys.length})
