@@ -199,7 +199,7 @@ export default function SystemSchedulerPage() {
       width: 170,
       render: (_: unknown, record) => record.taskType === 'recurring' ? <Typography.Text code>{record.cronExpression}</Typography.Text> : <Typography.Text type="tertiary">队列消费</Typography.Text>,
     },
-    { title: '下次执行', dataIndex: 'nextRunAt', width: 170, render: (value: string | null) => value ?? '-' },
+    { title: '下次执行', dataIndex: 'nextRunAt', width: 200, render: (value: string | null) => value ?? '-' },
     { title: '最近状态', dataIndex: 'lastRunStatus', width: 110, render: statusTag },
     { title: '最近耗时', dataIndex: 'lastDurationMs', width: 100, render: formatDuration },
     {
@@ -210,7 +210,7 @@ export default function SystemSchedulerPage() {
     },
     { title: '最近信息', dataIndex: 'lastRunMessage', width: 240, render: renderEllipsis },
     createOperationColumn<SystemSchedulerTask>({
-      width: 140,
+      width: 180,
       desktopInlineKeys: ['run', 'logs'],
       actions: (record) => [
         {
@@ -335,7 +335,7 @@ export default function SystemSchedulerPage() {
             dataSource={filteredTasks}
             loading={tasksLoading}
             pagination={false}
-            scroll={{ x: 1510 }}
+            scroll={{ x: 1580 }}
             columnSettingsKey="system-scheduler-tasks"
             onRefresh={fetchTasks}
             refreshLoading={tasksLoading}
