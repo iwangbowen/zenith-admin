@@ -124,9 +124,48 @@ const deleteShareRoute = defineOpenAPIRoute({
   },
 });
 
+// ── 评论（协作批注）──
+const listCommentsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/comments', tags: ['报表仪表盘'], summary: '评论列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dashboard:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(ReportDashboardCommentDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listComments(c.req.valid('param').id)), 200),
+});
+
+const createCommentRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/comments', tags: ['报表仪表盘'], summary: '发表评论',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dashboard:list' })] as const,
+    request: { params: IdParam, body: { content: jsonContent(createReportCommentSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(ReportDashboardCommentDTO, '已发表') },
+  }),
+  handler: async (c) => c.json(okBody(await createComment(c.req.valid('param').id, c.req.valid('json')), '已发表'), 200),
+});
+
+const deleteCommentRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/{id}/comments/{commentId}', tags: ['报表仪表盘'], summary: '删除评论',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dashboard:list' })] as const,
+    request: { params: CommentIdParam },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => {
+    const { id, commentId } = c.req.valid('param');
+    await deleteComment(id, commentId);
+    return c.json(okBody(null, '删除成功'), 200);
+  },
+});
+
 router.openapiRoutes([
   listVersionsRoute, createVersionRoute, restoreVersionRoute, favoriteRoute,
   listSharesRoute, createShareRoute, updateShareRoute, deleteShareRoute,
+  listCommentsRoute, createCommentRoute, deleteCommentRoute,
 ] as const);
 
 export default router;

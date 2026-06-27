@@ -284,7 +284,7 @@ export default function ApiScopesPage() {
           getFormApi={(api) => { formApi.current = api; }}
           initValues={formInitValues}
           labelPosition="left"
-          labelWidth={90}
+          labelWidth={110}
         >
           <Form.Input
             field="code"

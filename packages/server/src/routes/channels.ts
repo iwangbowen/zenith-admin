@@ -532,20 +532,6 @@ const removeSubscriber = defineOpenAPIRoute({
   },
 });
 
-const exportSubscribers = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/admin/{id}/subscribers/export', tags: ['Channels'], summary: '导出订阅者',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'channel:channel:list' })] as const,
-    request: { params: IdParam },
-    responses: { ...commonErrorResponses, ...ok(z.array(ChannelSubscriberDTO), '全部订阅者') },
-  }),
-  handler: async (c) => {
-    const { id } = c.req.valid('param');
-    return c.json(okBody(await exportChannelSubscribers(id)), 200);
-  },
-});
-
 // ─── 群发消息模板 ─────────────────────────────────────────────────────────────
 
 const listTemplates = defineOpenAPIRoute({
@@ -787,7 +773,7 @@ channelsRoute.openapiRoutes([
 ] as const);
 channelsRoute.openapiRoutes([
   adminMessages, updateDraft, deleteDraft, publishDraftNow, retract, audienceEstimate, dashboard,
-  subscribers, addSubscribers, removeSubscriber, exportSubscribers,
+  subscribers, addSubscribers, removeSubscriber,
   listTemplates, createTemplate, updateTemplate, removeTemplate, testSendRoute, rateConv, csPerformance,
 ] as const);
 channelsRoute.openapiRoutes([

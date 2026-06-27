@@ -1,4 +1,6 @@
+import { HTTPException } from 'hono/http-exception';
 import { exportAnnouncements, exportAnnouncementsAsCsv } from '../../../services/announcements.service';
+import { exportChannelSubscribers } from '../../../services/channel.service';
 import { exportCronJobs, exportCronJobsAsCsv } from '../../../services/cron-jobs.service';
 import { exportDepartments, exportDepartmentsAsCsv } from '../../../services/departments.service';
 import { exportDicts, exportDictsAsCsv } from '../../../services/dicts.service';
@@ -66,10 +68,27 @@ function asPositiveNumber(value: unknown): number | undefined {
   return Number.isInteger(next) && next > 0 ? next : undefined;
 }
 
+function asRequiredPositiveNumber(value: unknown, label: string): number {
+  const next = asPositiveNumber(value);
+  if (!next) throw new HTTPException(400, { message: `${label}不能为空` });
+  return next;
+}
+
 function asDate(value: unknown, boundary: 'start' | 'end'): Date | undefined {
   const raw = asString(value);
   if (!raw) return undefined;
   return boundary === 'start' ? parseDateRangeStart(raw) ?? undefined : parseDateRangeEnd(raw) ?? undefined;
+}
+
+function mapChannelSubscriberRow(
+  row: Awaited<ReturnType<typeof exportChannelSubscribers>>[number],
+): Record<string, unknown> {
+  return {
+    userId: row.userId,
+    name: row.name,
+    subscribedAt: row.subscribedAt ?? '',
+    isMutedText: row.isMuted ? '是' : '否',
+  };
 }
 
 async function streamToBuffer(stream: ReadableStream<Uint8Array> | ReadableStream): Promise<Buffer> {
@@ -305,6 +324,36 @@ export const legacyExportDefinitions: AnyExportDefinition[] = [
       levelId: asPositiveNumber(query.levelId),
     }),
   }),
+  defineExport<Record<string, unknown>, Record<string, unknown>>({
+    entity: 'channel.subscribers',
+    moduleName: '频道订阅者',
+    filenamePrefix: '频道订阅者',
+    sourcePath: '/system/channels',
+    formats: ['xlsx', 'csv'],
+    permissions: { export: 'channel:channel:list' },
+    execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
+    retention: { normalDays: 7, sensitiveDays: 7, rawDays: 7 },
+    columns: [
+      { key: 'userId', header: '用户ID', width: 12, type: 'number' },
+      { key: 'name', header: '姓名', width: 20 },
+      { key: 'subscribedAt', header: '订阅时间', width: 22 },
+      { key: 'isMutedText', header: '免打扰', width: 12 },
+    ],
+    countRows: async (query) => {
+      const rows = await exportChannelSubscribers(
+        asRequiredPositiveNumber(query.channelId, '频道ID'),
+        asString(query.keyword),
+      );
+      return rows.length;
+    },
+    streamRows: async function* (query) {
+      const rows = await exportChannelSubscribers(
+        asRequiredPositiveNumber(query.channelId, '频道ID'),
+        asString(query.keyword),
+      );
+      for (const row of rows) yield mapChannelSubscriberRow(row);
+    },
+  }) as AnyExportDefinition,
   defineLegacyExport({
     entity: 'analytics.events',
     moduleName: '行为分析数据',

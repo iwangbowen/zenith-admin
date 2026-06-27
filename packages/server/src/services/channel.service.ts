@@ -720,13 +720,18 @@ export async function removeChannelSubscriber(channelId: number, userId: number)
   ));
 }
 
-/** 导出订阅者（全部，不分页，供前端下载） */
-export async function exportChannelSubscribers(channelId: number): Promise<ChannelSubscriber[]> {
+/** 导出订阅者（全部，不分页） */
+export async function exportChannelSubscribers(channelId: number, keyword?: string): Promise<ChannelSubscriber[]> {
   const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
   if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  const kw = keyword?.trim();
+  const nameWhere = kw
+    ? sql`(${users.nickname} ILIKE ${'%' + escapeLike(kw) + '%'} OR ${users.username} ILIKE ${'%' + escapeLike(kw) + '%'})`
+    : undefined;
+
   if (ch.type === 'system') {
     const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
-      .from(users).orderBy(users.id);
+      .from(users).where(nameWhere).orderBy(users.id);
     return rows.map((u) => mapSubscriber(u, null, false));
   }
   const rows = await db.select({
@@ -734,7 +739,7 @@ export async function exportChannelSubscribers(channelId: number): Promise<Chann
     subscribedAt: channelSubscriptions.subscribedAt, isMuted: channelSubscriptions.isMuted,
   }).from(channelSubscriptions)
     .innerJoin(users, eq(users.id, channelSubscriptions.userId))
-    .where(eq(channelSubscriptions.channelId, channelId))
+    .where(and(eq(channelSubscriptions.channelId, channelId), nameWhere))
     .orderBy(desc(channelSubscriptions.subscribedAt));
   return rows.map((r) => mapSubscriber(r, r.subscribedAt, r.isMuted));
 }

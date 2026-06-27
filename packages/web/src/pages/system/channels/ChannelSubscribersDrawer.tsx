@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Banner, Button, Input, Modal, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Download, Plus, Search, RotateCcw } from 'lucide-react';
+import { Plus, Search, RotateCcw } from 'lucide-react';
 import type { ChannelAdmin, ChannelSubscriber, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -20,35 +20,12 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { UserAvatar } from '@/components/UserAvatar';
 import UserSelect from '@/components/UserSelect';
 import { AppModal } from '@/components/AppModal';
+import { ExportButton } from '@/components/ExportButton';
 
 interface Props {
   channel: ChannelAdmin | null;
   visible: boolean;
   onClose: () => void;
-}
-
-function downloadCsv(rows: ChannelSubscriber[], filename: string): void {
-  const headers = ['用户ID', '姓名', '订阅时间', '免打扰'];
-  const escape = (val: string): string => `"${val.replace(/"/g, '""')}"`;
-  const lines = [
-    headers.join(','),
-    ...rows.map((r) => [
-      String(r.userId),
-      escape(r.name ?? ''),
-      escape(r.subscribedAt ? formatDateTime(r.subscribedAt) : ''),
-      r.isMuted ? '是' : '否',
-    ].join(',')),
-  ];
-  const csv = `\uFEFF${lines.join('\r\n')}`;
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly<Props>) {
@@ -64,7 +41,9 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
   const [addVisible, setAddVisible] = useState(false);
   const [addUserIds, setAddUserIds] = useState<number[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
+  const exportQuery = channel
+    ? { channelId: channel.id, ...(keyword.trim() ? { keyword: keyword.trim() } : {}) }
+    : {};
 
   const fetchList = useCallback(async (p = 1, ps = pageSize, kw = keyword) => {
     if (!channel) return;
@@ -114,20 +93,6 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
     if (!channel) return;
     const res = await request.delete(`/api/channels/admin/${channel.id}/subscribers/${sub.userId}`);
     if (res.code === 0) { Toast.success('已移除'); void fetchList(page, pageSize, keyword); }
-  };
-
-  const handleExport = async () => {
-    if (!channel) return;
-    setExportLoading(true);
-    try {
-      const res = await request.get<ChannelSubscriber[]>(`/api/channels/admin/${channel.id}/subscribers/export`);
-      if (res.code === 0 && res.data) {
-        downloadCsv(res.data, `${channel.name}_订阅者.csv`);
-        Toast.success('已导出');
-      }
-    } finally {
-      setExportLoading(false);
-    }
   };
 
   const columns: ColumnProps<ChannelSubscriber>[] = [
@@ -207,7 +172,7 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
             )}
           </>
         )}
-        actions={<Button icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出</Button>}
+        actions={channel ? <ExportButton entity="channel.subscribers" query={exportQuery} /> : null}
         mobilePrimary={(
           <>
             <Input
@@ -228,7 +193,7 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
         mobileActions={(
           <>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出</Button>
+            {channel && <ExportButton entity="channel.subscribers" query={exportQuery} variant="flat" />}
           </>
         )}
         actionTitle="订阅者操作"
