@@ -833,11 +833,12 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 }
 
 .fd-simulation-graph__canvas {
+  position: relative;
   grid-column: 1;
   grid-row: 2;
   min-height: 0;
   overflow: auto;
-  padding: 20px 0 80px;
+  padding: 20px 0 150px;
   background:
     radial-gradient(circle, var(--fd-canvas-dot) 1px, transparent 1px);
   background-size: 16px 16px;
@@ -851,6 +852,54 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   --fd-end-color: var(--semi-color-text-2);
   --fd-tag-bg: var(--semi-color-primary-light-default);
   --fd-tag-color: var(--semi-color-primary);
+}
+
+.fd-simulation-current-bar {
+  position: sticky;
+  left: 16px;
+  right: 16px;
+  bottom: 12px;
+  z-index: 12;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 12px;
+  align-items: center;
+  width: min(760px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 8px 10px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--semi-color-bg-2) 94%, transparent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(8px);
+}
+
+.fd-simulation-current-bar__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.fd-simulation-current-bar__grid {
+  display: grid;
+  grid-template-columns: repeat(4, auto minmax(54px, 1fr));
+  gap: 3px 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.fd-simulation-current-bar__grid span {
+  color: var(--semi-color-text-2);
+}
+
+.fd-simulation-current-bar__grid strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--semi-color-text-0);
 }
 
 .fd-simulation-controls {

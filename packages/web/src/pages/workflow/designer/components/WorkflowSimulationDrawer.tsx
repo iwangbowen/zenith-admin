@@ -790,6 +790,32 @@ export default function WorkflowSimulationDrawer({
 
   const resultMeta = result ? RESULT_META[result.result] : null;
   const canDecide = nodeTypeCanDecide(currentItem);
+  const renderCurrentStepDetail = (compact = false) => (
+    currentItem ? (
+      <>
+        <div className={compact ? 'fd-simulation-current-bar__grid' : 'fd-simulation-detail__grid'}>
+          <span>节点</span><strong>{currentItem.nodeName}</strong>
+          <span>状态</span><strong>{STATUS_META[currentItem.status].label}</strong>
+          <span>处理人</span><strong>{currentItem.assignees?.map((user) => user.name).join('、') || '-'}</strong>
+          <span>下一步</span><strong>{currentItem.nextNodeKeys?.map((key) => nodeLabel(flowData, key)).join('、') || '-'}</strong>
+        </div>
+        {(currentItem.reason || currentItem.detail) && (
+          <Typography.Text size="small" type="tertiary">{currentItem.detail ?? currentItem.reason}</Typography.Text>
+        )}
+        {canDecide && (
+          <Space wrap spacing={compact ? 4 : 6}>
+            <Button size="small" type={currentDecision?.action === 'approve' ? 'primary' : 'tertiary'} icon={<CheckCircle2 size={13} />} onClick={() => upsertDecision('approve')}>通过</Button>
+            <Button size="small" type={currentDecision?.action === 'reject' ? 'danger' : 'tertiary'} icon={<XCircle size={13} />} onClick={() => upsertDecision('reject')}>拒绝</Button>
+            <Button size="small" type={currentDecision?.action === 'skip' ? 'primary' : 'tertiary'} icon={<CircleDashed size={13} />} onClick={() => upsertDecision('skip')}>跳过</Button>
+            <Button size="small" type={currentDecision?.action === 'wait' ? 'primary' : 'tertiary'} icon={<Pause size={13} />} onClick={() => upsertDecision('wait')}>等待</Button>
+            {currentDecision && <Button size="small" onClick={clearCurrentDecision}>清除动作</Button>}
+          </Space>
+        )}
+      </>
+    ) : (
+      <Typography.Text size="small" type="tertiary">启动仿真后可查看每一步的处理人、动作、下一节点和原因。</Typography.Text>
+    )
+  );
   const renderGraphControls = () => (
     <div className="fd-simulation-controls">
       <Button size="small" type="tertiary" theme="borderless" icon={<RotateCcw size={14} />} onClick={resetResult}>重置</Button>
@@ -909,36 +935,6 @@ export default function WorkflowSimulationDrawer({
             </div>
           </div>
           <div className="fd-simulation-graph__meta">
-            <section className="fd-simulation-detail">
-              <div className="fd-simulation-detail__title">
-                <ListChecks size={14} />
-                <Typography.Text strong>当前步骤详情</Typography.Text>
-              </div>
-              {currentItem ? (
-                <>
-                  <div className="fd-simulation-detail__grid">
-                    <span>节点</span><strong>{currentItem.nodeName}</strong>
-                    <span>状态</span><strong>{STATUS_META[currentItem.status].label}</strong>
-                    <span>处理人</span><strong>{currentItem.assignees?.map((user) => user.name).join('、') || '-'}</strong>
-                    <span>下一步</span><strong>{currentItem.nextNodeKeys?.map((key) => nodeLabel(flowData, key)).join('、') || '-'}</strong>
-                  </div>
-                  {(currentItem.reason || currentItem.detail) && (
-                    <Typography.Text size="small" type="tertiary">{currentItem.detail ?? currentItem.reason}</Typography.Text>
-                  )}
-                  {canDecide && (
-                    <Space wrap spacing={6}>
-                      <Button size="small" type={currentDecision?.action === 'approve' ? 'primary' : 'tertiary'} icon={<CheckCircle2 size={13} />} onClick={() => upsertDecision('approve')}>通过</Button>
-                      <Button size="small" type={currentDecision?.action === 'reject' ? 'danger' : 'tertiary'} icon={<XCircle size={13} />} onClick={() => upsertDecision('reject')}>拒绝</Button>
-                      <Button size="small" type={currentDecision?.action === 'skip' ? 'primary' : 'tertiary'} icon={<CircleDashed size={13} />} onClick={() => upsertDecision('skip')}>跳过</Button>
-                      <Button size="small" type={currentDecision?.action === 'wait' ? 'primary' : 'tertiary'} icon={<Pause size={13} />} onClick={() => upsertDecision('wait')}>等待</Button>
-                      {currentDecision && <Button size="small" onClick={clearCurrentDecision}>清除动作</Button>}
-                    </Space>
-                  )}
-                </>
-              ) : (
-                <Typography.Text size="small" type="tertiary">启动仿真后可查看每一步的处理人、动作、下一节点和原因。</Typography.Text>
-              )}
-            </section>
             <section className="fd-simulation-detail fd-simulation-detail--timeline">
               <div className="fd-simulation-detail__title">
                 <Flag size={14} />
@@ -1021,6 +1017,13 @@ export default function WorkflowSimulationDrawer({
                 selectedSimulationBranchId={selectedBranch?.id}
                 simulationBreakpoints={breakpoints}
               />
+            </div>
+            <div className="fd-simulation-current-bar">
+              <div className="fd-simulation-current-bar__title">
+                <ListChecks size={14} />
+                <Typography.Text strong>当前步骤详情</Typography.Text>
+              </div>
+              {renderCurrentStepDetail(true)}
             </div>
           </div>
         </section>
