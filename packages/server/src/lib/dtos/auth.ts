@@ -96,3 +96,49 @@ export const OAuthConfigItemDTO = z
     updatedAt: z.union([z.string(), z.date()]).nullable().optional(),
   })
   .openapi('OAuthConfigItem');
+
+export const TenantIdentityProviderDTO = z
+  .object({
+    id: z.number().int(),
+    tenantId: z.number().int().nullable(),
+    tenantName: z.string().nullable().optional(),
+    name: z.string(),
+    code: z.string(),
+    type: z.enum(['oidc', 'saml']),
+    status: z.enum(['enabled', 'disabled']),
+    issuer: z.string().nullable().optional(),
+    authorizationEndpoint: z.string().nullable().optional(),
+    tokenEndpoint: z.string().nullable().optional(),
+    userinfoEndpoint: z.string().nullable().optional(),
+    jwksUri: z.string().nullable().optional(),
+    clientId: z.string().nullable().optional(),
+    clientSecret: z.string(),
+    scopes: z.string(),
+    samlSsoUrl: z.string().nullable().optional(),
+    samlEntityId: z.string().nullable().optional(),
+    samlCertificate: z.string(),
+    attributeMapping: z.record(z.string(), z.string()),
+    jitEnabled: z.boolean(),
+    defaultRoleIds: z.array(z.number().int()),
+    remark: z.string().nullable().optional(),
+    ...auditFields,
+    createdAt: z.union([z.string(), z.date()]).nullable().optional(),
+    updatedAt: z.union([z.string(), z.date()]).nullable().optional(),
+  })
+  .openapi('TenantIdentityProvider');
+
+export const TenantIdentityProviderSummaryDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    code: z.string(),
+    type: z.enum(['oidc', 'saml']),
+  })
+  .openapi('TenantIdentityProviderSummary');
+
+export const EnterpriseIdentityDiscoveryDTO = z
+  .object({
+    tenantCode: z.string().nullable().optional(),
+    providers: z.array(TenantIdentityProviderSummaryDTO),
+  })
+  .openapi('EnterpriseIdentityDiscovery');

@@ -20,6 +20,8 @@ export const mfaFactorTypeEnum = pgEnum('mfa_factor_type', ['totp', 'passkey', '
 export const mfaFactorStatusEnum = pgEnum('mfa_factor_status', ['pending', 'enabled', 'disabled']);
 export const loginRiskLevelEnum = pgEnum('login_risk_level', ['low', 'medium', 'high']);
 export const loginRiskActionEnum = pgEnum('login_risk_action', ['allow', 'challenge', 'block']);
+export const identityProviderTypeEnum = pgEnum('identity_provider_type', ['oidc', 'saml']);
+export const identityProviderStatusEnum = pgEnum('identity_provider_status', ['enabled', 'disabled']);
 
 /**
  * 通用审计列：`created_by` / `updated_by` 指向 `users.id`（保留 set null）。
@@ -1157,6 +1159,68 @@ export const oauthConfigs = pgTable('oauth_configs', {
 
 export type OauthConfigRow = typeof oauthConfigs.$inferSelect;
 export type NewOauthConfig = typeof oauthConfigs.$inferInsert;
+
+// ─── 租户级企业身份源配置 ──────────────────────────────────────────────────────
+export const tenantIdentityProviders = pgTable('tenant_identity_providers', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 100 }).notNull(),
+  code: varchar('code', { length: 64 }).notNull(),
+  type: identityProviderTypeEnum('type').notNull(),
+  status: identityProviderStatusEnum('status').notNull().default('disabled'),
+  issuer: varchar('issuer', { length: 512 }),
+  authorizationEndpoint: varchar('authorization_endpoint', { length: 512 }),
+  tokenEndpoint: varchar('token_endpoint', { length: 512 }),
+  userinfoEndpoint: varchar('userinfo_endpoint', { length: 512 }),
+  jwksUri: varchar('jwks_uri', { length: 512 }),
+  clientId: varchar('client_id', { length: 256 }),
+  clientSecret: text('client_secret'),
+  scopes: varchar('scopes', { length: 256 }).notNull().default('openid profile email'),
+  samlSsoUrl: varchar('saml_sso_url', { length: 512 }),
+  samlEntityId: varchar('saml_entity_id', { length: 512 }),
+  samlCertificate: text('saml_certificate'),
+  attributeMapping: jsonb('attribute_mapping').$type<Record<string, string>>().notNull().default({
+    subject: 'sub',
+    email: 'email',
+    username: 'preferred_username',
+    nickname: 'name',
+  }),
+  jitEnabled: boolean('jit_enabled').notNull().default(false),
+  defaultRoleIds: jsonb('default_role_ids').$type<number[]>().notNull().default([]),
+  remark: text('remark'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  unique('tenant_identity_providers_tenant_code_unique').on(t.tenantId, t.code),
+  index('tenant_identity_providers_tenant_idx').on(t.tenantId),
+  index('tenant_identity_providers_status_idx').on(t.status),
+]);
+
+export type TenantIdentityProviderRow = typeof tenantIdentityProviders.$inferSelect;
+export type NewTenantIdentityProvider = typeof tenantIdentityProviders.$inferInsert;
+
+export const userIdentityAccounts = pgTable('user_identity_accounts', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  providerId: integer('provider_id').notNull().references(() => tenantIdentityProviders.id, { onDelete: 'cascade' }),
+  subject: varchar('subject', { length: 256 }).notNull(),
+  email: varchar('email', { length: 128 }),
+  username: varchar('username', { length: 64 }),
+  displayName: varchar('display_name', { length: 128 }),
+  rawProfile: jsonb('raw_profile').$type<Record<string, unknown> | null>(),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  unique('user_identity_accounts_provider_subject_unique').on(t.providerId, t.subject),
+  unique('user_identity_accounts_user_provider_unique').on(t.userId, t.providerId),
+  index('user_identity_accounts_user_idx').on(t.userId),
+  index('user_identity_accounts_provider_idx').on(t.providerId),
+]);
+
+export type UserIdentityAccountRow = typeof userIdentityAccounts.$inferSelect;
+export type NewUserIdentityAccount = typeof userIdentityAccounts.$inferInsert;
 
 // ─── 数据库备份记录表 ──────────────────────────────────────────────────────────
 export const backupTypeEnum = pgEnum('backup_type', ['pg_dump', 'drizzle_export']);
@@ -2833,6 +2897,7 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   announcements: many(announcements),
   systemConfigs: many(systemConfigs),
   loginRiskEvents: many(loginRiskEvents),
+  identityProviders: many(tenantIdentityProviders),
   workflowDefinitions: many(workflowDefinitions),
   workflowInstances: many(workflowInstances),
 }));
@@ -2889,6 +2954,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   mfaFactors: many(userMfaFactors),
   trustedDevices: many(userTrustedDevices),
   loginRiskEvents: many(loginRiskEvents),
+  identityAccounts: many(userIdentityAccounts),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({
@@ -3009,6 +3075,16 @@ export const businessFilesRelations = relations(businessFiles, ({ one }) => ({
 
 export const userOauthAccountsRelations = relations(userOauthAccounts, ({ one }) => ({
   user: one(users, { fields: [userOauthAccounts.userId], references: [users.id] }),
+}));
+
+export const tenantIdentityProvidersRelations = relations(tenantIdentityProviders, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [tenantIdentityProviders.tenantId], references: [tenants.id] }),
+  accounts: many(userIdentityAccounts),
+}));
+
+export const userIdentityAccountsRelations = relations(userIdentityAccounts, ({ one }) => ({
+  user: one(users, { fields: [userIdentityAccounts.userId], references: [users.id] }),
+  provider: one(tenantIdentityProviders, { fields: [userIdentityAccounts.providerId], references: [tenantIdentityProviders.id] }),
 }));
 
 export const userApiTokensRelations = relations(userApiTokens, ({ one }) => ({

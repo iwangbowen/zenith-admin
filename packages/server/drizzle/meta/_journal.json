@@ -1275,6 +1275,13 @@
       "when": 1782562000000,
       "tag": "0181_identity_security",
       "breakpoints": true
+    },
+    {
+      "idx": 182,
+      "version": "7",
+      "when": 1782562600000,
+      "tag": "0182_enterprise_identity_providers",
+      "breakpoints": true
     }
   ]
 }

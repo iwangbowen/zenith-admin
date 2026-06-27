@@ -452,6 +452,44 @@ export const updateOauthConfigSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+// ─── 企业身份源 Schema ───────────────────────────────────────────────────
+export const identityProviderAttributeMappingSchema = z.object({
+  subject: z.string().max(64).optional(),
+  email: z.string().max(64).optional(),
+  username: z.string().max(64).optional(),
+  nickname: z.string().max(64).optional(),
+});
+
+export const createTenantIdentityProviderSchema = z.object({
+  tenantId: z.number().int().positive().nullable().optional(),
+  name: z.string().min(1, '身份源名称不能为空').max(100),
+  code: z.string().min(1, '身份源编码不能为空').max(64).regex(/^[a-z][a-z0-9_-]*$/, '编码只能包含小写字母、数字、中划线和下划线，且以字母开头'),
+  type: z.enum(['oidc', 'saml']),
+  status: z.enum(['enabled', 'disabled']).default('disabled'),
+  issuer: z.string().max(512).nullable().optional(),
+  authorizationEndpoint: z.string().max(512).nullable().optional(),
+  tokenEndpoint: z.string().max(512).nullable().optional(),
+  userinfoEndpoint: z.string().max(512).nullable().optional(),
+  jwksUri: z.string().max(512).nullable().optional(),
+  clientId: z.string().max(256).nullable().optional(),
+  clientSecret: z.string().max(1024).optional(),
+  scopes: z.string().max(256).default('openid profile email'),
+  samlSsoUrl: z.string().max(512).nullable().optional(),
+  samlEntityId: z.string().max(512).nullable().optional(),
+  samlCertificate: z.string().max(4096).optional(),
+  attributeMapping: identityProviderAttributeMappingSchema.default({
+    subject: 'sub',
+    email: 'email',
+    username: 'preferred_username',
+    nickname: 'name',
+  }),
+  jitEnabled: z.boolean().default(false),
+  defaultRoleIds: z.array(z.number().int().positive()).default([]),
+  remark: z.string().max(500).nullable().optional(),
+});
+
+export const updateTenantIdentityProviderSchema = createTenantIdentityProviderSchema.partial();
+
 
 // ─── 租户 Schema ────────────────────────────────────────────────────────────
 export const createTenantSchema = z.object({
@@ -494,6 +532,8 @@ export type CreateTenantPackageInput = z.infer<typeof createTenantPackageSchema>
 export type UpdateTenantPackageInput = z.infer<typeof updateTenantPackageSchema>;
 export type AssignTenantPackageMenusInput = z.infer<typeof assignTenantPackageMenusSchema>;
 export type UpdateOauthConfigInput = z.infer<typeof updateOauthConfigSchema>;
+export type CreateTenantIdentityProviderInput = z.infer<typeof createTenantIdentityProviderSchema>;
+export type UpdateTenantIdentityProviderInput = z.infer<typeof updateTenantIdentityProviderSchema>;
 
 // ─── 通知模块（邮件 / 短信 / 站内信）─────────────────────────────────────────
 export const SMS_PROVIDERS = ['aliyun', 'tencent'] as const;

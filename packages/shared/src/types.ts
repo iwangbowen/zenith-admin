@@ -1602,6 +1602,56 @@ export interface OAuthConfig {
   updatedAt: string;
 }
 
+// ─── 企业身份源 ───────────────────────────────────────────────────────────
+export type IdentityProviderType = 'oidc' | 'saml';
+export type IdentityProviderStatus = 'enabled' | 'disabled';
+
+export interface IdentityProviderAttributeMapping {
+  subject?: string;
+  email?: string;
+  username?: string;
+  nickname?: string;
+}
+
+export interface TenantIdentityProvider {
+  id: number;
+  tenantId: number | null;
+  tenantName?: string | null;
+  name: string;
+  code: string;
+  type: IdentityProviderType;
+  status: IdentityProviderStatus;
+  issuer?: string | null;
+  authorizationEndpoint?: string | null;
+  tokenEndpoint?: string | null;
+  userinfoEndpoint?: string | null;
+  jwksUri?: string | null;
+  clientId?: string | null;
+  clientSecret?: string;
+  scopes: string;
+  samlSsoUrl?: string | null;
+  samlEntityId?: string | null;
+  samlCertificate?: string;
+  attributeMapping: IdentityProviderAttributeMapping;
+  jitEnabled: boolean;
+  defaultRoleIds: number[];
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenantIdentityProviderSummary {
+  id: number;
+  name: string;
+  code: string;
+  type: IdentityProviderType;
+}
+
+export interface EnterpriseIdentityDiscovery {
+  tenantCode?: string | null;
+  providers: TenantIdentityProviderSummary[];
+}
+
 // ─── 数据库备份 ────────────────────────────────────────────────────────────
 export type BackupType = 'pg_dump' | 'drizzle_export';
 export type BackupStatus = 'pending' | 'running' | 'success' | 'failed';

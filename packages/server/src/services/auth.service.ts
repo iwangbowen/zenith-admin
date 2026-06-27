@@ -148,7 +148,7 @@ export interface LoginInput {
   rememberDevice?: boolean;
 }
 
-async function finalizeLogin(
+export async function finalizeLogin(
   user: UserRow,
   input: { ip: string; ua: string; deviceInfo?: DeviceInfo },
   options: { logMessage: string; requirePasswordChange?: boolean },
