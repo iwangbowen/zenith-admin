@@ -888,32 +888,6 @@ export default function WorkflowSimulationDrawer({
             )}
           </section>
 
-          <section className="fd-simulation-section fd-simulation-section--steps">
-            <div className="fd-simulation-section__title">
-              仿真步骤
-              {resultMeta && <Tag color={resultMeta.color}>{resultMeta.label}</Tag>}
-            </div>
-            {result?.warnings.length ? (
-              <Banner type={result.valid ? 'warning' : 'danger'} description={result.warnings.join('；')} style={{ marginBottom: 12 }} />
-            ) : null}
-            {result && totalSteps > 0 && (
-              <div className="fd-simulation-player">
-                <div className="fd-simulation-player__head">
-                  <Typography.Text strong>第 {currentStep} / {totalSteps} 步</Typography.Text>
-                  {currentItem && <Tag color="blue">{currentItem.nodeName}</Tag>}
-                </div>
-                <div className="fd-simulation-player__bar"><span style={{ width: `${progressPercent}%` }} /></div>
-                <Space wrap spacing={6}>
-                  <Button size="small" icon={<Play size={13} />} onClick={replay}>重播</Button>
-                  <Button size="small" icon={<FastForward size={13} />} onClick={runToBreakpoint} disabled={breakpoints.size === 0}>运行到断点</Button>
-                  <Button size="small" icon={<Bookmark size={13} />} onClick={toggleBreakpoint} disabled={!currentItem}>
-                    {currentItem && breakpoints.has(currentItem.nodeKey) ? '取消断点' : '设为断点'}
-                  </Button>
-                </Space>
-              </div>
-            )}
-            <div className="fd-simulation-timeline">{renderTimeline()}</div>
-          </section>
         </aside>
 
         <section className="fd-simulation-graph">
@@ -965,7 +939,34 @@ export default function WorkflowSimulationDrawer({
                 <Typography.Text size="small" type="tertiary">启动仿真后可查看每一步的处理人、动作、下一节点和原因。</Typography.Text>
               )}
             </section>
-            <section className="fd-simulation-detail">
+            <section className="fd-simulation-detail fd-simulation-detail--timeline">
+              <div className="fd-simulation-detail__title">
+                <Flag size={14} />
+                <Typography.Text strong>仿真步骤</Typography.Text>
+                {resultMeta && <Tag size="small" color={resultMeta.color}>{resultMeta.label}</Tag>}
+              </div>
+              {result?.warnings.length ? (
+                <Banner type={result.valid ? 'warning' : 'danger'} description={result.warnings.join('；')} />
+              ) : null}
+              {result && totalSteps > 0 && (
+                <div className="fd-simulation-player">
+                  <div className="fd-simulation-player__head">
+                    <Typography.Text strong>第 {currentStep} / {totalSteps} 步</Typography.Text>
+                    {currentItem && <Tag color="blue">{currentItem.nodeName}</Tag>}
+                  </div>
+                  <div className="fd-simulation-player__bar"><span style={{ width: `${progressPercent}%` }} /></div>
+                  <Space wrap spacing={6}>
+                    <Button size="small" icon={<Play size={13} />} onClick={replay}>重播</Button>
+                    <Button size="small" icon={<FastForward size={13} />} onClick={runToBreakpoint} disabled={breakpoints.size === 0}>运行到断点</Button>
+                    <Button size="small" icon={<Bookmark size={13} />} onClick={toggleBreakpoint} disabled={!currentItem}>
+                      {currentItem && breakpoints.has(currentItem.nodeKey) ? '取消断点' : '设为断点'}
+                    </Button>
+                  </Space>
+                </div>
+              )}
+              <div className="fd-simulation-timeline">{renderTimeline()}</div>
+            </section>
+            <section className="fd-simulation-detail fd-simulation-detail--branches">
               <div className="fd-simulation-detail__title">
                 <GitCompare size={14} />
                 <Typography.Text strong>路径与分支</Typography.Text>
