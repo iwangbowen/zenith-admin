@@ -255,8 +255,8 @@ export default function SystemSchedulerPage() {
       render: (value: SystemSchedulerTriggerType) => <Tag color={triggerTypeMap[value].color}>{triggerTypeMap[value].label}</Tag>,
     },
     { title: '状态', dataIndex: 'status', width: 100, render: (value: SystemSchedulerRunStatus) => statusTag(value) },
-    { title: '开始时间', dataIndex: 'startedAt', width: 170 },
-    { title: '结束时间', dataIndex: 'endedAt', width: 170, render: (value: string | null) => value ?? '-' },
+    { title: '开始时间', dataIndex: 'startedAt', width: 200 },
+    { title: '结束时间', dataIndex: 'endedAt', width: 200, render: (value: string | null) => value ?? '-' },
     { title: '耗时', dataIndex: 'durationMs', width: 100, render: formatDuration },
     {
       title: '输出',
@@ -395,7 +395,7 @@ export default function SystemSchedulerPage() {
             dataSource={runs}
             loading={runsLoading}
             pagination={buildPagination(runsTotal, fetchRuns)}
-            scroll={{ x: 1410 }}
+            scroll={{ x: 1470 }}
             columnSettingsKey="system-scheduler-runs"
             onRefresh={() => fetchRuns()}
             refreshLoading={runsLoading}
