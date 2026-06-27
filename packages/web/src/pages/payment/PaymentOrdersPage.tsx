@@ -388,7 +388,7 @@ export default function PaymentOrdersPage() {
   const renderMobileExportActions = () => <ExportButton entity="payment.orders" query={buildQuery(searchRef.current)} variant="flat" />;
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs activeKey={activeTab} onChange={(k) => setActiveTab(k as 'list' | 'stats')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="支付订单" itemKey="list">
           {stats && (

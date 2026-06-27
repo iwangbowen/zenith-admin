@@ -452,7 +452,7 @@ export default function CronJobsPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs type="line" lazyRender>
         <Tabs.TabPane tab="任务管理" itemKey="jobs">
           <SearchToolbar

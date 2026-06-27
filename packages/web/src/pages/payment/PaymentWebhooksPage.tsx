@@ -349,7 +349,7 @@ export default function PaymentWebhooksPage() {
   const renderDeliveryResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleDeliveryReset}>重置</Button>;
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs activeKey={activeTab} onChange={(k) => setActiveTab(k as 'endpoints' | 'deliveries')} type="line" lazyRender keepDOM={false}>
         <TabPane tab="端点配置" itemKey="endpoints">
           <SearchToolbar

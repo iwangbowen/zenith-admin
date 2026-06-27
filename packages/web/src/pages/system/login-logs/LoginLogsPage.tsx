@@ -212,7 +212,7 @@ export default function LoginLogsPage() {
   );
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs type="line">
         <TabPane tab="日志列表" itemKey="list">
           <SearchToolbar

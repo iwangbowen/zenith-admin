@@ -594,7 +594,7 @@ export default function FilesPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs defaultActiveKey="list" type="line">
         <TabPane tab="文件列表" itemKey="list">
       <SearchToolbar

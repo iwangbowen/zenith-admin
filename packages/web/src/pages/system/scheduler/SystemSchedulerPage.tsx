@@ -443,7 +443,7 @@ export default function SystemSchedulerPage() {
   };
 
   return (
-    <>
+    <div className="page-container page-tabs-page">
       <Tabs type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
         <TabPane tab="系统任务" itemKey="tasks">
           <SearchToolbar>
@@ -623,6 +623,6 @@ export default function SystemSchedulerPage() {
           </Form>
         )}
       </AppModal>
-    </>
+    </div>
   );
 }

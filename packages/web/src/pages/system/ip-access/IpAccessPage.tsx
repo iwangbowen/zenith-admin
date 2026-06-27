@@ -328,7 +328,7 @@ export default function IpAccessPage() {
   }
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs type="line">
         <TabPane tab="访问控制配置" itemKey="config">
           {configContent}

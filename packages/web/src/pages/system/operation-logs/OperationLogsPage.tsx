@@ -298,7 +298,7 @@ export default function OperationLogsPage() {
   );
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as 'list' | 'stats')}

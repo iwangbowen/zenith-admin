@@ -1000,7 +1000,7 @@ export default function DockerPage() {
   }
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs type="line">
         <TabPane tab="容器" itemKey="containers"><ContainersTab /></TabPane>
         <TabPane tab="镜像" itemKey="images"><ImagesTab /></TabPane>

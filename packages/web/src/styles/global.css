@@ -514,6 +514,11 @@ body {
   gap: 12px;
 }
 
+.page-tabs-page {
+  padding: 0 12px 12px;
+  gap: 0;
+}
+
 /* Full-height variant: constrains the page to the viewport height so inner panels can scroll independently */
 .page-container--stretch {
   height: 100%;
@@ -526,13 +531,17 @@ body {
     padding: 8px;
     gap: 8px;
   }
+
+  .page-tabs-page {
+    padding: 0 8px 8px;
+    gap: 0;
+  }
 }
 .page-container .semi-card-body {
   padding: 12px 16px !important;
 }
 
-/* 统一：page-container 下顶部 Tab 面板内容（搜索区/表格）与 tab bar 的间距。
-   仅命中作为 page-container 直接子节点的水平 Tabs，避开纵向 tabs、抽屉/弹窗及嵌套 tabs。 */
+/* Direct horizontal tabs in page containers keep an even tab bar -> content gap. */
 .page-container > .semi-tabs > .semi-tabs-content:not(.semi-tabs-content-left) {
   padding-top: 12px;
 }

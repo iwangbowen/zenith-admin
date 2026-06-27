@@ -1180,7 +1180,7 @@ export default function WorkflowMonitorPage() {
   );
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs type="line">
         <TabPane tab="实例监控" itemKey="list">
       {/* 统计卡片 */}

@@ -1083,7 +1083,7 @@ export default function FrontendErrorsPage() {
   const renderAlertCreateButton = () => <Button type="primary" icon={<Bell size={14} />} onClick={() => openAlertModal()}>新增</Button>;
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
         <TabPane tab="概览" itemKey="overview">
           <SearchToolbar

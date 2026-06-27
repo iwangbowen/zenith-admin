@@ -970,7 +970,7 @@ export default function AnalyticsDataPage() {
   );
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
         <TabPane tab="事件明细" itemKey="events">
           <SearchToolbar
