@@ -295,10 +295,10 @@ export default function AlertsPage() {
     },
     createOperationColumn<ReportAlertRule>({
       width: 170,
-      desktopInlineKeys: ['evaluate', 'edit', 'delete'],
+      desktopInlineKeys: ['edit', 'evaluate', 'delete'],
       actions: (record) => [
-        ...(hasPermission('report:alert:list') ? [{ key: 'evaluate', label: '评估', onClick: () => void handleEvaluate(record.id) }] : []),
         ...(hasPermission('report:alert:update') ? [{ key: 'edit', label: '编辑', onClick: () => openEdit(record) }] : []),
+        ...(hasPermission('report:alert:list') ? [{ key: 'evaluate', label: '评估', onClick: () => void handleEvaluate(record.id) }] : []),
         ...(hasPermission('report:alert:delete') ? [{
           key: 'delete',
           label: '删除',
