@@ -1003,6 +1003,15 @@ export default function WorkflowSimulationDrawer({
             </section>
           </div>
           <div className="fd-simulation-graph__canvas" ref={graphCanvasRef}>
+            <div className="fd-simulation-current-bar" aria-live="polite">
+              <div className="fd-simulation-current-bar__title">
+                <ListChecks size={14} />
+                <Typography.Text strong>当前步骤详情</Typography.Text>
+              </div>
+              <div className="fd-simulation-current-bar__body">
+                {renderCurrentStepDetail(true)}
+              </div>
+            </div>
             <div style={{ transform: `scale(${graphZoom / 100})`, transformOrigin: 'top center' }}>
               <FlowRenderer
                 process={process}
@@ -1017,13 +1026,6 @@ export default function WorkflowSimulationDrawer({
                 selectedSimulationBranchId={selectedBranch?.id}
                 simulationBreakpoints={breakpoints}
               />
-            </div>
-            <div className="fd-simulation-current-bar">
-              <div className="fd-simulation-current-bar__title">
-                <ListChecks size={14} />
-                <Typography.Text strong>当前步骤详情</Typography.Text>
-              </div>
-              {renderCurrentStepDetail(true)}
             </div>
           </div>
         </section>
