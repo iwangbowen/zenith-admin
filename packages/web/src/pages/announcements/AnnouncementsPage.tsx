@@ -11,8 +11,10 @@ import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
+import { SearchToolbar } from '@/components/SearchToolbar';
 
 type AnnouncementWithRead = Announcement & { isRead: boolean };
+type AnnouncementTab = 'all' | 'unread' | 'read';
 
 const TYPE_LABEL: Record<string, string> = {
   notice: '通知',
@@ -37,7 +39,7 @@ export default function AnnouncementsPage() {
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const { page, setPage } = usePagination();
-  const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read'>('all');
+  const [activeTab, setActiveTab] = useState<AnnouncementTab>('all');
   const [markAllLoading, setMarkAllLoading] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -120,7 +122,7 @@ export default function AnnouncementsPage() {
   };
 
   const handleTabChange = (key: string) => {
-    setActiveTab(key as 'all' | 'unread' | 'read');
+    setActiveTab(key as AnnouncementTab);
     setPage(1);
   };
 
@@ -192,42 +194,39 @@ export default function AnnouncementsPage() {
     },
   ];
 
-  return (
-    <div className="page-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Tabs activeKey={activeTab} onChange={handleTabChange} style={{ marginBottom: 0, flex: 1 }}>
-            <TabPane tab="全部公告" itemKey="all" />
-            <TabPane
-              tab={
-                <Space spacing={4}>
-                  <span>未读公告</span>
-                  {activeTab === 'all' && unreadCount > 0 && (
-                    <Tag color="red" size="small">{unreadCount}</Tag>
-                  )}
-                </Space>
-              }
-              itemKey="unread"
-            />
-            <TabPane tab="已读公告" itemKey="read" />
-          </Tabs>
-          <Button
-            type="primary"
-            icon={<CheckCheck size={14} />}
-            loading={markAllLoading}
-            onClick={handleMarkAllRead}
-            style={{ visibility: activeTab === 'read' ? 'hidden' : 'visible' }}
-          >
-            全部标记为已读
-          </Button>
-        </div>
+  const renderMarkAllReadButton = (tab: AnnouncementTab) => {
+    if (tab === 'read') return null;
 
-      {list.length === 0 && !loading ? (
+    return (
+      <Button
+        type="primary"
+        icon={<CheckCheck size={14} />}
+        loading={markAllLoading}
+        onClick={handleMarkAllRead}
+      >
+        全部标记为已读
+      </Button>
+    );
+  };
+
+  const renderAnnouncementsContent = (tab: AnnouncementTab) => {
+    const markAllReadButton = renderMarkAllReadButton(tab);
+
+    return (
+      <>
+        {markAllReadButton && (
+        <SearchToolbar>
+          {markAllReadButton}
+        </SearchToolbar>
+        )}
+
+        {list.length === 0 && !loading ? (
         <Empty
           image={<IllustrationNoContent style={{ width: 120, height: 120 }} />}
           darkModeImage={<IllustrationNoContentDark style={{ width: 120, height: 120 }} />}
           description={(() => {
-            if (activeTab === 'unread') return '暂无未读公告';
-            if (activeTab === 'read') return '暂无已读公告';
+            if (tab === 'unread') return '暂无未读公告';
+            if (tab === 'read') return '暂无已读公告';
             return '暂无公告';
           })()}
           style={{ padding: '48px 0' }}
@@ -252,7 +251,34 @@ export default function AnnouncementsPage() {
             style: { opacity: (record as AnnouncementWithRead).isRead ? 0.7 : 1 },
           })}
         />
-      )}
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div className="page-container page-tabs-page">
+      <Tabs activeKey={activeTab} onChange={handleTabChange} type="line" lazyRender keepDOM={false}>
+        <TabPane tab="全部公告" itemKey="all">
+          {renderAnnouncementsContent('all')}
+        </TabPane>
+        <TabPane
+          tab={
+            <Space spacing={4}>
+              <span>未读公告</span>
+              {activeTab === 'all' && unreadCount > 0 && (
+                <Tag color="red" size="small">{unreadCount}</Tag>
+              )}
+            </Space>
+          }
+          itemKey="unread"
+        >
+          {renderAnnouncementsContent('unread')}
+        </TabPane>
+        <TabPane tab="已读公告" itemKey="read">
+          {renderAnnouncementsContent('read')}
+        </TabPane>
+      </Tabs>
 
       <AnnouncementDetailModal
         visible={modalVisible}
