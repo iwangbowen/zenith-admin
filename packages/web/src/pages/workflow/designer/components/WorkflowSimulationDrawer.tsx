@@ -819,7 +819,7 @@ export default function WorkflowSimulationDrawer({
     >
       <div className="fd-simulation-drawer__body">
         <aside className="fd-simulation-panel">
-          <section className="fd-simulation-section">
+          <section className="fd-simulation-section fd-simulation-section--input">
             <div className="fd-simulation-section__title">
               仿真输入
               <Space spacing={4}>
@@ -861,7 +861,7 @@ export default function WorkflowSimulationDrawer({
             )}
           </section>
 
-          <section className="fd-simulation-section">
+          <section className="fd-simulation-section fd-simulation-section--health">
             <div className="fd-simulation-section__title">
               <span><Bug size={14} /> 体检</span>
               <Tag color={healthIssues.some((item) => item.level === 'error') ? 'red' : healthIssues.length ? 'orange' : 'green'}>
@@ -888,7 +888,7 @@ export default function WorkflowSimulationDrawer({
             )}
           </section>
 
-          <section className="fd-simulation-section">
+          <section className="fd-simulation-section fd-simulation-section--steps">
             <div className="fd-simulation-section__title">
               仿真步骤
               {resultMeta && <Tag color={resultMeta.color}>{resultMeta.label}</Tag>}
