@@ -5393,7 +5393,9 @@ export type ReportWidgetType =
   | 'kpi' | 'table' | 'pivot' | 'text'
   | 'bar' | 'line' | 'area' | 'dualAxis'
   | 'pie' | 'scatter' | 'radar' | 'funnel' | 'gauge' | 'treemap'
-  | 'flipper' | 'scrollList' | 'map';
+  | 'flipper' | 'scrollList' | 'map'
+  | 'sankey' | 'wordCloud' | 'liquid' | 'heatmap'
+  | 'image' | 'iframe';
 
 /** API 数据源连接配置 */
 export interface ReportApiDatasourceConfig {
@@ -5640,6 +5642,23 @@ export interface ReportWidgetOptions {
   mapName?: string;
   /** 区域名字段（匹配 geojson 的 name） */
   areaField?: string;
+  // ── 桑基图 sankey ──
+  /** 源节点字段 */
+  sourceField?: string;
+  /** 目标节点字段 */
+  targetField?: string;
+  // ── 词云 wordCloud ──
+  /** 词语字段（沿用 categoryField 亦可） */
+  wordField?: string;
+  // ── 热力图 heatmap ──
+  /** 热力图 X 字段（沿用 categoryField）、Y 字段 */
+  yField?: string;
+  // ── 水波球 liquid ──（沿用 valueField + max）
+  // ── 媒体：图片 image / 内嵌 iframe ──
+  /** 资源 URL（image 图片地址 / iframe 内嵌地址；支持 ${filterId} 占位） */
+  src?: string;
+  /** 图片填充方式 */
+  fit?: 'contain' | 'cover' | 'fill';
   [key: string]: unknown;
 }
 

@@ -4,12 +4,12 @@ import { guard, setAuditBeforeData } from '../middleware/guard';
 import { announcementRecipientSchema } from '@zenith/shared';
 import {
   ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody,
+  ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
 import { AnnouncementDTO, AnnouncementReadStatsDTO, AnnouncementUnreadCountDTO } from '../lib/openapi-dtos';
 import {
   listPublishedForUser, markAnnouncementRead, markAllAnnouncementsRead, getInbox, listAnnouncements,
-  exportAnnouncements, exportAnnouncementsAsCsv, batchDeleteAnnouncements, getAnnouncementReadStats, getAnnouncementDetail,
+  batchDeleteAnnouncements, getAnnouncementReadStats, getAnnouncementDetail,
   createAnnouncement, updateAnnouncement, deleteAnnouncement, getAnnouncementBeforeAudit, getAnnouncementsBeforeAudit,
   getUnreadAnnouncementCount,
 } from '../services/announcements.service';
@@ -112,32 +112,6 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(AnnouncementDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listAnnouncements(c.req.valid('query'))), 200),
-});
-
-const exportRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export', tags: ['Announcements'], summary: '导出',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:list' })] as const,
-    responses: { ...commonErrorResponses, ...okExcel() },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportAnnouncements();
-    return excelStreamBody(c, stream, filename);
-  },
-});
-
-const exportCsvRouteDef = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export/csv', tags: ['Announcements'], summary: '导出 CSV',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:announcement:list' })] as const,
-    responses: { ...commonErrorResponses, ...okCsv('CSV 文件') },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportAnnouncementsAsCsv();
-    return csvStreamBody(c, stream, filename);
-  },
 });
 
 const batchDeleteRoute = defineOpenAPIRoute({
@@ -250,8 +224,8 @@ const deleteRouteDef = defineOpenAPIRoute({
 });
 
 announcementsRouter.openapiRoutes([
-  publishedRoute, unreadCountRoute, readRoute, readAllRoute, inboxRoute, listRoute, exportRouteDef,
-  exportCsvRouteDef, batchDeleteRoute, readStatsRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
+  publishedRoute, unreadCountRoute, readRoute, readAllRoute, inboxRoute, listRoute,
+  batchDeleteRoute, readStatsRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
 ] as const);
 
 export default announcementsRouter;

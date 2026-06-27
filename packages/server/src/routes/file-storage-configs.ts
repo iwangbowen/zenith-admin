@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { FileStorageConfigDTO } from '../lib/openapi-dtos';
 import {
   listFileStorageConfigs,
@@ -13,8 +13,6 @@ import {
   deleteFileStorageConfig,
   getFileStorageConfigBeforeAudit,
   getFileStorageConfig,
-  exportFileStorageConfigs,
-  exportFileStorageConfigsAsCsv,
   testFileStorageConfig,
   testExistingFileStorageConfig,
 } from '../services/file-storage-configs.service';
@@ -150,32 +148,6 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
-const exportRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export', tags: ['FileStorageConfigs'], summary: '导出文件存储配置 Excel',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:file:config' })] as const,
-    responses: { ...commonErrorResponses, ...okExcel('Excel 文件') },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportFileStorageConfigs();
-    return excelStreamBody(c, stream, filename);
-  },
-});
-
-const exportCsvRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export/csv', tags: ['FileStorageConfigs'], summary: '导出文件存储配置 CSV',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:file:config' })] as const,
-    responses: { ...commonErrorResponses, ...okCsv('CSV 文件') },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportFileStorageConfigsAsCsv();
-    return csvStreamBody(c, stream, filename);
-  },
-});
-
-fileStorageConfigsRouter.openapiRoutes([listRoute, defaultRoute, exportRoute, exportCsvRoute, testRoute, testExistingRoute, getOneRoute, createRouteDef, updateRouteDef, setDefaultRoute, deleteRouteDef] as const);
+fileStorageConfigsRouter.openapiRoutes([listRoute, defaultRoute, testRoute, testExistingRoute, getOneRoute, createRouteDef, updateRouteDef, setDefaultRoute, deleteRouteDef] as const);
 
 export default fileStorageConfigsRouter;
