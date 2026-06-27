@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, Empty, JsonViewer, Select, Space, Spin, Tabs, TabPane, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Dropdown, Empty, JsonViewer, Popover, Select, Skeleton, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Activity, AlertTriangle, CheckCircle2, DatabaseZap, GaugeCircle, GitBranch, Layers, RefreshCw, Timer, TimerReset, TrendingUp, Workflow, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, DatabaseZap, Download, GaugeCircle, GitBranch, Layers, Minus, RefreshCw, Stethoscope, Timer, TimerReset, TrendingUp, Wrench, Workflow, Zap } from 'lucide-react';
 import type {
+  WorkflowEngineActionKey,
+  WorkflowEngineActionResult,
   WorkflowEngineComponent,
   WorkflowEngineComponentStatus,
   WorkflowEngineDefinitionValidationItem,
+  WorkflowEngineHealthHistory,
+  WorkflowEngineHistogramBucket,
   WorkflowEngineIntrospection,
   WorkflowEngineOutboxEvent,
   WorkflowEngineQueueKey,
@@ -17,8 +21,14 @@ import type {
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AreaChart, LineChart, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette, type ChartPalette } from '@/components/charts';
 import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
+
+interface Props {
+  /** 深链：打开某个实例的运行时诊断抽屉（由 WorkflowMonitorPage 提供） */
+  onOpenInstanceDiagnostics?: (instanceId: number) => void;
+}
 
 const STATUS_META: Record<WorkflowEngineComponentStatus, { text: string; color: TagColor }> = {
   healthy: { text: '正常', color: 'green' },
@@ -52,19 +62,9 @@ const REF_TYPE_LABEL: Record<NonNullable<WorkflowEngineRuntimeIssue['refType']>,
 };
 
 const NODE_TYPE_LABEL: Record<string, string> = {
-  start: '开始',
-  approve: '审批',
-  handler: '办理',
-  end: '结束',
-  exclusiveGateway: '条件网关',
-  parallelGateway: '并行网关',
-  inclusiveGateway: '包容网关',
-  routeGateway: '路由网关',
-  ccNode: '抄送',
-  delay: '延时',
-  trigger: '触发器',
-  subProcess: '子流程',
-  catchNode: '捕获',
+  start: '开始', approve: '审批', handler: '办理', end: '结束',
+  exclusiveGateway: '条件网关', parallelGateway: '并行网关', inclusiveGateway: '包容网关', routeGateway: '路由网关',
+  ccNode: '抄送', delay: '延时', trigger: '触发器', subProcess: '子流程', catchNode: '捕获',
 };
 
 const THRESHOLD_OPTIONS = [
@@ -73,6 +73,28 @@ const THRESHOLD_OPTIONS = [
   { label: '1 小时', value: 60 },
   { label: '3 小时', value: 180 },
   { label: '12 小时', value: 720 },
+];
+
+const AUTO_REFRESH_OPTIONS = [
+  { label: '手动刷新', value: 0 },
+  { label: '每 10 秒', value: 10 },
+  { label: '每 30 秒', value: 30 },
+  { label: '每 60 秒', value: 60 },
+];
+
+const HISTORY_RANGE_OPTIONS = [
+  { label: '近 6 小时', value: 6 },
+  { label: '近 24 小时', value: 24 },
+  { label: '近 3 天', value: 72 },
+  { label: '近 7 天', value: 168 },
+];
+
+const ACTION_ITEMS: Array<{ key: WorkflowEngineActionKey; label: string }> = [
+  { key: 'replay-outbox', label: '重放事件 Outbox' },
+  { key: 'recover-triggers', label: '恢复触发器重派' },
+  { key: 'recover-delays', label: '恢复延时任务' },
+  { key: 'process-timeouts', label: '处理超时任务' },
+  { key: 'recover-subprocess', label: '恢复子流程' },
 ];
 
 const QUEUE_SEGMENTS = [
@@ -208,11 +230,34 @@ function MicroStat({ label, value, color }: Readonly<{ label: string; value: num
   );
 }
 
-function GoldenTile({ icon, label, value, accent, sub }: Readonly<{ icon: React.ReactNode; label: string; value: React.ReactNode; accent?: string; sub: React.ReactNode }>) {
+/** 同比变化 chip：invert=true 表示数值越低越好（错误/延迟），用于上色。 */
+function DeltaChip({ current, prev, invert, palette, suffix }: Readonly<{ current: number; prev: number; invert?: boolean; palette: ChartPalette; suffix?: string }>) {
+  if (prev <= 0 && current <= 0) return null;
+  const diff = current - prev;
+  const pct = prev > 0 ? (diff / prev) * 100 : (current > 0 ? 100 : 0);
+  if (Math.abs(pct) < 0.5) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: palette.text2, fontSize: 11 }}>
+        <Minus size={11} /> 持平
+      </span>
+    );
+  }
+  const up = diff > 0;
+  const bad = invert ? up : !up;
+  const color = bad ? palette.danger : palette.success;
+  const Icon = up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color, fontSize: 11 }} title="对比前一个 24h 窗口">
+      <Icon size={11} />{Math.abs(pct).toFixed(0)}%{suffix ?? ''}
+    </span>
+  );
+}
+
+function GoldenTile({ icon, label, value, accent, sub, delta }: Readonly<{ icon: React.ReactNode; label: string; value: React.ReactNode; accent?: string; sub: React.ReactNode; delta?: React.ReactNode }>) {
   return (
     <div
       style={{
-        flex: '1 1 160px',
+        flex: '1 1 170px',
         minWidth: 150,
         padding: '12px 14px',
         borderRadius: 8,
@@ -220,12 +265,96 @@ function GoldenTile({ icon, label, value, accent, sub }: Readonly<{ icon: React.
         border: '1px solid var(--semi-color-border)',
       }}
     >
-      <Space spacing={6} align="center">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {icon}
         <Typography.Text type="tertiary" size="small">{label}</Typography.Text>
-      </Space>
+        {delta && <span style={{ marginLeft: 'auto' }}>{delta}</span>}
+      </div>
       <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: accent, lineHeight: 1.2 }}>{value}</div>
       <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block', marginTop: 2 }}>{sub}</Typography.Text>
+    </div>
+  );
+}
+
+function ScoreBreakdown({ data, palette }: Readonly<{ data: WorkflowEngineIntrospection; palette: ChartPalette }>) {
+  const items = data.telemetry.scoreBreakdown;
+  return (
+    <div style={{ padding: 12, maxWidth: 280 }}>
+      <Typography.Text strong>健康分构成</Typography.Text>
+      <div style={{ display: 'flex', justifyContent: 'space-between', margin: '8px 0', paddingBottom: 6, borderBottom: '1px solid var(--semi-color-border)' }}>
+        <Typography.Text type="tertiary" size="small">满分基线</Typography.Text>
+        <Typography.Text size="small">100</Typography.Text>
+      </div>
+      {items.length === 0 ? (
+        <Typography.Text type="tertiary" size="small">未发现扣分项，引擎处于满分健康状态。</Typography.Text>
+      ) : items.map((f) => (
+        <div key={f.reason} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+          <Typography.Text size="small">{f.reason}</Typography.Text>
+          <Typography.Text size="small" strong style={{ color: f.severity === 'critical' ? palette.danger : palette.warning }}>-{f.delta}</Typography.Text>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--semi-color-border)' }}>
+        <Typography.Text strong size="small">当前健康分</Typography.Text>
+        <Typography.Text strong size="small">{data.telemetry.healthScore}</Typography.Text>
+      </div>
+      <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>
+        判定阈值：≥{data.thresholds.healthWarn} 正常 · ≥{data.thresholds.healthCritical} 关注
+      </Typography.Text>
+    </div>
+  );
+}
+
+function HistogramBars({ buckets, color }: Readonly<{ buckets: WorkflowEngineHistogramBucket[]; color: string }>) {
+  const max = Math.max(1, ...buckets.map((b) => b.count));
+  const total = buckets.reduce((s, b) => s + b.count, 0);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {buckets.map((b) => (
+        <div key={b.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Typography.Text type="tertiary" size="small" style={{ width: 64, minWidth: 64, textAlign: 'right' }}>{b.label}</Typography.Text>
+          <div style={{ flex: 1, minWidth: 0, height: 12, background: 'var(--semi-color-fill-0)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: `${(b.count / max) * 100}%`, height: '100%', background: color, opacity: 0.85 }} />
+          </div>
+          <Typography.Text size="small" style={{ width: 64, minWidth: 64 }}>
+            {b.count}
+            <Typography.Text type="tertiary" size="small">{total > 0 ? ` ${Math.round((b.count / total) * 100)}%` : ''}</Typography.Text>
+          </Typography.Text>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ApdexBar({ data, palette }: Readonly<{ data: WorkflowEngineIntrospection; palette: ChartPalette }>) {
+  const a = data.telemetry.apdex;
+  if (a.total === 0) {
+    return <Typography.Text type="tertiary" size="small">近 24h 暂无成功事件样本</Typography.Text>;
+  }
+  const seg = [
+    { v: a.satisfied, color: palette.success, label: '满意' },
+    { v: a.tolerating, color: palette.warning, label: '容忍' },
+    { v: a.frustrated, color: palette.danger, label: '沮丧' },
+  ];
+  const scoreColor = a.score == null ? palette.text1 : a.score >= 0.94 ? palette.success : a.score >= 0.85 ? palette.warning : palette.danger;
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+        <Typography.Text strong style={{ fontSize: 20, color: scoreColor }}>{a.score != null ? a.score.toFixed(2) : '—'}</Typography.Text>
+        <Typography.Text type="tertiary" size="small">Apdex · T={a.thresholdMs}ms</Typography.Text>
+      </div>
+      <div style={{ display: 'flex', height: 12, borderRadius: 3, overflow: 'hidden', background: 'var(--semi-color-fill-0)' }}>
+        {seg.map((s) => s.v > 0 && (
+          <div key={s.label} title={`${s.label} ${s.v}`} style={{ width: `${(s.v / a.total) * 100}%`, background: s.color }} />
+        ))}
+      </div>
+      <Space spacing={12} style={{ marginTop: 6 }}>
+        {seg.map((s) => (
+          <Space key={s.label} spacing={4} align="center">
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, display: 'inline-block' }} />
+            <Typography.Text type="tertiary" size="small">{s.label} {s.v}</Typography.Text>
+          </Space>
+        ))}
+      </Space>
     </div>
   );
 }
@@ -252,12 +381,12 @@ function QueueSaturation({ queues, palette }: Readonly<{ queues: WorkflowEngineQ
       {queues.map((q, i) => {
         const total = totals[i];
         return (
-          <div key={q.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div key={q.key} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ width: 132, minWidth: 132, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor(palette, q.status), display: 'inline-block', flex: '0 0 auto' }} />
               <Typography.Text size="small" ellipsis={{ showTooltip: true }}>{q.name}</Typography.Text>
             </div>
-            <div style={{ flex: 1, minWidth: 0, height: 16, borderRadius: 4, background: 'var(--semi-color-fill-0)', display: 'flex', overflow: 'hidden' }}>
+            <div style={{ flex: 1, minWidth: 120, height: 16, borderRadius: 4, background: 'var(--semi-color-fill-0)', display: 'flex', overflow: 'hidden' }}>
               {QUEUE_SEGMENTS.map((seg) => {
                 const v = q[seg.key];
                 if (!v) return null;
@@ -270,7 +399,7 @@ function QueueSaturation({ queues, palette }: Readonly<{ queues: WorkflowEngineQ
                 );
               })}
             </div>
-            <div style={{ width: 170, minWidth: 170, textAlign: 'right' }}>
+            <div style={{ width: 170, minWidth: 150, textAlign: 'right' }}>
               <Typography.Text size="small" strong>{total}</Typography.Text>
               <Typography.Text type="tertiary" size="small">  · 最老 {formatAge(q.oldestAgeMinutes)}</Typography.Text>
             </div>
@@ -326,7 +455,7 @@ function ComponentCard({ component, palette }: Readonly<{ component: WorkflowEng
   );
 }
 
-function IssuesPanel({ issues, components }: Readonly<{ issues: WorkflowEngineRuntimeIssue[]; components: WorkflowEngineComponent[] }>) {
+function IssuesPanel({ issues, components, onOpenInstanceDiagnostics }: Readonly<{ issues: WorkflowEngineRuntimeIssue[]; components: WorkflowEngineComponent[]; onOpenInstanceDiagnostics?: (instanceId: number) => void }>) {
   if (issues.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 4px' }}>
@@ -338,45 +467,110 @@ function IssuesPanel({ issues, components }: Readonly<{ issues: WorkflowEngineRu
   const componentName = (key: string) => components.find((item) => item.key === key)?.name ?? key;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 360, overflow: 'auto' }}>
-      {issues.map((issue) => (
-        <div key={issue.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 4px', borderTop: '1px solid var(--semi-color-border)' }}>
-          <div style={{ width: 60, flex: '0 0 auto' }}>{issueTag(issue.severity)}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{issue.title}</Typography.Text>
-            <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{issue.description}</Typography.Text>
+      {issues.map((issue) => {
+        const canDeepLink = issue.refType === 'instance' && issue.refId != null && onOpenInstanceDiagnostics;
+        return (
+          <div key={issue.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 4px', borderTop: '1px solid var(--semi-color-border)' }}>
+            <div style={{ width: 60, flex: '0 0 auto' }}>{issueTag(issue.severity)}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{issue.title}</Typography.Text>
+              <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{issue.description}</Typography.Text>
+            </div>
+            <div style={{ width: 170, flex: '0 0 auto', textAlign: 'right' }}>
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{componentName(issue.component)}</Typography.Text>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                <Typography.Text type="tertiary" size="small">
+                  {issue.refType ? `${REF_TYPE_LABEL[issue.refType]}${issue.refId != null ? ` #${issue.refId}` : ''}` : ''}
+                  {issue.ageMinutes != null ? ` · ${formatAge(issue.ageMinutes)}` : ''}
+                </Typography.Text>
+                {canDeepLink && (
+                  <Button theme="borderless" size="small" icon={<Stethoscope size={13} />} onClick={() => onOpenInstanceDiagnostics?.(issue.refId as number)}>诊断</Button>
+                )}
+              </div>
+            </div>
           </div>
-          <div style={{ width: 160, flex: '0 0 auto', textAlign: 'right' }}>
-            <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{componentName(issue.component)}</Typography.Text>
-            <Typography.Text type="tertiary" size="small">
-              {issue.refType ? `${REF_TYPE_LABEL[issue.refType]}${issue.refId != null ? ` #${issue.refId}` : ''}` : ''}
-              {issue.ageMinutes != null ? ` · ${formatAge(issue.ageMinutes)}` : ''}
-            </Typography.Text>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-export default function WorkflowEngineDiagnosticsView() {
+function downloadBlob(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostics }: Props) {
   const palette = useChartPalette();
   const [thresholdMinutes, setThresholdMinutes] = useState(30);
+  const [autoRefresh, setAutoRefresh] = useState(0);
+  const [historyHours, setHistoryHours] = useState(24);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WorkflowEngineIntrospection | null>(null);
+  const [history, setHistory] = useState<WorkflowEngineHealthHistory | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+  const [actionLoading, setActionLoading] = useState<WorkflowEngineActionKey | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await request.get<WorkflowEngineIntrospection>(`/api/workflows/engine/introspection?thresholdMinutes=${thresholdMinutes}`);
+      const [res, hist] = await Promise.all([
+        request.get<WorkflowEngineIntrospection>(`/api/workflows/engine/introspection?thresholdMinutes=${thresholdMinutes}`),
+        request.get<WorkflowEngineHealthHistory>(`/api/workflows/engine/health-history?hours=${historyHours}`),
+      ]);
       if (res.code === 0) setData(res.data);
+      if (hist.code === 0) setHistory(hist.data);
+      setLastUpdated(Date.now());
     } finally {
       setLoading(false);
     }
-  }, [thresholdMinutes]);
+  }, [thresholdMinutes, historyHours]);
 
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  // 自动刷新
+  useEffect(() => {
+    if (autoRefresh <= 0) return;
+    const id = window.setInterval(() => { void fetchData(); }, autoRefresh * 1000);
+    return () => window.clearInterval(id);
+  }, [autoRefresh, fetchData]);
+
+  // 「更新于 Xs 前」每秒滴答
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const runAction = useCallback(async (action: WorkflowEngineActionKey, label: string) => {
+    setActionLoading(action);
+    try {
+      const res = await request.post<WorkflowEngineActionResult>(`/api/workflows/engine/actions/${action}`);
+      if (res.code === 0 && res.data?.ok) {
+        Toast.success({ content: res.data.message, duration: 4 });
+      } else {
+        Toast.warning({ content: res.data?.message || `${label}未成功`, duration: 4 });
+      }
+      await fetchData();
+    } catch {
+      Toast.error(`${label}执行失败`);
+    } finally {
+      setActionLoading(null);
+    }
+  }, [fetchData]);
+
+  const exportReport = useCallback(() => {
+    if (!data) return;
+    const stamp = (data.generatedAt || formatDateTime(new Date())).replace(/[: ]/g, '-');
+    downloadBlob(`engine-diagnostics-${stamp}.json`, JSON.stringify({ introspection: data, history }, null, 2), 'application/json');
+  }, [data, history]);
 
   const criticalCount = useMemo(() => data?.issues.filter((item) => item.severity === 'critical').length ?? 0, [data]);
   const warningCount = useMemo(() => data?.issues.filter((item) => item.severity === 'warning').length ?? 0, [data]);
@@ -417,6 +611,29 @@ export default function WorkflowEngineDiagnosticsView() {
     tooltip: { title: hourTooltip },
   }), [data?.telemetry.instances.series24h, palette]);
 
+  const historySpec = useMemo(() => makeLineSpec({
+    data: history?.points ?? [],
+    xField: 'capturedAt',
+    series: [{ field: 'healthScore', name: '健康分', color: palette.primary }],
+    palette,
+    legend: false,
+    point: false,
+    axis: { xLabel: hourLabel, yLabel: (v) => `${v}` },
+    tooltip: { title: hourTooltip, value: (v) => `${v} 分` },
+  }), [history?.points, palette]);
+
+  const backlogSpec = useMemo(() => makeAreaSpec({
+    data: history?.points ?? [],
+    xField: 'capturedAt',
+    series: [{ field: 'backlog', name: '积压', color: palette.warning }],
+    palette,
+    legend: false,
+    point: false,
+    fillOpacity: 0.18,
+    axis: { xLabel: hourLabel },
+    tooltip: { title: hourTooltip, value: (v) => `${v} 项` },
+  }), [history?.points, palette]);
+
   const sortedComponents = useMemo(() => (
     [...(data?.components ?? [])].sort((a, b) => STATUS_RANK[b.status] - STATUS_RANK[a.status])
   ), [data]);
@@ -433,9 +650,14 @@ export default function WorkflowEngineDiagnosticsView() {
       dataIndex: 'instanceTitle',
       width: 300,
       render: (_value, record) => (
-        <div style={{ minWidth: 0 }}>
-          <Typography.Text strong ellipsis={{ showTooltip: true }}>{record.instanceTitle}</Typography.Text>
-          <div><Typography.Text type="tertiary" size="small">{record.serialNo ?? `#${record.instanceId}`}</Typography.Text></div>
+        <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ minWidth: 0 }}>
+            <Typography.Text strong ellipsis={{ showTooltip: true }}>{record.instanceTitle}</Typography.Text>
+            <div><Typography.Text type="tertiary" size="small">{record.serialNo ?? `#${record.instanceId}`}</Typography.Text></div>
+          </div>
+          {onOpenInstanceDiagnostics && (
+            <Button theme="borderless" size="small" icon={<Stethoscope size={13} />} onClick={() => onOpenInstanceDiagnostics(record.instanceId)} />
+          )}
         </div>
       ),
     },
@@ -510,8 +732,15 @@ export default function WorkflowEngineDiagnosticsView() {
 
   if (loading && !data) {
     return (
-      <div style={{ padding: 48, textAlign: 'center' }}>
-        <Spin />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Skeleton loading placeholder={<Skeleton.Paragraph rows={2} style={{ width: '100%' }} />} active />
+        <Card bordered bodyStyle={{ padding: 16 }} style={{ borderRadius: 8 }}>
+          <Skeleton loading placeholder={<Skeleton.Paragraph rows={4} style={{ width: '100%' }} />} active />
+        </Card>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <Card bordered style={{ borderRadius: 8, flex: '1 1 380px' }}><Skeleton loading placeholder={<Skeleton.Image style={{ width: '100%', height: 150 }} />} active /></Card>
+          <Card bordered style={{ borderRadius: 8, flex: '1 1 380px' }}><Skeleton loading placeholder={<Skeleton.Image style={{ width: '100%', height: 150 }} />} active /></Card>
+        </div>
       </div>
     );
   }
@@ -522,6 +751,7 @@ export default function WorkflowEngineDiagnosticsView() {
 
   const t = data.telemetry;
   const errorRate = t.events.last24h.total > 0 ? (t.events.last24h.failed / t.events.last24h.total) * 100 : 0;
+  const prevErrorRate = t.events.prev24h.total > 0 ? (t.events.prev24h.failed / t.events.prev24h.total) * 100 : 0;
   const errorAccent = (t.triggers.last24h.failed > 0 || errorRate >= 5)
     ? palette.danger
     : (t.events.last24h.failed > 0 || t.triggers.last24h.retrying > 0)
@@ -530,8 +760,14 @@ export default function WorkflowEngineDiagnosticsView() {
   const backlog = data.queues.reduce((sum, q) => sum + q.ready + q.running + q.delayed + q.failed, 0);
   const oldestBacklog = data.queues.reduce<number | null>((acc, q) => (q.oldestAgeMinutes != null ? Math.max(acc ?? 0, q.oldestAgeMinutes) : acc), null);
   const worstQueueRank = data.queues.reduce((acc, q) => Math.max(acc, STATUS_RANK[q.status]), 0);
-  const saturationAccent = worstQueueRank >= 2 ? palette.danger : worstQueueRank >= 1 ? palette.warning : undefined;
+  const saturationAccent = backlog >= data.thresholds.backlogCritical || worstQueueRank >= 2
+    ? palette.danger
+    : backlog >= data.thresholds.backlogWarn || worstQueueRank >= 1
+      ? palette.warning
+      : undefined;
   const stuckInstances = data.runtime.runningWithoutActiveTasks.length;
+  const freshnessSec = lastUpdated ? Math.max(0, Math.round((nowTick - lastUpdated) / 1000)) : null;
+  const freshnessText = freshnessSec == null ? '' : freshnessSec < 60 ? `${freshnessSec}s 前` : `${Math.floor(freshnessSec / 60)}m 前`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -551,15 +787,27 @@ export default function WorkflowEngineDiagnosticsView() {
         >
           {data.healthy ? <CheckCircle2 size={16} color="var(--semi-color-success)" /> : <AlertTriangle size={16} color="var(--semi-color-danger)" />}
           <Typography.Text strong>{data.healthy ? '引擎状态正常' : '引擎存在严重事项'}</Typography.Text>
-          <Typography.Text type="tertiary" size="small">· {data.generatedAt} 生成 · 阈值 {data.thresholdMinutes} 分钟</Typography.Text>
+          <Typography.Text type="tertiary" size="small">· {data.generatedAt} 生成{freshnessText ? ` · 更新于 ${freshnessText}` : ''}</Typography.Text>
         </div>
         <Space wrap align="center">
-          <Select
-            value={thresholdMinutes}
-            optionList={THRESHOLD_OPTIONS}
-            style={{ width: 128 }}
-            onChange={(value) => setThresholdMinutes(Number(value))}
-          />
+          <Dropdown
+            trigger="click"
+            position="bottomRight"
+            render={(
+              <Dropdown.Menu>
+                {ACTION_ITEMS.map((item) => (
+                  <Dropdown.Item key={item.key} disabled={actionLoading != null} onClick={() => void runAction(item.key, item.label)}>
+                    {actionLoading === item.key ? <Spin size="small" /> : null} {item.label}
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            )}
+          >
+            <Button icon={<Wrench size={14} />} loading={actionLoading != null}>运维动作</Button>
+          </Dropdown>
+          <Button icon={<Download size={14} />} onClick={exportReport}>导出</Button>
+          <Select value={autoRefresh} optionList={AUTO_REFRESH_OPTIONS} style={{ width: 116 }} onChange={(v) => setAutoRefresh(Number(v))} />
+          <Select value={thresholdMinutes} optionList={THRESHOLD_OPTIONS} style={{ width: 116 }} onChange={(value) => setThresholdMinutes(Number(value))} />
           <Button type="primary" icon={<RefreshCw size={14} />} loading={loading} onClick={() => void fetchData()}>刷新</Button>
         </Space>
       </div>
@@ -567,20 +815,23 @@ export default function WorkflowEngineDiagnosticsView() {
       {/* 概览 Hero：健康分 + 黄金信号 */}
       <Card bordered bodyStyle={{ padding: 16 }} style={{ borderRadius: 8 }}>
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 188 }}>
-            <HealthRadial score={t.healthScore} palette={palette} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 18px', width: '100%' }}>
-              <MicroStat label="严重事项" value={criticalCount} color={criticalCount > 0 ? palette.danger : undefined} />
-              <MicroStat label="警告事项" value={warningCount} color={warningCount > 0 ? palette.warning : undefined} />
-              <MicroStat label="运行实例" value={data.runtime.runningInstances} />
-              <MicroStat label="事件监听器" value={data.eventBus.totalListenerCount} />
+          <Popover content={<ScoreBreakdown data={data} palette={palette} />} position="rightTop" showArrow>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 188, cursor: 'help' }}>
+              <HealthRadial score={t.healthScore} palette={palette} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 18px', width: '100%' }}>
+                <MicroStat label="严重事项" value={criticalCount} color={criticalCount > 0 ? palette.danger : undefined} />
+                <MicroStat label="警告事项" value={warningCount} color={warningCount > 0 ? palette.warning : undefined} />
+                <MicroStat label="运行实例" value={data.runtime.runningInstances} />
+                <MicroStat label="事件监听器" value={data.eventBus.totalListenerCount} />
+              </div>
             </div>
-          </div>
+          </Popover>
           <div style={{ flex: '1 1 520px', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <GoldenTile
               icon={<TrendingUp size={15} color="var(--semi-color-primary)" />}
               label="吞吐 · Traffic"
               value={t.events.last24h.total}
+              delta={<DeltaChip current={t.events.last24h.total} prev={t.events.prev24h.total} palette={palette} />}
               sub={`近 1h ${t.events.last1h.total} · 实例发起 ${t.instances.createdLast24h}`}
             />
             <GoldenTile
@@ -588,13 +839,14 @@ export default function WorkflowEngineDiagnosticsView() {
               label="错误 · Errors"
               value={`${errorRate.toFixed(1)}%`}
               accent={errorAccent}
+              delta={<DeltaChip current={errorRate} prev={prevErrorRate} invert palette={palette} suffix="pp" />}
               sub={`事件失败 ${t.events.last24h.failed} · 触发失败 ${t.triggers.last24h.failed} · 重试 ${t.triggers.last24h.retrying}`}
             />
             <GoldenTile
               icon={<Timer size={15} color="var(--semi-color-primary)" />}
               label="延迟 · Latency"
               value={formatMs(t.events.avgLatencyMs)}
-              sub={`P95 ${formatMs(t.events.p95LatencyMs)} · 触发均值 ${formatMs(t.triggers.avgDurationMs)}`}
+              sub={`P95 ${formatMs(t.events.p95LatencyMs)} · P99 ${formatMs(t.events.p99LatencyMs)} · Apdex ${t.apdex.score != null ? t.apdex.score.toFixed(2) : '—'}`}
             />
             <GoldenTile
               icon={<Layers size={15} color={saturationAccent ?? 'var(--semi-color-text-2)'} />}
@@ -609,15 +861,39 @@ export default function WorkflowEngineDiagnosticsView() {
 
       {/* 趋势：事件吞吐 + 实例生命周期 */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8, flex: '1 1 380px', minWidth: 320 }}>
+        <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8, flex: '1 1 380px', minWidth: 300 }}>
           <SectionTitle icon={<Zap size={16} color="var(--semi-color-primary)" />} title="事件吞吐趋势" desc="近 24h 成功 / 失败（按小时）" />
           <AreaChart {...eventTrendSpec} options={chartOptions} height={150} />
         </Card>
-        <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8, flex: '1 1 380px', minWidth: 320 }}>
+        <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8, flex: '1 1 380px', minWidth: 300 }}>
           <SectionTitle icon={<Workflow size={16} color="var(--semi-color-primary)" />} title="实例生命周期趋势" desc="近 24h 发起 / 完结（按小时）" />
           <LineChart {...instanceTrendSpec} options={chartOptions} height={150} />
         </Card>
       </div>
+
+      {/* 健康趋势历史 */}
+      <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
+        <SectionTitle
+          icon={<GaugeCircle size={16} color="var(--semi-color-primary)" />}
+          title="健康趋势"
+          desc="健康分与队列积压随时间变化（平台级采集）"
+          extra={<Select value={historyHours} optionList={HISTORY_RANGE_OPTIONS} style={{ width: 128 }} size="small" onChange={(v) => setHistoryHours(Number(v))} />}
+        />
+        {history && history.points.length > 0 ? (
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 380px', minWidth: 300 }}>
+              <Typography.Text type="tertiary" size="small">健康分（0-100）</Typography.Text>
+              <LineChart {...historySpec} options={chartOptions} height={150} />
+            </div>
+            <div style={{ flex: '1 1 380px', minWidth: 300 }}>
+              <Typography.Text type="tertiary" size="small">队列积压</Typography.Text>
+              <AreaChart {...backlogSpec} options={chartOptions} height={150} />
+            </div>
+          </div>
+        ) : (
+          <Empty description="暂无健康历史，定时采集任务运行后将逐步生成趋势" style={{ padding: 24 }} />
+        )}
+      </Card>
 
       {/* 活动问题 */}
       <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
@@ -627,19 +903,34 @@ export default function WorkflowEngineDiagnosticsView() {
           desc={data.issues.length > 0 ? `严重 ${criticalCount} · 警告 ${warningCount}` : '运行时巡检'}
           extra={<Tag color={criticalCount > 0 ? 'red' : warningCount > 0 ? 'orange' : 'green'}>{data.issues.length}</Tag>}
         />
-        <IssuesPanel issues={data.issues} components={data.components} />
+        <IssuesPanel issues={data.issues} components={data.components} onOpenInstanceDiagnostics={onOpenInstanceDiagnostics} />
       </Card>
 
       {/* 队列饱和度 */}
       <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
-        <SectionTitle icon={<Layers size={16} color="var(--semi-color-primary)" />} title="队列饱和度" desc="各内部队列积压构成与最老等待" extra={<Typography.Text type="tertiary" size="small">总积压 {backlog}</Typography.Text>} />
+        <SectionTitle icon={<Layers size={16} color="var(--semi-color-primary)" />} title="队列饱和度" desc="各内部队列积压构成与最老等待" extra={<Typography.Text type="tertiary" size="small">总积压 {backlog} · 阈值 {data.thresholds.backlogWarn}/{data.thresholds.backlogCritical}</Typography.Text>} />
         <QueueSaturation queues={data.queues} palette={palette} />
       </Card>
+
+      {/* 延迟分布 + Apdex */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8, flex: '1 1 360px', minWidth: 300 }}>
+          <SectionTitle icon={<Timer size={16} color="var(--semi-color-primary)" />} title="事件处理延迟分布" desc={`P95 ${formatMs(t.events.p95LatencyMs)} · P99 ${formatMs(t.events.p99LatencyMs)}`} />
+          <HistogramBars buckets={t.events.latencyHistogram} color={palette.primary} />
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--semi-color-border)' }}>
+            <ApdexBar data={data} palette={palette} />
+          </div>
+        </Card>
+        <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8, flex: '1 1 360px', minWidth: 300 }}>
+          <SectionTitle icon={<Zap size={16} color="var(--semi-color-primary)" />} title="触发器耗时分布" desc={`均值 ${formatMs(t.triggers.avgDurationMs)} · P95 ${formatMs(t.triggers.p95DurationMs)} · P99 ${formatMs(t.triggers.p99DurationMs)}`} />
+          <HistogramBars buckets={t.triggers.durationHistogram} color={palette.active} />
+        </Card>
+      </div>
 
       {/* 组件健康矩阵 */}
       <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
         <SectionTitle icon={<GaugeCircle size={16} color="var(--semi-color-primary)" />} title="组件健康矩阵" desc="引擎子系统状态（严重优先）" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
           {sortedComponents.map((component) => (
             <ComponentCard key={component.key} component={component} palette={palette} />
           ))}
@@ -657,7 +948,7 @@ export default function WorkflowEngineDiagnosticsView() {
             rowKey="rowId"
             pagination={false}
             empty="暂无内部队列任务"
-            scroll={{ x: 1510 }}
+            scroll={{ x: 1540 }}
           />
         </TabPane>
         <TabPane tab={`Outbox ${data.runtime.outboxEvents.length}`} itemKey="outbox">

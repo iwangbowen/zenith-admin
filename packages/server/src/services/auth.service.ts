@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, gte, isNull, like, lte } from 'drizzle-orm';
 import { db } from '../db';
-import { users, loginLogs, tenants, operationLogs, passwordResetTokens } from '../db/schema';
+import { users, loginLogs, tenants, operationLogs, passwordResetTokens, type UserRow } from '../db/schema';
 import { signToken, verifyToken } from '../lib/jwt';
 import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout, getSession } from '../lib/session-manager';
 import type { JwtPayload } from '../middleware/auth';
@@ -8,6 +8,14 @@ import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 import { parseUserAgent } from '../lib/request-helpers';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { lookupIpLocation } from '../lib/ip-location';
+import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
+import {
+  clearMfaChallenge,
+  createMfaChallenge,
+  getMfaChallenge,
+  shouldRequireMfa,
+  verifyLoginTotp,
+} from './identity-security.service';
 
 // ─── 获取用户角色列表 ─────────────────────────────────────────────────────────
 
@@ -136,6 +144,56 @@ export interface LoginInput {
   ip: string;
   ua: string;
   deviceInfo?: DeviceInfo;
+  deviceId?: string;
+  rememberDevice?: boolean;
+}
+
+async function finalizeLogin(
+  user: UserRow,
+  input: { ip: string; ua: string; deviceInfo?: DeviceInfo },
+  options: { logMessage: string; requirePasswordChange?: boolean },
+) {
+  const userRoleList = await getUserRoles(user.id);
+  const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code));
+
+  const { browser, os } = parseUserAgent(input.ua);
+  await Promise.all([
+    registerSession({
+      tokenId,
+      userId: user.id,
+      username: user.username,
+      nickname: user.nickname,
+      tenantId: user.tenantId ?? null,
+      ip: input.ip,
+      location: lookupIpLocation(input.ip),
+      browser,
+      os,
+      loginAt: new Date(),
+    }),
+    recordLoginLog({
+      ip: input.ip,
+      ua: input.ua,
+      username: user.username,
+      status: 'success',
+      message: options.logMessage,
+      userId: user.id,
+      tenantId: user.tenantId ?? null,
+      deviceInfo: input.deviceInfo,
+    }),
+    db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id)),
+  ]);
+  const { password: _pw, ...userInfo } = user;
+  return {
+    user: {
+      ...userInfo,
+      roles: userRoleList,
+      createdAt: formatDateTime(user.createdAt),
+      updatedAt: formatDateTime(user.updatedAt),
+      requirePasswordChange: options.requirePasswordChange,
+    },
+    token: { accessToken, refreshToken },
+    requirePasswordChange: options.requirePasswordChange,
+  };
 }
 
 export async function login(input: LoginInput) {
@@ -191,36 +249,33 @@ export async function login(input: LoginInput) {
     throw new HTTPException(400, { message: '用户名或密码错误' });
   }
 
-  const [requirePasswordChange, userRoleList] = await Promise.all([
+  const [requirePasswordChange] = await Promise.all([
     checkPasswordExpiry(user),
-    getUserRoles(user.id),
     clearLoginAttempts(input.username),
   ]);
-  const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code));
 
-  const { browser, os } = parseUserAgent(input.ua);
-  await Promise.all([
-    registerSession({
-      tokenId,
+  const mfa = await shouldRequireMfa({ user, ip: input.ip, ua: input.ua, deviceId: input.deviceId });
+  if (mfa.required) {
+    const challenge = await createMfaChallenge({
       userId: user.id,
       username: user.username,
-      nickname: user.nickname,
       tenantId: user.tenantId ?? null,
       ip: input.ip,
-      location: lookupIpLocation(input.ip),
-      browser,
-      os,
-      loginAt: new Date(),
-    }),
-    recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '登录成功', userId: user.id, tenantId, deviceInfo: input.deviceInfo }),
-    db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id)),
-  ]);
-  const { password: _pw, ...userInfo } = user;
-  return {
-    user: { ...userInfo, roles: userRoleList, createdAt: formatDateTime(user.createdAt), updatedAt: formatDateTime(user.updatedAt), requirePasswordChange },
-    token: { accessToken, refreshToken },
-    requirePasswordChange,
-  };
+      ua: input.ua,
+      deviceInfo: input.deviceInfo,
+      deviceId: input.deviceId,
+      rememberDevice: input.rememberDevice ?? false,
+    });
+    return {
+      mfaRequired: true as const,
+      challengeId: challenge.challengeId,
+      methods: mfa.methods,
+      expiresAt: challenge.expiresAt,
+      reason: mfa.reason,
+    };
+  }
+
+  return finalizeLogin(user, input, { logMessage: '登录成功', requirePasswordChange });
 }
 
 export interface RegisterInput {
@@ -235,6 +290,9 @@ export interface RegisterInput {
 export async function register(input: RegisterInput) {
   const allow = await getConfigBoolean('allow_registration', false);
   if (!allow) throw new HTTPException(403, { message: '系统已关闭注册功能' });
+  const policy = await getPasswordPolicy();
+  const passwordError = validatePassword(input.password, policy);
+  if (passwordError) throw new HTTPException(400, { message: passwordError });
 
   const [[usernameRow], [emailRow]] = await Promise.all([
     db.select({ id: users.id }).from(users).where(and(eq(users.username, input.username), isNull(users.tenantId))).limit(1),
@@ -248,30 +306,22 @@ export async function register(input: RegisterInput) {
     username: input.username, nickname: input.nickname, email: input.email, password: hashed,
   }).returning();
 
-  const userRoleList = await getUserRoles(user.id);
-  const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code));
+  return finalizeLogin(user, { ip: input.ip, ua: input.ua }, { logMessage: '注册并自动登录成功' });
+}
 
-  const { browser, os } = parseUserAgent(input.ua);
-  await Promise.all([
-    registerSession({
-      tokenId,
-      userId: user.id,
-      username: user.username,
-      nickname: user.nickname,
-      tenantId: user.tenantId ?? null,
-      ip: input.ip,
-      location: lookupIpLocation(input.ip),
-      browser,
-      os,
-      loginAt: new Date(),
-    }),
-    recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '注册并自动登录成功', userId: user.id }),
-  ]);
-  const { password: _pw, ...userInfo } = user;
-  return {
-    user: { ...userInfo, roles: userRoleList, createdAt: formatDateTime(user.createdAt), updatedAt: formatDateTime(user.updatedAt) },
-    token: { accessToken, refreshToken },
-  };
+export async function verifyMfaLogin(challengeId: string, code: string, rememberDevice?: boolean) {
+  const challenge = await getMfaChallenge(challengeId);
+  await verifyLoginTotp({ ...challenge, rememberDevice: rememberDevice ?? challenge.rememberDevice }, code);
+  const [user] = await db.select().from(users).where(eq(users.id, challenge.userId)).limit(1);
+  if (!user) throw new HTTPException(401, { message: '用户不存在' });
+  if (user.status === 'disabled') throw new HTTPException(403, { message: '账号已被禁用' });
+  const requirePasswordChange = await checkPasswordExpiry(user);
+  await clearMfaChallenge(challengeId);
+  return finalizeLogin(
+    user,
+    { ip: challenge.ip, ua: challenge.ua, deviceInfo: challenge.deviceInfo as DeviceInfo | undefined },
+    { logMessage: 'MFA 验证后登录成功', requirePasswordChange },
+  );
 }
 
 export async function refreshAccessToken(token: string, clientInfo?: { ip: string; ua: string }) {
@@ -430,6 +480,9 @@ export async function changeMyPassword(oldPassword: string, newPassword: string)
   if (!user) throw new HTTPException(404, { message: '用户不存在' });
   const valid = await bcrypt.compare(oldPassword, user.password);
   if (!valid) throw new HTTPException(400, { message: '原密码错误' });
+  const policy = await getPasswordPolicy();
+  const passwordError = validatePassword(newPassword, policy);
+  if (passwordError) throw new HTTPException(400, { message: passwordError });
   const hashed = await bcrypt.hash(newPassword, 10);
   await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date() }).where(eq(users.id, userId));
 }
@@ -578,6 +631,9 @@ export async function resetPassword(token: string, newPassword: string) {
     .where(and(eq(passwordResetTokens.token, token), gt(passwordResetTokens.expiresAt, now), isNull(passwordResetTokens.usedAt)))
     .limit(1);
   if (!record) throw new HTTPException(400, { message: '重置链接无效或已过期' });
+  const policy = await getPasswordPolicy();
+  const passwordError = validatePassword(newPassword, policy);
+  if (passwordError) throw new HTTPException(400, { message: passwordError });
   const hashed = await bcrypt.hash(newPassword, 10);
   await db.transaction(async (tx) => {
     await tx.update(users).set({ password: hashed }).where(eq(users.id, record.userId));

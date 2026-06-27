@@ -8,7 +8,7 @@ import os from 'node:os';
 import { PgBoss, type QueueOptions, type SendOptions, type WorkHandler } from 'pg-boss';
 import { eq, and, isNull, desc, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { cronJobs, cronJobLogs, dbBackups, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../db/schema';
+import { cronJobs, cronJobLogs, dbBackups, systemSchedulerNodes, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../db/schema';
 import logger from './logger';
 import { cleanExpiredCaptchas } from './captcha';
 import { cleanExpiredSessions } from './session-manager';
@@ -17,6 +17,8 @@ import { formatFileTimestamp, formatDateTime } from './datetime';
 import { config } from '../config';
 import { notifyUsersWithCard } from '../services/chat-notify.service';
 import type { ChatCard } from '@zenith/shared';
+import { sendMail } from './email';
+import { httpPost } from './http-client';
 
 /** 定时任务失败 → 推送告警卡片给任务创建者（无则推给系统管理员） */
 async function pushCronFailureAlert(jobId: number, jobName: string, message: string): Promise<void> {
@@ -63,13 +65,19 @@ const schedulerNodeId = `${schedulerNodeHostname}:${schedulerNodePid}`;
 export type SystemSchedulerTaskType = 'recurring' | 'queue';
 export type SystemSchedulerRunStatus = 'running' | 'success' | 'failed';
 export type SystemSchedulerTriggerType = 'schedule' | 'manual' | 'queue';
+export type SystemSchedulerAlertChannel = 'inapp' | 'email' | 'webhook';
 
 export interface SystemSchedulerTaskPolicy {
+  enabled: boolean;
   logRetentionDays: number;
   logRetentionRuns: number;
   timeoutMs: number | null;
   failureAlertThreshold: number;
   alertEnabled: boolean;
+  alertChannels: SystemSchedulerAlertChannel[];
+  alertUserIds: number[];
+  alertEmails: string[];
+  alertWebhookUrl: string | null;
   manualSingleton: boolean;
 }
 
@@ -95,11 +103,16 @@ export interface SystemSchedulerTaskInfo {
   registeredHostname: string;
   registeredPid: number;
   allowManualRun: boolean;
+  enabled: boolean;
   logRetentionDays: number;
   logRetentionRuns: number;
   timeoutMs: number | null;
   failureAlertThreshold: number;
   alertEnabled: boolean;
+  alertChannels: SystemSchedulerAlertChannel[];
+  alertUserIds: number[];
+  alertEmails: string[];
+  alertWebhookUrl: string | null;
   manualSingleton: boolean;
   lastRunAt: string | null;
   lastRunStatus: SystemSchedulerRunStatus | null;
@@ -130,6 +143,10 @@ export interface SystemRecurringJobRegistration {
   timeoutMs?: number | null;
   failureAlertThreshold?: number;
   alertEnabled?: boolean;
+  alertChannels?: SystemSchedulerAlertChannel[];
+  alertUserIds?: number[];
+  alertEmails?: string[];
+  alertWebhookUrl?: string | null;
   manualSingleton?: boolean;
   run: () => Promise<unknown>;
 }
@@ -144,6 +161,10 @@ export interface SystemQueueWorkerRegistration<T extends object> {
   timeoutMs?: number | null;
   failureAlertThreshold?: number;
   alertEnabled?: boolean;
+  alertChannels?: SystemSchedulerAlertChannel[];
+  alertUserIds?: number[];
+  alertEmails?: string[];
+  alertWebhookUrl?: string | null;
   handler: (data: T) => Promise<unknown>;
   queueOptions?: Omit<QueueOptions, 'name'>;
 }
@@ -161,17 +182,24 @@ interface ExecuteSystemTaskOptions {
 }
 
 const DEFAULT_SYSTEM_TASK_POLICY: SystemSchedulerTaskPolicy = {
+  enabled: true,
   logRetentionDays: 30,
   logRetentionRuns: 1000,
   timeoutMs: null,
   failureAlertThreshold: 1,
   alertEnabled: true,
+  alertChannels: ['inapp'],
+  alertUserIds: [],
+  alertEmails: [],
+  alertWebhookUrl: null,
   manualSingleton: true,
 };
 
 const systemRecurringJobs = new Map<string, SystemRecurringJobInfo>();
 const systemRecurringJobHandlers = new Map<string, () => Promise<unknown>>();
 const systemQueueWorkers = new Map<string, SystemQueueWorkerInfo>();
+let schedulerHeartbeatTimer: NodeJS.Timeout | null = null;
+const schedulerStartedAt = new Date();
 
 function getBoss(): PgBoss {
   if (!boss) throw new Error('pg-boss not initialized. Call initCronScheduler() first.');
@@ -193,13 +221,34 @@ function stringifyRunResult(result: unknown): string {
   }
 }
 
+function normalizeAlertChannels(value: unknown): SystemSchedulerAlertChannel[] {
+  const raw = Array.isArray(value) ? value : DEFAULT_SYSTEM_TASK_POLICY.alertChannels;
+  const channels = raw.filter((item): item is SystemSchedulerAlertChannel => item === 'inapp' || item === 'email' || item === 'webhook');
+  return channels.length > 0 ? Array.from(new Set(channels)) : ['inapp'];
+}
+
+function normalizeNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)));
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((item) => String(item ?? '').trim()).filter(Boolean)));
+}
+
 function normalizeSystemTaskPolicy(input: Partial<SystemSchedulerTaskPolicy> = {}): SystemSchedulerTaskPolicy {
   return {
+    enabled: input.enabled ?? DEFAULT_SYSTEM_TASK_POLICY.enabled,
     logRetentionDays: Math.max(1, input.logRetentionDays ?? DEFAULT_SYSTEM_TASK_POLICY.logRetentionDays),
     logRetentionRuns: Math.max(1, input.logRetentionRuns ?? DEFAULT_SYSTEM_TASK_POLICY.logRetentionRuns),
     timeoutMs: input.timeoutMs && input.timeoutMs > 0 ? input.timeoutMs : null,
     failureAlertThreshold: Math.max(1, input.failureAlertThreshold ?? DEFAULT_SYSTEM_TASK_POLICY.failureAlertThreshold),
     alertEnabled: input.alertEnabled ?? DEFAULT_SYSTEM_TASK_POLICY.alertEnabled,
+    alertChannels: normalizeAlertChannels(input.alertChannels),
+    alertUserIds: normalizeNumberArray(input.alertUserIds),
+    alertEmails: normalizeStringArray(input.alertEmails),
+    alertWebhookUrl: input.alertWebhookUrl?.trim() || null,
     manualSingleton: input.manualSingleton ?? DEFAULT_SYSTEM_TASK_POLICY.manualSingleton,
   };
 }
@@ -216,16 +265,84 @@ async function ensureSystemSchedulerTaskConfig(name: string, policy: SystemSched
   });
 }
 
+function registeredSystemTaskCount(): number {
+  return systemRecurringJobs.size + systemQueueWorkers.size;
+}
+
+async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
+  const now = new Date();
+  await db.insert(systemSchedulerNodes).values({
+    nodeId: schedulerNodeId,
+    hostname: schedulerNodeHostname,
+    pid: schedulerNodePid,
+    version: config.otel.serviceVersion,
+    startedAt: schedulerStartedAt,
+    lastHeartbeatAt: now,
+    registeredTaskCount: registeredSystemTaskCount(),
+    runningJobCount: getRunningJobCount(),
+    active,
+    metadata: {
+      wip: boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [],
+    },
+  }).onConflictDoUpdate({
+    target: systemSchedulerNodes.nodeId,
+    set: {
+      hostname: schedulerNodeHostname,
+      pid: schedulerNodePid,
+      version: config.otel.serviceVersion,
+      startedAt: schedulerStartedAt,
+      lastHeartbeatAt: now,
+      registeredTaskCount: registeredSystemTaskCount(),
+      runningJobCount: getRunningJobCount(),
+      active,
+      metadata: {
+        wip: boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [],
+      },
+      updatedAt: now,
+    },
+  });
+}
+
+function startSchedulerHeartbeat(): void {
+  if (schedulerHeartbeatTimer) return;
+  void heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
+  schedulerHeartbeatTimer = setInterval(() => {
+    void heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
+  }, 30_000);
+  schedulerHeartbeatTimer.unref?.();
+}
+
+function updateRecurringJobInfoPolicy(name: string, policy: SystemSchedulerTaskPolicy): void {
+  const current = systemRecurringJobs.get(name);
+  if (current) systemRecurringJobs.set(name, { ...current, ...policy });
+}
+
+function updateQueueWorkerInfoPolicy(name: string, policy: SystemSchedulerTaskPolicy): void {
+  const current = systemQueueWorkers.get(name);
+  if (current) systemQueueWorkers.set(name, { ...current, ...policy, enabled: true, manualSingleton: false });
+}
+
 async function getRuntimeSystemTaskPolicy(task: Pick<SystemSchedulerTaskInfo, 'name'> & Partial<SystemSchedulerTaskPolicy>): Promise<SystemSchedulerTaskPolicy> {
   const [row] = await db.select().from(systemSchedulerTaskConfigs).where(eq(systemSchedulerTaskConfigs.taskName, task.name)).limit(1);
   return normalizeSystemTaskPolicy({
+    enabled: row?.enabled ?? task.enabled,
     logRetentionDays: row?.logRetentionDays ?? task.logRetentionDays,
     logRetentionRuns: row?.logRetentionRuns ?? task.logRetentionRuns,
     timeoutMs: row?.timeoutMs ?? task.timeoutMs,
     failureAlertThreshold: row?.failureAlertThreshold ?? task.failureAlertThreshold,
     alertEnabled: row?.alertEnabled ?? task.alertEnabled,
+    alertChannels: row?.alertChannels ?? task.alertChannels,
+    alertUserIds: row?.alertUserIds ?? task.alertUserIds,
+    alertEmails: row?.alertEmails ?? task.alertEmails,
+    alertWebhookUrl: row?.alertWebhookUrl ?? task.alertWebhookUrl,
     manualSingleton: row?.manualSingleton ?? task.manualSingleton,
   });
+}
+
+async function defaultSystemAlertUserIds(): Promise<number[]> {
+  const [admin] = await db.select({ id: users.id }).from(users)
+    .where(and(eq(users.username, 'admin'), isNull(users.tenantId))).limit(1);
+  return admin ? [admin.id] : [];
 }
 
 async function buildSystemTaskAlert(
@@ -253,11 +370,76 @@ async function buildSystemTaskAlert(
   return null;
 }
 
-async function updateSystemRunAlert(runId: number, alertMessage: string | null): Promise<void> {
+async function dispatchSystemTaskAlert(
+  task: Pick<SystemSchedulerTaskInfo, 'name' | 'title' | 'module'>,
+  runId: number,
+  alertMessage: string,
+  policy: SystemSchedulerTaskPolicy,
+): Promise<SystemSchedulerAlertChannel[]> {
+  const sentChannels: SystemSchedulerAlertChannel[] = [];
+  const channels = policy.alertChannels;
+  const now = formatDateTime(new Date());
+  const subject = `[系统调度告警] ${task.title}`;
+  const html = `<h3>系统调度告警</h3><p><b>任务：</b>${task.title} (${task.name})</p><p><b>模块：</b>${task.module}</p><p><b>运行日志：</b>#${runId}</p><p><b>详情：</b>${alertMessage}</p><p><b>发生时间：</b>${now}</p>`;
+
+  if (channels.includes('inapp')) {
+    const targetIds = policy.alertUserIds.length > 0 ? policy.alertUserIds : await defaultSystemAlertUserIds();
+    if (targetIds.length > 0) {
+      const card: ChatCard = {
+        title: subject,
+        text: alertMessage,
+        fields: [
+          { label: '任务', value: `${task.title} (${task.name})` },
+          { label: '模块', value: task.module },
+          { label: '运行日志', value: `#${runId}` },
+          { label: '发生时间', value: now },
+        ],
+        source: '系统调度',
+      };
+      await notifyUsersWithCard(targetIds, card);
+      sentChannels.push('inapp');
+    }
+  }
+
+  if (channels.includes('email') && policy.alertEmails.length > 0) {
+    const results = await Promise.allSettled(policy.alertEmails.map((email) => sendMail(email, subject, html)));
+    if (results.some((item) => item.status === 'fulfilled')) sentChannels.push('email');
+  }
+
+  if (channels.includes('webhook') && policy.alertWebhookUrl) {
+    await httpPost(policy.alertWebhookUrl, {
+      type: 'system_scheduler_alert',
+      taskName: task.name,
+      taskTitle: task.title,
+      module: task.module,
+      runId,
+      message: alertMessage,
+      timestamp: now,
+    }, { timeout: 8000 });
+    sentChannels.push('webhook');
+  }
+
+  return sentChannels;
+}
+
+async function updateSystemRunAlert(
+  task: Pick<SystemSchedulerTaskInfo, 'name' | 'title' | 'module'>,
+  runId: number,
+  alertMessage: string | null,
+  policy: SystemSchedulerTaskPolicy,
+): Promise<void> {
   if (!alertMessage) return;
+  let sentChannels: SystemSchedulerAlertChannel[] = [];
+  try {
+    sentChannels = await dispatchSystemTaskAlert(task, runId, alertMessage, policy);
+  } catch (err) {
+    logger.warn('[system-scheduler] 告警派发失败', { taskName: task.name, runId, err });
+  }
   await db.update(systemSchedulerRuns).set({
     alertedAt: new Date(),
     alertMessage: limitText(alertMessage, 2048),
+    alertSentAt: sentChannels.length > 0 ? new Date() : null,
+    alertChannels: sentChannels,
   }).where(eq(systemSchedulerRuns.id, runId));
   logger.warn(`[system-scheduler] ${alertMessage}`);
 }
@@ -279,7 +461,7 @@ function updateSystemTaskRunSnapshot(
 async function executeSystemTask(
   task: Pick<
     SystemSchedulerTaskInfo,
-    'name' | 'title' | 'taskType' | 'module' | 'logRetentionDays' | 'logRetentionRuns' | 'timeoutMs' | 'failureAlertThreshold' | 'alertEnabled' | 'manualSingleton'
+    'name' | 'title' | 'taskType' | 'module' | 'enabled' | 'logRetentionDays' | 'logRetentionRuns' | 'timeoutMs' | 'failureAlertThreshold' | 'alertEnabled' | 'alertChannels' | 'alertUserIds' | 'alertEmails' | 'alertWebhookUrl' | 'manualSingleton'
   >,
   triggerType: SystemSchedulerTriggerType,
   fn: () => Promise<unknown>,
@@ -288,6 +470,48 @@ async function executeSystemTask(
   const startedAt = new Date();
   const startedAtText = formatDateTime(startedAt);
   const policy = await getRuntimeSystemTaskPolicy(task);
+  if (!policy.enabled && task.taskType === 'recurring') {
+    const skippedMessage = triggerType === 'manual' ? '任务已停用，拒绝手动执行' : '任务已停用，跳过自动调度';
+    if (options.runId) {
+      await db.update(systemSchedulerRuns).set({
+        status: 'failed',
+        startedAt,
+        endedAt: startedAt,
+        durationMs: 0,
+        errorMessage: skippedMessage,
+        jobId: options.jobId ?? null,
+        nodeId: schedulerNodeId,
+        nodeHostname: schedulerNodeHostname,
+        nodePid: schedulerNodePid,
+        triggeredBy: options.triggeredBy ?? null,
+      }).where(eq(systemSchedulerRuns.id, options.runId));
+    } else {
+      await db.insert(systemSchedulerRuns).values({
+        taskName: task.name,
+        taskTitle: task.title,
+        taskType: task.taskType,
+        module: task.module,
+        triggerType,
+        status: 'failed',
+        startedAt,
+        endedAt: startedAt,
+        durationMs: 0,
+        errorMessage: skippedMessage,
+        jobId: options.jobId ?? null,
+        nodeId: schedulerNodeId,
+        nodeHostname: schedulerNodeHostname,
+        nodePid: schedulerNodePid,
+        triggeredBy: options.triggeredBy ?? null,
+      });
+    }
+    updateSystemTaskRunSnapshot(task.name, task.taskType, {
+      lastRunAt: startedAtText,
+      lastRunStatus: 'failed',
+      lastRunMessage: skippedMessage,
+      lastDurationMs: 0,
+    });
+    return skippedMessage;
+  }
   updateSystemTaskRunSnapshot(task.name, task.taskType, {
     lastRunAt: startedAtText,
     lastRunStatus: 'running',
@@ -342,7 +566,7 @@ async function executeSystemTask(
       resultMessage,
     }).where(eq(systemSchedulerRuns.id, runId));
     const alertMessage = await buildSystemTaskAlert(task.name, 'success', durationMs, resultMessage, policy);
-    await updateSystemRunAlert(runId, alertMessage);
+    await updateSystemRunAlert(task, runId, alertMessage, policy);
     updateSystemTaskRunSnapshot(task.name, task.taskType, {
       lastRunAt: startedAtText,
       lastRunStatus: 'success',
@@ -361,7 +585,7 @@ async function executeSystemTask(
       errorMessage,
     }).where(eq(systemSchedulerRuns.id, runId));
     const alertMessage = await buildSystemTaskAlert(task.name, 'failed', durationMs, errorMessage, policy);
-    await updateSystemRunAlert(runId, alertMessage);
+    await updateSystemRunAlert(task, runId, alertMessage, policy);
     updateSystemTaskRunSnapshot(task.name, task.taskType, {
       lastRunAt: startedAtText,
       lastRunStatus: 'failed',
@@ -611,6 +835,7 @@ export async function initCronScheduler(): Promise<void> {
   logger.info('pg-boss: starting...');
   await boss.start();
   logger.info('pg-boss started');
+  startSchedulerHeartbeat();
 
   const jobs = await db.select().from(cronJobs).where(eq(cronJobs.status, 'enabled'));
   for (const job of jobs) {
@@ -728,6 +953,11 @@ export async function runJobOnce(jobId: number): Promise<{ success: boolean; mes
 
 export async function stopAllJobs(): Promise<void> {
   if (boss) {
+    if (schedulerHeartbeatTimer) {
+      clearInterval(schedulerHeartbeatTimer);
+      schedulerHeartbeatTimer = null;
+    }
+    await heartbeatSystemSchedulerNode(false).catch((err) => logger.warn('[system-scheduler] 节点离线标记失败', err));
     await boss.stop();
     boss = null;
     logger.info('pg-boss stopped');
@@ -822,6 +1052,8 @@ export async function registerSystemRecurringJob(registration: SystemRecurringJo
   const b = getBoss();
   const now = formatDateTime(new Date());
   const policy = normalizeSystemTaskPolicy(registration);
+  await ensureSystemSchedulerTaskConfig(registration.name, policy);
+  const runtimePolicy = await getRuntimeSystemTaskPolicy({ name: registration.name, ...policy });
   const info: SystemRecurringJobInfo = {
     name: registration.name,
     title: registration.title,
@@ -834,14 +1066,13 @@ export async function registerSystemRecurringJob(registration: SystemRecurringJo
     registeredHostname: schedulerNodeHostname,
     registeredPid: schedulerNodePid,
     allowManualRun: registration.allowManualRun ?? false,
-    ...policy,
+    ...runtimePolicy,
     lastRunAt: null,
     lastRunStatus: null,
     lastRunMessage: null,
     lastDurationMs: null,
   };
 
-  await ensureSystemSchedulerTaskConfig(registration.name, policy);
   await b.createQueue(registration.name, { retentionSeconds: 60 * 60 * 24 * 14, deleteAfterSeconds: 60 * 60 * 24 * 7 });
   await b.work<SystemRecurringJobPayload>(registration.name, async (jobs) => {
     for (const job of jobs) {
@@ -854,10 +1085,16 @@ export async function registerSystemRecurringJob(registration: SystemRecurringJo
       });
     }
   });
-  await b.schedule(registration.name, registration.cronExpression, { __systemSchedulerTrigger: 'schedule' } satisfies SystemRecurringJobPayload, { tz: 'Asia/Shanghai' });
   systemRecurringJobs.set(registration.name, info);
   systemRecurringJobHandlers.set(registration.name, registration.run);
-  logger.info(`pg-boss: system recurring job "${registration.name}" scheduled (${registration.cronExpression})`);
+  if (runtimePolicy.enabled) {
+    await b.schedule(registration.name, registration.cronExpression, { __systemSchedulerTrigger: 'schedule' } satisfies SystemRecurringJobPayload, { tz: 'Asia/Shanghai' });
+    logger.info(`pg-boss: system recurring job "${registration.name}" scheduled (${registration.cronExpression})`);
+  } else {
+    await b.unschedule(registration.name).catch(() => undefined);
+    logger.info(`pg-boss: system recurring job "${registration.name}" registered but disabled`);
+  }
+  await heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
 }
 
 export async function runSystemRecurringJobNow(name: string, triggeredBy?: number | null): Promise<{ message: string; runId: number; jobId: string | null }> {
@@ -866,6 +1103,7 @@ export async function runSystemRecurringJobNow(name: string, triggeredBy?: numbe
   if (!info || !systemRecurringJobHandlers.has(name)) throw new Error('系统周期任务不存在或尚未注册');
   if (!info.allowManualRun) throw new Error('该系统周期任务不允许手动执行');
   const policy = await getRuntimeSystemTaskPolicy(info);
+  if (!policy.enabled) throw new Error('该系统周期任务已停用');
   if (policy.manualSingleton) {
     const running = await db.$count(systemSchedulerRuns, and(eq(systemSchedulerRuns.taskName, name), eq(systemSchedulerRuns.status, 'running')));
     if (running > 0) throw new Error('该系统周期任务已有运行中的实例，请稍后再试');
@@ -911,10 +1149,30 @@ export async function runSystemRecurringJobNow(name: string, triggeredBy?: numbe
   return { message: `任务已投递后台执行，运行日志 #${run.id} 可跟踪结果`, runId: run.id, jobId };
 }
 
+export async function updateSystemTaskRuntimePolicy(name: string, policy: SystemSchedulerTaskPolicy): Promise<void> {
+  const b = getBoss();
+  const recurring = systemRecurringJobs.get(name);
+  if (recurring) {
+    updateRecurringJobInfoPolicy(name, policy);
+    if (policy.enabled) {
+      await b.schedule(name, recurring.cronExpression, { __systemSchedulerTrigger: 'schedule' } satisfies SystemRecurringJobPayload, { tz: 'Asia/Shanghai' });
+    } else {
+      await b.unschedule(name);
+    }
+    await heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
+    return;
+  }
+  if (systemQueueWorkers.has(name)) {
+    updateQueueWorkerInfoPolicy(name, policy);
+    await heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
+  }
+}
+
 export async function registerSystemQueueWorker<T extends object>(registration: SystemQueueWorkerRegistration<T>): Promise<void> {
   const b = getBoss();
   const now = formatDateTime(new Date());
   const policy = normalizeSystemTaskPolicy({
+    enabled: true,
     logRetentionDays: registration.logRetentionDays,
     logRetentionRuns: registration.logRetentionRuns,
     timeoutMs: registration.timeoutMs,
@@ -922,6 +1180,8 @@ export async function registerSystemQueueWorker<T extends object>(registration: 
     alertEnabled: registration.alertEnabled,
     manualSingleton: false,
   });
+  await ensureSystemSchedulerTaskConfig(registration.name, policy);
+  const runtimePolicy = await getRuntimeSystemTaskPolicy({ name: registration.name, ...policy });
   const info: SystemQueueWorkerInfo = {
     name: registration.name,
     title: registration.title,
@@ -934,7 +1194,8 @@ export async function registerSystemQueueWorker<T extends object>(registration: 
     registeredPid: schedulerNodePid,
     registeredAt: now,
     allowManualRun: false,
-    ...policy,
+    ...runtimePolicy,
+    enabled: true,
     manualSingleton: false,
     lastRunAt: null,
     lastRunStatus: null,
@@ -942,7 +1203,6 @@ export async function registerSystemQueueWorker<T extends object>(registration: 
     lastDurationMs: null,
   };
 
-  await ensureSystemSchedulerTaskConfig(registration.name, policy);
   await b.createQueue(registration.name, registration.queueOptions);
   await b.work<T>(registration.name, async (jobs) => {
     for (const job of jobs) {
@@ -951,6 +1211,7 @@ export async function registerSystemQueueWorker<T extends object>(registration: 
   });
   systemQueueWorkers.set(registration.name, info);
   logger.info(`pg-boss: system queue worker "${registration.name}" registered`);
+  await heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
 }
 
 export async function sendSystemJobAfter<T extends object>(

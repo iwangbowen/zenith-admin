@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Form, Input, Modal, Select, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Form, Input, Modal, Select, Space, TabPane, Tabs, Tag, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { AlertTriangle, RefreshCw, RotateCcw, Search, Settings, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw, RotateCcw, Search, Settings, Trash2 } from 'lucide-react';
 import type {
   PaginatedResponse,
+  SystemSchedulerAlertChannel,
+  SystemSchedulerNode,
   SystemSchedulerRun,
   SystemSchedulerRunStatus,
   SystemSchedulerTask,
   SystemSchedulerTaskType,
   SystemSchedulerTriggerType,
 } from '@zenith/shared';
+import UserSelect from '@/components/UserSelect';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
@@ -20,7 +23,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { renderEllipsis } from '@/utils/table-columns';
 
-type TabKey = 'tasks' | 'runs';
+type TabKey = 'tasks' | 'runs' | 'nodes';
 
 interface TaskSearchParams {
   keyword: string;
@@ -34,16 +37,22 @@ interface RunSearchParams {
   taskType: string;
   triggerType: string;
   status: string;
+  alertStatus: string;
   startTime: string;
   endTime: string;
 }
 
 interface TaskConfigForm {
+  enabled: boolean;
   logRetentionDays: number;
   logRetentionRuns: number;
   timeoutMs: number | null;
   failureAlertThreshold: number;
   alertEnabled: boolean;
+  alertChannels: SystemSchedulerAlertChannel[];
+  alertUserIds: number[];
+  alertEmailsText: string;
+  alertWebhookUrl: string | null;
   manualSingleton: boolean;
 }
 
@@ -56,7 +65,8 @@ interface CleanupResult {
 }
 
 const defaultTaskSearch: TaskSearchParams = { keyword: '', module: '', taskType: '', status: '' };
-const defaultRunSearch: RunSearchParams = { taskName: '', taskType: '', triggerType: '', status: '', startTime: '', endTime: '' };
+const defaultRunSearch: RunSearchParams = { taskName: '', taskType: '', triggerType: '', status: '', alertStatus: '', startTime: '', endTime: '' };
+const FormUserSelect = withField(UserSelect);
 
 const taskTypeMap = {
   recurring: { label: '周期任务', color: 'blue' },
@@ -74,6 +84,12 @@ const triggerTypeMap = {
   manual: { label: '手动执行', color: 'orange' },
   queue: { label: '队列触发', color: 'cyan' },
 } as const satisfies Record<SystemSchedulerTriggerType, { label: string; color: 'blue' | 'orange' | 'cyan' }>;
+
+const alertChannelMap = {
+  inapp: '系统号卡片',
+  email: '邮件',
+  webhook: 'Webhook',
+} as const satisfies Record<SystemSchedulerAlertChannel, string>;
 
 function formatDuration(value: number | null) {
   if (value == null) return '-';
@@ -117,16 +133,22 @@ export default function SystemSchedulerPage() {
   const [runsTotal, setRunsTotal] = useState(0);
   const [runsLoading, setRunsLoading] = useState(false);
   const [runSearch, setRunSearch] = useState<RunSearchParams>(defaultRunSearch);
+  const [nodes, setNodes] = useState<SystemSchedulerNode[]>([]);
+  const [nodesLoading, setNodesLoading] = useState(false);
   const [runningTaskName, setRunningTaskName] = useState<string | null>(null);
   const [configTask, setConfigTask] = useState<SystemSchedulerTask | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
   const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [detailRun, setDetailRun] = useState<SystemSchedulerRun | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [ackLoading, setAckLoading] = useState(false);
   const configFormApi = useRef<FormApi | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination(20);
 
   const canRun = hasPermission('system:scheduler:run');
   const canConfig = hasPermission('system:scheduler:config');
   const canCleanup = hasPermission('system:scheduler:cleanup');
+  const canAckAlert = hasPermission('system:scheduler:alert');
 
   const fetchTasks = useCallback(async () => {
     setTasksLoading(true);
@@ -148,6 +170,7 @@ export default function SystemSchedulerPage() {
         ...(params.taskType ? { taskType: params.taskType } : {}),
         ...(params.triggerType ? { triggerType: params.triggerType } : {}),
         ...(params.status ? { status: params.status } : {}),
+        ...(params.alertStatus ? { alertStatus: params.alertStatus } : {}),
         ...(params.startTime ? { startTime: params.startTime } : {}),
         ...(params.endTime ? { endTime: params.endTime } : {}),
       }).toString();
@@ -161,13 +184,24 @@ export default function SystemSchedulerPage() {
     }
   }, [page, pageSize, runSearch]);
 
+  const fetchNodes = useCallback(async () => {
+    setNodesLoading(true);
+    try {
+      const res = await request.get<SystemSchedulerNode[]>('/api/system-scheduler/nodes');
+      if (res.code === 0) setNodes(res.data);
+    } finally {
+      setNodesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchTasks();
   }, [fetchTasks]);
 
   useEffect(() => {
     if (activeTab === 'runs') void fetchRuns();
-  }, [activeTab, fetchRuns]);
+    if (activeTab === 'nodes') void fetchNodes();
+  }, [activeTab, fetchRuns, fetchNodes]);
 
   const moduleOptions = useMemo(() => {
     const modules = Array.from(new Set(tasks.map((item) => item.module))).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
@@ -227,15 +261,23 @@ export default function SystemSchedulerPage() {
 
   const handleSaveConfig = async (values: TaskConfigForm) => {
     if (!configTask) return;
+    const alertEmails = values.alertEmailsText
+      ? values.alertEmailsText.split(/[\n,;，；]/).map((item) => item.trim()).filter(Boolean)
+      : [];
     setSavingConfig(true);
     try {
       const res = await request.put(`/api/system-scheduler/tasks/${encodeURIComponent(configTask.name)}/config`, {
+        enabled: configTask.taskType === 'queue' ? true : Boolean(values.enabled),
         logRetentionDays: Number(values.logRetentionDays),
         logRetentionRuns: Number(values.logRetentionRuns),
         timeoutMs: values.timeoutMs ? Number(values.timeoutMs) : null,
         failureAlertThreshold: Number(values.failureAlertThreshold),
         alertEnabled: Boolean(values.alertEnabled),
-        manualSingleton: Boolean(values.manualSingleton),
+        alertChannels: values.alertChannels?.length ? values.alertChannels : ['inapp'],
+        alertUserIds: values.alertUserIds ?? [],
+        alertEmails,
+        alertWebhookUrl: values.alertWebhookUrl?.trim() || null,
+        manualSingleton: configTask.allowManualRun ? Boolean(values.manualSingleton) : false,
       });
       if (res.code === 0) {
         Toast.success('策略已保存');
@@ -256,6 +298,39 @@ export default function SystemSchedulerPage() {
       throw new Error('validation');
     }
     await handleSaveConfig(values);
+  };
+
+  const openRunDetail = async (record: SystemSchedulerRun) => {
+    setDetailRun(record);
+    setDetailLoading(true);
+    try {
+      const res = await request.get<SystemSchedulerRun>(`/api/system-scheduler/runs/${record.id}`);
+      if (res.code === 0) setDetailRun(res.data);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleAcknowledgeAlert = async (record = detailRun) => {
+    if (!record?.alertMessage) return;
+    Modal.confirm({
+      title: '确认系统调度告警',
+      content: `确认已处理运行日志 #${record.id} 的告警吗？`,
+      okText: '确认',
+      onOk: async () => {
+        setAckLoading(true);
+        try {
+          const res = await request.post<SystemSchedulerRun>(`/api/system-scheduler/runs/${record.id}/ack-alert`, { note: null });
+          if (res.code === 0) {
+            Toast.success('告警已确认');
+            setDetailRun(res.data);
+            await Promise.all([fetchTasks(), fetchRuns()]);
+          }
+        } finally {
+          setAckLoading(false);
+        }
+      },
+    });
   };
 
   const handleCleanupRuns = () => {
@@ -307,6 +382,15 @@ export default function SystemSchedulerPage() {
       render: (_: unknown, record) => record.taskType === 'recurring' ? <Typography.Text code>{record.cronExpression}</Typography.Text> : <Typography.Text type="tertiary">队列消费</Typography.Text>,
     },
     { title: '下次执行', dataIndex: 'nextRunAt', width: 210, render: (value: string | null) => value ?? '-' },
+    {
+      title: '启用',
+      dataIndex: 'enabled',
+      width: 100,
+      fixed: 'right',
+      render: (_: unknown, record) => record.taskType === 'queue'
+        ? <Tag color="cyan">Worker</Tag>
+        : <Tag color={record.enabled ? 'green' : 'grey'}>{record.enabled ? '启用' : '停用'}</Tag>,
+    },
     { title: '最近状态', dataIndex: 'lastRunStatus', width: 120, render: statusTag },
     { title: '最近耗时', dataIndex: 'lastDurationMs', width: 120, render: formatDuration },
     {
@@ -318,15 +402,21 @@ export default function SystemSchedulerPage() {
     {
       title: '告警',
       dataIndex: 'lastAlertMessage',
-      width: 260,
+      width: 300,
       render: (_: unknown, record) => record.lastAlertMessage
         ? (
-          <Space spacing={4}>
+          <Space vertical align="start" spacing={2}>
             <Tag color="red" prefixIcon={<AlertTriangle size={12} />}>{record.alertCount}</Tag>
+            <Typography.Text size="small">{record.alertChannels.map((item) => alertChannelMap[item]).join(' / ') || '未配置渠道'}</Typography.Text>
             {renderEllipsis(record.lastAlertMessage)}
           </Space>
         )
-        : <Typography.Text type="tertiary">无</Typography.Text>,
+        : (
+          <Space vertical align="start" spacing={2}>
+            <Typography.Text type="tertiary">无</Typography.Text>
+            <Typography.Text type="tertiary" size="small">{record.alertEnabled ? record.alertChannels.map((item) => alertChannelMap[item]).join(' / ') : '未启用'}</Typography.Text>
+          </Space>
+        ),
     },
     {
       title: '留存策略',
@@ -362,14 +452,16 @@ export default function SystemSchedulerPage() {
           label: '执行',
           type: 'primary',
           loading: runningTaskName === record.name,
-          disabled: record.taskType !== 'recurring' || !record.allowManualRun || !canRun || record.running,
+          disabled: record.taskType !== 'recurring' || !record.enabled || !record.allowManualRun || !canRun || record.running,
           disabledReason: record.taskType !== 'recurring'
             ? '队列 Worker 不支持手动执行'
-            : !record.allowManualRun
-              ? '该任务未开放手动执行'
-              : record.running
-                ? '任务正在运行'
-                : '缺少执行权限',
+            : !record.enabled
+              ? '任务已停用'
+              : !record.allowManualRun
+                ? '该任务未开放手动执行'
+                : record.running
+                  ? '任务正在运行'
+                  : '缺少执行权限',
           onClick: () => handleRunTask(record),
         },
         { key: 'logs', label: '日志', onClick: () => openTaskRuns(record) },
@@ -420,8 +512,15 @@ export default function SystemSchedulerPage() {
     {
       title: '告警',
       dataIndex: 'alertMessage',
-      width: 240,
-      render: (value: string | null) => value ? renderEllipsis(value) : <Typography.Text type="tertiary">无</Typography.Text>,
+      width: 270,
+      render: (_: unknown, record) => record.alertMessage
+        ? (
+          <Space vertical align="start" spacing={2}>
+            {renderEllipsis(record.alertMessage)}
+            <Tag color={record.alertAckAt ? 'green' : 'red'}>{record.alertAckAt ? '已确认' : '未确认'}</Tag>
+          </Space>
+        )
+        : <Typography.Text type="tertiary">无</Typography.Text>,
     },
     {
       title: '输出',
@@ -429,6 +528,42 @@ export default function SystemSchedulerPage() {
       width: 320,
       render: (_: unknown, record) => renderEllipsis(record.errorMessage ?? record.resultMessage),
     },
+    createOperationColumn<SystemSchedulerRun>({
+      width: 160,
+      desktopInlineKeys: ['detail', 'ack'],
+      actions: (record) => [
+        { key: 'detail', label: '详情', onClick: () => void openRunDetail(record) },
+        {
+          key: 'ack',
+          label: '确认',
+          type: 'primary',
+          disabled: !record.alertMessage || !!record.alertAckAt || !canAckAlert,
+          disabledReason: !record.alertMessage ? '无告警' : record.alertAckAt ? '已确认' : '缺少确认权限',
+          onClick: () => void handleAcknowledgeAlert(record),
+        },
+      ],
+    }),
+  ];
+
+  const nodeColumns: ColumnProps<SystemSchedulerNode>[] = [
+    {
+      title: '节点',
+      dataIndex: 'nodeId',
+      width: 260,
+      fixed: 'left',
+      render: (_: unknown, record) => (
+        <Space vertical align="start" spacing={2}>
+          <Typography.Text strong copyable={{ content: record.nodeId }}>{record.nodeId}</Typography.Text>
+          <Typography.Text type="tertiary" size="small">{renderNode(record.hostname, record.pid)}</Typography.Text>
+        </Space>
+      ),
+    },
+    { title: '状态', dataIndex: 'active', width: 120, render: (_: unknown, record) => <Tag color={record.active && !record.stale ? 'green' : 'red'}>{record.active && !record.stale ? '在线' : '离线'}</Tag> },
+    { title: '版本', dataIndex: 'version', width: 140, render: (value: string | null) => value ?? '-' },
+    { title: '启动时间', dataIndex: 'startedAt', width: 210 },
+    { title: '最近心跳', dataIndex: 'lastHeartbeatAt', width: 210 },
+    { title: '注册任务', dataIndex: 'registeredTaskCount', width: 120 },
+    { title: '运行任务', dataIndex: 'runningJobCount', width: 120 },
   ];
 
   const handleRunSearch = () => {
@@ -542,6 +677,16 @@ export default function SystemSchedulerPage() {
               onChange={(value) => setRunSearch((prev) => ({ ...prev, status: String(value ?? '') }))}
               style={{ width: 120 }}
             />
+            <Select
+              value={runSearch.alertStatus}
+              optionList={[
+                { value: '', label: '全部告警' },
+                { value: 'alerted', label: '有告警' },
+                { value: 'unacked', label: '未确认' },
+              ]}
+              onChange={(value) => setRunSearch((prev) => ({ ...prev, alertStatus: String(value ?? '') }))}
+              style={{ width: 120 }}
+            />
             <Input
               placeholder="开始时间"
               value={runSearch.startTime}
@@ -584,6 +729,25 @@ export default function SystemSchedulerPage() {
             refreshLoading={runsLoading}
           />
         </TabPane>
+
+        <TabPane tab="执行节点" itemKey="nodes">
+          <SearchToolbar>
+            <Button type="primary" icon={<RefreshCw size={14} />} onClick={fetchNodes} loading={nodesLoading}>刷新</Button>
+          </SearchToolbar>
+
+          <ConfigurableTable
+            bordered
+            rowKey="nodeId"
+            columns={nodeColumns}
+            dataSource={nodes}
+            loading={nodesLoading}
+            pagination={false}
+            scroll={{ x: 1160 }}
+            columnSettingsKey="system-scheduler-nodes"
+            onRefresh={fetchNodes}
+            refreshLoading={nodesLoading}
+          />
+        </TabPane>
       </Tabs>
 
       <AppModal
@@ -606,21 +770,96 @@ export default function SystemSchedulerPage() {
             labelPosition="left"
             labelWidth={130}
             initValues={{
+              enabled: configTask.enabled,
               logRetentionDays: configTask.logRetentionDays,
               logRetentionRuns: configTask.logRetentionRuns,
               timeoutMs: configTask.timeoutMs,
               failureAlertThreshold: configTask.failureAlertThreshold,
               alertEnabled: configTask.alertEnabled,
+              alertChannels: configTask.alertChannels?.length ? configTask.alertChannels : ['inapp'],
+              alertUserIds: configTask.alertUserIds ?? [],
+              alertEmailsText: (configTask.alertEmails ?? []).join('\n'),
+              alertWebhookUrl: configTask.alertWebhookUrl,
               manualSingleton: configTask.manualSingleton,
             }}
           >
+            <Form.Switch field="enabled" label="启用任务" disabled={configTask.taskType === 'queue'} />
             <Form.InputNumber field="logRetentionDays" label="留存天数" min={1} max={3650} style={{ width: '100%' }} rules={[{ required: true, message: '请输入留存天数' }]} />
             <Form.InputNumber field="logRetentionRuns" label="每任务保留条数" min={1} max={100000} style={{ width: '100%' }} rules={[{ required: true, message: '请输入保留条数' }]} />
             <Form.InputNumber field="timeoutMs" label="超时告警毫秒" min={100} max={86400000} style={{ width: '100%' }} placeholder="为空表示不启用" />
             <Form.InputNumber field="failureAlertThreshold" label="连续失败阈值" min={1} max={100} style={{ width: '100%' }} rules={[{ required: true, message: '请输入失败阈值' }]} />
             <Form.Switch field="alertEnabled" label="启用告警" />
+            <Form.Select
+              field="alertChannels"
+              label="告警渠道"
+              multiple
+              optionList={[
+                { value: 'inapp', label: '系统号卡片' },
+                { value: 'email', label: '邮件' },
+                { value: 'webhook', label: 'Webhook' },
+              ]}
+              style={{ width: '100%' }}
+            />
+            <FormUserSelect field="alertUserIds" label="通知用户" multiple />
+            <Form.TextArea field="alertEmailsText" label="通知邮箱" placeholder="多个邮箱可用换行或逗号分隔" autosize={{ minRows: 2, maxRows: 4 }} />
+            <Form.Input field="alertWebhookUrl" label="Webhook URL" placeholder="https://example.com/webhook" />
             <Form.Switch field="manualSingleton" label="手动执行防重" disabled={!configTask.allowManualRun} />
           </Form>
+        )}
+      </AppModal>
+
+      <AppModal
+        visible={!!detailRun}
+        title={detailRun ? `运行日志 #${detailRun.id}` : '运行日志详情'}
+        width={760}
+        onCancel={() => setDetailRun(null)}
+        footer={detailRun?.alertMessage && !detailRun.alertAckAt ? (
+          <Space>
+            <Button onClick={() => setDetailRun(null)}>关闭</Button>
+            <Button type="primary" icon={<CheckCircle2 size={14} />} loading={ackLoading} disabled={!canAckAlert} onClick={() => void handleAcknowledgeAlert()}>
+              确认告警
+            </Button>
+          </Space>
+        ) : (
+          <Button onClick={() => setDetailRun(null)}>关闭</Button>
+        )}
+      >
+        {detailRun && (
+          <Space vertical style={{ width: '100%' }}>
+            <Descriptions
+              row
+              size="small"
+              data={[
+                { key: '任务', value: `${detailRun.taskTitle} (${detailRun.taskName})` },
+                { key: '模块', value: detailRun.module },
+                { key: '类型', value: taskTypeMap[detailRun.taskType].label },
+                { key: '触发', value: triggerTypeMap[detailRun.triggerType].label },
+                { key: '状态', value: statusTag(detailRun.status) },
+                { key: 'Job ID', value: detailRun.jobId ? <Typography.Text copyable={{ content: detailRun.jobId }}>{detailRun.jobId}</Typography.Text> : '-' },
+                { key: '执行节点', value: renderNode(detailRun.nodeHostname, detailRun.nodePid) },
+                { key: '开始时间', value: detailRun.startedAt },
+                { key: '结束时间', value: detailRun.endedAt ?? '-' },
+                { key: '耗时', value: formatDuration(detailRun.durationMs) },
+                { key: '告警时间', value: detailRun.alertedAt ?? '-' },
+                { key: '确认状态', value: detailRun.alertMessage ? (detailRun.alertAckAt ? `已确认：${detailRun.alertAckByName ?? detailRun.alertAckBy ?? '-'}` : '未确认') : '无告警' },
+              ]}
+            />
+            {detailRun.alertMessage && (
+              <div>
+                <Typography.Title heading={6}>告警信息</Typography.Title>
+                <Typography.Paragraph copyable={{ content: detailRun.alertMessage }} style={{ whiteSpace: 'pre-wrap' }}>{detailRun.alertMessage}</Typography.Paragraph>
+              </div>
+            )}
+            {(detailRun.errorMessage || detailRun.resultMessage) && (
+              <div>
+                <Typography.Title heading={6}>{detailRun.errorMessage ? '错误信息' : '执行输出'}</Typography.Title>
+                <Typography.Paragraph copyable={{ content: detailRun.errorMessage ?? detailRun.resultMessage ?? '' }} style={{ whiteSpace: 'pre-wrap' }}>
+                  {detailRun.errorMessage ?? detailRun.resultMessage}
+                </Typography.Paragraph>
+              </div>
+            )}
+            {detailLoading && <Typography.Text type="tertiary">正在刷新详情...</Typography.Text>}
+          </Space>
         )}
       </AppModal>
     </div>

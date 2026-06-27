@@ -14,14 +14,23 @@ export const CaptchaDTO = z
   .openapi('Captcha');
 
 export const LoginResultDTO = z
-  .object({
-    user: UserDTO,
-    token: z.object({
-      accessToken: z.string().openapi({ example: 'eyJhbGciOi...' }),
-      refreshToken: z.string().openapi({ example: 'eyJhbGciOi...' }),
+  .union([
+    z.object({
+      user: UserDTO,
+      token: z.object({
+        accessToken: z.string().openapi({ example: 'eyJhbGciOi...' }),
+        refreshToken: z.string().openapi({ example: 'eyJhbGciOi...' }),
+      }),
+      requirePasswordChange: z.boolean().optional(),
     }),
-    requirePasswordChange: z.boolean().optional(),
-  })
+    z.object({
+      mfaRequired: z.literal(true),
+      challengeId: z.string(),
+      methods: z.array(z.enum(['totp', 'passkey'])),
+      expiresAt: z.number(),
+      reason: z.string().nullable().optional(),
+    }),
+  ])
   .openapi('LoginResult');
 
 export const RefreshTokenResultDTO = z

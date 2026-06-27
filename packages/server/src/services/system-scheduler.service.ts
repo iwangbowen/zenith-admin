@@ -2,14 +2,17 @@ import { and, desc, eq, gte, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
 import { db } from '../db';
-import { systemSchedulerRuns, systemSchedulerTaskConfigs } from '../db/schema';
+import { systemSchedulerNodes, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../db/schema';
 import { currentUserOrNull } from '../lib/context';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 import {
   getSchedulerIntrospection,
   getSystemQueueMetrics,
   runSystemRecurringJobNow,
+  updateSystemTaskRuntimePolicy,
+  type SystemSchedulerAlertChannel,
   type SystemSchedulerRunStatus,
+  type SystemSchedulerTaskPolicy,
   type SystemSchedulerTaskInfo,
 } from '../lib/pg-boss-scheduler';
 import { withPagination } from '../lib/where-helpers';
@@ -21,16 +24,22 @@ export interface ListSystemSchedulerRunsQuery {
   taskType?: 'recurring' | 'queue';
   triggerType?: 'schedule' | 'manual' | 'queue';
   status?: SystemSchedulerRunStatus;
+  alertStatus?: 'all' | 'alerted' | 'unacked';
   startTime?: string;
   endTime?: string;
 }
 
 export interface UpdateSystemSchedulerTaskConfigInput {
+  enabled: boolean;
   logRetentionDays: number;
   logRetentionRuns: number;
   timeoutMs?: number | null;
   failureAlertThreshold: number;
   alertEnabled: boolean;
+  alertChannels: SystemSchedulerAlertChannel[];
+  alertUserIds: number[];
+  alertEmails: string[];
+  alertWebhookUrl?: string | null;
   manualSingleton: boolean;
 }
 
@@ -68,7 +77,39 @@ function mapRun(row: typeof systemSchedulerRuns.$inferSelect) {
     errorMessage: row.errorMessage,
     alertedAt: formatNullableDateTime(row.alertedAt),
     alertMessage: row.alertMessage,
+    alertSentAt: formatNullableDateTime(row.alertSentAt),
+    alertChannels: row.alertChannels ?? [],
+    alertAckAt: formatNullableDateTime(row.alertAckAt),
+    alertAckBy: row.alertAckBy,
+    alertAckByName: null,
+    alertAckNote: row.alertAckNote,
     createdAt: formatDateTime(row.createdAt),
+  };
+}
+
+function mapRunWithAckUser(row: typeof systemSchedulerRuns.$inferSelect, ackUser?: { nickname: string | null; username: string } | null) {
+  return {
+    ...mapRun(row),
+    alertAckByName: ackUser ? (ackUser.nickname || ackUser.username) : null,
+  };
+}
+
+function mapNode(row: typeof systemSchedulerNodes.$inferSelect) {
+  const stale = Date.now() - row.lastHeartbeatAt.getTime() > 90_000;
+  return {
+    nodeId: row.nodeId,
+    hostname: row.hostname,
+    pid: row.pid,
+    version: row.version,
+    startedAt: formatDateTime(row.startedAt),
+    lastHeartbeatAt: formatDateTime(row.lastHeartbeatAt),
+    registeredTaskCount: row.registeredTaskCount,
+    runningJobCount: row.runningJobCount,
+    active: row.active,
+    stale,
+    metadata: row.metadata ?? {},
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
   };
 }
 
@@ -145,13 +186,18 @@ export async function listSystemSchedulerTasks() {
         registeredHostname: task.registeredHostname,
         registeredPid: task.registeredPid,
         allowManualRun: task.allowManualRun,
+        enabled: config?.enabled ?? task.enabled,
         logRetentionDays: config?.logRetentionDays ?? task.logRetentionDays,
         logRetentionRuns: config?.logRetentionRuns ?? task.logRetentionRuns,
         timeoutMs: config?.timeoutMs ?? task.timeoutMs,
         failureAlertThreshold: config?.failureAlertThreshold ?? task.failureAlertThreshold,
         alertEnabled: config?.alertEnabled ?? task.alertEnabled,
+        alertChannels: config?.alertChannels ?? task.alertChannels,
+        alertUserIds: config?.alertUserIds ?? task.alertUserIds,
+        alertEmails: config?.alertEmails ?? task.alertEmails,
+        alertWebhookUrl: config?.alertWebhookUrl ?? task.alertWebhookUrl,
         manualSingleton: config?.manualSingleton ?? task.manualSingleton,
-        nextRunAt: task.taskType === 'recurring' && task.cronExpression ? nextCronRun(task.cronExpression) : null,
+        nextRunAt: task.taskType === 'recurring' && task.cronExpression && (config?.enabled ?? task.enabled) ? nextCronRun(task.cronExpression) : null,
         running: (wipMap.get(task.name) ?? 0) > 0 || latest?.status === 'running',
         lastRunAt: latest ? formatDateTime(latest.startedAt) : task.lastRunAt,
         lastRunStatus: latest?.status ?? task.lastRunStatus,
@@ -182,6 +228,8 @@ export async function listSystemSchedulerRuns(query: ListSystemSchedulerRunsQuer
   if (query.taskType) conditions.push(eq(systemSchedulerRuns.taskType, query.taskType));
   if (query.triggerType) conditions.push(eq(systemSchedulerRuns.triggerType, query.triggerType));
   if (query.status) conditions.push(eq(systemSchedulerRuns.status, query.status));
+  if (query.alertStatus === 'alerted') conditions.push(isNotNull(systemSchedulerRuns.alertMessage));
+  if (query.alertStatus === 'unacked') conditions.push(and(isNotNull(systemSchedulerRuns.alertMessage), sql`${systemSchedulerRuns.alertAckAt} is null`)!);
   const startTime = parseDateTimeInput(query.startTime);
   const endTime = parseDateTimeInput(query.endTime);
   if (startTime) conditions.push(gte(systemSchedulerRuns.startedAt, startTime));
@@ -198,6 +246,34 @@ export async function listSystemSchedulerRuns(query: ListSystemSchedulerRunsQuer
   return { list: rows.map(mapRun), total, page, pageSize };
 }
 
+export async function getSystemSchedulerRun(id: number) {
+  const [record] = await db.select({ run: systemSchedulerRuns, ackUser: { username: users.username, nickname: users.nickname } })
+    .from(systemSchedulerRuns)
+    .leftJoin(users, eq(systemSchedulerRuns.alertAckBy, users.id))
+    .where(eq(systemSchedulerRuns.id, id))
+    .limit(1);
+  if (!record) throw new HTTPException(404, { message: '运行日志不存在' });
+  return mapRunWithAckUser(record.run, record.ackUser);
+}
+
+export async function acknowledgeSystemSchedulerRunAlert(id: number, note?: string | null) {
+  const user = currentUserOrNull();
+  const row = await db.query.systemSchedulerRuns.findFirst({ where: eq(systemSchedulerRuns.id, id) });
+  if (!row) throw new HTTPException(404, { message: '运行日志不存在' });
+  if (!row.alertMessage) throw new HTTPException(400, { message: '该运行日志没有告警' });
+  const [updated] = await db.update(systemSchedulerRuns).set({
+    alertAckAt: new Date(),
+    alertAckBy: user?.userId ?? null,
+    alertAckNote: note?.trim() || null,
+  }).where(eq(systemSchedulerRuns.id, id)).returning();
+  return mapRun(updated);
+}
+
+export async function listSystemSchedulerNodes() {
+  const rows = await db.select().from(systemSchedulerNodes).orderBy(desc(systemSchedulerNodes.active), desc(systemSchedulerNodes.lastHeartbeatAt));
+  return rows.map(mapNode);
+}
+
 export async function runSystemSchedulerTask(name: string) {
   try {
     const user = currentUserOrNull();
@@ -210,14 +286,20 @@ export async function runSystemSchedulerTask(name: string) {
 }
 
 export async function updateSystemSchedulerTaskConfig(name: string, input: UpdateSystemSchedulerTaskConfigInput) {
-  registeredTaskOrThrow(name);
-  const normalized = {
+  const task = registeredTaskOrThrow(name);
+  const alertChannels: SystemSchedulerAlertChannel[] = Array.from(new Set((input.alertChannels ?? []).filter((item): item is SystemSchedulerAlertChannel => item === 'inapp' || item === 'email' || item === 'webhook')));
+  const normalized: SystemSchedulerTaskPolicy = {
+    enabled: task.taskType === 'queue' ? true : Boolean(input.enabled),
     logRetentionDays: Math.max(1, input.logRetentionDays),
     logRetentionRuns: Math.max(1, input.logRetentionRuns),
     timeoutMs: input.timeoutMs && input.timeoutMs > 0 ? input.timeoutMs : null,
     failureAlertThreshold: Math.max(1, input.failureAlertThreshold),
     alertEnabled: input.alertEnabled,
-    manualSingleton: input.manualSingleton,
+    alertChannels: alertChannels.length > 0 ? alertChannels : ['inapp'],
+    alertUserIds: Array.from(new Set((input.alertUserIds ?? []).map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0))),
+    alertEmails: Array.from(new Set((input.alertEmails ?? []).map((item) => String(item ?? '').trim()).filter(Boolean))),
+    alertWebhookUrl: input.alertWebhookUrl?.trim() || null,
+    manualSingleton: task.allowManualRun ? input.manualSingleton : false,
   };
   const [row] = await db.insert(systemSchedulerTaskConfigs).values({
     taskName: name,
@@ -229,6 +311,7 @@ export async function updateSystemSchedulerTaskConfig(name: string, input: Updat
       updatedAt: new Date(),
     },
   }).returning();
+  await updateSystemTaskRuntimePolicy(name, normalized);
   return row;
 }
 

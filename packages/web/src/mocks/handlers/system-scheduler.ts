@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { SystemSchedulerRun, SystemSchedulerTask } from '@zenith/shared';
+import type { SystemSchedulerNode, SystemSchedulerRun, SystemSchedulerTask } from '@zenith/shared';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 
 function baseTask(extra: Partial<SystemSchedulerTask>): SystemSchedulerTask {
@@ -15,11 +15,16 @@ function baseTask(extra: Partial<SystemSchedulerTask>): SystemSchedulerTask {
     registeredHostname: 'dev-host',
     registeredPid: 3001,
     allowManualRun: false,
+    enabled: true,
     logRetentionDays: 30,
     logRetentionRuns: 1000,
     timeoutMs: null,
     failureAlertThreshold: 1,
     alertEnabled: true,
+    alertChannels: ['inapp'],
+    alertUserIds: [],
+    alertEmails: [],
+    alertWebhookUrl: null,
     manualSingleton: true,
     nextRunAt: null,
     running: false,
@@ -114,6 +119,24 @@ const tasks: SystemSchedulerTask[] = [
   }),
 ];
 
+const nodes: SystemSchedulerNode[] = [
+  {
+    nodeId: 'dev-host:3001',
+    hostname: 'dev-host',
+    pid: 3001,
+    version: '0.72.0',
+    startedAt: mockDateTimeOffset(-6 * 3600 * 1000),
+    lastHeartbeatAt: mockDateTimeOffset(-15 * 1000),
+    registeredTaskCount: 4,
+    runningJobCount: 1,
+    active: true,
+    stale: false,
+    metadata: { wip: [{ name: 'export-jobs', count: 1 }] },
+    createdAt: mockDateTimeOffset(-6 * 3600 * 1000),
+    updatedAt: mockDateTimeOffset(-15 * 1000),
+  },
+];
+
 let nextRunId = 5;
 
 function baseRun(extra: Partial<SystemSchedulerRun>): SystemSchedulerRun {
@@ -137,6 +160,12 @@ function baseRun(extra: Partial<SystemSchedulerRun>): SystemSchedulerRun {
     errorMessage: null,
     alertedAt: null,
     alertMessage: null,
+    alertSentAt: null,
+    alertChannels: [],
+    alertAckAt: null,
+    alertAckBy: null,
+    alertAckByName: null,
+    alertAckNote: null,
     createdAt: mockDateTime(),
     ...extra,
   };
@@ -194,6 +223,8 @@ const runs: SystemSchedulerRun[] = [
     errorMessage: '导出文件写入失败',
     alertedAt: mockDateTimeOffset(-20 * 60 * 1000 + 900),
     alertMessage: '连续失败 1 次：导出文件写入失败',
+    alertSentAt: mockDateTimeOffset(-20 * 60 * 1000 + 900),
+    alertChannels: ['inapp'],
     createdAt: mockDateTimeOffset(-20 * 60 * 1000),
   }),
 ];
@@ -211,6 +242,7 @@ export const systemSchedulerHandlers = [
     const taskType = url.searchParams.get('taskType') ?? '';
     const triggerType = url.searchParams.get('triggerType') ?? '';
     const status = url.searchParams.get('status') ?? '';
+    const alertStatus = url.searchParams.get('alertStatus') ?? '';
     const startTime = url.searchParams.get('startTime') ?? '';
     const endTime = url.searchParams.get('endTime') ?? '';
 
@@ -219,11 +251,36 @@ export const systemSchedulerHandlers = [
       .filter((item) => !taskType || item.taskType === taskType)
       .filter((item) => !triggerType || item.triggerType === triggerType)
       .filter((item) => !status || item.status === status)
+      .filter((item) => alertStatus !== 'alerted' || !!item.alertMessage)
+      .filter((item) => alertStatus !== 'unacked' || (!!item.alertMessage && !item.alertAckAt))
       .filter((item) => !startTime || item.startedAt >= startTime)
       .filter((item) => !endTime || item.startedAt <= endTime)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     const list = filtered.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: filtered.length, page, pageSize } });
+  }),
+
+  http.get('/api/system-scheduler/runs/:id', ({ params }) => {
+    const id = Number(params.id);
+    const run = runs.find((item) => item.id === id);
+    if (!run) return HttpResponse.json({ code: 404, message: '运行日志不存在', data: null });
+    return HttpResponse.json({ code: 0, message: 'ok', data: run });
+  }),
+
+  http.post('/api/system-scheduler/runs/:id/ack-alert', ({ params }) => {
+    const id = Number(params.id);
+    const run = runs.find((item) => item.id === id);
+    if (!run) return HttpResponse.json({ code: 404, message: '运行日志不存在', data: null });
+    if (!run.alertMessage) return HttpResponse.json({ code: 400, message: '该运行日志没有告警', data: null });
+    run.alertAckAt = mockDateTime();
+    run.alertAckBy = 1;
+    run.alertAckByName = '管理员';
+    run.alertAckNote = null;
+    return HttpResponse.json({ code: 0, message: 'ok', data: run });
+  }),
+
+  http.get('/api/system-scheduler/nodes', () => {
+    return HttpResponse.json({ code: 0, message: 'ok', data: nodes });
   }),
 
   http.post('/api/system-scheduler/tasks/:name/run', ({ params }) => {
@@ -265,22 +322,32 @@ export const systemSchedulerHandlers = [
     const task = tasks.find((item) => item.name === name);
     if (!task) return HttpResponse.json({ code: 404, message: '系统调度任务不存在或尚未注册', data: null });
     const body = await request.json() as Partial<SystemSchedulerTask>;
+    task.enabled = task.taskType === 'queue' ? true : Boolean(body.enabled);
     task.logRetentionDays = Number(body.logRetentionDays ?? task.logRetentionDays);
     task.logRetentionRuns = Number(body.logRetentionRuns ?? task.logRetentionRuns);
     task.timeoutMs = body.timeoutMs == null ? null : Number(body.timeoutMs);
     task.failureAlertThreshold = Number(body.failureAlertThreshold ?? task.failureAlertThreshold);
     task.alertEnabled = Boolean(body.alertEnabled);
+    task.alertChannels = body.alertChannels ?? task.alertChannels;
+    task.alertUserIds = body.alertUserIds ?? task.alertUserIds;
+    task.alertEmails = body.alertEmails ?? task.alertEmails;
+    task.alertWebhookUrl = body.alertWebhookUrl ?? task.alertWebhookUrl;
     task.manualSingleton = Boolean(body.manualSingleton);
     return HttpResponse.json({
       code: 0,
       message: 'ok',
       data: {
         taskName: task.name,
+        enabled: task.enabled,
         logRetentionDays: task.logRetentionDays,
         logRetentionRuns: task.logRetentionRuns,
         timeoutMs: task.timeoutMs,
         failureAlertThreshold: task.failureAlertThreshold,
         alertEnabled: task.alertEnabled,
+        alertChannels: task.alertChannels,
+        alertUserIds: task.alertUserIds,
+        alertEmails: task.alertEmails,
+        alertWebhookUrl: task.alertWebhookUrl,
         manualSingleton: task.manualSingleton,
       },
     });

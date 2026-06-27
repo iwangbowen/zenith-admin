@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { authRateLimit, captchaRateLimit, sensitiveRateLimit } from '../middleware/rate-limit';
 import { generateCaptcha } from '../lib/captcha';
 import { getConfigBoolean } from '../lib/system-config';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody, IdParam } from '../lib/openapi-schemas';
 import { LoginResultDTO, UserProfileDTO, CaptchaDTO, RefreshTokenResultDTO as RefreshDTO, SessionDTO, TenantItemDTO, SwitchTenantResultDTO as SwitchTenantDTO, LogRowDTO, UserPreferencesDTO } from '../lib/openapi-dtos';
 import {
   getClientInfo,
@@ -12,7 +12,16 @@ import {
   listMyLoginLogs, listMyOperationLogs, listMySessions, deleteMyOtherSessions, deleteMySession,
   switchTenantView, listSwitchableTenants, forgotPassword, resetPassword,
   getMyPreferences, saveMyPreferences, getMyFavoriteMenus, saveMyFavoriteMenus,
+  verifyMfaLogin,
 } from '../services/auth.service';
+import {
+  beginTotpSetup,
+  disableMyMfaFactor,
+  listMyMfaFactors,
+  listMyTrustedDevices,
+  removeMyTrustedDevice,
+  verifyTotpSetup,
+} from '../services/identity-security.service';
 
 const auth = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -33,6 +42,8 @@ const loginSchema = z.object({
   captchaCode: z.string().optional(),
   tenantCode: z.string().max(50).optional(),
   deviceInfo: deviceInfoSchema,
+  deviceId: z.string().max(128).optional(),
+  rememberDevice: z.boolean().optional(),
 });
 const registerSchema = z.object({
   username: z.string().min(2).max(32),
@@ -55,6 +66,15 @@ const switchTenantSchema = z.object({ tenantId: z.number().int().positive().null
 const forgotPasswordSchema = z.object({ email: z.email() });
 const resetPasswordSchema = z.object({ token: z.string().min(1), newPassword: z.string().min(6).max(64) });
 const refreshSchema = z.object({ refreshToken: z.string().min(1) });
+const mfaVerifySchema = z.object({
+  challengeId: z.string().min(1),
+  code: z.string().min(6).max(8),
+  rememberDevice: z.boolean().optional(),
+});
+const verifyTotpSetupSchema = z.object({
+  factorId: z.number().int().positive(),
+  code: z.string().min(6).max(8),
+});
 
 const captchaRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -125,6 +145,24 @@ const refreshRoute = defineOpenAPIRoute({
     const { refreshToken } = c.req.valid('json');
     const { ip, ua } = getClientInfo(c.req.raw.headers);
     return c.json(okBody(await refreshAccessToken(refreshToken, { ip, ua })), 200);
+  },
+});
+
+const mfaVerifyRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/mfa/verify', tags: ['Auth'], summary: '登录 MFA 验证', security: [],
+    middleware: [authRateLimit] as const,
+    request: { body: { content: jsonContent(mfaVerifySchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(LoginResultDTO, '登录成功'),
+      400: { content: jsonContent(ErrorResponse), description: '验证码错误或已过期' },
+    },
+  }),
+  handler: async (c) => {
+    const { challengeId, code, rememberDevice } = c.req.valid('json');
+    const result = await verifyMfaLogin(challengeId, code, rememberDevice);
+    return c.json(okBody(result, '登录成功'), 200);
   },
 });
 
@@ -396,6 +434,95 @@ const verifyPasswordRoute = defineOpenAPIRoute({
   },
 });
 
-auth.openapiRoutes([captchaRoute, loginRoute, registerRoute, refreshRoute, logoutRoute, meRoute, profileRoute, passwordRoute, myLoginLogsRoute, myOperationLogsRoute, mySessionsRoute, deleteOtherSessionsRoute, deleteSessionRoute, switchTenantRoute, authTenantsRoute, forgotPasswordRoute, resetPasswordRoute, getPreferencesRoute, savePreferencesRoute, getFavoriteMenusRoute, saveFavoriteMenusRoute, verifyPasswordRoute] as const);
+const myMfaFactorsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/mfa/factors', tags: ['Auth'], summary: '我的 MFA 因子',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(z.object({
+      id: z.number().int(),
+      type: z.enum(['totp', 'passkey', 'recovery_code']),
+      name: z.string(),
+      status: z.enum(['pending', 'enabled', 'disabled']),
+      verifiedAt: z.string().nullable(),
+      lastUsedAt: z.string().nullable(),
+      createdAt: z.string(),
+    })), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listMyMfaFactors()), 200),
+});
+
+const beginTotpSetupRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/mfa/totp/setup', tags: ['Auth'], summary: '开始绑定 TOTP',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.object({ factorId: z.number().int(), secret: z.string(), otpauthUrl: z.string() }), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await beginTotpSetup()), 200),
+});
+
+const verifyTotpSetupRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/mfa/totp/verify', tags: ['Auth'], summary: '确认绑定 TOTP',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { body: { content: jsonContent(verifyTotpSetupSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('绑定成功') },
+  }),
+  handler: async (c) => {
+    const { factorId, code } = c.req.valid('json');
+    await verifyTotpSetup(factorId, code);
+    return c.json(okBody(null, '绑定成功'), 200);
+  },
+});
+
+const disableMfaFactorRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/mfa/factors/{id}', tags: ['Auth'], summary: '停用 MFA 因子',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已停用') },
+  }),
+  handler: async (c) => {
+    await disableMyMfaFactor(c.req.valid('param').id);
+    return c.json(okBody(null, '已停用'), 200);
+  },
+});
+
+const myTrustedDevicesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/trusted-devices', tags: ['Auth'], summary: '我的可信设备',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(z.object({
+      id: z.number().int(),
+      deviceName: z.string().nullable(),
+      ip: z.string().nullable(),
+      userAgent: z.string().nullable(),
+      trustedUntil: z.string(),
+      lastSeenAt: z.string(),
+      createdAt: z.string(),
+    })), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listMyTrustedDevices()), 200),
+});
+
+const deleteTrustedDeviceRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/trusted-devices/{id}', tags: ['Auth'], summary: '移除可信设备',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已移除') },
+  }),
+  handler: async (c) => {
+    await removeMyTrustedDevice(c.req.valid('param').id);
+    return c.json(okBody(null, '已移除'), 200);
+  },
+});
+
+auth.openapiRoutes([captchaRoute, loginRoute, registerRoute, refreshRoute, mfaVerifyRoute, logoutRoute, meRoute, profileRoute, passwordRoute, myLoginLogsRoute, myOperationLogsRoute, mySessionsRoute, deleteOtherSessionsRoute, deleteSessionRoute, switchTenantRoute, authTenantsRoute, forgotPasswordRoute, resetPasswordRoute, getPreferencesRoute, savePreferencesRoute, getFavoriteMenusRoute, saveFavoriteMenusRoute, verifyPasswordRoute, myMfaFactorsRoute, beginTotpSetupRoute, verifyTotpSetupRoute, disableMfaFactorRoute, myTrustedDevicesRoute, deleteTrustedDeviceRoute] as const);
 
 export default auth;

@@ -3,6 +3,7 @@ import { z } from '@hono/zod-openapi';
 export const SystemSchedulerTaskTypeDTO = z.enum(['recurring', 'queue']);
 export const SystemSchedulerRunStatusDTO = z.enum(['running', 'success', 'failed']);
 export const SystemSchedulerTriggerTypeDTO = z.enum(['schedule', 'manual', 'queue']);
+export const SystemSchedulerAlertChannelDTO = z.enum(['inapp', 'email', 'webhook']);
 
 export const SystemSchedulerTaskDTO = z
   .object({
@@ -17,11 +18,16 @@ export const SystemSchedulerTaskDTO = z
     registeredHostname: z.string(),
     registeredPid: z.number().int(),
     allowManualRun: z.boolean(),
+    enabled: z.boolean(),
     logRetentionDays: z.number().int(),
     logRetentionRuns: z.number().int(),
     timeoutMs: z.number().int().nullable(),
     failureAlertThreshold: z.number().int(),
     alertEnabled: z.boolean(),
+    alertChannels: z.array(SystemSchedulerAlertChannelDTO),
+    alertUserIds: z.array(z.number().int()),
+    alertEmails: z.array(z.string()),
+    alertWebhookUrl: z.string().nullable(),
     manualSingleton: z.boolean(),
     nextRunAt: z.string().nullable(),
     running: z.boolean(),
@@ -66,6 +72,12 @@ export const SystemSchedulerRunDTO = z
     errorMessage: z.string().nullable(),
     alertedAt: z.string().nullable(),
     alertMessage: z.string().nullable(),
+    alertSentAt: z.string().nullable(),
+    alertChannels: z.array(SystemSchedulerAlertChannelDTO),
+    alertAckAt: z.string().nullable(),
+    alertAckBy: z.number().int().nullable(),
+    alertAckByName: z.string().nullable(),
+    alertAckNote: z.string().nullable(),
     createdAt: z.string(),
   })
   .openapi('SystemSchedulerRun');
@@ -81,11 +93,16 @@ export const SystemSchedulerRunResultDTO = z
 export const SystemSchedulerTaskConfigDTO = z
   .object({
     taskName: z.string(),
+    enabled: z.boolean(),
     logRetentionDays: z.number().int(),
     logRetentionRuns: z.number().int(),
     timeoutMs: z.number().int().nullable(),
     failureAlertThreshold: z.number().int(),
     alertEnabled: z.boolean(),
+    alertChannels: z.array(SystemSchedulerAlertChannelDTO),
+    alertUserIds: z.array(z.number().int()),
+    alertEmails: z.array(z.string()),
+    alertWebhookUrl: z.string().nullable(),
     manualSingleton: z.boolean(),
     createdAt: z.union([z.string(), z.date()]).optional(),
     updatedAt: z.union([z.string(), z.date()]).optional(),
@@ -101,3 +118,21 @@ export const SystemSchedulerCleanupResultDTO = z
     totalAfter: z.number().int(),
   })
   .openapi('SystemSchedulerCleanupResult');
+
+export const SystemSchedulerNodeDTO = z
+  .object({
+    nodeId: z.string(),
+    hostname: z.string(),
+    pid: z.number().int(),
+    version: z.string().nullable(),
+    startedAt: z.string(),
+    lastHeartbeatAt: z.string(),
+    registeredTaskCount: z.number().int(),
+    runningJobCount: z.number().int(),
+    active: z.boolean(),
+    stale: z.boolean(),
+    metadata: z.record(z.string(), z.unknown()),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('SystemSchedulerNode');

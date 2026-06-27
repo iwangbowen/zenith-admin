@@ -1253,6 +1253,7 @@ export interface CronJobStats {
 export type SystemSchedulerTaskType = 'recurring' | 'queue';
 export type SystemSchedulerRunStatus = 'running' | 'success' | 'failed';
 export type SystemSchedulerTriggerType = 'schedule' | 'manual' | 'queue';
+export type SystemSchedulerAlertChannel = 'inapp' | 'email' | 'webhook';
 
 export interface SystemSchedulerTask {
   name: string;
@@ -1266,11 +1267,16 @@ export interface SystemSchedulerTask {
   registeredHostname: string;
   registeredPid: number;
   allowManualRun: boolean;
+  enabled: boolean;
   logRetentionDays: number;
   logRetentionRuns: number;
   timeoutMs: number | null;
   failureAlertThreshold: number;
   alertEnabled: boolean;
+  alertChannels: SystemSchedulerAlertChannel[];
+  alertUserIds: number[];
+  alertEmails: string[];
+  alertWebhookUrl: string | null;
   manualSingleton: boolean;
   nextRunAt: string | null;
   running: boolean;
@@ -1313,7 +1319,29 @@ export interface SystemSchedulerRun {
   errorMessage: string | null;
   alertedAt: string | null;
   alertMessage: string | null;
+  alertSentAt: string | null;
+  alertChannels: SystemSchedulerAlertChannel[];
+  alertAckAt: string | null;
+  alertAckBy: number | null;
+  alertAckByName: string | null;
+  alertAckNote: string | null;
   createdAt: string;
+}
+
+export interface SystemSchedulerNode {
+  nodeId: string;
+  hostname: string;
+  pid: number;
+  version: string | null;
+  startedAt: string;
+  lastHeartbeatAt: string;
+  registeredTaskCount: number;
+  runningJobCount: number;
+  active: boolean;
+  stale: boolean;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 export interface OnlineUser {
   tokenId: string;
@@ -3094,11 +3122,16 @@ export interface WorkflowEngineSystemSchedulerTask {
   registeredHostname: string;
   registeredPid: number;
   allowManualRun: boolean;
+  enabled: boolean;
   logRetentionDays: number;
   logRetentionRuns: number;
   timeoutMs: number | null;
   failureAlertThreshold: number;
   alertEnabled: boolean;
+  alertChannels: SystemSchedulerAlertChannel[];
+  alertUserIds: number[];
+  alertEmails: string[];
+  alertWebhookUrl: string | null;
   manualSingleton: boolean;
   lastRunAt: string | null;
   lastRunStatus: SystemSchedulerRunStatus | null;

@@ -813,11 +813,16 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     registeredNodeId: 'dev-host:3001',
     registeredHostname: 'dev-host',
     registeredPid: 3001,
+    enabled: true,
     logRetentionDays: 30,
     logRetentionRuns: 1000,
     timeoutMs: null,
     failureAlertThreshold: 1,
     alertEnabled: true,
+    alertChannels: [] as [],
+    alertUserIds: [] as number[],
+    alertEmails: [] as string[],
+    alertWebhookUrl: null as string | null,
     manualSingleton: true,
   };
 

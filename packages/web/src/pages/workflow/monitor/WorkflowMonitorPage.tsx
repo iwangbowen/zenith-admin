@@ -543,18 +543,19 @@ export default function WorkflowMonitorPage() {
     loadDetail(item.id);
   };
 
-  const openDiagnostics = (item: WorkflowInstance) => {
+  const openDiagnosticsById = (instanceId: number) => {
     setDiagnosticsVisible(true);
     setDiagnostics(null);
     setDiagnosticsTab('nodes');
     setDiagnosticsLoading(true);
-    request.get<WorkflowRuntimeDiagnostics>(`/api/workflows/instances/${item.id}/diagnostics`)
+    request.get<WorkflowRuntimeDiagnostics>(`/api/workflows/instances/${instanceId}/diagnostics`)
       .then((res) => {
         if (res.code === 0) setDiagnostics(res.data);
         else Toast.error(res.message || '加载诊断信息失败');
       })
       .finally(() => setDiagnosticsLoading(false));
   };
+  const openDiagnostics = (item: WorkflowInstance) => openDiagnosticsById(item.id);
 
   const handleCancel = (record: WorkflowInstance) => {
     Modal.confirm({
@@ -1258,7 +1259,7 @@ export default function WorkflowMonitorPage() {
           <WorkflowAnalyticsView definitions={definitions} />
         </TabPane>
         <TabPane tab="引擎诊断" itemKey="engine">
-          <WorkflowEngineDiagnosticsView />
+          <WorkflowEngineDiagnosticsView onOpenInstanceDiagnostics={openDiagnosticsById} />
         </TabPane>
       </Tabs>
 

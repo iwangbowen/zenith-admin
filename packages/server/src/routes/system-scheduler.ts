@@ -1,10 +1,13 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { commonErrorResponses, jsonContent, ok, okBody, okPaginated, PaginationQuery, validationHook } from '../lib/openapi-schemas';
-import { SystemSchedulerCleanupResultDTO, SystemSchedulerRunDTO, SystemSchedulerRunResultDTO, SystemSchedulerTaskConfigDTO, SystemSchedulerTaskDTO } from '../lib/openapi-dtos';
+import { commonErrorResponses, IdParam, jsonContent, ok, okBody, okPaginated, PaginationQuery, validationHook } from '../lib/openapi-schemas';
+import { SystemSchedulerCleanupResultDTO, SystemSchedulerNodeDTO, SystemSchedulerRunDTO, SystemSchedulerRunResultDTO, SystemSchedulerTaskConfigDTO, SystemSchedulerTaskDTO } from '../lib/openapi-dtos';
 import {
+  acknowledgeSystemSchedulerRunAlert,
   cleanupSystemSchedulerRuns,
+  getSystemSchedulerRun,
+  listSystemSchedulerNodes,
   listSystemSchedulerRuns,
   listSystemSchedulerTasks,
   runSystemSchedulerTask,
@@ -20,13 +23,22 @@ const TaskNameParam = z.object({
 const TaskTypeQuery = z.enum(['recurring', 'queue']);
 const TriggerTypeQuery = z.enum(['schedule', 'manual', 'queue']);
 const RunStatusQuery = z.enum(['running', 'success', 'failed']);
+const AlertChannelBody = z.enum(['inapp', 'email', 'webhook']);
 const UpdateTaskConfigBody = z.object({
+  enabled: z.boolean(),
   logRetentionDays: z.number().int().min(1).max(3650),
   logRetentionRuns: z.number().int().min(1).max(100000),
   timeoutMs: z.number().int().min(100).max(86_400_000).nullable().optional(),
   failureAlertThreshold: z.number().int().min(1).max(100),
   alertEnabled: z.boolean(),
+  alertChannels: z.array(AlertChannelBody).default(['inapp']),
+  alertUserIds: z.array(z.number().int().positive()).default([]),
+  alertEmails: z.array(z.string().email()).default([]),
+  alertWebhookUrl: z.string().url().nullable().optional(),
   manualSingleton: z.boolean(),
+});
+const AcknowledgeAlertBody = z.object({
+  note: z.string().max(500).nullable().optional(),
 });
 
 const tasksRoute = defineOpenAPIRoute({
@@ -50,6 +62,7 @@ const runsRoute = defineOpenAPIRoute({
         taskType: TaskTypeQuery.optional(),
         triggerType: TriggerTypeQuery.optional(),
         status: RunStatusQuery.optional(),
+        alertStatus: z.enum(['all', 'alerted', 'unacked']).optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
       }),
@@ -57,6 +70,41 @@ const runsRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(SystemSchedulerRunDTO, '系统调度运行日志') },
   }),
   handler: async (c) => c.json(okBody(await listSystemSchedulerRuns(c.req.valid('query'))), 200),
+});
+
+const runDetailRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/runs/{id}', tags: ['SystemScheduler'], summary: '系统调度运行日志详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:scheduler:view' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(SystemSchedulerRunDTO, '运行日志详情') },
+  }),
+  handler: async (c) => c.json(okBody(await getSystemSchedulerRun(c.req.valid('param').id)), 200),
+});
+
+const acknowledgeAlertRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/runs/{id}/ack-alert', tags: ['SystemScheduler'], summary: '确认系统调度告警',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:scheduler:alert', audit: { module: '系统调度', description: '确认系统调度告警' } })] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(AcknowledgeAlertBody), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(SystemSchedulerRunDTO, '确认后的运行日志') },
+  }),
+  handler: async (c) => c.json(okBody(await acknowledgeSystemSchedulerRunAlert(c.req.valid('param').id, c.req.valid('json').note)), 200),
+});
+
+const nodesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/nodes', tags: ['SystemScheduler'], summary: '系统调度节点列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:scheduler:view' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(SystemSchedulerNodeDTO), '系统调度节点列表') },
+  }),
+  handler: async (c) => c.json(okBody(await listSystemSchedulerNodes()), 200),
 });
 
 const runRoute = defineOpenAPIRoute({
@@ -95,6 +143,6 @@ const cleanupRunsRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await cleanupSystemSchedulerRuns(c.req.valid('query')), '清理完成'), 200),
 });
 
-systemSchedulerRoutes.openapiRoutes([tasksRoute, runsRoute, runRoute, updateConfigRoute, cleanupRunsRoute] as const);
+systemSchedulerRoutes.openapiRoutes([tasksRoute, runsRoute, cleanupRunsRoute, runDetailRoute, acknowledgeAlertRoute, nodesRoute, runRoute, updateConfigRoute] as const);
 
 export default systemSchedulerRoutes;

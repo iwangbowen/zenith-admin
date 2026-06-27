@@ -16,6 +16,10 @@ export const exportJobDeleteReasonEnum = pgEnum('export_job_delete_reason', ['ex
 export const systemSchedulerTaskTypeEnum = pgEnum('system_scheduler_task_type', ['recurring', 'queue']);
 export const systemSchedulerRunStatusEnum = pgEnum('system_scheduler_run_status', ['running', 'success', 'failed']);
 export const systemSchedulerTriggerTypeEnum = pgEnum('system_scheduler_trigger_type', ['schedule', 'manual', 'queue']);
+export const mfaFactorTypeEnum = pgEnum('mfa_factor_type', ['totp', 'passkey', 'recovery_code']);
+export const mfaFactorStatusEnum = pgEnum('mfa_factor_status', ['pending', 'enabled', 'disabled']);
+export const loginRiskLevelEnum = pgEnum('login_risk_level', ['low', 'medium', 'high']);
+export const loginRiskActionEnum = pgEnum('login_risk_action', ['allow', 'challenge', 'block']);
 
 /**
  * 通用审计列：`created_by` / `updated_by` 指向 `users.id`（保留 set null）。
@@ -993,12 +997,18 @@ export const systemSchedulerRuns = pgTable('system_scheduler_runs', {
   errorMessage: text('error_message'),
   alertedAt: timestamp('alerted_at', { withTimezone: true }),
   alertMessage: text('alert_message'),
+  alertSentAt: timestamp('alert_sent_at', { withTimezone: true }),
+  alertChannels: jsonb('alert_channels').$type<Array<'inapp' | 'email' | 'webhook'>>().notNull().default([]),
+  alertAckAt: timestamp('alert_ack_at', { withTimezone: true }),
+  alertAckBy: integer('alert_ack_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  alertAckNote: text('alert_ack_note'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   index('system_scheduler_runs_task_idx').on(t.taskName),
   index('system_scheduler_runs_status_idx').on(t.status),
   index('system_scheduler_runs_started_at_idx').on(t.startedAt),
   index('system_scheduler_runs_triggered_by_idx').on(t.triggeredBy),
+  index('system_scheduler_runs_alert_ack_by_idx').on(t.alertAckBy),
 ]);
 
 export type SystemSchedulerRunRow = typeof systemSchedulerRuns.$inferSelect;
@@ -1029,11 +1039,16 @@ export type NewWorkflowEngineHealthSnapshot = typeof workflowEngineHealthSnapsho
 // ─── 系统调度任务配置表（启动时注册任务的运行策略）───────────────────────────────
 export const systemSchedulerTaskConfigs = pgTable('system_scheduler_task_configs', {
   taskName: varchar('task_name', { length: 128 }).primaryKey(),
+  enabled: boolean('enabled').notNull().default(true),
   logRetentionDays: integer('log_retention_days').notNull().default(30),
   logRetentionRuns: integer('log_retention_runs').notNull().default(1000),
   timeoutMs: integer('timeout_ms'),
   failureAlertThreshold: integer('failure_alert_threshold').notNull().default(1),
   alertEnabled: boolean('alert_enabled').notNull().default(true),
+  alertChannels: jsonb('alert_channels').$type<Array<'inapp' | 'email' | 'webhook'>>().notNull().default(['inapp']),
+  alertUserIds: jsonb('alert_user_ids').$type<number[]>().notNull().default([]),
+  alertEmails: jsonb('alert_emails').$type<string[]>().notNull().default([]),
+  alertWebhookUrl: varchar('alert_webhook_url', { length: 512 }),
   manualSingleton: boolean('manual_singleton').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
@@ -1041,6 +1056,28 @@ export const systemSchedulerTaskConfigs = pgTable('system_scheduler_task_configs
 
 export type SystemSchedulerTaskConfigRow = typeof systemSchedulerTaskConfigs.$inferSelect;
 export type NewSystemSchedulerTaskConfig = typeof systemSchedulerTaskConfigs.$inferInsert;
+
+// ─── 系统调度节点心跳表 ───────────────────────────────────────────────────────
+export const systemSchedulerNodes = pgTable('system_scheduler_nodes', {
+  nodeId: varchar('node_id', { length: 128 }).primaryKey(),
+  hostname: varchar('hostname', { length: 128 }).notNull(),
+  pid: integer('pid').notNull(),
+  version: varchar('version', { length: 64 }),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }).notNull(),
+  registeredTaskCount: integer('registered_task_count').notNull().default(0),
+  runningJobCount: integer('running_job_count').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('system_scheduler_nodes_active_idx').on(t.active),
+  index('system_scheduler_nodes_last_heartbeat_idx').on(t.lastHeartbeatAt),
+]);
+
+export type SystemSchedulerNodeRow = typeof systemSchedulerNodes.$inferSelect;
+export type NewSystemSchedulerNode = typeof systemSchedulerNodes.$inferInsert;
 
 // ─── 地区表 ──────────────────────────────────────────────────────────────────
 export const regionLevelEnum = pgEnum('region_level', ['province', 'city', 'county']);
@@ -1203,6 +1240,70 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 
 export type PasswordResetTokenRow = typeof passwordResetTokens.$inferSelect;
 export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+
+// ─── 用户 MFA 因子 ─────────────────────────────────────────────────────────────
+export const userMfaFactors = pgTable('user_mfa_factors', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: mfaFactorTypeEnum('type').notNull(),
+  name: varchar('name', { length: 64 }).notNull(),
+  secretEncrypted: text('secret_encrypted'),
+  credentialJson: jsonb('credential_json').$type<Record<string, unknown> | null>(),
+  status: mfaFactorStatusEnum('status').notNull().default('pending'),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('user_mfa_factors_user_idx').on(t.userId),
+  index('user_mfa_factors_status_idx').on(t.status),
+]);
+
+export type UserMfaFactorRow = typeof userMfaFactors.$inferSelect;
+export type NewUserMfaFactor = typeof userMfaFactors.$inferInsert;
+
+// ─── 用户可信设备 ─────────────────────────────────────────────────────────────
+export const userTrustedDevices = pgTable('user_trusted_devices', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  deviceIdHash: varchar('device_id_hash', { length: 128 }).notNull(),
+  deviceName: varchar('device_name', { length: 128 }),
+  ip: varchar('ip', { length: 64 }),
+  userAgent: varchar('user_agent', { length: 512 }),
+  trustedUntil: timestamp('trusted_until', { withTimezone: true }).notNull(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('user_trusted_devices_user_device_uq').on(t.userId, t.deviceIdHash),
+  index('user_trusted_devices_user_idx').on(t.userId),
+  index('user_trusted_devices_trusted_until_idx').on(t.trustedUntil),
+]);
+
+export type UserTrustedDeviceRow = typeof userTrustedDevices.$inferSelect;
+export type NewUserTrustedDevice = typeof userTrustedDevices.$inferInsert;
+
+// ─── 登录风险事件 ─────────────────────────────────────────────────────────────
+export const loginRiskEvents = pgTable('login_risk_events', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  username: varchar('username', { length: 64 }).notNull(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  riskLevel: loginRiskLevelEnum('risk_level').notNull().default('low'),
+  reason: varchar('reason', { length: 256 }).notNull(),
+  action: loginRiskActionEnum('action').notNull().default('allow'),
+  ip: varchar('ip', { length: 64 }),
+  location: varchar('location', { length: 128 }),
+  userAgent: varchar('user_agent', { length: 512 }),
+  deviceIdHash: varchar('device_id_hash', { length: 128 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index('login_risk_events_user_idx').on(t.userId),
+  index('login_risk_events_tenant_idx').on(t.tenantId),
+  index('login_risk_events_created_idx').on(t.createdAt),
+]);
+
+export type LoginRiskEventRow = typeof loginRiskEvents.$inferSelect;
+export type NewLoginRiskEvent = typeof loginRiskEvents.$inferInsert;
 
 // ─── 限流规则 ─────────────────────────────────────────────────────────────────
 export const rateLimitKeyTypeEnum = pgEnum('rate_limit_key_type', ['ip', 'user', 'ip_path']);
@@ -2731,6 +2832,7 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   exportJobDownloads: many(exportJobDownloads),
   announcements: many(announcements),
   systemConfigs: many(systemConfigs),
+  loginRiskEvents: many(loginRiskEvents),
   workflowDefinitions: many(workflowDefinitions),
   workflowInstances: many(workflowInstances),
 }));
@@ -2784,6 +2886,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   userDeptScopes: many(userDeptScopes),
   exportJobs: many(exportJobs),
   exportJobDownloads: many(exportJobDownloads),
+  mfaFactors: many(userMfaFactors),
+  trustedDevices: many(userTrustedDevices),
+  loginRiskEvents: many(loginRiskEvents),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({
@@ -2912,6 +3017,19 @@ export const userApiTokensRelations = relations(userApiTokens, ({ one }) => ({
 
 export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
   user: one(users, { fields: [passwordResetTokens.userId], references: [users.id] }),
+}));
+
+export const userMfaFactorsRelations = relations(userMfaFactors, ({ one }) => ({
+  user: one(users, { fields: [userMfaFactors.userId], references: [users.id] }),
+}));
+
+export const userTrustedDevicesRelations = relations(userTrustedDevices, ({ one }) => ({
+  user: one(users, { fields: [userTrustedDevices.userId], references: [users.id] }),
+}));
+
+export const loginRiskEventsRelations = relations(loginRiskEvents, ({ one }) => ({
+  user: one(users, { fields: [loginRiskEvents.userId], references: [users.id] }),
+  tenant: one(tenants, { fields: [loginRiskEvents.tenantId], references: [tenants.id] }),
 }));
 
 export const dbBackupsRelations = relations(dbBackups, ({ one }) => ({
