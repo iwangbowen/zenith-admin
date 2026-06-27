@@ -715,6 +715,17 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     return Math.max(0, Math.min(100, Math.round(score)));
   })();
   const triggerSuccess = mockWorkflowTriggerExecutions.filter((item) => item.status === 'success');
+  const eventSeries24h = Array.from({ length: 24 }, (_, i) => {
+    const hour = dayjs().startOf('hour').subtract(23 - i, 'hour');
+    const total = 8 + Math.round(10 * Math.abs(Math.sin((i + 2) / 3)));
+    const failed = i % 7 === 0 ? 1 : 0;
+    const success = Math.max(0, total - failed);
+    return { hour: hour.format(DATE_TIME_FORMAT), total: success + failed, success, failed };
+  });
+  const instanceSeries24h = Array.from({ length: 24 }, (_, i) => {
+    const hour = dayjs().startOf('hour').subtract(23 - i, 'hour');
+    return { hour: hour.format(DATE_TIME_FORMAT), created: i % 3 === 0 ? 1 : 0, completed: i % 4 === 0 ? 1 : 0 };
+  });
   const telemetry: WorkflowEngineIntrospection['telemetry'] = {
     healthScore: telemetryHealthScore,
     events: {
@@ -722,6 +733,8 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
       last24h: { total: 412, success: 405, failed: 4 },
       pendingRetry: telemetryPendingRetry,
       avgLatencyMs: 38,
+      p95LatencyMs: 96,
+      series24h: eventSeries24h,
     },
     triggers: {
       last24h: {
@@ -733,17 +746,32 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
       avgDurationMs: triggerSuccess.length
         ? Math.round(triggerSuccess.reduce((sum, item) => sum + (item.durationMs ?? 0), 0) / triggerSuccess.length)
         : null,
+      p95DurationMs: triggerSuccess.length
+        ? Math.max(...triggerSuccess.map((item) => item.durationMs ?? 0))
+        : null,
     },
     instances: {
       running: runningInstances.length,
       createdLast24h: 9,
       completedLast24h: 6,
       canceledLast24h: 1,
+      series24h: instanceSeries24h,
     },
     recurringJobs: [
       { name: 'workflow-timeout-scan', cronExpression: '*/5 * * * *', registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000), nextRunAt: mockDateTimeOffset(3 * 60 * 1000) },
       { name: 'workflow-subprocess-recovery', cronExpression: '*/10 * * * *', registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000), nextRunAt: mockDateTimeOffset(7 * 60 * 1000) },
     ],
+  };
+  const systemSchedulerTaskBase = {
+    registeredNodeId: 'dev-host:3001',
+    registeredHostname: 'dev-host',
+    registeredPid: 3001,
+    logRetentionDays: 30,
+    logRetentionRuns: 1000,
+    timeoutMs: null,
+    failureAlertThreshold: 1,
+    alertEnabled: true,
+    manualSingleton: true,
   };
 
   return {
@@ -767,9 +795,11 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     scheduler: {
       initialized: true,
       runningJobCount: 1,
+      node: { id: 'dev-host:3001', hostname: 'dev-host', pid: 3001 },
       registeredHandlers: ['processWorkflowTaskTimeouts', 'recoverStuckWorkflowSubProcesses', 'replayWorkflowEventOutbox'],
       systemRecurringJobs: [
         {
+          ...systemSchedulerTaskBase,
           name: 'workflow-timeout-scan',
           title: '工作流超时扫描',
           module: '工作流',
@@ -784,6 +814,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
           lastDurationMs: 420,
         },
         {
+          ...systemSchedulerTaskBase,
           name: 'workflow-subprocess-recovery',
           title: '工作流子流程恢复',
           module: '工作流',
@@ -800,6 +831,8 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
       ],
       systemQueueWorkers: [
         {
+          ...systemSchedulerTaskBase,
+          manualSingleton: false,
           name: 'workflow-delay-wakeup',
           title: '工作流延时唤醒 Worker',
           module: '工作流',

@@ -5,6 +5,8 @@ import type {
   WorkflowEngineComponent,
   WorkflowEngineComponentStatus,
   WorkflowEngineDefinitionSnapshot,
+  WorkflowEngineEventBucket,
+  WorkflowEngineInstanceBucket,
   WorkflowEngineIntrospection,
   WorkflowEngineMetric,
   WorkflowEngineQueueKey,
@@ -434,6 +436,61 @@ function computeHealthScore(issues: WorkflowEngineRuntimeIssue[], queues: Workfl
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+const SERIES_HOURS = 24;
+/** 单次内省拉取的时序明细行上限（manual 刷新的诊断端点，体量可控） */
+const SERIES_ROW_LIMIT = 20000;
+
+/** 生成对齐到整点的近 N 小时桶（含当前小时），桶时间用 formatDateTime 统一格式输出。 */
+function makeHourSlots(now: Date, count = SERIES_HOURS): Array<{ start: number; hour: string }> {
+  const currentHour = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS;
+  const slots: Array<{ start: number; hour: string }> = [];
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const start = currentHour - i * HOUR_MS;
+    slots.push({ start, hour: formatDateTime(new Date(start)) });
+  }
+  return slots;
+}
+
+function slotIndexOf(value: Date | null | undefined, firstStart: number): number {
+  if (!value) return -1;
+  return Math.floor((value.getTime() - firstStart) / HOUR_MS);
+}
+
+function buildEventSeries(rows: Array<{ createdAt: Date; status: string }>, now: Date): WorkflowEngineEventBucket[] {
+  const slots = makeHourSlots(now);
+  const firstStart = slots[0]?.start ?? now.getTime();
+  const out = slots.map((slot) => ({ hour: slot.hour, total: 0, success: 0, failed: 0 }));
+  for (const row of rows) {
+    const idx = slotIndexOf(row.createdAt, firstStart);
+    if (idx < 0 || idx >= out.length) continue;
+    out[idx].total += 1;
+    if (row.status === 'success') out[idx].success += 1;
+    else if (row.status === 'failed') out[idx].failed += 1;
+  }
+  return out;
+}
+
+function buildInstanceSeries(
+  rows: Array<{ createdAt: Date; updatedAt: Date; status: string }>,
+  now: Date,
+  terminalStatuses: readonly string[],
+): WorkflowEngineInstanceBucket[] {
+  const slots = makeHourSlots(now);
+  const firstStart = slots[0]?.start ?? now.getTime();
+  const out = slots.map((slot) => ({ hour: slot.hour, created: 0, completed: 0 }));
+  const terminal = new Set(terminalStatuses);
+  for (const row of rows) {
+    const createdIdx = slotIndexOf(row.createdAt, firstStart);
+    if (createdIdx >= 0 && createdIdx < out.length) out[createdIdx].created += 1;
+    if (terminal.has(row.status)) {
+      const completedIdx = slotIndexOf(row.updatedAt, firstStart);
+      if (completedIdx >= 0 && completedIdx < out.length) out[completedIdx].completed += 1;
+    }
+  }
+  return out;
+}
+
 export async function getWorkflowEngineIntrospection(thresholdMinutes = 30): Promise<WorkflowEngineIntrospection> {
   const now = new Date();
   const threshold = Math.max(1, Math.min(thresholdMinutes, 24 * 60));
@@ -469,7 +526,7 @@ export async function getWorkflowEngineIntrospection(thresholdMinutes = 30): Pro
   if (instTenant) triggerScopeConds.push(instTenant);
   if (taskScope) triggerScopeConds.push(taskScope);
 
-  const [definitions, runningInstanceRows, activeInstanceRows, runtimeTaskRows, triggerRows, outboxRows, eventStatsRows, triggerStatsRows, instanceStatsRows] = await Promise.all([
+  const [definitions, runningInstanceRows, activeInstanceRows, runtimeTaskRows, triggerRows, outboxRows, eventStatsRows, triggerStatsRows, instanceStatsRows, eventSeriesRows, instanceSeriesRows] = await Promise.all([
     db.select().from(workflowDefinitions).where(defTenant),
     db.select({
       instanceId: workflowInstances.id,
@@ -561,6 +618,7 @@ export async function getWorkflowEngineIntrospection(thresholdMinutes = 30): Pro
       failed24h: sql<number>`count(*) filter (where ${and(eq(workflowEventOutbox.status, 'failed'), gte(workflowEventOutbox.createdAt, since24h))})`.mapWith(Number),
       pendingRetry: sql<number>`count(*) filter (where ${inArray(workflowEventOutbox.status, ['pending', 'processing', 'retrying'])})`.mapWith(Number),
       avgLatencyMs: sql<number | null>`avg(extract(epoch from (${workflowEventOutbox.processedAt} - ${workflowEventOutbox.createdAt})) * 1000) filter (where ${and(eq(workflowEventOutbox.status, 'success'), isNotNull(workflowEventOutbox.processedAt), gte(workflowEventOutbox.createdAt, since24h))})`.mapWith(Number),
+      p95LatencyMs: sql<number | null>`percentile_cont(0.95) within group (order by extract(epoch from (${workflowEventOutbox.processedAt} - ${workflowEventOutbox.createdAt})) * 1000) filter (where ${and(eq(workflowEventOutbox.status, 'success'), isNotNull(workflowEventOutbox.processedAt), gte(workflowEventOutbox.createdAt, since24h))})`.mapWith(Number),
     })
       .from(workflowEventOutbox)
       .leftJoin(workflowInstances, eq(workflowEventOutbox.instanceId, workflowInstances.id))
@@ -572,6 +630,7 @@ export async function getWorkflowEngineIntrospection(thresholdMinutes = 30): Pro
       failed24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'failed'), gte(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
       retrying24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'retrying'), gte(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
       avgDurationMs: sql<number | null>`avg(${workflowTriggerExecutions.durationMs}) filter (where ${and(eq(workflowTriggerExecutions.status, 'success'), isNotNull(workflowTriggerExecutions.durationMs), gte(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
+      p95DurationMs: sql<number | null>`percentile_cont(0.95) within group (order by ${workflowTriggerExecutions.durationMs}) filter (where ${and(eq(workflowTriggerExecutions.status, 'success'), isNotNull(workflowTriggerExecutions.durationMs), gte(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
     })
       .from(workflowTriggerExecutions)
       .innerJoin(workflowInstances, eq(workflowTriggerExecutions.instanceId, workflowInstances.id))
@@ -585,6 +644,23 @@ export async function getWorkflowEngineIntrospection(thresholdMinutes = 30): Pro
       .from(workflowInstances)
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
       .where(instanceBaseWhere),
+    db.select({ createdAt: workflowEventOutbox.createdAt, status: workflowEventOutbox.status })
+      .from(workflowEventOutbox)
+      .leftJoin(workflowInstances, eq(workflowEventOutbox.instanceId, workflowInstances.id))
+      .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+      .where(whereOrUndefined([...outboxScopeConds, gte(workflowEventOutbox.createdAt, since24h)]))
+      .limit(SERIES_ROW_LIMIT),
+    db.select({ createdAt: workflowInstances.createdAt, updatedAt: workflowInstances.updatedAt, status: workflowInstances.status })
+      .from(workflowInstances)
+      .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+      .where(whereOrUndefined([
+        ...instanceBaseConds,
+        or(
+          gte(workflowInstances.createdAt, since24h),
+          and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since24h)),
+        )!,
+      ]))
+      .limit(SERIES_ROW_LIMIT),
   ]);
 
   const definitionsSnapshot = validateDefinitions(definitions);
@@ -753,9 +829,11 @@ export async function getWorkflowEngineIntrospection(thresholdMinutes = 30): Pro
     ], { wip: scheduler.wip }),
   ];
 
-  const eventStats = eventStatsRows[0] ?? { total1h: 0, success1h: 0, failed1h: 0, total24h: 0, success24h: 0, failed24h: 0, pendingRetry: 0, avgLatencyMs: null };
-  const triggerStats = triggerStatsRows[0] ?? { total24h: 0, success24h: 0, failed24h: 0, retrying24h: 0, avgDurationMs: null };
+  const eventStats = eventStatsRows[0] ?? { total1h: 0, success1h: 0, failed1h: 0, total24h: 0, success24h: 0, failed24h: 0, pendingRetry: 0, avgLatencyMs: null, p95LatencyMs: null };
+  const triggerStats = triggerStatsRows[0] ?? { total24h: 0, success24h: 0, failed24h: 0, retrying24h: 0, avgDurationMs: null, p95DurationMs: null };
   const instanceStats = instanceStatsRows[0] ?? { createdLast24h: 0, completedLast24h: 0, canceledLast24h: 0 };
+  const eventSeries = buildEventSeries(eventSeriesRows, now);
+  const instanceSeries = buildInstanceSeries(instanceSeriesRows, now, terminalStatuses);
 
   const telemetry: WorkflowEngineTelemetry = {
     healthScore: computeHealthScore(issues, queues),
@@ -764,16 +842,20 @@ export async function getWorkflowEngineIntrospection(thresholdMinutes = 30): Pro
       last24h: { total: eventStats.total24h, success: eventStats.success24h, failed: eventStats.failed24h },
       pendingRetry: eventStats.pendingRetry,
       avgLatencyMs: eventStats.avgLatencyMs != null ? Math.round(eventStats.avgLatencyMs) : null,
+      p95LatencyMs: eventStats.p95LatencyMs != null ? Math.round(eventStats.p95LatencyMs) : null,
+      series24h: eventSeries,
     },
     triggers: {
       last24h: { total: triggerStats.total24h, success: triggerStats.success24h, failed: triggerStats.failed24h, retrying: triggerStats.retrying24h },
       avgDurationMs: triggerStats.avgDurationMs != null ? Math.round(triggerStats.avgDurationMs) : null,
+      p95DurationMs: triggerStats.p95DurationMs != null ? Math.round(triggerStats.p95DurationMs) : null,
     },
     instances: {
       running: runningInstanceRows.length,
       createdLast24h: instanceStats.createdLast24h,
       completedLast24h: instanceStats.completedLast24h,
       canceledLast24h: instanceStats.canceledLast24h,
+      series24h: instanceSeries,
     },
     recurringJobs: scheduler.systemRecurringJobs.map((job) => ({
       name: job.name,

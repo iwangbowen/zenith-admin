@@ -981,20 +981,44 @@ export const systemSchedulerRuns = pgTable('system_scheduler_runs', {
   module: varchar('module', { length: 64 }).notNull().default('系统'),
   triggerType: systemSchedulerTriggerTypeEnum('trigger_type').notNull(),
   status: systemSchedulerRunStatusEnum('status').notNull().default('running'),
+  jobId: varchar('job_id', { length: 128 }),
+  nodeId: varchar('node_id', { length: 128 }),
+  nodeHostname: varchar('node_hostname', { length: 128 }),
+  nodePid: integer('node_pid'),
+  triggeredBy: integer('triggered_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
   endedAt: timestamp('ended_at', { withTimezone: true }),
   durationMs: integer('duration_ms'),
   resultMessage: text('result_message'),
   errorMessage: text('error_message'),
+  alertedAt: timestamp('alerted_at', { withTimezone: true }),
+  alertMessage: text('alert_message'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   index('system_scheduler_runs_task_idx').on(t.taskName),
   index('system_scheduler_runs_status_idx').on(t.status),
   index('system_scheduler_runs_started_at_idx').on(t.startedAt),
+  index('system_scheduler_runs_triggered_by_idx').on(t.triggeredBy),
 ]);
 
 export type SystemSchedulerRunRow = typeof systemSchedulerRuns.$inferSelect;
 export type NewSystemSchedulerRun = typeof systemSchedulerRuns.$inferInsert;
+
+// ─── 系统调度任务配置表（启动时注册任务的运行策略）───────────────────────────────
+export const systemSchedulerTaskConfigs = pgTable('system_scheduler_task_configs', {
+  taskName: varchar('task_name', { length: 128 }).primaryKey(),
+  logRetentionDays: integer('log_retention_days').notNull().default(30),
+  logRetentionRuns: integer('log_retention_runs').notNull().default(1000),
+  timeoutMs: integer('timeout_ms'),
+  failureAlertThreshold: integer('failure_alert_threshold').notNull().default(1),
+  alertEnabled: boolean('alert_enabled').notNull().default(true),
+  manualSingleton: boolean('manual_singleton').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type SystemSchedulerTaskConfigRow = typeof systemSchedulerTaskConfigs.$inferSelect;
+export type NewSystemSchedulerTaskConfig = typeof systemSchedulerTaskConfigs.$inferInsert;
 
 // ─── 地区表 ──────────────────────────────────────────────────────────────────
 export const regionLevelEnum = pgEnum('region_level', ['province', 'city', 'county']);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, JsonViewer, Select, Space, Spin, Tabs, TabPane, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Activity, AlertTriangle, CheckCircle2, DatabaseZap, Gauge, GitBranch, RefreshCw, TimerReset } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, DatabaseZap, GaugeCircle, GitBranch, Layers, RefreshCw, Timer, TimerReset, TrendingUp, Workflow, Zap } from 'lucide-react';
 import type {
   WorkflowEngineComponent,
   WorkflowEngineComponentStatus,
@@ -15,6 +15,7 @@ import type {
   WorkflowEngineTriggerExecution,
 } from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { AreaChart, LineChart, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette, type ChartPalette } from '@/components/charts';
 import { request } from '@/utils/request';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
@@ -74,7 +75,14 @@ const THRESHOLD_OPTIONS = [
   { label: '12 小时', value: 720 },
 ];
 
-const HEADER_TAG_STYLE = { height: 32, display: 'inline-flex', alignItems: 'center', borderRadius: 6, margin: 0 } as const;
+const QUEUE_SEGMENTS = [
+  { key: 'ready' as const, label: 'Ready' },
+  { key: 'running' as const, label: 'Running' },
+  { key: 'delayed' as const, label: 'Delayed' },
+  { key: 'failed' as const, label: 'Failed' },
+];
+
+const STATUS_RANK: Record<WorkflowEngineComponentStatus, number> = { healthy: 0, warning: 1, critical: 2 };
 
 function statusTag(status: WorkflowEngineComponentStatus) {
   const meta = STATUS_META[status];
@@ -111,6 +119,22 @@ function formatMs(value: number | null | undefined) {
   return `${(value / 1000).toFixed(1)} s`;
 }
 
+function statusColor(palette: ChartPalette, status: WorkflowEngineComponentStatus | null | undefined): string {
+  if (status === 'critical') return palette.danger;
+  if (status === 'warning') return palette.warning;
+  return palette.success;
+}
+
+/** 'YYYY-MM-DD HH:mm:ss' -> 'HH:mm' */
+function hourLabel(value: string) {
+  return value.length >= 16 ? value.slice(11, 16) : value;
+}
+
+/** 'YYYY-MM-DD HH:mm:ss' -> 'MM-DD HH:mm' */
+function hourTooltip(value: string) {
+  return value.length >= 16 ? value.slice(5, 16) : value;
+}
+
 function renderJsonBlock(value: unknown) {
   return (
     <JsonViewer
@@ -123,46 +147,219 @@ function renderJsonBlock(value: unknown) {
   );
 }
 
-function renderMetric(metric: WorkflowEngineComponent['metrics'][number]) {
-  const value = metric.unit ? `${metric.value}${metric.unit}` : metric.value;
+function renderComponentIcon(component: WorkflowEngineComponent, color: string) {
+  if (component.key === 'scheduler' || component.key === 'delayScheduler' || component.key === 'timeoutProcessor') {
+    return <TimerReset size={16} color={color} />;
+  }
+  if (component.key === 'eventBus' || component.key === 'outbox') {
+    return <DatabaseZap size={16} color={color} />;
+  }
+  if (component.key === 'dagExecutor' || component.key === 'subProcessRecovery') {
+    return <GitBranch size={16} color={color} />;
+  }
+  return <Activity size={16} color={color} />;
+}
+
+function SectionTitle({ icon, title, desc, extra }: Readonly<{ icon: React.ReactNode; title: string; desc?: string; extra?: React.ReactNode }>) {
   return (
-    <div
-      key={`${metric.label}-${metric.value}`}
-      style={{
-        minWidth: 0,
-        padding: '8px 10px',
-        borderRadius: 6,
-        background: 'var(--semi-color-fill-0)',
-        border: '1px solid var(--semi-color-border)',
-      }}
-    >
-      <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }}>{metric.label}</Typography.Text>
-      <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <Typography.Text strong ellipsis={{ showTooltip: true }}>{value}</Typography.Text>
-        {metric.status && statusTag(metric.status)}
-      </div>
-      {metric.hint && (
-        <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }}>{metric.hint}</Typography.Text>
-      )}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      {icon}
+      <Typography.Text strong>{title}</Typography.Text>
+      {desc && <Typography.Text type="tertiary" size="small">{desc}</Typography.Text>}
+      {extra && <div style={{ marginLeft: 'auto' }}>{extra}</div>}
     </div>
   );
 }
 
-function renderComponentIcon(component: WorkflowEngineComponent) {
-  const statusColor = component.status === 'critical' ? '#ff4d4f' : component.status === 'warning' ? 'var(--semi-color-warning)' : 'var(--semi-color-success)';
-  if (component.key === 'scheduler' || component.key === 'delayScheduler' || component.key === 'timeoutProcessor') {
-    return <TimerReset size={18} color={statusColor} />;
+function HealthRadial({ score, palette }: Readonly<{ score: number; palette: ChartPalette }>) {
+  const band = score >= 90
+    ? { label: '正常', color: palette.success }
+    : score >= 70
+      ? { label: '关注', color: palette.warning }
+      : { label: '严重', color: palette.danger };
+  const frac = Math.max(0, Math.min(1, score / 100));
+  const r = 60;
+  const cx = 80;
+  const cy = 80;
+  const arc = (start: number, end: number) => {
+    const x0 = cx + r * Math.cos(start);
+    const y0 = cy - r * Math.sin(start);
+    const x1 = cx + r * Math.cos(end);
+    const y1 = cy - r * Math.sin(end);
+    const large = Math.abs(end - start) > Math.PI ? 1 : 0;
+    return `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`;
+  };
+  return (
+    <svg width={160} height={102} viewBox="0 0 160 102" role="img" aria-label={`健康分 ${score}`}>
+      <path d={arc(Math.PI, 0)} fill="none" stroke={palette.fill1} strokeWidth={11} strokeLinecap="round" />
+      <path d={arc(Math.PI, Math.PI * (1 - frac))} fill="none" stroke={band.color} strokeWidth={11} strokeLinecap="round" />
+      <text x={cx} y={cy - 6} textAnchor="middle" fontSize={32} fontWeight={700} fill={palette.text0}>{score}</text>
+      <text x={cx} y={cy + 16} textAnchor="middle" fontSize={12} fill={palette.text2}>健康分 · {band.label}</text>
+    </svg>
+  );
+}
+
+function MicroStat({ label, value, color }: Readonly<{ label: string; value: number | string; color?: string }>) {
+  return (
+    <div style={{ minWidth: 0, padding: '4px 0' }}>
+      <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }}>{label}</Typography.Text>
+      <div style={{ fontSize: 16, fontWeight: 600, color, lineHeight: 1.3 }}>{value}</div>
+    </div>
+  );
+}
+
+function GoldenTile({ icon, label, value, accent, sub }: Readonly<{ icon: React.ReactNode; label: string; value: React.ReactNode; accent?: string; sub: React.ReactNode }>) {
+  return (
+    <div
+      style={{
+        flex: '1 1 160px',
+        minWidth: 150,
+        padding: '12px 14px',
+        borderRadius: 8,
+        background: 'var(--semi-color-fill-0)',
+        border: '1px solid var(--semi-color-border)',
+      }}
+    >
+      <Space spacing={6} align="center">
+        {icon}
+        <Typography.Text type="tertiary" size="small">{label}</Typography.Text>
+      </Space>
+      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: accent, lineHeight: 1.2 }}>{value}</div>
+      <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block', marginTop: 2 }}>{sub}</Typography.Text>
+    </div>
+  );
+}
+
+function QueueSaturation({ queues, palette }: Readonly<{ queues: WorkflowEngineQueueSnapshot[]; palette: ChartPalette }>) {
+  const segColor: Record<string, string> = {
+    ready: palette.primary,
+    running: palette.active,
+    delayed: palette.warning,
+    failed: palette.danger,
+  };
+  const totals = queues.map((q) => q.ready + q.running + q.delayed + q.failed);
+  const max = Math.max(1, ...totals);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Space spacing={16} wrap style={{ marginBottom: 2 }}>
+        {QUEUE_SEGMENTS.map((seg) => (
+          <Space key={seg.key} spacing={4} align="center">
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: segColor[seg.key], display: 'inline-block' }} />
+            <Typography.Text type="tertiary" size="small">{seg.label}</Typography.Text>
+          </Space>
+        ))}
+      </Space>
+      {queues.map((q, i) => {
+        const total = totals[i];
+        return (
+          <div key={q.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 132, minWidth: 132, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor(palette, q.status), display: 'inline-block', flex: '0 0 auto' }} />
+              <Typography.Text size="small" ellipsis={{ showTooltip: true }}>{q.name}</Typography.Text>
+            </div>
+            <div style={{ flex: 1, minWidth: 0, height: 16, borderRadius: 4, background: 'var(--semi-color-fill-0)', display: 'flex', overflow: 'hidden' }}>
+              {QUEUE_SEGMENTS.map((seg) => {
+                const v = q[seg.key];
+                if (!v) return null;
+                return (
+                  <div
+                    key={seg.key}
+                    title={`${seg.label}: ${v}`}
+                    style={{ width: `${(v / max) * 100}%`, minWidth: 3, background: segColor[seg.key] }}
+                  />
+                );
+              })}
+            </div>
+            <div style={{ width: 170, minWidth: 170, textAlign: 'right' }}>
+              <Typography.Text size="small" strong>{total}</Typography.Text>
+              <Typography.Text type="tertiary" size="small">  · 最老 {formatAge(q.oldestAgeMinutes)}</Typography.Text>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ComponentCard({ component, palette }: Readonly<{ component: WorkflowEngineComponent; palette: ChartPalette }>) {
+  const color = statusColor(palette, component.status);
+  return (
+    <div
+      style={{
+        padding: '12px 14px',
+        borderRadius: 8,
+        background: 'var(--semi-color-bg-1)',
+        border: '1px solid var(--semi-color-border)',
+        borderLeft: `3px solid ${color}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flex: '0 0 auto' }} />
+        {renderComponentIcon(component, color)}
+        <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{component.name}</Typography.Text>
+        {statusTag(component.status)}
+      </div>
+      <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }}>{component.description}</Typography.Text>
+      <Space wrap spacing={6}>
+        {component.metrics.map((m) => {
+          const mColor = m.status === 'critical' ? palette.danger : m.status === 'warning' ? palette.warning : undefined;
+          const mBg = m.status === 'critical'
+            ? 'var(--semi-color-danger-light-default)'
+            : m.status === 'warning'
+              ? 'var(--semi-color-warning-light-default)'
+              : 'var(--semi-color-fill-0)';
+          return (
+            <span
+              key={`${m.label}-${m.value}`}
+              style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, padding: '2px 8px', borderRadius: 4, background: mBg }}
+            >
+              <Typography.Text type="tertiary" size="small">{m.label}</Typography.Text>
+              <Typography.Text size="small" strong style={{ color: mColor }}>{m.unit ? `${m.value}${m.unit}` : m.value}</Typography.Text>
+            </span>
+          );
+        })}
+      </Space>
+    </div>
+  );
+}
+
+function IssuesPanel({ issues, components }: Readonly<{ issues: WorkflowEngineRuntimeIssue[]; components: WorkflowEngineComponent[] }>) {
+  if (issues.length === 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 4px' }}>
+        <CheckCircle2 size={16} color="var(--semi-color-success)" />
+        <Typography.Text type="tertiary">未发现运行时问题，引擎各子系统运行正常。</Typography.Text>
+      </div>
+    );
   }
-  if (component.key === 'eventBus' || component.key === 'outbox') {
-    return <DatabaseZap size={18} color={statusColor} />;
-  }
-  if (component.key === 'dagExecutor' || component.key === 'subProcessRecovery') {
-    return <GitBranch size={18} color={statusColor} />;
-  }
-  return <Activity size={18} color={statusColor} />;
+  const componentName = (key: string) => components.find((item) => item.key === key)?.name ?? key;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 360, overflow: 'auto' }}>
+      {issues.map((issue) => (
+        <div key={issue.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 4px', borderTop: '1px solid var(--semi-color-border)' }}>
+          <div style={{ width: 60, flex: '0 0 auto' }}>{issueTag(issue.severity)}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{issue.title}</Typography.Text>
+            <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{issue.description}</Typography.Text>
+          </div>
+          <div style={{ width: 160, flex: '0 0 auto', textAlign: 'right' }}>
+            <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{componentName(issue.component)}</Typography.Text>
+            <Typography.Text type="tertiary" size="small">
+              {issue.refType ? `${REF_TYPE_LABEL[issue.refType]}${issue.refId != null ? ` #${issue.refId}` : ''}` : ''}
+              {issue.ageMinutes != null ? ` · ${formatAge(issue.ageMinutes)}` : ''}
+            </Typography.Text>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function WorkflowEngineDiagnosticsView() {
+  const palette = useChartPalette();
   const [thresholdMinutes, setThresholdMinutes] = useState(30);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WorkflowEngineIntrospection | null>(null);
@@ -183,6 +380,7 @@ export default function WorkflowEngineDiagnosticsView() {
 
   const criticalCount = useMemo(() => data?.issues.filter((item) => item.severity === 'critical').length ?? 0, [data]);
   const warningCount = useMemo(() => data?.issues.filter((item) => item.severity === 'warning').length ?? 0, [data]);
+
   const nodeTypeRows = useMemo(() => (
     Object.entries(data?.definitions.nodeTypeCounts ?? {}).map(([type, count]) => ({
       type,
@@ -191,53 +389,41 @@ export default function WorkflowEngineDiagnosticsView() {
     }))
   ), [data]);
 
-  const queueColumns: ColumnProps<WorkflowEngineQueueSnapshot>[] = [
-    { title: '队列', dataIndex: 'name', width: 160, render: (_value, record) => <Typography.Text strong>{record.name}</Typography.Text> },
-    { title: '状态', dataIndex: 'status', width: 90, render: (value) => statusTag(value as WorkflowEngineComponentStatus) },
-    { title: 'Ready', dataIndex: 'ready', width: 90 },
-    { title: 'Running', dataIndex: 'running', width: 90 },
-    { title: 'Delayed', dataIndex: 'delayed', width: 90 },
-    { title: 'Failed', dataIndex: 'failed', width: 90 },
-    { title: '最老等待', dataIndex: 'oldestAgeMinutes', width: 120, render: (value) => formatAge(value as number | null) },
-    {
-      title: '细节',
-      dataIndex: 'details',
-      render: (_value, record) => {
-        const entries = Object.entries(record.details ?? {});
-        if (entries.length === 0) return <Typography.Text type="tertiary">—</Typography.Text>;
-        return (
-          <Space wrap>
-            {entries.map(([key, value]) => <Tag key={key} color="grey">{key}: {value ?? '—'}</Tag>)}
-          </Space>
-        );
-      },
-    },
-  ];
+  const eventTrendSpec = useMemo(() => makeAreaSpec({
+    data: data?.telemetry.events.series24h ?? [],
+    xField: 'hour',
+    series: [
+      { field: 'success', name: '成功', color: palette.success },
+      { field: 'failed', name: '失败', color: palette.danger },
+    ],
+    stack: true,
+    palette,
+    legend: true,
+    axis: { xLabel: hourLabel },
+    tooltip: { title: hourTooltip },
+  }), [data?.telemetry.events.series24h, palette]);
 
-  const issueColumns: ColumnProps<WorkflowEngineRuntimeIssue>[] = [
-    { title: '级别', dataIndex: 'severity', width: 90, render: (value) => issueTag(value as WorkflowEngineRuntimeIssue['severity']) },
-    { title: '组件', dataIndex: 'component', width: 150, render: (value) => data?.components.find((item) => item.key === value)?.name ?? value },
-    {
-      title: '问题',
-      dataIndex: 'title',
-      width: 360,
-      render: (_value, record) => (
-        <div style={{ minWidth: 0 }}>
-          <Typography.Text strong ellipsis={{ showTooltip: true }}>{record.title}</Typography.Text>
-          <div><Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }}>{record.description}</Typography.Text></div>
-        </div>
-      ),
-    },
-    {
-      title: '对象',
-      width: 150,
-      render: (_value, record) => (
-        record.refType ? `${REF_TYPE_LABEL[record.refType]}${record.refId != null ? ` #${record.refId}` : ''}` : '—'
-      ),
-    },
-    { title: '等待时长', dataIndex: 'ageMinutes', width: 120, render: (value) => formatAge(value as number | null) },
-    { title: '时间', dataIndex: 'createdAt', width: 180, render: (value) => value || '—' },
-  ];
+  const instanceTrendSpec = useMemo(() => makeLineSpec({
+    data: data?.telemetry.instances.series24h ?? [],
+    xField: 'hour',
+    series: [
+      { field: 'created', name: '发起', color: palette.primary },
+      { field: 'completed', name: '完结', color: palette.success },
+    ],
+    palette,
+    legend: true,
+    point: false,
+    axis: { xLabel: hourLabel },
+    tooltip: { title: hourTooltip },
+  }), [data?.telemetry.instances.series24h, palette]);
+
+  const sortedComponents = useMemo(() => (
+    [...(data?.components ?? [])].sort((a, b) => STATUS_RANK[b.status] - STATUS_RANK[a.status])
+  ), [data]);
+
+  const taskRows = useMemo(() => (
+    data?.runtime.taskQueue.map((item) => ({ ...item, rowId: `${item.queue}-${item.taskId}` })) ?? []
+  ), [data]);
 
   const taskColumns: ColumnProps<WorkflowEngineRuntimeTask>[] = [
     { title: '队列', dataIndex: 'queue', width: 120, render: (value) => <Tag color="blue">{QUEUE_LABEL[value as WorkflowEngineQueueKey]}</Tag> },
@@ -322,27 +508,6 @@ export default function WorkflowEngineDiagnosticsView() {
     { title: '运行中', dataIndex: 'count', width: 100 },
   ];
 
-  const taskRows = useMemo(() => (
-    data?.runtime.taskQueue.map((item) => ({ ...item, rowId: `${item.queue}-${item.taskId}` })) ?? []
-  ), [data]);
-
-  const telemetryMetrics = useMemo<WorkflowEngineComponent['metrics']>(() => {
-    if (!data) return [];
-    const t = data.telemetry;
-    const scoreStatus: WorkflowEngineComponentStatus = t.healthScore >= 90 ? 'healthy' : t.healthScore >= 70 ? 'warning' : 'critical';
-    return [
-      { label: '健康分', value: t.healthScore, status: scoreStatus, hint: '满分 100' },
-      { label: '运行实例', value: t.instances.running, hint: `24h 新增 ${t.instances.createdLast24h}` },
-      { label: '24h 完结', value: t.instances.completedLast24h, hint: `取消 ${t.instances.canceledLast24h}` },
-      { label: '事件 1h', value: t.events.last1h.total, hint: `成功 ${t.events.last1h.success} / 失败 ${t.events.last1h.failed}` },
-      { label: '事件 24h', value: t.events.last24h.total, status: t.events.last24h.failed > 0 ? 'warning' : null, hint: `成功 ${t.events.last24h.success} / 失败 ${t.events.last24h.failed}` },
-      { label: '待重放事件', value: t.events.pendingRetry, status: t.events.pendingRetry > 0 ? 'warning' : null },
-      { label: '事件延迟', value: formatMs(t.events.avgLatencyMs), hint: '近 24h 均值' },
-      { label: '触发器 24h', value: t.triggers.last24h.total, status: t.triggers.last24h.failed > 0 ? 'critical' : null, hint: `失败 ${t.triggers.last24h.failed} / 重试 ${t.triggers.last24h.retrying}` },
-      { label: '触发耗时', value: formatMs(t.triggers.avgDurationMs), hint: '近 24h 成功均值' },
-    ];
-  }, [data]);
-
   if (loading && !data) {
     return (
       <div style={{ padding: 48, textAlign: 'center' }}>
@@ -355,32 +520,39 @@ export default function WorkflowEngineDiagnosticsView() {
     return <Empty description="暂无引擎内省数据" />;
   }
 
+  const t = data.telemetry;
+  const errorRate = t.events.last24h.total > 0 ? (t.events.last24h.failed / t.events.last24h.total) * 100 : 0;
+  const errorAccent = (t.triggers.last24h.failed > 0 || errorRate >= 5)
+    ? palette.danger
+    : (t.events.last24h.failed > 0 || t.triggers.last24h.retrying > 0)
+      ? palette.warning
+      : undefined;
+  const backlog = data.queues.reduce((sum, q) => sum + q.ready + q.running + q.delayed + q.failed, 0);
+  const oldestBacklog = data.queues.reduce<number | null>((acc, q) => (q.oldestAgeMinutes != null ? Math.max(acc ?? 0, q.oldestAgeMinutes) : acc), null);
+  const worstQueueRank = data.queues.reduce((acc, q) => Math.max(acc, STATUS_RANK[q.status]), 0);
+  const saturationAccent = worstQueueRank >= 2 ? palette.danger : worstQueueRank >= 1 ? palette.warning : undefined;
+  const stuckInstances = data.runtime.runningWithoutActiveTasks.length;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* 命令栏 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <Space wrap align="center">
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              height: 32,
-              padding: '0 12px',
-              borderRadius: 6,
-              border: '1px solid var(--semi-color-border)',
-              background: data.healthy ? 'var(--semi-color-success-light-default)' : 'var(--semi-color-danger-light-default)',
-            }}
-          >
-            {data.healthy ? <CheckCircle2 size={16} color="var(--semi-color-success)" /> : <AlertTriangle size={16} color="var(--semi-color-danger)" />}
-            <Typography.Text strong>{data.healthy ? '引擎状态正常' : '引擎存在严重事项'}</Typography.Text>
-            <Typography.Text type="tertiary" size="small">· {data.generatedAt} 生成 · 阈值 {data.thresholdMinutes} 分钟</Typography.Text>
-          </div>
-          <Tag size="large" style={HEADER_TAG_STYLE} color={data.telemetry.healthScore >= 90 ? 'green' : data.telemetry.healthScore >= 70 ? 'orange' : 'red'}>健康分 {data.telemetry.healthScore}</Tag>
-          <Tag size="large" style={HEADER_TAG_STYLE} color={criticalCount > 0 ? 'red' : 'green'}>严重 {criticalCount}</Tag>
-          <Tag size="large" style={HEADER_TAG_STYLE} color={warningCount > 0 ? 'orange' : 'grey'}>警告 {warningCount}</Tag>
-          <Tag size="large" style={HEADER_TAG_STYLE} color="blue">运行实例 {data.runtime.runningInstances}</Tag>
-          <Tag size="large" style={HEADER_TAG_STYLE} color="purple">监听器 {data.eventBus.totalListenerCount}</Tag>
-        </Space>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            height: 32,
+            padding: '0 12px',
+            borderRadius: 6,
+            border: '1px solid var(--semi-color-border)',
+            background: data.healthy ? 'var(--semi-color-success-light-default)' : 'var(--semi-color-danger-light-default)',
+          }}
+        >
+          {data.healthy ? <CheckCircle2 size={16} color="var(--semi-color-success)" /> : <AlertTriangle size={16} color="var(--semi-color-danger)" />}
+          <Typography.Text strong>{data.healthy ? '引擎状态正常' : '引擎存在严重事项'}</Typography.Text>
+          <Typography.Text type="tertiary" size="small">· {data.generatedAt} 生成 · 阈值 {data.thresholdMinutes} 分钟</Typography.Text>
+        </div>
         <Space wrap align="center">
           <Select
             value={thresholdMinutes}
@@ -392,69 +564,90 @@ export default function WorkflowEngineDiagnosticsView() {
         </Space>
       </div>
 
-      <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
-        <div style={{ marginBottom: 10 }}>
-          <Space spacing={8}>
-            <Gauge size={18} color="var(--semi-color-primary)" />
-            <Typography.Text strong>引擎遥测</Typography.Text>
-            <Typography.Text type="tertiary" size="small">近 1h / 24h 吞吐、延迟与生命周期</Typography.Text>
-          </Space>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
-          {telemetryMetrics.map(renderMetric)}
+      {/* 概览 Hero：健康分 + 黄金信号 */}
+      <Card bordered bodyStyle={{ padding: 16 }} style={{ borderRadius: 8 }}>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 188 }}>
+            <HealthRadial score={t.healthScore} palette={palette} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 18px', width: '100%' }}>
+              <MicroStat label="严重事项" value={criticalCount} color={criticalCount > 0 ? palette.danger : undefined} />
+              <MicroStat label="警告事项" value={warningCount} color={warningCount > 0 ? palette.warning : undefined} />
+              <MicroStat label="运行实例" value={data.runtime.runningInstances} />
+              <MicroStat label="事件监听器" value={data.eventBus.totalListenerCount} />
+            </div>
+          </div>
+          <div style={{ flex: '1 1 520px', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <GoldenTile
+              icon={<TrendingUp size={15} color="var(--semi-color-primary)" />}
+              label="吞吐 · Traffic"
+              value={t.events.last24h.total}
+              sub={`近 1h ${t.events.last1h.total} · 实例发起 ${t.instances.createdLast24h}`}
+            />
+            <GoldenTile
+              icon={<AlertTriangle size={15} color={errorAccent ?? 'var(--semi-color-text-2)'} />}
+              label="错误 · Errors"
+              value={`${errorRate.toFixed(1)}%`}
+              accent={errorAccent}
+              sub={`事件失败 ${t.events.last24h.failed} · 触发失败 ${t.triggers.last24h.failed} · 重试 ${t.triggers.last24h.retrying}`}
+            />
+            <GoldenTile
+              icon={<Timer size={15} color="var(--semi-color-primary)" />}
+              label="延迟 · Latency"
+              value={formatMs(t.events.avgLatencyMs)}
+              sub={`P95 ${formatMs(t.events.p95LatencyMs)} · 触发均值 ${formatMs(t.triggers.avgDurationMs)}`}
+            />
+            <GoldenTile
+              icon={<Layers size={15} color={saturationAccent ?? 'var(--semi-color-text-2)'} />}
+              label="饱和度 · Saturation"
+              value={backlog}
+              accent={saturationAccent}
+              sub={`最老 ${formatAge(oldestBacklog)} · 待重放 ${t.events.pendingRetry} · 无任务实例 ${stuckInstances}`}
+            />
+          </div>
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-        {data.components.map((component) => (
-          <Card
-            key={component.key}
-            bordered
-            bodyStyle={{ padding: 14 }}
-            style={{ borderRadius: 8, borderColor: component.status === 'critical' ? 'var(--semi-color-danger)' : component.status === 'warning' ? 'var(--semi-color-warning)' : 'var(--semi-color-border)' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-              <div style={{ minWidth: 0 }}>
-                <Space spacing={8}>
-                  {renderComponentIcon(component)}
-                  <Typography.Text strong ellipsis={{ showTooltip: true }}>{component.name}</Typography.Text>
-                </Space>
-                <div style={{ marginTop: 4 }}>
-                  <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }}>{component.description}</Typography.Text>
-                </div>
-              </div>
-              {statusTag(component.status)}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
-              {component.metrics.map(renderMetric)}
-            </div>
-          </Card>
-        ))}
+      {/* 趋势：事件吞吐 + 实例生命周期 */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8, flex: '1 1 380px', minWidth: 320 }}>
+          <SectionTitle icon={<Zap size={16} color="var(--semi-color-primary)" />} title="事件吞吐趋势" desc="近 24h 成功 / 失败（按小时）" />
+          <AreaChart {...eventTrendSpec} options={chartOptions} height={150} />
+        </Card>
+        <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8, flex: '1 1 380px', minWidth: 320 }}>
+          <SectionTitle icon={<Workflow size={16} color="var(--semi-color-primary)" />} title="实例生命周期趋势" desc="近 24h 发起 / 完结（按小时）" />
+          <LineChart {...instanceTrendSpec} options={chartOptions} height={150} />
+        </Card>
       </div>
 
-      <ConfigurableTable<WorkflowEngineQueueSnapshot>
-        bordered
-        columnSettings={false}
-        columns={queueColumns}
-        dataSource={data.queues}
-        rowKey="key"
-        pagination={false}
-        scroll={{ x: 860 }}
-      />
+      {/* 活动问题 */}
+      <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
+        <SectionTitle
+          icon={<AlertTriangle size={16} color={data.issues.length > 0 ? 'var(--semi-color-warning)' : 'var(--semi-color-success)'} />}
+          title="活动问题"
+          desc={data.issues.length > 0 ? `严重 ${criticalCount} · 警告 ${warningCount}` : '运行时巡检'}
+          extra={<Tag color={criticalCount > 0 ? 'red' : warningCount > 0 ? 'orange' : 'green'}>{data.issues.length}</Tag>}
+        />
+        <IssuesPanel issues={data.issues} components={data.components} />
+      </Card>
 
+      {/* 队列饱和度 */}
+      <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
+        <SectionTitle icon={<Layers size={16} color="var(--semi-color-primary)" />} title="队列饱和度" desc="各内部队列积压构成与最老等待" extra={<Typography.Text type="tertiary" size="small">总积压 {backlog}</Typography.Text>} />
+        <QueueSaturation queues={data.queues} palette={palette} />
+      </Card>
+
+      {/* 组件健康矩阵 */}
+      <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
+        <SectionTitle icon={<GaugeCircle size={16} color="var(--semi-color-primary)" />} title="组件健康矩阵" desc="引擎子系统状态（严重优先）" />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
+          {sortedComponents.map((component) => (
+            <ComponentCard key={component.key} component={component} palette={palette} />
+          ))}
+        </div>
+      </Card>
+
+      {/* 运行时明细 */}
       <Tabs type="line">
-        <TabPane tab={`问题 ${data.issues.length}`} itemKey="issues">
-          <ConfigurableTable<WorkflowEngineRuntimeIssue>
-            bordered
-            columnSettings={false}
-            columns={issueColumns}
-            dataSource={data.issues}
-            rowKey="id"
-            pagination={false}
-            empty="未发现运行时问题"
-            scroll={{ x: 1160 }}
-          />
-        </TabPane>
         <TabPane tab={`队列任务 ${data.runtime.taskQueue.length}`} itemKey="tasks">
           <ConfigurableTable<WorkflowEngineRuntimeTask>
             bordered

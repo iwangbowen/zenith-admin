@@ -1261,7 +1261,16 @@ export interface SystemSchedulerTask {
   taskType: SystemSchedulerTaskType;
   cronExpression: string | null;
   registeredAt: string;
+  registeredNodeId: string;
+  registeredHostname: string;
+  registeredPid: number;
   allowManualRun: boolean;
+  logRetentionDays: number;
+  logRetentionRuns: number;
+  timeoutMs: number | null;
+  failureAlertThreshold: number;
+  alertEnabled: boolean;
+  manualSingleton: boolean;
   nextRunAt: string | null;
   running: boolean;
   lastRunAt: string | null;
@@ -1271,6 +1280,16 @@ export interface SystemSchedulerTask {
   totalRuns: number;
   successCount: number;
   failedCount: number;
+  alertCount: number;
+  lastAlertAt: string | null;
+  lastAlertMessage: string | null;
+  queueQueuedCount: number;
+  queueActiveCount: number;
+  queueDeferredCount: number;
+  queueTotalCount: number;
+  queueFailedCount: number;
+  queueCompletedCount: number;
+  queueStateCounts: Record<string, number>;
 }
 
 export interface SystemSchedulerRun {
@@ -1281,11 +1300,18 @@ export interface SystemSchedulerRun {
   module: string;
   triggerType: SystemSchedulerTriggerType;
   status: SystemSchedulerRunStatus;
+  jobId: string | null;
+  nodeId: string | null;
+  nodeHostname: string | null;
+  nodePid: number | null;
+  triggeredBy: number | null;
   startedAt: string;
   endedAt: string | null;
   durationMs: number | null;
   resultMessage: string | null;
   errorMessage: string | null;
+  alertedAt: string | null;
+  alertMessage: string | null;
   createdAt: string;
 }
 export interface OnlineUser {
@@ -3063,7 +3089,16 @@ export interface WorkflowEngineSystemSchedulerTask {
   taskType: SystemSchedulerTaskType;
   cronExpression: string | null;
   registeredAt: string;
+  registeredNodeId: string;
+  registeredHostname: string;
+  registeredPid: number;
   allowManualRun: boolean;
+  logRetentionDays: number;
+  logRetentionRuns: number;
+  timeoutMs: number | null;
+  failureAlertThreshold: number;
+  alertEnabled: boolean;
+  manualSingleton: boolean;
   lastRunAt: string | null;
   lastRunStatus: SystemSchedulerRunStatus | null;
   lastRunMessage: string | null;
@@ -3073,6 +3108,7 @@ export interface WorkflowEngineSystemSchedulerTask {
 export interface WorkflowEngineSchedulerSnapshot {
   initialized: boolean;
   runningJobCount: number;
+  node: { id: string; hostname: string; pid: number };
   registeredHandlers: string[];
   systemRecurringJobs: Array<WorkflowEngineSystemSchedulerTask & { taskType: 'recurring'; cronExpression: string }>;
   systemQueueWorkers: Array<WorkflowEngineSystemSchedulerTask & { taskType: 'queue'; cronExpression: null; allowManualRun: false }>;
@@ -3163,6 +3199,23 @@ export interface WorkflowEngineThroughputWindow {
   failed: number;
 }
 
+/** 单个小时桶的事件吞吐（用于近 24h 趋势 sparkline） */
+export interface WorkflowEngineEventBucket {
+  /** 小时桶起点，格式 YYYY-MM-DD HH:mm:ss */
+  hour: string;
+  total: number;
+  success: number;
+  failed: number;
+}
+
+/** 单个小时桶的实例生命周期吞吐（发起 / 完结） */
+export interface WorkflowEngineInstanceBucket {
+  /** 小时桶起点，格式 YYYY-MM-DD HH:mm:ss */
+  hour: string;
+  created: number;
+  completed: number;
+}
+
 /**
  * 引擎遥测指标（借鉴 Camunda/Zeebe/Temporal 内省端点对外暴露的吞吐 / 延迟 / 生命周期信号）。
  * 仅承载“只能由后端计算”的数据；饱和度、积压、SLA 分布等展示聚合由前端从其它字段派生。
@@ -3178,12 +3231,18 @@ export interface WorkflowEngineTelemetry {
     pendingRetry: number;
     /** 近 24h 成功事件的平均处理延迟（processedAt - createdAt，毫秒） */
     avgLatencyMs: number | null;
+    /** 近 24h 成功事件处理延迟 P95（毫秒） */
+    p95LatencyMs: number | null;
+    /** 近 24h 按小时聚合的吞吐趋势（24 个桶，缺口补 0） */
+    series24h: WorkflowEngineEventBucket[];
   };
   /** 触发器执行吞吐 + 延迟 */
   triggers: {
     last24h: { total: number; success: number; failed: number; retrying: number };
     /** 近 24h 触发器平均耗时（毫秒） */
     avgDurationMs: number | null;
+    /** 近 24h 成功触发器耗时 P95（毫秒） */
+    p95DurationMs: number | null;
   };
   /** 流程实例生命周期吞吐 */
   instances: {
@@ -3191,6 +3250,8 @@ export interface WorkflowEngineTelemetry {
     createdLast24h: number;
     completedLast24h: number;
     canceledLast24h: number;
+    /** 近 24h 按小时聚合的发起 / 完结趋势（24 个桶，缺口补 0） */
+    series24h: WorkflowEngineInstanceBucket[];
   };
   /** 系统周期任务及下次执行时间（cron 解析） */
   recurringJobs: Array<{

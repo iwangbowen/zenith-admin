@@ -4,10 +4,11 @@
  *
  * 用户可配置 Cron 与系统启动任务共用 pg-boss 执行，但日志与注册元数据分离。
  */
+import os from 'node:os';
 import { PgBoss, type QueueOptions, type SendOptions, type WorkHandler } from 'pg-boss';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, desc, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { cronJobs, cronJobLogs, dbBackups, systemSchedulerRuns, users } from '../db/schema';
+import { cronJobs, cronJobLogs, dbBackups, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../db/schema';
 import logger from './logger';
 import { cleanExpiredCaptchas } from './captcha';
 import { cleanExpiredSessions } from './session-manager';
@@ -55,10 +56,32 @@ function queueName(jobId: number): string {
 // ─── pg-boss 实例（单例）─────────────────────────────────────────────────────
 
 let boss: PgBoss | null = null;
+const schedulerNodeHostname = os.hostname();
+const schedulerNodePid = process.pid;
+const schedulerNodeId = `${schedulerNodeHostname}:${schedulerNodePid}`;
 
 export type SystemSchedulerTaskType = 'recurring' | 'queue';
 export type SystemSchedulerRunStatus = 'running' | 'success' | 'failed';
 export type SystemSchedulerTriggerType = 'schedule' | 'manual' | 'queue';
+
+export interface SystemSchedulerTaskPolicy {
+  logRetentionDays: number;
+  logRetentionRuns: number;
+  timeoutMs: number | null;
+  failureAlertThreshold: number;
+  alertEnabled: boolean;
+  manualSingleton: boolean;
+}
+
+export interface SystemSchedulerQueueMetrics {
+  queuedCount: number;
+  activeCount: number;
+  deferredCount: number;
+  totalCount: number;
+  failedCount: number;
+  completedCount: number;
+  stateCounts: Record<string, number>;
+}
 
 export interface SystemSchedulerTaskInfo {
   name: string;
@@ -68,7 +91,16 @@ export interface SystemSchedulerTaskInfo {
   taskType: SystemSchedulerTaskType;
   cronExpression: string | null;
   registeredAt: string;
+  registeredNodeId: string;
+  registeredHostname: string;
+  registeredPid: number;
   allowManualRun: boolean;
+  logRetentionDays: number;
+  logRetentionRuns: number;
+  timeoutMs: number | null;
+  failureAlertThreshold: number;
+  alertEnabled: boolean;
+  manualSingleton: boolean;
   lastRunAt: string | null;
   lastRunStatus: SystemSchedulerRunStatus | null;
   lastRunMessage: string | null;
@@ -93,6 +125,12 @@ export interface SystemRecurringJobRegistration {
   cronExpression: string;
   description?: string;
   allowManualRun?: boolean;
+  logRetentionDays?: number;
+  logRetentionRuns?: number;
+  timeoutMs?: number | null;
+  failureAlertThreshold?: number;
+  alertEnabled?: boolean;
+  manualSingleton?: boolean;
   run: () => Promise<unknown>;
 }
 
@@ -101,9 +139,35 @@ export interface SystemQueueWorkerRegistration<T extends object> {
   title: string;
   module: string;
   description?: string;
+  logRetentionDays?: number;
+  logRetentionRuns?: number;
+  timeoutMs?: number | null;
+  failureAlertThreshold?: number;
+  alertEnabled?: boolean;
   handler: (data: T) => Promise<unknown>;
   queueOptions?: Omit<QueueOptions, 'name'>;
 }
+
+interface SystemRecurringJobPayload {
+  __systemSchedulerTrigger?: 'schedule' | 'manual';
+  runId?: number;
+  triggeredBy?: number | null;
+}
+
+interface ExecuteSystemTaskOptions {
+  runId?: number;
+  jobId?: string | null;
+  triggeredBy?: number | null;
+}
+
+const DEFAULT_SYSTEM_TASK_POLICY: SystemSchedulerTaskPolicy = {
+  logRetentionDays: 30,
+  logRetentionRuns: 1000,
+  timeoutMs: null,
+  failureAlertThreshold: 1,
+  alertEnabled: true,
+  manualSingleton: true,
+};
 
 const systemRecurringJobs = new Map<string, SystemRecurringJobInfo>();
 const systemRecurringJobHandlers = new Map<string, () => Promise<unknown>>();
@@ -129,6 +193,75 @@ function stringifyRunResult(result: unknown): string {
   }
 }
 
+function normalizeSystemTaskPolicy(input: Partial<SystemSchedulerTaskPolicy> = {}): SystemSchedulerTaskPolicy {
+  return {
+    logRetentionDays: Math.max(1, input.logRetentionDays ?? DEFAULT_SYSTEM_TASK_POLICY.logRetentionDays),
+    logRetentionRuns: Math.max(1, input.logRetentionRuns ?? DEFAULT_SYSTEM_TASK_POLICY.logRetentionRuns),
+    timeoutMs: input.timeoutMs && input.timeoutMs > 0 ? input.timeoutMs : null,
+    failureAlertThreshold: Math.max(1, input.failureAlertThreshold ?? DEFAULT_SYSTEM_TASK_POLICY.failureAlertThreshold),
+    alertEnabled: input.alertEnabled ?? DEFAULT_SYSTEM_TASK_POLICY.alertEnabled,
+    manualSingleton: input.manualSingleton ?? DEFAULT_SYSTEM_TASK_POLICY.manualSingleton,
+  };
+}
+
+async function ensureSystemSchedulerTaskConfig(name: string, policy: SystemSchedulerTaskPolicy): Promise<void> {
+  await db.insert(systemSchedulerTaskConfigs).values({
+    taskName: name,
+    ...policy,
+  }).onConflictDoUpdate({
+    target: systemSchedulerTaskConfigs.taskName,
+    set: {
+      updatedAt: new Date(),
+    },
+  });
+}
+
+async function getRuntimeSystemTaskPolicy(task: Pick<SystemSchedulerTaskInfo, 'name'> & Partial<SystemSchedulerTaskPolicy>): Promise<SystemSchedulerTaskPolicy> {
+  const [row] = await db.select().from(systemSchedulerTaskConfigs).where(eq(systemSchedulerTaskConfigs.taskName, task.name)).limit(1);
+  return normalizeSystemTaskPolicy({
+    logRetentionDays: row?.logRetentionDays ?? task.logRetentionDays,
+    logRetentionRuns: row?.logRetentionRuns ?? task.logRetentionRuns,
+    timeoutMs: row?.timeoutMs ?? task.timeoutMs,
+    failureAlertThreshold: row?.failureAlertThreshold ?? task.failureAlertThreshold,
+    alertEnabled: row?.alertEnabled ?? task.alertEnabled,
+    manualSingleton: row?.manualSingleton ?? task.manualSingleton,
+  });
+}
+
+async function buildSystemTaskAlert(
+  taskName: string,
+  status: SystemSchedulerRunStatus,
+  durationMs: number,
+  message: string,
+  policy: SystemSchedulerTaskPolicy,
+): Promise<string | null> {
+  if (!policy.alertEnabled) return null;
+  if (policy.timeoutMs && durationMs > policy.timeoutMs) {
+    return `执行耗时 ${durationMs} ms 超过阈值 ${policy.timeoutMs} ms`;
+  }
+  if (status !== 'failed') return null;
+
+  const recentRows = await db.select({ status: systemSchedulerRuns.status })
+    .from(systemSchedulerRuns)
+    .where(eq(systemSchedulerRuns.taskName, taskName))
+    .orderBy(desc(systemSchedulerRuns.startedAt), desc(systemSchedulerRuns.id))
+    .limit(policy.failureAlertThreshold);
+
+  if (recentRows.length >= policy.failureAlertThreshold && recentRows.every((row) => row.status === 'failed')) {
+    return `连续失败 ${policy.failureAlertThreshold} 次：${message.slice(0, 200)}`;
+  }
+  return null;
+}
+
+async function updateSystemRunAlert(runId: number, alertMessage: string | null): Promise<void> {
+  if (!alertMessage) return;
+  await db.update(systemSchedulerRuns).set({
+    alertedAt: new Date(),
+    alertMessage: limitText(alertMessage, 2048),
+  }).where(eq(systemSchedulerRuns.id, runId));
+  logger.warn(`[system-scheduler] ${alertMessage}`);
+}
+
 function updateSystemTaskRunSnapshot(
   name: string,
   taskType: SystemSchedulerTaskType,
@@ -144,12 +277,17 @@ function updateSystemTaskRunSnapshot(
 }
 
 async function executeSystemTask(
-  task: Pick<SystemSchedulerTaskInfo, 'name' | 'title' | 'taskType' | 'module'>,
+  task: Pick<
+    SystemSchedulerTaskInfo,
+    'name' | 'title' | 'taskType' | 'module' | 'logRetentionDays' | 'logRetentionRuns' | 'timeoutMs' | 'failureAlertThreshold' | 'alertEnabled' | 'manualSingleton'
+  >,
   triggerType: SystemSchedulerTriggerType,
   fn: () => Promise<unknown>,
+  options: ExecuteSystemTaskOptions = {},
 ): Promise<string> {
   const startedAt = new Date();
   const startedAtText = formatDateTime(startedAt);
+  const policy = await getRuntimeSystemTaskPolicy(task);
   updateSystemTaskRunSnapshot(task.name, task.taskType, {
     lastRunAt: startedAtText,
     lastRunStatus: 'running',
@@ -157,15 +295,40 @@ async function executeSystemTask(
     lastDurationMs: null,
   });
 
-  const [run] = await db.insert(systemSchedulerRuns).values({
-    taskName: task.name,
-    taskTitle: task.title,
-    taskType: task.taskType,
-    module: task.module,
-    triggerType,
-    status: 'running',
-    startedAt,
-  }).returning({ id: systemSchedulerRuns.id });
+  let runId = options.runId;
+  if (runId) {
+    await db.update(systemSchedulerRuns).set({
+      status: 'running',
+      startedAt,
+      endedAt: null,
+      durationMs: null,
+      resultMessage: null,
+      errorMessage: null,
+      alertMessage: null,
+      alertedAt: null,
+      jobId: options.jobId ?? null,
+      nodeId: schedulerNodeId,
+      nodeHostname: schedulerNodeHostname,
+      nodePid: schedulerNodePid,
+      triggeredBy: options.triggeredBy ?? null,
+    }).where(eq(systemSchedulerRuns.id, runId));
+  } else {
+    const [run] = await db.insert(systemSchedulerRuns).values({
+      taskName: task.name,
+      taskTitle: task.title,
+      taskType: task.taskType,
+      module: task.module,
+      triggerType,
+      status: 'running',
+      startedAt,
+      jobId: options.jobId ?? null,
+      nodeId: schedulerNodeId,
+      nodeHostname: schedulerNodeHostname,
+      nodePid: schedulerNodePid,
+      triggeredBy: options.triggeredBy ?? null,
+    }).returning({ id: systemSchedulerRuns.id });
+    runId = run.id;
+  }
 
   try {
     const result = await fn();
@@ -177,7 +340,9 @@ async function executeSystemTask(
       endedAt,
       durationMs,
       resultMessage,
-    }).where(eq(systemSchedulerRuns.id, run.id));
+    }).where(eq(systemSchedulerRuns.id, runId));
+    const alertMessage = await buildSystemTaskAlert(task.name, 'success', durationMs, resultMessage, policy);
+    await updateSystemRunAlert(runId, alertMessage);
     updateSystemTaskRunSnapshot(task.name, task.taskType, {
       lastRunAt: startedAtText,
       lastRunStatus: 'success',
@@ -194,7 +359,9 @@ async function executeSystemTask(
       endedAt,
       durationMs,
       errorMessage,
-    }).where(eq(systemSchedulerRuns.id, run.id));
+    }).where(eq(systemSchedulerRuns.id, runId));
+    const alertMessage = await buildSystemTaskAlert(task.name, 'failed', durationMs, errorMessage, policy);
+    await updateSystemRunAlert(runId, alertMessage);
     updateSystemTaskRunSnapshot(task.name, task.taskType, {
       lastRunAt: startedAtText,
       lastRunStatus: 'failed',
@@ -576,6 +743,7 @@ export function getRunningJobCount(): number {
 export function getSchedulerIntrospection(): {
   initialized: boolean;
   runningJobCount: number;
+  node: { id: string; hostname: string; pid: number };
   registeredHandlers: string[];
   systemRecurringJobs: SystemRecurringJobInfo[];
   systemQueueWorkers: SystemQueueWorkerInfo[];
@@ -585,11 +753,65 @@ export function getSchedulerIntrospection(): {
   return {
     initialized: boss !== null,
     runningJobCount: wip.filter((item) => item.count > 0).reduce((sum, item) => sum + item.count, 0),
+    node: { id: schedulerNodeId, hostname: schedulerNodeHostname, pid: schedulerNodePid },
     registeredHandlers: getRegisteredHandlers(),
     systemRecurringJobs: [...systemRecurringJobs.values()],
     systemQueueWorkers: [...systemQueueWorkers.values()],
     wip,
   };
+}
+
+export async function getSystemQueueMetrics(names: string[]): Promise<Record<string, SystemSchedulerQueueMetrics>> {
+  const b = boss;
+  const result: Record<string, SystemSchedulerQueueMetrics> = {};
+  let stateRows: Array<{ name: string; state: string; count: number }> = [];
+  if (names.length > 0) {
+    try {
+      const nameList = sql.join(names.map((name) => sql`${name}`), sql`, `);
+      stateRows = await db.execute(sql`
+        select name, state::text as state, count(*)::int as count
+        from pgboss.job
+        where name in (${nameList})
+        group by name, state
+      `) as unknown as Array<{ name: string; state: string; count: number }>;
+    } catch (err) {
+      logger.warn('pg-boss: failed to load queue state counts', err);
+    }
+  }
+  const stateMap = new Map<string, Record<string, number>>();
+  for (const row of stateRows) {
+    const current = stateMap.get(row.name) ?? {};
+    current[row.state] = Number(row.count) || 0;
+    stateMap.set(row.name, current);
+  }
+  for (const name of names) {
+    try {
+      const stats = await b?.getQueueStats(name);
+      const stateCounts = stateMap.get(name) ?? {};
+      result[name] = {
+        queuedCount: stats?.queuedCount ?? 0,
+        activeCount: stats?.activeCount ?? 0,
+        deferredCount: stats?.deferredCount ?? 0,
+        totalCount: stats?.totalCount ?? 0,
+        failedCount: stateCounts.failed ?? 0,
+        completedCount: stateCounts.completed ?? 0,
+        stateCounts,
+      };
+    } catch (err) {
+      logger.warn(`pg-boss: failed to load queue stats for "${name}"`, err);
+      const stateCounts = stateMap.get(name) ?? {};
+      result[name] = {
+        queuedCount: (stateCounts.created ?? 0) + (stateCounts.retry ?? 0),
+        activeCount: stateCounts.active ?? 0,
+        deferredCount: 0,
+        totalCount: Object.values(stateCounts).reduce((sum, count) => sum + count, 0),
+        failedCount: stateCounts.failed ?? 0,
+        completedCount: stateCounts.completed ?? 0,
+        stateCounts,
+      };
+    }
+  }
+  return result;
 }
 
 /**
@@ -599,6 +821,7 @@ export function getSchedulerIntrospection(): {
 export async function registerSystemRecurringJob(registration: SystemRecurringJobRegistration): Promise<void> {
   const b = getBoss();
   const now = formatDateTime(new Date());
+  const policy = normalizeSystemTaskPolicy(registration);
   const info: SystemRecurringJobInfo = {
     name: registration.name,
     title: registration.title,
@@ -607,34 +830,98 @@ export async function registerSystemRecurringJob(registration: SystemRecurringJo
     taskType: 'recurring',
     cronExpression: registration.cronExpression,
     registeredAt: now,
+    registeredNodeId: schedulerNodeId,
+    registeredHostname: schedulerNodeHostname,
+    registeredPid: schedulerNodePid,
     allowManualRun: registration.allowManualRun ?? false,
+    ...policy,
     lastRunAt: null,
     lastRunStatus: null,
     lastRunMessage: null,
     lastDurationMs: null,
   };
 
-  await b.createQueue(registration.name);
-  await b.work(registration.name, async () => {
-    await executeSystemTask(info, 'schedule', registration.run);
+  await ensureSystemSchedulerTaskConfig(registration.name, policy);
+  await b.createQueue(registration.name, { retentionSeconds: 60 * 60 * 24 * 14, deleteAfterSeconds: 60 * 60 * 24 * 7 });
+  await b.work<SystemRecurringJobPayload>(registration.name, async (jobs) => {
+    for (const job of jobs) {
+      const payload = job.data ?? {};
+      const triggerType = payload.__systemSchedulerTrigger === 'manual' ? 'manual' : 'schedule';
+      await executeSystemTask(info, triggerType, registration.run, {
+        runId: payload.runId,
+        triggeredBy: payload.triggeredBy ?? null,
+        jobId: job.id,
+      });
+    }
   });
-  await b.schedule(registration.name, registration.cronExpression, {}, { tz: 'Asia/Shanghai' });
+  await b.schedule(registration.name, registration.cronExpression, { __systemSchedulerTrigger: 'schedule' } satisfies SystemRecurringJobPayload, { tz: 'Asia/Shanghai' });
   systemRecurringJobs.set(registration.name, info);
   systemRecurringJobHandlers.set(registration.name, registration.run);
   logger.info(`pg-boss: system recurring job "${registration.name}" scheduled (${registration.cronExpression})`);
 }
 
-export async function runSystemRecurringJobNow(name: string): Promise<string> {
+export async function runSystemRecurringJobNow(name: string, triggeredBy?: number | null): Promise<{ message: string; runId: number; jobId: string | null }> {
+  const b = getBoss();
   const info = systemRecurringJobs.get(name);
-  const handler = systemRecurringJobHandlers.get(name);
-  if (!info || !handler) throw new Error('系统周期任务不存在或尚未注册');
+  if (!info || !systemRecurringJobHandlers.has(name)) throw new Error('系统周期任务不存在或尚未注册');
   if (!info.allowManualRun) throw new Error('该系统周期任务不允许手动执行');
-  return executeSystemTask(info, 'manual', handler);
+  const policy = await getRuntimeSystemTaskPolicy(info);
+  if (policy.manualSingleton) {
+    const running = await db.$count(systemSchedulerRuns, and(eq(systemSchedulerRuns.taskName, name), eq(systemSchedulerRuns.status, 'running')));
+    if (running > 0) throw new Error('该系统周期任务已有运行中的实例，请稍后再试');
+  }
+
+  const [run] = await db.insert(systemSchedulerRuns).values({
+    taskName: info.name,
+    taskTitle: info.title,
+    taskType: info.taskType,
+    module: info.module,
+    triggerType: 'manual',
+    status: 'running',
+    startedAt: new Date(),
+    resultMessage: '手动执行已投递，等待后台 worker 处理',
+    nodeId: schedulerNodeId,
+    nodeHostname: schedulerNodeHostname,
+    nodePid: schedulerNodePid,
+    triggeredBy: triggeredBy ?? null,
+  }).returning({ id: systemSchedulerRuns.id });
+
+  const jobId = await b.send(name, {
+    __systemSchedulerTrigger: 'manual',
+    runId: run.id,
+    triggeredBy: triggeredBy ?? null,
+  } satisfies SystemRecurringJobPayload, {
+    retryLimit: 0,
+    singletonKey: policy.manualSingleton ? `manual-${name}` : undefined,
+    retentionSeconds: 60 * 60 * 24,
+    deleteAfterSeconds: 60 * 60 * 24 * 7,
+  });
+
+  if (!jobId) {
+    await db.update(systemSchedulerRuns).set({
+      status: 'failed',
+      endedAt: new Date(),
+      durationMs: 0,
+      errorMessage: '任务投递失败，请检查队列状态或稍后重试',
+    }).where(eq(systemSchedulerRuns.id, run.id));
+    throw new Error('任务投递失败，请检查队列状态或稍后重试');
+  }
+
+  await db.update(systemSchedulerRuns).set({ jobId }).where(eq(systemSchedulerRuns.id, run.id));
+  return { message: `任务已投递后台执行，运行日志 #${run.id} 可跟踪结果`, runId: run.id, jobId };
 }
 
 export async function registerSystemQueueWorker<T extends object>(registration: SystemQueueWorkerRegistration<T>): Promise<void> {
   const b = getBoss();
   const now = formatDateTime(new Date());
+  const policy = normalizeSystemTaskPolicy({
+    logRetentionDays: registration.logRetentionDays,
+    logRetentionRuns: registration.logRetentionRuns,
+    timeoutMs: registration.timeoutMs,
+    failureAlertThreshold: registration.failureAlertThreshold,
+    alertEnabled: registration.alertEnabled,
+    manualSingleton: false,
+  });
   const info: SystemQueueWorkerInfo = {
     name: registration.name,
     title: registration.title,
@@ -642,18 +929,24 @@ export async function registerSystemQueueWorker<T extends object>(registration: 
     description: registration.description ?? null,
     taskType: 'queue',
     cronExpression: null,
+    registeredNodeId: schedulerNodeId,
+    registeredHostname: schedulerNodeHostname,
+    registeredPid: schedulerNodePid,
     registeredAt: now,
     allowManualRun: false,
+    ...policy,
+    manualSingleton: false,
     lastRunAt: null,
     lastRunStatus: null,
     lastRunMessage: null,
     lastDurationMs: null,
   };
 
+  await ensureSystemSchedulerTaskConfig(registration.name, policy);
   await b.createQueue(registration.name, registration.queueOptions);
   await b.work<T>(registration.name, async (jobs) => {
     for (const job of jobs) {
-      await executeSystemTask(info, 'queue', () => registration.handler(job.data));
+      await executeSystemTask(info, 'queue', () => registration.handler(job.data), { jobId: job.id });
     }
   });
   systemQueueWorkers.set(registration.name, info);
