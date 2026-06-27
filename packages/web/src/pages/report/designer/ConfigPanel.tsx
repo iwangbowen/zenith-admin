@@ -39,6 +39,7 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
   const o = widget.options ?? {};
   const t = widget.type;
   const isCartesian = t === 'bar' || t === 'line' || t === 'area';
+  const isDatasetIndependent = t === 'text' || t === 'image' || t === 'iframe';
   const filterOpts = filters.map((f) => ({ value: f.id, label: f.label || f.id }));
 
   function setBinding(param: string, filterId: string | undefined) {
@@ -58,11 +59,32 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
 
       <Field label="标题"><Input value={widget.title} onChange={(v) => onPatch({ title: v })} maxLength={128} showClear /></Field>
 
-      {t === 'text' ? (
+      {t === 'text' && (
         <Field label="文本内容（支持 ${筛选器id} 占位）">
           <TextArea value={o.text ?? ''} onChange={(v) => onOptions({ text: v })} autosize={{ minRows: 3, maxRows: 8 }} />
         </Field>
-      ) : (
+      )}
+      {t === 'image' && (
+        <>
+          <Field label="图片地址（支持 ${筛选器id} 占位）"><Input value={o.src ?? ''} onChange={(v) => onOptions({ src: v })} showClear /></Field>
+          <Field label="填充方式">
+            <Select
+              style={full}
+              value={o.fit ?? 'contain'}
+              onChange={(v) => onOptions({ fit: v as ReportWidgetOptions['fit'] })}
+              optionList={[
+                { value: 'contain', label: '等比完整显示' },
+                { value: 'cover', label: '等比铺满裁剪' },
+                { value: 'fill', label: '拉伸填充' },
+              ]}
+            />
+          </Field>
+        </>
+      )}
+      {t === 'iframe' && (
+        <Field label="网页地址（支持 ${筛选器id} 占位）"><Input value={o.src ?? ''} onChange={(v) => onOptions({ src: v })} showClear /></Field>
+      )}
+      {!isDatasetIndependent && (
         <Field label="数据集">
           <Select style={full} value={widget.datasetId ?? undefined} placeholder="选择数据集" showClear filter
             onChange={(v) => onPatch({ datasetId: (v as number) ?? null })}
@@ -97,6 +119,15 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
           <Field label="最大值"><InputNumber style={full} value={o.max ?? 100} onChange={(v) => onOptions({ max: typeof v === 'number' ? v : 100 })} /></Field>
         </Space>
       )}
+      {t === 'liquid' && (
+        <>
+          <Field label="取值字段"><Select style={full} value={o.valueField} placeholder="字段" showClear onChange={(v) => onOptions({ valueField: v as string })} optionList={fieldOptions} /></Field>
+          <Field label="聚合方式"><Select style={full} value={o.aggregate ?? 'sum'} onChange={(v) => onOptions({ aggregate: v as ReportWidgetOptions['aggregate'] })} optionList={AGG} /></Field>
+          <Field label="最大值"><InputNumber style={full} min={0} value={o.max ?? 100} onChange={(v) => onOptions({ max: typeof v === 'number' ? v : 100 })} /></Field>
+          <Field label="单位"><Input value={o.unit ?? ''} onChange={(v) => onOptions({ unit: v })} showClear /></Field>
+          <Field label="小数位"><InputNumber style={full} min={0} max={6} value={o.decimals} onChange={(v) => onOptions({ decimals: typeof v === 'number' ? v : undefined })} /></Field>
+        </>
+      )}
 
       {(isCartesian || t === 'dualAxis' || t === 'pie' || t === 'scatter' || t === 'radar' || t === 'funnel') && (
         <Field label={t === 'scatter' ? 'X 轴字段' : '分类字段'}>
@@ -117,6 +148,26 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
         <>
           <Field label="左轴-柱 字段"><Select style={full} value={o.valueFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ valueFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
           <Field label="右轴-线 字段"><Select style={full} value={o.secondaryFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ secondaryFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
+        </>
+      )}
+      {t === 'sankey' && (
+        <>
+          <Field label="源字段"><Select style={full} value={o.sourceField} placeholder="字段" showClear onChange={(v) => onOptions({ sourceField: v as string })} optionList={fieldOptions} /></Field>
+          <Field label="目标字段"><Select style={full} value={o.targetField} placeholder="字段" showClear onChange={(v) => onOptions({ targetField: v as string })} optionList={fieldOptions} /></Field>
+          <Field label="值字段"><Select style={full} value={o.valueFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ valueFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
+        </>
+      )}
+      {t === 'heatmap' && (
+        <>
+          <Field label="X 字段"><Select style={full} value={o.categoryField} placeholder="字段" showClear onChange={(v) => onOptions({ categoryField: v as string })} optionList={fieldOptions} /></Field>
+          <Field label="Y 字段"><Select style={full} value={o.yField} placeholder="字段" showClear onChange={(v) => onOptions({ yField: v as string })} optionList={fieldOptions} /></Field>
+          <Field label="值字段"><Select style={full} value={o.valueFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ valueFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
+        </>
+      )}
+      {t === 'wordCloud' && (
+        <>
+          <Field label="词语字段"><Select style={full} value={o.wordField} placeholder="字段" showClear onChange={(v) => onOptions({ wordField: v as string })} optionList={fieldOptions} /></Field>
+          <Field label="权重字段"><Select style={full} value={o.valueFields?.[0]} placeholder="字段" showClear onChange={(v) => onOptions({ valueFields: v ? [v as string] : [] })} optionList={fieldOptions} /></Field>
         </>
       )}
       {t === 'scrollList' && (
@@ -193,7 +244,7 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
       )}
 
       {/* ── 参数绑定 ── */}
-      {datasetParams.length > 0 && (
+      {!isDatasetIndependent && datasetParams.length > 0 && (
         <Field label="参数绑定（数据集参数 ← 全局筛选器）">
           <Space vertical align="start" style={full}>
             {datasetParams.map((p) => (

@@ -1,4 +1,4 @@
-import { Hash, Table as TableIcon, Grid3x3, Type, BarChart3, LineChart as LineChartIcon, TrendingUp, Columns3, PieChart as PieChartIcon, CircleDot, Radar as RadarIcon, Filter, Gauge as GaugeIcon, LayoutGrid, ListOrdered, Map } from 'lucide-react';
+import { Hash, Table as TableIcon, Grid3x3, Type, BarChart3, LineChart as LineChartIcon, TrendingUp, Columns3, PieChart as PieChartIcon, CircleDot, Radar as RadarIcon, Filter, Gauge as GaugeIcon, LayoutGrid, ListOrdered, Map, Workflow, Grid2x2, Cloud, Droplet, Image as ImageIcon, Globe } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ReportWidgetType } from '@zenith/shared';
 
@@ -29,6 +29,12 @@ export const WIDGET_TYPES: WidgetTypeMeta[] = [
   { type: 'funnel', label: '漏斗图', icon: Filter, defaultSize: { w: 4, h: 6 }, group: '图表' },
   { type: 'treemap', label: '矩形树图', icon: LayoutGrid, defaultSize: { w: 6, h: 6 }, group: '图表' },
   { type: 'map', label: '地图', icon: Map, defaultSize: { w: 6, h: 6 }, group: '图表' },
+  { type: 'sankey', label: '桑基图', icon: Workflow, defaultSize: { w: 6, h: 6 }, group: '图表' },
+  { type: 'heatmap', label: '热力图', icon: Grid2x2, defaultSize: { w: 6, h: 6 }, group: '图表' },
+  { type: 'wordCloud', label: '词云', icon: Cloud, defaultSize: { w: 5, h: 5 }, group: '图表' },
+  { type: 'liquid', label: '水波球', icon: Droplet, defaultSize: { w: 4, h: 5 }, group: '指标' },
   { type: 'scrollList', label: '滚动榜单', icon: ListOrdered, defaultSize: { w: 4, h: 6 }, group: '其它' },
   { type: 'text', label: '文本', icon: Type, defaultSize: { w: 4, h: 2 }, group: '其它' },
+  { type: 'image', label: '图片', icon: ImageIcon, defaultSize: { w: 4, h: 4 }, group: '其它' },
+  { type: 'iframe', label: '网页', icon: Globe, defaultSize: { w: 6, h: 5 }, group: '其它' },
 ];

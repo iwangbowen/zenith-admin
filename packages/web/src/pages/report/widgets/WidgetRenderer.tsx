@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { Table } from '@douyinfe/semi-ui';
 import VChartCore from '@visactor/vchart';
 import type { ISpec } from '@visactor/vchart';
-import { VChart as VChartReact } from '@visactor/react-vchart';
+import { HeatmapChart, LiquidChart, SankeyChart, VChart as VChartReact, WordCloudChart } from '@visactor/react-vchart';
 import {
   BarChart, LineChart, AreaChart, PieChart, ScatterChart, TreemapChart, CommonChart,
   makeBarSpec, makeLineSpec, makeAreaSpec, makePieSpec, makeScatterSpec, makeTreemapSpec, makeMixedBarLineSpec,
@@ -98,6 +98,10 @@ function EmptyHint({ text }: { readonly text: string }) {
   return <div className="report-widget-empty">{text}</div>;
 }
 
+function resolveTemplate(value: unknown, filterValues?: Record<string, unknown>): string {
+  return String(value ?? '').replace(/\$\{(\w+)\}/g, (_, k) => String(filterValues?.[k] ?? ''));
+}
+
 const registeredMapNames = new Set<string>();
 
 interface WidgetRendererProps {
@@ -149,8 +153,33 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
 
     // 文本组件：不依赖数据集
     if (widget.type === 'text') {
-      const text = String(o.text ?? '').replace(/\$\{(\w+)\}/g, (_, k) => String(filterValues?.[k] ?? ''));
+      const text = resolveTemplate(o.text, filterValues);
       return <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, color: 'var(--semi-color-text-0)', padding: 4 }}>{text || '（空文本）'}</div>;
+    }
+
+    if (widget.type === 'image') {
+      const src = resolveTemplate(o.src, filterValues).trim();
+      if (!src) return <EmptyHint text="请配置图片地址" />;
+      return (
+        <img
+          src={src}
+          alt={widget.title}
+          style={{ width: '100%', height: '100%', objectFit: o.fit ?? 'contain', display: 'block' }}
+        />
+      );
+    }
+
+    if (widget.type === 'iframe') {
+      const src = resolveTemplate(o.src, filterValues).trim();
+      if (!src) return <EmptyHint text="请配置网页地址" />;
+      return (
+        <iframe
+          src={src}
+          title={widget.title}
+          sandbox="allow-scripts allow-same-origin allow-popups"
+          style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+        />
+      );
     }
 
     if (!widget.datasetId) return <EmptyHint text="请在右侧选择数据集" />;
@@ -194,7 +223,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       return <Flipper value={value} digits={o.flipDigits} decimals={o.decimals} prefix={o.prefix} unit={o.unit} />;
     }
 
-    if (!rawRows.length) return <EmptyHint text="暂无数据" />;
+    if (!rawRows.length && widget.type !== 'liquid') return <EmptyHint text="暂无数据" />;
     const rows = sortAndLimit(rawRows, o);
 
     if (widget.type === 'scrollList') {
@@ -274,6 +303,33 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
 
     if (width === 0 || height === 0) return <div style={{ height: '100%' }} />;
 
+    if (widget.type === 'liquid') {
+      if (!o.valueField) return <EmptyHint text="请配置取值字段" />;
+      const value = aggregate(rawRows, o.valueField, o.aggregate ?? 'sum');
+      const max = o.max && o.max > 0 ? o.max : 100;
+      const percent = Math.max(0, Math.min(1, value / max));
+      const spec = {
+        data: [{ id: 'd', values: [{ value: percent }] }],
+        valueField: 'value',
+        maskShape: 'circle',
+        indicatorSmartInvert: true,
+        outlinePadding: 4,
+        liquidOutline: { style: { stroke: palette.primary, lineWidth: 2 } },
+        liquidBackground: { style: { fill: palette.fill1 } },
+        liquid: { style: { fill: palette.primary, fillOpacity: 0.78 } },
+        tooltip: { visible: false },
+      };
+      return (
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          <LiquidChart {...spec} options={chartOptions} height={chartHeight} />
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <span style={{ color: 'var(--semi-color-text-0)', fontSize: 22, fontWeight: 700 }}>{fmtNumber(value, o.decimals)}{o.unit ?? ''}</span>
+            <span style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>{Math.round(percent * 100)}%</span>
+          </div>
+        </div>
+      );
+    }
+
     const onChartClick = onCategoryClick
       ? (p: unknown) => {
           const datum = (p as { datum?: Record<string, unknown> })?.datum;
@@ -307,6 +363,82 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       const nodes = rows.map((r) => ({ name: String(r[o.categoryField as string] ?? ''), value: toNumber(r[valueField]) }));
       const spec = makeTreemapSpec({ data: nodes, palette, categoryField: 'name', valueField: 'value' });
       return <TreemapChart {...spec} options={chartOptions} height={chartHeight} />;
+    }
+
+    // 桑基图
+    if (widget.type === 'sankey') {
+      const valueField = o.valueFields?.[0];
+      if (!o.sourceField || !o.targetField || !valueField) return <EmptyHint text="请配置源字段、目标字段与值字段" />;
+      const links = rows
+        .map((r) => ({ source: String(r[o.sourceField as string] ?? ''), target: String(r[o.targetField as string] ?? ''), value: toNumber(r[valueField]) }))
+        .filter((link) => link.source && link.target);
+      if (!links.length) return <EmptyHint text="暂无可用桑基数据" />;
+      const spec = {
+        data: [{ id: 'd', values: links }],
+        categoryField: 'name',
+        valueField: 'value',
+        sourceField: 'source',
+        targetField: 'target',
+        nodeAlign: 'left',
+        color: palette.dataColors,
+        label: { visible: true, style: { fill: palette.text1 } },
+        tooltip: { visible: true },
+      };
+      return <SankeyChart {...spec} options={chartOptions} height={chartHeight} />;
+    }
+
+    // 词云
+    if (widget.type === 'wordCloud') {
+      const wordField = o.wordField || o.categoryField;
+      const valueField = o.valueFields?.[0];
+      if (!wordField || !valueField) return <EmptyHint text="请配置词语字段与权重字段" />;
+      const values = rows
+        .map((r) => ({ name: String(r[wordField] ?? ''), value: toNumber(r[valueField]) }))
+        .filter((item) => item.name);
+      if (!values.length) return <EmptyHint text="暂无可用词云数据" />;
+      const spec = {
+        data: [{ id: 'd', values }],
+        nameField: 'name',
+        valueField: 'value',
+        colorList: palette.dataColors,
+        fontSizeRange: [12, 42] as [number, number],
+        random: false,
+        wordCloudConfig: { zoomToFit: { enlarge: true } },
+        tooltip: { visible: true },
+      };
+      return <WordCloudChart {...spec} options={chartOptions} height={chartHeight} />;
+    }
+
+    // 热力图
+    if (widget.type === 'heatmap') {
+      const valueField = o.valueFields?.[0];
+      if (!o.categoryField || !o.yField || !valueField) return <EmptyHint text="请配置 X 字段、Y 字段与值字段" />;
+      const heatmapData = rows.map((r) => ({
+        [o.categoryField as string]: String(r[o.categoryField as string] ?? ''),
+        [o.yField as string]: String(r[o.yField as string] ?? ''),
+        [valueField]: toNumber(r[valueField]),
+      }));
+      const max = Math.max(...heatmapData.map((r) => toNumber(r[valueField])), 0) || 1;
+      const spec = {
+        data: [{ id: 'd', values: heatmapData }],
+        xField: o.categoryField,
+        yField: o.yField,
+        valueField,
+        color: {
+          type: 'linear',
+          field: valueField,
+          domain: [0, max],
+          range: [palette.fill1, palette.dataColors[0] ?? palette.primary],
+          clamp: true,
+        },
+        cell: { style: { stroke: palette.border, lineWidth: 1 } },
+        axes: [
+          { orient: 'bottom', type: 'band' },
+          { orient: 'left', type: 'band' },
+        ],
+        tooltip: { visible: true },
+      };
+      return <HeatmapChart {...spec} options={chartOptions} height={chartHeight} />;
     }
 
     // 地图

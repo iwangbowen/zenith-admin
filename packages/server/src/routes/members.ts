@@ -3,13 +3,13 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   ErrorResponse, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery, okExcel, excelStreamBody, okCsv, csvStreamBody, BatchIdsBody,
+  ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery, BatchIdsBody,
 } from '../lib/openapi-schemas';
 import { MemberDTO, MemberOverviewDTO, MemberOptionDTO, MemberLoginLogDTO, MakeupCheckinResultDTO } from '../lib/openapi-dtos';
 import {
   listMembers, getMemberDetail, getMemberOverview, getMemberOptions, listMemberLoginLogs, createMember, updateMember,
   setMemberStatus, batchSetMemberStatus, batchSetMemberLevel,
-  resetMemberPasswordByAdmin, deleteMember, exportMembers, exportMembersAsCsv,
+  resetMemberPasswordByAdmin, deleteMember,
   getMemberBeforeAudit, getMembersBeforeAudit,
 } from '../services/admin-members.service';
 import { doMakeupCheckin, getMakeupCheckinBeforeAudit } from '../services/member-checkin.service';
@@ -23,11 +23,6 @@ const batchStatusSchema = z.object({ ids: BatchIdsBody.shape.ids, status: status
 const batchLevelSchema = z.object({ ids: BatchIdsBody.shape.ids, levelId: z.number().int().positive().nullable() });
 
 const listQuery = PaginationQuery.extend({
-  keyword: z.string().optional(),
-  status: statusEnum.optional(),
-  levelId: z.coerce.number().int().positive().optional(),
-});
-const exportQuery = z.object({
   keyword: z.string().optional(),
   status: statusEnum.optional(),
   levelId: z.coerce.number().int().positive().optional(),
@@ -118,36 +113,6 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(MemberDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listMembers(c.req.valid('query'))), 200),
-});
-
-// ─── GET /export — 导出（必须在 /{id} 之前注册）──────────────────────────────
-const exportRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export', tags: ['会员管理'], summary: '导出会员',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'member:member:list' })] as const,
-    request: { query: exportQuery },
-    responses: { ...commonErrorResponses, ...okExcel('会员 Excel') },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportMembers(c.req.valid('query'));
-    return excelStreamBody(c, stream, filename);
-  },
-});
-
-// ─── GET /export/csv — 导出 CSV（必须在 /export 之后、/{id} 之前注册）─────────────────────
-const exportCsvRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export/csv', tags: ['会员管理'], summary: '导出会员 CSV',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'member:member:list' })] as const,
-    request: { query: exportQuery },
-    responses: { ...commonErrorResponses, ...okCsv('会员 CSV') },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportMembersAsCsv(c.req.valid('query'));
-    return csvStreamBody(c, stream, filename);
-  },
 });
 
 // ─── GET /options — 会员搜索下拉（轻量，必须在 /{id} 之前注册）────────────────
@@ -296,7 +261,7 @@ const deleteRoute_ = defineOpenAPIRoute({
 
 membersRouter.openapiRoutes([
   batchStatusRoute, batchLevelRoute, overviewRoute,
-  listRoute, exportRoute, exportCsvRoute, optionsRoute, loginLogsRoute, makeupCheckinRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
+  listRoute, optionsRoute, loginLogsRoute, makeupCheckinRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
 ] as const);
 
 export default membersRouter;

@@ -5,8 +5,8 @@ import { optionalAuthMiddleware } from '../middleware/optional-auth';
 import { guard } from '../middleware/guard';
 import { namedRateLimit } from '../middleware/rate-limit';
 import {
-  validationHook, commonErrorResponses, ok, okMsg, okBody, okPaginated, okExcel, okCsv,
-  excelBody, csvStreamBody, IdParam, PaginationQuery,
+  validationHook, commonErrorResponses, ok, okMsg, okBody, okPaginated,
+  IdParam, PaginationQuery,
 } from '../lib/openapi-schemas';
 import {
   BatchUserEventsBodyDTO, AnalyticsPublicConfigDTO, AnalyticsOverviewDTO, TrendSeriesDTO,
@@ -17,13 +17,12 @@ import {
   UpdateAnalyticsEventMetaDTO, AnalyticsSettingsDTO, UpdateAnalyticsSettingsDTO, AnalyticsRollupSummaryDTO,
 } from '../lib/openapi-dtos';
 import { getClientIp } from '../lib/request-helpers';
-import { exportToExcel, streamToCsv, type ExcelColumn } from '../lib/excel-export';
-import { formatFileTimestamp, parseDateRangeStart, parseDateRangeEnd } from '../lib/datetime';
+import { parseDateRangeStart, parseDateRangeEnd } from '../lib/datetime';
 import {
   batchInsertEvents, getOverview, getTrends, getPageStats, getFeatureStats, getHeatmapData,
   getHeatmapPageList, getUserStats, listSessions, getFunnel, getRetention, getPathAnalysis,
   getUserTimeline, getDimensionBreakdown, getPerfStats, getRealtime, listAnalyticsEvents,
-  getEventDetail, listEventsForExport, cleanAnalyticsEvents,
+  getEventDetail, cleanAnalyticsEvents,
 } from '../services/analytics.service';
 import { getPublicConfig, getSettings, updateSettings } from '../services/analytics-settings.service';
 import { listEventMeta, createEventMeta, updateEventMeta, deleteEventMeta } from '../services/analytics-event-meta.service';
@@ -224,23 +223,6 @@ function parseEventQuery(q: z.infer<typeof eventListQuery>) {
   };
 }
 
-const EVENT_EXPORT_COLUMNS: ExcelColumn[] = [
-  { header: 'ID', key: 'id', width: 10 },
-  { header: '用户', key: 'username', width: 16 },
-  { header: '事件类型', key: 'eventType', width: 14 },
-  { header: '事件名', key: 'eventName', width: 18 },
-  { header: '页面', key: 'pagePath', width: 28 },
-  { header: '标题', key: 'pageTitle', width: 20 },
-  { header: '功能', key: 'elementLabel', width: 16 },
-  { header: '区域', key: 'componentArea', width: 14 },
-  { header: '时长(ms)', key: 'durationMs', width: 12 },
-  { header: '浏览器', key: 'browser', width: 14 },
-  { header: '系统', key: 'os', width: 14 },
-  { header: '设备', key: 'deviceType', width: 10 },
-  { header: '地域', key: 'region', width: 14 },
-  { header: '时间', key: 'createdAt', width: 20 },
-];
-
 const eventListRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/events', tags: ['Analytics'], summary: '埋点事件列表', security: [{ BearerAuth: [] }],
@@ -248,33 +230,6 @@ const eventListRoute = defineOpenAPIRoute({
     responses: { ...okPaginated(EventListItemDTO, '事件列表'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await listAnalyticsEvents(parseEventQuery(c.req.valid('query')))), 200),
-});
-
-const eventExportRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/events/export', tags: ['Analytics'], summary: '导出埋点事件(Excel)', security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'analytics:export' })] as const,
-    request: { query: eventListQuery.omit({ page: true, pageSize: true }) },
-    responses: { ...okExcel('Excel 文件'), ...commonErrorResponses },
-  }),
-  handler: async (c) => {
-    const rows = await listEventsForExport(parseEventQuery(c.req.valid('query') as z.infer<typeof eventListQuery>));
-    const buffer = await exportToExcel(EVENT_EXPORT_COLUMNS, rows, '埋点事件');
-    return excelBody(c, buffer, `events_${formatFileTimestamp()}.xlsx`);
-  },
-});
-
-const eventExportCsvRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/events/export/csv', tags: ['Analytics'], summary: '导出埋点事件(CSV)', security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'analytics:export' })] as const,
-    request: { query: eventListQuery.omit({ page: true, pageSize: true }) },
-    responses: { ...okCsv('CSV 文件'), ...commonErrorResponses },
-  }),
-  handler: async (c) => {
-    const rows = await listEventsForExport(parseEventQuery(c.req.valid('query') as z.infer<typeof eventListQuery>));
-    return csvStreamBody(c, streamToCsv(EVENT_EXPORT_COLUMNS, rows), `events_${formatFileTimestamp()}.csv`);
-  },
 });
 
 const eventDetailRoute = defineOpenAPIRoute({
@@ -391,7 +346,7 @@ r.openapiRoutes([
   overviewRoute, trendsRoute, realtimeRoute,
   pageStatsRoute, featureStatsRoute, heatmapRoute, heatmapPagesRoute, userStatsRoute,
   sessionsRoute, funnelRoute, retentionRoute, pathRoute, userTimelineRoute, dimensionRoute, perfRoute,
-  eventExportRoute, eventExportCsvRoute, eventListRoute, eventDetailRoute, cleanRoute,
+  eventListRoute, eventDetailRoute, cleanRoute,
   metaListRoute, metaCreateRoute, metaUpdateRoute, metaDeleteRoute,
   settingsGetRoute, settingsUpdateRoute,
   rollupGetRoute, rollupRebuildRoute,
