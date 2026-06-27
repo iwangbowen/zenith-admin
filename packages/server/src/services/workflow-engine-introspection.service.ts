@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { CronExpressionParser } from 'cron-parser';
 import type {
@@ -719,9 +719,9 @@ export async function getWorkflowEngineIntrospection(
       total24h: sql<number>`count(*) filter (where ${gte(workflowEventOutbox.createdAt, since24h)})`.mapWith(Number),
       success24h: sql<number>`count(*) filter (where ${and(eq(workflowEventOutbox.status, 'success'), gte(workflowEventOutbox.createdAt, since24h))})`.mapWith(Number),
       failed24h: sql<number>`count(*) filter (where ${and(eq(workflowEventOutbox.status, 'failed'), gte(workflowEventOutbox.createdAt, since24h))})`.mapWith(Number),
-      totalPrev24h: sql<number>`count(*) filter (where ${and(gte(workflowEventOutbox.createdAt, since48h), sql`${workflowEventOutbox.createdAt} < ${since24h}`)})`.mapWith(Number),
-      successPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowEventOutbox.status, 'success'), gte(workflowEventOutbox.createdAt, since48h), sql`${workflowEventOutbox.createdAt} < ${since24h}`)})`.mapWith(Number),
-      failedPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowEventOutbox.status, 'failed'), gte(workflowEventOutbox.createdAt, since48h), sql`${workflowEventOutbox.createdAt} < ${since24h}`)})`.mapWith(Number),
+      totalPrev24h: sql<number>`count(*) filter (where ${and(gte(workflowEventOutbox.createdAt, since48h), lt(workflowEventOutbox.createdAt, since24h))})`.mapWith(Number),
+      successPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowEventOutbox.status, 'success'), gte(workflowEventOutbox.createdAt, since48h), lt(workflowEventOutbox.createdAt, since24h))})`.mapWith(Number),
+      failedPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowEventOutbox.status, 'failed'), gte(workflowEventOutbox.createdAt, since48h), lt(workflowEventOutbox.createdAt, since24h))})`.mapWith(Number),
       pendingRetry: sql<number>`count(*) filter (where ${inArray(workflowEventOutbox.status, ['pending', 'processing', 'retrying'])})`.mapWith(Number),
       avgLatencyMs: sql<number | null>`avg(${evLatency}) filter (where ${evDone24h})`.mapWith(Number),
       p95LatencyMs: sql<number | null>`percentile_cont(0.95) within group (order by ${evLatency}) filter (where ${evDone24h})`.mapWith(Number),
@@ -746,10 +746,10 @@ export async function getWorkflowEngineIntrospection(
       success24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'success'), gte(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
       failed24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'failed'), gte(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
       retrying24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'retrying'), gte(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
-      totalPrev24h: sql<number>`count(*) filter (where ${and(gte(workflowTriggerExecutions.createdAt, since48h), sql`${workflowTriggerExecutions.createdAt} < ${since24h}`)})`.mapWith(Number),
-      successPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'success'), gte(workflowTriggerExecutions.createdAt, since48h), sql`${workflowTriggerExecutions.createdAt} < ${since24h}`)})`.mapWith(Number),
-      failedPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'failed'), gte(workflowTriggerExecutions.createdAt, since48h), sql`${workflowTriggerExecutions.createdAt} < ${since24h}`)})`.mapWith(Number),
-      retryingPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'retrying'), gte(workflowTriggerExecutions.createdAt, since48h), sql`${workflowTriggerExecutions.createdAt} < ${since24h}`)})`.mapWith(Number),
+      totalPrev24h: sql<number>`count(*) filter (where ${and(gte(workflowTriggerExecutions.createdAt, since48h), lt(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
+      successPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'success'), gte(workflowTriggerExecutions.createdAt, since48h), lt(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
+      failedPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'failed'), gte(workflowTriggerExecutions.createdAt, since48h), lt(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
+      retryingPrev24h: sql<number>`count(*) filter (where ${and(eq(workflowTriggerExecutions.status, 'retrying'), gte(workflowTriggerExecutions.createdAt, since48h), lt(workflowTriggerExecutions.createdAt, since24h))})`.mapWith(Number),
       avgDurationMs: sql<number | null>`avg(${trDuration}) filter (where ${trDone24h})`.mapWith(Number),
       p95DurationMs: sql<number | null>`percentile_cont(0.95) within group (order by ${trDuration}) filter (where ${trDone24h})`.mapWith(Number),
       p99DurationMs: sql<number | null>`percentile_cont(0.99) within group (order by ${trDuration}) filter (where ${trDone24h})`.mapWith(Number),
@@ -769,8 +769,8 @@ export async function getWorkflowEngineIntrospection(
       createdLast24h: sql<number>`count(*) filter (where ${gte(workflowInstances.createdAt, since24h)})`.mapWith(Number),
       completedLast24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since24h))})`.mapWith(Number),
       canceledLast24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...canceledStatuses]), gte(workflowInstances.updatedAt, since24h))})`.mapWith(Number),
-      createdPrev24h: sql<number>`count(*) filter (where ${and(gte(workflowInstances.createdAt, since48h), sql`${workflowInstances.createdAt} < ${since24h}`)})`.mapWith(Number),
-      completedPrev24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since48h), sql`${workflowInstances.updatedAt} < ${since24h}`)})`.mapWith(Number),
+      createdPrev24h: sql<number>`count(*) filter (where ${and(gte(workflowInstances.createdAt, since48h), lt(workflowInstances.createdAt, since24h))})`.mapWith(Number),
+      completedPrev24h: sql<number>`count(*) filter (where ${and(inArray(workflowInstances.status, [...terminalStatuses]), gte(workflowInstances.updatedAt, since48h), lt(workflowInstances.updatedAt, since24h))})`.mapWith(Number),
     })
       .from(workflowInstances)
       .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
