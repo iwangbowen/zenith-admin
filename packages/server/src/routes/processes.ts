@@ -4,12 +4,11 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   validationHook, commonErrorResponses, ok, okMsg,
-  jsonContent, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody,
+  jsonContent, okBody,
 } from '../lib/openapi-schemas';
 import { ProcessInfoDTO, ProcessListResponseDTO } from '../lib/openapi-dtos';
 import {
   listProcesses, getProcessDetail, killProcess, setProcessPriority,
-  exportProcesses, exportProcessesAsCsv,
 } from '../services/processes.service';
 import { killProcessSchema, setProcessPrioritySchema } from '@zenith/shared';
 
@@ -34,36 +33,6 @@ const listRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(ProcessListResponseDTO, '进程列表') },
   }),
   handler: async (c) => c.json(okBody(await listProcesses()), 200),
-});
-
-// ─── GET /export — 导出 Excel ─────────────────────────────────────────────
-const exportRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export',
-    tags: ['进程管理'], summary: '导出进程列表（Excel）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:process:view' })] as const,
-    responses: { ...commonErrorResponses, ...okExcel() },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportProcesses();
-    return excelStreamBody(c, stream, filename);
-  },
-});
-
-// ─── GET /export/csv — 导出 CSV ───────────────────────────────────────────
-const exportCsvRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export/csv',
-    tags: ['进程管理'], summary: '导出进程列表（CSV）',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:process:view' })] as const,
-    responses: { ...commonErrorResponses, ...okCsv() },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportProcessesAsCsv();
-    return csvStreamBody(c, stream, filename);
-  },
 });
 
 // ─── GET /:pid — 进程详情 ─────────────────────────────────────────────────
@@ -187,7 +156,7 @@ processesRouter.get(
     }),
 );
 
-// ─── 注册 OpenAPI 路由（/export, /export/csv 需在 /:pid 之前；/stream 已单独注册）─
-processesRouter.openapiRoutes([listRoute, exportRoute, exportCsvRoute, detailRoute, killRoute, priorityRoute] as const);
+// ─── 注册 OpenAPI 路由（/stream 已单独注册）──────────────────────────────────
+processesRouter.openapiRoutes([listRoute, detailRoute, killRoute, priorityRoute] as const);
 
 export default processesRouter;

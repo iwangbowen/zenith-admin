@@ -52,7 +52,7 @@ const ReportDatasetParamDTO = z.object({
 
 const ReportWidgetDTO = z.object({
   i: z.string(),
-  type: z.enum(['kpi', 'table', 'pivot', 'text', 'bar', 'line', 'area', 'dualAxis', 'pie', 'scatter', 'radar', 'funnel', 'gauge', 'treemap', 'flipper', 'scrollList', 'map']),
+  type: z.enum(['kpi', 'table', 'pivot', 'text', 'bar', 'line', 'area', 'dualAxis', 'pie', 'scatter', 'radar', 'funnel', 'gauge', 'treemap', 'flipper', 'scrollList', 'map', 'sankey', 'wordCloud', 'liquid', 'heatmap', 'image', 'iframe']),
   title: z.string(),
   datasetId: z.number().int().nullable().optional(),
   options: z.record(z.string(), z.unknown()),
