@@ -12,7 +12,7 @@ import { pageOffset } from '../lib/pagination';
 import { escapeLike } from '../lib/where-helpers';
 import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 import logger from '../lib/logger';
-import { getDatasetData, ensureDatasetExists } from './report-dataset.service';
+import { getDatasetData, assertDatasetEvaluableGlobally } from './report-dataset.service';
 import { sendEmail } from './email-send-logs.service';
 import { sendInApp } from './in-app-messages.service';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
@@ -88,7 +88,7 @@ function validateCron(cron?: string | null): void {
 }
 
 export async function createAlert(input: CreateReportAlertInput): Promise<ReportAlertRule> {
-  await ensureDatasetExists(input.datasetId);
+  await assertDatasetEvaluableGlobally(input.datasetId);
   validateCron(input.cron);
   try {
     const [row] = await db.insert(reportAlertRules).values({
@@ -113,7 +113,7 @@ export async function createAlert(input: CreateReportAlertInput): Promise<Report
 
 export async function updateAlert(id: number, input: UpdateReportAlertInput): Promise<ReportAlertRule> {
   await ensureAlertExists(id);
-  if (input.datasetId) await ensureDatasetExists(input.datasetId);
+  if (input.datasetId) await assertDatasetEvaluableGlobally(input.datasetId);
   validateCron(input.cron);
   const [row] = await db.update(reportAlertRules).set({
     name: input.name,

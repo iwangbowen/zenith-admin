@@ -206,6 +206,7 @@ export default function NodeCard({
       type="button"
       className={`fd-node-card${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}${runtime?.active ? ' fd-node-card--rt-active' : ''}${simulationInteractive ? ' fd-node-card--sim-interactive' : ''}${simulationBreakpoint ? ' fd-node-card--sim-breakpoint' : ''}`}
       data-fd-node-id={node.id}
+      data-fd-node-key={node.key ?? node.id}
       onClick={clickable ? handleClick : undefined}
       onContextMenu={onSimulationNodeContextMenu ? (e) => {
         e.preventDefault();

@@ -3,6 +3,7 @@
  */
 import { HTTPException } from 'hono/http-exception';
 import { desc, eq } from 'drizzle-orm';
+import { SUPER_ADMIN_CODE } from '@zenith/shared';
 import { db } from '../db';
 import { reportDashboardComments } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
@@ -57,7 +58,7 @@ export async function deleteComment(dashboardId: number, id: number): Promise<vo
   if (!row || row.dashboardId !== dashboardId) throw new HTTPException(404, { message: '评论不存在' });
   const user = currentUser();
   // 仅作者可删（超管放行由路由 guard 控制）
-  if (row.userId !== user.userId && !user.roles.includes('super_admin')) {
+  if (row.userId !== user.userId && !user.roles.includes(SUPER_ADMIN_CODE)) {
     throw new HTTPException(403, { message: '只能删除自己的评论' });
   }
   await db.delete(reportDashboardComments).where(eq(reportDashboardComments.id, id));

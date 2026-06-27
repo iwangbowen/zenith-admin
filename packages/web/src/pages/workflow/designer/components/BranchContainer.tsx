@@ -160,7 +160,7 @@ export default function BranchContainer({
                 : readOnly || branchType === 'parallelBranch'
                   ? undefined
                   : () => onEditBranch(branch, node.id)}
-              tabIndex={readOnly && !onSimulationBranchClick || branchType === 'parallelBranch' && !onSimulationBranchClick ? -1 : 0}
+              tabIndex={(readOnly || branchType === 'parallelBranch') && !onSimulationBranchClick ? -1 : 0}
               title={onSimulationBranchClick ? '点击查看该分支条件命中原因' : undefined}
             >
               <div className="fd-branch-title__header">

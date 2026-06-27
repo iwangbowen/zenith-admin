@@ -39,7 +39,9 @@ function parseCsv(text: string): ReportDataResult {
     const row: Record<string, unknown> = {};
     headers.forEach((h, idx) => {
       const raw = cells[idx] ?? '';
-      const num = raw !== '' && !Number.isNaN(Number(raw)) ? Number(raw) : raw;
+      // 仅当数字往返无损时才转 number，避免手机号/前导零/大整数被破坏
+      const asNum = Number(raw);
+      const num = raw !== '' && Number.isFinite(asNum) && String(asNum) === raw ? asNum : raw;
       row[h] = num;
     });
     rows.push(row);

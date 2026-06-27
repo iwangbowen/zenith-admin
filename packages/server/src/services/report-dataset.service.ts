@@ -203,6 +203,23 @@ export async function ensureDatasetExists(id: number): Promise<ReportDatasetRow>
   return row;
 }
 
+/**
+ * 校验数据集可在「无用户上下文 / 全局」场景安全求值（如数据预警 Cron、定时推送）。
+ * 拒绝使用数据权限系统变量(${__userId} 等) 或含必填参数的数据集——否则全局评估会
+ * 因缺少用户上下文/必填参数而得到错误或空结果，导致漏报/误报。
+ */
+export async function assertDatasetEvaluableGlobally(datasetId: number): Promise<void> {
+  const row = await ensureDatasetExists(datasetId);
+  const sqlText = isSqlLikeType(row.type) ? (((row.content ?? {}) as ReportSqlDatasetContent).sql ?? '') : '';
+  if (/\$\{\s*__\w+\s*\}/.test(sqlText)) {
+    throw new HTTPException(400, { message: '该数据集使用了数据权限系统变量（${__userId} 等），无法用于全局评估（如预警/定时任务），请改用无数据权限变量的数据集' });
+  }
+  const params = (row.params ?? []) as ReportDatasetParam[];
+  if (params.some((p) => p.required)) {
+    throw new HTTPException(400, { message: '该数据集含必填参数，无法用于全局评估（预警/定时任务无运行时参数），请改用无必填参数的数据集' });
+  }
+}
+
 export async function getDataset(id: number): Promise<ReportDataset> {
   const row = await db.query.reportDatasets.findFirst({
     where: eq(reportDatasets.id, id),

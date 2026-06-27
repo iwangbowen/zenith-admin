@@ -50,6 +50,8 @@ function getPgPool(type: ReportDatasourceType, config: ReportExternalDbConfig): 
     host: c.host, port: c.port || 5432, database: c.database, username: c.user, password: c.password,
     ssl: c.ssl ? 'require' : undefined, max: 3, idle_timeout: 30, connect_timeout: 10,
     prepare: false, onnotice: () => {},
+    // 连接级 statement_timeout + 只读：每条连接建立时即生效，避免 SET 落在另一池连接上
+    connection: { statement_timeout: QUERY_TIMEOUT_MS, default_transaction_read_only: true },
   });
   pools.set(key, { kind: 'pg', sql, expire: Date.now() + IDLE_TTL_MS });
   return sql;
@@ -72,6 +74,11 @@ async function getMssqlPool(config: ReportExternalDbConfig): Promise<mssql.Conne
   const key = poolKey('sqlserver', config);
   const existing = pools.get(key);
   if (existing && existing.kind === 'mssql' && existing.pool.connected) { existing.expire = Date.now() + IDLE_TTL_MS; return existing.pool; }
+  // 旧池存在但已断开：先关闭再替换，避免连接/句柄泄露
+  if (existing && existing.kind === 'mssql') {
+    try { await existing.pool.close(); } catch { /* ignore */ }
+    pools.delete(key);
+  }
   const c = resolveConfig(config);
   const pool = new mssql.ConnectionPool({
     server: c.host, port: c.port || 1433, database: c.database, user: c.user, password: c.password,
@@ -115,7 +122,7 @@ export async function runExternalQuery(
   try {
     if (type === 'postgresql') {
       const sql = getPgPool(type, config);
-      await sql.unsafe(`SET statement_timeout = ${QUERY_TIMEOUT_MS}`);
+      // statement_timeout 已在连接级设置（见 getPgPool），此处直接执行
       const wrapped = `SELECT * FROM (${trimmed}) AS _sub LIMIT ${capped}`;
       const rows = (await sql.unsafe(wrapped, values as never[])) as unknown as Record<string, unknown>[];
       const arr = Array.isArray(rows) ? rows : [];
@@ -126,11 +133,8 @@ export async function runExternalQuery(
       const pool = await getMssqlPool(config);
       const request = pool.request();
       values.forEach((v, i) => request.input(`p${i}`, v as never));
-      // SELECT 注入 TOP；其余（WITH）取数后切片兜底行上限
-      const queryText = /^select\b/i.test(trimmed)
-        ? trimmed.replace(/^select\s+/i, `SELECT TOP (${capped}) `)
-        : trimmed;
-      const result = await request.query(queryText);
+      // SET ROWCOUNT 限制返回行数：对 SELECT 与 WITH/CTE 均生效，且不破坏 DISTINCT（避免 TOP 注入）
+      const result = await request.query(`SET ROWCOUNT ${capped}; ${trimmed}; SET ROWCOUNT 0`);
       const arr = ((result.recordset ?? []) as Record<string, unknown>[]).slice(0, capped);
       const columns = arr.length ? Object.keys(arr[0]) : [];
       return { columns, rows: arr, total: arr.length };
