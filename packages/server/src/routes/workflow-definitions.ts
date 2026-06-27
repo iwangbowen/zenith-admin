@@ -2,8 +2,8 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, BatchIdsBody, okBody } from '../lib/openapi-schemas';
-import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO, WorkflowDefinitionExportDTO, WorkflowVersionDiffDTO, WorkflowApproverPreviewNodeDTO, WorkflowSimulationResultDTO } from '../lib/openapi-dtos';
-import { importWorkflowDefinitionSchema, previewWorkflowSchema, simulateWorkflowSchema, workflowCustomFormConfigSchema, workflowFormTypeSchema } from '@zenith/shared';
+import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO, WorkflowDefinitionExportDTO, WorkflowVersionDiffDTO, WorkflowApproverPreviewNodeDTO, WorkflowSimulationResultDTO, WorkflowDefinitionHealthReportDTO } from '../lib/openapi-dtos';
+import { importWorkflowDefinitionSchema, previewWorkflowSchema, simulateWorkflowSchema, workflowHealthCheckSchema, workflowCustomFormConfigSchema, workflowFormTypeSchema } from '@zenith/shared';
 import {
   listDefinitions, listPublishedDefinitions, getDefinition, createDefinition,
   updateDefinition, publishDefinition, disableDefinition, enableDefinition, deleteDefinition, getWorkflowDefinitionBeforeAudit,
@@ -12,7 +12,7 @@ import {
   listVersions, restoreVersion, duplicateDefinition, exportDefinition, importDefinition, diffVersions,
 } from '../services/workflow-definitions.service';
 import { previewFlow } from '../services/workflow-preview.service';
-import { simulateWorkflow } from '../services/workflow-simulation.service';
+import { simulateWorkflow, checkDefinitionHealth } from '../services/workflow-simulation.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -387,6 +387,22 @@ const simulateRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await simulateWorkflow(c.req.valid('json'))), 200),
 });
 
-router.openapiRoutes([listRoute, publishedRoute, importRoute, detailRoute, createRouteDef, updateRouteDef, publishRoute, disableRoute, enableRoute, deleteRouteDef, batchDisableRoute, batchEnableRoute, batchDeleteRoute, listVersionsRoute, restoreVersionRoute, duplicateRoute, exportRoute, diffVersionsRoute, previewRoute, simulateRoute] as const);
+const healthCheckRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/health-check', tags: ['WorkflowDefinitions'], summary: '发布前健康体检（评分+分支覆盖）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
+    request: { body: { content: jsonContent(workflowHealthCheckSchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowDefinitionHealthReportDTO, 'ok'),
+      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await checkDefinitionHealth(c.req.valid('json'))), 200),
+});
+
+router.openapiRoutes([listRoute, publishedRoute, importRoute, detailRoute, createRouteDef, updateRouteDef, publishRoute, disableRoute, enableRoute, deleteRouteDef, batchDisableRoute, batchEnableRoute, batchDeleteRoute, listVersionsRoute, restoreVersionRoute, duplicateRoute, exportRoute, diffVersionsRoute, previewRoute, simulateRoute, healthCheckRoute] as const);
 
 export default router;

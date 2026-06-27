@@ -7,6 +7,7 @@ import { db } from '../db';
 import { users, workflowDefinitions } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { advanceFlow, evaluateCondition, evaluateConditionGroups, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
+import { analyzeWorkflowHealth } from '../lib/workflow-health';
 import { tenantCondition } from '../lib/tenant';
 import { buildStarterContext, resolveAdminUserId, resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import type {
@@ -15,6 +16,8 @@ import type {
   WorkflowEdge,
   WorkflowEdgeCondition,
   WorkflowFlowData,
+  WorkflowHealthCheckInput,
+  WorkflowDefinitionHealthReport,
   WorkflowNodeConfig,
   WorkflowSimulationEdgeResult,
   WorkflowSimulationHealthIssue,
@@ -684,6 +687,14 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
   ctx.completedKeys.add(task.nodeKey);
   markNode(ctx, task.nodeKey, { status: 'done' });
   return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
+}
+
+/**
+ * 发布前健康体检：纯静态分析流程定义，输出健康评分 + 分维度检查 + 分支覆盖。
+ */
+export async function checkDefinitionHealth(input: WorkflowHealthCheckInput): Promise<WorkflowDefinitionHealthReport> {
+  const flowData = await resolveFlowData(input as SimulateWorkflowInput);
+  return analyzeWorkflowHealth(flowData);
 }
 
 export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<WorkflowSimulationResult> {

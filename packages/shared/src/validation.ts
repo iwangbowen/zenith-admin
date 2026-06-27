@@ -1130,6 +1130,14 @@ export const simulateWorkflowSchema = z.object({
 });
 export type SimulateWorkflowInput = z.infer<typeof simulateWorkflowSchema>;
 
+export const workflowHealthCheckSchema = z.object({
+  definitionId: z.number().int().positive().optional(),
+  flowData: z.looseObject({}).nullable().optional(),
+}).refine((v) => v.definitionId || v.flowData, {
+  message: 'definitionId 和 flowData 至少需要提供一个',
+});
+export type WorkflowHealthCheckInput = z.infer<typeof workflowHealthCheckSchema>;
+
 // ── 主动抄送 / 转发 ──
 export const forwardInstanceSchema = z.object({
   userIds: z.array(z.number().int().positive()).min(1, '请选择抄送人').max(50),

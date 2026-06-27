@@ -3266,6 +3266,56 @@ export interface WorkflowJobSummaryItem {
   canceled: number;
 }
 
+export interface WorkflowJobBatchResult {
+  total: number;
+  success: number;
+  skipped: number;
+}
+
+// ─── 发布前健康评分 / 分支覆盖分析 ──────────────────────────────────────────
+export type WorkflowDefinitionHealthSeverity = 'info' | 'warning' | 'critical';
+
+export interface WorkflowDefinitionHealthIssue {
+  severity: WorkflowDefinitionHealthSeverity;
+  message: string;
+  suggestion: string | null;
+  nodeKey: string | null;
+  nodeName: string | null;
+}
+
+export interface WorkflowDefinitionHealthCheckItem {
+  key: 'structure' | 'approver' | 'branch' | 'timeout';
+  title: string;
+  status: 'pass' | 'warn' | 'fail';
+  /** 该维度得分 0-100 */
+  score: number;
+  /** 该维度在总分中的权重 0-1 */
+  weight: number;
+  summary: string;
+  issues: WorkflowDefinitionHealthIssue[];
+}
+
+/** 单个网关的分支覆盖分析 */
+export interface WorkflowDefinitionBranchCoverageItem {
+  nodeKey: string;
+  nodeName: string;
+  nodeType: string;
+  branchCount: number;
+  hasDefault: boolean;
+  issues: WorkflowDefinitionHealthIssue[];
+}
+
+export interface WorkflowDefinitionHealthReport {
+  /** 总分 0-100（各维度加权） */
+  score: number;
+  grade: 'A' | 'B' | 'C' | 'D';
+  /** 结构是否硬性合法（来自 validateFlowData） */
+  valid: boolean;
+  checks: WorkflowDefinitionHealthCheckItem[];
+  branchCoverage: WorkflowDefinitionBranchCoverageItem[];
+  generatedAt: string;
+}
+
 // ─── 运行轨迹 / 引擎解释（实例可观测性）─────────────────────────────────────
 export type WorkflowEngineExplanationState = 'running' | 'blocked' | 'completed' | 'rejected' | 'canceled' | 'withdrawn' | 'draft';
 

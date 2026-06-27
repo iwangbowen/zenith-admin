@@ -19,7 +19,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, WorkflowJob, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobSummaryItem, WorkflowJobType } from '@zenith/shared';
+import type { PaginatedResponse, WorkflowJob, WorkflowJobBatchResult, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobSummaryItem, WorkflowJobType } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -118,6 +118,8 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actingId, setActingId] = useState<number | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [batchLoading, setBatchLoading] = useState(false);
 
   const fetchList = useCallback(async (p = page, ps = pageSize, st = status, kw = keyword) => {
     setLoading(true);
@@ -138,6 +140,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   }, [jobType]);
 
   const handleSearch = useCallback(() => {
+    setSelectedRowKeys([]);
     resetPage();
     void fetchList(1, pageSize, status, keyword);
   }, [fetchList, pageSize, resetPage, status, keyword]);
@@ -145,9 +148,30 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   const handleReset = useCallback(() => {
     setStatus(undefined);
     setKeyword('');
+    setSelectedRowKeys([]);
     resetPage();
     void fetchList(1, pageSize, undefined, '');
   }, [fetchList, pageSize, resetPage]);
+
+  const handleBatch = useCallback(async (action: 'retry' | 'skip') => {
+    if (selectedRowKeys.length === 0) return;
+    setBatchLoading(true);
+    try {
+      const res = await request.post<WorkflowJobBatchResult>(`/api/workflows/engine/jobs/batch-${action}`, { ids: selectedRowKeys });
+      if (res.code === 0) {
+        Toast.success(res.message || `已${action === 'retry' ? '重试' : '跳过'} ${res.data.success} 项`);
+        setSelectedRowKeys([]);
+        await fetchList();
+        onMutated();
+      } else {
+        Toast.warning(res.message || '批量操作失败');
+      }
+    } catch {
+      Toast.error('批量操作失败');
+    } finally {
+      setBatchLoading(false);
+    }
+  }, [selectedRowKeys, fetchList, onMutated]);
 
   const openDetail = useCallback(async (id: number) => {
     setDetailVisible(true);
@@ -359,6 +383,19 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
         onFilterReset={handleReset}
       />
 
+      {canOperate && selectedRowKeys.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '8px 12px', background: 'var(--semi-color-primary-light-default)', borderRadius: 6 }}>
+          <Typography.Text size="small">已选 <b>{selectedRowKeys.length}</b> 项</Typography.Text>
+          <Popconfirm title={`确定批量重试选中的 ${selectedRowKeys.length} 项？`} content="不满足条件（成功/运行中）的将自动跳过" onConfirm={() => void handleBatch('retry')}>
+            <Button size="small" type="primary" loading={batchLoading}>批量重试</Button>
+          </Popconfirm>
+          <Popconfirm title={`确定批量跳过选中的 ${selectedRowKeys.length} 项？`} content="作业将被标记为已取消，不再执行" onConfirm={() => void handleBatch('skip')}>
+            <Button size="small" type="danger" loading={batchLoading}>批量跳过</Button>
+          </Popconfirm>
+          <Button size="small" theme="borderless" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+        </div>
+      )}
+
       <ConfigurableTable
         bordered
         columns={columns}
@@ -368,6 +405,13 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
         scroll={{ x: 1260 }}
+        rowSelection={canOperate ? {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+          getCheckboxProps: (record: WorkflowJob) => ({
+            disabled: !(record.status === 'pending' || record.status === 'failed' || record.status === 'dead' || record.status === 'canceled'),
+          }),
+        } : undefined}
         pagination={buildPagination(data?.total ?? 0, (p, ps) => { setPage(p); void fetchList(p, ps); })}
       />
 

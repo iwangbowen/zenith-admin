@@ -1010,6 +1010,50 @@ export const workflowHandlers = [
     return ok(buildMockSimulationResult(flowData, body.starterUserId, body.decisions ?? []));
   }),
 
+  // 发布前体检（评分 + 分支覆盖）
+  http.post('/api/workflows/definitions/health-check', async ({ request }) => {
+    const body = await request.json().catch(() => ({})) as { definitionId?: number; flowData?: WorkflowFlowData | null };
+    const definition = body.definitionId ? mockWorkflowDefinitions.find((item) => item.id === body.definitionId) : undefined;
+    const flowData = (body.flowData ?? definition?.flowData ?? null) as { nodes?: Array<{ data?: { type?: string; label?: string; key?: string } }> } | null;
+    const nodes = flowData?.nodes ?? [];
+    const approveNodes = nodes.filter((n) => n.data?.type === 'approve' || n.data?.type === 'handler');
+    const gatewayNodes = nodes.filter((n) => ['exclusiveGateway', 'inclusiveGateway', 'routeGateway'].includes(n.data?.type ?? ''));
+    const firstGw = gatewayNodes[0]?.data;
+    const report = {
+      score: 82,
+      grade: 'B' as const,
+      valid: true,
+      checks: [
+        { key: 'structure', title: '结构合法性', status: 'pass', score: 100, weight: 0.35, summary: '流程结构合法', issues: [] },
+        {
+          key: 'approver', title: '审批人可解析性', status: 'warn', score: 80, weight: 0.30,
+          summary: `${approveNodes.length} 个审批节点，1 个为动态来源`,
+          issues: [{ severity: 'info', message: '存在审批人为动态来源但未配置空审批人兜底策略的节点', suggestion: '设置 emptyStrategy 避免运行时无人可审', nodeKey: null, nodeName: approveNodes[0]?.data?.label ?? '审批人' }],
+        },
+        {
+          key: 'branch', title: '分支覆盖', status: gatewayNodes.length > 0 ? 'warn' : 'pass', score: gatewayNodes.length > 0 ? 76 : 100, weight: 0.25,
+          summary: gatewayNodes.length > 0 ? '发现 1 处分支问题' : '分支覆盖完整，未发现死路/重叠',
+          issues: gatewayNodes.length > 0 ? [{ severity: 'warning', message: `网关「${firstGw?.label ?? '条件分支'}」缺少默认分支`, suggestion: '添加一条默认分支兜底，避免所有条件都不满足时流程卡死', nodeKey: firstGw?.key ?? null, nodeName: firstGw?.label ?? '条件分支' }] : [],
+        },
+        {
+          key: 'timeout', title: '超时/SLA 策略', status: 'pass', score: 90, weight: 0.10,
+          summary: approveNodes.length > 0 ? `${approveNodes.length - 1 >= 0 ? approveNodes.length : 0} 个审批节点，部分未配置超时` : '审批节点均已配置超时策略',
+          issues: approveNodes.length > 0 ? [{ severity: 'info', message: `节点「${approveNodes[0]?.data?.label ?? '审批人'}」未配置超时/SLA 提醒`, suggestion: '配置超时时长，便于超时预警与自动催办', nodeKey: null, nodeName: approveNodes[0]?.data?.label ?? '审批人' }] : [],
+        },
+      ],
+      branchCoverage: gatewayNodes.map((g, i) => ({
+        nodeKey: g.data?.key ?? `gw-${i}`,
+        nodeName: g.data?.label ?? '条件分支',
+        nodeType: g.data?.type ?? 'exclusiveGateway',
+        branchCount: 2,
+        hasDefault: i > 0,
+        issues: i === 0 ? [{ severity: 'warning', message: `网关「${g.data?.label ?? '条件分支'}」缺少默认分支`, suggestion: '添加默认分支兜底', nodeKey: g.data?.key ?? null, nodeName: g.data?.label ?? '条件分支' }] : [],
+      })),
+      generatedAt: mockDateTime(),
+    };
+    return ok(report);
+  }),
+
   // 获取单个流程定义
   http.get('/api/workflows/definitions/:id', ({ params }) => {
     const def = mockWorkflowDefinitions.find(d => d.id === Number(params.id));
@@ -1428,6 +1472,37 @@ export const workflowHandlers = [
     job.lockedAt = null;
     job.updatedAt = mockDateTime();
     return ok(job, '已跳过');
+  }),
+
+  http.post('/api/workflows/engine/jobs/batch-retry', async ({ request }) => {
+    const body = await request.json().catch(() => ({})) as { ids?: number[] };
+    const ids = body?.ids ?? [];
+    let success = 0;
+    for (const id of ids) {
+      const job = mockWorkflowJobs.find((j) => j.id === id);
+      if (job && ['failed', 'dead', 'canceled'].includes(job.status)) {
+        job.status = 'pending'; job.attempts = 0; job.lockedAt = null; job.lockedBy = null; job.lastError = null;
+        job.runAt = mockDateTime(); job.updatedAt = mockDateTime();
+        success += 1;
+      }
+    }
+    const skipped = ids.length - success;
+    return ok({ total: ids.length, success, skipped }, `已重试 ${success} 项${skipped > 0 ? `，${skipped} 项状态不满足已跳过` : ''}`);
+  }),
+
+  http.post('/api/workflows/engine/jobs/batch-skip', async ({ request }) => {
+    const body = await request.json().catch(() => ({})) as { ids?: number[] };
+    const ids = body?.ids ?? [];
+    let success = 0;
+    for (const id of ids) {
+      const job = mockWorkflowJobs.find((j) => j.id === id);
+      if (job && ['pending', 'failed', 'dead'].includes(job.status)) {
+        job.status = 'canceled'; job.lockedAt = null; job.updatedAt = mockDateTime();
+        success += 1;
+      }
+    }
+    const skipped = ids.length - success;
+    return ok({ total: ids.length, success, skipped }, `已跳过 ${success} 项${skipped > 0 ? `，${skipped} 项状态不满足已跳过` : ''}`);
   }),
 
   http.get('/api/workflows/instances/:id/diagnostics', ({ params }) => {

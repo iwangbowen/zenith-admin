@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
+import { ArrowLeft, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Stethoscope, Undo2, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -46,6 +46,7 @@ import WorkflowFormRenderer from './components/WorkflowFormRenderer';
 import BasicInfoPanel from './components/BasicInfoPanel';
 import AdvancedSettingsPanel from './components/AdvancedSettingsPanel';
 import WorkflowSimulationDrawer from './components/WorkflowSimulationDrawer';
+import WorkflowHealthCheckDrawer from './components/WorkflowHealthCheckDrawer';
 import type { AdvancedSettingsData } from './components/AdvancedSettingsPanel';
 import { DEFAULT_ADVANCED_SETTINGS } from './components/advanced-settings';
 import './styles/flow-designer.css';
@@ -121,6 +122,8 @@ export default function WorkflowDesignerPage({
 
   // 仿真
   const [simulationVisible, setSimulationVisible] = useState(false);
+  // 发布前体检
+  const [healthVisible, setHealthVisible] = useState(false);
   // 历史版本
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
 
@@ -815,6 +818,9 @@ export default function WorkflowDesignerPage({
                 <Button icon={<Play size={14} />} type="tertiary" theme="borderless" onClick={() => setSimulationVisible(true)}>
                   仿真
                 </Button>
+                <Button icon={<Stethoscope size={14} />} type="tertiary" theme="borderless" onClick={() => setHealthVisible(true)}>
+                  体检
+                </Button>
                 <span className="fd-canvas__toolbar-divider" />
               </>
             )}
@@ -877,6 +883,13 @@ export default function WorkflowDesignerPage({
         formFields={localFormFields}
         users={users}
         onClose={() => setSimulationVisible(false)}
+      />
+
+      <WorkflowHealthCheckDrawer
+        visible={healthVisible}
+        definitionId={!isNew && id ? Number(id) : null}
+        flowData={buildCurrentFlowData()}
+        onClose={() => setHealthVisible(false)}
       />
 
       {/* 节点配置抽屉 */}

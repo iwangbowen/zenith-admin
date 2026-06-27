@@ -82,3 +82,12 @@ export const WorkflowJobSummaryItemDTO = z
     canceled: z.number().int(),
   })
   .openapi('WorkflowJobSummaryItem');
+
+/** 批量补偿结果 */
+export const WorkflowJobBatchResultDTO = z
+  .object({
+    total: z.number().int(),
+    success: z.number().int(),
+    skipped: z.number().int(),
+  })
+  .openapi('WorkflowJobBatchResult');

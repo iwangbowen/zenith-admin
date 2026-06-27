@@ -106,6 +106,34 @@ export async function skipWorkflowJob(id: number) {
   return mapJob(row);
 }
 
+export interface WorkflowJobBatchResult {
+  total: number;
+  /** 成功执行的数量 */
+  success: number;
+  /** 因状态不满足而跳过的数量 */
+  skipped: number;
+}
+
+/** 批量重试：逐个调用 retryJob，不满足条件（非 failed/dead/canceled）计入 skipped。 */
+export async function batchRetryWorkflowJobs(ids: number[]): Promise<WorkflowJobBatchResult> {
+  let success = 0;
+  for (const id of ids) {
+    const row = await retryJob(id);
+    if (row) success += 1;
+  }
+  return { total: ids.length, success, skipped: ids.length - success };
+}
+
+/** 批量跳过：逐个调用 skipJob，不满足条件（非 pending/failed/dead）计入 skipped。 */
+export async function batchSkipWorkflowJobs(ids: number[]): Promise<WorkflowJobBatchResult> {
+  let success = 0;
+  for (const id of ids) {
+    const row = await skipJob(id);
+    if (row) success += 1;
+  }
+  return { total: ids.length, success, skipped: ids.length - success };
+}
+
 const ALL_JOB_TYPES: WorkflowJobRow['jobType'][] = [
   'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
   'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
