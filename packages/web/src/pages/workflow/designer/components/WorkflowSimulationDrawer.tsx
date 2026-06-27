@@ -2,15 +2,14 @@
  * 流程设计器仿真抽屉：收集测试表单数据并展示 dry-run 时间线。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Banner, Button, Empty, Select, SideSheet, Space, Spin, Tag, TextArea, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, Flag, GitCompare, ListChecks, Minus, Pause, Play, Plus, RotateCcw, Save, Send, Wand2, X, XCircle } from 'lucide-react';
+import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, GitCompare, ListChecks, Minus, Pause, Play, Plus, RotateCcw, Save, Send, Wand2, X, XCircle } from 'lucide-react';
 import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateForApi, formatDateTimeForApi } from '@/utils/date';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import FlowRenderer from './FlowRenderer';
-import { timelineDot } from '@/components/workflow/timeline-dot';
 import type { FlowBranch, FlowNode, FlowProcess, NodeRuntimeInfo } from '../types';
 
 interface UserOption {
@@ -318,13 +317,12 @@ function cssAttrValue(value: string): string {
 function keepNodeVisibleInCanvas(canvas: HTMLElement, target: HTMLElement): void {
   const canvasRect = canvas.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
-  const topMargin = 120;
   const margin = 48;
   let topDelta = 0;
   let leftDelta = 0;
 
-  if (targetRect.top < canvasRect.top + topMargin) {
-    topDelta = targetRect.top - canvasRect.top - topMargin;
+  if (targetRect.top < canvasRect.top + margin) {
+    topDelta = targetRect.top - canvasRect.top - margin;
   } else if (targetRect.bottom > canvasRect.bottom - margin) {
     topDelta = targetRect.bottom - canvasRect.bottom + margin;
   }
@@ -356,7 +354,6 @@ export default function WorkflowSimulationDrawer({
   process,
   formFields,
   users,
-  loading = false,
   onClose,
 }: Readonly<WorkflowSimulationDrawerProps>) {
   const formApi = useRef<FormApi | null>(null);
@@ -684,24 +681,35 @@ export default function WorkflowSimulationDrawer({
       else if (last.status === 'waiting' || last.status === 'blocked') status = 'waiting';
       else if (last.status === 'skipped') status = 'skipped';
       else status = 'approved';
+      const statusLabel = active && !['rejected', 'waiting', 'blocked', 'skipped'].includes(last.status)
+        ? '当前步骤'
+        : STATUS_META[last.status].label;
+      const nodeReason = last.detail ?? last.reason ?? null;
+      const nextNodeNames = last.nextNodeKeys?.map((key) => nodeLabel(flowData, key)).filter(Boolean) ?? [];
       const approvers = items
         .flatMap((item) => item.assignees ?? [])
         .map((user) => ({
           name: user.name,
           status,
           actionAt: null,
-          comment: active ? '当前仿真步骤' : last.reason ?? null,
+          comment: active ? nodeReason ?? '当前仿真步骤' : nodeReason,
         }));
       map.set(nodeKey, {
         status,
         active,
+        step: last.step,
+        totalSteps,
+        statusLabel,
+        reason: last.reason ?? null,
+        detail: last.detail ?? null,
+        nextNodeNames,
         approvers: approvers.length > 0
           ? approvers
-          : [{ name: active ? '当前步骤' : last.reason ?? '仿真经过', status, actionAt: null, comment: last.reason ?? null }],
+          : [{ name: active ? '当前步骤' : last.nodeName || '仿真经过', status, actionAt: null, comment: nodeReason }],
       });
     });
     return map;
-  }, [currentStep, result]);
+  }, [currentStep, flowData, result, totalSteps]);
 
   const simulationDimmedBranchIds = useMemo(() => {
     if (!result || currentStep <= 0) return undefined;
@@ -736,58 +744,6 @@ export default function WorkflowSimulationDrawer({
         ? 'rejected'
         : undefined
     : undefined;
-
-  const renderTimeline = () => {
-    if (loading || submitting) {
-      return <Spin style={{ width: '100%', padding: '32px 0' }} />;
-    }
-    if (!result) {
-      return <Empty title="尚未开始仿真" description="填写测试数据后运行，可在画布上查看命中路径" />;
-    }
-    if (result.timeline.length === 0) {
-      return <Empty title="没有仿真轨迹" description={result.warnings[0] ?? '流程未产生可执行节点'} />;
-    }
-    return (
-      <Timeline className="fd-simulation-timeline__list" style={{ paddingLeft: 2 }}>
-        {result.timeline.map((item) => {
-          const meta = STATUS_META[item.status];
-          const active = item.step === currentStep;
-          const future = item.step > currentStep;
-          const statusLabel = active && !['rejected', 'waiting', 'blocked', 'skipped'].includes(item.status) ? '当前步骤' : meta.label;
-          return (
-            <Timeline.Item
-              key={`${item.step}-${item.nodeKey}-${item.status}`}
-              dot={timelineDot(future ? CircleDashed : meta.icon, future ? 'var(--semi-color-tertiary)' : meta.color)}
-            >
-              <div className={`fd-simulation-timeline-item${active ? ' fd-simulation-timeline-item--active' : ''}${future ? ' fd-simulation-timeline-item--future' : ''}`}>
-                <div className="fd-simulation-timeline-item__head">
-                  <Typography.Text strong>{item.nodeName}</Typography.Text>
-                  <Tag size="small" color="grey">{item.nodeType}</Tag>
-                  {breakpoints.has(item.nodeKey) && <Tag size="small" color="orange">断点</Tag>}
-                  <Tag size="small" color={future ? 'grey' : item.status === 'rejected' ? 'red' : item.status === 'waiting' ? 'orange' : active ? 'blue' : 'green'}>
-                    {statusLabel}
-                  </Tag>
-                </div>
-                {item.assignees && item.assignees.length > 0 && (
-                  <Typography.Text size="small" type="tertiary">
-                    处理人：{item.assignees.map((user) => user.name).join('、')}
-                  </Typography.Text>
-                )}
-                {item.reason && (
-                  <Typography.Text size="small" type="tertiary">
-                    {item.reason}
-                  </Typography.Text>
-                )}
-              </div>
-            </Timeline.Item>
-          );
-        })}
-        <Timeline.Item dot={timelineDot(Flag, currentStep >= totalSteps ? 'var(--semi-color-success)' : 'var(--semi-color-tertiary)')}>
-          <Typography.Text strong type={currentStep >= totalSteps ? undefined : 'tertiary'}>仿真结束</Typography.Text>
-        </Timeline.Item>
-      </Timeline>
-    );
-  };
 
   const resultMeta = result ? RESULT_META[result.result] : null;
   const canDecide = nodeTypeCanDecide(currentItem);
@@ -935,89 +891,82 @@ export default function WorkflowSimulationDrawer({
               <Button icon={<RotateCcw size={12} />} type="tertiary" theme="borderless" size="small" onClick={() => setGraphZoom(90)} />
             </div>
           </div>
-          <div className="fd-simulation-graph__meta">
-            <section className="fd-simulation-detail fd-simulation-detail--timeline">
-              <div className="fd-simulation-detail__title">
-                <Flag size={14} />
-                <Typography.Text strong>仿真步骤</Typography.Text>
-                {resultMeta && <Tag size="small" color={resultMeta.color}>{resultMeta.label}</Tag>}
-              </div>
-              {result?.warnings.length ? (
-                <Banner type={result.valid ? 'warning' : 'danger'} description={result.warnings.join('；')} />
-              ) : null}
-              {result && totalSteps > 0 && (
-                <div className="fd-simulation-player">
-                  <div className="fd-simulation-player__head">
-                    <Typography.Text strong>第 {currentStep} / {totalSteps} 步</Typography.Text>
-                    {currentItem && <Tag color="blue">{currentItem.nodeName}</Tag>}
-                  </div>
-                  <div className="fd-simulation-player__bar"><span style={{ width: `${progressPercent}%` }} /></div>
-                  <Space wrap spacing={6}>
-                    <Button size="small" icon={<Play size={13} />} onClick={replay}>重播</Button>
-                    <Button size="small" icon={<FastForward size={13} />} onClick={runToBreakpoint} disabled={breakpoints.size === 0}>运行到断点</Button>
-                    <Button size="small" icon={<Bookmark size={13} />} onClick={toggleBreakpoint} disabled={!currentItem}>
-                      {currentItem && breakpoints.has(currentItem.nodeKey) ? '取消断点' : '设为断点'}
-                    </Button>
-                  </Space>
-                </div>
-              )}
-              <div className="fd-simulation-timeline">{renderTimeline()}</div>
-              <div className="fd-simulation-step-branches">
-                <div className="fd-simulation-step-branches__title">
-                  <GitCompare size={14} />
-                  <Typography.Text strong>路径与分支</Typography.Text>
-                  {selectedBranch && <Tag size="small" color="blue">{selectedBranch.name}</Tag>}
-                </div>
-                {selectedBranch && (
-                  <div className="fd-simulation-branch-focus">
-                    <Typography.Text size="small">已选中：{selectedBranch.branchNodeName} / {selectedBranch.name}</Typography.Text>
-                    <Button size="small" type="tertiary" theme="borderless" onClick={() => setSelectedBranch(null)}>清除</Button>
-                  </div>
-                )}
-                {pathCompare && (
-                  <div className="fd-simulation-path-compare">
-                    <Typography.Text size="small" type="tertiary">上次：{pathCompare.before}</Typography.Text>
-                    <Typography.Text size="small">本次：{pathCompare.after}</Typography.Text>
-                    <Typography.Text size="small" type="tertiary">
-                      {pathCompare.changedAt ? `第 ${pathCompare.changedAt} 步开始出现差异` : '路径没有变化'}
-                      {pathCompare.added.length ? `；新增 ${pathCompare.added.join('、')}` : ''}
-                      {pathCompare.removed.length ? `；未经过 ${pathCompare.removed.join('、')}` : ''}
-                    </Typography.Text>
-                  </div>
-                )}
-                <div className="fd-simulation-edge-list">
-                  {currentEdges.slice(0, 4).map((edge) => (
-                    <div className={`fd-simulation-edge-item${edge.taken ? ' fd-simulation-edge-item--taken' : ''}`} key={edge.edgeId}>
-                      <Tag size="small" color={edge.taken ? 'green' : 'grey'}>{edge.taken ? '命中' : '未命中'}</Tag>
-                      <div>
-                        <Typography.Text size="small">{nodeLabel(flowData, edge.sourceKey)}{' -> '}{nodeLabel(flowData, edge.targetKey)}</Typography.Text>
-                        <Typography.Text size="small" type="tertiary">
-                          {edge.reason ?? edge.conditionSummary ?? edge.label ?? '普通连线'}
-                          {edge.actualValue ? `；实际值：${edge.actualValue}` : ''}
-                        </Typography.Text>
-                      </div>
-                    </div>
-                  ))}
-                  {currentEdges.length > 4 && (
-                    <Typography.Text size="small" type="tertiary">
-                      还有 {currentEdges.length - 4} 条分支，可点击流程图分支查看。
-                    </Typography.Text>
-                  )}
-                  {currentEdges.length === 0 && <Typography.Text size="small" type="tertiary">当前步骤暂无可展示的分支判断。</Typography.Text>}
-                </div>
-              </div>
-            </section>
-          </div>
-          <div className="fd-simulation-graph__canvas" ref={graphCanvasRef}>
+          <div className="fd-simulation-graph__status">
+            {result?.warnings.length ? (
+              <Banner type={result.valid ? 'warning' : 'danger'} description={result.warnings.join('；')} />
+            ) : null}
             <div className="fd-simulation-current-bar" aria-live="polite">
               <div className="fd-simulation-current-bar__title">
                 <ListChecks size={14} />
                 <Typography.Text strong>当前步骤详情</Typography.Text>
+                {resultMeta && <Tag size="small" color={resultMeta.color}>{resultMeta.label}</Tag>}
               </div>
               <div className="fd-simulation-current-bar__body">
+                {result && totalSteps > 0 && (
+                  <div className="fd-simulation-player">
+                    <div className="fd-simulation-player__head">
+                      <Typography.Text strong>第 {currentStep} / {totalSteps} 步</Typography.Text>
+                      {currentItem && <Tag color="blue">{currentItem.nodeName}</Tag>}
+                    </div>
+                    <div className="fd-simulation-player__bar"><span style={{ width: `${progressPercent}%` }} /></div>
+                    <Space wrap spacing={6}>
+                      <Button size="small" icon={<Play size={13} />} onClick={replay}>重播</Button>
+                      <Button size="small" icon={<FastForward size={13} />} onClick={runToBreakpoint} disabled={breakpoints.size === 0}>运行到断点</Button>
+                      <Button size="small" icon={<Bookmark size={13} />} onClick={toggleBreakpoint} disabled={!currentItem}>
+                        {currentItem && breakpoints.has(currentItem.nodeKey) ? '取消断点' : '设为断点'}
+                      </Button>
+                    </Space>
+                  </div>
+                )}
                 {renderCurrentStepDetail(true)}
+                <div className="fd-simulation-step-branches">
+                  <div className="fd-simulation-step-branches__title">
+                    <GitCompare size={14} />
+                    <Typography.Text strong>路径与分支</Typography.Text>
+                    {selectedBranch && <Tag size="small" color="blue">{selectedBranch.name}</Tag>}
+                  </div>
+                  {selectedBranch && (
+                    <div className="fd-simulation-branch-focus">
+                      <Typography.Text size="small">已选中：{selectedBranch.branchNodeName} / {selectedBranch.name}</Typography.Text>
+                      <Button size="small" type="tertiary" theme="borderless" onClick={() => setSelectedBranch(null)}>清除</Button>
+                    </div>
+                  )}
+                  {pathCompare && (
+                    <div className="fd-simulation-path-compare">
+                      <Typography.Text size="small" type="tertiary">上次：{pathCompare.before}</Typography.Text>
+                      <Typography.Text size="small">本次：{pathCompare.after}</Typography.Text>
+                      <Typography.Text size="small" type="tertiary">
+                        {pathCompare.changedAt ? `第 ${pathCompare.changedAt} 步开始出现差异` : '路径没有变化'}
+                        {pathCompare.added.length ? `；新增 ${pathCompare.added.join('、')}` : ''}
+                        {pathCompare.removed.length ? `；未经过 ${pathCompare.removed.join('、')}` : ''}
+                      </Typography.Text>
+                    </div>
+                  )}
+                  <div className="fd-simulation-edge-list">
+                    {currentEdges.slice(0, 3).map((edge) => (
+                      <div className={`fd-simulation-edge-item${edge.taken ? ' fd-simulation-edge-item--taken' : ''}`} key={edge.edgeId}>
+                        <Tag size="small" color={edge.taken ? 'green' : 'grey'}>{edge.taken ? '命中' : '未命中'}</Tag>
+                        <div>
+                          <Typography.Text size="small">{nodeLabel(flowData, edge.sourceKey)}{' -> '}{nodeLabel(flowData, edge.targetKey)}</Typography.Text>
+                          <Typography.Text size="small" type="tertiary">
+                            {edge.reason ?? edge.conditionSummary ?? edge.label ?? '普通连线'}
+                            {edge.actualValue ? `；实际值：${edge.actualValue}` : ''}
+                          </Typography.Text>
+                        </div>
+                      </div>
+                    ))}
+                    {currentEdges.length > 3 && (
+                      <Typography.Text size="small" type="tertiary">
+                        还有 {currentEdges.length - 3} 条分支，可点击流程图分支查看。
+                      </Typography.Text>
+                    )}
+                    {currentEdges.length === 0 && <Typography.Text size="small" type="tertiary">当前步骤暂无可展示的分支判断。</Typography.Text>}
+                  </div>
+                </div>
               </div>
             </div>
+          </div>
+          <div className="fd-simulation-graph__canvas" ref={graphCanvasRef}>
             <div style={{ transform: `scale(${graphZoom / 100})`, transformOrigin: 'top center' }}>
               <FlowRenderer
                 process={process}
