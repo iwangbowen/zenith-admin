@@ -153,7 +153,7 @@ function buildParamSql(text: string, params: Record<string, unknown>): SQL {
 }
 
 /** 外部库 ${name} → 占位符（pg=$N / mysql=? / sqlserver=@pN）+ values 数组（防注入）*/
-function buildExternalParamSql(
+export function buildExternalParamSql(
   text: string,
   params: Record<string, unknown>,
   dialect: 'mysql' | 'postgresql' | 'sqlserver',

@@ -141,7 +141,8 @@ export async function deleteAlert(id: number): Promise<void> {
 
 function toNum(v: unknown): number { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 
-function aggregate(rows: Record<string, unknown>[], field: string | null | undefined, agg: ReportAlertAggregate): number {
+/** 按字段聚合行集（count/sum/avg/max/min/first），空集返回 0 */
+export function aggregate(rows: Record<string, unknown>[], field: string | null | undefined, agg: ReportAlertAggregate): number {
   if (agg === 'count' || !field) return rows.length;
   const nums = rows.map((r) => toNum(r[field]));
   if (nums.length === 0) return 0;
@@ -154,7 +155,8 @@ function aggregate(rows: Record<string, unknown>[], field: string | null | undef
   }
 }
 
-function compare(value: number, op: ReportAlertOp, threshold: number): boolean {
+/** 比较实际值与阈值（gt/gte/lt/lte/eq/neq） */
+export function compare(value: number, op: ReportAlertOp, threshold: number): boolean {
   switch (op) {
     case 'gt': return value > threshold;
     case 'gte': return value >= threshold;
