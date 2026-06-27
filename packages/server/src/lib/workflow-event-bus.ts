@@ -98,6 +98,11 @@ class WorkflowEventBus {
     if (rejected?.status === 'rejected') throw rejected.reason;
   }
 
+  /** 公开：仅派发到进程内订阅者（不写 outbox）。供 event_dispatch 作业 handler 调用。 */
+  async dispatchInProcess(full: WorkflowEvent): Promise<void> {
+    await this.dispatchToHandlers(full);
+  }
+
   private async persistAndDispatch(full: WorkflowEvent): Promise<void> {
     let outboxId: number | null = null;
     try {
@@ -198,4 +203,9 @@ export function getWorkflowEventBusIntrospection(): ReturnType<WorkflowEventBus[
 
 export async function replayWorkflowEventOutbox(): Promise<{ scanned: number; dispatched: number; failed: number }> {
   return workflowEventBus.replayPending();
+}
+
+/** 仅派发到进程内订阅者（不写 outbox）。供 event_dispatch 作业 handler 使用。 */
+export async function dispatchWorkflowEventToHandlers(event: WorkflowEvent): Promise<void> {
+  await workflowEventBus.dispatchInProcess(event);
 }

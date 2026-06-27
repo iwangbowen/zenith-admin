@@ -28,5 +28,5 @@ export { WorkflowJobSkip, WorkflowJobPermanentError } from './errors';
 export { computeBackoffMs, computeNextRunAt } from './backoff';
 export { registerJobHandler, getJobHandler, getRegisteredJobTypes } from './registry';
 
-// 注：handler 在 ./handlers 中按 jobType 自注册，于阶段 2b 接入：
-// import './handlers';
+// handler 在 ./handlers 中按 jobType 自注册（import 即注册）。
+import './handlers';

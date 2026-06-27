@@ -12,7 +12,7 @@ import {
   STUCK_RUNNING_GRACE_MS,
   type WorkflowJobResult,
 } from './types';
-import { WorkflowJobSkip, WorkflowJobPermanentError } from './errors';
+import { WorkflowJobSkip, WorkflowJobPermanentError, WorkflowJobError } from './errors';
 import { computeNextRunAt } from './backoff';
 import { getJobHandler } from './registry';
 
@@ -209,10 +209,15 @@ async function executeClaimedJob(job: WorkflowJobRow): Promise<void> {
       await recordExecution(job, attempt, 'succeeded', startedAt, { errorMessage: err.message });
       return;
     }
-    const permanent = err instanceof WorkflowJobPermanentError;
+    let permanent = err instanceof WorkflowJobPermanentError;
+    let detail: ExecutionDetail = {};
+    if (err instanceof WorkflowJobError) {
+      permanent = err.permanent;
+      detail = { ...err.detail };
+    }
     const msg = err instanceof Error ? err.message : String(err);
     await failOrDeadLetter(job, attempt, msg, permanent);
-    await recordExecution(job, attempt, 'failed', startedAt, { errorMessage: msg.slice(0, 2048) });
+    await recordExecution(job, attempt, 'failed', startedAt, { ...detail, errorMessage: msg.slice(0, 2048) });
   }
 }
 
