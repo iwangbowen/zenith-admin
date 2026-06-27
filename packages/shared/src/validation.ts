@@ -2562,15 +2562,27 @@ export type UpdateMpKfRoutingConfigInput = z.infer<typeof updateMpKfRoutingConfi
 // ════════════════════════════════════════════════════════════════════════════
 // 报表中心（Report Center）
 // ════════════════════════════════════════════════════════════════════════════
-export const reportDatasourceTypeSchema = z.enum(['api', 'sql', 'mysql', 'postgresql']);
+export const reportDatasourceTypeSchema = z.enum(['api', 'sql', 'mysql', 'postgresql', 'sqlserver', 'static']);
 export const reportFieldTypeSchema = z.enum(['string', 'number', 'date', 'boolean']);
 export const reportWidgetTypeSchema = z.enum(['kpi', 'table', 'pivot', 'text', 'bar', 'line', 'area', 'dualAxis', 'pie', 'scatter', 'radar', 'funnel', 'gauge', 'treemap', 'flipper', 'scrollList', 'map']);
+
+/** 字段显示格式化（语义层 lite） */
+export const reportFieldFormatSchema = z.object({
+  kind: z.enum(['number', 'percent', 'currency', 'date', 'datetime', 'dict']),
+  decimals: z.number().int().min(0).max(10).optional(),
+  thousands: z.boolean().optional(),
+  currencySymbol: z.string().max(8).optional(),
+  prefix: z.string().max(16).optional(),
+  suffix: z.string().max(16).optional(),
+  dictCode: z.string().max(64).optional(),
+});
 
 /** 数据集字段（列）定义 */
 export const reportFieldSchema = z.object({
   name: z.string().min(1, '列名不能为空').max(128),
   label: z.string().min(1, '显示名不能为空').max(128),
   type: reportFieldTypeSchema.default('string'),
+  format: reportFieldFormatSchema.optional(),
 });
 
 /** 计算字段（衍生列）*/
@@ -2614,6 +2626,10 @@ export type ReportDatasourceTestInput = z.input<typeof reportDatasourceTestSchem
 
 // ─── 数据集 ──────────────────────────────────────────────────────────────────
 // type 由 datasource 继承，不接受用户传入；content 形态由 service 按 type 校验。
+export const reportDatasetMaterializeSchema = z.object({
+  enabled: z.boolean().default(false),
+  cron: z.string().max(64).optional(),
+});
 export const createReportDatasetSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
   datasourceId: z.number().int().positive('请选择数据源'),
@@ -2622,6 +2638,7 @@ export const createReportDatasetSchema = z.object({
   params: z.array(reportDatasetParamSchema).default([]),
   computedFields: z.array(reportComputedFieldSchema).default([]),
   cacheTtl: z.number().int().min(0).max(86_400).default(0),
+  materialize: reportDatasetMaterializeSchema.optional(),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   remark: z.string().max(256).optional(),
 });

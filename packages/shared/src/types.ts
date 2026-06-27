@@ -5385,7 +5385,7 @@ export interface MpKfSessionReportItem {
 // ════════════════════════════════════════════════════════════════════════════
 
 /** 数据源类型：api=远程 HTTP；sql=内置只读主库；mysql/postgresql=外部数据库 */
-export type ReportDatasourceType = 'api' | 'sql' | 'mysql' | 'postgresql';
+export type ReportDatasourceType = 'api' | 'sql' | 'mysql' | 'postgresql' | 'sqlserver' | 'static';
 /** 数据集字段（列）数据类型 */
 export type ReportFieldType = 'string' | 'number' | 'date' | 'boolean';
 /** 仪表盘组件类型 */
@@ -5443,6 +5443,24 @@ export interface ReportField {
   /** 显示名 */
   label: string;
   type: ReportFieldType;
+  /** 显示格式化（语义层）：数字/百分比/货币/日期/字典翻译 */
+  format?: ReportFieldFormat;
+}
+
+/** 字段显示格式化（语义层 lite） */
+export interface ReportFieldFormat {
+  kind: 'number' | 'percent' | 'currency' | 'date' | 'datetime' | 'dict';
+  /** number/percent/currency：小数位 */
+  decimals?: number;
+  /** number/currency：千分位 */
+  thousands?: boolean;
+  /** currency：货币符号前缀（默认 ¥） */
+  currencySymbol?: string;
+  /** 通用前缀/后缀 */
+  prefix?: string;
+  suffix?: string;
+  /** dict：字典编码（取字典项 value→label 翻译） */
+  dictCode?: string;
 }
 
 /** 计算字段（衍生列）：在取数结果上用表达式计算 */
@@ -5465,9 +5483,17 @@ export interface ReportApiDatasetContent {
   /** 附加查询参数 */
   params?: Record<string, string> | null;
 }
+/** 静态数据集内容（内联 JSON / 文件上传解析结果） */
+export interface ReportStaticDatasetContent {
+  /** 数据行 */
+  data: Record<string, unknown>[];
+  /** 列顺序（可空，缺省按首行键） */
+  columns?: string[];
+}
 export type ReportDatasetContent =
   | ReportSqlDatasetContent
   | ReportApiDatasetContent
+  | ReportStaticDatasetContent
   | Record<string, never>;
 
 export interface ReportDataset {
@@ -5486,12 +5512,24 @@ export interface ReportDataset {
   computedFields: ReportComputedField[];
   /** 结果缓存 TTL（秒），0=不缓存 */
   cacheTtl: number;
+  /** 物化快照配置（定时刷新到持久层，给大屏降压） */
+  materialize?: ReportDatasetMaterialize;
   status: 'enabled' | 'disabled';
   remark?: string | null;
   createdBy?: number | null;
   updatedBy?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 数据集物化快照配置 */
+export interface ReportDatasetMaterialize {
+  /** 是否启用物化（启用后取数优先返回快照，忽略运行时参数） */
+  enabled: boolean;
+  /** 刷新 Cron（留空=仅手动刷新） */
+  cron?: string;
+  /** 最近刷新时间（只读，服务端注入） */
+  refreshedAt?: string | null;
 }
 
 /** 数据集取数结果 */

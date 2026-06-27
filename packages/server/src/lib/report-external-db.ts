@@ -6,6 +6,7 @@
  */
 import postgres from 'postgres';
 import mysql from 'mysql2/promise';
+import mssql from 'mssql';
 import { HTTPException } from 'hono/http-exception';
 import { decryptField } from './encryption';
 import type { ReportDatasourceType, ReportExternalDbConfig, ReportDataResult } from '@zenith/shared';
@@ -16,7 +17,8 @@ const IDLE_TTL_MS = 5 * 60_000;
 
 interface PgPoolEntry { kind: 'pg'; sql: ReturnType<typeof postgres>; expire: number }
 interface MyPoolEntry { kind: 'mysql'; pool: mysql.Pool; expire: number }
-type PoolEntry = PgPoolEntry | MyPoolEntry;
+interface MssqlPoolEntry { kind: 'mssql'; pool: mssql.ConnectionPool; expire: number }
+type PoolEntry = PgPoolEntry | MyPoolEntry | MssqlPoolEntry;
 
 const pools = new Map<string, PoolEntry>();
 
@@ -66,12 +68,32 @@ function getMyPool(config: ReportExternalDbConfig): mysql.Pool {
   return pool;
 }
 
+async function getMssqlPool(config: ReportExternalDbConfig): Promise<mssql.ConnectionPool> {
+  const key = poolKey('sqlserver', config);
+  const existing = pools.get(key);
+  if (existing && existing.kind === 'mssql' && existing.pool.connected) { existing.expire = Date.now() + IDLE_TTL_MS; return existing.pool; }
+  const c = resolveConfig(config);
+  const pool = new mssql.ConnectionPool({
+    server: c.host, port: c.port || 1433, database: c.database, user: c.user, password: c.password,
+    options: { encrypt: c.ssl, trustServerCertificate: true },
+    pool: { max: 3, idleTimeoutMillis: 30_000 },
+    connectionTimeout: 10_000, requestTimeout: QUERY_TIMEOUT_MS,
+  });
+  await pool.connect();
+  pools.set(key, { kind: 'mssql', pool, expire: Date.now() + IDLE_TTL_MS });
+  return pool;
+}
+
 /** 定期回收空闲连接池 */
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of pools) {
     if (entry.expire < now) {
-      try { if (entry.kind === 'pg') void entry.sql.end({ timeout: 5 }); else void entry.pool.end(); } catch { /* ignore */ }
+      try {
+        if (entry.kind === 'pg') void entry.sql.end({ timeout: 5 });
+        else if (entry.kind === 'mysql') void entry.pool.end();
+        else void entry.pool.close();
+      } catch { /* ignore */ }
       pools.delete(key);
     }
   }
@@ -89,14 +111,27 @@ export async function runExternalQuery(
   if (!trimmed) throw new HTTPException(400, { message: '数据集 SQL 不能为空' });
   if (!isReadonlySelect(trimmed)) throw new HTTPException(400, { message: '仅允许只读 SELECT/WITH 查询' });
   const capped = Math.max(1, Math.min(limit || 100, MAX_ROWS));
-  const wrapped = `SELECT * FROM (${trimmed}) AS _sub LIMIT ${capped}`;
 
   try {
     if (type === 'postgresql') {
       const sql = getPgPool(type, config);
       await sql.unsafe(`SET statement_timeout = ${QUERY_TIMEOUT_MS}`);
+      const wrapped = `SELECT * FROM (${trimmed}) AS _sub LIMIT ${capped}`;
       const rows = (await sql.unsafe(wrapped, values as never[])) as unknown as Record<string, unknown>[];
       const arr = Array.isArray(rows) ? rows : [];
+      const columns = arr.length ? Object.keys(arr[0]) : [];
+      return { columns, rows: arr, total: arr.length };
+    }
+    if (type === 'sqlserver') {
+      const pool = await getMssqlPool(config);
+      const request = pool.request();
+      values.forEach((v, i) => request.input(`p${i}`, v as never));
+      // SELECT 注入 TOP；其余（WITH）取数后切片兜底行上限
+      const queryText = /^select\b/i.test(trimmed)
+        ? trimmed.replace(/^select\s+/i, `SELECT TOP (${capped}) `)
+        : trimmed;
+      const result = await request.query(queryText);
+      const arr = ((result.recordset ?? []) as Record<string, unknown>[]).slice(0, capped);
       const columns = arr.length ? Object.keys(arr[0]) : [];
       return { columns, rows: arr, total: arr.length };
     }
@@ -105,6 +140,7 @@ export async function runExternalQuery(
     const conn = await pool.getConnection();
     try {
       await conn.query(`SET SESSION MAX_EXECUTION_TIME=${QUERY_TIMEOUT_MS}`).catch(() => {});
+      const wrapped = `SELECT * FROM (${trimmed}) AS _sub LIMIT ${capped}`;
       const [rows] = await conn.query(wrapped, values);
       const arr = (Array.isArray(rows) ? rows : []) as Record<string, unknown>[];
       const columns = arr.length ? Object.keys(arr[0]) : [];
@@ -128,6 +164,9 @@ export async function testExternalConnection(type: ReportDatasourceType, config:
       const pool = getMyPool(config);
       const conn = await pool.getConnection();
       try { await conn.query('SELECT 1 AS ok'); } finally { conn.release(); }
+    } else if (type === 'sqlserver') {
+      const pool = await getMssqlPool(config);
+      await pool.request().query('SELECT 1 AS ok');
     } else {
       return { ok: false, message: '该类型无需连接测试' };
     }

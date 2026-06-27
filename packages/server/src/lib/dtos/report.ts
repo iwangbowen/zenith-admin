@@ -5,6 +5,15 @@ const ReportFieldDTO = z.object({
   name: z.string(),
   label: z.string(),
   type: z.enum(['string', 'number', 'date', 'boolean']),
+  format: z.object({
+    kind: z.enum(['number', 'percent', 'currency', 'date', 'datetime', 'dict']),
+    decimals: z.number().int().optional(),
+    thousands: z.boolean().optional(),
+    currencySymbol: z.string().optional(),
+    prefix: z.string().optional(),
+    suffix: z.string().optional(),
+    dictCode: z.string().optional(),
+  }).optional(),
 });
 
 const ReportGridItemDTO = z.object({
@@ -66,7 +75,7 @@ export const ReportDatasourceDTO = z
   .object({
     id: z.number().int(),
     name: z.string(),
-    type: z.enum(['api', 'sql', 'mysql', 'postgresql']),
+    type: z.enum(['api', 'sql', 'mysql', 'postgresql', 'sqlserver', 'static']),
     config: z.record(z.string(), z.unknown()),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable().optional(),
@@ -82,12 +91,17 @@ export const ReportDatasetDTO = z
     name: z.string(),
     datasourceId: z.number().int(),
     datasourceName: z.string().nullable().optional(),
-    type: z.enum(['api', 'sql', 'mysql', 'postgresql']),
+    type: z.enum(['api', 'sql', 'mysql', 'postgresql', 'sqlserver', 'static']),
     content: z.record(z.string(), z.unknown()),
     fields: z.array(ReportFieldDTO),
     params: z.array(ReportDatasetParamDTO),
     computedFields: z.array(ReportComputedFieldDTO),
     cacheTtl: z.number().int(),
+    materialize: z.object({
+      enabled: z.boolean(),
+      cron: z.string().optional(),
+      refreshedAt: z.string().nullable().optional(),
+    }).optional(),
     status: z.enum(['enabled', 'disabled']),
     remark: z.string().nullable().optional(),
     ...auditFields,

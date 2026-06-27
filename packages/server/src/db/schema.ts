@@ -2,7 +2,7 @@ import { pgTable, serial, varchar, timestamp, pgEnum, integer, bigint, boolean, 
 import { relations, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 // 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
-import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig } from '@zenith/shared';
+import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig, ReportDatasetMaterialize } from '@zenith/shared';
 
 export const statusEnum = pgEnum('status', ['enabled', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -4619,7 +4619,7 @@ export const mpKfRoutingConfigsRelations = relations(mpKfRoutingConfigs, ({ one 
 // ════════════════════════════════════════════════════════════════════════════
 // 报表中心（Report Center）—— 通用报表设计器 / 数据大屏
 // ════════════════════════════════════════════════════════════════════════════
-export const reportDatasourceTypeEnum = pgEnum('report_datasource_type', ['api', 'sql', 'mysql', 'postgresql']);
+export const reportDatasourceTypeEnum = pgEnum('report_datasource_type', ['api', 'sql', 'mysql', 'postgresql', 'sqlserver', 'static']);
 
 /** 报表数据源：api=远程 HTTP；sql=内置只读主库 */
 export const reportDatasources = pgTable('report_datasources', {
@@ -4654,6 +4654,8 @@ export const reportDatasets = pgTable('report_datasets', {
   computedFields: jsonb('computed_fields').$type<ReportComputedField[]>().notNull().default(sql`'[]'::jsonb`),
   /** 结果缓存 TTL（秒），0=不缓存 */
   cacheTtl: integer('cache_ttl').notNull().default(0),
+  /** 物化快照配置（定时刷新到持久层） */
+  materialize: jsonb('materialize').$type<ReportDatasetMaterialize>().notNull().default(sql`'{}'::jsonb`),
   status: statusEnum('status').notNull().default('enabled'),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),

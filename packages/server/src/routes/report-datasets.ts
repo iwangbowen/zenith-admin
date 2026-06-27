@@ -4,13 +4,14 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody,
+  ok, okPaginated, okMsg, IdParam, okBody, errBody,
 } from '../lib/openapi-schemas';
 import { ReportDatasetDTO, ReportDataResultDTO } from '../lib/openapi-dtos';
 import {
   listDatasets, getDataset, createDataset, updateDataset, deleteDataset,
-  ensureDatasetExists, previewDataset, getDatasetData,
+  ensureDatasetExists, previewDataset, getDatasetData, refreshMaterialization,
 } from '../services/report-dataset.service';
+import { parseDataFile } from '../lib/report-file-parse';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -24,7 +25,7 @@ const listRoute = defineOpenAPIRoute({
       query: PaginationQuery.extend({
         keyword: z.string().optional(),
         datasourceId: z.coerce.number().int().positive().optional(),
-        type: z.enum(['api', 'sql', 'mysql', 'postgresql']).optional(),
+        type: z.enum(['api', 'sql', 'mysql', 'postgresql', 'sqlserver', 'static']).optional(),
         status: z.enum(['enabled', 'disabled']).optional(),
       }),
     },
@@ -121,8 +122,34 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
+const materializeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/materialize',
+    tags: ['报表数据集'], summary: '手动刷新物化快照',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dataset:update' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('刷新成功'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const r = await refreshMaterialization(id);
+    return c.json(okBody(null, `已刷新物化快照（${r.rows} 行）`), 200);
+  },
+});
+
 router.openapiRoutes([
-  listRoute, previewRoute, dataRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_,
+  listRoute, previewRoute, dataRoute, materializeRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_,
 ] as const);
+
+// 文件数据集解析（Excel/CSV 上传 → {columns,rows}）—— multipart，使用原生路由
+router.post('/parse-file', authMiddleware, guard({ permission: 'report:dataset:create' }), async (c) => {
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) return c.json(errBody('请上传文件（字段名 file）', 400), 400);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const result = await parseDataFile(buffer, file.name);
+  return c.json(okBody(result), 200);
+});
 
 export default router;

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, DatePicker, Dropdown, Form, Input, Modal, Select, SplitButtonGroup, Tag, Toast, Typography, Descriptions } from '@douyinfe/semi-ui';
+import { Button, DatePicker, Form, Input, Modal, Select, Tag, Toast, Typography, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, RotateCcw, Download, ChevronDown } from 'lucide-react';
+import { Search, RotateCcw } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { request } from '@/utils/request';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
@@ -29,8 +30,6 @@ export default function PaymentRefundsPage() {
   const searchRef = useRef<SearchParams>(defaultSearch);
   searchRef.current = searchParams;
   const [detail, setDetail] = useState<PaymentRefund | null>(null);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [queryingIds, setQueryingIds] = useState<Set<number>>(new Set());
   const [approvingIds, setApprovingIds] = useState<Set<number>>(new Set());
   const [rejectTarget, setRejectTarget] = useState<PaymentRefund | null>(null);
@@ -112,15 +111,6 @@ export default function PaymentRefundsPage() {
       if (res.code === 0) { Toast.success('已驳回'); setRejectTarget(null); void fetchList(); }
       else Toast.error(`驳回失败：${res.message}`);
     } finally { setRejectSubmitting(false); }
-  }
-
-  async function handleExport() {
-    setExportLoading(true);
-    try { await request.download(`/api/payment/refunds/export?${new URLSearchParams(buildQuery(searchRef.current))}`, '退款记录.xlsx'); } finally { setExportLoading(false); }
-  }
-  async function handleExportCsv() {
-    setExportCsvLoading(true);
-    try { await request.download(`/api/payment/refunds/export/csv?${new URLSearchParams(buildQuery(searchRef.current))}`, '退款记录.csv'); } finally { setExportCsvLoading(false); }
   }
 
   const columns: ColumnProps<PaymentRefund>[] = [
@@ -223,25 +213,8 @@ export default function PaymentRefundsPage() {
 
   const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-      <Dropdown trigger="click" position="bottomRight" clickToHide render={(
-        <Dropdown.Menu>
-          <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
-          <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-        </Dropdown.Menu>
-      )}>
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
-  const renderMobileExportActions = () => (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
-  );
+  const renderExportButtons = () => <ExportButton entity="payment.refunds" query={buildQuery(searchRef.current)} />;
+  const renderMobileExportActions = () => <ExportButton entity="payment.refunds" query={buildQuery(searchRef.current)} variant="flat" />;
 
   return (
     <div className="page-container">

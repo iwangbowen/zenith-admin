@@ -24,10 +24,11 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
-import { Search, RotateCcw, Plus, Download, Trash2, ChevronDown } from 'lucide-react';
+import { Search, RotateCcw, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { request } from '@/utils/request';
 import type {
@@ -209,8 +210,6 @@ export default function AnalyticsDataPage() {
   const [eventsPageSize, setEventsPageSize] = useState(PAGE_SIZE);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventSearch, setEventSearch] = useState<EventSearchParams>(defaultEventSearch);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [cleanLoading, setCleanLoading] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -373,24 +372,9 @@ export default function AnalyticsDataPage() {
     }));
   };
 
-  const exportQuery = () => buildEventFilterQuery(eventSearchRef.current);
-
-  const handleExport = async () => {
-    setExportLoading(true);
-    try {
-      await request.download(withQuery('/api/analytics/events/export', exportQuery()), '埋点事件.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download(withQuery('/api/analytics/events/export/csv', exportQuery()), '埋点事件.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
+  const buildExportQuery = () => {
+    const query = buildEventFilterQuery(eventSearchRef.current);
+    return Object.fromEntries(new URLSearchParams(query).entries());
   };
 
   const handleClean = (days: number) => {
@@ -904,19 +888,7 @@ export default function AnalyticsDataPage() {
   );
   const renderEventSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleEventSearch}>查询</Button>;
   const renderEventResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleEventReset}>重置</Button>;
-  const renderEventExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出</Button>
-      <Dropdown trigger="click" position="bottomRight" clickToHide render={(
-        <Dropdown.Menu>
-          <Dropdown.Item onClick={() => void handleExport()}>导出 Excel</Dropdown.Item>
-          <Dropdown.Item onClick={() => void handleExportCsv()}>导出 CSV</Dropdown.Item>
-        </Dropdown.Menu>
-      )}>
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
+  const renderEventExportButtons = () => <ExportButton entity="analytics.events" query={buildExportQuery()} />;
   const renderEventCleanButtons = () => (
     <SplitButtonGroup>
       <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanLoading} onClick={() => handleClean(90)}>清除数据</Button>
@@ -939,8 +911,7 @@ export default function AnalyticsDataPage() {
   );
   const renderMobileEventActions = () => (
     <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={() => void handleExport()}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={() => void handleExportCsv()}>导出 CSV</Button>
+      <ExportButton entity="analytics.events" query={buildExportQuery()} variant="flat" />
       {CLEAN_DAY_OPTIONS.map((item) => (
         <Button
           key={item.value}

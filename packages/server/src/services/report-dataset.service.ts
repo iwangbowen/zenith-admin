@@ -6,11 +6,13 @@
  */
 import { HTTPException } from 'hono/http-exception';
 import { createHash } from 'node:crypto';
+import { CronExpressionParser } from 'cron-parser';
 import { and, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db';
 import { reportDatasets, users } from '../db/schema';
 import { config } from '../config';
 import redis from '../lib/redis';
+import logger from '../lib/logger';
 import { pageOffset } from '../lib/pagination';
 import { escapeLike } from '../lib/where-helpers';
 import { formatDateTime } from '../lib/datetime';
@@ -24,7 +26,7 @@ import type { ReportDatasetRow } from '../db/schema';
 import type {
   ReportDataset, ReportDataResult, ReportField, ReportFieldType, ReportDatasetContent, ReportDatasetParam,
   ReportDatasourceType, ReportDatasourceConfig, ReportComputedField, ReportExternalDbConfig,
-  ReportApiDatasourceConfig, ReportApiDatasetContent, ReportSqlDatasetContent,
+  ReportApiDatasourceConfig, ReportApiDatasetContent, ReportSqlDatasetContent, ReportStaticDatasetContent, ReportDatasetMaterialize,
   CreateReportDatasetInput, UpdateReportDatasetInput, ReportDatasetPreviewInput,
 } from '@zenith/shared';
 
@@ -32,6 +34,7 @@ const PREVIEW_LIMIT = 100;
 const MAX_LIMIT = 5000;
 const QUERY_TIMEOUT = '15s';
 const CACHE_PREFIX = `${config.redis.keyPrefix}report:dataset:`;
+const MATVIEW_PREFIX = `${config.redis.keyPrefix}report:matview:`;
 
 type DatasetRowWithDs = ReportDatasetRow & { datasource?: { name: string } | null };
 
@@ -47,6 +50,7 @@ export function mapDataset(row: DatasetRowWithDs): ReportDataset {
     params: (row.params ?? []) as ReportDatasetParam[],
     computedFields: (row.computedFields ?? []) as ReportComputedField[],
     cacheTtl: row.cacheTtl ?? 0,
+    materialize: (row.materialize ?? {}) as ReportDatasetMaterialize,
     status: row.status,
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
@@ -62,8 +66,13 @@ function normalizeDatasetContent(
   content: Record<string, unknown> | null | undefined,
 ): ReportDatasetContent {
   const c = (content ?? {}) as Record<string, unknown>;
-  if (type === 'sql' || type === 'mysql' || type === 'postgresql') {
+  if (type === 'sql' || type === 'mysql' || type === 'postgresql' || type === 'sqlserver') {
     return { sql: typeof c.sql === 'string' ? c.sql : '' };
+  }
+  if (type === 'static') {
+    const data = Array.isArray(c.data) ? (c.data as Record<string, unknown>[]) : [];
+    const columns = Array.isArray(c.columns) ? (c.columns as string[]) : undefined;
+    return { data, ...(columns ? { columns } : {}) };
   }
   const itemsPath = typeof c.itemsPath === 'string' ? c.itemsPath : null;
   const params = c.params && typeof c.params === 'object' && !Array.isArray(c.params)
@@ -137,11 +146,11 @@ function buildParamSql(text: string, params: Record<string, unknown>): SQL {
   return sql.join(chunks, sql.raw(''));
 }
 
-/** 外部库 ${name} → 占位符（pg=$N / mysql=?）+ values 数组（防注入）*/
+/** 外部库 ${name} → 占位符（pg=$N / mysql=? / sqlserver=@pN）+ values 数组（防注入）*/
 function buildExternalParamSql(
   text: string,
   params: Record<string, unknown>,
-  dialect: 'mysql' | 'postgresql',
+  dialect: 'mysql' | 'postgresql' | 'sqlserver',
 ): { text: string; values: unknown[] } {
   const segments = text.split(/\$\{\s*(\w+)\s*\}/g);
   let out = '';
@@ -150,7 +159,9 @@ function buildExternalParamSql(
     if (i % 2 === 0) { out += segments[i]; continue; }
     const v = params[segments[i]];
     values.push(v === undefined ? null : v);
-    out += dialect === 'postgresql' ? `$${values.length}` : '?';
+    if (dialect === 'postgresql') out += `$${values.length}`;
+    else if (dialect === 'sqlserver') out += `@p${values.length - 1}`;
+    else out += '?';
   }
   return { text: out, values };
 }
@@ -205,7 +216,7 @@ export async function listDatasets(query: {
     conds.push(or(ilike(reportDatasets.name, kw), ilike(reportDatasets.remark, kw)));
   }
   if (datasourceId) conds.push(eq(reportDatasets.datasourceId, datasourceId));
-  if (type === 'api' || type === 'sql' || type === 'mysql' || type === 'postgresql') {
+  if (type === 'api' || type === 'sql' || type === 'mysql' || type === 'postgresql' || type === 'sqlserver' || type === 'static') {
     conds.push(eq(reportDatasets.type, type));
   }
   if (status === 'enabled' || status === 'disabled') conds.push(eq(reportDatasets.status, status));
@@ -236,6 +247,7 @@ export async function createDataset(input: CreateReportDatasetInput): Promise<Re
       params: (input.params ?? []) as ReportDatasetParam[],
       computedFields: (input.computedFields ?? []) as ReportComputedField[],
       cacheTtl: input.cacheTtl ?? 0,
+      materialize: (input.materialize ?? {}) as ReportDatasetMaterialize,
       status: input.status ?? 'enabled',
       remark: input.remark,
     }).returning();
@@ -265,6 +277,7 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
       params: input.params as ReportDatasetParam[] | undefined,
       computedFields: input.computedFields as ReportComputedField[] | undefined,
       cacheTtl: input.cacheTtl,
+      materialize: input.materialize as ReportDatasetMaterialize | undefined,
       status: input.status,
       remark: input.remark,
     }).where(eq(reportDatasets.id, id)).returning();
@@ -302,12 +315,22 @@ export async function runReportData(
     return applyComputedFields(await runReadonlySql(sqlText, params, cappedLimit), computedFields);
   }
 
-  if (type === 'mysql' || type === 'postgresql') {
+  if (type === 'mysql' || type === 'postgresql' || type === 'sqlserver') {
     const sqlText = ((content as ReportSqlDatasetContent).sql ?? '').trim();
     if (!sqlText) throw new HTTPException(400, { message: '数据集 SQL 不能为空' });
     const { text, values } = buildExternalParamSql(sqlText, params, type);
     const result = await runExternalQuery(type, config as ReportExternalDbConfig, text, values, cappedLimit);
     return applyComputedFields(result, computedFields);
+  }
+
+  if (type === 'static') {
+    const staticContent = (content ?? {}) as ReportStaticDatasetContent;
+    const rows = Array.isArray(staticContent.data) ? staticContent.data : [];
+    const sliced = rows.slice(0, cappedLimit);
+    const columns = staticContent.columns?.length
+      ? staticContent.columns
+      : (sliced.length ? Object.keys(sliced[0]) : []);
+    return applyComputedFields({ columns, rows: sliced, total: rows.length }, computedFields);
   }
 
   // api
@@ -384,11 +407,27 @@ export async function getDatasetData(id: number, params?: Record<string, unknown
   if (row.status !== 'enabled') throw new HTTPException(400, { message: '数据集已停用' });
   const config = (row.datasource?.config ?? {}) as ReportDatasourceConfig;
   const content = (row.content ?? {}) as ReportDatasetContent;
-  const sqlText = (row.type === 'sql' || row.type === 'mysql' || row.type === 'postgresql') ? ((content as ReportSqlDatasetContent).sql ?? '') : '';
-  const sysParams = await buildSystemParams(sqlText);
-  const resolved = { ...resolveDatasetParams((row.params ?? []) as ReportDatasetParam[], params), ...sysParams };
+  const isSqlLike = row.type === 'sql' || row.type === 'mysql' || row.type === 'postgresql' || row.type === 'sqlserver';
+  const sqlText = isSqlLike ? ((content as ReportSqlDatasetContent).sql ?? '') : '';
   const computed = (row.computedFields ?? []) as ReportComputedField[];
   const effLimit = limit ?? PREVIEW_LIMIT;
+
+  // 物化快照优先：启用后返回持久化快照（忽略运行时参数，命中即返回）
+  const materialize = (row.materialize ?? {}) as ReportDatasetMaterialize;
+  if (materialize.enabled) {
+    try {
+      const snap = await redis.get(`${MATVIEW_PREFIX}${id}`);
+      if (snap) return JSON.parse(snap) as ReportDataResult;
+    } catch { /* 快照读取失败回源 */ }
+    const sysOnly = await buildSystemParams(sqlText);
+    const baseParams = { ...resolveDatasetParams((row.params ?? []) as ReportDatasetParam[]), ...sysOnly };
+    const live = await runReportData(row.type, config, content, baseParams, effLimit, computed);
+    try { await redis.set(`${MATVIEW_PREFIX}${id}`, JSON.stringify(live)); } catch { /* 落快照失败忽略 */ }
+    return live;
+  }
+
+  const sysParams = await buildSystemParams(sqlText);
+  const resolved = { ...resolveDatasetParams((row.params ?? []) as ReportDatasetParam[], params), ...sysParams };
   const cacheTtl = row.cacheTtl ?? 0;
 
   // 命中缓存
@@ -408,4 +447,51 @@ export async function getDatasetData(id: number, params?: Record<string, unknown
     try { await redis.set(cacheKey, JSON.stringify(result), 'EX', cacheTtl); } catch { /* 缓存写入失败忽略 */ }
   }
   return result;
+}
+
+// ─── 物化快照（定时刷新 + 手动刷新）────────────────────────────────────────────
+
+/** 强制刷新某数据集的物化快照（手动按钮 / 到期 Cron 调用）*/
+export async function refreshMaterialization(id: number): Promise<{ rows: number }> {
+  const row = await db.query.reportDatasets.findFirst({
+    where: eq(reportDatasets.id, id),
+    with: { datasource: { columns: { config: true } } },
+  });
+  if (!row) throw new HTTPException(404, { message: '数据集不存在' });
+  const config = (row.datasource?.config ?? {}) as ReportDatasourceConfig;
+  const content = (row.content ?? {}) as ReportDatasetContent;
+  // 物化用默认参数（全局快照，不含运行时/用户上下文参数）
+  const resolved = resolveDatasetParams((row.params ?? []) as ReportDatasetParam[]);
+  const computed = (row.computedFields ?? []) as ReportComputedField[];
+  const result = await runReportData(row.type, config, content, resolved, MAX_LIMIT, computed);
+  try { await redis.set(`${MATVIEW_PREFIX}${id}`, JSON.stringify(result)); } catch { /* ignore */ }
+  const materialize = (row.materialize ?? {}) as ReportDatasetMaterialize;
+  await db.update(reportDatasets)
+    .set({ materialize: { ...materialize, enabled: materialize.enabled ?? true, refreshedAt: formatDateTime(new Date()) } })
+    .where(eq(reportDatasets.id, id));
+  return { rows: result.rows.length };
+}
+
+/** Cron 分发：扫描启用物化的数据集，按各自 cron 判断到期后刷新（pg-boss 每分钟调用）*/
+export async function dispatchDueMaterializations(): Promise<{ checked: number; refreshed: number }> {
+  const rows = await db.select({ id: reportDatasets.id, materialize: reportDatasets.materialize, status: reportDatasets.status }).from(reportDatasets);
+  const now = new Date();
+  let refreshed = 0;
+  let checked = 0;
+  for (const r of rows) {
+    const m = (r.materialize ?? {}) as ReportDatasetMaterialize;
+    if (r.status !== 'enabled' || !m.enabled || !m.cron) continue;
+    checked++;
+    try {
+      const prev = CronExpressionParser.parse(m.cron, { currentDate: now }).prev().toDate();
+      const last = m.refreshedAt ? new Date(m.refreshedAt.replace(' ', 'T')).getTime() : 0;
+      if (prev.getTime() > last) {
+        await refreshMaterialization(r.id);
+        refreshed++;
+      }
+    } catch (e) {
+      logger.warn('报表物化刷新失败', { id: r.id, err: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { checked, refreshed };
 }

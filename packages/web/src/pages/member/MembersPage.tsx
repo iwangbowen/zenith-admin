@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Input, Select, Modal, Form, Toast, Tag, Spin, Row, Col, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Modal, Form, Toast, Tag, Spin, Row, Col, Dropdown } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, Plus, RotateCcw, Download, KeyRound, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, KeyRound, ChevronDown } from 'lucide-react';
 import type { Member, MemberLevel, PaginatedResponse } from '@zenith/shared';
 import { MEMBER_STATUS_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -10,6 +10,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -29,8 +30,6 @@ export default function MembersPage() {
   const [data, setData] = useState<Member[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [search, setSearch] = useState<SearchParams>(defaultSearch);
   const searchRef = useRef<SearchParams>(defaultSearch);
@@ -78,29 +77,11 @@ export default function MembersPage() {
 
   const buildExportQuery = () => {
     const ap = searchRef.current;
-    return new URLSearchParams({
+    return {
       ...(ap.keyword ? { keyword: ap.keyword } : {}),
       ...(ap.status ? { status: ap.status } : {}),
       ...(ap.levelId ? { levelId: String(ap.levelId) } : {}),
-    }).toString();
-  };
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try {
-      const q = buildExportQuery();
-      const url = q ? `/api/members/export?${q}` : '/api/members/export';
-      await request.download(url, '会员列表.xlsx');
-    } finally { setExportLoading(false); }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      const q = buildExportQuery();
-      const csvUrl = q ? `/api/members/export/csv?${q}` : '/api/members/export/csv';
-      await request.download(csvUrl, '会员列表.csv');
-    } finally { setExportCsvLoading(false); }
+    };
   };
 
   const openCreate = () => { setEditing(null); setModalVisible(true); };
@@ -246,29 +227,11 @@ export default function MembersPage() {
   ) : null;
 
   const renderExportButtons = () => hasPermission('member:member:list') ? (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
+    <ExportButton entity="member.members" query={buildExportQuery()} />
   ) : null;
 
   const renderMobileExportActions = () => hasPermission('member:member:list') ? (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
+    <ExportButton entity="member.members" query={buildExportQuery()} variant="flat" />
   ) : null;
 
   return (

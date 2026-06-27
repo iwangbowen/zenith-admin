@@ -209,6 +209,12 @@ handlerRegistry.set('dispatchReportSubscriptions', async () => {
   return `报表订阅分发：检查 ${r.checked} 个，推送 ${r.pushed} 个`;
 });
 
+handlerRegistry.set('refreshReportMaterializations', async () => {
+  const { dispatchDueMaterializations } = await import('../services/report-dataset.service');
+  const r = await dispatchDueMaterializations();
+  return `报表物化刷新：检查 ${r.checked} 个，刷新 ${r.refreshed} 个`;
+});
+
 /** 已注册 handler 名称列表（供前端下拉选择） */
 export function getRegisteredHandlers(): string[] {
   return Array.from(handlerRegistry.keys());

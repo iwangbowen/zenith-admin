@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Card, DatePicker, Dropdown, Form, Input, InputNumber, Select, SplitButtonGroup, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
+import { Button, Card, DatePicker, Form, Input, InputNumber, Select, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, RotateCcw, Plus, Download, ChevronDown } from 'lucide-react';
+import { Search, RotateCcw, Plus } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import PaymentStatsPanel from './PaymentStatsPanel';
 import { request } from '@/utils/request';
@@ -66,8 +67,6 @@ export default function PaymentOrdersPage() {
   const [refundedAmount, setRefundedAmount] = useState(0); // 已锁定退款总额（分）
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [stats, setStats] = useState<PaymentStatsData | null>(null);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [createVisible, setCreateVisible] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [payResult, setPayResult] = useState<CreatePaymentResult | null>(null);
@@ -214,15 +213,6 @@ export default function PaymentOrdersPage() {
     } finally {
       setRefundSubmitting(false);
     }
-  }
-
-  async function handleExport() {
-    setExportLoading(true);
-    try { await request.download(`/api/payment/orders/export?${new URLSearchParams(buildQuery(searchRef.current))}`, '支付订单.xlsx'); } finally { setExportLoading(false); }
-  }
-  async function handleExportCsv() {
-    setExportCsvLoading(true);
-    try { await request.download(`/api/payment/orders/export/csv?${new URLSearchParams(buildQuery(searchRef.current))}`, '支付订单.csv'); } finally { setExportCsvLoading(false); }
   }
 
   async function submitCreate() {
@@ -394,25 +384,8 @@ export default function PaymentOrdersPage() {
   const renderCreateButton = () => hasPermission('payment:order:create') ? (
     <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>手动下单</Button>
   ) : null;
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-      <Dropdown trigger="click" position="bottomRight" clickToHide render={(
-        <Dropdown.Menu>
-          <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
-          <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-        </Dropdown.Menu>
-      )}>
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
-  const renderMobileExportActions = () => (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
-  );
+  const renderExportButtons = () => <ExportButton entity="payment.orders" query={buildQuery(searchRef.current)} />;
+  const renderMobileExportActions = () => <ExportButton entity="payment.orders" query={buildQuery(searchRef.current)} variant="flat" />;
 
   return (
     <div className="page-container">

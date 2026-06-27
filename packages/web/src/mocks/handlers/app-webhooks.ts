@@ -4,7 +4,7 @@ import type { AppWebhookSubscription, AppWebhookDelivery } from '@zenith/shared'
 import { mockWebhookSubscriptions, mockWebhookDeliveries } from '@/mocks/data/app-webhooks';
 import { mockDateTime } from '@/mocks/utils/date';
 
-let subs: AppWebhookSubscription[] = mockWebhookSubscriptions.map((s) => ({ ...s }));
+const subs: AppWebhookSubscription[] = mockWebhookSubscriptions.map((s) => ({ ...s }));
 let deliveries: AppWebhookDelivery[] = mockWebhookDeliveries.map((d) => ({ ...d }));
 let nextSubId = Math.max(0, ...subs.map((s) => s.id)) + 1;
 let nextDeliveryId = Math.max(0, ...deliveries.map((d) => d.id)) + 1;

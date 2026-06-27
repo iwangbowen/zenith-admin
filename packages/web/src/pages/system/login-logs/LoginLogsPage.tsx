@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input, Button, Select, DatePicker, Tabs, TabPane, SplitButtonGroup, Dropdown, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
-import { Search, RotateCcw, Download, ChevronDown, Trash2 } from 'lucide-react';
+import { Search, RotateCcw, ChevronDown, Trash2 } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -21,8 +22,6 @@ export default function LoginLogsPage() {
   const defaultParams: SearchParams = { username: '', eventType: '', status: '', timeRange: null };
   const [data, setData] = useState<LoginLog[]>([]);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [clearLogsLoading, setClearLogsLoading] = useState(false);
   const [clearModalVisible, setClearModalVisible] = useState(false);
   const [clearMonths, setClearMonths] = useState(0);
@@ -161,31 +160,21 @@ export default function LoginLogsPage() {
     />
   );
 
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/login-logs/export/csv', '登录日志.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
+  const buildExportQuery = () => ({
+    ...(searchParams.username ? { username: searchParams.username } : {}),
+    ...(searchParams.eventType ? { eventType: searchParams.eventType } : {}),
+    ...(searchParams.status ? { status: searchParams.status } : {}),
+    ...(searchParams.timeRange
+      ? {
+          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
+          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+        }
+      : {}),
+  });
 
-  const renderMobileExportActions = () => (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/login-logs/export/csv', '登录日志.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Button>
-    </>
-  );
+  const renderExportButtons = () => <ExportButton entity="system.login-logs" query={buildExportQuery()} />;
+
+  const renderMobileExportActions = () => <ExportButton entity="system.login-logs" query={buildExportQuery()} variant="flat" />;
 
   const renderClearButtons = () => (
     <SplitButtonGroup>

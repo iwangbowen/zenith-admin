@@ -980,8 +980,25 @@ export const SEED_CRON_JOBS: CronJob[] = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },
+  {
+    id: 20,
+    name: '报表物化快照刷新',
+    cronExpression: '15 * * * * *',
+    handler: 'refreshReportMaterializations',
+    params: null,
+    status: 'enabled',
+    description: '每分钟扫描启用物化的数据集，按各自 Cron 判断到期并刷新快照（给大屏/高频报表降压）',
+    retryCount: 0,
+    retryInterval: 0,
+    retryBackoff: false,
+    monitorTimeout: null,
+    lastRunAt: null,
+    lastRunStatus: null,
+    lastRunMessage: null,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
 ];
-
 
 // ─── 工作流表单库 ───────────────────────────────────────────────────────────────
 
@@ -1724,6 +1741,7 @@ export const SEED_CHANNEL_QUICK_REPLIES: SeedChannelQuickReply[] = [
 // ─── 报表中心：示例数据源 / 数据集 / 仪表盘 ─────────────────────────────────────
 export const SEED_REPORT_DATASOURCES: ReportDatasource[] = [
   { id: 1, name: '内置主库', type: 'sql', config: { connection: 'internal' }, status: 'enabled', remark: '应用 PostgreSQL 主库（只读）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, name: '静态数据', type: 'static', config: {}, status: 'enabled', remark: '静态/文件数据集容器（JSON / Excel / CSV 上传）', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 export const SEED_REPORT_DATASETS: ReportDataset[] = [

@@ -6,7 +6,6 @@ import { Plus, RotateCcw, Search } from 'lucide-react';
 import { OPEN_WEBHOOK_DELIVERY_STATUS_LABELS, OPEN_WEBHOOK_EVENT_LABELS } from '@zenith/shared';
 import type { AppWebhookSubscription, AppWebhookSubscriptionCreated, AppWebhookDelivery, OpenWebhookEventMeta, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';

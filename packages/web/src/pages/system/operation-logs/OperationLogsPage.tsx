@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input, Button, DatePicker, Select, Tabs, TabPane, InputNumber, SplitButtonGroup, Dropdown, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
-import { Search, RotateCcw, Download, ChevronDown, Trash2 } from 'lucide-react';
+import { Search, RotateCcw, ChevronDown, Trash2 } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -29,8 +30,6 @@ export default function OperationLogsPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'stats'>('list');
   const [data, setData] = useState<OperationLog[]>([]);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [clearLogsLoading, setClearLogsLoading] = useState(false);
   const [clearModalVisible, setClearModalVisible] = useState(false);
   const [clearMonths, setClearMonths] = useState(0);
@@ -80,7 +79,7 @@ export default function OperationLogsPage() {
 
   const buildExportQuery = () => {
     const p = searchParamsRef.current;
-    return new URLSearchParams({
+    return {
       ...(p.username ? { username: p.username } : {}),
       ...(p.module ? { module: p.module } : {}),
       ...(p.description ? { description: p.description } : {}),
@@ -91,17 +90,7 @@ export default function OperationLogsPage() {
       ...(p.timeRange ? { startTime: formatDateTimeForApi(p.timeRange[0]), endTime: formatDateTimeForApi(p.timeRange[1]) } : {}),
       ...(p.minDurationMs === null ? {} : { minDurationMs: String(p.minDurationMs) }),
       ...(p.maxDurationMs === null ? {} : { maxDurationMs: String(p.maxDurationMs) }),
-    }).toString();
-  };
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try { await request.download(`/api/operation-logs/export?${buildExportQuery()}`, '操作日志.xlsx'); } finally { setExportLoading(false); }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try { await request.download(`/api/operation-logs/export/csv?${buildExportQuery()}`, '操作日志.csv'); } finally { setExportCsvLoading(false); }
+    };
   };
 
   const handleSearch = () => {
@@ -269,31 +258,9 @@ export default function OperationLogsPage() {
     </>
   );
 
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        }
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
+  const renderExportButtons = () => <ExportButton entity="system.operation-logs" query={buildExportQuery()} />;
 
-  const renderMobileExportActions = () => (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
-  );
+  const renderMobileExportActions = () => <ExportButton entity="system.operation-logs" query={buildExportQuery()} variant="flat" />;
 
   const renderClearButtons = () => (
     <SplitButtonGroup>

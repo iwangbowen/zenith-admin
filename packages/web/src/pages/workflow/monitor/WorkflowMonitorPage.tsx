@@ -20,13 +20,14 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Download, FileText, RotateCcw, Search } from 'lucide-react';
+import { FileText, RotateCcw, Search } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowDefinition, WorkflowFlowData, WorkflowInstance, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import WorkflowPriorityTag, { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -518,22 +519,6 @@ export default function WorkflowMonitorPage() {
     setSearchParams(newParams);
     setPage(1);
     void fetchList(1, pageSize, newParams);
-  };
-
-  const [exporting, setExporting] = useState(false);
-  const handleExport = async () => {
-    const { keyword, status, categoryId, initiator } = searchParamsRef.current;
-    const qs = new URLSearchParams();
-    if (keyword) qs.set('keyword', keyword);
-    if (status) qs.set('status', status);
-    if (categoryId !== '') qs.set('categoryId', String(categoryId));
-    if (initiator) qs.set('initiatorKeyword', initiator);
-    setExporting(true);
-    try {
-      await request.download(`/api/workflows/instances/export?${qs.toString()}`, '流程实例.xlsx');
-    } finally {
-      setExporting(false);
-    }
   };
 
   const loadDetail = (instanceId: number) => {
@@ -1179,8 +1164,19 @@ export default function WorkflowMonitorPage() {
     <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
   );
 
+  const buildExportQuery = () => {
+    const { keyword, status, categoryId, initiator, priority } = searchParamsRef.current;
+    return {
+      ...(keyword ? { keyword } : {}),
+      ...(status ? { status } : {}),
+      ...(categoryId !== '' ? { categoryId: String(categoryId) } : {}),
+      ...(initiator ? { initiatorKeyword: initiator } : {}),
+      ...(priority ? { priority } : {}),
+    };
+  };
+
   const renderExportButton = () => (
-    <Button type="primary" icon={<Download size={14} />} loading={exporting} onClick={() => void handleExport()}>导出</Button>
+    <ExportButton entity="workflow.instances" query={buildExportQuery()} formats={['xlsx']} />
   );
 
   return (

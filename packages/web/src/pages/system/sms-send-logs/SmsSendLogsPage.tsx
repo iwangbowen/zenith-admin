@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Form, Input, Modal, Select, SplitButtonGroup, Dropdown, Tag,
+import { Button, Form, Input, Modal, Select, Tag,
   Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Download, Plus, RotateCcw, Search, ChevronDown } from 'lucide-react';
+import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { PaginatedResponse, SendStatus, SmsSendLog, SmsTemplate } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../../utils/table-columns';
@@ -48,8 +49,6 @@ export default function SmsSendLogsPage() {
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
 
   const [testVisible, setTestVisible] = useState(false);
   const [templates, setTemplates] = useState<SmsTemplate[]>([]);
@@ -86,18 +85,12 @@ export default function SmsSendLogsPage() {
     setPage(1);
     void fetchList(1, pageSize, defaultSearchParams);
   };
-
-  const handleExport = async () => {
-    setExportLoading(true);
-    try { await request.download('/api/sms-send-logs/export', '短信发送记录.xlsx'); }
-    finally { setExportLoading(false); }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try { await request.download('/api/sms-send-logs/export/csv', '短信发送记录.csv'); }
-    finally { setExportCsvLoading(false); }
-  };
+  const buildExportQuery = () => ({
+    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
+    ...(searchParams.phone ? { phone: searchParams.phone } : {}),
+    ...(searchParams.filterStatus ? { status: searchParams.filterStatus } : {}),
+    ...(searchParams.filterSource ? { source: searchParams.filterSource } : {}),
+  });
 
   const openTest = async () => {
     try {
@@ -183,22 +176,7 @@ export default function SmsSendLogsPage() {
         actions={(
           <>
             {can('system:sms-send-log:export') && (
-              <SplitButtonGroup>
-                <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-                <Dropdown
-                  trigger="click"
-                  position="bottomRight"
-                  clickToHide
-                  render={(
-                    <Dropdown.Menu>
-                      <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
-                      <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-                    </Dropdown.Menu>
-                  )}
-                >
-                  <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-                </Dropdown>
-              </SplitButtonGroup>
+              <ExportButton entity="system.sms-send-logs" query={buildExportQuery()} />
             )}
             {can('system:sms-send-log:send') && (
               <Button type="primary" icon={<Plus size={14} />} onClick={openTest}>测试发送</Button>
@@ -226,10 +204,7 @@ export default function SmsSendLogsPage() {
           </>
         )}
         mobileActions={can('system:sms-send-log:export') ? (
-          <>
-            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
-            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-          </>
+          <ExportButton entity="system.sms-send-logs" query={buildExportQuery()} variant="flat" />
         ) : null}
         filterTitle="短信发送日志筛选"
         actionTitle="短信日志操作"

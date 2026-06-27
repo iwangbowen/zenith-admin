@@ -21,7 +21,8 @@ import type {
   CreateReportDatasourceInput, UpdateReportDatasourceInput, ReportDatasourceTestInput,
 } from '@zenith/shared';
 
-const EXTERNAL_TYPES: ReportDatasourceType[] = ['mysql', 'postgresql'];
+const EXTERNAL_TYPES: ReportDatasourceType[] = ['mysql', 'postgresql', 'sqlserver'];
+const DEFAULT_PORT: Record<string, number> = { mysql: 3306, postgresql: 5432, sqlserver: 1433 };
 
 /** DTO 映射：外部库 config 脱敏（去 password，给 hasPassword 标记） */
 export function mapDatasource(row: ReportDatasourceRow): ReportDatasource {
@@ -65,18 +66,22 @@ export function normalizeDatasourceConfig(
       : null;
     return { url, method, headers };
   }
-  if (type === 'mysql' || type === 'postgresql') {
+  if (type === 'mysql' || type === 'postgresql' || type === 'sqlserver') {
     const host = typeof cfg.host === 'string' ? cfg.host.trim() : '';
     const database = typeof cfg.database === 'string' ? cfg.database.trim() : '';
     const user = typeof cfg.user === 'string' ? cfg.user.trim() : '';
     if (!host || !database || !user) {
       throw new HTTPException(400, { message: '外部数据库需填写 host / database / user' });
     }
-    const port = Number(cfg.port) || (type === 'mysql' ? 3306 : 5432);
+    const port = Number(cfg.port) || DEFAULT_PORT[type] || 3306;
     const rawPwd = typeof cfg.password === 'string' && cfg.password ? cfg.password : undefined;
     // 新明文密码加密；未提供则沿用旧密文
     const password = rawPwd ? encryptField(rawPwd) : (currentEncryptedPassword ?? null);
     return { host, port, database, user, password, ssl: !!cfg.ssl };
+  }
+  if (type === 'static') {
+    // 静态数据源仅作容器，数据放在数据集 content.data
+    return {};
   }
   // sql：内置只读主库
   return { connection: 'internal' };
@@ -101,7 +106,7 @@ export async function listDatasources(query: {
     const kw = `%${escapeLike(keyword)}%`;
     conds.push(or(ilike(reportDatasources.name, kw), ilike(reportDatasources.remark, kw)));
   }
-  if (type === 'api' || type === 'sql' || type === 'mysql' || type === 'postgresql') {
+  if (type === 'api' || type === 'sql' || type === 'mysql' || type === 'postgresql' || type === 'sqlserver' || type === 'static') {
     conds.push(eq(reportDatasources.type, type));
   }
   if (status === 'enabled' || status === 'disabled') conds.push(eq(reportDatasources.status, status));
@@ -168,8 +173,8 @@ export async function deleteDatasource(id: number): Promise<void> {
  * - 新建表单试连：用入参 config（明文 password 临时加密后测试）。
  */
 export async function testDatasource(input: ReportDatasourceTestInput): Promise<{ ok: boolean; message: string; latencyMs?: number }> {
-  if (input.type !== 'mysql' && input.type !== 'postgresql') {
-    return { ok: false, message: '仅外部数据库（MySQL / PostgreSQL）支持连接测试' };
+  if (input.type !== 'mysql' && input.type !== 'postgresql' && input.type !== 'sqlserver') {
+    return { ok: false, message: '仅外部数据库（MySQL / PostgreSQL / SQL Server）支持连接测试' };
   }
   let cfg: ReportExternalDbConfig;
   if (input.id) {
