@@ -7,13 +7,11 @@ import {
   Select,
   Spin,
   Toast,
-  SplitButtonGroup,
-  Dropdown,
   Switch,
 } from '@douyinfe/semi-ui';
 import type { CascaderData } from '@douyinfe/semi-ui/lib/es/cascader';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, ChevronsDownUp, ChevronsUpDown, Download, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import type { Region } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -21,6 +19,7 @@ import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -50,8 +49,6 @@ export default function RegionsPage() {
   const formApi = useRef<FormApi | null>(null);
 
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [data, setData] = useState<Region[]>([]);
   const [flatData, setFlatData] = useState<Region[]>([]);
   const [flatLoading, setFlatLoading] = useState(false);
@@ -126,24 +123,6 @@ export default function RegionsPage() {
     setSearchParams(defaultSearchParams);
     void fetchRegions(defaultSearchParams);
   }
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/regions/export', '地区列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/regions/export/csv', '地区列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
-  };
 
   // 递归收集所有节点 ID
   const allRowKeys = useMemo(() => {
@@ -424,29 +403,16 @@ export default function RegionsPage() {
       {isAllExpanded ? '全部折叠' : '全部展开'}
     </Button>
   );
+  const buildExportQuery = () => ({
+    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
+    ...(searchParams.status ? { status: searchParams.status } : {}),
+    ...(searchParams.level ? { level: searchParams.level } : {}),
+  });
   const renderExportButtons = () => hasPermission('system:region:export') ? (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
+    <ExportButton entity="system.regions" query={buildExportQuery()} />
   ) : null;
   const renderMobileExportActions = () => hasPermission('system:region:export') ? (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
+    <ExportButton entity="system.regions" query={buildExportQuery()} variant="flat" />
   ) : null;
   const renderCreateButton = () => hasPermission('system:region:create') ? (
     <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
