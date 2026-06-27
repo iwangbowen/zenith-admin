@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Badge,
   Button,
   Descriptions,
   Empty,
@@ -445,7 +444,13 @@ export default function WorkflowJobsView() {
             tab={(
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 {JOB_TYPE_META[t].text}
-                <Badge count={item.total} showZero overflowCount={999} type={problem > 0 ? 'danger' : 'tertiary'} />
+                <Tag
+                  size="small"
+                  color={problem > 0 ? 'red' : 'grey'}
+                  style={{ minWidth: 18, textAlign: 'center', padding: '0 6px', borderRadius: 9 }}
+                >
+                  {item.total}
+                </Tag>
               </span>
             )}
           >
