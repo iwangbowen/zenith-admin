@@ -2692,6 +2692,7 @@ export const reportWidgetSchema = z.object({
     paramName: z.string().optional(),
   }).optional(),
   style: z.object({ background: z.string().optional(), showHeader: z.boolean().optional(), borderless: z.boolean().optional() }).optional(),
+  page: z.number().int().min(1).max(50).optional(),
 });
 export const reportFilterTypeSchema = z.enum(['date', 'daterange', 'select', 'multiSelect', 'input', 'numberRange']);
 export const reportFilterSchema = z.object({
@@ -2721,6 +2722,12 @@ export const reportDashboardConfigSchema = z.object({
   screen: z.boolean().optional(),
   screenConfig: reportScreenConfigSchema.optional(),
   refreshInterval: z.number().int().min(0).optional(),
+  carousel: z.object({
+    enabled: z.boolean().optional(),
+    pageCount: z.number().int().min(1).max(50).optional(),
+    intervalSec: z.number().int().min(0).max(3600).optional(),
+    showDots: z.boolean().optional(),
+  }).optional(),
 });
 export const createReportDashboardSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),

@@ -126,6 +126,43 @@
   padding: 0 12px;
 }
 
+/* ── 钻取面包屑 ── */
+.report-drill-crumb {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  height: 24px;
+  padding: 0 2px 4px;
+  font-size: 12px;
+  line-height: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.report-drill-crumb__item {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--semi-color-primary);
+  font-size: 12px;
+}
+.report-drill-crumb__item:hover {
+  text-decoration: underline;
+}
+.report-drill-crumb__sep {
+  margin: 0 2px;
+  color: var(--semi-color-text-2);
+}
+.report-drill-crumb__current {
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+}
+.report-screen--dark .report-drill-crumb__current {
+  color: #eaf4ff;
+}
+
 /* ── 设计器布局 ── */
 .report-designer {
   display: flex;

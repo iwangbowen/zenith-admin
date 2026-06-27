@@ -118,8 +118,19 @@ interface WidgetRendererProps {
 export function WidgetRenderer({ widget, data, loading, error, filterValues, onCategoryClick }: Readonly<WidgetRendererProps>) {
   const palette = useChartPalette();
   const { ref, width, height } = useElementSize<HTMLDivElement>();
-  const chartHeight = Math.max(80, height - 4);
   const [dictMaps, setDictMaps] = useState<Record<string, Record<string, string>>>({});
+  // 多级原地钻取：按 drilldown.fields 逐层下钻的当前路径（{字段,值}）
+  const [drillPath, setDrillPath] = useState<{ field: string; value: string }[]>([]);
+
+  const dd = widget.drilldown;
+  const drillFields = useMemo(() => (dd?.enabled && dd.type === 'fields' ? (dd.fields ?? []) : []), [dd]);
+  const fieldDrill = drillFields.length > 0;
+  const showCrumb = fieldDrill && drillPath.length > 0;
+  const crumbH = showCrumb ? 28 : 0;
+  const chartHeight = Math.max(80, height - 4 - crumbH);
+
+  // 数据集变化时重置钻取路径，避免残留无效层级
+  useEffect(() => { setDrillPath([]); }, [widget.datasetId]);
 
   const tableDictCodes = useMemo(() => {
     if (widget.type !== 'table') return [];
@@ -145,8 +156,21 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
   }, [tableDictCodes]);
 
   const content = useMemo(() => {
-    const o = widget.options ?? {};
-    const rawRows = data?.rows ?? [];
+    const baseOptions = widget.options ?? {};
+    // 钻取生效时：分类字段替换为当前层级字段，原始行按已下钻路径过滤
+    const drillLevel = fieldDrill ? Math.min(drillPath.length, drillFields.length - 1) : 0;
+    const o = fieldDrill ? { ...baseOptions, categoryField: drillFields[drillLevel] } : baseOptions;
+    let rawRows = data?.rows ?? [];
+    if (fieldDrill && drillPath.length) {
+      rawRows = rawRows.filter((r) => drillPath.every((p) => String(r[p.field] ?? '') === p.value));
+    }
+    // 维度点击：可继续下钻则下钻，否则回退到外部联动/钻取
+    const canDrillDeeper = fieldDrill && drillPath.length < drillFields.length - 1;
+    const handleCat = (value: string) => {
+      if (canDrillDeeper) setDrillPath((prev) => [...prev, { field: drillFields[drillLevel], value }]);
+      else onCategoryClick?.(value);
+    };
+    const interactive = fieldDrill || !!onCategoryClick;
 
     if (error) return <EmptyHint text={`加载失败：${error}`} />;
     if (loading && !data) return <EmptyHint text="加载中…" />;
@@ -235,7 +259,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
           val={o.valueFields[0]}
           speed={o.scrollSpeed}
           showRank={o.showRank}
-          onClick={onCategoryClick}
+          onClick={interactive ? handleCat : undefined}
         />
       );
     }
@@ -272,7 +296,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
           <Table
             size="small" bordered={false} columns={tableColumns} dataSource={dataSource} rowKey="__rk"
             pagination={o.pageSize && o.pageSize > 0 ? { pageSize: o.pageSize } : false}
-            onRow={onCategoryClick ? (record) => ({ onClick: () => onCategoryClick(String((record as Record<string, unknown>)[cols[0]?.name] ?? '')), style: { cursor: 'pointer' } }) : undefined}
+            onRow={interactive ? (record) => ({ onClick: () => handleCat(String((record as Record<string, unknown>)[cols[0]?.name] ?? '')), style: { cursor: 'pointer' } }) : undefined}
           />
         </div>
       );
@@ -292,7 +316,7 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
     // 漏斗
     if (widget.type === 'funnel') {
       if (!o.categoryField || !o.valueFields?.[0]) return <EmptyHint text="请配置分类字段与指标字段" />;
-      return <Funnel rows={rows} cat={o.categoryField} val={o.valueFields[0]} onClick={onCategoryClick} />;
+      return <Funnel rows={rows} cat={o.categoryField} val={o.valueFields[0]} onClick={interactive ? handleCat : undefined} />;
     }
 
     // 雷达
@@ -331,11 +355,11 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
       );
     }
 
-    const onChartClick = onCategoryClick
+    const onChartClick = interactive
       ? (p: unknown) => {
           const datum = (p as { datum?: Record<string, unknown> })?.datum;
           const v = datum?.[o.categoryField as string];
-          if (v != null) onCategoryClick(String(v));
+          if (v != null) handleCat(String(v));
         }
       : undefined;
 
@@ -496,9 +520,38 @@ export function WidgetRenderer({ widget, data, loading, error, filterValues, onC
     }
     const spec = makeLineSpec({ data: chartData, xField: o.categoryField, series, palette, smooth: o.smooth, point: true });
     return <LineChart {...spec} options={chartOptions} height={chartHeight} onClick={onChartClick} />;
-  }, [widget, data, loading, error, palette, width, height, chartHeight, filterValues, onCategoryClick, dictMaps]);
+  }, [widget, data, loading, error, palette, width, height, chartHeight, filterValues, onCategoryClick, dictMaps, drillPath, fieldDrill, drillFields]);
 
-  return <div ref={ref} style={{ width: '100%', height: '100%' }}>{content}</div>;
+  return (
+    <div ref={ref} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {showCrumb && (
+        <DrillBreadcrumb
+          path={drillPath}
+          onJump={(level) => setDrillPath((prev) => prev.slice(0, level))}
+        />
+      )}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>{content}</div>
+    </div>
+  );
+}
+
+/** 钻取面包屑：全部 > 值1 > 值2，点击回退到对应层级 */
+function DrillBreadcrumb({ path, onJump }: { readonly path: { field: string; value: string }[]; readonly onJump: (level: number) => void }) {
+  return (
+    <div className="report-drill-crumb">
+      <button type="button" className="report-drill-crumb__item" onClick={() => onJump(0)}>全部</button>
+      {path.map((p, i) => (
+        <span key={`${p.field}-${p.value}`} className="report-drill-crumb__seg">
+          <span className="report-drill-crumb__sep">/</span>
+          {i === path.length - 1 ? (
+            <span className="report-drill-crumb__current">{p.value}</span>
+          ) : (
+            <button type="button" className="report-drill-crumb__item" onClick={() => onJump(i + 1)}>{p.value}</button>
+          )}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────

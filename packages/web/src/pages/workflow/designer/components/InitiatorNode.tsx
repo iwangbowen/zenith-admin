@@ -59,17 +59,39 @@ export default function InitiatorNode({
           <span className="fd-node-card__header-title">{node.name}</span>
           {started && <span className="fd-node-card__header-status" style={{ marginLeft: 'auto', fontSize: 12 }}>已发起</span>}
         </div>
-        <div className="fd-node-card__body">
-          <div className="fd-node-card__body-content">
+        {runtime ? (
+          <div className="fd-node-card__body fd-node-card__body--rt">
+            <div className="fd-node-card__rt-summary">
+            {typeof runtime.step === 'number' && typeof runtime.totalSteps === 'number' && (
+              <span>第 {runtime.step} / {runtime.totalSteps} 步</span>
+            )}
+              <span>{runtime.active ? '当前步骤' : runtime.statusLabel}</span>
+            </div>
             <span className="fd-node-card__body-text">{desc}</span>
-            {permSummary && (
-              <div className="fd-node-card__body-tags">
-                <span className="fd-node-card__tag">{permSummary}</span>
+            {(runtime.detail || runtime.reason) && (
+              <div className="fd-node-card__rt-note" title={runtime.detail ?? runtime.reason ?? undefined}>
+                {runtime.detail ?? runtime.reason}
+              </div>
+            )}
+            {runtime.nextNodeNames && runtime.nextNodeNames.length > 0 && (
+              <div className="fd-node-card__rt-next" title={runtime.nextNodeNames.join('、')}>
+                下一步：{runtime.nextNodeNames.join('、')}
               </div>
             )}
           </div>
-          <ChevronRight size={16} className="fd-node-card__body-arrow" />
-        </div>
+        ) : (
+          <div className="fd-node-card__body">
+            <div className="fd-node-card__body-content">
+              <span className="fd-node-card__body-text">{desc}</span>
+              {permSummary && (
+                <div className="fd-node-card__body-tags">
+                  <span className="fd-node-card__tag">{permSummary}</span>
+                </div>
+              )}
+            </div>
+            <ChevronRight size={16} className="fd-node-card__body-arrow" />
+          </div>
+        )}
       </button>
     </div>
   );

@@ -276,16 +276,29 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
           <Space vertical align="start" style={full}>
             <Space>
               <Switch size="small" checked={!!widget.drilldown?.enabled} onChange={(c) => onPatch({ drilldown: { ...widget.drilldown, enabled: c } })} />
-              <Select size="small" style={{ width: 120 }} value={widget.drilldown?.type ?? 'dashboard'} onChange={(v) => onPatch({ drilldown: { ...widget.drilldown, type: v as 'dashboard' | 'url' } })}
-                optionList={[{ value: 'dashboard', label: '跳仪表盘' }, { value: 'url', label: '跳外链' }]} />
+              <Select size="small" style={{ width: 120 }} value={widget.drilldown?.type ?? 'fields'} onChange={(v) => onPatch({ drilldown: { ...widget.drilldown, type: v as 'fields' | 'dashboard' | 'url' } })}
+                optionList={[{ value: 'fields', label: '原地下钻' }, { value: 'dashboard', label: '跳仪表盘' }, { value: 'url', label: '跳外链' }]} />
             </Space>
-            {widget.drilldown?.type === 'url' ? (
-              <Input size="small" placeholder="https://...{value}" value={widget.drilldown?.url} onChange={(v) => onPatch({ drilldown: { ...widget.drilldown, url: v } })} />
-            ) : (
-              <Select size="small" style={full} placeholder="目标仪表盘" showClear value={widget.drilldown?.targetDashboardId ?? undefined}
-                onChange={(v) => onPatch({ drilldown: { ...widget.drilldown, targetDashboardId: (v as number) ?? null } })}
-                optionList={dashboards.map((d) => ({ value: d.id, label: d.name }))} />
-            )}
+            {(() => {
+              const dt = widget.drilldown?.type ?? 'fields';
+              if (dt === 'url') {
+                return <Input size="small" placeholder="https://...{value}" value={widget.drilldown?.url} onChange={(v) => onPatch({ drilldown: { ...widget.drilldown, url: v } })} />;
+              }
+              if (dt === 'dashboard') {
+                return (
+                  <Select size="small" style={full} placeholder="目标仪表盘" showClear value={widget.drilldown?.targetDashboardId ?? undefined}
+                    onChange={(v) => onPatch({ drilldown: { ...widget.drilldown, targetDashboardId: (v as number) ?? null } })}
+                    optionList={dashboards.map((d) => ({ value: d.id, label: d.name }))} />
+                );
+              }
+              return (
+                <>
+                  <Select size="small" multiple style={full} placeholder="选择下钻维度层级（按顺序）" value={widget.drilldown?.fields ?? []}
+                    onChange={(v) => onPatch({ drilldown: { ...widget.drilldown, fields: (v as string[]) } })} optionList={fieldOptions} />
+                  <span style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>数据集需包含各层级维度列（如省/市/区）；按选择顺序逐层下钻。</span>
+                </>
+              );
+            })()}
           </Space>
         </Field>
       )}

@@ -5699,6 +5699,8 @@ export interface ReportWidget {
   drilldown?: ReportWidgetDrilldown;
   /** 组件样式 */
   style?: ReportWidgetStyle;
+  /** 多屏轮播：所属页码（1 基，缺省=第 1 页） */
+  page?: number;
 }
 
 export interface ReportDashboard {
@@ -5827,6 +5829,20 @@ export interface ReportDashboardConfig {
   screenConfig?: ReportScreenConfig;
   /** 自动刷新间隔（秒，0=关闭） */
   refreshInterval?: number;
+  /** 多屏轮播（大屏分页 + 自动切换） */
+  carousel?: ReportCarouselConfig;
+}
+
+/** 多屏轮播配置 */
+export interface ReportCarouselConfig {
+  /** 是否启用多屏轮播 */
+  enabled?: boolean;
+  /** 总页数（>=1） */
+  pageCount?: number;
+  /** 自动切换间隔（秒，0=不自动切换） */
+  intervalSec?: number;
+  /** 是否显示页码指示点 */
+  showDots?: boolean;
 }
 
 /** 仪表盘分类 */

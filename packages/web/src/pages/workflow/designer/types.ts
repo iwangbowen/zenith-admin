@@ -341,6 +341,12 @@ export interface NodeRuntimeInfo {
   status: 'approved' | 'rejected' | 'pending' | 'waiting' | 'skipped';
   approvers: NodeRuntimeApprover[];
   active?: boolean;
+  step?: number;
+  totalSteps?: number;
+  statusLabel?: string;
+  reason?: string | null;
+  detail?: string | null;
+  nextNodeNames?: string[];
 }
 
 // ─── 用于渲染的辅助类型 ─────────────────────────────────────────────

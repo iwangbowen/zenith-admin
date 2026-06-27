@@ -264,6 +264,12 @@ export default function NodeCard({
       {/* 内容区 */}
       {runtime ? (
         <div className="fd-node-card__body fd-node-card__body--rt">
+          <div className="fd-node-card__rt-summary">
+            {typeof runtime.step === 'number' && typeof runtime.totalSteps === 'number' && (
+              <span>第 {runtime.step} / {runtime.totalSteps} 步</span>
+            )}
+            {(runtime.active || runtime.statusLabel) && <span>{runtime.active ? '当前步骤' : runtime.statusLabel}</span>}
+          </div>
           {runtime.approvers.length === 0 ? (
             <span className="fd-node-card__body-text">{bodyText}</span>
           ) : (
@@ -288,9 +294,22 @@ export default function NodeCard({
                     {a.actionAt && (
                       <span className="fd-node-card__rt-time">{formatDateTime(a.actionAt)}</span>
                     )}
+                    {a.comment && (
+                      <span className="fd-node-card__rt-comment" title={a.comment}>{a.comment}</span>
+                    )}
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {(runtime.detail || runtime.reason) && (
+            <div className="fd-node-card__rt-note" title={runtime.detail ?? runtime.reason ?? undefined}>
+              {runtime.detail ?? runtime.reason}
+            </div>
+          )}
+          {runtime.nextNodeNames && runtime.nextNodeNames.length > 0 && (
+            <div className="fd-node-card__rt-next" title={runtime.nextNodeNames.join('、')}>
+              下一步：{runtime.nextNodeNames.join('、')}
             </div>
           )}
         </div>
