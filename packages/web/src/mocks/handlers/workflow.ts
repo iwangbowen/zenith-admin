@@ -726,14 +726,49 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     const hour = dayjs().startOf('hour').subtract(23 - i, 'hour');
     return { hour: hour.format(DATE_TIME_FORMAT), created: i % 3 === 0 ? 1 : 0, completed: i % 4 === 0 ? 1 : 0 };
   });
+  const scoreBreakdown = (() => {
+    const out: Array<{ reason: string; delta: number; severity: 'warning' | 'critical' }> = [];
+    const crit = issues.filter((x) => x.severity === 'critical').length;
+    const warn = issues.filter((x) => x.severity === 'warning').length;
+    const failedQ = queues.filter((q) => q.failed > 0).length;
+    const staleQ = queues.filter((q) => q.oldestAgeMinutes != null && q.oldestAgeMinutes >= 60).length;
+    if (crit > 0) out.push({ reason: `严重问题 ×${crit}`, delta: crit * 12, severity: 'critical' });
+    if (warn > 0) out.push({ reason: `警告问题 ×${warn}`, delta: warn * 4, severity: 'warning' });
+    if (failedQ > 0) out.push({ reason: `队列存在失败任务 ×${failedQ}`, delta: failedQ * 5, severity: 'critical' });
+    if (staleQ > 0) out.push({ reason: `队列积压≥60 分钟 ×${staleQ}`, delta: staleQ * 3, severity: 'warning' });
+    return out;
+  })();
+  const latencyHistogram = [
+    { label: '<50ms', min: 0, max: 50, count: 142 },
+    { label: '50-100ms', min: 50, max: 100, count: 168 },
+    { label: '100-250ms', min: 100, max: 250, count: 64 },
+    { label: '250-500ms', min: 250, max: 500, count: 21 },
+    { label: '500ms-1s', min: 500, max: 1000, count: 7 },
+    { label: '1-5s', min: 1000, max: 5000, count: 3 },
+    { label: '≥5s', min: 5000, max: null, count: 0 },
+  ];
+  const durationHistogram = [
+    { label: '<50ms', min: 0, max: 50, count: 3 },
+    { label: '50-100ms', min: 50, max: 100, count: 8 },
+    { label: '100-250ms', min: 100, max: 250, count: 11 },
+    { label: '250-500ms', min: 250, max: 500, count: 5 },
+    { label: '500ms-1s', min: 500, max: 1000, count: 2 },
+    { label: '1-5s', min: 1000, max: 5000, count: 1 },
+    { label: '≥5s', min: 5000, max: null, count: 0 },
+  ];
   const telemetry: WorkflowEngineIntrospection['telemetry'] = {
     healthScore: telemetryHealthScore,
+    scoreBreakdown,
+    apdex: { score: 0.93, thresholdMs: 100, satisfied: 310, tolerating: 92, frustrated: 3, total: 405 },
     events: {
       last1h: { total: 18, success: 17, failed: 1 },
       last24h: { total: 412, success: 405, failed: 4 },
+      prev24h: { total: 388, success: 384, failed: 4 },
       pendingRetry: telemetryPendingRetry,
       avgLatencyMs: 38,
       p95LatencyMs: 96,
+      p99LatencyMs: 184,
+      latencyHistogram,
       series24h: eventSeries24h,
     },
     triggers: {
@@ -743,18 +778,30 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
         failed: mockWorkflowTriggerExecutions.filter((item) => item.status === 'failed').length,
         retrying: mockWorkflowTriggerExecutions.filter((item) => item.status === 'retrying').length,
       },
+      prev24h: {
+        total: Math.max(0, mockWorkflowTriggerExecutions.length - 1),
+        success: triggerSuccess.length,
+        failed: 0,
+        retrying: 0,
+      },
       avgDurationMs: triggerSuccess.length
         ? Math.round(triggerSuccess.reduce((sum, item) => sum + (item.durationMs ?? 0), 0) / triggerSuccess.length)
         : null,
       p95DurationMs: triggerSuccess.length
         ? Math.max(...triggerSuccess.map((item) => item.durationMs ?? 0))
         : null,
+      p99DurationMs: triggerSuccess.length
+        ? Math.max(...triggerSuccess.map((item) => item.durationMs ?? 0))
+        : null,
+      durationHistogram,
     },
     instances: {
       running: runningInstances.length,
       createdLast24h: 9,
       completedLast24h: 6,
       canceledLast24h: 1,
+      createdPrev24h: 7,
+      completedPrev24h: 8,
       series24h: instanceSeries24h,
     },
     recurringJobs: [
@@ -778,6 +825,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     healthy: !issues.some((item) => item.severity === 'critical'),
     generatedAt: mockDateTime(),
     thresholdMinutes,
+    thresholds: { healthWarn: 90, healthCritical: 70, backlogWarn: 50, backlogCritical: 200, errorRateWarn: 0.05, errorRateCritical: 0.15 },
     telemetry,
     components,
     queues,
@@ -1259,6 +1307,49 @@ export const workflowHandlers = [
     const url = new URL(request.url);
     const threshold = Number(url.searchParams.get('thresholdMinutes')) || 30;
     return ok(buildMockWorkflowEngineIntrospection(Math.max(1, Math.min(threshold, 24 * 60))));
+  }),
+
+  http.get('/api/workflows/engine/health-history', ({ request }) => {
+    const url = new URL(request.url);
+    const hours = Math.max(1, Math.min(Number(url.searchParams.get('hours')) || 24, 24 * 30));
+    const stepMin = 30;
+    const count = Math.min(Math.floor((hours * 60) / stepMin), 5000);
+    const points = Array.from({ length: count }, (_, i) => {
+      const at = dayjs().subtract((count - 1 - i) * stepMin, 'minute');
+      const wave = Math.sin(i / 5);
+      const score = Math.max(60, Math.min(100, Math.round(94 + wave * 5 - (i % 11 === 0 ? 8 : 0))));
+      const severity = score >= 90 ? 'healthy' : score >= 70 ? 'warning' : 'critical';
+      const backlog = Math.max(0, Math.round(6 + wave * 4 + (i % 11 === 0 ? 10 : 0)));
+      return {
+        capturedAt: at.format(DATE_TIME_FORMAT),
+        healthScore: score,
+        severity,
+        backlog,
+        errorRate: i % 9 === 0 ? 0.03 : 0,
+        criticalCount: score < 70 ? 1 : 0,
+        warningCount: score < 90 ? 1 : 0,
+        runningInstances: 4,
+      };
+    });
+    return ok({
+      points,
+      thresholds: { healthWarn: 90, healthCritical: 70, backlogWarn: 50, backlogCritical: 200, errorRateWarn: 0.05, errorRateCritical: 0.15 },
+    });
+  }),
+
+  http.post('/api/workflows/engine/actions/:action', ({ params }) => {
+    const action = String(params.action);
+    const labels: Record<string, string> = {
+      'replay-outbox': '事件 Outbox 重放',
+      'recover-delays': '延时任务恢复扫描',
+      'recover-subprocess': '子流程恢复扫描',
+      'process-timeouts': '超时任务处理',
+      'recover-triggers': '触发器恢复重派',
+    };
+    if (!(action in labels)) return err('未知运维动作', 400);
+    const detail: Record<string, number> = { scanned: 2, dispatched: 1, failed: 0 };
+    const summary = Object.entries(detail).map(([k, v]) => `${k} ${v}`).join(' · ');
+    return ok({ action, ok: true, message: `${labels[action]}完成：${summary}`, detail });
   }),
 
   http.get('/api/workflows/instances/:id/diagnostics', ({ params }) => {

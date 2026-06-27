@@ -15,6 +15,7 @@ const METRIC_LABELS: Record<MonitorMetric, string> = {
   load1: '系统负载(1m)', procCpu: '进程 CPU', heap: '堆内存使用率', loopLag: '事件循环延迟',
   qps: '请求 QPS', errorRate: 'HTTP 错误率', netRxBps: '网络下行', netTxBps: '网络上行',
   diskReadBps: '磁盘读取', diskWriteBps: '磁盘写入',
+  workflowHealth: '流程引擎健康分', workflowBacklog: '流程引擎队列积压',
 };
 const METRIC_OPTIONS = (Object.keys(METRIC_LABELS) as MonitorMetric[]).map((v) => ({ value: v, label: METRIC_LABELS[v] }));
 const PERCENT_METRICS = new Set<MonitorMetric>(['cpu', 'memory', 'disk', 'swap', 'heap', 'procCpu', 'errorRate']);
