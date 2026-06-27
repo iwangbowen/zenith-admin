@@ -113,20 +113,27 @@
 
 /* ── 设计器：画布编辑模式 ── */
 .report-canvas-viewport {
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  height: 100%;
   overflow: auto;
   position: relative;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
   padding: 16px;
   box-sizing: border-box;
 }
-.report-canvas-design-stage {
-  position: relative;
-  transform-origin: top left;
+/* 外层 frame 占据「缩放后」的真实布局尺寸，margin:auto 居中且溢出时可滚动到全部内容 */
+.report-canvas-design-frame {
+  margin: auto;
   flex-shrink: 0;
+  position: relative;
+}
+/* 舞台保持设计尺寸，transform 缩放（origin: top-left），绝对定位于 frame 内 */
+.report-canvas-design-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
   box-shadow: 0 6px 30px rgba(0, 0, 0, 0.18);
   outline: 1px solid var(--semi-color-border);
 }

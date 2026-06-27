@@ -105,21 +105,24 @@ export default function DashboardDesignerPage() {
     }).finally(() => setLoading(false));
   }, [dashboardId]);
 
-  // 画布缩放：适配可视区宽度
+  // 画布缩放：等比适配可视区（宽高都装得下），保证进入时整屏居中可见
   useEffect(() => {
     if (layoutMode !== 'canvas') return;
     const el = canvasViewportRef.current;
     if (!el) return;
     const recompute = () => {
-      const avail = el.clientWidth - 32;
-      const s = Math.min(1, avail / (screenConfig.width || 1920));
+      const availW = el.clientWidth - 32;
+      const availH = el.clientHeight - 32;
+      const w = screenConfig.width || 1920;
+      const h = screenConfig.height || 1080;
+      const s = Math.min(1, availW / w, availH / h);
       setCanvasScale(s > 0 ? s : 1);
     };
     recompute();
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [layoutMode, screenConfig.width]);
+  }, [layoutMode, screenConfig.width, screenConfig.height]);
 
   const nextY = useMemo(() => doc.layout.reduce((max, it) => Math.max(max, it.y + it.h), 0), [doc.layout]);
 
@@ -259,33 +262,35 @@ export default function DashboardDesignerPage() {
         </div>
 
         {layoutMode === 'canvas' ? (
-          <div className="report-designer__canvas" style={{ padding: 0 }}>
+          <div className="report-designer__canvas" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <FilterBar filters={doc.filters} values={filterValues} onChange={(fid, val) => setFilterValues((p) => ({ ...p, [fid]: val }))} />
             <div className={`report-canvas-viewport${isDark ? ' report-screen--dark' : ''}`} ref={canvasViewportRef}>
               {doc.widgets.length === 0 ? (
                 <Empty description="点击左侧组件添加到大屏画布" style={{ paddingTop: 60 }} />
               ) : (
-                <div className="report-canvas-design-stage report-screen-stage"
-                  style={{ width: screenConfig.width, height: screenConfig.height, transform: `scale(${canvasScale})`, background: screenConfig.backgroundImage ? `center/cover no-repeat url(${screenConfig.backgroundImage})` : (isDark ? undefined : screenConfig.background) }}>
-                  {doc.widgets.map((w) => {
-                    const it = doc.canvasLayout.find((c) => c.i === w.i);
-                    if (!it) return null;
-                    const isSel = w.i === selectedId;
-                    return (
-                      <Rnd key={w.i} scale={canvasScale} bounds="parent"
-                        className={`report-canvas-rnd${isSel ? ' report-canvas-rnd--selected' : ''}`}
-                        size={{ width: it.w, height: it.h }} position={{ x: it.x, y: it.y }}
-                        dragHandleClassName="report-widget-card__drag" disableDragging={!canSave} enableResizing={canSave}
-                        onDragStart={snapshot} onResizeStart={snapshot}
-                        onMouseDownCapture={() => setSelectedId(w.i)}
-                        onDragStop={(_e, d) => patchCanvasItem(w.i, { x: Math.round(d.x), y: Math.round(d.y) })}
-                        onResizeStop={(_e, _dir, ref, _delta, pos) => patchCanvasItem(w.i, { w: ref.offsetWidth, h: ref.offsetHeight, x: Math.round(pos.x), y: Math.round(pos.y) })}
-                        style={{ zIndex: isSel ? 999 : (it.z ?? 1) }}
-                      >
-                        {renderWidgetCard(w, { drag: true })}
-                      </Rnd>
-                    );
-                  })}
+                <div className="report-canvas-design-frame" style={{ width: Math.round(screenConfig.width * canvasScale), height: Math.round(screenConfig.height * canvasScale) }}>
+                  <div className="report-canvas-design-stage report-screen-stage"
+                    style={{ width: screenConfig.width, height: screenConfig.height, transform: `scale(${canvasScale})`, background: screenConfig.backgroundImage ? `center/cover no-repeat url(${screenConfig.backgroundImage})` : (isDark ? undefined : screenConfig.background) }}>
+                    {doc.widgets.map((w) => {
+                      const it = doc.canvasLayout.find((c) => c.i === w.i);
+                      if (!it) return null;
+                      const isSel = w.i === selectedId;
+                      return (
+                        <Rnd key={w.i} scale={canvasScale} bounds="parent"
+                          className={`report-canvas-rnd${isSel ? ' report-canvas-rnd--selected' : ''}`}
+                          size={{ width: it.w, height: it.h }} position={{ x: it.x, y: it.y }}
+                          dragHandleClassName="report-widget-card__drag" disableDragging={!canSave} enableResizing={canSave}
+                          onDragStart={snapshot} onResizeStart={snapshot}
+                          onMouseDownCapture={() => setSelectedId(w.i)}
+                          onDragStop={(_e, d) => patchCanvasItem(w.i, { x: Math.round(d.x), y: Math.round(d.y) })}
+                          onResizeStop={(_e, _dir, ref, _delta, pos) => patchCanvasItem(w.i, { w: ref.offsetWidth, h: ref.offsetHeight, x: Math.round(pos.x), y: Math.round(pos.y) })}
+                          style={{ zIndex: isSel ? 999 : (it.z ?? 1) }}
+                        >
+                          {renderWidgetCard(w, { drag: true })}
+                        </Rnd>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

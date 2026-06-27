@@ -57,6 +57,7 @@ export default defineConfig({
           { text: '工作流', link: '/workflow/' },
           { text: '支付中心', link: '/payment/' },
           { text: '数据分析', link: '/analytics/' },
+          { text: '报表中心', link: '/report/' },
           { text: '微信公众号', link: '/mp/' },
         ],
       },
@@ -194,6 +195,20 @@ export default defineConfig({
           { text: '数据管理', link: '/analytics/data-management' },
           { text: '错误监控', link: '/analytics/error-monitoring' },
           { text: '架构与数据模型', link: '/analytics/architecture' },
+        ],
+      },
+      {
+        text: '报表中心',
+        collapsed: true,
+        items: [
+          { text: '总览', link: '/report/' },
+          { text: '数据源接入', link: '/report/datasources' },
+          { text: '数据集与数据加工', link: '/report/datasets' },
+          { text: '仪表盘设计', link: '/report/dashboards' },
+          { text: '数据大屏', link: '/report/data-screen' },
+          { text: '类 Excel 打印报表', link: '/report/print-reports' },
+          { text: 'AI 问数与数据预警', link: '/report/ai-and-alerts' },
+          { text: '分享 / 订阅 / 嵌入 / 协作', link: '/report/sharing' },
         ],
       },
       {
