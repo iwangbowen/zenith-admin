@@ -269,11 +269,11 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
       assigneeName: task.assigneeName ?? null,
       priority: instance.priority ?? 'normal',
       externalCallbackId: task.externalCallbackId ?? null,
-      externalDispatchStatus: task.externalDispatchStatus ?? null,
-      triggerDispatchStatus: task.triggerDispatchStatus ?? null,
-      triggerAttempt: task.triggerAttempt ?? 0,
-      triggerNextRetryAt: task.triggerNextRetryAt ?? null,
-      triggerLastError: task.triggerLastError ?? null,
+      externalDispatchStatus: null,
+      triggerDispatchStatus: null,
+      triggerAttempt: 0,
+      triggerNextRetryAt: null,
+      triggerLastError: null,
       timeoutAt: task.id === 4 ? timeoutAt : null,
       wakeAt: null,
       ageMinutes: ageMinutesFrom(task.createdAt),
@@ -1401,14 +1401,14 @@ export const workflowHandlers = [
       });
     }
     for (const task of activeTasks) {
-      if (task.nodeType === 'trigger' && task.triggerDispatchStatus === 'failed') {
+      if (task.nodeType === 'trigger' && task.status === 'waiting') {
         issues.push({
-          severity: 'critical',
+          severity: 'warning',
           source: 'trigger',
           taskId: task.id,
           nodeKey: task.nodeKey,
-          title: '触发器执行失败',
-          description: task.triggerLastError ?? 'Demo 诊断：触发器进入 failed 状态。',
+          title: '触发器暂无执行记录',
+          description: 'Demo 诊断：等待中的触发器任务尚未发现作业执行记录。',
         });
       }
     }

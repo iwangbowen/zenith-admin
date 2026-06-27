@@ -17,13 +17,6 @@ const TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   skipped:  { text: '已跳过', color: 'grey'  },
 };
 
-const EXT_DISPATCH_MAP: Record<string, { text: string; color: TagColor }> = {
-  pending:    { text: '等待分派',  color: 'grey'   },
-  dispatched: { text: '已分派',    color: 'blue'   },
-  failed:     { text: '分派失败',  color: 'red'    },
-  fallback:   { text: '已降级',    color: 'orange' },
-};
-
 /** 流程结束态 → 完成节点展示 */
 const FINISH_MAP: Partial<Record<WorkflowInstanceStatus, { text: string; color: TagColor; icon: LucideIcon; iconColor: string }>> = {
   approved:  { text: '已通过', color: 'green',  icon: CheckCircle2, iconColor: 'var(--semi-color-success)' },
@@ -251,11 +244,6 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <ExternalLink size={12} />
                   <Typography.Text size="small" strong>外部审批</Typography.Text>
-                  {task.externalDispatchStatus && (
-                    <Tag color={EXT_DISPATCH_MAP[task.externalDispatchStatus]?.color ?? 'grey'} size="small">
-                      {EXT_DISPATCH_MAP[task.externalDispatchStatus]?.text ?? task.externalDispatchStatus}
-                    </Tag>
-                  )}
                 </div>
                 <ExternalCallbackUrl callbackId={task.externalCallbackId} />
               </div>

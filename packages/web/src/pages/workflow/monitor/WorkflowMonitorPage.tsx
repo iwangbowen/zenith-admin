@@ -302,8 +302,8 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
   const retryingTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'retrying' || item.status === 'running');
   const failedOutbox = diagnostics.outboxEvents.filter((item) => item.status.toLowerCase() === 'failed');
   const pendingOutbox = diagnostics.outboxEvents.filter((item) => ['pending', 'retrying'].includes(item.status.toLowerCase()));
-  const externalFailedTasks = diagnostics.tasks.filter((task) => task.externalDispatchStatus === 'failed');
-  const triggerFailedTasks = diagnostics.tasks.filter((task) => task.triggerDispatchStatus === 'failed');
+  const externalFailedTasks = diagnostics.issues.filter((issue) => issue.title === '外部审批分派失败');
+  const triggerFailedTasks = diagnostics.issues.filter((issue) => issue.source === 'trigger' && issue.title === '触发器执行失败');
   const emptyAssigneeTasks = activeTasks.filter((task) => task.assigneeId == null && !task.assigneeName);
   const longestActiveWaitingSec = oldestActiveTask ? diffSeconds(oldestActiveTask.createdAt, diagnostics.generatedAt) : 0;
   const longWaitingCritical = longestActiveWaitingSec >= 72 * 3600;
@@ -347,7 +347,7 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
     nextAction = '联系当前处理人继续审批；若处理人不合适，可使用改派处理人或强制跳转。';
     if (oldestActiveTask.status === 'waiting' || oldestActiveTask.externalCallbackId) {
       nextAction = '该任务正在等待外部系统回调，优先检查外部分派状态、回调地址和外部系统处理结果。';
-    } else if (oldestActiveTask.nodeType === 'trigger' || oldestActiveTask.triggerDispatchStatus) {
+    } else if (oldestActiveTask.nodeType === 'trigger') {
       nextAction = '该节点依赖触发器执行，优先打开“触发器”标签查看请求、响应、错误和重试状态。';
     }
   } else if (running) {
@@ -754,8 +754,6 @@ export default function WorkflowMonitorPage() {
             “{task.comment}”
           </Typography.Text>
         )}
-        {task.externalDispatchStatus && <Tag size="small" color="grey">外部 {task.externalDispatchStatus}</Tag>}
-        {task.triggerDispatchStatus && <Tag size="small" color="grey">触发 {task.triggerDispatchStatus}</Tag>}
       </div>
     );
 
@@ -895,8 +893,6 @@ export default function WorkflowMonitorPage() {
                     <Typography.Text type="tertiary" size="small">
                       等待 {formatDuration(task.createdAt, diagnostics.generatedAt)}
                     </Typography.Text>
-                    {task.externalDispatchStatus && <Tag size="small" color="grey">外部 {task.externalDispatchStatus}</Tag>}
-                    {task.triggerDispatchStatus && <Tag size="small" color="grey">触发 {task.triggerDispatchStatus}</Tag>}
                   </div>
                 ))}
                 {focusDiagnosis.activeTasks.length > 3 && (
