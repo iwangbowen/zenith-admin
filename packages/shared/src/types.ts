@@ -3266,6 +3266,85 @@ export interface WorkflowJobSummaryItem {
   canceled: number;
 }
 
+// ─── 运行轨迹 / 引擎解释（实例可观测性）─────────────────────────────────────
+export type WorkflowEngineExplanationState = 'running' | 'blocked' | 'completed' | 'rejected' | 'canceled' | 'withdrawn' | 'draft';
+
+/** 引擎解释：当前实例「为什么停在这里 / 在等谁 / 等什么」的单条阻塞项 */
+export interface WorkflowEngineExplanationBlocker {
+  kind: 'task' | 'job';
+  severity: WorkflowRuntimeIssueSeverity;
+  title: string;
+  detail: string;
+  taskId: number | null;
+  jobId: number | null;
+  jobType: WorkflowJobType | null;
+  nodeName: string | null;
+  /** 任务已等待分钟数（task 类阻塞） */
+  waitingMinutes: number | null;
+  /** 下次重试 / 计划执行时间（job 类阻塞） */
+  nextRetryAt: string | null;
+}
+
+/** 引擎解释：实例当前运行态的人话总结 */
+export interface WorkflowEngineExplanation {
+  state: WorkflowEngineExplanationState;
+  /** 一句话总结 */
+  headline: string;
+  /** 阻塞 / 等待项（按严重度排序） */
+  blockers: WorkflowEngineExplanationBlocker[];
+  /** 最近一次失败描述 */
+  lastError: string | null;
+  /** 下一个待执行作业的计划时间 */
+  nextWakeAt: string | null;
+  pendingJobCount: number;
+  failedJobCount: number;
+}
+
+/** 运行轨迹条目内的单次作业执行尝试 */
+export interface WorkflowEngineTraceExecution {
+  attempt: number;
+  status: WorkflowJobExecutionStatus;
+  requestUrl: string | null;
+  requestMethod: string | null;
+  responseStatus: number | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  finishedAt: string | null;
+}
+
+/** 运行轨迹：合并任务流转 + 异步作业的时间线条目 */
+export interface WorkflowEngineTraceEntry {
+  key: string;
+  kind: 'task' | 'job';
+  /** 主时间戳（YYYY-MM-DD HH:mm:ss） */
+  at: string;
+  traceId: string | null;
+  title: string;
+  status: string;
+  nodeName: string | null;
+  // task 类
+  assigneeName: string | null;
+  comment: string | null;
+  // job 类
+  jobId: number | null;
+  jobType: WorkflowJobType | null;
+  attempts: number | null;
+  maxAttempts: number | null;
+  runAt: string | null;
+  nextRetryAt: string | null;
+  lastError: string | null;
+  executions: WorkflowEngineTraceExecution[];
+}
+
+export interface WorkflowInstanceTrace {
+  instanceId: number;
+  title: string;
+  explanation: WorkflowEngineExplanation;
+  trace: WorkflowEngineTraceEntry[];
+  generatedAt: string;
+}
+
+
 export type WorkflowRuntimeIssueSeverity = 'info' | 'warning' | 'critical';
 
 export interface WorkflowRuntimeIssue {

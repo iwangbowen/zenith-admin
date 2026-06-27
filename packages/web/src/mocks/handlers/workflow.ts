@@ -1521,6 +1521,72 @@ export const workflowHandlers = [
     return ok(diagnostics);
   }),
 
+  // 实例运行轨迹 + 引擎解释
+  http.get('/api/workflows/instances/:id/trace', ({ params }) => {
+    const id = Number(params.id);
+    const t0 = mockDateTimeOffset(-1000 * 60 * 90); // 90 分钟前
+    const t1 = mockDateTimeOffset(-1000 * 60 * 88);
+    const t2 = mockDateTimeOffset(-1000 * 60 * 60);
+    const trace = [
+      {
+        key: 'task-new-1', kind: 'task', at: t0, traceId: null,
+        title: '创建审批任务：李四', status: 'approved', nodeName: '部门主管', assigneeName: '李四', comment: null,
+        jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+      },
+      {
+        key: 'job-101', kind: 'job', at: t0, traceId: 'trace-mock-aa01',
+        title: '事件派发 · node.entered', status: 'succeeded', nodeName: '部门主管', assigneeName: null, comment: null,
+        jobId: 101, jobType: 'event_dispatch', attempts: 1, maxAttempts: 3, runAt: t0, nextRetryAt: null, lastError: null, executions: [],
+      },
+      {
+        key: 'task-act-1', kind: 'task', at: t1, traceId: null,
+        title: '李四 通过', status: 'approved', nodeName: '部门主管', assigneeName: '李四', comment: '同意，按流程办理',
+        jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+      },
+      {
+        key: 'task-new-2', kind: 'task', at: t1, traceId: null,
+        title: '创建审批任务：王五', status: 'pending', nodeName: '分管领导', assigneeName: '王五', comment: null,
+        jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+      },
+      {
+        key: 'job-102', kind: 'job', at: t1, traceId: 'trace-mock-bb02',
+        title: 'Webhook 投递 · instance.node_changed', status: 'dead', nodeName: '分管领导', assigneeName: null, comment: null,
+        jobId: 102, jobType: 'webhook_delivery', attempts: 5, maxAttempts: 5, runAt: t2,
+        nextRetryAt: null, lastError: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable',
+        executions: [
+          { attempt: 1, status: 'failed', requestUrl: 'https://erp.example.com/hooks/wf', requestMethod: 'POST', responseStatus: 500, durationMs: 1203, errorMessage: 'HTTP 500', finishedAt: t1 },
+          { attempt: 5, status: 'failed', requestUrl: 'https://erp.example.com/hooks/wf', requestMethod: 'POST', responseStatus: 503, durationMs: 980, errorMessage: '503 Service Unavailable', finishedAt: t2 },
+        ],
+      },
+      {
+        key: 'job-103', kind: 'job', at: t2, traceId: 'trace-mock-bb02',
+        title: '任务超时', status: 'pending', nodeName: '分管领导', assigneeName: null, comment: null,
+        jobId: 103, jobType: 'task_timeout', attempts: 0, maxAttempts: 10, runAt: mockDateTimeOffset(1000 * 60 * 120),
+        nextRetryAt: mockDateTimeOffset(1000 * 60 * 120), lastError: null, executions: [],
+      },
+    ];
+    const trace_instance = {
+      instanceId: id,
+      title: `流程实例 #${id}`,
+      explanation: {
+        state: 'blocked',
+        headline: '流程推进受阻：1 个自动作业失败，需人工介入',
+        blockers: [
+          { kind: 'job', severity: 'critical', title: 'Webhook 投递已进入死信', detail: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable', taskId: null, jobId: 102, jobType: 'webhook_delivery', nodeName: '分管领导', waitingMinutes: null, nextRetryAt: null },
+          { kind: 'task', severity: 'info', title: '等待王五审批', detail: '节点「分管领导」· 已等待 1 小时', taskId: 2, jobId: null, jobType: null, nodeName: '分管领导', waitingMinutes: 60, nextRetryAt: null },
+          { kind: 'job', severity: 'info', title: '任务超时待执行', detail: `计划于 ${mockDateTimeOffset(1000 * 60 * 120)} 执行`, taskId: null, jobId: 103, jobType: 'task_timeout', nodeName: '分管领导', waitingMinutes: null, nextRetryAt: mockDateTimeOffset(1000 * 60 * 120) },
+        ],
+        lastError: 'POST https://erp.example.com/hooks/wf 503 Service Unavailable',
+        nextWakeAt: mockDateTimeOffset(1000 * 60 * 120),
+        pendingJobCount: 1,
+        failedJobCount: 1,
+      },
+      trace,
+      generatedAt: mockDateTime(),
+    };
+    return ok(trace_instance);
+  }),
+
   // 获取流程实例详情（含任务列表）
   http.get('/api/workflows/instances/:id', ({ params }) => {
     const inst = mockWorkflowInstances.find(i => i.id === Number(params.id));

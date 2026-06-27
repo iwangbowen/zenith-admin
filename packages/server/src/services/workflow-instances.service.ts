@@ -222,7 +222,7 @@ import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, 
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { advanceFlow, getInitialTasks, validateFlowData, findReturnPrevTarget, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType } from '@zenith/shared';
 import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
@@ -2452,6 +2452,227 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
       formSnapshot: row.formSnapshot ?? null,
       definitionSnapshot: row.definitionSnapshot ?? null,
     },
+    generatedAt: formatDateTime(new Date()),
+  };
+}
+
+// ─── 运行轨迹 / 引擎解释 ─────────────────────────────────────────────────────
+
+const JOB_TYPE_LABELS: Record<WorkflowJobType, string> = {
+  delay_wake: '延时唤醒', task_timeout: '任务超时', trigger_dispatch: '触发器调度', external_dispatch: '外部审批',
+  subprocess_spawn: '子流程派生', subprocess_join: '子流程汇聚', event_dispatch: '事件派发', webhook_delivery: 'Webhook 投递',
+};
+
+function humanizeMinutes(min: number): string {
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${min} 分钟`;
+  if (min < 1440) return `${Math.floor(min / 60)} 小时`;
+  return `${Math.floor(min / 1440)} 天`;
+}
+
+function nodeActionWord(nodeType: string | null): string {
+  if (nodeType === 'approve') return '审批';
+  if (nodeType === 'handler') return '办理';
+  return '处理';
+}
+
+function jobPayloadSuffix(jobType: WorkflowJobType, payload: unknown): string {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  const event = p.event as Record<string, unknown> | undefined;
+  if ((jobType === 'event_dispatch' || jobType === 'webhook_delivery') && typeof event?.type === 'string') return ` · ${event.type}`;
+  return '';
+}
+
+function buildEngineExplanation(
+  inst: { status: string },
+  tasks: Array<{ id: number; nodeName: string | null; nodeType: string | null; status: string; assigneeName: string | null; createdAt: Date }>,
+  jobs: Array<{ id: number; jobType: WorkflowJobType; status: string; runAt: Date; lastError: string | null; nodeName: string | null }>,
+): WorkflowEngineExplanation {
+  const now = Date.now();
+  const activeTasks = tasks.filter((t) => t.status === 'pending' || t.status === 'waiting');
+  const failedJobs = jobs.filter((j) => j.status === 'failed' || j.status === 'dead');
+  const pendingJobs = jobs.filter((j) => j.status === 'pending' || j.status === 'running');
+  const blockers: WorkflowEngineExplanationBlocker[] = [];
+
+  for (const j of failedJobs) {
+    blockers.push({
+      kind: 'job', severity: 'critical', jobId: j.id, taskId: null, jobType: j.jobType, nodeName: j.nodeName,
+      title: `${JOB_TYPE_LABELS[j.jobType]}${j.status === 'dead' ? '已进入死信' : '执行失败'}`,
+      detail: j.lastError ?? '无错误详情',
+      waitingMinutes: null,
+      nextRetryAt: j.status === 'failed' ? formatNullableDateTime(j.runAt) : null,
+    });
+  }
+  for (const t of activeTasks) {
+    const min = Math.max(0, Math.floor((now - t.createdAt.getTime()) / 60000));
+    blockers.push({
+      kind: 'task', severity: min > 1440 ? 'warning' : 'info', taskId: t.id, jobId: null, jobType: null, nodeName: t.nodeName,
+      title: `等待${t.assigneeName ?? '处理人'}${nodeActionWord(t.nodeType)}`,
+      detail: `节点「${t.nodeName ?? t.id}」· 已等待 ${humanizeMinutes(min)}`,
+      waitingMinutes: min, nextRetryAt: null,
+    });
+  }
+  for (const j of pendingJobs) {
+    blockers.push({
+      kind: 'job', severity: 'info', jobId: j.id, taskId: null, jobType: j.jobType, nodeName: j.nodeName,
+      title: `${JOB_TYPE_LABELS[j.jobType]}待执行`,
+      detail: `计划于 ${formatDateTime(j.runAt)} 执行`,
+      waitingMinutes: null, nextRetryAt: formatNullableDateTime(j.runAt),
+    });
+  }
+
+  const nextWakeAt = pendingJobs.length > 0
+    ? formatDateTime(new Date(Math.min(...pendingJobs.map((j) => j.runAt.getTime()))))
+    : null;
+  const lastError = failedJobs.length > 0 ? (failedJobs[0].lastError ?? null) : null;
+
+  let state: WorkflowEngineExplanation['state'];
+  if (inst.status === 'approved') state = 'completed';
+  else if (inst.status === 'rejected') state = 'rejected';
+  else if (inst.status === 'cancelled') state = 'canceled';
+  else if (inst.status === 'withdrawn') state = 'withdrawn';
+  else if (inst.status === 'draft') state = 'draft';
+  else state = failedJobs.length > 0 ? 'blocked' : 'running';
+
+  let headline: string;
+  switch (state) {
+    case 'completed': headline = '流程已通过，全部审批完成'; break;
+    case 'rejected': headline = '流程已被驳回'; break;
+    case 'canceled': headline = '流程已取消'; break;
+    case 'withdrawn': headline = '流程已撤回'; break;
+    case 'draft': headline = '草稿尚未提交'; break;
+    case 'blocked': headline = `流程推进受阻：${failedJobs.length} 个自动作业失败，需人工介入`; break;
+    default:
+      headline = activeTasks.length > 0
+        ? blockers.find((b) => b.kind === 'task')?.title ?? '流程进行中'
+        : pendingJobs.length > 0 ? `等待自动作业执行（${pendingJobs.length} 项）` : '流程进行中';
+  }
+
+  const severityOrder = { critical: 0, warning: 1, info: 2 } as const;
+  blockers.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+  return { state, headline, blockers, lastError, nextWakeAt, pendingJobCount: pendingJobs.length, failedJobCount: failedJobs.length };
+}
+
+/**
+ * 运行轨迹 + 引擎解释：把任务流转（workflow_tasks）与异步作业（workflow_jobs +
+ * workflow_job_executions）按时间合并，回答"为什么停这儿、在等谁、等什么、下次何时重试"。
+ */
+export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrace> {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [eq(workflowInstances.id, id)];
+  if (tc) conditions.push(tc);
+  const scopeCond = await getDataScopeCondition({
+    currentUserId: user.userId,
+    deptColumn: users.departmentId,
+    ownerColumn: workflowInstances.initiatorId,
+  });
+  if (scopeCond) conditions.push(scopeCond);
+
+  const row = await db.query.workflowInstances.findFirst({
+    where: and(...conditions),
+    columns: { id: true, title: true, status: true },
+    with: {
+      tasks: { with: { assignee: { columns: { nickname: true } } }, orderBy: workflowTasks.id },
+    },
+  });
+  if (!row) throw new HTTPException(404, { message: '流程实例不存在或无权查看' });
+
+  const jobs = await db.select().from(workflowJobs).where(eq(workflowJobs.instanceId, id)).orderBy(workflowJobs.id);
+  const jobIds = jobs.map((j) => j.id);
+  const execRows = jobIds.length > 0
+    ? await db.select().from(workflowJobExecutions).where(inArray(workflowJobExecutions.jobId, jobIds)).orderBy(workflowJobExecutions.id)
+    : [];
+  const execByJob = new Map<number, typeof execRows>();
+  for (const e of execRows) {
+    const list = execByJob.get(e.jobId);
+    if (list) list.push(e); else execByJob.set(e.jobId, [e]);
+  }
+
+  // 节点名解析映射（job 仅有 nodeKey/taskId）
+  const nodeNameByTaskId = new Map<number, string | null>();
+  const nodeNameByKey = new Map<string, string | null>();
+  for (const t of row.tasks) {
+    nodeNameByTaskId.set(t.id, t.nodeName);
+    if (t.nodeKey) nodeNameByKey.set(t.nodeKey, t.nodeName);
+  }
+  const jobNodeName = (j: { taskId: number | null; nodeKey: string | null }): string | null => {
+    if (j.taskId != null) {
+      const byTask = nodeNameByTaskId.get(j.taskId);
+      if (byTask != null) return byTask;
+    }
+    if (j.nodeKey != null) {
+      const byKey = nodeNameByKey.get(j.nodeKey);
+      if (byKey != null) return byKey;
+    }
+    return null;
+  };
+
+  const explanation = buildEngineExplanation(
+    row,
+    row.tasks.map((t) => ({
+      id: t.id, nodeName: t.nodeName, nodeType: t.nodeType as string | null, status: t.status as string,
+      assigneeName: t.assignee?.nickname ?? null, createdAt: t.createdAt,
+    })),
+    jobs.map((j) => ({ id: j.id, jobType: j.jobType, status: j.status as string, runAt: j.runAt, lastError: j.lastError, nodeName: jobNodeName(j) })),
+  );
+
+  // 合并时间线条目（任务流转 + 异步作业），按真实时间戳升序
+  const ACTION_LABEL: Record<string, string> = { approved: '通过', rejected: '驳回', skipped: '跳过', pending: '待处理', waiting: '等待中' };
+  const buf: Array<{ ts: number; entry: WorkflowEngineTraceEntry }> = [];
+
+  for (const t of row.tasks) {
+    const assigneeName = t.assignee?.nickname ?? null;
+    buf.push({
+      ts: t.createdAt.getTime(),
+      entry: {
+        key: `task-new-${t.id}`, kind: 'task', at: formatDateTime(t.createdAt), traceId: null,
+        title: `创建${nodeActionWord(t.nodeType)}任务${assigneeName ? `：${assigneeName}` : ''}`,
+        status: t.status, nodeName: t.nodeName, assigneeName, comment: null,
+        jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+      },
+    });
+    if (t.actionAt) {
+      buf.push({
+        ts: t.actionAt.getTime(),
+        entry: {
+          key: `task-act-${t.id}`, kind: 'task', at: formatDateTime(t.actionAt), traceId: null,
+          title: `${assigneeName ?? '处理人'} ${ACTION_LABEL[t.status] ?? t.status}`,
+          status: t.status, nodeName: t.nodeName, assigneeName, comment: t.comment ?? null,
+          jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+        },
+      });
+    }
+  }
+
+  for (const j of jobs) {
+    const execs = (execByJob.get(j.id) ?? []).map((e) => ({
+      attempt: e.attempt, status: e.status, requestUrl: e.requestUrl, requestMethod: e.requestMethod,
+      responseStatus: e.responseStatus, durationMs: e.durationMs, errorMessage: e.errorMessage,
+      finishedAt: formatNullableDateTime(e.finishedAt),
+    }));
+    buf.push({
+      ts: j.createdAt.getTime(),
+      entry: {
+        key: `job-${j.id}`, kind: 'job', at: formatDateTime(j.createdAt), traceId: j.traceId,
+        title: `${JOB_TYPE_LABELS[j.jobType]}${jobPayloadSuffix(j.jobType, j.payload)}`,
+        status: j.status, nodeName: jobNodeName(j), assigneeName: null, comment: null,
+        jobId: j.id, jobType: j.jobType, attempts: j.attempts, maxAttempts: j.maxAttempts,
+        runAt: formatDateTime(j.runAt),
+        nextRetryAt: (j.status === 'pending' || j.status === 'failed') ? formatNullableDateTime(j.runAt) : null,
+        lastError: j.lastError, executions: execs,
+      },
+    });
+  }
+
+  buf.sort((a, b) => (a.ts - b.ts) || a.entry.key.localeCompare(b.entry.key));
+
+  return {
+    instanceId: row.id,
+    title: row.title,
+    explanation,
+    trace: buf.map((b) => b.entry),
     generatedAt: formatDateTime(new Date()),
   };
 }

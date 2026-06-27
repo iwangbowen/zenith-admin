@@ -41,6 +41,7 @@ import { resolveWorkflowFlowData } from '@/utils/workflow-snapshot';
 import WorkflowAnalyticsView from './WorkflowAnalyticsView';
 import WorkflowEngineDiagnosticsView from './WorkflowEngineDiagnosticsView';
 import WorkflowJobsView from './WorkflowJobsView';
+import WorkflowEngineTraceView from './WorkflowEngineTraceView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 
@@ -933,6 +934,9 @@ export default function WorkflowMonitorPage() {
         </div>
 
         <Tabs type="line" activeKey={diagnosticsTab} onChange={setDiagnosticsTab}>
+          <TabPane tab="引擎轨迹" itemKey="trace">
+            {diagnosticsTab === 'trace' && <WorkflowEngineTraceView instanceId={inst.id} />}
+          </TabPane>
           <TabPane tab={`节点 ${diagNodes.length}`} itemKey="nodes">
             <div style={{ marginBottom: 10 }}>
               <Typography.Text type="tertiary" size="small">
