@@ -61,6 +61,7 @@ const ReportWidgetDTO = z.object({
   interaction: z.record(z.string(), z.unknown()).optional(),
   drilldown: z.record(z.string(), z.unknown()).optional(),
   style: z.record(z.string(), z.unknown()).optional(),
+  page: z.number().int().optional(),
 });
 
 const ReportFilterDTO = z.object({

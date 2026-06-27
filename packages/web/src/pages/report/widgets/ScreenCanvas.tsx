@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import '../report-grid.css';
@@ -121,16 +122,82 @@ function CanvasStage({ widgets, canvasLayout, config, filterValues, getWidgetSta
 /**
  * 大屏/仪表盘只读渲染器 —— 供预览、公开页、嵌入组件统一复用。
  * 按 config.layoutMode 选择「栅格」或「自由画布大屏」渲染。
+ * 启用多屏轮播（config.carousel）时，按 widget.page 分页 + 自动/手动切换。
  */
 export function ScreenCanvas(props: Readonly<ScreenCanvasProps>) {
   const { config } = props;
   const isCanvas = config.layoutMode === 'canvas';
   const isDark = config.theme === 'dark';
+
+  const carousel = config.carousel;
+  const pageCount = Math.max(1, carousel?.enabled ? (carousel.pageCount ?? 1) : 1);
+  const carouselOn = pageCount > 1;
+  const [page, setPage] = useState(1);
+
+  // 页数变化时夹紧当前页
+  useEffect(() => { setPage((p) => Math.min(Math.max(1, p), pageCount)); }, [pageCount]);
+
+  // 自动切换
+  const intervalSec = carousel?.intervalSec ?? 0;
+  useEffect(() => {
+    if (!carouselOn || intervalSec <= 0) return;
+    const t = setInterval(() => setPage((p) => (p % pageCount) + 1), intervalSec * 1000);
+    return () => clearInterval(t);
+  }, [carouselOn, intervalSec, pageCount]);
+
+  const widgets = carouselOn ? props.widgets.filter((w) => (w.page ?? 1) === page) : props.widgets;
+  const visibleIds = new Set(widgets.map((w) => w.i));
+  const layout = carouselOn ? props.layout.filter((l) => visibleIds.has(l.i)) : props.layout;
+
   return (
-    <div className={`report-screen${isDark ? ' report-screen--dark' : ''}`} style={{ width: '100%', height: '100%' }}>
+    <div className={`report-screen${isDark ? ' report-screen--dark' : ''}`} style={{ width: '100%', height: '100%', position: 'relative' }}>
       {isCanvas
-        ? <CanvasStage {...props} />
-        : <GridStage widgets={props.widgets} layout={props.layout} filterValues={props.filterValues} getWidgetState={props.getWidgetState} onCategoryClick={props.onCategoryClick} />}
+        ? <CanvasStage {...props} widgets={widgets} />
+        : <GridStage widgets={widgets} layout={layout} filterValues={props.filterValues} getWidgetState={props.getWidgetState} onCategoryClick={props.onCategoryClick} />}
+      {carouselOn && (
+        <CarouselControls
+          page={page}
+          pageCount={pageCount}
+          showDots={carousel?.showDots !== false}
+          onJump={(p) => setPage(p)}
+          onPrev={() => setPage((p) => (p - 2 + pageCount) % pageCount + 1)}
+          onNext={() => setPage((p) => (p % pageCount) + 1)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 多屏轮播控制条：上一页/下一页 + 页码指示点 */
+function CarouselControls({
+  page, pageCount, showDots, onJump, onPrev, onNext,
+}: {
+  readonly page: number;
+  readonly pageCount: number;
+  readonly showDots: boolean;
+  readonly onJump: (p: number) => void;
+  readonly onPrev: () => void;
+  readonly onNext: () => void;
+}) {
+  return (
+    <div className="report-carousel-ctrl">
+      <button type="button" className="report-carousel-ctrl__arrow" onClick={onPrev} aria-label="上一页"><ChevronLeft size={18} /></button>
+      {showDots ? (
+        <div className="report-carousel-ctrl__dots">
+          {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`report-carousel-ctrl__dot${p === page ? ' is-active' : ''}`}
+              onClick={() => onJump(p)}
+              aria-label={`第 ${p} 页`}
+            />
+          ))}
+        </div>
+      ) : (
+        <span className="report-carousel-ctrl__label">{page} / {pageCount}</span>
+      )}
+      <button type="button" className="report-carousel-ctrl__arrow" onClick={onNext} aria-label="下一页"><ChevronRight size={18} /></button>
     </div>
   );
 }

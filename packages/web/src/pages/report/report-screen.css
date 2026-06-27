@@ -240,3 +240,64 @@
 }
 .report-screen--dark .report-scrolllist__name { color: #dcebff; }
 .report-screen--dark .report-scrolllist__value { color: #9fc1ea; }
+
+/* ── 多屏轮播控制条 ── */
+.report-carousel-ctrl {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.report-screen--dark .report-carousel-ctrl {
+  background: rgba(13, 27, 58, 0.78);
+  border-color: rgba(86, 142, 226, 0.4);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+.report-carousel-ctrl__arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  color: var(--semi-color-text-1);
+}
+.report-carousel-ctrl__arrow:hover { background: var(--semi-color-fill-1); color: var(--semi-color-primary); }
+.report-screen--dark .report-carousel-ctrl__arrow { color: #c8ddff; }
+.report-screen--dark .report-carousel-ctrl__arrow:hover { background: rgba(86, 142, 226, 0.25); color: #fff; }
+.report-carousel-ctrl__dots { display: flex; align-items: center; gap: 7px; }
+.report-carousel-ctrl__dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--semi-color-fill-2);
+  transition: width 0.2s, background 0.2s;
+}
+.report-carousel-ctrl__dot.is-active {
+  width: 18px;
+  border-radius: 4px;
+  background: var(--semi-color-primary);
+}
+.report-screen--dark .report-carousel-ctrl__dot { background: rgba(159, 193, 234, 0.35); }
+.report-screen--dark .report-carousel-ctrl__dot.is-active { background: #4ea1ff; }
+.report-carousel-ctrl__label {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--semi-color-text-1);
+}
+.report-screen--dark .report-carousel-ctrl__label { color: #c8ddff; }
