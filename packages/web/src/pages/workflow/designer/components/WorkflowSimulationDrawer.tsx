@@ -908,13 +908,24 @@ export default function WorkflowSimulationDrawer({
                   <Button size="small" icon={<Bookmark size={13} />} onClick={toggleBreakpoint} disabled={!currentItem}>
                     {currentItem && breakpoints.has(currentItem.nodeKey) ? '取消断点' : '设为断点'}
                   </Button>
-                  {canDecide && <Button size="small" type={currentDecision?.action === 'approve' ? 'primary' : 'tertiary'} icon={<CheckCircle2 size={13} />} onClick={() => upsertDecision('approve')}>通过</Button>}
-                  {canDecide && <Button size="small" type={currentDecision?.action === 'reject' ? 'danger' : 'tertiary'} icon={<XCircle size={13} />} onClick={() => upsertDecision('reject')}>拒绝</Button>}
-                  {canDecide && <Button size="small" type={currentDecision?.action === 'skip' ? 'primary' : 'tertiary'} icon={<CircleDashed size={13} />} onClick={() => upsertDecision('skip')}>跳过</Button>}
-                  {canDecide && <Button size="small" type={currentDecision?.action === 'wait' ? 'primary' : 'tertiary'} icon={<Pause size={13} />} onClick={() => upsertDecision('wait')}>等待</Button>}
-                  {canDecide && currentDecision && <Button size="small" onClick={clearCurrentDecision}>清除动作</Button>}
                 </Space>
               </div>
+
+              {canDecide && (
+                <div className="fd-simulation-current-bar__decision">
+                  <div className="fd-simulation-current-bar__decision-label">
+                    <Typography.Text strong>节点操作</Typography.Text>
+                    <Typography.Text size="small" type="tertiary">预设当前人工节点动作</Typography.Text>
+                  </div>
+                  <Space wrap spacing={6} className="fd-simulation-current-bar__decision-actions">
+                    <Button size="small" type={currentDecision?.action === 'approve' ? 'primary' : 'tertiary'} icon={<CheckCircle2 size={13} />} onClick={() => upsertDecision('approve')}>通过</Button>
+                    <Button size="small" type={currentDecision?.action === 'reject' ? 'danger' : 'tertiary'} icon={<XCircle size={13} />} onClick={() => upsertDecision('reject')}>拒绝</Button>
+                    <Button size="small" type={currentDecision?.action === 'skip' ? 'primary' : 'tertiary'} icon={<CircleDashed size={13} />} onClick={() => upsertDecision('skip')}>跳过</Button>
+                    <Button size="small" type={currentDecision?.action === 'wait' ? 'primary' : 'tertiary'} icon={<Pause size={13} />} onClick={() => upsertDecision('wait')}>等待</Button>
+                    {currentDecision && <Button size="small" onClick={clearCurrentDecision}>清除动作</Button>}
+                  </Space>
+                </div>
+              )}
 
               {hasBranchNotice && (
                 <div className="fd-simulation-branch-strip">
