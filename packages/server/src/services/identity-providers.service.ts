@@ -389,13 +389,14 @@ async function findOrCreateUserForProvider(provider: typeof tenantIdentityProvid
 
   if (!provider.jitEnabled) throw new HTTPException(403, { message: '未找到匹配账号，请联系管理员开通账号或启用 JIT 创建' });
   if (!external.email) throw new HTTPException(400, { message: '企业身份源未返回邮箱，无法自动创建账号' });
+  const email = external.email;
 
   const password = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
   return db.transaction(async (tx) => {
     const [created] = await tx.insert(users).values({
       username: external.username.slice(0, 32),
       nickname: external.nickname.slice(0, 32),
-      email: external.email,
+      email,
       password,
       tenantId: provider.tenantId ?? null,
     }).returning();
@@ -403,7 +404,7 @@ async function findOrCreateUserForProvider(provider: typeof tenantIdentityProvid
       userId: created.id,
       providerId: provider.id,
       subject: external.subject,
-      email: external.email,
+      email,
       username: external.username,
       displayName: external.nickname,
       rawProfile: profile,

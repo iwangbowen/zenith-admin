@@ -1652,6 +1652,30 @@ export interface EnterpriseIdentityDiscovery {
   providers: TenantIdentityProviderSummary[];
 }
 
+export interface CreateTenantIdentityProviderInput {
+  tenantId?: number | null;
+  name: string;
+  code: string;
+  type: IdentityProviderType;
+  status?: IdentityProviderStatus;
+  issuer?: string | null;
+  authorizationEndpoint?: string | null;
+  tokenEndpoint?: string | null;
+  userinfoEndpoint?: string | null;
+  jwksUri?: string | null;
+  clientId?: string | null;
+  clientSecret?: string;
+  scopes?: string;
+  samlSsoUrl?: string | null;
+  samlEntityId?: string | null;
+  samlCertificate?: string;
+  attributeMapping?: IdentityProviderAttributeMapping;
+  jitEnabled?: boolean;
+  defaultRoleIds?: number[];
+  remark?: string | null;
+}
+export type UpdateTenantIdentityProviderInput = Partial<CreateTenantIdentityProviderInput>;
+
 // ─── 数据库备份 ────────────────────────────────────────────────────────────
 export type BackupType = 'pg_dump' | 'drizzle_export';
 export type BackupStatus = 'pending' | 'running' | 'success' | 'failed';

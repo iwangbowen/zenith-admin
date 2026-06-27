@@ -18,7 +18,7 @@ import {
 import {
   createTenantIdentityProviderSchema,
   updateTenantIdentityProviderSchema,
-} from '@zenith/shared';
+} from '@zenith/shared/validation';
 import {
   createIdentityProvider,
   deleteIdentityProvider,

@@ -6,7 +6,7 @@ import {
   okBody,
   validationHook,
 } from '../lib/openapi-schemas';
-import { EnterpriseIdentityDiscoveryDTO, LoginResultDTO, OAuthAuthUrlDTO } from '../lib/openapi-dtos';
+import { EnterpriseIdentityDiscoveryDTO, LoginResultDTO } from '../lib/openapi-dtos';
 import {
   discoverEnterpriseIdentityProviders,
   generateEnterpriseAuthUrl,
@@ -51,7 +51,7 @@ const authUrlRoute = defineOpenAPIRoute({
         redirect: z.string().optional(),
       }),
     },
-    responses: { ...ok(OAuthAuthUrlDTO, 'ok'), ...commonErrorResponses },
+    responses: { ...ok(z.object({ authUrl: z.string(), state: z.string().nullable() }), 'ok'), ...commonErrorResponses },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');

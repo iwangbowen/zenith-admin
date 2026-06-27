@@ -532,8 +532,6 @@ export type CreateTenantPackageInput = z.infer<typeof createTenantPackageSchema>
 export type UpdateTenantPackageInput = z.infer<typeof updateTenantPackageSchema>;
 export type AssignTenantPackageMenusInput = z.infer<typeof assignTenantPackageMenusSchema>;
 export type UpdateOauthConfigInput = z.infer<typeof updateOauthConfigSchema>;
-export type CreateTenantIdentityProviderInput = z.infer<typeof createTenantIdentityProviderSchema>;
-export type UpdateTenantIdentityProviderInput = z.infer<typeof updateTenantIdentityProviderSchema>;
 
 // ─── 通知模块（邮件 / 短信 / 站内信）─────────────────────────────────────────
 export const SMS_PROVIDERS = ['aliyun', 'tencent'] as const;
