@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Input, Select, Spin, Toast, Typography, Empty, Tooltip, Modal, Form, Space } from '@douyinfe/semi-ui';
-import { Save, ArrowLeft, Eye, Trash2, Copy, Undo2, Redo2, SlidersHorizontal, LayoutGrid, Monitor, Settings2 } from 'lucide-react';
+import { Save, ArrowLeft, Eye, Trash2, Copy, Undo2, Redo2, SlidersHorizontal, LayoutGrid, Monitor, Settings2, Images } from 'lucide-react';
 import RGL, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
 import { Rnd } from 'react-rnd';
 import 'react-grid-layout/css/styles.css';
@@ -62,6 +62,8 @@ export default function DashboardDesignerPage() {
   const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
   const [filterModal, setFilterModal] = useState(false);
   const [screenModal, setScreenModal] = useState(false);
+  const [carouselModal, setCarouselModal] = useState(false);
+  const [designPage, setDesignPage] = useState(1);
   const [canvasScale, setCanvasScale] = useState(1);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -72,6 +74,18 @@ export default function DashboardDesignerPage() {
   const layoutMode = doc.config.layoutMode ?? 'grid';
   const screenConfig = useMemo(() => ({ ...DEFAULT_SCREEN, ...(doc.config.screenConfig ?? {}) }), [doc.config.screenConfig]);
   const isDark = doc.config.theme === 'dark';
+
+  const carousel = doc.config.carousel;
+  const carouselOn = !!carousel?.enabled && (carousel.pageCount ?? 1) > 1;
+  const pageCount = Math.max(1, carousel?.pageCount ?? 1);
+  // 编辑态：轮播开启时仅显示当前页的组件
+  const pageWidgets = useMemo(
+    () => (carouselOn ? doc.widgets.filter((w) => (w.page ?? 1) === designPage) : doc.widgets),
+    [carouselOn, doc.widgets, designPage],
+  );
+
+  // 页数变化时夹紧当前编辑页
+  useEffect(() => { setDesignPage((p) => Math.min(Math.max(1, p), pageCount)); }, [pageCount]);
 
   const mutate = useCallback((updater: (d: Doc) => Doc, record = true) => {
     setDoc((cur) => {

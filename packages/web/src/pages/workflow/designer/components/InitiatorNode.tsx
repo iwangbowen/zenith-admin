@@ -65,7 +65,7 @@ export default function InitiatorNode({
             {typeof runtime.step === 'number' && typeof runtime.totalSteps === 'number' && (
               <span>第 {runtime.step} / {runtime.totalSteps} 步</span>
             )}
-              <span>{runtime.active ? '当前步骤' : runtime.statusLabel}</span>
+              {(runtime.active || runtime.statusLabel) && <span>{runtime.active ? '当前步骤' : runtime.statusLabel}</span>}
             </div>
             <span className="fd-node-card__body-text">{desc}</span>
             {(runtime.detail || runtime.reason) && (

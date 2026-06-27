@@ -11,6 +11,8 @@ interface ConfigPanelProps {
   fieldOptions: FieldOption[];
   filters: ReportFilter[];
   datasetParams: ReportDatasetParam[];
+  /** 多屏轮播总页数（>1 时显示「所属页」选择器） */
+  pageCount?: number;
   onPatch: (patch: Partial<ReportWidget>) => void;
   onOptions: (patch: Partial<ReportWidgetOptions>) => void;
 }
@@ -35,7 +37,7 @@ function Field({ label, children }: { readonly label: string; readonly children:
 
 const full = { width: '100%' } as const;
 
-export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filters, datasetParams, onPatch, onOptions }: Readonly<ConfigPanelProps>) {
+export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filters, datasetParams, pageCount, onPatch, onOptions }: Readonly<ConfigPanelProps>) {
   const o = widget.options ?? {};
   const t = widget.type;
   const isCartesian = t === 'bar' || t === 'line' || t === 'area';
@@ -58,6 +60,13 @@ export function ConfigPanel({ widget, datasets, dashboards, fieldOptions, filter
       <Typography.Title heading={6} style={{ margin: '0 0 4px' }}>组件配置</Typography.Title>
 
       <Field label="标题"><Input value={widget.title} onChange={(v) => onPatch({ title: v })} maxLength={128} showClear /></Field>
+
+      {!!pageCount && pageCount > 1 && (
+        <Field label="所属页（多屏轮播）">
+          <Select style={full} value={widget.page ?? 1} onChange={(v) => onPatch({ page: Number(v) || 1 })}
+            optionList={Array.from({ length: pageCount }, (_, i) => ({ value: i + 1, label: `第 ${i + 1} 页` }))} />
+        </Field>
+      )}
 
       {t === 'text' && (
         <Field label="文本内容（支持 ${筛选器id} 占位）">
