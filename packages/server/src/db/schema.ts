@@ -2,7 +2,7 @@ import { pgTable, serial, varchar, timestamp, pgEnum, integer, bigint, boolean, 
 import { relations, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 // 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
-import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot, ReportComputedField, ReportCanvasItem } from '@zenith/shared';
+import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig } from '@zenith/shared';
 
 export const statusEnum = pgEnum('status', ['enabled', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -3359,6 +3359,73 @@ export const ratePlansRelations = relations(ratePlans, ({ many }) => ({
   clients: many(oauth2Clients),
 }));
 
+// ─── 开放平台：应用级 Webhook 订阅 ────────────────────────────────────────────
+
+export const appWebhookSignModeEnum = pgEnum('app_webhook_sign_mode', ['hmacSha256', 'none']);
+export const appWebhookDeliveryStatusEnum = pgEnum('app_webhook_delivery_status', ['pending', 'success', 'failed', 'retrying']);
+
+/** 开发者应用的 Webhook 订阅 */
+export const appWebhookSubscriptions = pgTable('app_webhook_subscriptions', {
+  id: serial('id').primaryKey(),
+  /** 所属应用 AppKey（= oauth2_clients.client_id） */
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  url: varchar('url', { length: 512 }).notNull(),
+  /** HMAC 签名密钥密文（AES-256-GCM）；仅创建/重置时明文返回一次 */
+  secretEncrypted: text('secret_encrypted'),
+  signMode: appWebhookSignModeEnum('sign_mode').notNull().default('hmacSha256'),
+  /** 订阅的事件类型；空数组 = 订阅全部 */
+  events: text('events').array().notNull().default([]),
+  /** 自定义请求头 */
+  headers: jsonb('headers').$type<Record<string, string>>(),
+  status: statusEnum('status').notNull().default('enabled'),
+  lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [index('app_webhook_subscriptions_client_idx').on(t.clientId)]);
+
+export type AppWebhookSubscriptionRow = typeof appWebhookSubscriptions.$inferSelect;
+export type NewAppWebhookSubscription = typeof appWebhookSubscriptions.$inferInsert;
+
+/** Webhook 投递日志（追加型，无审计列） */
+export const appWebhookDeliveries = pgTable('app_webhook_deliveries', {
+  id: serial('id').primaryKey(),
+  subscriptionId: integer('subscription_id').notNull().references(() => appWebhookSubscriptions.id, { onDelete: 'cascade' }),
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  eventType: varchar('event_type', { length: 64 }).notNull(),
+  eventId: varchar('event_id', { length: 64 }).notNull(),
+  payload: jsonb('payload'),
+  attempt: integer('attempt').notNull().default(0),
+  status: appWebhookDeliveryStatusEnum('status').notNull().default('pending'),
+  requestUrl: varchar('request_url', { length: 512 }),
+  responseStatus: integer('response_status'),
+  responseBody: text('response_body'),
+  errorMessage: text('error_message'),
+  durationMs: integer('duration_ms'),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('app_webhook_deliveries_sub_idx').on(t.subscriptionId),
+  index('app_webhook_deliveries_client_idx').on(t.clientId),
+  index('app_webhook_deliveries_status_idx').on(t.status),
+  index('app_webhook_deliveries_next_retry_idx').on(t.nextRetryAt),
+  index('app_webhook_deliveries_created_idx').on(t.createdAt),
+]);
+
+export type AppWebhookDeliveryRow = typeof appWebhookDeliveries.$inferSelect;
+export type NewAppWebhookDelivery = typeof appWebhookDeliveries.$inferInsert;
+
+export const appWebhookSubscriptionsRelations = relations(appWebhookSubscriptions, ({ many }) => ({
+  deliveries: many(appWebhookDeliveries),
+}));
+
+export const appWebhookDeliveriesRelations = relations(appWebhookDeliveries, ({ one }) => ({
+  subscription: one(appWebhookSubscriptions, { fields: [appWebhookDeliveries.subscriptionId], references: [appWebhookSubscriptions.id] }),
+}));
+
 // ─── 维护模式（单例，id 固定为 1）───────────────────────────────────────────
 export const maintenanceMode = pgTable('maintenance_mode', {
   id: serial('id').primaryKey(),
@@ -4595,6 +4662,31 @@ export const reportDatasets = pgTable('report_datasets', {
 });
 export type ReportDatasetRow = typeof reportDatasets.$inferSelect;
 export type NewReportDataset = typeof reportDatasets.$inferInsert;
+
+/** 类 Excel 单据/中国式打印报表模板 */
+export const reportPrintTemplates = pgTable('report_print_templates', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull().unique(),
+  /** 绑定的数据集（主数据源，可空）*/
+  datasetId: integer('dataset_id').references((): AnyPgColumn => reportDatasets.id, { onDelete: 'set null' }),
+  /** Univer 工作簿快照(编辑用) + 归一化网格(渲染/导出用)，单元格含 ${field}/#{field}/${SUM(field)} 表达式 */
+  content: jsonb('content').$type<ReportPrintContent>().notNull().default(sql`'{}'::jsonb`),
+  /** 参数定义（${param} 注入）*/
+  params: jsonb('params').$type<ReportDatasetParam[]>().notNull().default(sql`'[]'::jsonb`),
+  /** 页面/打印配置 */
+  pageConfig: jsonb('page_config').$type<ReportPrintPageConfig>().notNull().default(sql`'{}'::jsonb`),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ReportPrintTemplateRow = typeof reportPrintTemplates.$inferSelect;
+export type NewReportPrintTemplate = typeof reportPrintTemplates.$inferInsert;
+
+export const reportPrintTemplatesRelations = relations(reportPrintTemplates, ({ one }) => ({
+  dataset: one(reportDatasets, { fields: [reportPrintTemplates.datasetId], references: [reportDatasets.id] }),
+}));
 
 /** 报表仪表盘：网格布局 + 组件配置 */
 export const reportDashboards = pgTable('report_dashboards', {

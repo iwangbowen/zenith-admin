@@ -334,6 +334,7 @@ export interface ExportEntityMeta {
   entity: string;
   moduleName: string;
   filenamePrefix: string;
+  sourcePath?: string;
   formats: ExportJobFormat[];
   renderMode: 'table' | 'layout' | 'custom';
   columns: ExportColumnMeta[];
@@ -4132,6 +4133,57 @@ export interface OpenSignatureResult {
   matched?: boolean;
 }
 
+/** 应用级 Webhook 订阅 */
+export interface AppWebhookSubscription {
+  id: number;
+  clientId: string;
+  name: string;
+  url: string;
+  signMode: 'hmacSha256' | 'none';
+  events: string[];
+  headers?: Record<string, string> | null;
+  status: 'enabled' | 'disabled';
+  /** 是否已配置签名密钥 */
+  hasSecret: boolean;
+  /** 密钥掩码（仅展示前后各 4 位） */
+  secretMasked?: string | null;
+  lastDeliveryAt?: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 创建/重置时一次性返回明文 secret */
+export interface AppWebhookSubscriptionCreated extends AppWebhookSubscription {
+  secret: string;
+}
+
+/** Webhook 投递记录 */
+export interface AppWebhookDelivery {
+  id: number;
+  subscriptionId: number;
+  clientId: string;
+  eventType: string;
+  eventId: string;
+  status: 'pending' | 'success' | 'failed' | 'retrying';
+  attempt: number;
+  requestUrl?: string | null;
+  responseStatus?: number | null;
+  responseBody?: string | null;
+  errorMessage?: string | null;
+  durationMs?: number | null;
+  nextRetryAt?: string | null;
+  finishedAt?: string | null;
+  createdAt: string;
+}
+
+/** 事件类型元数据（供订阅界面选择） */
+export interface OpenWebhookEventMeta {
+  code: string;
+  label: string;
+}
+
 /** /api/oauth2/token 响应体（标准 OAuth2 格式）*/
 export interface OAuth2TokenResponse {
   access_token: string;
@@ -5767,4 +5819,96 @@ export interface ReportPublicDashboard {
   widgets: ReportWidget[];
   filters: ReportFilter[];
   config: ReportDashboardConfig;
+}
+
+// ─── 报表中心 · 第六期：类 Excel 单据/中国式报表 ──────────────────────────────
+
+/** 打印报表单元格样式子集（不耦合 Univer，供归一化网格 + 导出复用） */
+export interface ReportPrintCellStyle {
+  bold?: boolean;
+  italic?: boolean;
+  fontSize?: number;
+  color?: string;
+  background?: string;
+  align?: 'left' | 'center' | 'right';
+  valign?: 'top' | 'middle' | 'bottom';
+  /** 是否描边（四边细边框） */
+  border?: boolean;
+  /** 自动换行 */
+  wrap?: boolean;
+}
+
+/** 打印报表单元格（归一化网格项） */
+export interface ReportPrintCell {
+  row: number;
+  col: number;
+  /** 原始值/表达式文本：${field}=纵向扩展明细，#{field}=标量，${SUM(field)}=聚合，其余=字面量 */
+  v?: string | number | boolean | null;
+  s?: ReportPrintCellStyle;
+}
+
+/** 合并单元格区域 */
+export interface ReportPrintMerge {
+  row: number;
+  col: number;
+  rowSpan: number;
+  colSpan: number;
+}
+
+/** 归一化打印网格（单 sheet，渲染/导出引擎的统一中间表示） */
+export interface ReportPrintGrid {
+  rows: number;
+  cols: number;
+  /** 列宽（px，按列索引） */
+  colWidths?: number[];
+  /** 行高（px，按行索引） */
+  rowHeights?: number[];
+  cells: ReportPrintCell[];
+  merges?: ReportPrintMerge[];
+}
+
+/** 打印报表内容：Univer 工作簿快照(编辑用) + 归一化网格(渲染/导出用) */
+export interface ReportPrintContent {
+  /** Univer IWorkbookData 快照（设计器加载用，结构由前端维护） */
+  workbook?: unknown;
+  /** 归一化网格（保存时由前端从 workbook 提取，供后端渲染/导出复用） */
+  grid?: ReportPrintGrid;
+}
+
+/** 页面/打印配置 */
+export interface ReportPrintPageConfig {
+  paper?: 'A4' | 'A3' | 'A5' | 'Letter';
+  orientation?: 'portrait' | 'landscape';
+  /** 页边距（mm） */
+  margin?: { top: number; right: number; bottom: number; left: number };
+  /** 页眉文本（支持 ${param} 与 {page}/{pages}/{date} 占位） */
+  header?: string;
+  /** 页脚文本 */
+  footer?: string;
+  /** 套打背景图 URL（叠加预印表单） */
+  backgroundImage?: string;
+}
+
+/** 打印报表模板 */
+export interface ReportPrintTemplate {
+  id: number;
+  name: string;
+  datasetId?: number | null;
+  datasetName?: string | null;
+  content: ReportPrintContent;
+  params: ReportDatasetParam[];
+  pageConfig: ReportPrintPageConfig;
+  status: 'enabled' | 'disabled';
+  remark?: string | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 填充后的打印报表（渲染/导出结果） */
+export interface ReportPrintRenderResult {
+  name: string;
+  grid: ReportPrintGrid;
+  pageConfig: ReportPrintPageConfig;
 }

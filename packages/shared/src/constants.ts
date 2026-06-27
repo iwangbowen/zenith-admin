@@ -375,3 +375,33 @@ export const API_SCOPE_GROUP_LABELS: Record<string, string> = {
   data: '数据',
   system: '系统',
 };
+
+// ─── 开放平台：Webhook 订阅 ───────────────────────────────────────────────────
+export const OPEN_WEBHOOK_SIGN_MODES = ['hmacSha256', 'none'] as const;
+export type OpenWebhookSignMode = (typeof OPEN_WEBHOOK_SIGN_MODES)[number];
+
+export const OPEN_WEBHOOK_DELIVERY_STATUSES = ['pending', 'success', 'failed', 'retrying'] as const;
+export type OpenWebhookDeliveryStatus = (typeof OPEN_WEBHOOK_DELIVERY_STATUSES)[number];
+
+export const OPEN_WEBHOOK_DELIVERY_STATUS_LABELS: Record<OpenWebhookDeliveryStatus, string> = {
+  pending: '投递中',
+  success: '成功',
+  failed: '失败',
+  retrying: '重试中',
+};
+
+/** 可订阅的开放平台事件类型 */
+export const OPEN_WEBHOOK_EVENTS = ['app.test', 'app.call.failed', 'app.quota.exceeded', 'app.scope.denied'] as const;
+export type OpenWebhookEvent = (typeof OPEN_WEBHOOK_EVENTS)[number];
+
+export const OPEN_WEBHOOK_EVENT_LABELS: Record<string, string> = {
+  'app.test': '测试事件',
+  'app.call.failed': '调用失败',
+  'app.quota.exceeded': '配额超限',
+  'app.scope.denied': 'Scope 未授权',
+};
+
+/** Webhook 投递签名请求头 */
+export const OPEN_WEBHOOK_SIGNATURE_HEADER = 'X-Zenith-Signature';
+/** 阶梯重试间隔（分钟） */
+export const OPEN_WEBHOOK_RETRY_STAGES_MINUTES = [1, 5, 30, 180, 720] as const;

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Descriptions, Modal, Select, SideSheet, Space, Table, Tag, Toast, Typography, Input } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RefreshCw, RotateCcw, Search } from 'lucide-react';
-import type { ExportEntityMeta, ExportJob, ExportJobDownload, ExportJobFormat, ExportJobStatus, PaginatedResponse } from '@zenith/shared';
+import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, Copy, ExternalLink, Play, RefreshCw, RotateCcw, Search, Trash2 } from 'lucide-react';
+import type { ExportEntityMeta, ExportJob, ExportJobCreateResult, ExportJobDownload, ExportJobFormat, ExportJobStatus, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -57,7 +58,17 @@ function formatFileSize(size: number | null) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function renderProgress(record: ExportJob) {
+  if (record.status === 'pending') return <Typography.Text type="tertiary">排队中</Typography.Text>;
+  if (record.status === 'running') return <Typography.Text type="secondary">执行中</Typography.Text>;
+  if (record.status === 'success') return <Typography.Text type="success">{record.rowCount == null ? '已完成' : `${record.rowCount} 行`}</Typography.Text>;
+  if (record.status === 'failed') return <Typography.Text type="danger">失败</Typography.Text>;
+  if (record.status === 'cancelled') return <Typography.Text type="tertiary">已取消</Typography.Text>;
+  return <Typography.Text type="warning">文件已过期</Typography.Text>;
+}
+
 export default function ExportJobsPage() {
+  const navigate = useNavigate();
   const [entities, setEntities] = useState<ExportEntityMeta[]>([]);
   const [data, setData] = useState<ExportJob[]>([]);
   const [total, setTotal] = useState(0);
@@ -68,6 +79,8 @@ export default function ExportJobsPage() {
   const [downloadLogs, setDownloadLogs] = useState<ExportJobDownload[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
 
   const entityOptions = useMemo(
@@ -77,6 +90,7 @@ export default function ExportJobsPage() {
     ],
     [entities],
   );
+  const entityMap = useMemo(() => new Map(entities.map((item) => [item.entity, item])), [entities]);
 
   const fetchEntities = useCallback(async () => {
     const res = await request.get<ExportEntityMeta[]>('/api/export-jobs/entities', { silent: true });
@@ -98,6 +112,7 @@ export default function ExportJobsPage() {
       if (res.code === 0) {
         setData(res.data.list);
         setTotal(res.data.total);
+        setSelectedRowKeys((prev) => prev.filter((id) => res.data.list.some((item) => item.id === id)));
       }
     } finally {
       setLoading(false);
@@ -160,6 +175,57 @@ export default function ExportJobsPage() {
     }
   };
 
+  const handleRerun = async (record: ExportJob) => {
+    setActionLoadingId(record.id);
+    try {
+      const res = await request.post<ExportJobCreateResult>('/api/export-jobs', {
+        entity: record.entity,
+        format: record.format,
+        query: record.query ?? {},
+        columns: record.columns ?? undefined,
+        raw: record.raw,
+        watermark: record.watermark,
+        executionMode: record.executionMode,
+      });
+      if (res.code === 0) {
+        Toast.success(res.data.mode === 'async' ? '已重新提交导出任务' : '已重新导出');
+        void fetchData();
+      }
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleCopyQuery = async (record: ExportJob) => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(record.query ?? {}, null, 2));
+      Toast.success('已复制筛选条件');
+    } catch {
+      Toast.error('复制失败');
+    }
+  };
+
+  const handleOpenSource = (record: ExportJob) => {
+    const sourcePath = entityMap.get(record.entity)?.sourcePath;
+    if (!sourcePath) {
+      Toast.warning('该导出实体未配置来源页面');
+      return;
+    }
+    navigate(sourcePath);
+  };
+
+  const handleShowError = (record: ExportJob) => {
+    Modal.error({
+      title: `导出失败 #${record.id}`,
+      content: (
+        <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
+          {record.errorMessage ?? '未返回失败原因'}
+        </Typography.Paragraph>
+      ),
+      okText: '知道了',
+    });
+  };
+
   const handleDelete = (record: ExportJob) => {
     Modal.confirm({
       title: '删除导出任务',
@@ -169,7 +235,28 @@ export default function ExportJobsPage() {
         const res = await request.delete<null>(`/api/export-jobs/${record.id}`);
         if (res.code === 0) {
           Toast.success('已删除');
+          setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id));
           void fetchData();
+        }
+      },
+    });
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: '批量删除导出任务',
+      content: `将删除选中的 ${selectedRowKeys.length} 个导出任务记录。`,
+      okButtonProps: { type: 'danger', theme: 'solid' },
+      onOk: async () => {
+        setBatchDeleting(true);
+        try {
+          await Promise.all(selectedRowKeys.map((id) => request.delete<null>(`/api/export-jobs/${id}`, { silent: true })));
+          Toast.success(`已删除 ${selectedRowKeys.length} 个任务`);
+          setSelectedRowKeys([]);
+          void fetchData();
+        } finally {
+          setBatchDeleting(false);
         }
       },
     });
@@ -193,7 +280,7 @@ export default function ExportJobsPage() {
     { title: '文件名', dataIndex: 'filename', width: 260, render: renderEllipsis },
     { title: '格式', dataIndex: 'format', width: 80, render: (value: ExportJobFormat) => value.toUpperCase() },
     { title: '模式', dataIndex: 'executionMode', width: 90, render: (value: string) => (value === 'sync' ? '同步' : '异步') },
-    { title: '行数', dataIndex: 'rowCount', width: 100, render: (value: number | null) => value ?? '-' },
+    { title: '进度', dataIndex: 'rowCount', width: 120, render: (_: number | null, record: ExportJob) => renderProgress(record) },
     { title: '大小', dataIndex: 'fileSize', width: 110, render: formatFileSize },
     {
       title: '安全',
@@ -215,7 +302,17 @@ export default function ExportJobsPage() {
       title: '错误信息',
       dataIndex: 'errorMessage',
       width: 240,
-      render: (value: string | null) => value ? <Typography.Text type="danger" ellipsis={{ showTooltip: true }}>{value}</Typography.Text> : '-',
+      render: (value: string | null, record: ExportJob) => value ? (
+        <Button
+          theme="borderless"
+          type="danger"
+          size="small"
+          icon={<AlertTriangle size={13} />}
+          onClick={() => handleShowError(record)}
+        >
+          查看失败原因
+        </Button>
+      ) : '-',
     },
     {
       title: '状态',
@@ -243,6 +340,23 @@ export default function ExportJobsPage() {
           key: 'logs',
           label: '下载日志',
           onClick: () => void openDownloadLogs(record),
+        },
+        {
+          key: 'rerun',
+          label: '重新导出',
+          loading: actionLoadingId === record.id,
+          onClick: () => void handleRerun(record),
+        },
+        {
+          key: 'copy-query',
+          label: '复制筛选',
+          onClick: () => void handleCopyQuery(record),
+        },
+        {
+          key: 'source',
+          label: '来源页面',
+          hidden: !entityMap.get(record.entity)?.sourcePath,
+          onClick: () => handleOpenSource(record),
         },
         {
           key: 'cancel',
@@ -312,6 +426,11 @@ export default function ExportJobsPage() {
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         <Button icon={<RefreshCw size={14} />} onClick={() => void fetchData()} loading={loading}>刷新</Button>
+        {selectedRowKeys.length > 0 && (
+          <Button type="danger" icon={<Trash2 size={14} />} loading={batchDeleting} onClick={handleBatchDelete}>
+            批量删除 ({selectedRowKeys.length})
+          </Button>
+        )}
       </SearchToolbar>
 
       <ConfigurableTable
@@ -323,9 +442,13 @@ export default function ExportJobsPage() {
         refreshLoading={loading}
         pagination={buildPagination(total, fetchData)}
         rowKey="id"
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
+        }}
         size="small"
         empty="暂无导出任务"
-        scroll={{ x: 2050 }}
+        scroll={{ x: 2150 }}
       />
 
       <SideSheet

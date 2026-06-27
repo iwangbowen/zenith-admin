@@ -20,6 +20,7 @@ import {
 import { signRequest, timingSafeEqualHex } from '../lib/open-signature';
 import { getOpenApiApp, recordOpenApiCall, type OpenApiAppContext } from '../services/open-gateway.service';
 import { getRatePlanRowById, getDefaultRatePlanRow } from '../services/rate-plans.service';
+import { openEventBus } from '../lib/open-event-bus';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -112,6 +113,7 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
     if (plan.qpsLimit > 0) {
       const n = await incrWithExpire(`${PREFIX}qps:${app.clientId}`, 1);
       if (n > plan.qpsLimit) {
+        openEventBus.emit({ type: 'app.quota.exceeded', clientId: app.clientId, data: { limit: 'qps', value: plan.qpsLimit, plan: plan.code } });
         return c.json(errBody(`超出套餐 QPS 限制（${plan.qpsLimit}/s）`, 429), 429, { 'Retry-After': '1' });
       }
     }
@@ -119,6 +121,7 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
       const day = dayjs().format('YYYY-MM-DD');
       const n = await incrWithExpire(`${PREFIX}daily:${app.clientId}:${day}`, 2 * 24 * 60 * 60);
       if (n > plan.dailyQuota) {
+        openEventBus.emit({ type: 'app.quota.exceeded', clientId: app.clientId, data: { limit: 'daily', value: plan.dailyQuota, plan: plan.code } });
         return c.json(errBody(`超出套餐每日调用配额（${plan.dailyQuota}/天）`, 429), 429);
       }
     }
@@ -126,6 +129,7 @@ export const openRateLimit: MiddlewareHandler = async (c, next) => {
       const month = dayjs().format('YYYY-MM');
       const n = await incrWithExpire(`${PREFIX}monthly:${app.clientId}:${month}`, 32 * 24 * 60 * 60);
       if (n > plan.monthlyQuota) {
+        openEventBus.emit({ type: 'app.quota.exceeded', clientId: app.clientId, data: { limit: 'monthly', value: plan.monthlyQuota, plan: plan.code } });
         return c.json(errBody(`超出套餐每月调用配额（${plan.monthlyQuota}/月）`, 429), 429);
       }
     }
@@ -157,4 +161,13 @@ export const openApiMetering: MiddlewareHandler = async (c, next) => {
     scope: c.get('openScope') ?? null,
     requestId: c.res.headers.get('x-request-id'),
   }).catch(() => undefined);
+
+  // 触发开放平台事件，供 Webhook 订阅投递
+  if (app) {
+    if (statusCode === 403) {
+      openEventBus.emit({ type: 'app.scope.denied', clientId: app.clientId, data: { method: c.req.method, path: url.pathname, scope: c.get('openScope') ?? null } });
+    } else if (statusCode >= 400 && statusCode !== 429) {
+      openEventBus.emit({ type: 'app.call.failed', clientId: app.clientId, data: { method: c.req.method, path: url.pathname, statusCode } });
+    }
+  }
 };

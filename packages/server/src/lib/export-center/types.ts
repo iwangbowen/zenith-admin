@@ -88,6 +88,12 @@ export interface ExportRuntimeContext<TQuery extends Record<string, unknown> = R
   exportedAt: Date;
 }
 
+export interface ExportRenderedFile {
+  buffer: Buffer;
+  mimeType: string;
+  filename?: string;
+}
+
 export interface ExportDefinition<
   TQuery extends Record<string, unknown> = Record<string, unknown>,
   TRow extends Record<string, unknown> = Record<string, unknown>,
@@ -95,6 +101,7 @@ export interface ExportDefinition<
   entity: string;
   moduleName: string;
   filenamePrefix: string;
+  sourcePath?: string;
   formats?: ExportFormat[];
   renderMode?: ExportRenderMode;
   sheetName?: string;
@@ -115,6 +122,7 @@ export interface ExportDefinition<
     user: JwtPayload,
     ctx: ExportRuntimeContext<TQuery>,
   ) => AsyncIterable<TRow> | Iterable<TRow> | Promise<AsyncIterable<TRow> | Iterable<TRow>>;
+  renderFile?: (ctx: ExportRuntimeContext<TQuery>) => Promise<ExportRenderedFile>;
   renderWorkbook?: (workbook: ExcelJS.Workbook, ctx: ExportRuntimeContext<TQuery>) => Promise<void>;
 }
 

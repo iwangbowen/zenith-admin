@@ -198,3 +198,53 @@ export const ReportPublicDashboardDTO = z
 export const ReportDatasourceTestResultDTO = z
   .object({ ok: z.boolean(), message: z.string(), latencyMs: z.number().optional() })
   .openapi('ReportDatasourceTestResult');
+
+// ─── 类 Excel 打印报表 ────────────────────────────────────────────────────────
+const ReportPrintGridDTO = z.object({
+  rows: z.number().int(),
+  cols: z.number().int(),
+  colWidths: z.array(z.number()).optional(),
+  rowHeights: z.array(z.number()).optional(),
+  cells: z.array(z.object({
+    row: z.number().int(),
+    col: z.number().int(),
+    v: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+    s: z.record(z.string(), z.unknown()).optional(),
+  })),
+  merges: z.array(z.object({ row: z.number().int(), col: z.number().int(), rowSpan: z.number().int(), colSpan: z.number().int() })).optional(),
+}).openapi('ReportPrintGrid');
+
+const ReportPrintPageConfigDTO = z.object({
+  paper: z.enum(['A4', 'A3', 'A5', 'Letter']).optional(),
+  orientation: z.enum(['portrait', 'landscape']).optional(),
+  margin: z.object({ top: z.number(), right: z.number(), bottom: z.number(), left: z.number() }).optional(),
+  header: z.string().optional(),
+  footer: z.string().optional(),
+  backgroundImage: z.string().optional(),
+}).openapi('ReportPrintPageConfig');
+
+export const ReportPrintTemplateDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    datasetId: z.number().int().nullable().optional(),
+    datasetName: z.string().nullable().optional(),
+    content: z.object({ workbook: z.unknown().optional(), grid: ReportPrintGridDTO.optional() }),
+    params: z.array(ReportDatasetParamDTO),
+    pageConfig: ReportPrintPageConfigDTO,
+    status: z.enum(['enabled', 'disabled']),
+    remark: z.string().nullable().optional(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('ReportPrintTemplate');
+
+/** 打印报表渲染结果（取数填充后的网格 + 页面配置）*/
+export const ReportPrintRenderResultDTO = z
+  .object({
+    name: z.string(),
+    grid: ReportPrintGridDTO,
+    pageConfig: ReportPrintPageConfigDTO,
+  })
+  .openapi('ReportPrintRenderResult');

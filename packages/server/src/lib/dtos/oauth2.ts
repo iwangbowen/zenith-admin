@@ -54,6 +54,13 @@ export const OAuth2ClientSecretDTO = z
 
 // ─── OAuth2 令牌 DTO ─────────────────────────────────────────────────────────
 
+export const OAuth2AppOptionDTO = z
+  .object({
+    clientId: z.string(),
+    name: z.string(),
+  })
+  .openapi('OAuth2AppOption');
+
 export const OAuth2TokenListItemDTO = z
   .object({
     id: z.number().int(),

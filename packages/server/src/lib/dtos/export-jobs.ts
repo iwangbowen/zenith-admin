@@ -22,6 +22,7 @@ export const ExportEntityMetaDTO = z
     entity: z.string(),
     moduleName: z.string(),
     filenamePrefix: z.string(),
+    sourcePath: z.string().optional(),
     formats: z.array(ExportJobFormatDTO),
     renderMode: z.enum(['table', 'layout', 'custom']),
     columns: z.array(ExportColumnMetaDTO),

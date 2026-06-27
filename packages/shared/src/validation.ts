@@ -2772,6 +2772,67 @@ export const updateReportSubscriptionSchema = createReportSubscriptionSchema.par
 export type CreateReportSubscriptionInput = z.input<typeof createReportSubscriptionSchema>;
 export type UpdateReportSubscriptionInput = z.input<typeof updateReportSubscriptionSchema>;
 
+// ─── 类 Excel 打印报表 ────────────────────────────────────────────────────────
+export const reportPrintCellStyleSchema = z.object({
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  fontSize: z.number().optional(),
+  color: z.string().optional(),
+  background: z.string().optional(),
+  align: z.enum(['left', 'center', 'right']).optional(),
+  valign: z.enum(['top', 'middle', 'bottom']).optional(),
+  border: z.boolean().optional(),
+  wrap: z.boolean().optional(),
+});
+export const reportPrintCellSchema = z.object({
+  row: z.number().int().min(0),
+  col: z.number().int().min(0),
+  v: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+  s: reportPrintCellStyleSchema.optional(),
+});
+export const reportPrintMergeSchema = z.object({
+  row: z.number().int().min(0), col: z.number().int().min(0),
+  rowSpan: z.number().int().min(1), colSpan: z.number().int().min(1),
+});
+export const reportPrintGridSchema = z.object({
+  rows: z.number().int().min(0).max(5000),
+  cols: z.number().int().min(0).max(300),
+  colWidths: z.array(z.number()).optional(),
+  rowHeights: z.array(z.number()).optional(),
+  cells: z.array(reportPrintCellSchema).default([]),
+  merges: z.array(reportPrintMergeSchema).optional(),
+});
+export const reportPrintContentSchema = z.object({
+  workbook: z.unknown().optional(),
+  grid: reportPrintGridSchema.optional(),
+});
+export const reportPrintPageConfigSchema = z.object({
+  paper: z.enum(['A4', 'A3', 'A5', 'Letter']).optional(),
+  orientation: z.enum(['portrait', 'landscape']).optional(),
+  margin: z.object({ top: z.number(), right: z.number(), bottom: z.number(), left: z.number() }).optional(),
+  header: z.string().max(512).optional(),
+  footer: z.string().max(512).optional(),
+  backgroundImage: z.string().optional(),
+});
+export const createReportPrintTemplateSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(64),
+  datasetId: z.number().int().positive().nullable().optional(),
+  content: reportPrintContentSchema.default({}),
+  params: z.array(reportDatasetParamSchema).default([]),
+  pageConfig: reportPrintPageConfigSchema.default({}),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(256).optional(),
+});
+export const updateReportPrintTemplateSchema = createReportPrintTemplateSchema.partial();
+export type CreateReportPrintTemplateInput = z.input<typeof createReportPrintTemplateSchema>;
+export type UpdateReportPrintTemplateInput = z.input<typeof updateReportPrintTemplateSchema>;
+/** 渲染（取数填充）入参 */
+export const reportPrintRenderSchema = z.object({
+  params: z.record(z.string(), z.unknown()).optional(),
+  limit: z.number().int().min(1).max(5000).optional(),
+});
+export type ReportPrintRenderInput = z.input<typeof reportPrintRenderSchema>;
+
 // ─── 开放平台：API Scope ──────────────────────────────────────────────────────
 export const createApiScopeSchema = z.object({
   code: z
@@ -2820,3 +2881,17 @@ export const openSignatureVerifySchema = z.object({
   signature: z.string().optional(),
 });
 export type OpenSignatureVerifyInput = z.input<typeof openSignatureVerifySchema>;
+
+// ─── 开放平台：Webhook 订阅 ───────────────────────────────────────────────────
+export const createAppWebhookSchema = z.object({
+  clientId: z.string().min(1, '请选择所属应用'),
+  name: z.string().min(1, '名称不能为空').max(100),
+  url: z.string().regex(/^https?:\/\/.+/, 'URL 必须以 http(s):// 开头').max(512),
+  events: z.array(z.string()).default([]),
+  signMode: z.enum(['hmacSha256', 'none']).default('hmacSha256'),
+  headers: z.record(z.string(), z.string()).optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateAppWebhookSchema = createAppWebhookSchema.partial().omit({ clientId: true });
+export type CreateAppWebhookInput = z.input<typeof createAppWebhookSchema>;
+export type UpdateAppWebhookInput = z.input<typeof updateAppWebhookSchema>;

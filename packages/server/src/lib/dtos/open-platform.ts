@@ -123,3 +123,56 @@ export const OpenSignatureAlgorithmDTO = z
     steps: z.array(z.string()),
   })
   .openapi('OpenSignatureAlgorithm');
+
+// ─── Webhook 订阅 ─────────────────────────────────────────────────────────────
+
+export const AppWebhookSubscriptionDTO = z
+  .object({
+    id: z.number().int(),
+    clientId: z.string(),
+    name: z.string(),
+    url: z.string(),
+    signMode: z.enum(['hmacSha256', 'none']),
+    events: z.array(z.string()),
+    headers: z.record(z.string(), z.string()).nullable(),
+    status: z.enum(['enabled', 'disabled']),
+    hasSecret: z.boolean(),
+    secretMasked: z.string().nullable(),
+    lastDeliveryAt: z.string().nullable(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('AppWebhookSubscription');
+
+/** 创建/重置时一次性返回明文 secret */
+export const AppWebhookSubscriptionCreatedDTO = AppWebhookSubscriptionDTO.extend({
+  secret: z.string(),
+}).openapi('AppWebhookSubscriptionCreated');
+
+export const AppWebhookDeliveryDTO = z
+  .object({
+    id: z.number().int(),
+    subscriptionId: z.number().int(),
+    clientId: z.string(),
+    eventType: z.string(),
+    eventId: z.string(),
+    status: z.enum(['pending', 'success', 'failed', 'retrying']),
+    attempt: z.number().int(),
+    requestUrl: z.string().nullable(),
+    responseStatus: z.number().int().nullable(),
+    responseBody: z.string().nullable(),
+    errorMessage: z.string().nullable(),
+    durationMs: z.number().int().nullable(),
+    nextRetryAt: z.string().nullable(),
+    finishedAt: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('AppWebhookDelivery');
+
+export const OpenWebhookEventMetaDTO = z
+  .object({
+    code: z.string(),
+    label: z.string(),
+  })
+  .openapi('OpenWebhookEventMeta');

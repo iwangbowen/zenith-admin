@@ -17,6 +17,7 @@ import {
   OAuth2ClientCreatedDTO,
   OAuth2ClientSecretDTO,
   OAuth2TokenListItemDTO,
+  OAuth2AppOptionDTO,
 } from '../lib/openapi-dtos';
 import {
   listOAuth2Clients,
@@ -29,6 +30,7 @@ import {
   revokeToken,
   getOAuth2ClientBeforeAudit,
   getOAuth2TokenBeforeAudit,
+  listAppOptions,
 } from '../services/oauth2-clients.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -218,6 +220,19 @@ const revokeTokenRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, create, detail, update, remove, regenerateSecret, tokens, revokeTokenRoute] as const);
+const options = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/options',
+    tags: ['OAuth2Apps'],
+    summary: '获取启用应用的选项列表（供 Webhook/SDK 下拉）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(OAuth2AppOptionDTO), '应用选项列表') },
+  }),
+  handler: async (c) => c.json(okBody(await listAppOptions()), 200),
+});
+
+router.openapiRoutes([list, options, create, detail, update, remove, regenerateSecret, tokens, revokeTokenRoute] as const);
 
 export default router;

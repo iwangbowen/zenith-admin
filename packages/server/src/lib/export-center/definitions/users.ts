@@ -66,6 +66,7 @@ export const usersExportDefinition = defineExport<Record<string, unknown>, UserE
   entity: 'system.users',
   moduleName: '用户管理',
   filenamePrefix: '用户列表',
+  sourcePath: '/system/users',
   sheetName: '用户列表',
   formats: ['xlsx', 'csv'],
   permissions: {

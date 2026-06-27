@@ -5,7 +5,7 @@ import { exportJobDownloads, exportJobs, fileStorageConfigs, managedFiles, users
 import { pageOffset } from '../lib/pagination';
 import { escapeLike } from '../lib/where-helpers';
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
-import { currentUser } from '../lib/context';
+import { currentUser, runWithCurrentUser } from '../lib/context';
 import { getUserPermissions, isSuperAdmin } from '../lib/permissions';
 import { getCreateTenantId, tenantCondition } from '../lib/tenant';
 import { getStoredFileForRead, saveGeneratedManagedFile } from './files.service';
@@ -202,15 +202,25 @@ async function renderJobFile(row: typeof exportJobs.$inferSelect, definition: An
     createdByName: null,
     exportedAt: new Date(),
   };
-  const rows = await definition.streamRows(row.query as Record<string, unknown>, creator, ctx);
-  if (row.format === 'csv') {
-    return { buffer: await renderExportCsv(definition, rows, ctx), mimeType: 'text/csv; charset=utf-8', filename };
-  }
-  return {
-    buffer: await renderExportWorkbook(definition, rows, ctx),
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    filename,
-  };
+  return runWithCurrentUser(creator, async () => {
+    if (definition.renderFile) {
+      const rendered = await definition.renderFile(ctx);
+      return {
+        buffer: rendered.buffer,
+        mimeType: rendered.mimeType,
+        filename: rendered.filename ?? filename,
+      };
+    }
+    const rows = await definition.streamRows(row.query as Record<string, unknown>, creator, ctx);
+    if (row.format === 'csv') {
+      return { buffer: await renderExportCsv(definition, rows, ctx), mimeType: 'text/csv; charset=utf-8', filename };
+    }
+    return {
+      buffer: await renderExportWorkbook(definition, rows, ctx),
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      filename,
+    };
+  });
 }
 
 async function executeExportJob(row: typeof exportJobs.$inferSelect, definition: AnyExportDefinition) {
@@ -272,6 +282,7 @@ export async function listExportEntities() {
       entity: definition.entity,
       moduleName: definition.moduleName,
       filenamePrefix: definition.filenamePrefix,
+      sourcePath: definition.sourcePath,
       formats: definition.formats ?? ['xlsx', 'csv'],
       renderMode: definition.renderMode ?? 'table',
       columns,

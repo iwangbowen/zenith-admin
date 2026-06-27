@@ -150,6 +150,16 @@ export async function getOAuth2ClientByClientId(clientId: string) {
   return row ?? null;
 }
 
+/** 启用应用的轻量选项列表（供 Webhook/SDK 等下拉选择，仅需登录） */
+export async function listAppOptions() {
+  const rows = await db
+    .select({ clientId: oauth2Clients.clientId, name: oauth2Clients.name })
+    .from(oauth2Clients)
+    .where(eq(oauth2Clients.status, 'enabled'))
+    .orderBy(oauth2Clients.name);
+  return rows.map((r) => ({ clientId: r.clientId, name: r.name }));
+}
+
 export async function updateOAuth2Client(id: number, input: {
   name?: string;
   description?: string;

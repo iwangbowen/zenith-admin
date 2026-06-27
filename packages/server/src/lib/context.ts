@@ -10,6 +10,7 @@
  */
 import { getContext, tryGetContext } from 'hono/context-storage';
 import { eq } from 'drizzle-orm';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AuthEnv, JwtPayload } from '../middleware/auth';
 import { db } from '../db';
 import { users, departments } from '../db/schema';
@@ -37,6 +38,8 @@ export interface CurrentUserDetail {
  */
 export type AppEnv = AuthEnv;
 
+const userOverrideStore = new AsyncLocalStorage<JwtPayload>();
+
 /** 获取当前请求 Context；脱离请求作用域（例如 worker、定时任务）时会抛出。 */
 export function getCtx() {
   return getContext<AppEnv>();
@@ -44,7 +47,7 @@ export function getCtx() {
 
 /** 获取已登录用户；若当前请求未走认证中间件（如匿名接口）返回 undefined。 */
 export function currentUserOrNull(): JwtPayload | undefined {
-  return tryGetContext<AppEnv>()?.get('user');
+  return userOverrideStore.getStore() ?? tryGetContext<AppEnv>()?.get('user');
 }
 
 /** 获取已登录用户；若不存在抛错（用于只在鉴权后调用的场景）。 */
@@ -54,6 +57,11 @@ export function currentUser(): JwtPayload {
     throw new Error('currentUser() called outside an authenticated request context');
   }
   return u;
+}
+
+/** 在请求上下文外以指定用户身份执行逻辑，供 worker / 定时任务复用依赖 currentUser() 的 service。 */
+export function runWithCurrentUser<T>(user: JwtPayload, fn: () => T | Promise<T>): Promise<T> {
+  return Promise.resolve(userOverrideStore.run(user, fn));
 }
 
 /**

@@ -116,6 +116,8 @@ import ratePlansRoutes from './routes/rate-plans';
 import openSignatureRoutes from './routes/open-signature';
 import openApiStatsRoutes from './routes/open-api-stats';
 import openGatewayRoutes from './routes/open-gateway';
+import appWebhooksRoutes from './routes/app-webhooks';
+import { registerOpenWebhookSubscriber, retryAppWebhookDeliveries } from './services/app-webhooks.service';
 import emailTemplatesRoutes from './routes/email-templates';
 import emailSendLogsRoutes from './routes/email-send-logs';
 import smsConfigsRoutes from './routes/sms-configs';
@@ -158,6 +160,7 @@ import reportDashboardOpsRoutes from './routes/report-dashboard-ops';
 import reportCategoriesRoutes from './routes/report-categories';
 import reportSubscriptionsRoutes from './routes/report-subscriptions';
 import reportPublicRoutes from './routes/report-public';
+import reportPrintRoutes from './routes/report-print';
 import { createWsRoute } from './routes/ws';
 import { createWsTerminalRoute, createWsTerminalMonitorRoute } from './routes/ws-terminal';
 import terminalFilesRoutes from './routes/terminal-files';
@@ -350,6 +353,7 @@ app.route('/api/report/dashboards', reportDashboardOpsRoutes);
 app.route('/api/report/categories', reportCategoriesRoutes);
 app.route('/api/report/subscriptions', reportSubscriptionsRoutes);
 app.route('/api/report/public', reportPublicRoutes);
+app.route('/api/report/print', reportPrintRoutes);
 app.route('/api/announcements', announcementsRoutes);
 app.route('/api/payment', paymentRoutes);
 app.route('/api/payment/recon', paymentReconRoutes);
@@ -445,6 +449,7 @@ app.route('/api/api-scopes', apiScopesRoutes);
 app.route('/api/rate-plans', ratePlansRoutes);
 app.route('/api/open-signature', openSignatureRoutes);
 app.route('/api/open-api-stats', openApiStatsRoutes);
+app.route('/api/app-webhooks', appWebhooksRoutes);
 app.route('/api/open', openGatewayRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 app.route('/api/ws/terminal', createWsTerminalRoute(upgradeWebSocket));
@@ -547,6 +552,9 @@ try {
   await registerSystemRecurringJob('workflow-event-delivery-retry', '*/5 * * * *', async () => {
     await retryWorkflowEventDeliveries();
   });
+  await registerSystemRecurringJob('app-webhook-delivery-retry', '*/5 * * * *', async () => {
+    await retryAppWebhookDeliveries();
+  });
   const { replayWorkflowEventOutbox } = await import('./lib/workflow-event-bus');
   await registerSystemRecurringJob('workflow-event-outbox-replay', '* * * * *', async () => {
     await replayWorkflowEventOutbox();
@@ -579,6 +587,7 @@ try {
 // 注册工作流事件总线的内置订阅者
 registerWsWorkflowSubscriber();
 registerWebhookWorkflowSubscriber();
+registerOpenWebhookSubscriber();
 registerTriggerWorkflowSubscriber();
 registerExternalApproverSubscriber();
 registerNodeListenersSubscriber();
