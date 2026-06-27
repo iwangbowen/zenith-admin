@@ -43,6 +43,8 @@ const ClientBody = z.object({
   allowedScopes: z.array(z.string()).min(1),
   grantTypes: z.array(z.string()).min(1),
   isPublic: z.boolean(),
+  ratePlanId: z.number().int().positive().nullable().optional(),
+  signEnabled: z.boolean().optional(),
 });
 
 const UpdateClientBody = ClientBody.partial().extend({

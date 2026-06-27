@@ -8,7 +8,7 @@ import { HTTPException } from 'hono/http-exception';
 import { createHash } from 'node:crypto';
 import { and, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db';
-import { reportDatasets } from '../db/schema';
+import { reportDatasets, users } from '../db/schema';
 import { config } from '../config';
 import redis from '../lib/redis';
 import { pageOffset } from '../lib/pagination';
@@ -16,6 +16,7 @@ import { escapeLike } from '../lib/where-helpers';
 import { formatDateTime } from '../lib/datetime';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { httpRequest } from '../lib/http-client';
+import { currentUserOrNull } from '../lib/context';
 import { applyComputedFields } from '../lib/report-formula';
 import { runExternalQuery } from '../lib/report-external-db';
 import { ensureDatasourceExists } from './report-datasource.service';
@@ -96,6 +97,27 @@ export function resolveDatasetParams(defs: ReportDatasetParam[] | undefined, pro
     if (d.required && (val === null || val === undefined)) {
       throw new HTTPException(400, { message: `缺少必填参数：${d.label || d.name}` });
     }
+  }
+  return out;
+}
+
+/**
+ * 数据权限系统变量（JEECG 风格）：以绑定参数注入当前登录用户上下文，
+ * 供数据集 SQL 通过 ${__userId} / ${__deptId} 等做行级过滤。
+ * 这些变量由服务端权威赋值，客户端无法伪造（始终覆盖同名入参）。
+ * - __userId / __username / __tenantId：零额外查询。
+ * - __deptId：仅当 SQL 文本引用时才查库解析当前用户所属部门。
+ */
+async function buildSystemParams(sqlText: string): Promise<Record<string, unknown>> {
+  const user = currentUserOrNull();
+  const out: Record<string, unknown> = {};
+  if (!user) return { __userId: null, __username: null, __tenantId: null, __deptId: null };
+  out.__userId = user.userId;
+  out.__username = user.username;
+  out.__tenantId = user.tenantId ?? null;
+  if (/\$\{\s*__deptId\s*\}/.test(sqlText)) {
+    const [row] = await db.select({ deptId: users.departmentId }).from(users).where(eq(users.id, user.userId)).limit(1);
+    out.__deptId = row?.deptId ?? null;
   }
   return out;
 }
@@ -331,7 +353,8 @@ export async function runReportData(
 export async function previewDataset(input: ReportDatasetPreviewInput): Promise<ReportDataResult> {
   const ds = await ensureDatasourceExists(input.datasourceId);
   const content = normalizeDatasetContent(ds.type, input.content);
-  const params = (input.params ?? {}) as Record<string, unknown>;
+  const sqlText = (ds.type === 'sql' || ds.type === 'mysql' || ds.type === 'postgresql') ? ((content as ReportSqlDatasetContent).sql ?? '') : '';
+  const params = { ...((input.params ?? {}) as Record<string, unknown>), ...await buildSystemParams(sqlText) };
   const computed = (input.computedFields ?? []) as ReportComputedField[];
   return runReportData(ds.type, (ds.config ?? {}) as ReportDatasourceConfig, content, params, input.limit ?? PREVIEW_LIMIT, computed);
 }
@@ -360,7 +383,10 @@ export async function getDatasetData(id: number, params?: Record<string, unknown
   if (!row) throw new HTTPException(404, { message: '数据集不存在' });
   if (row.status !== 'enabled') throw new HTTPException(400, { message: '数据集已停用' });
   const config = (row.datasource?.config ?? {}) as ReportDatasourceConfig;
-  const resolved = resolveDatasetParams((row.params ?? []) as ReportDatasetParam[], params);
+  const content = (row.content ?? {}) as ReportDatasetContent;
+  const sqlText = (row.type === 'sql' || row.type === 'mysql' || row.type === 'postgresql') ? ((content as ReportSqlDatasetContent).sql ?? '') : '';
+  const sysParams = await buildSystemParams(sqlText);
+  const resolved = { ...resolveDatasetParams((row.params ?? []) as ReportDatasetParam[], params), ...sysParams };
   const computed = (row.computedFields ?? []) as ReportComputedField[];
   const effLimit = limit ?? PREVIEW_LIMIT;
   const cacheTtl = row.cacheTtl ?? 0;
@@ -376,7 +402,7 @@ export async function getDatasetData(id: number, params?: Record<string, unknown
     } catch { /* 缓存读取失败回源 */ }
   }
 
-  const result = await runReportData(row.type, config, (row.content ?? {}) as ReportDatasetContent, resolved, effLimit, computed);
+  const result = await runReportData(row.type, config, content, resolved, effLimit, computed);
 
   if (cacheTtl > 0 && cacheKey) {
     try { await redis.set(cacheKey, JSON.stringify(result), 'EX', cacheTtl); } catch { /* 缓存写入失败忽略 */ }

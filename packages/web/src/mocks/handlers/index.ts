@@ -72,6 +72,9 @@ import { aiPromptTemplatesHandlers } from './ai-prompt-templates';
 import { aiUsageHandlers } from './ai-usage';
 import { userAiConfigHandlers } from './user-ai-config';
 import { oauth2AppsHandlers } from './oauth2-apps';
+import { apiScopesHandlers } from './api-scopes';
+import { ratePlansHandlers } from './rate-plans';
+import { openPlatformHandlers } from './open-platform';
 import { oauth2AuthHandlers } from './oauth2-auth';
 import { inAppTemplatesHandlers } from './in-app-templates';
 import { inAppMessagesHandlers } from './in-app-messages';
@@ -175,6 +178,9 @@ export const handlers = [
   ...aiUsageHandlers,
   ...userAiConfigHandlers,
   ...oauth2AppsHandlers,
+  ...apiScopesHandlers,
+  ...ratePlansHandlers,
+  ...openPlatformHandlers,
   ...oauth2AuthHandlers,
   ...userPermissionsHandlers,
   ...maintenanceHandlers,

@@ -7,6 +7,7 @@ import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { pageOffset } from '../lib/pagination';
+import { encryptField, decryptField } from '../lib/encryption';
 
 // ─── 辅助：生成 & 哈希 client_secret ────────────────────────────────────────
 
@@ -29,6 +30,8 @@ function mapClientRow(row: typeof oauth2Clients.$inferSelect) {
     allowedScopes: row.allowedScopes ?? [],
     grantTypes: row.grantTypes ?? [],
     isPublic: row.isPublic,
+    ratePlanId: row.ratePlanId ?? null,
+    signEnabled: row.signEnabled,
     status: row.status,
     ownerId: row.ownerId,
     createdBy: row.createdBy,
@@ -76,6 +79,8 @@ export async function createOAuth2Client(input: {
   allowedScopes: string[];
   grantTypes: string[];
   isPublic: boolean;
+  ratePlanId?: number | null;
+  signEnabled?: boolean;
 }) {
   const user = currentUser();
   if (!input.name?.trim()) throw new HTTPException(400, { message: '应用名称不能为空' });
@@ -84,18 +89,21 @@ export async function createOAuth2Client(input: {
   let secretHash: string | null = null;
   let secretPrefix: string | null = null;
   let secretRaw: string | null = null;
+  let secretEncrypted: string | null = null;
 
   if (!input.isPublic) {
     const sec = generateClientSecret();
     secretHash = sec.hash;
     secretPrefix = sec.prefix;
     secretRaw = sec.raw;
+    secretEncrypted = encryptField(sec.raw);
   }
 
   try {
     const [row] = await db.insert(oauth2Clients).values({
       clientId,
       clientSecretHash: secretHash,
+      clientSecretEncrypted: secretEncrypted,
       clientSecretPrefix: secretPrefix,
       name: input.name.trim(),
       description: input.description,
@@ -104,6 +112,8 @@ export async function createOAuth2Client(input: {
       allowedScopes: input.allowedScopes,
       grantTypes: input.grantTypes,
       isPublic: input.isPublic,
+      ratePlanId: input.ratePlanId ?? null,
+      signEnabled: input.signEnabled ?? false,
       ownerId: user.userId,
     }).returning();
 
@@ -148,6 +158,8 @@ export async function updateOAuth2Client(id: number, input: {
   allowedScopes?: string[];
   grantTypes?: string[];
   isPublic?: boolean;
+  ratePlanId?: number | null;
+  signEnabled?: boolean;
   status?: 'enabled' | 'disabled';
 }) {
   const existing = await getOAuth2Client(id);
@@ -163,6 +175,8 @@ export async function updateOAuth2Client(id: number, input: {
         allowedScopes: input.allowedScopes,
         grantTypes: input.grantTypes,
         isPublic: input.isPublic,
+        ratePlanId: input.ratePlanId,
+        signEnabled: input.signEnabled,
         status: input.status,
       })
       .where(eq(oauth2Clients.id, id))
@@ -187,10 +201,22 @@ export async function regenerateOAuth2ClientSecret(id: number) {
   const sec = generateClientSecret();
   await db.update(oauth2Clients).set({
     clientSecretHash: sec.hash,
+    clientSecretEncrypted: encryptField(sec.raw),
     clientSecretPrefix: sec.prefix,
   }).where(eq(oauth2Clients.id, id));
 
   return { clientId: existing.clientId, clientSecret: sec.raw };
+}
+
+/** 读取应用的明文签名密钥（= clientSecret），供开放 API 网关 HMAC 验签。公开客户端返回 null */
+export async function getAppSigningSecret(clientId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ enc: oauth2Clients.clientSecretEncrypted })
+    .from(oauth2Clients)
+    .where(eq(oauth2Clients.clientId, clientId))
+    .limit(1);
+  if (!row?.enc) return null;
+  return decryptField(row.enc);
 }
 
 // ─── 令牌管理 ─────────────────────────────────────────────────────────────────

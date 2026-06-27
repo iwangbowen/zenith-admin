@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus, ReportDatasource, ReportDataset, ReportDashboard } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus, ReportDatasource, ReportDataset, ReportDashboard, ApiScope, RatePlan } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -101,7 +101,7 @@ export const SEED_MENUS: Menu[] = [
   { id: 471, parentId: 470, title: '新增规则',   name: undefined,             path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'system:data-mask:create',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 472, parentId: 470, title: '编辑规则',   name: undefined,             path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'system:data-mask:update',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 473, parentId: 470, title: '删除规则',   name: undefined,             path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'system:data-mask:delete',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
-  { id: 480, parentId: 200, title: 'OAuth2 应用', name: 'SystemOAuth2Apps',   path: '/system/oauth2-apps',        component: 'system/oauth2-apps/OAuth2AppsPage',              icon: 'KeyRound',          type: 'menu',      sort: 18, status: 'enabled', visible: true,  permission: 'system:oauth2-apps:view',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 480, parentId: 1300, title: '应用管理', name: 'SystemOAuth2Apps',   path: '/system/oauth2-apps',        component: 'system/oauth2-apps/OAuth2AppsPage',              icon: 'KeyRound',          type: 'menu',      sort: 1, status: 'enabled', visible: true,  permission: 'system:oauth2-apps:view',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 481, parentId: 480, title: '管理应用',   name: undefined,             path: undefined,                    component: undefined,                                        icon: undefined,           type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'system:oauth2-apps:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
   { id: 490, parentId: 200, title: '维护模式',   name: 'SystemMaintenance',   path: '/system/maintenance',        component: 'system/maintenance/MaintenancePage',             icon: 'Wrench',            type: 'menu',      sort: 19, status: 'enabled', visible: true,  permission: 'system:maintenance:manage',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -471,6 +471,14 @@ export const SEED_MENUS: Menu[] = [
   { id: 1241, parentId: 1240, title: '新增订阅', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'report:subscription:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1242, parentId: 1240, title: '编辑订阅', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'report:subscription:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1243, parentId: 1240, title: '删除订阅', name: undefined,         path: undefined,              component: undefined,                  icon: undefined,        type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'report:subscription:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // ─── 开放平台 / 开发者门户 ────────────────────────────────────────────────────
+  { id: 1300, parentId: 0,    title: '开放平台',   name: 'OpenPlatform',  path: undefined,                       component: undefined,                                   icon: 'Boxes',         type: 'directory', sort: 14, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1310, parentId: 1300, title: 'API Scope',  name: 'OpenApiScopes', path: '/open-platform/api-scopes',     component: 'open-platform/api-scopes/ApiScopesPage',    icon: 'KeySquare',     type: 'menu',      sort: 2,  status: 'enabled', visible: true,  permission: 'open:scope:view',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1311, parentId: 1310, title: '管理 Scope', name: undefined,       path: undefined,                       component: undefined,                                   icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'open:scope:manage',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1320, parentId: 1300, title: '限流套餐',   name: 'OpenRatePlans', path: '/open-platform/rate-plans',     component: 'open-platform/rate-plans/RatePlansPage',    icon: 'Gauge',         type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'open:rate-plan:view',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1321, parentId: 1320, title: '管理套餐',   name: undefined,       path: undefined,                       component: undefined,                                   icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'open:rate-plan:manage', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1330, parentId: 1300, title: '调用统计',   name: 'OpenApiStats',  path: '/open-platform/stats',          component: 'open-platform/stats/OpenApiStatsPage',      icon: 'LineChart',     type: 'menu',      sort: 4,  status: 'enabled', visible: true,  permission: 'open:stats:view',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1340, parentId: 1300, title: '签名验签',   name: 'OpenSignature', path: '/open-platform/signature',      component: 'open-platform/signature/SignatureToolPage', icon: 'FileSignature', type: 'menu',      sort: 5,  status: 'enabled', visible: true,  permission: 'open:signature:use',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -1732,6 +1740,24 @@ export const SEED_REPORT_DATASETS: ReportDataset[] = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },
+  {
+    id: 2,
+    name: '部门用户榜',
+    datasourceId: 1,
+    type: 'sql',
+    content: { sql: 'SELECT d.name AS name, count(u.id)::int AS value FROM departments d LEFT JOIN users u ON u.department_id = d.id GROUP BY d.name ORDER BY value DESC LIMIT 20' },
+    fields: [
+      { name: 'name', label: '部门', type: 'string' },
+      { name: 'value', label: '人数', type: 'number' },
+    ],
+    params: [],
+    computedFields: [],
+    cacheTtl: 30,
+    status: 'enabled',
+    remark: '示例：各部门用户数排行（大屏滚动榜单数据源）',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
 ];
 
 export const SEED_REPORT_DASHBOARDS: ReportDashboard[] = [
@@ -1758,4 +1784,51 @@ export const SEED_REPORT_DASHBOARDS: ReportDashboard[] = [
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },
+  {
+    id: 2,
+    name: '运营数据大屏',
+    layout: [
+      { i: 's1', x: 0, y: 0, w: 4, h: 3 },
+      { i: 's2', x: 0, y: 3, w: 4, h: 6 },
+      { i: 's3', x: 4, y: 3, w: 4, h: 6 },
+      { i: 's4', x: 8, y: 0, w: 4, h: 9 },
+    ],
+    canvasLayout: [
+      { i: 's1', x: 40, y: 40, w: 560, h: 180, z: 1 },
+      { i: 's2', x: 40, y: 250, w: 560, h: 360, z: 1 },
+      { i: 's3', x: 640, y: 250, w: 560, h: 360, z: 1 },
+      { i: 's4', x: 1240, y: 40, w: 640, h: 570, z: 1 },
+    ],
+    widgets: [
+      { i: 's1', type: 'flipper', title: '菜单总数', datasetId: 1, options: { valueField: 'value', aggregate: 'sum', unit: '个', flipDigits: 4 } },
+      { i: 's2', type: 'bar', title: '菜单类型分布', datasetId: 1, options: { categoryField: 'name', valueFields: ['value'] } },
+      { i: 's3', type: 'pie', title: '类型占比', datasetId: 1, options: { categoryField: 'name', valueFields: ['value'] } },
+      { i: 's4', type: 'scrollList', title: '部门用户榜', datasetId: 2, options: { categoryField: 'name', valueFields: ['value'], showRank: true, scrollSpeed: 1 } },
+    ],
+    filters: [],
+    config: { theme: 'dark', layoutMode: 'canvas', screenConfig: { width: 1920, height: 1080, scaleMode: 'fit', background: '#0a1330' }, refreshInterval: 30 },
+    status: 'enabled',
+    remark: '内置大屏示例：自由画布 + 深色科技皮肤 + 翻牌器/滚动榜单',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
+// ─── 开放平台：API Scope 注册表 ───────────────────────────────────────────────
+export const SEED_API_SCOPES: ApiScope[] = [
+  { id: 1, code: 'openid',         name: 'OpenID（身份）',   description: '确认用户身份（用户 ID）',   scopeGroup: 'user',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, code: 'profile',        name: 'Profile（资料）',  description: '读取基本信息（昵称、头像）', scopeGroup: 'user',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, code: 'email',          name: 'Email（邮箱）',    description: '读取邮箱地址',              scopeGroup: 'user',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 4, code: 'offline_access', name: '离线访问',         description: '允许在用户离线时续签令牌',   scopeGroup: 'user',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 5, code: 'user:read',      name: '读取用户',         description: '读取开放平台用户资源',       scopeGroup: 'user',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 6, code: 'data:read',      name: '读取数据',         description: '调用只读数据类接口',         scopeGroup: 'data',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 7, code: 'data:write',     name: '写入数据',         description: '调用写入/变更类接口',        scopeGroup: 'data',    status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 8, code: 'order:read',     name: '读取订单',         description: '读取订单数据',              scopeGroup: 'order',   status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 开放平台：限流套餐 ───────────────────────────────────────────────────────
+export const SEED_RATE_PLANS: RatePlan[] = [
+  { id: 1, code: 'free',       name: '免费版',   description: '默认套餐，适合接入调试',     qpsLimit: 5,   dailyQuota: 10000,    monthlyQuota: 200000,    isDefault: true,  status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, code: 'pro',        name: '专业版',   description: '适合中小规模生产调用',       qpsLimit: 50,  dailyQuota: 500000,   monthlyQuota: 10000000,  isDefault: false, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, code: 'enterprise', name: '企业版',   description: '高并发，配额不限',           qpsLimit: 500, dailyQuota: 0,        monthlyQuota: 0,         isDefault: false, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];

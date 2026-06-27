@@ -3165,6 +3165,8 @@ export const oauth2Clients = pgTable('oauth2_clients', {
   clientId: varchar('client_id', { length: 64 }).notNull().unique(),
   /** client_secret sha256 哈希值（机密客户端），公开客户端为 null */
   clientSecretHash: varchar('client_secret_hash', { length: 128 }),
+  /** client_secret 的 AES-256-GCM 密文，供开放 API HMAC 签名验签复用（clientSecret 兼作签名密钥） */
+  clientSecretEncrypted: text('client_secret_encrypted'),
   /** secret 前缀，用于列表页展示（前 8 位 + ...）*/
   clientSecretPrefix: varchar('client_secret_prefix', { length: 20 }),
   name: varchar('name', { length: 100 }).notNull(),

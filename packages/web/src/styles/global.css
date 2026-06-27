@@ -361,6 +361,43 @@ body {
 .responsive-toolbar__mobile-actions .semi-button {
   justify-content: flex-start;
   width: 100%;
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.responsive-toolbar__mobile-actions .semi-button:not(.semi-button-disabled):hover {
+  background-color: var(--semi-color-fill-0);
+  border-color: transparent;
+}
+
+.responsive-toolbar__mobile-actions .semi-button:not(.semi-button-disabled):active {
+  background-color: var(--semi-color-fill-1);
+  border-color: transparent;
+}
+
+.responsive-toolbar__mobile-actions .semi-button-primary {
+  color: var(--semi-color-primary);
+}
+
+.responsive-toolbar__mobile-actions .semi-button-secondary {
+  color: var(--semi-color-secondary);
+}
+
+.responsive-toolbar__mobile-actions .semi-button-tertiary {
+  color: var(--semi-color-text-1);
+}
+
+.responsive-toolbar__mobile-actions .semi-button-warning {
+  color: var(--semi-color-warning);
+}
+
+.responsive-toolbar__mobile-actions .semi-button-danger {
+  color: var(--semi-color-danger);
+}
+
+.responsive-toolbar__mobile-actions .semi-button-disabled {
+  color: var(--semi-color-disabled-text);
 }
 
 .responsive-toolbar__mobile-actions .export-button--flat {

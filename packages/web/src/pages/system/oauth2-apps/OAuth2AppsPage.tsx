@@ -18,7 +18,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { OAUTH2_GRANT_TYPES, OAUTH2_SCOPES } from '@zenith/shared';
-import type { OAuth2Client, OAuth2ClientCreated, PaginatedResponse } from '@zenith/shared';
+import type { OAuth2Client, OAuth2ClientCreated, PaginatedResponse, RatePlan, ApiScope } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
@@ -53,6 +53,8 @@ type FormValues = {
   allowedScopes: string[];
   grantTypes: string[];
   isPublic: boolean;
+  ratePlanId?: number | null;
+  signEnabled?: boolean;
   status?: 'enabled' | 'disabled';
 };
 
@@ -92,6 +94,8 @@ export default function OAuth2AppsPage() {
   const defaultSearchParams: SearchParams = { keyword: '' };
   const [data, setData] = useState<PaginatedResponse<OAuth2Client> | null>(null);
   const [loading, setLoading] = useState(false);
+  const [ratePlans, setRatePlans] = useState<RatePlan[]>([]);
+  const [scopeOptions, setScopeOptions] = useState<ApiScope[]>([]);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
@@ -134,6 +138,18 @@ export default function OAuth2AppsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 加载限流套餐与 scope 注册表（供应用配置下拉）
+  useEffect(() => {
+    void (async () => {
+      const [planRes, scopeRes] = await Promise.all([
+        request.get<RatePlan[]>('/api/rate-plans/options', { silent: true }),
+        request.get<ApiScope[]>('/api/api-scopes/options', { silent: true }),
+      ]);
+      if (planRes.code === 0 && planRes.data) setRatePlans(planRes.data);
+      if (scopeRes.code === 0 && scopeRes.data) setScopeOptions(scopeRes.data);
+    })();
+  }, []);
+
   // ─── 搜索 / 重置 ────────────────────────────────────────────────────────
   function handleSearch() {
     setPage(1);
@@ -170,6 +186,8 @@ export default function OAuth2AppsPage() {
         allowedScopes: res.data.allowedScopes,
         grantTypes: res.data.grantTypes,
         isPublic: res.data.isPublic,
+        ratePlanId: res.data.ratePlanId ?? undefined,
+        signEnabled: res.data.signEnabled ?? false,
         status: res.data.status,
       });
     } else {
@@ -192,9 +210,11 @@ export default function OAuth2AppsPage() {
         allowedScopes: editing.allowedScopes,
         grantTypes: editing.grantTypes,
         isPublic: editing.isPublic,
+        ratePlanId: editing.ratePlanId ?? undefined,
+        signEnabled: editing.signEnabled ?? false,
         status: editing.status,
       }
-    : { isPublic: false, allowedScopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'] };
+    : { isPublic: false, signEnabled: false, allowedScopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'] };
 
   async function handleModalOk() {
     let values: FormValues;
@@ -204,10 +224,12 @@ export default function OAuth2AppsPage() {
       throw new Error('validation');
     }
     if (!values) throw new Error('validation');
+    // 未选套餐时显式置 null，便于解绑
+    const payload: FormValues = { ...values, ratePlanId: values.ratePlanId ?? null, signEnabled: values.signEnabled ?? false };
     setSubmitting(true);
     try {
       if (editing) {
-        const res = await request.put(`/api/oauth2/clients/${editing.id}`, values);
+        const res = await request.put(`/api/oauth2/clients/${editing.id}`, payload);
         if (res.code === 0) {
           Toast.success('更新成功');
           closeModal();
@@ -216,7 +238,7 @@ export default function OAuth2AppsPage() {
           throw new Error(res.message);
         }
       } else {
-        const res = await request.post<OAuth2ClientCreated>('/api/oauth2/clients', values);
+        const res = await request.post<OAuth2ClientCreated>('/api/oauth2/clients', payload);
         if (res.code === 0) {
           closeModal();
           void fetchData();
@@ -287,6 +309,21 @@ export default function OAuth2AppsPage() {
           {v?.map((s) => <Tag key={s} color="blue" size="small">{s}</Tag>)}
         </Space>
       ),
+    },
+    {
+      title: '限流套餐',
+      dataIndex: 'ratePlanId',
+      width: 120,
+      render: (v: number | null) => {
+        const p = ratePlans.find((rp) => rp.id === v);
+        return p ? <Tag color="green" size="small">{p.name}</Tag> : <Text type="tertiary">默认</Text>;
+      },
+    },
+    {
+      title: '签名',
+      dataIndex: 'signEnabled',
+      width: 80,
+      render: (v: boolean) => (v ? <Tag color="orange" size="small">已开启</Tag> : <Text type="tertiary">关闭</Text>),
     },
     createdAtColumn,
     {
@@ -446,8 +483,11 @@ export default function OAuth2AppsPage() {
                   direction="horizontal"
                   rules={[{ required: true, message: '至少选择一个' }]}
                 >
-                  {OAUTH2_SCOPES.map((s) => (
-                    <Checkbox key={s} value={s}>{SCOPE_LABELS[s] ?? s}</Checkbox>
+                  {(scopeOptions.length
+                    ? scopeOptions.map((s) => ({ value: s.code, label: `${s.name}（${s.code}）` }))
+                    : OAUTH2_SCOPES.map((s) => ({ value: s, label: SCOPE_LABELS[s] ?? s }))
+                  ).map((o) => (
+                    <Checkbox key={o.value} value={o.value}>{o.label}</Checkbox>
                   ))}
                 </Form.CheckboxGroup>
               </Col>
@@ -500,6 +540,29 @@ export default function OAuth2AppsPage() {
                   />
                 </Col>
               )}
+            </Row>
+            {/* 开放平台：限流套餐 + 签名验签 */}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Select
+                  field="ratePlanId"
+                  label="限流套餐"
+                  placeholder="默认套餐"
+                  showClear
+                  style={{ width: '100%' }}
+                  optionList={ratePlans.map((p) => ({
+                    value: p.id,
+                    label: `${p.name}（${p.qpsLimit > 0 ? `${p.qpsLimit}/s` : '不限'}）`,
+                  }))}
+                />
+              </Col>
+              <Col span={12}>
+                <Form.Switch
+                  field="signEnabled"
+                  label="签名验签"
+                  extraText="开放 API 调用强制 HMAC 签名"
+                />
+              </Col>
             </Row>
             {/* 可选：应用描述（全宽，放最后） */}
             <Row gutter={16}>
