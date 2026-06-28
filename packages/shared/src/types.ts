@@ -3233,6 +3233,8 @@ export interface WorkflowJob {
   jobType: WorkflowJobType;
   status: WorkflowJobStatus;
   instanceId: number | null;
+  instanceTitle: string | null;
+  definitionName: string | null;
   taskId: number | null;
   nodeKey: string | null;
   idempotencyKey: string | null;

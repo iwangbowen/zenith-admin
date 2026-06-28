@@ -13,6 +13,8 @@ export const WorkflowJobDTO = z
     jobType: z.enum(WORKFLOW_JOB_TYPES),
     status: z.enum(WORKFLOW_JOB_STATUSES),
     instanceId: z.number().int().nullable(),
+    instanceTitle: z.string().nullable(),
+    definitionName: z.string().nullable(),
     taskId: z.number().int().nullable(),
     nodeKey: z.string().nullable(),
     idempotencyKey: z.string().nullable(),

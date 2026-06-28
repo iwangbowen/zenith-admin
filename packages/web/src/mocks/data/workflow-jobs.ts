@@ -6,7 +6,7 @@ const offMin = (minutes: number) => mockDateTimeOffset(minutes * 60_000);
 
 
 /** 统一作业账本（workflow_jobs）演示数据，可被 retry/skip handler 原地变更 */
-export const mockWorkflowJobs: WorkflowJob[] = [
+const baseWorkflowJobs: Array<Omit<WorkflowJob, 'instanceTitle' | 'definitionName'>> = [
   {
     id: 9001,
     jobType: 'webhook_delivery',
@@ -207,6 +207,23 @@ export const mockWorkflowJobs: WorkflowJob[] = [
     updatedAt: offMin(-20),
   },
 ];
+
+/** Demo：实例 ID → 流程名/实例标题，让作业账本能展示流程与实例 */
+const DEMO_JOB_FLOWS: Record<number, { flow: string; title: string }> = {
+  10241: { flow: '请假审批', title: '请假审批测试 - 管理员 - 2026-06-27' },
+  10239: { flow: '报销审批', title: '差旅报销 - 8200 元 - 张三' },
+  10238: { flow: '采购审批', title: '办公用品采购 - 行政部' },
+  10240: { flow: '请假审批', title: '年假申请 - 王五' },
+  10235: { flow: '采购审批', title: '服务器采购（主流程）' },
+  10236: { flow: '采购审批', title: '服务器采购（子项）' },
+  10250: { flow: '请假审批', title: '病假申请 - 李四' },
+};
+
+export const mockWorkflowJobs: WorkflowJob[] = baseWorkflowJobs.map((j) => ({
+  ...j,
+  definitionName: j.instanceId != null ? (DEMO_JOB_FLOWS[j.instanceId]?.flow ?? '演示流程') : null,
+  instanceTitle: j.instanceId != null ? (DEMO_JOB_FLOWS[j.instanceId]?.title ?? `演示实例 #${j.instanceId}`) : null,
+}));
 
 export const mockWorkflowJobExecutions: WorkflowJobExecution[] = [
   {

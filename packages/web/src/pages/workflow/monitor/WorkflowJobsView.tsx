@@ -238,16 +238,22 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
       },
     },
     {
-      title: '实例 / 节点',
+      title: '流程 / 实例',
       dataIndex: 'instanceId',
-      width: 160,
+      width: 240,
       render: (_: unknown, record: WorkflowJob) => (
-        <Space spacing={4}>
-          <Typography.Text size="small" type={record.instanceId ? 'primary' : 'tertiary'}>
-            {record.instanceId ? `#${record.instanceId}` : '—'}
-          </Typography.Text>
-          {record.nodeKey && <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 100 }}>{record.nodeKey}</Typography.Text>}
-        </Space>
+        record.instanceId ? (
+          <div style={{ minWidth: 0 }}>
+            <Typography.Text size="small" strong ellipsis={{ showTooltip: true }} style={{ display: 'block', maxWidth: 224 }}>
+              {record.definitionName ?? '未知流程'}
+            </Typography.Text>
+            <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ display: 'block', maxWidth: 224 }}>
+              #{record.instanceId}{record.instanceTitle ? ` · ${record.instanceTitle}` : ''}{record.nodeKey ? ` · ${record.nodeKey}` : ''}
+            </Typography.Text>
+          </div>
+        ) : (
+          <Typography.Text size="small" type="tertiary">系统事件{record.nodeKey ? ` · ${record.nodeKey}` : ''}</Typography.Text>
+        )
       ),
     },
     {
@@ -404,7 +410,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
         loading={loading}
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
-        scroll={{ x: 1260 }}
+        scroll={{ x: 1340 }}
         rowSelection={canOperate ? {
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
@@ -430,7 +436,8 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
               data={[
                 { key: '作业类型', value: <Tag color={JOB_TYPE_META[detail.jobType].color} size="small">{JOB_TYPE_META[detail.jobType].text}</Tag> },
                 { key: '状态', value: renderStatusTag(detail.status) },
-                { key: '实例', value: detail.instanceId ? `#${detail.instanceId}` : '—' },
+                { key: '流程', value: detail.definitionName ?? '—' },
+                { key: '实例', value: detail.instanceId ? `#${detail.instanceId}${detail.instanceTitle ? ` · ${detail.instanceTitle}` : ''}` : '系统事件' },
                 { key: '任务 / 节点', value: `${detail.taskId ? `#${detail.taskId}` : '—'}${detail.nodeKey ? ` / ${detail.nodeKey}` : ''}` },
                 { key: '尝试次数', value: `${detail.attempts}/${detail.maxAttempts}` },
                 { key: '优先级', value: detail.priority },

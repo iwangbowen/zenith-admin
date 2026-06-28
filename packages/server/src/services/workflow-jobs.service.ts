@@ -1,7 +1,7 @@
 import { and, count, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
-import { workflowJobs, workflowJobExecutions } from '../db/schema';
+import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions } from '../db/schema';
 import type { WorkflowJobRow, WorkflowJobExecutionRow } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
@@ -16,12 +16,14 @@ export interface ListWorkflowJobsQuery {
   keyword?: string;
 }
 
-function mapJob(row: WorkflowJobRow) {
+function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; definitionName?: string | null }) {
   return {
     id: row.id,
     jobType: row.jobType,
     status: row.status,
     instanceId: row.instanceId ?? null,
+    instanceTitle: extra?.instanceTitle ?? null,
+    definitionName: extra?.definitionName ?? null,
     taskId: row.taskId ?? null,
     nodeKey: row.nodeKey ?? null,
     idempotencyKey: row.idempotencyKey ?? null,
@@ -76,22 +78,31 @@ export async function listWorkflowJobs(query: ListWorkflowJobsQuery) {
 
   const [total, rows] = await Promise.all([
     db.$count(workflowJobs, where),
-    db.select().from(workflowJobs).where(where)
+    db.select({ job: workflowJobs, instanceTitle: workflowInstances.title, definitionName: workflowDefinitions.name })
+      .from(workflowJobs)
+      .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
+      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+      .where(where)
       .orderBy(desc(workflowJobs.id))
       .limit(pageSize)
       .offset(pageOffset(page, pageSize)),
   ]);
 
-  return { list: rows.map(mapJob), total, page, pageSize };
+  return { list: rows.map((r) => mapJob(r.job, { instanceTitle: r.instanceTitle, definitionName: r.definitionName })), total, page, pageSize };
 }
 
 export async function getWorkflowJobDetail(id: number) {
-  const [row] = await db.select().from(workflowJobs).where(eq(workflowJobs.id, id)).limit(1);
+  const [row] = await db.select({ job: workflowJobs, instanceTitle: workflowInstances.title, definitionName: workflowDefinitions.name })
+    .from(workflowJobs)
+    .leftJoin(workflowInstances, eq(workflowJobs.instanceId, workflowInstances.id))
+    .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+    .where(eq(workflowJobs.id, id))
+    .limit(1);
   if (!row) throw new HTTPException(404, { message: '作业不存在' });
   const execs = await db.select().from(workflowJobExecutions)
     .where(eq(workflowJobExecutions.jobId, id))
     .orderBy(desc(workflowJobExecutions.id));
-  return { ...mapJob(row), executions: execs.map(mapExecution) };
+  return { ...mapJob(row.job, { instanceTitle: row.instanceTitle, definitionName: row.definitionName }), executions: execs.map(mapExecution) };
 }
 
 export async function retryWorkflowJob(id: number, payload?: Record<string, unknown>) {
