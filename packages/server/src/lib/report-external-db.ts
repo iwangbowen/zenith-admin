@@ -1,9 +1,3 @@
-/**
- * 报表外部数据库取数 —— MySQL / 外部 PostgreSQL 只读查询。
- * - 连接按 (type+host+port+db+user) 缓存复用，空闲超时回收。
- * - 仅允许只读 SELECT/WITH，自动包裹 LIMIT，statement 超时保护。
- * - 凭据（password）在数据源 config 中以 AES-GCM 密文存储，运行时解密。
- */
 import postgres from 'postgres';
 import mysql from 'mysql2/promise';
 import mssql from 'mssql';
