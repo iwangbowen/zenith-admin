@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { WorkflowEvent } from '@zenith/shared';
 import { db } from '../../../db';
 import { workflowEventSubscriptions } from '../../../db/schema';
+import { invokeConnector, getConnectorRowById } from '../../../services/workflow-connectors.service';
 import { httpPost } from '../../http-client';
 import { registerJobHandler } from '../registry';
 import { WorkflowJobSkip, WorkflowJobError, WorkflowJobPermanentError } from '../errors';
@@ -52,6 +53,15 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<Wo
   }
 
   const detail: WorkflowJobResult = { requestUrl: sub.url, requestMethod: 'POST', requestBody: bodyStr };
+  if (sub.connectorId) {
+    // 经连接器投递：统一鉴权/超时/重试/熔断（HMAC 签名仍由本节点附加在请求头，body 透传保证签名一致）
+    const connector = await getConnectorRowById(sub.connectorId);
+    if (!connector) throw new WorkflowJobError(`投递连接器 #${sub.connectorId} 不存在`, { detail, permanent: true });
+    detail.requestUrl = `[connector:${connector.code}] ${sub.url ?? ''}`.trim();
+    const r = await invokeConnector(connector, { path: sub.url || undefined, method: 'POST', headers, body: bodyStr, source: 'webhook' });
+    if (r.ok) return { ...detail, responseStatus: r.status, responseBody: r.responseSnippet };
+    throw new WorkflowJobError(r.error ?? '连接器调用失败', { detail: { ...detail, responseStatus: r.status, responseBody: r.responseSnippet } });
+  }
   try {
     const resp = await httpPost(sub.url, bodyStr, { headers, timeout: TIMEOUT_MS });
     const respText = await resp.text().catch(() => '');

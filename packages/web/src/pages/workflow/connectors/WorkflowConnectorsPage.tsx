@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button, Form, Input, Select, Spin, Toast, Switch, Modal,
-  Row, Col, Typography, Tag, Banner,
+  Row, Col, Typography, Tag, Banner, SideSheet, Table,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -14,7 +14,7 @@ import { request } from '@/utils/request';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import type { WorkflowConnector, WorkflowConnectorType, WorkflowConnectorBreakerState, WorkflowConnectorInvokeResult, WorkflowConnectorHttpConfig, PaginatedResponse } from '@zenith/shared';
+import type { WorkflowConnector, WorkflowConnectorType, WorkflowConnectorBreakerState, WorkflowConnectorInvokeResult, WorkflowConnectorHttpConfig, WorkflowConnectorStats, WorkflowConnectorInvocation, PaginatedResponse } from '@zenith/shared';
 
 const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
   { value: 'http', label: 'HTTP' },
@@ -29,6 +29,9 @@ const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
 ];
 const TYPE_LABEL = Object.fromEntries(TYPE_OPTIONS.map((t) => [t.value, t.label])) as Record<WorkflowConnectorType, string>;
 const STATUS_OPTIONS = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }];
+const SOURCE_LABEL: Record<WorkflowConnectorInvocation['source'], string> = {
+  test: '测试', trigger: '触发器', external: '外部审批', webhook: '事件订阅', manual: '手动',
+};
 const BREAKER_META: Record<WorkflowConnectorBreakerState, { text: string; color: 'green' | 'red' | 'orange' }> = {
   closed: { text: '正常', color: 'green' },
   open: { text: '熔断', color: 'red' },
@@ -75,6 +78,13 @@ export default function WorkflowConnectorsPage() {
   const [testTarget, setTestTarget] = useState<WorkflowConnector | null>(null);
   const [testPath, setTestPath] = useState('');
   const [testResult, setTestResult] = useState<WorkflowConnectorInvokeResult | null>(null);
+
+  const [monitorVisible, setMonitorVisible] = useState(false);
+  const [monitorTarget, setMonitorTarget] = useState<WorkflowConnector | null>(null);
+  const [monitorDays, setMonitorDays] = useState(7);
+  const [monitorLoading, setMonitorLoading] = useState(false);
+  const [monitorStats, setMonitorStats] = useState<WorkflowConnectorStats | null>(null);
+  const [monitorRows, setMonitorRows] = useState<WorkflowConnectorInvocation[]>([]);
 
   const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const active = params ?? searchParamsRef.current;
@@ -198,6 +208,25 @@ export default function WorkflowConnectorsPage() {
     }
   }
 
+  const fetchMonitor = useCallback(async (id: number, days: number) => {
+    setMonitorLoading(true);
+    try {
+      const [statsRes, invRes] = await Promise.all([
+        request.get<WorkflowConnectorStats>(`/api/workflows/connectors/${id}/stats?days=${days}`, { silent: true }),
+        request.get<WorkflowConnectorInvocation[]>(`/api/workflows/connectors/${id}/invocations?limit=50`, { silent: true }),
+      ]);
+      if (statsRes.code === 0) setMonitorStats(statsRes.data);
+      if (invRes.code === 0) setMonitorRows(invRes.data);
+    } finally {
+      setMonitorLoading(false);
+    }
+  }, []);
+
+  function openMonitor(record: WorkflowConnector) {
+    setMonitorTarget(record); setMonitorDays(7); setMonitorStats(null); setMonitorRows([]); setMonitorVisible(true);
+    void fetchMonitor(record.id, 7);
+  }
+
   const columns: ColumnProps<WorkflowConnector>[] = [
     { title: '名称', dataIndex: 'name', width: 160, render: renderEllipsis },
     { title: '编码', dataIndex: 'code', width: 140, render: (v: string) => <Typography.Text size="small" type="tertiary">{v}</Typography.Text> },
@@ -214,9 +243,10 @@ export default function WorkflowConnectorsPage() {
     },
     createOperationColumn<WorkflowConnector>({
       width: 200,
-      desktopInlineKeys: ['test', 'edit', 'delete'],
+      desktopInlineKeys: ['test', 'monitor', 'edit', 'delete'],
       actions: (record) => [
         { key: 'test', label: '测试', hidden: !hasPermission('workflow:connector:test'), onClick: () => openTest(record) },
+        { key: 'monitor', label: '监控', hidden: !hasPermission('workflow:connector:list'), onClick: () => openMonitor(record) },
         { key: 'edit', label: '编辑', hidden: !hasPermission('workflow:connector:update'), onClick: () => openEdit(record) },
         {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('workflow:connector:delete'),
@@ -336,6 +366,58 @@ export default function WorkflowConnectorsPage() {
           )}
         </Spin>
       </AppModal>
+
+      <SideSheet
+        title={`连接器监控 · ${monitorTarget?.name ?? ''}`}
+        visible={monitorVisible}
+        onCancel={() => setMonitorVisible(false)}
+        width={760}
+      >
+        <Spin spinning={monitorLoading}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <Typography.Text type="tertiary" size="small">统计窗口</Typography.Text>
+            <Select
+              size="small" value={monitorDays} style={{ width: 120 }}
+              onChange={(v) => { const d = v as number; setMonitorDays(d); if (monitorTarget) void fetchMonitor(monitorTarget.id, d); }}
+              optionList={[{ value: 7, label: '近 7 天' }, { value: 30, label: '近 30 天' }, { value: 90, label: '近 90 天' }]}
+            />
+          </div>
+          <Row gutter={12} style={{ marginBottom: 16 }}>
+            {([
+              { label: '调用总数', value: monitorStats?.total ?? 0, color: undefined },
+              { label: '成功', value: monitorStats?.success ?? 0, color: 'var(--semi-color-success)' },
+              { label: '失败', value: monitorStats?.failed ?? 0, color: 'var(--semi-color-danger)' },
+              { label: '成功率', value: `${Math.round((monitorStats?.successRate ?? 0) * 100)}%`, color: undefined },
+              { label: '平均耗时', value: `${monitorStats?.avgDurationMs ?? 0}ms`, color: undefined },
+            ] as const).map((s) => (
+              <Col span={Math.floor(24 / 5)} key={s.label}>
+                <div style={{ background: 'var(--semi-color-fill-0)', borderRadius: 8, padding: '10px 12px' }}>
+                  <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{s.label}</Typography.Text>
+                  <Typography.Text strong style={{ fontSize: 18, color: s.color }}>{s.value}</Typography.Text>
+                </div>
+              </Col>
+            ))}
+          </Row>
+          <Typography.Text strong size="small" style={{ display: 'block', marginBottom: 8 }}>最近调用记录</Typography.Text>
+          <Table<WorkflowConnectorInvocation>
+            size="small"
+            rowKey="id"
+            dataSource={monitorRows}
+            pagination={false}
+            empty="暂无调用记录"
+            columns={[
+              { title: '来源', dataIndex: 'source', width: 90, render: (s: WorkflowConnectorInvocation['source']) => <Tag size="small" color="blue">{SOURCE_LABEL[s] ?? s}</Tag> },
+              { title: '结果', dataIndex: 'ok', width: 70, render: (ok: boolean) => <Tag size="small" color={ok ? 'green' : 'red'}>{ok ? '成功' : '失败'}</Tag> },
+              { title: '状态码', dataIndex: 'status', width: 80, render: (v: number | null) => v ?? '—' },
+              { title: '耗时', dataIndex: 'durationMs', width: 80, render: (v: number) => `${v}ms` },
+              { title: '地址', dataIndex: 'requestUrl', width: 200, render: (v: string | null) => renderEllipsis(v ?? '—') },
+              { title: '错误', dataIndex: 'error', width: 180, render: (v: string | null) => v ? renderEllipsis(v) : '—' },
+              { title: '时间', dataIndex: 'createdAt', width: 150 },
+            ]}
+            scroll={{ y: '50vh' }}
+          />
+        </Spin>
+      </SideSheet>
     </div>
   );
 }

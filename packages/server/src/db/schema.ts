@@ -1862,6 +1862,24 @@ export const workflowConnectors = pgTable('workflow_connectors', {
 export type WorkflowConnectorRow = typeof workflowConnectors.$inferSelect;
 export type NewWorkflowConnector = typeof workflowConnectors.$inferInsert;
 
+// 连接器调用审计（每次 invokeConnector 写一条，供调用统计/排障）
+export const workflowConnectorInvocationSourceEnum = pgEnum('workflow_connector_invocation_source', ['test', 'trigger', 'external', 'webhook', 'manual']);
+
+export const workflowConnectorInvocations = pgTable('workflow_connector_invocations', {
+  id: serial('id').primaryKey(),
+  connectorId: integer('connector_id').notNull().references(() => workflowConnectors.id, { onDelete: 'cascade' }),
+  source: workflowConnectorInvocationSourceEnum('source').notNull().default('manual'),
+  ok: boolean('ok').notNull(),
+  status: integer('status'),
+  durationMs: integer('duration_ms').notNull().default(0),
+  requestUrl: varchar('request_url', { length: 1024 }),
+  error: varchar('error', { length: 1024 }),
+  tenantId: integer('tenant_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index('workflow_connector_invocations_conn_idx').on(t.connectorId, t.createdAt)]);
+
+export type WorkflowConnectorInvocationRow = typeof workflowConnectorInvocations.$inferSelect;
+
 
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {
@@ -2055,6 +2073,8 @@ export const workflowEventSubscriptions = pgTable('workflow_event_subscriptions'
   signMode: workflowEventSignModeEnum('sign_mode').default('hmacSha256').notNull(),
   /** 自定义请求头，JSON 字符串 */
   headers: text('headers'),
+  /** 经连接器投递：引用 http 连接器 id（设置后由连接器提供基础地址/鉴权/超时/重试/熔断，url 退化为相对路径） */
+  connectorId: integer('connector_id').references(() => workflowConnectors.id, { onDelete: 'set null' }),
   enabled: boolean('enabled').default(true).notNull(),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),

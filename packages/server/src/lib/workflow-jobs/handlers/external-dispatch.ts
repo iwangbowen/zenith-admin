@@ -3,6 +3,7 @@ import type { WorkflowExternalApprovalConfig } from '@zenith/shared';
 import { db } from '../../../db';
 import { workflowTasks, workflowInstances } from '../../../db/schema';
 import { approveTaskByCallback, rejectTaskByCallback, handleNodeExecutionError } from '../../../services/workflow-instances.service';
+import { invokeConnector, getConnectorRowById } from '../../../services/workflow-connectors.service';
 import { httpPost } from '../../http-client';
 import logger from '../../logger';
 import { registerJobHandler } from '../registry';
@@ -68,18 +69,35 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<Wo
 
   const detailBase: WorkflowJobResult = { requestUrl: ext.url, requestMethod: 'POST', requestBody: bodyStr };
   let errorMessage: string;
-  try {
-    const resp = await httpPost(ext.url, bodyStr, { headers, timeout: ext.timeoutMs ?? TIMEOUT_MS_DEFAULT });
-    const respText = await resp.text().catch(() => '');
-    if (resp.ok) {
-      // 派发成功：任务保持 waiting，等待外部回调
-      return { ...detailBase, responseStatus: resp.status, responseBody: respText.slice(0, 4096) };
+  if (ext.connectorId) {
+    // 经连接器调用：统一鉴权/超时/重试/熔断（HMAC 签名仍由本节点附加在请求头）
+    const connector = await getConnectorRowById(ext.connectorId);
+    if (!connector) {
+      errorMessage = `外部审批连接器 #${ext.connectorId} 不存在`;
+    } else {
+      detailBase.requestUrl = `[connector:${connector.code}] ${ext.url ?? ''}`.trim();
+      const r = await invokeConnector(connector, { path: ext.url || undefined, method: 'POST', headers, body: payloadBody, source: 'external' });
+      if (r.ok) {
+        return { ...detailBase, responseStatus: r.status, responseBody: r.responseSnippet };
+      }
+      errorMessage = r.error ?? '外部审批连接器调用失败';
+      detailBase.responseStatus = r.status;
+      detailBase.responseBody = r.responseSnippet;
     }
-    errorMessage = `外部审批服务返回 HTTP ${resp.status}`;
-    detailBase.responseStatus = resp.status;
-    detailBase.responseBody = respText.slice(0, 4096);
-  } catch (err) {
-    errorMessage = err instanceof Error ? err.message : String(err);
+  } else {
+    try {
+      const resp = await httpPost(ext.url, bodyStr, { headers, timeout: ext.timeoutMs ?? TIMEOUT_MS_DEFAULT });
+      const respText = await resp.text().catch(() => '');
+      if (resp.ok) {
+        // 派发成功：任务保持 waiting，等待外部回调
+        return { ...detailBase, responseStatus: resp.status, responseBody: respText.slice(0, 4096) };
+      }
+      errorMessage = `外部审批服务返回 HTTP ${resp.status}`;
+      detailBase.responseStatus = resp.status;
+      detailBase.responseBody = respText.slice(0, 4096);
+    } catch (err) {
+      errorMessage = err instanceof Error ? err.message : String(err);
+    }
   }
 
   if (attempt < job.maxAttempts) {

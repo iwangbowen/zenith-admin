@@ -1310,6 +1310,13 @@
       "when": 1782639873890,
       "tag": "0186_volatile_firelord",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1782646853194,
+      "tag": "0187_superb_silver_sable",
+      "breakpoints": true
     }
   ]
 }

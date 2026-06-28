@@ -19,6 +19,7 @@ export const WorkflowEventSubscriptionDTO = z
     secretMasked: z.string().nullable(),
     signMode: z.enum(['hmacSha256', 'none']),
     headers: z.record(z.string(), z.string()).nullable(),
+    connectorId: z.number().int().nullable(),
     enabled: z.boolean(),
     tenantId: z.number().int().nullable(),
     ...auditFields,

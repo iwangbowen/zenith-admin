@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { createWorkflowConnectorSchema, updateWorkflowConnectorSchema, testWorkflowConnectorSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
@@ -6,10 +6,11 @@ import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
-import { WorkflowConnectorDTO, WorkflowConnectorListQuery, WorkflowConnectorInvokeResultDTO } from '../lib/openapi-dtos';
+import { WorkflowConnectorDTO, WorkflowConnectorListQuery, WorkflowConnectorInvokeResultDTO, WorkflowConnectorStatsDTO, WorkflowConnectorInvocationDTO } from '../lib/openapi-dtos';
 import {
   listWorkflowConnectors, getWorkflowConnector, createWorkflowConnector,
   updateWorkflowConnector, deleteWorkflowConnector, testWorkflowConnector,
+  getConnectorStats, listConnectorInvocations,
 } from '../services/workflow-connectors.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -98,6 +99,30 @@ const testRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, testRoute] as const);
+const statsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/stats',
+    tags: ['流程连接器'], summary: '连接器调用统计',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:connector:list' })] as const,
+    request: { params: IdParam, query: z.object({ days: z.coerce.number().int().min(1).max(90).optional() }) },
+    responses: { ...commonErrorResponses, ...ok(WorkflowConnectorStatsDTO, '调用统计'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => c.json(okBody(await getConnectorStats(c.req.valid('param').id, c.req.valid('query').days)), 200),
+});
+
+const invocationsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/invocations',
+    tags: ['流程连接器'], summary: '连接器最近调用记录',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:connector:list' })] as const,
+    request: { params: IdParam, query: z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }) },
+    responses: { ...commonErrorResponses, ...ok(z.array(WorkflowConnectorInvocationDTO), '调用记录'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => c.json(okBody(await listConnectorInvocations(c.req.valid('param').id, c.req.valid('query').limit)), 200),
+});
+
+router.openapiRoutes([listRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_, testRoute, statsRoute, invocationsRoute] as const);
 
 export default router;

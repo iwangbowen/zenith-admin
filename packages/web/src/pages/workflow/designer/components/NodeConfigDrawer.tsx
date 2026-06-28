@@ -386,11 +386,21 @@ export default function NodeConfigDrawer({
                       </div>
                       {enabled && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                          <Form.Slot label="回调 URL">
+                          <Form.Slot label="连接器（可选）">
+                            <Select
+                              placeholder="选择已配置连接器，统一鉴权/超时/重试/熔断"
+                              value={typeof ext.connectorId === 'number' ? ext.connectorId : undefined}
+                              onChange={(v) => updateExt({ connectorId: v as number | undefined })}
+                              style={{ width: '100%' }}
+                              showClear
+                              optionList={connectorOptions}
+                            />
+                          </Form.Slot>
+                          <Form.Slot label={typeof ext.connectorId === 'number' ? '回调路径（相对连接器地址，可空）' : '回调 URL'}>
                             <Input
                               value={typeof ext.url === 'string' ? ext.url : ''}
                               onChange={(v) => updateExt({ url: v })}
-                              placeholder="https://example.com/approve"
+                              placeholder={typeof ext.connectorId === 'number' ? '/approve（留空则调用连接器基础地址）' : 'https://example.com/approve'}
                             />
                           </Form.Slot>
                           <Form.Slot label="签名密钥 secret">

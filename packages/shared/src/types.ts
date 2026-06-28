@@ -2135,6 +2135,8 @@ export interface WorkflowTriggerNodeConfig {
 /** 外部审批配置 */
 export interface WorkflowExternalApprovalConfig {
   enabled: boolean;
+  /** 经连接器调用：引用 http 连接器 id（设置后 url 退化为相对连接器基础地址的路径） */
+  connectorId?: number;
   url: string;
   secret: string;
   signMode?: WorkflowEventSignMode;
@@ -2480,6 +2482,32 @@ export interface WorkflowConnectorInvokeResult {
   /** 截断的响应体（测试用） */
   responseSnippet: string | null;
   error: string | null;
+}
+
+export type WorkflowConnectorInvocationSource = 'test' | 'trigger' | 'external' | 'webhook' | 'manual';
+
+/** 连接器调用统计（按时间窗聚合） */
+export interface WorkflowConnectorStats {
+  connectorId: number;
+  windowDays: number;
+  total: number;
+  success: number;
+  failed: number;
+  /** 成功率 0~1 */
+  successRate: number;
+  avgDurationMs: number;
+}
+
+/** 连接器单次调用记录 */
+export interface WorkflowConnectorInvocation {
+  id: number;
+  source: WorkflowConnectorInvocationSource;
+  ok: boolean;
+  status: number | null;
+  durationMs: number;
+  requestUrl: string | null;
+  error: string | null;
+  createdAt: string;
 }
 
 /** 表单库实体 */
@@ -3258,6 +3286,8 @@ export interface WorkflowEventSubscription {
   secretMasked: string | null;
   signMode: WorkflowEventSignMode;
   headers: Record<string, string> | null;
+  /** 经连接器投递：引用 http 连接器 id（设置后 url 退化为相对路径） */
+  connectorId: number | null;
   enabled: boolean;
   tenantId: number | null;
   createdAt: string;

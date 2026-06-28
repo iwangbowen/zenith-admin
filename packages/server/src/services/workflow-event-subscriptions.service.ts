@@ -61,6 +61,7 @@ export function mapSubscription(
     secretMasked: maskSecret(row.secret),
     signMode: row.signMode,
     headers: parseHeaders(row.headers),
+    connectorId: row.connectorId ?? null,
     enabled: row.enabled,
     tenantId: row.tenantId,
     createdBy: row.createdBy ?? null,
@@ -147,6 +148,7 @@ export interface UpsertSubscriptionInput {
   secret?: string | null;
   signMode?: 'hmacSha256' | 'none';
   headers?: Record<string, string> | null;
+  connectorId?: number | null;
   enabled?: boolean;
 }
 
@@ -163,6 +165,7 @@ export async function createSubscription(input: UpsertSubscriptionInput) {
       secret: input.secret ?? null,
       signMode: input.signMode ?? 'hmacSha256',
       headers: input.headers ? JSON.stringify(input.headers) : null,
+      connectorId: input.connectorId ?? null,
       enabled: input.enabled ?? true,
       tenantId: getCreateTenantId(user),
       createdBy: user.userId,
@@ -192,6 +195,7 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
   if (input.secret !== undefined) patch.secret = input.secret;
   if (input.signMode !== undefined) patch.signMode = input.signMode;
   if (input.headers !== undefined) patch.headers = input.headers ? JSON.stringify(input.headers) : null;
+  if (input.connectorId !== undefined) patch.connectorId = input.connectorId;
   if (input.enabled !== undefined) patch.enabled = input.enabled;
   try {
     const [row] = await db.update(workflowEventSubscriptions).set(patch).where(and(...conds)).returning();

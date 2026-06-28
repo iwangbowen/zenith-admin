@@ -40,3 +40,26 @@ export const WorkflowConnectorInvokeResultDTO = z.object({
   responseSnippet: z.string().nullable(),
   error: z.string().nullable(),
 }).openapi('WorkflowConnectorInvokeResult');
+
+/** 调用统计 */
+export const WorkflowConnectorStatsDTO = z.object({
+  connectorId: z.number().int(),
+  windowDays: z.number().int(),
+  total: z.number().int(),
+  success: z.number().int(),
+  failed: z.number().int(),
+  successRate: z.number(),
+  avgDurationMs: z.number().int(),
+}).openapi('WorkflowConnectorStats');
+
+/** 单次调用记录 */
+export const WorkflowConnectorInvocationDTO = z.object({
+  id: z.number().int(),
+  source: z.enum(['test', 'trigger', 'external', 'webhook', 'manual']),
+  ok: z.boolean(),
+  status: z.number().int().nullable(),
+  durationMs: z.number().int(),
+  requestUrl: z.string().nullable(),
+  error: z.string().nullable(),
+  createdAt: z.string(),
+}).openapi('WorkflowConnectorInvocation');

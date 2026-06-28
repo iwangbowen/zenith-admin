@@ -261,6 +261,34 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
     }
   });
 
+  it('IM adapter invoke writes an audit row and stats aggregate counts', async () => {
+    const connectorsSvc = await import('./workflow-connectors.service');
+    const created = await runWithCurrentUser(asUser(), () => connectorsSvc.createWorkflowConnector({
+      name: 'IT 企业微信', code: `it_wecom_${Date.now()}`, type: 'wecom',
+      config: { baseUrl: 'http://127.0.0.1:1', method: 'POST', authType: 'none' },
+      timeoutMs: 1000, status: 'enabled',
+    }));
+    try {
+      const row = await connectorsSvc.getConnectorRowById(created.id);
+      // 不可达地址 → 失败，但仍应写入审计流水
+      const r = await connectorsSvc.invokeConnector(row!, { source: 'external', message: '审批结果：已通过' });
+      expect(r.ok).toBe(false);
+
+      const invocations = await runWithCurrentUser(asUser(), () => connectorsSvc.listConnectorInvocations(created.id, 10));
+      expect(invocations.length).toBeGreaterThanOrEqual(1);
+      expect(invocations[0]!.source).toBe('external');
+      expect(invocations[0]!.ok).toBe(false);
+
+      const stats = await runWithCurrentUser(asUser(), () => connectorsSvc.getConnectorStats(created.id, 7));
+      expect(stats.total).toBeGreaterThanOrEqual(1);
+      expect(stats.failed).toBeGreaterThanOrEqual(1);
+      expect(stats.successRate).toBeLessThanOrEqual(1);
+    } finally {
+      await db.delete(schema.workflowConnectorInvocations).where(eq(schema.workflowConnectorInvocations.connectorId, created.id));
+      await db.delete(schema.workflowConnectors).where(eq(schema.workflowConnectors.id, created.id));
+    }
+  });
+
   it('exposes the execution-token view (active/parked counts)', async () => {
     const inst = await startParallel('token-view');
     const [instRow] = await db.select().from(schema.workflowInstances).where(eq(schema.workflowInstances.id, inst.id)).limit(1);

@@ -74,6 +74,7 @@ interface FormValues {
   secret?: string;
   signMode: 'hmacSha256' | 'none';
   headers?: string;
+  connectorId?: number | null;
   enabled?: boolean;
 }
 
@@ -97,6 +98,7 @@ export default function WorkflowEventSubscriptionsPage() {
   searchParamsRef.current = searchParams;
 
   const [defs, setDefs] = useState<WorkflowDefinition[]>([]);
+  const [connectorOptions, setConnectorOptions] = useState<Array<{ value: number; label: string }>>([]);
 
   // 编辑弹窗
   const [modalVisible, setModalVisible] = useState(false);
@@ -142,6 +144,14 @@ export default function WorkflowEventSubscriptionsPage() {
       .catch(() => { /* ignore */ });
   }, []);
 
+  // 连接器下拉（启用态）
+  useEffect(() => {
+    request
+      .get<{ list: Array<{ id: number; name: string; type: string }> }>('/api/workflows/connectors?status=enabled&pageSize=100')
+      .then((res) => { if (res.code === 0) setConnectorOptions((res.data?.list ?? []).map((cn) => ({ value: cn.id, label: `${cn.name}（${cn.type}）` }))); })
+      .catch(() => { /* ignore */ });
+  }, []);
+
   const handleSearch = () => {
     setPage(1);
     void fetchData(1, pageSize);
@@ -158,7 +168,7 @@ export default function WorkflowEventSubscriptionsPage() {
     setModalVisible(true);
     setTimeout(() => formApi.current?.setValues({
       name: '', description: '', definitionId: null, events: [], url: '', secret: '',
-      signMode: 'hmacSha256', headers: '', enabled: true,
+      signMode: 'hmacSha256', headers: '', connectorId: null, enabled: true,
     }), 0);
   };
 
@@ -176,6 +186,7 @@ export default function WorkflowEventSubscriptionsPage() {
       secret: '',
       signMode: row.signMode,
       headers: row.headers ? JSON.stringify(row.headers, null, 2) : '',
+      connectorId: row.connectorId,
       enabled: row.enabled,
     }), 0);
     setModalDetailLoading(true);
@@ -193,6 +204,7 @@ export default function WorkflowEventSubscriptionsPage() {
           secret: '',
           signMode: res.data.signMode,
           headers: res.data.headers ? JSON.stringify(res.data.headers, null, 2) : '',
+          connectorId: res.data.connectorId,
           enabled: res.data.enabled,
         }), 0);
       } else {
@@ -224,6 +236,7 @@ export default function WorkflowEventSubscriptionsPage() {
       ...(vals.secret ? { secret: vals.secret } : {}),
       signMode: vals.signMode,
       headers,
+      connectorId: vals.connectorId ?? null,
       enabled: vals.enabled ?? true,
     };
     setSaving(true);
@@ -529,6 +542,14 @@ export default function WorkflowEventSubscriptionsPage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Switch field="enabled" label="启用" />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="connectorId" label="连接器" showClear
+                style={{ width: '100%' }}
+                helpText="经连接器投递（鉴权/超时/重试/熔断），URL 仍为完整地址"
+                optionList={connectorOptions}
+              />
             </Col>
           </Row>
           <Row gutter={16}>

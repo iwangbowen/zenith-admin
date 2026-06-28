@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { mockWorkflowConnectors, getNextConnectorId } from '../data/workflow-connectors';
-import { mockDateTime } from '../utils/date';
-import type { WorkflowConnector } from '@zenith/shared';
+import { mockDateTime, mockDateTimeOffset } from '../utils/date';
+import type { WorkflowConnector, WorkflowConnectorInvocation } from '@zenith/shared';
 
 interface ConnectorBody {
   name?: string; code?: string; description?: string | null; type?: WorkflowConnector['type'];
@@ -33,6 +33,38 @@ export const workflowConnectorsHandlers = [
   // 测试调用（demo 返回成功探测结果）
   http.post('/api/workflows/connectors/:id/test', () =>
     HttpResponse.json({ code: 0, message: 'ok', data: { ok: true, status: 200, durationMs: 42, responseSnippet: '{"demo":true,"args":{}}', error: null } })),
+
+  // 调用统计（demo）
+  http.get('/api/workflows/connectors/:id/stats', ({ params, request }) => {
+    const exists = mockWorkflowConnectors.some((x) => x.id === Number(params.id));
+    if (!exists) return HttpResponse.json({ code: 404, message: '连接器不存在', data: null }, { status: 404 });
+    const days = Number(new URL(request.url).searchParams.get('days')) || 7;
+    const total = 128;
+    const success = 121;
+    return HttpResponse.json({ code: 0, message: 'ok', data: {
+      connectorId: Number(params.id), windowDays: days, total, success, failed: total - success,
+      successRate: Math.round((success / total) * 1000) / 1000, avgDurationMs: 86,
+    } });
+  }),
+
+  // 最近调用记录（demo）
+  http.get('/api/workflows/connectors/:id/invocations', ({ params, request }) => {
+    const exists = mockWorkflowConnectors.some((x) => x.id === Number(params.id));
+    if (!exists) return HttpResponse.json({ code: 404, message: '连接器不存在', data: null }, { status: 404 });
+    const limit = Number(new URL(request.url).searchParams.get('limit')) || 20;
+    const sources: WorkflowConnectorInvocation['source'][] = ['test', 'trigger', 'external', 'webhook'];
+    const rows: WorkflowConnectorInvocation[] = Array.from({ length: Math.min(limit, 12) }, (_, i) => {
+      const ok = i % 5 !== 0;
+      return {
+        id: 1000 - i, source: sources[i % sources.length], ok,
+        status: ok ? 200 : 500, durationMs: 40 + ((i * 13) % 200),
+        requestUrl: `https://api.example.com/endpoint/${i}`,
+        error: ok ? null : 'HTTP 500 Internal Server Error',
+        createdAt: mockDateTimeOffset(-i * 3_600_000),
+      };
+    });
+    return HttpResponse.json({ code: 0, message: 'ok', data: rows });
+  }),
 
   // 详情
   http.get('/api/workflows/connectors/:id', ({ params }) => {

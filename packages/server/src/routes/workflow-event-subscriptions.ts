@@ -41,6 +41,7 @@ const UpsertBody = z.object({
   secret: z.string().max(256).nullish(),
   signMode: z.enum(['hmacSha256', 'none']).optional(),
   headers: z.record(z.string(), z.string()).nullish(),
+  connectorId: z.number().int().positive().nullish(),
   enabled: z.boolean().optional(),
 });
 

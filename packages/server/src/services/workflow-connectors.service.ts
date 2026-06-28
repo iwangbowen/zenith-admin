@@ -4,10 +4,10 @@
  * - invokeConnector：运行时调用（http-client 重试/超时 + 熔断），供未来触发器/Webhook 节点复用
  * - testConnector：一键测试探测
  */
-import { and, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
-import { workflowConnectors } from '../db/schema';
+import { workflowConnectors, workflowConnectorInvocations } from '../db/schema';
 import type { WorkflowConnectorRow } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
@@ -186,44 +186,88 @@ function buildHeaders(cfg: WorkflowConnectorHttpConfig, creds: WorkflowConnector
   return headers;
 }
 
+export type ConnectorInvocationSource = 'test' | 'trigger' | 'external' | 'webhook' | 'manual';
+
 export interface ConnectorInvokeOptions {
   path?: string;
   method?: string;
   body?: unknown;
   headers?: Record<string, string>;
   query?: Record<string, string>;
+  /** IM 通知类型（wecom/dingtalk/feishu）的消息文本；缺省时回退 body */
+  message?: string;
+  /** 调用来源（审计/统计） */
+  source?: ConnectorInvocationSource;
 }
 
-/** 运行时调用连接器（首期仅 http）：套用配置/凭据/超时/重试 + 熔断保护。 */
-export async function invokeConnector(connector: WorkflowConnectorRow, opts: ConnectorInvokeOptions = {}): Promise<WorkflowConnectorInvokeResult> {
-  if (connector.status !== 'enabled') {
-    return { ok: false, status: null, durationMs: 0, responseSnippet: null, error: '连接器已禁用' };
-  }
-  if (connector.type !== 'http') {
-    return { ok: false, status: null, durationMs: 0, responseSnippet: null, error: `连接器类型「${connector.type}」暂未支持运行时调用（首期仅 http）` };
-  }
-  const cbCfg = { enabled: connector.circuitBreakerEnabled, failureThreshold: connector.failureThreshold, cooldownSec: connector.cooldownSec };
-  const gate = await breakerAllow(connector.id, cbCfg);
-  if (!gate.allowed) {
-    return { ok: false, status: null, durationMs: 0, responseSnippet: null, error: '熔断已打开，快速失败' };
-  }
+interface BuiltRequest { url: string; method: string; headers: Record<string, string>; body: unknown }
 
+function fail(error: string): WorkflowConnectorInvokeResult {
+  return { ok: false, status: null, durationMs: 0, responseSnippet: null, error };
+}
+
+function extractMessage(opts: ConnectorInvokeOptions): string {
+  if (opts.message != null) return opts.message;
+  if (typeof opts.body === 'string') return opts.body;
+  if (opts.body != null) { try { return JSON.stringify(opts.body); } catch { return String(opts.body); } }
+  return '';
+}
+
+/** IM 机器人 adapter：把通用消息文本转成各平台的 webhook body（baseUrl=机器人 webhook 地址） */
+function buildImRequest(connector: WorkflowConnectorRow, opts: ConnectorInvokeOptions): BuiltRequest {
   const cfg = (connector.config ?? {}) as WorkflowConnectorHttpConfig;
-  if (!cfg.baseUrl) {
-    return { ok: false, status: null, durationMs: 0, responseSnippet: null, error: '连接器未配置 baseUrl' };
-  }
+  const text = extractMessage(opts);
+  let body: Record<string, unknown>;
+  if (connector.type === 'wecom') body = { msgtype: 'markdown', markdown: { content: text } };
+  else if (connector.type === 'dingtalk') body = { msgtype: 'markdown', markdown: { title: '工作流通知', text } };
+  else body = { msg_type: 'text', content: { text } }; // feishu
+  return {
+    url: buildUrl(cfg.baseUrl, opts.path, { ...(cfg.query ?? {}), ...(opts.query ?? {}) }),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(cfg.headers ?? {}), ...(opts.headers ?? {}) },
+    body,
+  };
+}
+
+/** HTTP/Webhook adapter：套用鉴权/凭据 */
+function buildHttpRequest(connector: WorkflowConnectorRow, opts: ConnectorInvokeOptions): BuiltRequest {
+  const cfg = (connector.config ?? {}) as WorkflowConnectorHttpConfig;
   const creds = decodeCredentials(connector.credentialsEncrypted);
   const method = (opts.method ?? cfg.method ?? 'GET').toUpperCase();
-  const url = buildUrl(cfg.baseUrl, opts.path, { ...(cfg.query ?? {}), ...(opts.query ?? {}) });
-  const headers = buildHeaders(cfg, creds, opts.headers);
   const hasBody = method !== 'GET' && method !== 'DELETE' && opts.body != null;
+  return {
+    url: buildUrl(cfg.baseUrl, opts.path, { ...(cfg.query ?? {}), ...(opts.query ?? {}) }),
+    method,
+    headers: buildHeaders(cfg, creds, opts.headers),
+    body: hasBody ? opts.body : undefined,
+  };
+}
 
-  const started = Date.now();
+/** 写一条调用审计（best-effort，不影响主流程） */
+async function recordInvocation(connector: WorkflowConnectorRow, url: string, result: WorkflowConnectorInvokeResult, source: ConnectorInvocationSource): Promise<void> {
   try {
-    const resp = await httpRequest(url, {
-      method,
-      headers,
-      body: hasBody ? (opts.body as Record<string, unknown>) : undefined,
+    await db.insert(workflowConnectorInvocations).values({
+      connectorId: connector.id,
+      source,
+      ok: result.ok,
+      status: result.status ?? null,
+      durationMs: result.durationMs,
+      requestUrl: url ? url.slice(0, 1024) : null,
+      error: result.error ? result.error.slice(0, 1024) : null,
+      tenantId: connector.tenantId ?? null,
+    });
+  } catch { /* best-effort */ }
+}
+
+/** 公共 HTTP 执行：超时/重试 + 熔断记账 + 调用审计 */
+async function executeHttp(connector: WorkflowConnectorRow, req: BuiltRequest, cbCfg: { enabled: boolean; failureThreshold: number; cooldownSec: number }, source: ConnectorInvocationSource): Promise<WorkflowConnectorInvokeResult> {
+  const started = Date.now();
+  let result: WorkflowConnectorInvokeResult;
+  try {
+    const resp = await httpRequest(req.url, {
+      method: req.method,
+      headers: req.headers,
+      body: req.body == null ? undefined : (req.body as Record<string, unknown>),
       timeout: connector.timeoutMs,
       retries: connector.retryMax,
     });
@@ -231,21 +275,51 @@ export async function invokeConnector(connector: WorkflowConnectorRow, opts: Con
     const snippet = (await resp.text().catch(() => '')).slice(0, 2000);
     if (resp.ok) {
       await breakerSuccess(connector.id);
-      return { ok: true, status: resp.status, durationMs, responseSnippet: snippet || null, error: null };
+      result = { ok: true, status: resp.status, durationMs, responseSnippet: snippet || null, error: null };
+    } else {
+      await breakerFailure(connector.id, cbCfg);
+      result = { ok: false, status: resp.status, durationMs, responseSnippet: snippet || null, error: `HTTP ${resp.status}` };
     }
-    await breakerFailure(connector.id, cbCfg);
-    return { ok: false, status: resp.status, durationMs, responseSnippet: snippet || null, error: `HTTP ${resp.status}` };
   } catch (err) {
-    const durationMs = Date.now() - started;
     await breakerFailure(connector.id, cbCfg);
-    return { ok: false, status: null, durationMs, responseSnippet: null, error: err instanceof Error ? err.message : String(err) };
+    result = { ok: false, status: null, durationMs: Date.now() - started, responseSnippet: null, error: err instanceof Error ? err.message : String(err) };
   }
+  await recordInvocation(connector, req.url, result, source);
+  return result;
+}
+
+const RUNTIME_SUPPORTED = new Set<string>(['http', 'webhook', 'wecom', 'dingtalk', 'feishu']);
+
+/**
+ * 运行时调用连接器：按 type 选择 adapter（http/webhook 透传；wecom/dingtalk/feishu 通知 adapter），
+ * 套用超时/重试 + 熔断保护 + 调用审计。供触发器/外部审批/事件 Webhook 节点统一复用。
+ */
+export async function invokeConnector(connector: WorkflowConnectorRow, opts: ConnectorInvokeOptions = {}): Promise<WorkflowConnectorInvokeResult> {
+  const source = opts.source ?? 'manual';
+  if (connector.status !== 'enabled') {
+    const r = fail('连接器已禁用'); await recordInvocation(connector, '', r, source); return r;
+  }
+  if (!RUNTIME_SUPPORTED.has(connector.type)) {
+    return fail(`连接器类型「${connector.type}」暂未支持运行时调用`);
+  }
+  const cfg = (connector.config ?? {}) as WorkflowConnectorHttpConfig;
+  if (!cfg.baseUrl) {
+    const r = fail('连接器未配置 baseUrl'); await recordInvocation(connector, '', r, source); return r;
+  }
+  const cbCfg = { enabled: connector.circuitBreakerEnabled, failureThreshold: connector.failureThreshold, cooldownSec: connector.cooldownSec };
+  const gate = await breakerAllow(connector.id, cbCfg);
+  if (!gate.allowed) {
+    const r = fail('熔断已打开，快速失败'); await recordInvocation(connector, cfg.baseUrl, r, source); return r;
+  }
+  const isIm = connector.type === 'wecom' || connector.type === 'dingtalk' || connector.type === 'feishu';
+  const req = isIm ? buildImRequest(connector, opts) : buildHttpRequest(connector, opts);
+  return executeHttp(connector, req, cbCfg, source);
 }
 
 /** 一键测试：对已存在连接器发一次探测请求。 */
 export async function testWorkflowConnector(id: number, input: TestWorkflowConnectorInput): Promise<WorkflowConnectorInvokeResult> {
   const row = await ensureConnector(id);
-  return invokeConnector(row, { path: input.path, method: input.method, body: input.body });
+  return invokeConnector(row, { path: input.path, method: input.method, body: input.body, source: 'test' });
 }
 
 /** 按 code 取连接器（供运行时业务桥接按 code 引用）。 */
@@ -264,4 +338,33 @@ export async function getConnectorRowByCode(code: string): Promise<WorkflowConne
 export async function getConnectorRowById(id: number): Promise<WorkflowConnectorRow | null> {
   const [row] = await db.select().from(workflowConnectors).where(eq(workflowConnectors.id, id)).limit(1);
   return row ?? null;
+}
+
+/** 连接器调用统计（按时间窗聚合：总数/成功/失败/成功率/平均耗时）。 */
+export async function getConnectorStats(id: number, days = 7) {
+  await ensureConnector(id); // 租户鉴权
+  const since = new Date(Date.now() - Math.max(1, days) * 86400_000);
+  const [r] = await db.select({
+    total: sql<number>`count(*)::int`,
+    success: sql<number>`count(*) filter (where ${workflowConnectorInvocations.ok})::int`,
+    avgMs: sql<number>`coalesce(round(avg(${workflowConnectorInvocations.durationMs})), 0)::int`,
+  }).from(workflowConnectorInvocations)
+    .where(and(eq(workflowConnectorInvocations.connectorId, id), gte(workflowConnectorInvocations.createdAt, since)));
+  const total = r?.total ?? 0;
+  const success = r?.success ?? 0;
+  return { connectorId: id, windowDays: days, total, success, failed: total - success, successRate: total ? Math.round((success / total) * 1000) / 1000 : 0, avgDurationMs: r?.avgMs ?? 0 };
+}
+
+/** 连接器最近调用记录。 */
+export async function listConnectorInvocations(id: number, limit = 20) {
+  await ensureConnector(id);
+  const rows = await db.select().from(workflowConnectorInvocations)
+    .where(eq(workflowConnectorInvocations.connectorId, id))
+    .orderBy(desc(workflowConnectorInvocations.id))
+    .limit(Math.min(100, Math.max(1, limit)));
+  return rows.map((row) => ({
+    id: row.id, source: row.source, ok: row.ok, status: row.status ?? null,
+    durationMs: row.durationMs, requestUrl: row.requestUrl ?? null, error: row.error ?? null,
+    createdAt: formatDateTime(row.createdAt),
+  }));
 }
