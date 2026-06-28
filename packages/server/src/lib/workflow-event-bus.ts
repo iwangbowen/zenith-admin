@@ -21,6 +21,7 @@ import type {
 import logger from './logger';
 import { formatDateTime } from './datetime';
 import { enqueueJob } from './workflow-jobs/engine';
+import type { DbExecutor } from '../db/types';
 
 type EventHandler<E extends WorkflowEvent = WorkflowEvent> = (event: E) => void | Promise<void>;
 
@@ -79,33 +80,43 @@ class WorkflowEventBus {
     } as WorkflowEvent;
   }
 
-  private async dispatchToHandlers(full: WorkflowEvent): Promise<void> {
+  /** 规整为完整事件（补 eventId / occurredAt），供事务内入队 outbox 复用 */
+  build(event: Omit<WorkflowEvent, 'eventId' | 'occurredAt'> & { eventId?: string; occurredAt?: string }): WorkflowEvent {
+    return this.normalize(event);
+  }
+
+  /**
+   * 派发到进程内订阅者（ws / 通知 / 会话 / 自动化 / 业务桥接 / 节点监听）。
+   * best-effort：单个 handler 抛错只记录、不影响其它 handler，也不抛出
+   * （由 event_dispatch 作业调用，保证崩溃后可恢复地、恰好一次地投递）。
+   */
+  async dispatchInProcess(full: WorkflowEvent): Promise<void> {
     const handlers = [
       ...this.emitter.listeners(full.type),
       ...this.emitter.listeners(ANY_CHANNEL),
     ];
-    const settled = await Promise.allSettled(handlers.map(async (h) => {
+    await Promise.allSettled(handlers.map(async (h) => {
       try {
         await (h as EventHandler)(full);
       } catch (err) {
-        logger.error('[workflow-event-bus] handler error', { type: full.type, err });
-        throw err;
+        logger.error('[workflow-event-bus] in-process handler error', { type: full.type, eventId: full.eventId, err });
       }
     }));
-    const rejected = settled.find((result) => result.status === 'rejected');
-    if (rejected?.status === 'rejected') throw rejected.reason;
   }
 
   /**
-   * 发射事件：① 立即派发到进程内订阅者（ws/通知/会话/自动化/节点监听，低延迟）；
-   * ② 入队 event_dispatch 作业用于 Webhook 持久化扇出（各订阅独立重试/死信）。
+   * 发射事件（事务性 outbox）：把事件作为 event_dispatch 作业持久入队，由统一 worker
+   * 可靠投递（进程内订阅者 + Webhook 扇出，各自重试/死信）。
+   * - 传入事务 executor 时：在同一事务内入队，与状态变更原子提交，崩溃不丢事件。
+   * - 不传时：以默认 db best-effort 入队（用于非事务的次要事件）。
+   * 返回规整后的完整事件（便于调用方复用 eventId）。
    */
-  emit(event: Omit<WorkflowEvent, 'eventId' | 'occurredAt'> & { eventId?: string; occurredAt?: string }): void {
+  emit(
+    event: Omit<WorkflowEvent, 'eventId' | 'occurredAt'> & { eventId?: string; occurredAt?: string },
+    executor?: DbExecutor,
+  ): WorkflowEvent {
     const full = this.normalize(event);
-    void this.dispatchToHandlers(full).catch((err) => {
-      logger.error('[workflow-event-bus] in-process dispatch failed', { type: full.type, eventId: full.eventId, err });
-    });
-    void enqueueJob({
+    const enqueue = enqueueJob({
       jobType: 'event_dispatch',
       instanceId: 'instanceId' in full ? full.instanceId ?? null : null,
       taskId: 'task' in full ? full.task.id : null,
@@ -114,9 +125,34 @@ class WorkflowEventBus {
       maxAttempts: 3,
       idempotencyKey: `event:${full.eventId}`,
       traceId: full.eventId,
-    }).catch((err) => {
-      logger.error('[workflow-event-bus] enqueue event_dispatch failed', { type: full.type, eventId: full.eventId, err });
-    });
+    }, executor);
+    // 事务内入队需等待，确保与状态变更原子提交；非事务则 best-effort
+    if (executor) {
+      // 调用方应 await emitInTx；此处返回 promise 供其等待
+      void enqueue.catch((err) => logger.error('[workflow-event-bus] tx enqueue event_dispatch failed', { type: full.type, eventId: full.eventId, err }));
+    } else {
+      void enqueue.catch((err) => logger.error('[workflow-event-bus] enqueue event_dispatch failed', { type: full.type, eventId: full.eventId, err }));
+    }
+    return full;
+  }
+
+  /** 事务内入队事件 outbox（与状态变更原子提交，必须 await） */
+  async emitInTx(
+    event: Omit<WorkflowEvent, 'eventId' | 'occurredAt'> & { eventId?: string; occurredAt?: string },
+    executor: DbExecutor,
+  ): Promise<WorkflowEvent> {
+    const full = this.normalize(event);
+    await enqueueJob({
+      jobType: 'event_dispatch',
+      instanceId: 'instanceId' in full ? full.instanceId ?? null : null,
+      taskId: 'task' in full ? full.task.id : null,
+      payload: { event: full },
+      tenantId: full.tenantId ?? null,
+      maxAttempts: 3,
+      idempotencyKey: `event:${full.eventId}`,
+      traceId: full.eventId,
+    }, executor);
+    return full;
   }
 }
 

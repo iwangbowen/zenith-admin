@@ -4,10 +4,11 @@ import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guar
 import { idempotencyGuard } from '../middleware/idempotency';
 import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceWithDraftSchema, updateWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema, urgeWorkflowTaskSchema, addInstanceCcSchema, batchApproveWorkflowTaskSchema, batchRejectWorkflowTaskSchema, batchWithdrawWorkflowInstanceSchema, batchUrgeWorkflowInstanceSchema, forwardInstanceSchema, createWorkflowCommentSchema, jumpWorkflowInstanceSchema, reassignWorkflowTaskSchema, createWorkflowConsultSchema, replyWorkflowConsultSchema, recallWorkflowTaskSchema } from '@zenith/shared';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody } from '../lib/openapi-schemas';
-import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowRuntimeDiagnosticsDTO, WorkflowInstanceTraceDTO, WorkflowExecutionTokenViewDTO, WorkflowTaskDTO, WorkflowTaskUrgeDTO, WorkflowCommentDTO, WorkflowBatchActionResponseDTO, WorkflowInstanceBatchActionResponseDTO, WorkflowAnalyticsDTO, WorkflowOverdueTaskDTO, WorkflowTaskConsultDTO, WorkflowRelationOptionDTO } from '../lib/openapi-dtos';
+import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowRuntimeDiagnosticsDTO, WorkflowInstanceTraceDTO, WorkflowExecutionTokenViewDTO, WorkflowDiagnosticBundleDTO, WorkflowTaskDTO, WorkflowTaskUrgeDTO, WorkflowCommentDTO, WorkflowBatchActionResponseDTO, WorkflowInstanceBatchActionResponseDTO, WorkflowAnalyticsDTO, WorkflowOverdueTaskDTO, WorkflowTaskConsultDTO, WorkflowRelationOptionDTO } from '../lib/openapi-dtos';
 import {
   listMyInstances, listPendingMine, listAllInstances, listMyCc, listMyHandled, getInstanceDetail,
   getInstanceRuntimeDiagnostics, getInstanceTrace, getInstanceExecutionTokens,
+  skipStuckToken, replayFromToken, exportInstanceDiagnosticBundle,
   createInstance, withdrawInstance, cancelInstance, deleteInstance, getInstanceForAdminAudit,
   approveTask, rejectTask, getWorkflowInstanceBeforeAudit, getWorkflowTaskBeforeAudit, getWorkflowTaskForAdminAudit,
   transferTask, delegateTask, addSignTask, reduceSignTask, returnTask,
@@ -194,6 +195,41 @@ const tokensRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => c.json(okBody(await getInstanceExecutionTokens(c.req.valid('param').id)), 200),
+});
+
+const TokenOpBody = z.object({ reason: z.string().max(255).optional() });
+
+const tokenSkipRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/instances/tokens/{id}/skip', tags: ['WorkflowInstances'], summary: '跳过卡死的执行 Token',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor', audit: { description: '跳过卡死执行 Token', module: '工作流管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(TokenOpBody), required: false } },
+    responses: { ...commonErrorResponses, ...ok(WorkflowInstanceDTO, '已跳过'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => c.json(okBody(await skipStuckToken(c.req.valid('param').id, c.req.valid('json')?.reason), '已跳过并推进'), 200),
+});
+
+const tokenReplayRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/instances/tokens/{id}/replay', tags: ['WorkflowInstances'], summary: '从执行 Token 节点重放流程',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:cancel', audit: { description: '从执行 Token 重放流程', module: '工作流管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(TokenOpBody), required: false } },
+    responses: { ...commonErrorResponses, ...ok(WorkflowInstanceDTO, '已重放'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => c.json(okBody(await replayFromToken(c.req.valid('param').id, c.req.valid('json')?.reason), '已从该节点重放'), 200),
+});
+
+const diagnosticBundleRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/instances/{id}/diagnostic-bundle', tags: ['WorkflowInstances'], summary: '导出实例诊断包',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(WorkflowDiagnosticBundleDTO, 'ok'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => c.json(okBody(await exportInstanceDiagnosticBundle(c.req.valid('param').id)), 200),
 });
 
 const createInstanceRoute = defineOpenAPIRoute({
@@ -875,7 +911,7 @@ const replyConsultRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, pendingMineRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, relationOptionsRoute, analyticsRoute, overdueRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, diagnosticsRoute, traceRoute, tokensRoute, detailRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);
-router.openapiRoutes([withdrawRoute, forwardRoute, cancelInstanceRoute, jumpInstanceRoute, deleteInstanceRoute, batchApproveRoute, batchRejectRoute, approveRoute, rejectRoute, transferRoute, reassignRoute, recallRoute, consultRoute, replyConsultRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute, addInstanceCcRoute] as const);
+router.openapiRoutes([listRoute, pendingMineRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, relationOptionsRoute, analyticsRoute, overdueRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, diagnosticsRoute, traceRoute, tokensRoute, diagnosticBundleRoute, detailRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);
+router.openapiRoutes([withdrawRoute, forwardRoute, cancelInstanceRoute, jumpInstanceRoute, tokenSkipRoute, tokenReplayRoute, deleteInstanceRoute, batchApproveRoute, batchRejectRoute, approveRoute, rejectRoute, transferRoute, reassignRoute, recallRoute, consultRoute, replyConsultRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute, addInstanceCcRoute] as const);
 
 export default router;

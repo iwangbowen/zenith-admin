@@ -6,6 +6,7 @@ import {
   Input,
   JsonViewer,
   Modal,
+  Popconfirm,
   Select,
   SideSheet,
   Space,
@@ -20,7 +21,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { FileText, RotateCcw, Search } from 'lucide-react';
+import { Download, FileText, RotateCcw, Search } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowDefinition, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstance, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -560,6 +561,33 @@ export default function WorkflowMonitorPage() {
   };
   const openDiagnostics = (item: WorkflowInstance) => openDiagnosticsById(item.id);
 
+  /** Token 运营恢复操作（跳过卡死 / 从节点重放），成功后刷新诊断 */
+  const runTokenOp = async (tokenId: number, op: 'skip' | 'replay') => {
+    const res = await request.post(`/api/workflows/instances/tokens/${tokenId}/${op}`);
+    if (res.code === 0) {
+      Toast.success(op === 'skip' ? '已跳过并推进' : '已从该节点重放');
+      if (diagnostics) openDiagnosticsById(diagnostics.instance.id);
+    } else {
+      Toast.error(res.message || '操作失败');
+    }
+  };
+
+  /** 导出实例诊断包（诊断 + 轨迹 + 执行 Token）为 JSON 文件 */
+  const exportDiagnosticBundle = async (instanceId: number) => {
+    const res = await request.get<unknown>(`/api/workflows/instances/${instanceId}/diagnostic-bundle`);
+    if (res.code === 0) {
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `workflow-diagnostic-${instanceId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      Toast.error(res.message || '导出失败');
+    }
+  };
+
   const handleCancel = (record: WorkflowInstance) => {
     Modal.confirm({
       title: '取消流程',
@@ -732,6 +760,18 @@ export default function WorkflowMonitorPage() {
       { title: '作用域', dataIndex: 'scopeKey', width: 180, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
       { title: '创建', dataIndex: 'createdAt', width: 180 },
       { title: '消费/终止', dataIndex: 'consumedAt', width: 180, render: (v: string | null) => v ?? '—' },
+      { title: '操作', dataIndex: 'op', width: 130, fixed: 'right', render: (_: unknown, r: WorkflowExecutionToken) => (
+        <Space>
+          {r.status === 'active' && (
+            <Popconfirm title="跳过该卡死 Token 并推进流程？" onConfirm={() => runTokenOp(r.id, 'skip')}>
+              <Button theme="borderless" size="small">跳过</Button>
+            </Popconfirm>
+          )}
+          <Popconfirm title="从该 Token 节点重放？将清场全部活动 Token 并在该节点重建路径" onConfirm={() => runTokenOp(r.id, 'replay')}>
+            <Button theme="borderless" type="danger" size="small">重放</Button>
+          </Popconfirm>
+        </Space>
+      ) },
     ];
 
     const inst = diagnostics.instance;
@@ -973,12 +1013,13 @@ export default function WorkflowMonitorPage() {
             <ConfigurableTable bordered columns={outboxColumns} dataSource={diagnostics.outboxEvents} rowKey="id" pagination={false} scroll={{ x: 1200 }} />
           </TabPane>
           <TabPane tab={`执行 Token ${diagnostics.tokens.length}`} itemKey="tokens">
-            <div style={{ marginBottom: 10 }}>
+            <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
               <Typography.Text type="tertiary" size="small">
-                显式执行 Token = 活动执行路径的权威单元：fork 沿分支栈分裂、join 凑齐后汇聚消费；已消费/终止 token 保留为执行树血缘。
+                显式执行 Token = 活动执行路径的权威单元：fork 沿分支栈分裂、join 凑齐后汇聚消费；已消费/终止 token 保留为执行树血缘。卡死可「跳过」、断点可「重放」。
               </Typography.Text>
+              <Button size="small" icon={<Download size={14} />} onClick={() => exportDiagnosticBundle(diagnostics.instance.id)}>导出诊断包</Button>
             </div>
-            <ConfigurableTable bordered columns={tokenColumns} dataSource={diagnostics.tokens} rowKey="id" pagination={false} scroll={{ x: 1200 }} />
+            <ConfigurableTable bordered columns={tokenColumns} dataSource={diagnostics.tokens} rowKey="id" pagination={false} scroll={{ x: 1330 }} />
           </TabPane>
           <TabPane tab="流程图" itemKey="graph">
             <div style={{ marginBottom: 10 }}>

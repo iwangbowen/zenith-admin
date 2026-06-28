@@ -243,29 +243,32 @@ import { isPgUniqueViolation } from '../lib/db-errors';
 import dayjs from 'dayjs';
 import logger from '../lib/logger';
 
-/** 发射实例生命周期事件的辅助函数 */
+/** 发射实例生命周期事件的辅助函数（传 executor 时在事务内入队 outbox，需 await） */
 function emitInstanceEvent(
   type: 'instance.created' | 'instance.approved' | 'instance.rejected' | 'instance.withdrawn',
   instance: ReturnType<typeof mapInstance>,
   actor: { userId: number; name?: string | null },
-) {
-  workflowEventBus.emit({
+  executor?: DbExecutor,
+): void | Promise<unknown> {
+  const ev = {
     type,
     instanceId: instance.id,
     definitionId: instance.definitionId,
     tenantId: instance.tenantId ?? null,
     actor,
     instance,
-  } as Parameters<typeof workflowEventBus.emit>[0]);
+  } as Parameters<typeof workflowEventBus.emit>[0];
+  return executor ? workflowEventBus.emitInTx(ev, executor) : void workflowEventBus.emit(ev);
 }
 
-/** 发射任务生命周期事件的辅助函数 */
+/** 发射任务生命周期事件的辅助函数（传 executor 时在事务内入队 outbox，需 await） */
 function emitTaskEvent(
   type: 'task.created' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred' | 'task.assigned' | 'task.addSigned' | 'task.reduceSigned' | 'task.urged',
   task: WorkflowTaskDto,
   meta: { definitionId: number; tenantId: number | null; actor?: { userId: number; name?: string | null }; comment?: string | null },
-) {
-  workflowEventBus.emit({
+  executor?: DbExecutor,
+): void | Promise<unknown> {
+  const ev = {
     type,
     instanceId: task.instanceId,
     definitionId: meta.definitionId,
@@ -273,15 +276,17 @@ function emitTaskEvent(
     actor: meta.actor,
     task,
     comment: meta.comment,
-  } as Parameters<typeof workflowEventBus.emit>[0]);
+  } as Parameters<typeof workflowEventBus.emit>[0];
+  return executor ? workflowEventBus.emitInTx(ev, executor) : void workflowEventBus.emit(ev);
 }
 
-/** 发射节点进入/离开事件 */
+/** 发射节点进入/离开事件（传 executor 时在事务内入队 outbox，需 await） */
 function emitNodeEvent(
   type: 'node.entered' | 'node.left',
   meta: { instanceId: number; definitionId: number; tenantId: number | null; nodeKey: string; nodeName: string; nodeType: WorkflowTaskDto['nodeType']; actor?: { userId: number; name?: string | null } },
-) {
-  workflowEventBus.emit({
+  executor?: DbExecutor,
+): void | Promise<unknown> {
+  const ev = {
     type,
     instanceId: meta.instanceId,
     definitionId: meta.definitionId,
@@ -290,7 +295,8 @@ function emitNodeEvent(
     nodeKey: meta.nodeKey,
     nodeName: meta.nodeName,
     nodeType: meta.nodeType,
-  } as Parameters<typeof workflowEventBus.emit>[0]);
+  } as Parameters<typeof workflowEventBus.emit>[0];
+  return executor ? workflowEventBus.emitInTx(ev, executor) : void workflowEventBus.emit(ev);
 }
 
 /**
@@ -3040,6 +3046,8 @@ export async function createInstance(data: { definitionId: number; title: string
         status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
         currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
       }).where(eq(workflowInstances.id, createdInstance.id)).returning();
+      // 事务性 outbox：发起事件在同一事务内入队，与实例/任务插入原子提交（崩溃不丢）
+      await emitInstanceStartEvents(mapInstance(updatedInstance), updatedInstance, materialized.createdTasks, { userId: user.userId, name: user.username }, tx);
       return { instance: updatedInstance, createdTasks: materialized.createdTasks };
     });
   } catch (err) {
@@ -3051,8 +3059,8 @@ export async function createInstance(data: { definitionId: number; title: string
   }
   const { instance, createdTasks } = txResult;
   const instanceDto = mapInstance(instance);
-  const actor = { userId: user.userId, name: user.username };
-  emitInstanceStartEvents(instanceDto, instance, createdTasks, actor);
+  // 事件已在事务内入队（outbox）；此处仅装配异步作业
+  armInstanceStartJobs(instance, createdTasks);
   // 发起时自选抄送：插入 ccNode 任务（best-effort，失败不影响发起结果；接收人通过「抄送我的」查看）
   const ccIds = Array.from(new Set((data.ccUserIds ?? []).filter((v) => Number.isInteger(v) && v > 0)));
   if (ccIds.length > 0) {
@@ -3085,29 +3093,35 @@ export async function createInstance(data: { definitionId: number; title: string
 }
 
 /** 实例进入流转后统一触发事件 + 调度延迟/子流程（createInstance 与草稿提交共用） */
-function emitInstanceStartEvents(
+/** 入队"发起"相关事件（传 executor 在事务内原子入队 outbox；不传则提交后 best-effort 入队） */
+async function emitInstanceStartEvents(
   instanceDto: ReturnType<typeof mapInstance>,
   instance: typeof workflowInstances.$inferSelect,
   createdTasks: typeof workflowTasks.$inferSelect[],
   actor: { userId: number; name: string },
-): void {
-  emitInstanceEvent('instance.created', instanceDto, actor);
+  executor?: DbExecutor,
+): Promise<void> {
+  await emitInstanceEvent('instance.created', instanceDto, actor, executor);
   for (const t of createdTasks) {
-    emitNodeEvent('node.entered', { instanceId: instance.id, definitionId: instance.definitionId, tenantId: instance.tenantId, actor, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
-    emitTaskEvent('task.created', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
-    if (t.assigneeId && t.status === 'pending') {
-      emitTaskEvent('task.assigned', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
-    }
-    if (t.status === 'approved') {
-      emitTaskEvent('task.approved', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
-    }
-    if (t.status === 'rejected') {
-      emitTaskEvent('task.rejected', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
-    }
+    const meta = { definitionId: instance.definitionId, tenantId: instance.tenantId, actor };
+    await emitNodeEvent('node.entered', { instanceId: instance.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType }, executor);
+    await emitTaskEvent('task.created', mapTask(t), meta, executor);
+    if (t.assigneeId && t.status === 'pending') await emitTaskEvent('task.assigned', mapTask(t), meta, executor);
+    if (t.status === 'approved') await emitTaskEvent('task.approved', mapTask(t), meta, executor);
+    if (t.status === 'rejected') await emitTaskEvent('task.rejected', mapTask(t), meta, executor);
+  }
+  if (instance.status === 'approved') await emitInstanceEvent('instance.approved', instanceDto, actor, executor);
+  if (instance.status === 'rejected') await emitInstanceEvent('instance.rejected', instanceDto, actor, executor);
+}
+
+/** 提交后为创建的任务装配异步作业（延时/超时/触发器派发/子流程发起，需已提交的任务行） */
+function armInstanceStartJobs(
+  instance: typeof workflowInstances.$inferSelect,
+  createdTasks: typeof workflowTasks.$inferSelect[],
+): void {
+  for (const t of createdTasks) {
     void armTaskAsyncJobs(t, instance).catch((err) => logger.error('[workflow-jobs] arm task jobs failed', { taskId: t.id, err }));
   }
-  if (instance.status === 'approved') emitInstanceEvent('instance.approved', instanceDto, actor);
-  if (instance.status === 'rejected') emitInstanceEvent('instance.rejected', instanceDto, actor);
 }
 
 async function findInstanceByBusinessKey(
@@ -4304,7 +4318,8 @@ export async function submitDraftInstance(id: number) {
     return { instance: updatedInstance, createdTasks: materialized.createdTasks };
   });
   const instanceDto = mapInstance(instance);
-  emitInstanceStartEvents(instanceDto, instance, createdTasks, { userId: user.userId, name: user.username });
+  await emitInstanceStartEvents(instanceDto, instance, createdTasks, { userId: user.userId, name: user.username });
+  armInstanceStartJobs(instance, createdTasks);
   return instanceDto;
 }
 
@@ -4437,7 +4452,8 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   });
   const actor = { userId: user.userId, name: user.username };
   const instanceDto = mapInstance(instance);
-  emitInstanceStartEvents(instanceDto, instance, createdTasks, actor);
+  await emitInstanceStartEvents(instanceDto, instance, createdTasks, actor);
+  armInstanceStartJobs(instance, createdTasks);
   return instanceDto;
 }
 
@@ -4540,4 +4556,91 @@ export async function recallTask(taskId: number, comment?: string) {
   emitTaskEvent('task.created', mapTask(reopened), meta);
   if (reopened.assigneeId) emitTaskEvent('task.assigned', mapTask(reopened), meta);
   return getInstanceDetail(task.instanceId);
+}
+
+// ─── Token 运营恢复操作（admin，需 workflow:instance:monitor + 审计）─────────────
+
+/** 加载指定 Token 及其所属实例（含租户校验），供运营恢复操作复用 */
+async function loadTokenForOps(tokenId: number) {
+  const user = currentUser();
+  const [tok] = await db.select().from(workflowTokens).where(eq(workflowTokens.id, tokenId)).limit(1);
+  if (!tok) throw new HTTPException(404, { message: '执行 Token 不存在' });
+  const tc = tenantCondition(workflowInstances, user);
+  const conds = [eq(workflowInstances.id, tok.instanceId)];
+  if (tc) conds.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '实例不存在或无权操作' });
+  return { user, tok, inst };
+}
+
+/**
+ * 跳过卡死的执行 Token：消费该 Token、跳过其节点未结束任务，并从该节点推进流程。
+ * 用于等待节点（trigger / subProcess / external）派发失败卡死等场景的外科式修复。
+ */
+export async function skipStuckToken(tokenId: number, reason?: string) {
+  const { user, tok, inst } = await loadTokenForOps(tokenId);
+  if (tok.status !== 'active') throw new HTTPException(400, { message: '仅活动 Token 可跳过' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '仅运行中实例可操作' });
+  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
+  const nodeCfg = flowData.nodes.find((n) => n.data.key === tok.nodeKey)?.data;
+  const nodeName = nodeCfg?.label ?? tok.nodeKey;
+  const note = `[运营·跳过卡死 Token #${tokenId}]${reason ? ' ' + reason : ''}`;
+
+  const result = await db.transaction(async (tx) => {
+    const [locked] = await tx.select({ status: workflowInstances.status }).from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
+    if (!locked || locked.status !== 'running') throw new HTTPException(409, { message: '实例状态已变化，请刷新后重试' });
+    await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
+      .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, tok.nodeKey), inArray(workflowTasks.status, ['pending', 'waiting'])));
+    const formData = (inst.formData ?? {}) as Record<string, unknown>;
+    const starter = await buildStarterContext(inst.initiatorId, tx);
+    const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: tok.nodeKey }, {
+      instanceId: inst.id, initiatorId: inst.initiatorId, executor: tx, flowData, formData, settings: flowData.settings, starter, tenantId: inst.tenantId,
+    });
+    let status: 'running' | 'approved' | 'rejected' = 'running';
+    if (materialized.rejected) {
+      status = 'rejected';
+      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
+        .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
+    } else if (materialized.finished) {
+      status = 'approved';
+    }
+    const [row] = await tx.update(workflowInstances).set({
+      status, currentNodeKey: status === 'running' ? (materialized.currentNodeKeys[0] ?? null) : null,
+    }).where(eq(workflowInstances.id, inst.id)).returning();
+    return { row, newTasks: materialized.createdTasks, status };
+  });
+
+  const actor = { userId: user.userId, name: user.username };
+  const meta = { definitionId: result.row.definitionId, tenantId: result.row.tenantId, actor };
+  emitNodeEvent('node.left', { instanceId: result.row.id, ...meta, nodeKey: tok.nodeKey, nodeName, nodeType: nodeCfg?.type ?? null });
+  for (const t of result.newTasks) {
+    emitNodeEvent('node.entered', { instanceId: result.row.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
+    emitTaskEvent('task.created', mapTask(t), meta);
+    if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
+    void armTaskAsyncJobs(t, result.row).catch((err) => logger.error('[workflow-jobs] arm task jobs failed', { taskId: t.id, err }));
+  }
+  if (result.status === 'approved') emitInstanceEvent('instance.approved', mapInstance(result.row), actor);
+  if (result.status === 'rejected') emitInstanceEvent('instance.rejected', mapInstance(result.row), actor);
+  return getInstanceDetail(inst.id);
+}
+
+/**
+ * 从指定 Token 的节点重放流程：清场全部活动 Token + 在该节点重建执行路径
+ * （等价强制跳转到该 Token 所在节点，支持从历史/已消费 Token 处重跑；目标须为审批/办理节点）。
+ */
+export async function replayFromToken(tokenId: number, reason?: string) {
+  const { tok, inst } = await loadTokenForOps(tokenId);
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '仅运行中实例可重放' });
+  return jumpInstance(inst.id, tok.nodeKey, `[运营·从 Token #${tokenId} 重放]${reason ? ' ' + reason : ''}`);
+}
+
+/** 导出实例诊断包（诊断 + 轨迹 + 执行 Token），供离线分析 / 工单留档 */
+export async function exportInstanceDiagnosticBundle(instanceId: number) {
+  const [diagnostics, trace, tokens] = await Promise.all([
+    getInstanceRuntimeDiagnostics(instanceId),
+    getInstanceTrace(instanceId),
+    getInstanceExecutionTokens(instanceId),
+  ]);
+  return { instanceId, generatedAt: formatDateTime(new Date()), diagnostics, trace, tokens };
 }

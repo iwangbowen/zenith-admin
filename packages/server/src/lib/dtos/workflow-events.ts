@@ -4,6 +4,7 @@
 import { z } from '@hono/zod-openapi';
 import { auditFields } from './_audit';
 import { WorkflowInstanceDTO, WorkflowTaskDTO } from './workflow';
+import { WorkflowInstanceTraceDTO } from './workflow-trace';
 
 export const WorkflowEventSubscriptionDTO = z
   .object({
@@ -156,6 +157,17 @@ export const WorkflowRuntimeDiagnosticsDTO = z
     generatedAt: z.string(),
   })
   .openapi('WorkflowRuntimeDiagnostics');
+
+/** 实例诊断包：诊断 + 轨迹 + 执行 Token，供运营离线分析 / 工单留档 */
+export const WorkflowDiagnosticBundleDTO = z
+  .object({
+    instanceId: z.number().int(),
+    generatedAt: z.string(),
+    diagnostics: WorkflowRuntimeDiagnosticsDTO,
+    trace: WorkflowInstanceTraceDTO,
+    tokens: WorkflowExecutionTokenViewDTO,
+  })
+  .openapi('WorkflowDiagnosticBundle');
 
 export const WorkflowHealthIssueDTO = z
   .object({

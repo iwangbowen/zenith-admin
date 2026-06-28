@@ -148,4 +148,43 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
     expect(result.timeline.some((t) => t.nodeKey === 'a-finance')).toBe(true);
     expect(result.timeline.some((t) => t.nodeKey === 'a-legal')).toBe(true);
   });
+
+  it('skipStuckToken consumes a frontier token and advances past its node', async () => {
+    const inst = await startParallel('skip');
+    const toks = await activeTokens(inst.id);
+    const finTok = toks.find((t) => t.nodeKey === 'a-finance')!;
+    await runWithCurrentUser(asUser(), () => svc.skipStuckToken(finTok.id, 'IT skip'));
+    const [after] = await db.select({ status: schema.workflowInstances.status }).from(schema.workflowInstances).where(eq(schema.workflowInstances.id, inst.id)).limit(1);
+    expect(after.status).toBe('running'); // 财务分支跳过 → join parked，法务分支仍待办
+    const mid = await activeTokens(inst.id);
+    expect(mid.some((t) => t.nodeKey === 'join1')).toBe(true);
+    // 处理剩余法务分支 → 汇聚达成 → 结束
+    const [instRow] = await db.select().from(schema.workflowInstances).where(eq(schema.workflowInstances.id, inst.id)).limit(1);
+    const legal = (await pendingTasks(inst.id)).find((t) => t.nodeKey === 'a-legal')!;
+    await svc.approveTaskCore(legal, instRow, 'IT', { userId: approverId, name: 'it' });
+    const [done] = await db.select({ status: schema.workflowInstances.status }).from(schema.workflowInstances).where(eq(schema.workflowInstances.id, inst.id)).limit(1);
+    expect(done.status).toBe('approved');
+  });
+
+  it('replayFromToken resets the flow to the token node (single frontier)', async () => {
+    const inst = await startParallel('replay');
+    const toks = await activeTokens(inst.id);
+    const finTok = toks.find((t) => t.nodeKey === 'a-finance')!;
+    await runWithCurrentUser(asUser(), () => svc.replayFromToken(finTok.id, 'IT replay'));
+    const live = await activeTokens(inst.id);
+    // 重放清场全部旧 token，仅在目标节点重建单一 frontier
+    expect(live).toHaveLength(1);
+    expect(live[0].nodeKey).toBe('a-finance');
+    const pend = await pendingTasks(inst.id);
+    expect(pend.some((t) => t.nodeKey === 'a-finance')).toBe(true);
+  });
+
+  it('exportInstanceDiagnosticBundle returns diagnostics + trace + tokens', async () => {
+    const inst = await startParallel('bundle');
+    const bundle = await runWithCurrentUser(asUser(), () => svc.exportInstanceDiagnosticBundle(inst.id));
+    expect(bundle.instanceId).toBe(inst.id);
+    expect(bundle.diagnostics.tokens.length).toBeGreaterThan(0);
+    expect(bundle.tokens.activeCount).toBeGreaterThan(0);
+    expect(Array.isArray(bundle.trace.trace)).toBe(true);
+  });
 });

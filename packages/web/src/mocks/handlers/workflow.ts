@@ -1664,6 +1664,23 @@ export const workflowHandlers = [
     return ok(mockTokenView(Number(params.id)));
   }),
 
+  // Token 运营恢复（demo）：跳过卡死 Token / 从节点重放 / 导出诊断包
+  http.post('/api/workflows/instances/tokens/:id/skip', ({ params }) => {
+    const task = mockWorkflowTasks.find((t) => 900000 + t.id === Number(params.id));
+    if (task && (task.status === 'pending' || task.status === 'waiting')) task.status = 'skipped';
+    const inst = task ? mockWorkflowInstances.find((i) => i.id === task.instanceId) : undefined;
+    return ok(inst ? withDefinitionSnapshot(withActiveNodes(inst)) : null);
+  }),
+  http.post('/api/workflows/instances/tokens/:id/replay', ({ params }) => {
+    const task = mockWorkflowTasks.find((t) => 900000 + t.id === Number(params.id));
+    const inst = task ? mockWorkflowInstances.find((i) => i.id === task.instanceId) : undefined;
+    return ok(inst ? withDefinitionSnapshot(withActiveNodes(inst)) : null);
+  }),
+  http.get('/api/workflows/instances/:id/diagnostic-bundle', ({ params }) => {
+    const id = Number(params.id);
+    return ok({ instanceId: id, generatedAt: mockDateTime(), tokens: mockTokenView(id) });
+  }),
+
   // 实例运行轨迹 + 引擎解释
   http.get('/api/workflows/instances/:id/trace', ({ params }) => {
     const id = Number(params.id);
