@@ -590,8 +590,8 @@ async function seedRest() {
 
   // ── 流程连接器（数据来源：@zenith/shared SEED_WORKFLOW_CONNECTORS）──────────────
   await db.insert(workflowConnectors).values(
-    SEED_WORKFLOW_CONNECTORS.map(({ id, name, code, description, type, config, timeoutMs, retryMax, circuitBreakerEnabled, failureThreshold, cooldownSec, status }) =>
-      ({ id, name, code, description, type, config, credentialsEncrypted: null, timeoutMs, retryMax, circuitBreakerEnabled, failureThreshold, cooldownSec, status, tenantId: null })),
+    SEED_WORKFLOW_CONNECTORS.map(({ id, name, code, description, type, config, timeoutMs, retryMax, circuitBreakerEnabled, failureThreshold, cooldownSec, rateLimitEnabled, rateLimitWindowSec, rateLimitMax, status }) =>
+      ({ id, name, code, description, type, config, credentialsEncrypted: null, timeoutMs, retryMax, circuitBreakerEnabled, failureThreshold, cooldownSec, rateLimitEnabled, rateLimitWindowSec, rateLimitMax, status, tenantId: null })),
   ).onConflictDoNothing({ target: workflowConnectors.id });
   await db.execute(sql`SELECT setval('workflow_connectors_id_seq', GREATEST((SELECT MAX(id) FROM workflow_connectors), 1))`);
   logger.info('  ✔ Workflow connectors seeded (onConflictDoNothing)');

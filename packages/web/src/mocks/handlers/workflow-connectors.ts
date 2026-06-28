@@ -7,6 +7,7 @@ interface ConnectorBody {
   name?: string; code?: string; description?: string | null; type?: WorkflowConnector['type'];
   config?: Record<string, unknown>; credentials?: Record<string, string>; clearCredentials?: boolean;
   timeoutMs?: number; retryMax?: number; circuitBreakerEnabled?: boolean; failureThreshold?: number; cooldownSec?: number;
+  rateLimitEnabled?: boolean; rateLimitWindowSec?: number; rateLimitMax?: number;
   status?: 'enabled' | 'disabled';
 }
 
@@ -81,6 +82,7 @@ export const workflowConnectorsHandlers = [
       id: getNextConnectorId(), name: body.name ?? '', code: body.code ?? '', description: body.description ?? null,
       type: body.type ?? 'http', config: body.config ?? {}, timeoutMs: body.timeoutMs ?? 10000, retryMax: body.retryMax ?? 0,
       circuitBreakerEnabled: body.circuitBreakerEnabled ?? true, failureThreshold: body.failureThreshold ?? 5, cooldownSec: body.cooldownSec ?? 60,
+      rateLimitEnabled: body.rateLimitEnabled ?? false, rateLimitWindowSec: body.rateLimitWindowSec ?? 1, rateLimitMax: body.rateLimitMax ?? 0,
       status: body.status ?? 'enabled', hasCredentials: hasCred(body.credentials), breakerState: 'closed', tenantId: null, createdBy: null, updatedBy: null,
       createdAt: now, updatedAt: now,
     };
@@ -107,6 +109,9 @@ export const workflowConnectorsHandlers = [
       ...(body.circuitBreakerEnabled !== undefined ? { circuitBreakerEnabled: body.circuitBreakerEnabled } : {}),
       ...(body.failureThreshold !== undefined ? { failureThreshold: body.failureThreshold } : {}),
       ...(body.cooldownSec !== undefined ? { cooldownSec: body.cooldownSec } : {}),
+      ...(body.rateLimitEnabled !== undefined ? { rateLimitEnabled: body.rateLimitEnabled } : {}),
+      ...(body.rateLimitWindowSec !== undefined ? { rateLimitWindowSec: body.rateLimitWindowSec } : {}),
+      ...(body.rateLimitMax !== undefined ? { rateLimitMax: body.rateLimitMax } : {}),
       ...(body.status !== undefined ? { status: body.status } : {}),
       hasCredentials: body.clearCredentials ? false : (hasCred(body.credentials) || cur.hasCredentials),
       updatedAt: mockDateTime(),

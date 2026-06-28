@@ -18,6 +18,7 @@ import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { encryptField, decryptField } from '../lib/encryption';
 import { httpRequest } from '../lib/http-client';
 import { breakerAllow, breakerSuccess, breakerFailure, breakerState, breakerReset } from '../lib/workflow-connector-breaker';
+import { rateLimitAcquire, rateLimitReset } from '../lib/workflow-connector-rate-limit';
 import type {
   WorkflowConnector, WorkflowConnectorType, WorkflowConnectorHttpConfig, WorkflowConnectorCredentials,
   WorkflowConnectorInvokeResult, CreateWorkflowConnectorInput, UpdateWorkflowConnectorInput, TestWorkflowConnectorInput,
@@ -51,6 +52,9 @@ async function mapConnector(row: WorkflowConnectorRow): Promise<WorkflowConnecto
     circuitBreakerEnabled: row.circuitBreakerEnabled,
     failureThreshold: row.failureThreshold,
     cooldownSec: row.cooldownSec,
+    rateLimitEnabled: row.rateLimitEnabled,
+    rateLimitWindowSec: row.rateLimitWindowSec,
+    rateLimitMax: row.rateLimitMax,
     status: row.status as 'enabled' | 'disabled',
     hasCredentials: !!row.credentialsEncrypted,
     breakerState: await breakerState(row.id, row.circuitBreakerEnabled),
@@ -115,6 +119,9 @@ export async function createWorkflowConnector(input: CreateWorkflowConnectorInpu
       circuitBreakerEnabled: input.circuitBreakerEnabled ?? true,
       failureThreshold: input.failureThreshold ?? 5,
       cooldownSec: input.cooldownSec ?? 60,
+      rateLimitEnabled: input.rateLimitEnabled ?? false,
+      rateLimitWindowSec: input.rateLimitWindowSec ?? 1,
+      rateLimitMax: input.rateLimitMax ?? 0,
       status: input.status ?? 'enabled',
       tenantId,
     }).returning();
@@ -138,6 +145,9 @@ export async function updateWorkflowConnector(id: number, input: UpdateWorkflowC
   if (input.circuitBreakerEnabled !== undefined) patch.circuitBreakerEnabled = input.circuitBreakerEnabled;
   if (input.failureThreshold !== undefined) patch.failureThreshold = input.failureThreshold;
   if (input.cooldownSec !== undefined) patch.cooldownSec = input.cooldownSec;
+  if (input.rateLimitEnabled !== undefined) patch.rateLimitEnabled = input.rateLimitEnabled;
+  if (input.rateLimitWindowSec !== undefined) patch.rateLimitWindowSec = input.rateLimitWindowSec;
+  if (input.rateLimitMax !== undefined) patch.rateLimitMax = input.rateLimitMax;
   if (input.status !== undefined) patch.status = input.status;
   // 凭据：clearCredentials=清空；传 credentials=覆盖；都不传=保留原凭据
   if (input.clearCredentials) patch.credentialsEncrypted = null;
@@ -155,6 +165,7 @@ export async function deleteWorkflowConnector(id: number): Promise<void> {
   const existing = await ensureConnector(id);
   await db.delete(workflowConnectors).where(eq(workflowConnectors.id, existing.id));
   await breakerReset(existing.id);
+  await rateLimitReset(existing.id);
 }
 
 // ─── 运行时调用 ───────────────────────────────────────────────────────────────
@@ -310,6 +321,11 @@ export async function invokeConnector(connector: WorkflowConnectorRow, opts: Con
   const gate = await breakerAllow(connector.id, cbCfg);
   if (!gate.allowed) {
     const r = fail('熔断已打开，快速失败'); await recordInvocation(connector, cfg.baseUrl, r, source); return r;
+  }
+  // 限流（与熔断并列）：超额快速失败，且不计入熔断失败（自我节流，非下游故障）
+  const rl = await rateLimitAcquire(connector.id, { enabled: connector.rateLimitEnabled, windowSec: connector.rateLimitWindowSec, max: connector.rateLimitMax });
+  if (!rl.allowed) {
+    const r = fail(`调用频率超限，请 ${rl.retryAfterSec}s 后重试`); await recordInvocation(connector, cfg.baseUrl, r, source); return r;
   }
   const isIm = connector.type === 'wecom' || connector.type === 'dingtalk' || connector.type === 'feishu';
   const req = isIm ? buildImRequest(connector, opts) : buildHttpRequest(connector, opts);

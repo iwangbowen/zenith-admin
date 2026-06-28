@@ -1852,6 +1852,12 @@ export const workflowConnectors = pgTable('workflow_connectors', {
   failureThreshold: integer('failure_threshold').notNull().default(5),
   /** 熔断：打开后冷却秒数（之后进入半开试探） */
   cooldownSec: integer('cooldown_sec').notNull().default(60),
+  /** 限流开关（与熔断并列：保护下游不被打挂） */
+  rateLimitEnabled: boolean('rate_limit_enabled').notNull().default(false),
+  /** 限流：滑动时间窗（秒） */
+  rateLimitWindowSec: integer('rate_limit_window_sec').notNull().default(1),
+  /** 限流：窗口内最大调用次数（<=0 不限制） */
+  rateLimitMax: integer('rate_limit_max').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),

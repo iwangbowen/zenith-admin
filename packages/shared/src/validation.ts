@@ -1007,6 +1007,9 @@ export const createWorkflowConnectorSchema = z.object({
   circuitBreakerEnabled: z.boolean().default(true),
   failureThreshold: z.number().int().min(1).max(100).default(5),
   cooldownSec: z.number().int().min(1).max(3600).default(60),
+  rateLimitEnabled: z.boolean().default(false),
+  rateLimitWindowSec: z.number().int().min(1).max(3600).default(1),
+  rateLimitMax: z.number().int().min(0).max(100000).default(0),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
 });
 

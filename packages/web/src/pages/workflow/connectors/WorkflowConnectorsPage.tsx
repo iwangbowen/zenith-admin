@@ -47,6 +47,7 @@ interface ConnectorFormValues {
   headersText?: string; queryText?: string;
   token?: string; username?: string; password?: string; apiKey?: string; clearCredentials?: boolean;
   timeoutMs: number; retryMax: number; circuitBreakerEnabled: boolean; failureThreshold: number; cooldownSec: number;
+  rateLimitEnabled: boolean; rateLimitWindowSec: number; rateLimitMax: number;
   status: 'enabled' | 'disabled';
 }
 
@@ -122,11 +123,14 @@ export default function WorkflowConnectorsPage() {
         queryText: editCfg.query && Object.keys(editCfg.query).length ? JSON.stringify(editCfg.query, null, 2) : '',
         clearCredentials: false,
         timeoutMs: editing.timeoutMs, retryMax: editing.retryMax, circuitBreakerEnabled: editing.circuitBreakerEnabled,
-        failureThreshold: editing.failureThreshold, cooldownSec: editing.cooldownSec, status: editing.status,
+        failureThreshold: editing.failureThreshold, cooldownSec: editing.cooldownSec,
+        rateLimitEnabled: editing.rateLimitEnabled, rateLimitWindowSec: editing.rateLimitWindowSec, rateLimitMax: editing.rateLimitMax,
+        status: editing.status,
       }
     : {
         name: '', code: '', description: '', type: 'http', baseUrl: '', method: 'GET', authType: 'none', apiKeyHeader: '',
-        headersText: '', queryText: '', timeoutMs: 10000, retryMax: 0, circuitBreakerEnabled: true, failureThreshold: 5, cooldownSec: 60, status: 'enabled',
+        headersText: '', queryText: '', timeoutMs: 10000, retryMax: 0, circuitBreakerEnabled: true, failureThreshold: 5, cooldownSec: 60,
+        rateLimitEnabled: false, rateLimitWindowSec: 1, rateLimitMax: 0, status: 'enabled',
       };
 
   async function handleModalOk() {
@@ -153,6 +157,7 @@ export default function WorkflowConnectorsPage() {
       name: values.name, code: values.code, description: values.description?.trim() || null, type: values.type,
       config, timeoutMs: values.timeoutMs, retryMax: values.retryMax,
       circuitBreakerEnabled: values.circuitBreakerEnabled, failureThreshold: values.failureThreshold, cooldownSec: values.cooldownSec,
+      rateLimitEnabled: values.rateLimitEnabled, rateLimitWindowSec: values.rateLimitWindowSec, rateLimitMax: values.rateLimitMax,
       status: values.status,
     };
     if (hasCred) payload.credentials = credEntries;
@@ -324,7 +329,7 @@ export default function WorkflowConnectorsPage() {
           </Row>
           {editing && <Form.Checkbox field="clearCredentials" noLabel>清空已配置凭据</Form.Checkbox>}
 
-          <Typography.Title heading={6} style={{ margin: '8px 0' }}>调用策略与熔断</Typography.Title>
+          <Typography.Title heading={6} style={{ margin: '8px 0' }}>调用策略 · 熔断 · 限流</Typography.Title>
           <Row gutter={16}>
             <Col span={12}><Form.InputNumber field="timeoutMs" label="超时(ms)" min={100} max={120000} step={500} style={{ width: '100%' }} /></Col>
             <Col span={12}><Form.InputNumber field="retryMax" label="重试次数" min={0} max={10} style={{ width: '100%' }} /></Col>
@@ -333,6 +338,11 @@ export default function WorkflowConnectorsPage() {
           <Row gutter={16}>
             <Col span={12}><Form.InputNumber field="failureThreshold" label="失败阈值" min={1} max={100} style={{ width: '100%' }} /></Col>
             <Col span={12}><Form.InputNumber field="cooldownSec" label="冷却(秒)" min={1} max={3600} style={{ width: '100%' }} /></Col>
+          </Row>
+          <Form.Switch field="rateLimitEnabled" label="启用限流" extraText="保护下游：滑动窗口内超过最大调用次数即快速失败（不计入熔断）" />
+          <Row gutter={16}>
+            <Col span={12}><Form.InputNumber field="rateLimitWindowSec" label="时间窗(秒)" min={1} max={3600} style={{ width: '100%' }} /></Col>
+            <Col span={12}><Form.InputNumber field="rateLimitMax" label="窗口内上限" min={0} max={100000} style={{ width: '100%' }} extraText="0=不限制" /></Col>
           </Row>
         </Form>
       </AppModal>

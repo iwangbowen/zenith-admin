@@ -1317,6 +1317,13 @@
       "when": 1782646853194,
       "tag": "0187_superb_silver_sable",
       "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1782649092844,
+      "tag": "0188_large_thunderball",
+      "breakpoints": true
     }
   ]
 }

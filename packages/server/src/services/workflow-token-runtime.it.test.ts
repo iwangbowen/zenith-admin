@@ -240,6 +240,33 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
     }
   });
 
+  it('connector rate limiter blocks beyond max within window, resets on demand', async () => {
+    const rl = await import('../lib/workflow-connector-rate-limit');
+    const redis = (await import('../lib/redis')).default;
+    let redisUp = true;
+    try { await redis.ping(); } catch { redisUp = false; }
+    const cid = 990002; // 合成连接器 id（仅作限流键）
+    const cfg = { enabled: true, windowSec: 10, max: 2 };
+    await rl.rateLimitReset(cid);
+    const a1 = await rl.rateLimitAcquire(cid, cfg);
+    const a2 = await rl.rateLimitAcquire(cid, cfg);
+    const a3 = await rl.rateLimitAcquire(cid, cfg);
+    if (redisUp) {
+      expect(a1.allowed).toBe(true);
+      expect(a2.allowed).toBe(true);
+      expect(a3.allowed).toBe(false);          // 超过 max=2 → 拒绝
+      expect(a3.retryAfterSec).toBeGreaterThan(0);
+      await rl.rateLimitReset(cid);
+      expect((await rl.rateLimitAcquire(cid, cfg)).allowed).toBe(true); // 重置后恢复
+      await rl.rateLimitReset(cid);
+    } else {
+      expect(a3.allowed).toBe(true); // Redis 不可用时 fail-open
+    }
+    // 关闭限流或 max<=0 时始终放行
+    expect((await rl.rateLimitAcquire(cid, { enabled: false, windowSec: 10, max: 2 })).allowed).toBe(true);
+    expect((await rl.rateLimitAcquire(cid, { enabled: true, windowSec: 10, max: 0 })).allowed).toBe(true);
+  });
+
   it('runtime connector loader + invoke (the path trigger nodes use)', async () => {
     const connectorsSvc = await import('./workflow-connectors.service');
     const created = await runWithCurrentUser(asUser(), () => connectorsSvc.createWorkflowConnector({

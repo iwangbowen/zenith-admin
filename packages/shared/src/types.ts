@@ -2461,6 +2461,12 @@ export interface WorkflowConnector {
   circuitBreakerEnabled: boolean;
   failureThreshold: number;
   cooldownSec: number;
+  /** 限流开关（与熔断并列） */
+  rateLimitEnabled: boolean;
+  /** 限流：滑动时间窗（秒） */
+  rateLimitWindowSec: number;
+  /** 限流：窗口内最大调用次数（<=0 不限制） */
+  rateLimitMax: number;
   status: 'enabled' | 'disabled';
   /** 是否已配置凭据（脱敏，不回传明文） */
   hasCredentials: boolean;
