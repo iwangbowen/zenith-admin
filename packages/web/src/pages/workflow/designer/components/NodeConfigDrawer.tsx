@@ -282,7 +282,7 @@ export default function NodeConfigDrawer({
                 <div key={idx}>
                   <Typography.Text size="small" strong>{iss.message}</Typography.Text>
                   {iss.suggestion && (
-                    <Typography.Text size="small" type="tertiary">　建议：{iss.suggestion}</Typography.Text>
+                    <Typography.Text size="small" type="tertiary" style={{ marginLeft: 6 }}>建议：{iss.suggestion}</Typography.Text>
                   )}
                 </div>
               ))}

@@ -916,7 +916,7 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
   markNode(ctx, startNodeKey, { status: 'done' });
 
   let result: WorkflowSimulationResult['result'] = 'waiting';
-  let advanceResults: AdvanceResult[] = [simAdvance(ctx, { kind: 'seed' })];
+  const advanceResults: AdvanceResult[] = [simAdvance(ctx, { kind: 'seed' })];
 
   for (let step = 0; step < maxSteps; step++) {
     if (advanceResults.length > 0) {
