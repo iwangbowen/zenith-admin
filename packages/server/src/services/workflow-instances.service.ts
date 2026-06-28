@@ -221,9 +221,9 @@ import { pageOffset } from '../lib/pagination';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, workflowTokens, inAppMessages, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
-import { getInitialTasks, validateFlowData, findReturnPrevTarget, type TaskAction } from '../lib/workflow-engine';
+import { validateFlowData, findReturnPrevTarget, type TaskAction } from '../lib/workflow-engine';
 import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../lib/workflow-token-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared';
 import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
@@ -656,6 +656,8 @@ async function createChildInstanceAndMaterialize(
       settings: flowData.settings,
       starter: childStarter,
       tenantId: parentInst.tenantId,
+      // 子流程血缘：子实例 token 标记来源父实例/父任务/循环项，便于多实例汇聚的可观测追踪
+      scopeKey: `sub:${parentInst.id}:${parentTask.id}${opts?.itemKey ? ':' + opts.itemKey : ''}`,
     });
     const [updated] = await tx.update(workflowInstances).set({
       status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
@@ -1656,6 +1658,12 @@ async function killInstanceTokens(exec: DbExecutor, instanceId: number): Promise
     .where(and(eq(workflowTokens.instanceId, instanceId), eq(workflowTokens.status, 'active')));
 }
 
+/** 发起前快速校验：流程是否存在可执行入口（token 引擎 seed dry-run，与实际物化同源） */
+function hasExecutableEntry(flowData: WorkflowFlowData, formData: Record<string, unknown>, starter?: WorkflowStarterContext): boolean {
+  const preview = advanceTokens({ flowData, formData, starter, liveTokens: [], trigger: { type: 'seed' } });
+  return preview.tasksToCreate.length > 0 || preview.finished || preview.rejected;
+}
+
 /** 推进的触发方式（service 语义层，内部翻译为引擎触发并管理 token 落库） */
 type MaterializeTrigger =
   /** 实例发起 / 重新发起：从 start 播种 */
@@ -1672,7 +1680,7 @@ type MaterializeTrigger =
  */
 async function advanceAndMaterialize(
   trigger: MaterializeTrigger,
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: number[]; starter?: WorkflowStarterContext; tenantId?: number | null },
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: number[]; starter?: WorkflowStarterContext; tenantId?: number | null; scopeKey?: string | null },
 ): Promise<{ createdTasks: typeof workflowTasks.$inferSelect[]; finished: boolean; rejected: boolean; currentNodeKeys: string[] }> {
   const exec = ctx.executor;
   const createdTasks: typeof workflowTasks.$inferSelect[] = [];
@@ -1743,6 +1751,7 @@ async function advanceAndMaterialize(
           status: 'active',
           branchPath: spec.branchPath,
           parentTokenId: spec.parentTokenId,
+          scopeKey: ctx.scopeKey ?? null,
           tenantId: ctx.tenantId ?? null,
         });
       }
@@ -2391,6 +2400,7 @@ function buildRuntimeIssues(input: {
   triggerExecutions: ReturnType<typeof mapRuntimeTriggerExecution>[];
   outboxEvents: WorkflowRuntimeOutboxEvent[];
   jobs: typeof workflowJobs.$inferSelect[];
+  tokens: WorkflowExecutionToken[];
 }): WorkflowRuntimeIssue[] {
   const issues: WorkflowRuntimeIssue[] = [];
   const activeTasks = input.tasks.filter((task) => task.status === 'pending' || task.status === 'waiting');
@@ -2457,15 +2467,102 @@ function buildRuntimeIssues(input: {
       });
     }
   }
+  // Token 一致性诊断（显式执行 Token 模型）
+  const activeTokens = input.tokens.filter((t) => t.status === 'active');
+  if (input.inst.status === 'running' && activeTokens.length === 0) {
+    issues.push({
+      severity: 'critical',
+      source: 'token',
+      title: '运行中实例无活动执行 Token',
+      description: 'running 实例没有任何 active token，执行路径可能中断（旧实例未接入 token 模型或推进异常）。',
+    });
+  }
+  const tokenFrontierTaskKeys = new Set(activeTasks.map((t) => t.nodeKey));
+  for (const tk of activeTokens) {
+    if (tk.parkedAtJoin) continue; // parked join token 无对应任务，属正常等待
+    if (!tokenFrontierTaskKeys.has(tk.nodeKey)) {
+      issues.push({
+        severity: 'warning',
+        source: 'token',
+        nodeKey: tk.nodeKey,
+        title: 'Token 与任务不一致',
+        description: `节点「${tk.nodeName ?? tk.nodeKey}」存在 active token 但无 pending/waiting 任务，可能状态漂移。`,
+      });
+    }
+  }
   if (issues.length === 0) {
     issues.push({
       severity: 'info',
       source: 'instance',
       title: '未发现明显运行时异常',
-      description: '任务状态、触发器执行和事件派发未命中内置诊断规则。',
+      description: '任务状态、触发器执行、事件派发与执行 Token 未命中内置诊断规则。',
     });
   }
   return issues;
+}
+
+/** 流程定义快照 → 节点元信息（名称/类型）映射 */
+function buildNodeMetaFromSnapshot(snapshot: unknown): Map<string, { name: string | null; type: string | undefined }> {
+  const map = new Map<string, { name: string | null; type: string | undefined }>();
+  const flowData = (snapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  if (flowData?.nodes) {
+    for (const n of flowData.nodes) map.set(n.data.key, { name: n.data.label ?? null, type: n.data.type });
+  }
+  return map;
+}
+
+function mapExecutionToken(
+  row: typeof workflowTokens.$inferSelect,
+  nodeMeta: Map<string, { name: string | null; type: string | undefined }>,
+): WorkflowExecutionToken {
+  const meta = nodeMeta.get(row.nodeKey);
+  const branchPath = (row.branchPath ?? []) as Array<{ id: string; index: number; total: number }>;
+  const isJoinNode = meta?.type === 'parallelGateway' || meta?.type === 'inclusiveGateway';
+  return {
+    id: row.id,
+    nodeKey: row.nodeKey,
+    nodeName: meta?.name ?? null,
+    status: row.status,
+    parkedAtJoin: row.status === 'active' && isJoinNode,
+    branchPath,
+    depth: branchPath.length,
+    parentTokenId: row.parentTokenId,
+    scopeKey: row.scopeKey ?? null,
+    createdAt: formatDateTime(row.createdAt),
+    consumedAt: formatNullableDateTime(row.consumedAt),
+  };
+}
+
+function buildTokenView(instanceId: number, tokens: WorkflowExecutionToken[]): WorkflowExecutionTokenView {
+  return {
+    instanceId,
+    activeCount: tokens.filter((t) => t.status === 'active' && !t.parkedAtJoin).length,
+    parkedCount: tokens.filter((t) => t.parkedAtJoin).length,
+    consumedCount: tokens.filter((t) => t.status === 'consumed').length,
+    deadCount: tokens.filter((t) => t.status === 'dead').length,
+    tokens,
+    generatedAt: formatDateTime(new Date()),
+  };
+}
+
+/** 实例的显式执行 Token 列表（活动路径 + 血缘，用于运行态可观测/重放） */
+export async function getInstanceExecutionTokens(id: number): Promise<WorkflowExecutionTokenView> {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [eq(workflowInstances.id, id)];
+  if (tc) conditions.push(tc);
+  const scopeCond = await getDataScopeCondition({
+    currentUserId: user.userId,
+    deptColumn: users.departmentId,
+    ownerColumn: workflowInstances.initiatorId,
+  });
+  if (scopeCond) conditions.push(scopeCond);
+  const [inst] = await db.select({ id: workflowInstances.id, definitionSnapshot: workflowInstances.definitionSnapshot })
+    .from(workflowInstances).where(and(...conditions)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程实例不存在或无权查看' });
+  const nodeMeta = buildNodeMetaFromSnapshot(inst.definitionSnapshot);
+  const rows = await db.select().from(workflowTokens).where(eq(workflowTokens.instanceId, id)).orderBy(workflowTokens.id);
+  return buildTokenView(id, rows.map((r) => mapExecutionToken(r, nodeMeta)));
 }
 
 export async function getInstanceRuntimeDiagnostics(id: number): Promise<WorkflowRuntimeDiagnostics> {
@@ -2504,7 +2601,7 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
       cfg?.operations?.includes('signature') ?? false,
     );
   });
-  const [triggerExecRows, eventJobRows, instanceJobs] = await Promise.all([
+  const [triggerExecRows, eventJobRows, instanceJobs, tokenRows] = await Promise.all([
     db.select({ exec: workflowJobExecutions, job: workflowJobs })
       .from(workflowJobExecutions)
       .innerJoin(workflowJobs, eq(workflowJobExecutions.jobId, workflowJobs.id))
@@ -2516,9 +2613,12 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
       .orderBy(desc(workflowJobs.id))
       .limit(80),
     db.select().from(workflowJobs).where(eq(workflowJobs.instanceId, id)).limit(200),
+    db.select().from(workflowTokens).where(eq(workflowTokens.instanceId, id)).orderBy(workflowTokens.id),
   ]);
   const triggerExecutions = triggerExecRows.map(mapRuntimeTriggerExecution);
   const outboxEvents = eventJobRows.map(mapRuntimeOutboxEvent);
+  const nodeMeta = buildNodeMetaFromSnapshot(row.definitionSnapshot);
+  const tokens = tokenRows.map((r) => mapExecutionToken(r, nodeMeta));
   const instance = mapInstance(row, {
     definitionName: row.definition?.name ?? null,
     categoryId: row.definition?.categoryId ?? null,
@@ -2535,7 +2635,8 @@ export async function getInstanceRuntimeDiagnostics(id: number): Promise<Workflo
     activeTasks,
     triggerExecutions,
     outboxEvents,
-    issues: buildRuntimeIssues({ inst: row, tasks, triggerExecutions, outboxEvents, jobs: instanceJobs }),
+    issues: buildRuntimeIssues({ inst: row, tasks, triggerExecutions, outboxEvents, jobs: instanceJobs, tokens }),
+    tokens,
     snapshot: {
       formData: (row.formData ?? null) as Record<string, unknown> | null,
       formSnapshot: row.formSnapshot ?? null,
@@ -2661,7 +2762,7 @@ export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrac
 
   const row = await db.query.workflowInstances.findFirst({
     where: and(...conditions),
-    columns: { id: true, title: true, status: true },
+    columns: { id: true, title: true, status: true, definitionSnapshot: true },
     with: {
       tasks: { with: { assignee: { columns: { nickname: true } } }, orderBy: workflowTasks.id },
     },
@@ -2753,6 +2854,35 @@ export async function getInstanceTrace(id: number): Promise<WorkflowInstanceTrac
         lastError: j.lastError, executions: execs,
       },
     });
+  }
+
+  // 显式执行 Token 生命周期（进入 / 消费·汇聚 / 终止）并入时间线
+  const traceNodeMeta = buildNodeMetaFromSnapshot(row.definitionSnapshot);
+  const tokenRows = await db.select().from(workflowTokens).where(eq(workflowTokens.instanceId, id)).orderBy(workflowTokens.id);
+  for (const tk of tokenRows) {
+    const nodeName = traceNodeMeta.get(tk.nodeKey)?.name ?? nodeNameByKey.get(tk.nodeKey) ?? tk.nodeKey;
+    const bp = (tk.branchPath ?? []) as Array<{ id: string; index: number; total: number }>;
+    const branchLabel = bp.length > 0 ? `分支 ${bp.map((f) => `${f.index + 1}/${f.total}`).join('·')}` : '主路径';
+    buf.push({
+      ts: tk.createdAt.getTime(),
+      entry: {
+        key: `token-new-${tk.id}`, kind: 'token', at: formatDateTime(tk.createdAt), traceId: null,
+        title: `执行 Token #${tk.id} 进入「${nodeName}」`,
+        status: tk.status, nodeName, assigneeName: null, comment: branchLabel,
+        jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+      },
+    });
+    if (tk.consumedAt && (tk.status === 'consumed' || tk.status === 'dead')) {
+      buf.push({
+        ts: tk.consumedAt.getTime(),
+        entry: {
+          key: `token-end-${tk.id}`, kind: 'token', at: formatDateTime(tk.consumedAt), traceId: null,
+          title: `执行 Token #${tk.id} ${tk.status === 'consumed' ? '消费（推进/汇聚）' : '终止'}：「${nodeName}」`,
+          status: tk.status, nodeName, assigneeName: null, comment: branchLabel,
+          jobId: null, jobType: null, attempts: null, maxAttempts: null, runAt: null, nextRetryAt: null, lastError: null, executions: [],
+        },
+      });
+    }
   }
 
   buf.sort((a, b) => (a.ts - b.ts) || a.entry.key.localeCompare(b.entry.key));
@@ -2856,8 +2986,7 @@ export async function createInstance(data: { definitionId: number; title: string
   }
 
   const starter = await buildStarterContext(user.userId);
-  const initialResult = getInitialTasks(flowData, formData, starter);
-  if (initialResult.tasksToCreate.length === 0 && !initialResult.finished && !initialResult.rejected) {
+  if (!hasExecutableEntry(flowData, formData, starter)) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }
   const serialConfig = flowData.settings?.serialNo;
@@ -4128,8 +4257,7 @@ export async function submitDraftInstance(id: number) {
   const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
   const starter = await buildStarterContext(user.userId);
-  const initialResult = getInitialTasks(flowData, formData, starter);
-  if (initialResult.tasksToCreate.length === 0 && !initialResult.finished && !initialResult.rejected) {
+  if (!hasExecutableEntry(flowData, formData, starter)) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }
   const serialConfig = flowData.settings?.serialNo;

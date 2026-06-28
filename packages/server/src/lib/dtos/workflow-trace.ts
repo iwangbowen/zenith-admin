@@ -41,7 +41,7 @@ const TraceExecutionDTO = z.object({
 
 const TraceEntryDTO = z.object({
   key: z.string(),
-  kind: z.enum(['task', 'job']),
+  kind: z.enum(['task', 'job', 'token']),
   at: z.string(),
   traceId: z.string().nullable(),
   title: z.string(),

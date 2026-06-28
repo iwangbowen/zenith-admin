@@ -25,7 +25,7 @@ import type {
   WorkflowTriggerExecutionStatus,
 } from '@zenith/shared';
 import { db } from '../db';
-import { workflowDefinitions, workflowInstances, workflowJobExecutions, workflowJobs, workflowTasks, users } from '../db/schema';
+import { workflowDefinitions, workflowInstances, workflowJobExecutions, workflowJobs, workflowTasks, workflowTokens, users } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
@@ -40,7 +40,7 @@ type ComponentKey = WorkflowEngineComponent['key'];
 const COMPONENT_LABELS: Record<ComponentKey, { name: string; description: string }> = {
   dagExecutor: {
     name: 'DAG 执行器',
-    description: 'advanceFlow / getInitialTasks 的流程图遍历、网关分支和节点推进规则。',
+    description: 'advanceTokens 显式执行 Token 引擎的流程图遍历、网关分支与 fork/join 推进规则。',
   },
   taskMaterializer: {
     name: '任务物化器',
@@ -856,6 +856,10 @@ export async function getWorkflowEngineIntrospection(
 
   const definitionsSnapshot = validateDefinitions(definitions);
   const activeInstanceIds = new Set(activeInstanceRows.map((row) => row.instanceId));
+  const runningInstanceIds = runningInstanceRows.map((row) => row.instanceId);
+  const activeTokenCount = runningInstanceIds.length > 0
+    ? await db.$count(workflowTokens, and(inArray(workflowTokens.instanceId, runningInstanceIds), eq(workflowTokens.status, 'active')))
+    : 0;
   const runningWithoutActiveTasks = runningInstanceRows
     .filter((row) => !activeInstanceIds.has(row.instanceId))
     .map((row) => ({
@@ -979,6 +983,7 @@ export async function getWorkflowEngineIntrospection(
       metric('运行实例', runningInstanceRows.length),
       metric('无活动任务实例', runningWithoutActiveTasks.length, runningWithoutActiveTasks.length > 0 ? 'critical' : 'healthy'),
       metric('活动任务', activeInstanceRows.length),
+      metric('活动 Token', activeTokenCount),
     ]),
     component('delayScheduler', worstStatus([queueStatus('delayWakeups'), workflowJobsDrainRegistered ? 'healthy' : 'warning']), [
       metric('等待唤醒', delayTasks.length),
@@ -1089,6 +1094,7 @@ export async function getWorkflowEngineIntrospection(
     scheduler,
     runtime: {
       runningInstances: runningInstanceRows.length,
+      activeTokens: activeTokenCount,
       runningWithoutActiveTasks,
       taskQueue: runtimeTasks.slice(0, 300),
       triggerExecutions,

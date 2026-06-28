@@ -101,11 +101,43 @@ export const WorkflowRuntimeIssueDTO = z
     severity: z.enum(['info', 'warning', 'critical']),
     title: z.string(),
     description: z.string(),
-    source: z.enum(['instance', 'task', 'trigger', 'outbox']),
+    source: z.enum(['instance', 'task', 'trigger', 'outbox', 'token']),
     taskId: z.number().int().nullable().optional(),
     nodeKey: z.string().nullable().optional(),
   })
   .openapi('WorkflowRuntimeIssue');
+
+export const WorkflowBranchFrameDTO = z
+  .object({ id: z.string(), index: z.number().int(), total: z.number().int() })
+  .openapi('WorkflowBranchFrame');
+
+export const WorkflowExecutionTokenDTO = z
+  .object({
+    id: z.number().int(),
+    nodeKey: z.string(),
+    nodeName: z.string().nullable(),
+    status: z.enum(['active', 'consumed', 'dead']),
+    parkedAtJoin: z.boolean(),
+    branchPath: z.array(WorkflowBranchFrameDTO),
+    depth: z.number().int(),
+    parentTokenId: z.number().int().nullable(),
+    scopeKey: z.string().nullable(),
+    createdAt: z.string(),
+    consumedAt: z.string().nullable(),
+  })
+  .openapi('WorkflowExecutionToken');
+
+export const WorkflowExecutionTokenViewDTO = z
+  .object({
+    instanceId: z.number().int(),
+    activeCount: z.number().int(),
+    parkedCount: z.number().int(),
+    consumedCount: z.number().int(),
+    deadCount: z.number().int(),
+    tokens: z.array(WorkflowExecutionTokenDTO),
+    generatedAt: z.string(),
+  })
+  .openapi('WorkflowExecutionTokenView');
 
 export const WorkflowRuntimeDiagnosticsDTO = z
   .object({
@@ -115,6 +147,7 @@ export const WorkflowRuntimeDiagnosticsDTO = z
     triggerExecutions: z.array(WorkflowTriggerExecutionDTO),
     outboxEvents: z.array(WorkflowRuntimeOutboxEventDTO),
     issues: z.array(WorkflowRuntimeIssueDTO),
+    tokens: z.array(WorkflowExecutionTokenDTO),
     snapshot: z.object({
       formData: z.unknown().nullable(),
       formSnapshot: z.unknown().nullable(),
@@ -349,6 +382,7 @@ const WorkflowEngineRuntimeIssueDTO = z.object({
 
 const WorkflowEngineRuntimeSnapshotDTO = z.object({
   runningInstances: z.number().int(),
+  activeTokens: z.number().int(),
   runningWithoutActiveTasks: z.array(z.object({
     instanceId: z.number().int(),
     title: z.string(),

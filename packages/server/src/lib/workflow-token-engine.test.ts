@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { advanceTokens, type TokenSnapshot, type AdvanceTokensResult, type BranchPath } from './workflow-token-engine';
+import { advanceTokens, type TokenSnapshot, type AdvanceTokensResult } from './workflow-token-engine';
 import type { WorkflowFlowData } from '@zenith/shared';
 
 // ─── 测试基建：模拟 service 落库（消费 + 分配 id） ──────────────────────────────

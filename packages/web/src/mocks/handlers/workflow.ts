@@ -925,6 +925,7 @@ function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): Workflo
     },
     runtime: {
       runningInstances: runningInstances.length,
+      activeTokens: runtimeTasks.filter((t) => t.status === 'pending' || t.status === 'waiting').length,
       runningWithoutActiveTasks,
       taskQueue: runtimeTasks,
       triggerExecutions,
@@ -988,6 +989,38 @@ function withActiveNodes<T extends WorkflowInstance>(inst: T): T {
     currentNodeKeys,
     currentNodeNames,
     currentNodeName: currentNodeNames[0] ?? resolveCurrentNodeName(inst),
+  };
+}
+
+/** Demo：从 pending/waiting 任务派生执行 Token（frontier 与运行态 1:1，stable id） */
+function mockExecutionTokens(instanceId: number): import('@zenith/shared').WorkflowExecutionToken[] {
+  const inst = mockWorkflowInstances.find((i) => i.id === instanceId);
+  const def = inst ? mockWorkflowDefinitions.find((d) => d.id === inst.definitionId) : undefined;
+  const nameOf = (key: string) => def?.flowData?.nodes.find((n) => n.data.key === key)?.data.label ?? null;
+  const tokens: import('@zenith/shared').WorkflowExecutionToken[] = [];
+  const seen = new Set<string>();
+  for (const t of mockWorkflowTasks.filter((task) => task.instanceId === instanceId && (task.status === 'pending' || task.status === 'waiting'))) {
+    if (seen.has(t.nodeKey)) continue;
+    seen.add(t.nodeKey);
+    tokens.push({
+      id: 900000 + t.id, nodeKey: t.nodeKey, nodeName: nameOf(t.nodeKey), status: 'active',
+      parkedAtJoin: false, branchPath: [], depth: 0, parentTokenId: null, scopeKey: null,
+      createdAt: t.createdAt ?? mockDateTime(), consumedAt: null,
+    });
+  }
+  return tokens;
+}
+
+function mockTokenView(instanceId: number): import('@zenith/shared').WorkflowExecutionTokenView {
+  const tokens = mockExecutionTokens(instanceId);
+  return {
+    instanceId,
+    activeCount: tokens.filter((t) => t.status === 'active' && !t.parkedAtJoin).length,
+    parkedCount: tokens.filter((t) => t.parkedAtJoin).length,
+    consumedCount: 0,
+    deadCount: 0,
+    tokens,
+    generatedAt: mockDateTime(),
   };
 }
 
@@ -1615,6 +1648,7 @@ export const workflowHandlers = [
       triggerExecutions,
       outboxEvents,
       issues,
+      tokens: mockExecutionTokens(inst.id),
       snapshot: {
         formData: inst.formData ?? null,
         formSnapshot: inst.formSnapshot ?? null,
@@ -1623,6 +1657,11 @@ export const workflowHandlers = [
       generatedAt: mockDateTime(),
     };
     return ok(diagnostics);
+  }),
+
+  // 实例显式执行 Token（执行树 / 活动路径）
+  http.get('/api/workflows/instances/:id/tokens', ({ params }) => {
+    return ok(mockTokenView(Number(params.id)));
   }),
 
   // 实例运行轨迹 + 引擎解释

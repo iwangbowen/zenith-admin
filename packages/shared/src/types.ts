@@ -3443,7 +3443,7 @@ export interface WorkflowEngineTraceExecution {
 /** 运行轨迹：合并任务流转 + 异步作业的时间线条目 */
 export interface WorkflowEngineTraceEntry {
   key: string;
-  kind: 'task' | 'job';
+  kind: 'task' | 'job' | 'token';
   /** 主时间戳（YYYY-MM-DD HH:mm:ss） */
   at: string;
   traceId: string | null;
@@ -3479,7 +3479,7 @@ export interface WorkflowRuntimeIssue {
   severity: WorkflowRuntimeIssueSeverity;
   title: string;
   description: string;
-  source: 'instance' | 'task' | 'trigger' | 'outbox';
+  source: 'instance' | 'task' | 'trigger' | 'outbox' | 'token';
   taskId?: number | null;
   nodeKey?: string | null;
 }
@@ -3497,6 +3497,41 @@ export interface WorkflowRuntimeOutboxEvent {
   createdAt: string;
 }
 
+/** 显式执行 Token（活动路径 / 网关汇聚的权威单元，用于运行态可观测/重放） */
+export interface WorkflowExecutionToken {
+  id: number;
+  nodeKey: string;
+  nodeName: string | null;
+  status: 'active' | 'consumed' | 'dead';
+  /** 是否 parked 在网关 join 节点（active 且停在并行/包容汇聚节点，等待兄弟分支） */
+  parkedAtJoin: boolean;
+  /** 分支栈：每帧 { id: fork 组 id, index: 组内序号, total: 组内分支数 }，空数组=主路径 */
+  branchPath: Array<{ id: string; index: number; total: number }>;
+  /** 分支深度（branchPath 长度） */
+  depth: number;
+  /** fork 处被消费的前驱 token（血缘） */
+  parentTokenId: number | null;
+  /** 子流程/多实例项作用域（如 sub:{父实例}:{父任务}:{循环项}），主流程为 null */
+  scopeKey: string | null;
+  createdAt: string;
+  consumedAt: string | null;
+}
+
+/** 实例执行 Token 视图（GET /instances/:id/tokens 与诊断复用） */
+export interface WorkflowExecutionTokenView {
+  instanceId: number;
+  /** 活动 frontier token 数（不含 parked join） */
+  activeCount: number;
+  /** parked 在 join 的 token 数 */
+  parkedCount: number;
+  /** 已消费 token 数 */
+  consumedCount: number;
+  /** 已终止 token 数 */
+  deadCount: number;
+  tokens: WorkflowExecutionToken[];
+  generatedAt: string;
+}
+
 export interface WorkflowRuntimeDiagnostics {
   instance: WorkflowInstance;
   tasks: WorkflowTask[];
@@ -3504,6 +3539,8 @@ export interface WorkflowRuntimeDiagnostics {
   triggerExecutions: WorkflowTriggerExecution[];
   outboxEvents: WorkflowRuntimeOutboxEvent[];
   issues: WorkflowRuntimeIssue[];
+  /** 显式执行 Token 列表（活动路径 + 血缘，按 id 升序） */
+  tokens: WorkflowExecutionToken[];
   snapshot: {
     formData: Record<string, unknown> | null;
     formSnapshot: unknown;
@@ -3688,6 +3725,8 @@ export interface WorkflowEngineRuntimeIssue {
 
 export interface WorkflowEngineRuntimeSnapshot {
   runningInstances: number;
+  /** 平台内运行实例的活动执行 Token 总数（in-flight 执行路径） */
+  activeTokens: number;
   runningWithoutActiveTasks: Array<{
     instanceId: number;
     title: string;

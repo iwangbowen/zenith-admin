@@ -6,7 +6,8 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { users, workflowDefinitions } from '../db/schema';
 import { currentUser } from '../lib/context';
-import { advanceFlow, evaluateCondition, evaluateConditionGroups, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
+import { evaluateCondition, evaluateConditionGroups, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
+import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../lib/workflow-token-engine';
 import { analyzeWorkflowHealth } from '../lib/workflow-health';
 import { tenantCondition } from '../lib/tenant';
 import { buildStarterContext, resolveAdminUserId, resolveAssigneeIds } from './workflow-assignee-resolver.service';
@@ -51,6 +52,9 @@ interface SimulationContext {
   nodeStates: Record<string, WorkflowSimulationNodeState>;
   completedKeys: Set<string>;
   pendingTasks: SimulatedTask[];
+  /** 内存执行 Token（与运行时同引擎，保证仿真 join/结束行为所见即所得） */
+  tokens: Array<{ id: number; nodeKey: string; branchPath: BranchPath }>;
+  tokenSeq: number;
   warnings: string[];
   visitedNodeKeys: Set<string>;
   decisionsByNode: Map<string, SimulationDecision[]>;
@@ -468,6 +472,43 @@ function attachNextNodeKeys(ctx: SimulationContext, result: AdvanceResult | null
   };
 }
 
+/** 仿真用 token 推进：维护内存 token 列表，复用运行时 token 引擎 → join/结束行为与真实运行态一致 */
+function simAdvance(ctx: SimulationContext, trigger: { kind: 'seed' } | { kind: 'advanceNode'; nodeKey: string }): AdvanceResult {
+  let engineTrigger: AdvanceTrigger;
+  if (trigger.kind === 'seed') {
+    engineTrigger = { type: 'seed' };
+  } else {
+    const tk = ctx.tokens.find((t) => t.nodeKey === trigger.nodeKey);
+    engineTrigger = tk
+      ? { type: 'advance', tokenId: tk.id, nodeKey: tk.nodeKey, branchPath: tk.branchPath }
+      : { type: 'continue', nodeKey: trigger.nodeKey, branchPath: [] };
+  }
+  const res = advanceTokens({
+    flowData: ctx.flowData,
+    formData: ctx.formData,
+    starter: ctx.starter,
+    liveTokens: ctx.tokens,
+    trigger: engineTrigger,
+    completedNodeKeys: ctx.completedKeys,
+  });
+  const consumed = new Set(res.ops.consume);
+  ctx.tokens = ctx.tokens.filter((t) => !consumed.has(t.id));
+  for (const spec of res.ops.create) {
+    ctx.tokens.push({ id: ctx.tokenSeq++, nodeKey: spec.nodeKey, branchPath: spec.branchPath });
+  }
+  return { tasksToCreate: res.tasksToCreate, currentNodeKeys: res.activeNodeKeys, finished: res.finished, rejected: res.rejected };
+}
+
+/**
+ * 节点完成后是否继续推进：token 存在 = 引擎在此停顿的 frontier（消费并推进）；
+ * 无 token = 引擎已就地走过（auto / 抄送 / 非阻塞触发器），不可重复推进。
+ */
+function continuePast(ctx: SimulationContext, task: SimulatedTask): AdvanceResult | null {
+  const hasToken = ctx.tokens.some((t) => t.nodeKey === task.nodeKey);
+  if (!hasToken) return null;
+  return simAdvance(ctx, { kind: 'advanceNode', nodeKey: task.nodeKey });
+}
+
 function appendFlowHealthIssue(
   issues: WorkflowSimulationHealthIssue[],
   issue: WorkflowSimulationHealthIssue,
@@ -605,7 +646,7 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
     });
     ctx.completedKeys.add(task.nodeKey);
     markNode(ctx, task.nodeKey, { status: 'done', message: task.reason });
-    return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
+    return continuePast(ctx, task);
   }
 
   if (decision?.action === 'reject') {
@@ -656,7 +697,7 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
     });
     ctx.completedKeys.add(task.nodeKey);
     markNode(ctx, task.nodeKey, { status: 'skipped', message: reason });
-    return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
+    return continuePast(ctx, task);
   }
 
   if (BLOCKING_NODE_TYPES.has(task.nodeType)) {
@@ -671,7 +712,7 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
     });
     ctx.completedKeys.add(task.nodeKey);
     markNode(ctx, task.nodeKey, { status: 'done', message: '仿真模拟继续' });
-    return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
+    return continuePast(ctx, task);
   }
 
   const manualApprove = decision?.action === 'approve';
@@ -687,7 +728,7 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
   });
   ctx.completedKeys.add(task.nodeKey);
   markNode(ctx, task.nodeKey, { status: 'done' });
-  return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
+  return continuePast(ctx, task);
 }
 
 /**
@@ -785,6 +826,8 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
     nodeStates: {},
     completedKeys: new Set(['start', startNodeKey]),
     pendingTasks: [],
+    tokens: [],
+    tokenSeq: 1,
     warnings,
     visitedNodeKeys: new Set(['start', startNodeKey]),
     decisionsByNode: buildDecisionMap(input.decisions),
@@ -802,7 +845,7 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
   markNode(ctx, startNodeKey, { status: 'done' });
 
   let result: WorkflowSimulationResult['result'] = 'waiting';
-  let advanceResults: AdvanceResult[] = [getInitialTasks(flowData, formData, starter)];
+  let advanceResults: AdvanceResult[] = [simAdvance(ctx, { kind: 'seed' })];
 
   for (let step = 0; step < maxSteps; step++) {
     if (advanceResults.length > 0) {

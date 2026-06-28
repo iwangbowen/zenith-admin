@@ -72,6 +72,7 @@ const ISSUE_SOURCE_MAP: Record<WorkflowRuntimeIssue['source'], string> = {
   task: '任务',
   trigger: '触发器',
   outbox: '事件派发',
+  token: '执行令牌',
 };
 
 /** 节点类型 → 中文标签（含网关 / 抄送 / 触发器等结构节点） */
