@@ -217,6 +217,29 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
     }
   });
 
+  it('connector circuit breaker opens after threshold failures, resets on demand', async () => {
+    const breaker = await import('../lib/workflow-connector-breaker');
+    const redis = (await import('../lib/redis')).default;
+    let redisUp = true;
+    try { await redis.ping(); } catch { redisUp = false; }
+    const cid = 990001; // 合成连接器 id（仅作熔断键）
+    const cfg = { enabled: true, failureThreshold: 3, cooldownSec: 30 };
+    await breaker.breakerReset(cid);
+    expect((await breaker.breakerAllow(cid, cfg)).allowed).toBe(true);
+    await breaker.breakerFailure(cid, cfg);
+    await breaker.breakerFailure(cid, cfg);
+    await breaker.breakerFailure(cid, cfg);
+    const after = await breaker.breakerAllow(cid, cfg);
+    if (redisUp) {
+      expect(after.allowed).toBe(false);
+      expect(after.state).toBe('open');
+      await breaker.breakerReset(cid);
+      expect((await breaker.breakerAllow(cid, cfg)).allowed).toBe(true);
+    } else {
+      expect(after.allowed).toBe(true); // Redis 不可用时 fail-open，不阻断业务
+    }
+  });
+
   it('exposes the execution-token view (active/parked counts)', async () => {
     const inst = await startParallel('token-view');
     const [instRow] = await db.select().from(schema.workflowInstances).where(eq(schema.workflowInstances.id, inst.id)).limit(1);

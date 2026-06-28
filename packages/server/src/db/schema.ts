@@ -1829,6 +1829,39 @@ export const workflowDataSources = pgTable('workflow_data_sources', {
 export type WorkflowDataSourceRow = typeof workflowDataSources.$inferSelect;
 export type NewWorkflowDataSource = typeof workflowDataSources.$inferInsert;
 
+// 流程连接器：统一外部集成（HTTP / Webhook / IM / 邮件 / 短信 / MQ / DB）注册中心
+export const workflowConnectorTypeEnum = pgEnum('workflow_connector_type', ['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database']);
+
+export const workflowConnectors = pgTable('workflow_connectors', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  code: varchar('code', { length: 64 }).notNull(),
+  description: text('description'),
+  type: workflowConnectorTypeEnum('type').notNull().default('http'),
+  /** 调用配置（按 type 解释）：http → { baseUrl, method, headers, query, authType, contentType } */
+  config: jsonb('config').notNull().default(sql`'{}'::jsonb`),
+  /** 凭据（整体 JSON 经 AES-256-GCM 加密后的密文；明文绝不落库/回传） */
+  credentialsEncrypted: text('credentials_encrypted'),
+  /** 单次调用超时（毫秒） */
+  timeoutMs: integer('timeout_ms').notNull().default(10000),
+  /** 失败重试次数（5xx/网络错误，指数退避） */
+  retryMax: integer('retry_max').notNull().default(0),
+  /** 熔断开关 */
+  circuitBreakerEnabled: boolean('circuit_breaker_enabled').notNull().default(true),
+  /** 熔断：连续失败阈值（达到则打开熔断，快速失败） */
+  failureThreshold: integer('failure_threshold').notNull().default(5),
+  /** 熔断：打开后冷却秒数（之后进入半开试探） */
+  cooldownSec: integer('cooldown_sec').notNull().default(60),
+  status: statusEnum('status').notNull().default('enabled'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('workflow_connectors_code_uniq').on(t.tenantId, t.code)]);
+
+export type WorkflowConnectorRow = typeof workflowConnectors.$inferSelect;
+export type NewWorkflowConnector = typeof workflowConnectors.$inferInsert;
+
 
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {

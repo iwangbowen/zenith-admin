@@ -25,6 +25,7 @@ export * from './sessions';
 export * from './workflow';
 export * from './workflow-events';
 export * from './workflow-jobs';
+export * from './workflow-connectors';
 export * from './workflow-trace';
 export * from './workflow-health';
 export * from './biz-leave';

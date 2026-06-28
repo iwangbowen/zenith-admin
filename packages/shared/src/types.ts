@@ -2420,6 +2420,66 @@ export interface WorkflowDataSourceOption {
   label: string;
 }
 
+// ── 流程连接器 ──
+export type WorkflowConnectorType = 'http' | 'webhook' | 'email' | 'sms' | 'wecom' | 'dingtalk' | 'feishu' | 'mq' | 'database';
+
+export type WorkflowConnectorBreakerState = 'closed' | 'open' | 'halfOpen';
+
+/** HTTP 连接器调用配置（存于 connector.config） */
+export interface WorkflowConnectorHttpConfig {
+  baseUrl: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  headers?: Record<string, string>;
+  query?: Record<string, string>;
+  contentType?: 'json' | 'form';
+  authType?: 'none' | 'bearer' | 'basic' | 'apiKey';
+  /** apiKey 模式：放入请求头的键名（默认 X-API-Key） */
+  apiKeyHeader?: string;
+}
+
+/** 连接器凭据明文（落库前整体 AES 加密，绝不回传） */
+export interface WorkflowConnectorCredentials {
+  token?: string;
+  username?: string;
+  password?: string;
+  apiKey?: string;
+}
+
+export interface WorkflowConnector {
+  id: number;
+  name: string;
+  code: string;
+  description: string | null;
+  type: WorkflowConnectorType;
+  config: Record<string, unknown>;
+  timeoutMs: number;
+  retryMax: number;
+  circuitBreakerEnabled: boolean;
+  failureThreshold: number;
+  cooldownSec: number;
+  status: 'enabled' | 'disabled';
+  /** 是否已配置凭据（脱敏，不回传明文） */
+  hasCredentials: boolean;
+  /** 熔断实时状态（来自 Redis） */
+  breakerState: WorkflowConnectorBreakerState;
+  tenantId: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 连接器调用 / 测试结果 */
+export interface WorkflowConnectorInvokeResult {
+  ok: boolean;
+  /** HTTP 状态码（网络层失败为 null） */
+  status: number | null;
+  durationMs: number;
+  /** 截断的响应体（测试用） */
+  responseSnippet: string | null;
+  error: string | null;
+}
+
 /** 表单库实体 */
 export interface WorkflowForm {
   id: number;

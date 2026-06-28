@@ -40,6 +40,7 @@ import { workflowEventSubscriptionsHandlers } from './workflow-event-subscriptio
 import { workflowTriggerExecutionsHandlers } from './workflow-trigger-executions';
 import { workflowHealthHandlers } from './workflow-health';
 import { workflowDataSourcesHandlers } from './workflow-data-sources';
+import { workflowConnectorsHandlers } from './workflow-connectors';
 import { bizLeaveHandlers } from './biz-leave';
 import { bizPayDemoHandlers } from './biz-pay-demo';
 import { chatHandlers } from './chat';
@@ -140,6 +141,7 @@ export const handlers = [
   ...workflowExtraHandlers,
   ...workflowCategoriesHandlers,
   ...workflowDataSourcesHandlers,
+  ...workflowConnectorsHandlers,
   ...workflowHandlers,
   ...workflowFormsHandlers,
   ...workflowAutomationsHandlers,

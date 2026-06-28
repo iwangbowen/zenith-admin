@@ -984,6 +984,48 @@ export const updateWorkflowDataSourceSchema = createWorkflowDataSourceSchema.par
 export type CreateWorkflowDataSourceInput = z.input<typeof createWorkflowDataSourceSchema>;
 export type UpdateWorkflowDataSourceInput = z.input<typeof updateWorkflowDataSourceSchema>;
 
+// ── 流程连接器 ──
+export const workflowConnectorTypeSchema = z.enum(['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database']);
+
+/** 凭据明文（按 authType 解释；落库前整体 AES 加密，绝不回传） */
+export const workflowConnectorCredentialsSchema = z.object({
+  token: z.string().max(2048).optional(),
+  username: z.string().max(256).optional(),
+  password: z.string().max(2048).optional(),
+  apiKey: z.string().max(2048).optional(),
+});
+
+export const createWorkflowConnectorSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(64),
+  code: z.string().min(1, '编码不能为空').max(64).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/, '编码以字母开头，仅含字母/数字/下划线/连字符'),
+  description: z.string().max(512).nullable().optional(),
+  type: workflowConnectorTypeSchema.default('http'),
+  config: z.record(z.string(), z.unknown()).default({}),
+  credentials: workflowConnectorCredentialsSchema.optional(),
+  timeoutMs: z.number().int().min(100).max(120000).default(10000),
+  retryMax: z.number().int().min(0).max(10).default(0),
+  circuitBreakerEnabled: z.boolean().default(true),
+  failureThreshold: z.number().int().min(1).max(100).default(5),
+  cooldownSec: z.number().int().min(1).max(3600).default(60),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+
+export const updateWorkflowConnectorSchema = createWorkflowConnectorSchema.partial().extend({
+  /** true=清空凭据；不传且 credentials 也不传=保留原凭据 */
+  clearCredentials: z.boolean().optional(),
+});
+
+/** 测试调用：对连接器发一次探测请求（http: 相对 baseUrl 的 path + 方法 + body 覆盖） */
+export const testWorkflowConnectorSchema = z.object({
+  path: z.string().max(1024).optional(),
+  method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']).optional(),
+  body: z.unknown().optional(),
+});
+
+export type CreateWorkflowConnectorInput = z.input<typeof createWorkflowConnectorSchema>;
+export type UpdateWorkflowConnectorInput = z.input<typeof updateWorkflowConnectorSchema>;
+export type TestWorkflowConnectorInput = z.infer<typeof testWorkflowConnectorSchema>;
+
 export const workflowFormTypeSchema = z.enum(['designer', 'custom', 'external']);
 
 export const workflowCustomFormVariableSchema = z.object({
