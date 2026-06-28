@@ -144,7 +144,7 @@ function buildAnalytics(): WorkflowAnalytics {
     approverMap.set(t.assigneeId, e);
   }
   const approverWorkloads = [...approverMap.entries()].map(([userId, e]) => ({
-    userId, userName: e.name, pendingCount: e.count, oldestPendingSec: 3600 * 12,
+    userId, userName: e.name, pendingCount: e.count, handledCount: Math.floor(Math.random() * 12) + e.count, oldestPendingSec: 3600 * 12,
   }));
 
   // 近 14 天趋势
@@ -153,14 +153,21 @@ function buildAnalytics(): WorkflowAnalytics {
     return { date, created: Math.floor(Math.random() * 4), completed: Math.floor(Math.random() * 3) };
   });
 
+  const approvedN = statusCounts.find((s) => s.status === 'approved')?.count ?? 0;
+  const rejectedN = statusCounts.find((s) => s.status === 'rejected')?.count ?? 0;
+  const decidedN = approvedN + rejectedN;
+  const overdueN = Math.min(pending.length, 2);
+
   return {
     statusCounts,
     total: insts.length,
     avgDurationSec: 3600 * 8,
     pendingTaskCount: pending.length,
-    overdueTaskCount: Math.min(pending.length, 2),
+    overdueTaskCount: overdueN,
     dueSoonTaskCount: pending.length > 2 ? 1 : 0,
     recentCreated: insts.length,
+    rejectionRate: decidedN > 0 ? rejectedN / decidedN : null,
+    timeoutRate: pending.length > 0 ? overdueN / pending.length : null,
     definitionStats,
     nodeBottlenecks,
     approverWorkloads,

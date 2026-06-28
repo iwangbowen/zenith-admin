@@ -973,7 +973,7 @@ export default function MyApplicationsPage() {
               businessFormApi.current = null;
               if (def) {
                 const who = user?.nickname || user?.username || '我';
-                const auto = `${def.name} - ${who} - ${dayjs().format('YYYY-MM-DD')}`;
+                const auto = `${def.name} - ${who} - ${formatDateTime(new Date())}`;
                 formApi.current?.setValue('title', auto);
               }
             }}

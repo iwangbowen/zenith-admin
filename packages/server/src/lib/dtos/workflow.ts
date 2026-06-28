@@ -585,6 +585,8 @@ export const WorkflowAnalyticsDTO = z
     overdueTaskCount: z.number().int(),
     dueSoonTaskCount: z.number().int(),
     recentCreated: z.number().int(),
+    rejectionRate: z.number().nullable(),
+    timeoutRate: z.number().nullable(),
     definitionStats: z.array(z.object({
       definitionId: z.number().int(),
       definitionName: z.string(),
@@ -607,6 +609,7 @@ export const WorkflowAnalyticsDTO = z
       userId: z.number().int(),
       userName: z.string(),
       pendingCount: z.number().int(),
+      handledCount: z.number().int(),
       oldestPendingSec: z.number().nullable(),
     })),
     trend: z.array(z.object({

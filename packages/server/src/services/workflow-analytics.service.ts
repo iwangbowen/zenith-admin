@@ -94,19 +94,20 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
       .groupBy(workflowInstances.definitionId, workflowDefinitions.name, workflowTasks.nodeKey, workflowTasks.nodeName)
       .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`avg(extract(epoch from (${workflowTasks.actionAt} - ${workflowTasks.createdAt})))`))
       .limit(10),
-    // 7. 审批人工作量（挂起任务）
+    // 7. 审批人工作量（待办 + 已处理）
     db.select({
       userId: workflowTasks.assigneeId,
       userName: sql<string>`coalesce(${users.nickname}, ${users.username})`,
-      pendingCount: sql<number>`count(*)::int`,
-      oldestPendingSec: sql<number | null>`extract(epoch from (now() - min(${workflowTasks.createdAt})))`,
+      pendingCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text = 'pending')::int`,
+      handledCount: sql<number>`count(*) filter (where ${workflowTasks.status}::text in ('approved','rejected'))::int`,
+      oldestPendingSec: sql<number | null>`extract(epoch from (now() - min(${workflowTasks.createdAt}) filter (where ${workflowTasks.status}::text = 'pending')))`,
     })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .innerJoin(users, eq(workflowTasks.assigneeId, users.id))
-      .where(and(...instConds, eq(workflowTasks.status, 'pending')))
+      .where(and(...instConds, inArray(workflowTasks.status, ['pending', 'approved', 'rejected'])))
       .groupBy(workflowTasks.assigneeId, users.nickname, users.username)
-      .orderBy(desc(sql`count(*)`))
+      .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`count(*)`))
       .limit(10),
     // 8a. 近 14 天发起趋势
     db.select({ d: sql<string>`to_char(${workflowInstances.createdAt}, 'YYYY-MM-DD')`, c: sql<number>`count(*)::int` })
@@ -137,6 +138,15 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
   const total = statusCounts.reduce((sum, s) => sum + s.count, 0);
   const round = (v: number | null | undefined) => (v == null ? null : Math.round(Number(v)));
 
+  // 驳回率 / 超时率
+  const approvedCount = statusCounts.find((s) => s.status === 'approved')?.count ?? 0;
+  const rejectedCount = statusCounts.find((s) => s.status === 'rejected')?.count ?? 0;
+  const decidedCount = approvedCount + rejectedCount;
+  const rejectionRate = decidedCount > 0 ? rejectedCount / decidedCount : null;
+  const pendingTaskCount = pendingRow[0]?.count ?? 0;
+  const overdueTaskCount = overdueRow[0]?.count ?? 0;
+  const timeoutRate = pendingTaskCount > 0 ? overdueTaskCount / pendingTaskCount : null;
+
   // 趋势序列补齐 14 天
   const createdMap = new Map(createdTrend.map((r) => [r.d, r.c]));
   const completedMap = new Map(completedTrend.map((r) => [r.d, r.c]));
@@ -150,10 +160,12 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
     statusCounts,
     total,
     avgDurationSec: round(avgRow[0]?.avg),
-    pendingTaskCount: pendingRow[0]?.count ?? 0,
-    overdueTaskCount: overdueRow[0]?.count ?? 0,
+    pendingTaskCount,
+    overdueTaskCount,
     dueSoonTaskCount: dueSoonRow[0]?.count ?? 0,
     recentCreated: recentRow[0]?.count ?? 0,
+    rejectionRate,
+    timeoutRate,
     definitionStats: definitionRows.map((r) => ({
       definitionId: r.definitionId,
       definitionName: r.definitionName,
@@ -178,6 +190,7 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
         userId: r.userId as number,
         userName: r.userName,
         pendingCount: r.pendingCount,
+        handledCount: r.handledCount,
         oldestPendingSec: round(r.oldestPendingSec),
       })),
     trend,

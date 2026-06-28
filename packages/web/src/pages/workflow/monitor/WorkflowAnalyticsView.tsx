@@ -33,6 +33,11 @@ function fmtDuration(sec: number | null): string {
   return `${d}天${hh}小时`;
 }
 
+function fmtPercent(rate: number | null): string {
+  if (rate == null) return '—';
+  return `${(rate * 100).toFixed(1)}%`;
+}
+
 function Kpi({ label, value, danger, warn }: Readonly<{ label: string; value: string | number; danger?: boolean; warn?: boolean }>) {
   const color = danger ? '#ff4d4f' : warn ? '#faad14' : undefined;
   return (
@@ -84,7 +89,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
     [data],
   );
   const approverWorkloadData = useMemo(
-    () => (data?.approverWorkloads ?? []).map((a) => ({ name: a.userName, 待办: a.pendingCount })),
+    () => (data?.approverWorkloads ?? []).map((a) => ({ name: a.userName, 待办: a.pendingCount, 已处理: a.handledCount })),
     [data],
   );
   const trendSpec = useMemo(() => makeLineSpec({
@@ -122,7 +127,10 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
   const approverWorkloadSpec = useMemo(() => makeBarSpec({
     data: approverWorkloadData,
     xField: 'name',
-    series: [{ field: '待办', name: '待办', color: '#3370ff' }],
+    series: [
+      { field: '待办', name: '待办', color: '#3370ff' },
+      { field: '已处理', name: '已处理', color: '#0dc87c' },
+    ],
     palette,
     horizontal: true,
     categoryAxisWidth: 100,
@@ -154,6 +162,8 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
         <Kpi label="已超时待办" value={data.overdueTaskCount} danger={data.overdueTaskCount > 0} />
         <Kpi label="24h内即将超时" value={data.dueSoonTaskCount} warn={data.dueSoonTaskCount > 0} />
         <Kpi label="近 7 天发起" value={data.recentCreated} />
+        <Kpi label="驳回率" value={fmtPercent(data.rejectionRate)} warn={(data.rejectionRate ?? 0) >= 0.3} />
+        <Kpi label="待办超时率" value={fmtPercent(data.timeoutRate)} danger={(data.timeoutRate ?? 0) >= 0.2} />
       </div>
 
       {/* 超时待办预警 */}
@@ -240,7 +250,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
       </div>
 
       {/* 审批人工作量 */}
-      <ChartCard title="审批人待办工作量（Top 10）">
+      <ChartCard title="审批人工作量（待办 / 已处理，Top 10）">
         {data.approverWorkloads.length === 0 ? <Empty title="暂无待办" style={{ padding: 40 }} /> : (
           <BarChart {...approverWorkloadSpec} options={chartOptions} height={Math.max(200, data.approverWorkloads.length * 32)} />
         )}

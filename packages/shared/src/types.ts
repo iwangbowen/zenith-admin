@@ -2976,6 +2976,8 @@ export interface WorkflowAnalyticsApproverWorkload {
   userId: number;
   userName: string;
   pendingCount: number;
+  /** 已处理任务数（已通过 + 已驳回） */
+  handledCount: number;
   /** 最早待办的等待时长（秒） */
   oldestPendingSec: number | null;
 }
@@ -2999,6 +3001,10 @@ export interface WorkflowAnalytics {
   dueSoonTaskCount: number;
   /** 近 7 天发起数 */
   recentCreated: number;
+  /** 驳回率：已驳回实例 / (已通过 + 已驳回)，0-1，无已决实例时为 null */
+  rejectionRate: number | null;
+  /** 超时率：已超时待办 / 当前待办，0-1，无待办时为 null */
+  timeoutRate: number | null;
   definitionStats: WorkflowAnalyticsDefinitionStat[];
   nodeBottlenecks: WorkflowAnalyticsNodeBottleneck[];
   approverWorkloads: WorkflowAnalyticsApproverWorkload[];

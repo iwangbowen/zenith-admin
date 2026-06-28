@@ -6,6 +6,8 @@ import {
   Input,
   JsonViewer,
   Popconfirm,
+  Radio,
+  RadioGroup,
   Select,
   SideSheet,
   Space,
@@ -13,6 +15,7 @@ import {
   Tabs,
   TabPane,
   Tag,
+  Timeline,
   Toast,
   Tooltip,
   Typography,
@@ -57,6 +60,41 @@ const EXEC_STATUS_META: Record<WorkflowJobExecution['status'], { text: string; c
   succeeded: { text: '成功', color: 'green' },
   failed: { text: '失败', color: 'red' },
 };
+
+const EXEC_TIMELINE_TYPE: Record<WorkflowJobExecution['status'], 'ongoing' | 'success' | 'error'> = {
+  running: 'ongoing',
+  succeeded: 'success',
+  failed: 'error',
+};
+
+/** 执行记录时间线：按尝试次序升序，请求/响应/错误仅在有值时内联 */
+function renderExecutionTimeline(executions: WorkflowJobExecution[]) {
+  const sorted = [...executions].sort((a, b) => a.attempt - b.attempt);
+  return (
+    <Timeline>
+      {sorted.map((ex) => {
+        const m = EXEC_STATUS_META[ex.status];
+        return (
+          <Timeline.Item key={ex.id} type={EXEC_TIMELINE_TYPE[ex.status] ?? 'default'} time={ex.finishedAt ?? ex.createdAt}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Typography.Text strong size="small">第 {ex.attempt} 次</Typography.Text>
+              <Tag size="small" color={m?.color ?? 'grey'}>{m?.text ?? ex.status}</Tag>
+              {ex.durationMs != null && <Typography.Text size="small" type="tertiary">{ex.durationMs}ms</Typography.Text>}
+            </div>
+            {ex.requestUrl && (
+              <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ display: 'block', maxWidth: 560, marginTop: 2 }}>
+                {ex.requestMethod ? `${ex.requestMethod} ` : ''}{ex.requestUrl}{ex.responseStatus != null ? ` → ${ex.responseStatus}` : ''}
+              </Typography.Text>
+            )}
+            {ex.errorMessage && (
+              <Typography.Paragraph size="small" type="danger" style={{ margin: '2px 0 0', wordBreak: 'break-all' }}>{ex.errorMessage}</Typography.Paragraph>
+            )}
+          </Timeline.Item>
+        );
+      })}
+    </Timeline>
+  );
+}
 
 const JOB_STATUS_OPTIONS = (Object.keys(JOB_STATUS_META) as WorkflowJobStatus[]).map((value) => ({ value, label: JOB_STATUS_META[value].text }));
 
@@ -118,6 +156,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actingId, setActingId] = useState<number | null>(null);
+  const [execView, setExecView] = useState<'timeline' | 'table'>('timeline');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
 
@@ -470,12 +509,20 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
             </div>
 
             <div style={{ width: '100%' }}>
-              <Typography.Text strong>执行记录（{detail.executions.length}）</Typography.Text>
-              <div style={{ marginTop: 8 }}>
-                {detail.executions.length > 0
-                  ? <Table bordered size="small" columns={execColumns} dataSource={detail.executions} rowKey="id" pagination={false} />
-                  : <Empty description="暂无执行记录" />}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Typography.Text strong>执行记录（{detail.executions.length}）</Typography.Text>
+                {detail.executions.length > 0 && (
+                  <RadioGroup type="button" value={execView} onChange={(e) => setExecView(e.target.value as 'timeline' | 'table')}>
+                    <Radio value="timeline">时间线</Radio>
+                    <Radio value="table">表格</Radio>
+                  </RadioGroup>
+                )}
               </div>
+              {detail.executions.length > 0
+                ? (execView === 'timeline'
+                    ? renderExecutionTimeline(detail.executions)
+                    : <Table bordered size="small" columns={execColumns} dataSource={detail.executions} rowKey="id" pagination={false} />)
+                : <Empty description="暂无执行记录" />}
             </div>
 
             {canOperate && (
