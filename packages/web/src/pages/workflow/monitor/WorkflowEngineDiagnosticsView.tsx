@@ -590,7 +590,6 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
       { field: 'success', name: '成功', color: palette.success },
       { field: 'failed', name: '失败', color: palette.danger },
     ],
-    stack: true,
     palette,
     legend: true,
     axis: { xLabel: hourLabel },
