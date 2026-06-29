@@ -12,6 +12,7 @@ import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { pageOffset } from '../lib/pagination';
 import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 import { evaluateDecisionTable } from '../lib/rules-engine';
+import { diffDecisionSnapshots } from '../lib/rules-version-diff';
 
 type TableRow = typeof ruleDecisionTables.$inferSelect;
 type VersionRow = typeof ruleDecisionTableVersions.$inferSelect;
@@ -219,4 +220,34 @@ export async function testEvaluateDecisionTable(id: number, input: Record<string
     outputs: (row.outputs ?? []) as RuleDecisionOutput[],
     rules: (row.rules ?? []) as RuleDecisionRow[],
   }, input);
+}
+
+const toSnapshot = (r: { name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown }) => ({
+  name: r.name, hitPolicy: r.hitPolicy,
+  inputs: (r.inputs ?? []) as RuleDecisionInput[], outputs: (r.outputs ?? []) as RuleDecisionOutput[], rules: (r.rules ?? []) as RuleDecisionRow[],
+});
+
+async function loadSnapshot(id: number, version: number, current: TableRow): Promise<{ name: string; hitPolicy: string; inputs: RuleDecisionInput[]; outputs: RuleDecisionOutput[]; rules: RuleDecisionRow[] }> {
+  if (version === 0) return toSnapshot(current);
+  const [v] = await db.select().from(ruleDecisionTableVersions).where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, version))).limit(1);
+  if (!v) throw new HTTPException(404, { message: `版本 v${version} 不存在` });
+  return toSnapshot(v);
+}
+
+/** 对比两个版本（0 表示当前编辑态） */
+export async function diffDecisionTableVersions(id: number, from: number, to: number) {
+  const row = await ensureDecisionTable(id);
+  const [a, b] = await Promise.all([loadSnapshot(id, from, row), loadSnapshot(id, to, row)]);
+  return diffDecisionSnapshots(from, to, a, b);
+}
+
+/** 回滚：用历史版本快照覆盖当前编辑态，置为草稿（不丢历史版本） */
+export async function rollbackDecisionTable(id: number, version: number) {
+  await ensureDecisionTable(id);
+  const [v] = await db.select().from(ruleDecisionTableVersions).where(and(eq(ruleDecisionTableVersions.tableId, id), eq(ruleDecisionTableVersions.version, version))).limit(1);
+  if (!v) throw new HTTPException(404, { message: `版本 v${version} 不存在` });
+  const [row] = await db.update(ruleDecisionTables)
+    .set({ name: v.name, description: v.description, hitPolicy: v.hitPolicy, inputs: v.inputs, outputs: v.outputs, rules: v.rules, status: 'draft' })
+    .where(eq(ruleDecisionTables.id, id)).returning();
+  return mapDecisionTable(row);
 }

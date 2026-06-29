@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Input, TextArea, Tag, Modal, Form, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Input, TextArea, Tag, Modal, Form, Toast, Typography, SideSheet, List } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { RuleDecisionTable, RuleEvaluateResult, PaginatedResponse } from '@zenith/shared';
+import type { RuleDecisionTable, RuleEvaluateResult, RuleVersionDiff, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -47,6 +47,9 @@ export default function RuleTablesPage() {
   const [testRow, setTestRow] = useState<RuleDecisionTable | null>(null);
   const [testInput, setTestInput] = useState('{}');
   const [testResult, setTestResult] = useState<RuleEvaluateResult | null>(null);
+  const [verRow, setVerRow] = useState<RuleDecisionTable | null>(null);
+  const [versions, setVersions] = useState<Array<{ version: number; name: string; publishedAt: string }>>([]);
+  const [diff, setDiff] = useState<RuleVersionDiff | null>(null);
   const formApi = useRef<FormApi | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -90,6 +93,19 @@ export default function RuleTablesPage() {
     onOk: async () => { await request.delete(`/api/rules/decision-tables/${r.id}`); Toast.success('删除成功'); fetchData(); },
   }); };
   const openTest = (r: RuleDecisionTable) => { setTestRow(r); setTestInput('{}'); setTestResult(null); };
+  const openVersions = async (r: RuleDecisionTable) => {
+    setVerRow(r); setDiff(null);
+    const res = await request.get<typeof versions>(`/api/rules/decision-tables/${r.id}/versions`);
+    setVersions(res.data ?? []);
+  };
+  const showDiff = async (v: number) => {
+    const res = await request.get<RuleVersionDiff>(`/api/rules/decision-tables/${verRow!.id}/diff?from=${v}&to=0`);
+    if (res.data) setDiff(res.data);
+  };
+  const rollback = (v: number) => Modal.confirm({
+    title: `回滚到 v${v}？`, content: '将以该版本快照覆盖当前编辑态并置为草稿',
+    onOk: async () => { await request.post(`/api/rules/decision-tables/${verRow!.id}/rollback/${v}`); Toast.success('回滚成功'); setVerRow(null); fetchData(); },
+  });
   const runTest = async () => {
     let input; try { input = JSON.parse(testInput || '{}'); } catch { Toast.error('input 必须是合法 JSON'); return; }
     const res = await request.post<RuleEvaluateResult>(`/api/rules/decision-tables/${testRow!.id}/test`, { input });
@@ -106,6 +122,7 @@ export default function RuleTablesPage() {
     createOperationColumn<RuleDecisionTable>({
       actions: (r) => [
         { key: 'test', label: '测试', onClick: () => openTest(r) },
+        { key: 'versions', label: '版本', onClick: () => openVersions(r) },
         { key: 'edit', label: '编辑', hidden: !canEdit, onClick: () => openEdit(r) },
         { key: 'publish', label: '发布', hidden: !canPublish, onClick: () => handlePublish(r) },
         { key: 'delete', label: '删除', danger: true, hidden: !canDelete, onClick: () => handleDelete(r) },
@@ -145,6 +162,24 @@ export default function RuleTablesPage() {
         <TextArea value={testInput} onChange={setTestInput} rows={4} style={{ marginTop: 8, fontFamily: 'monospace' }} />
         {testResult && <pre style={{ marginTop: 12, background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 6 }}>{sample(testResult, null, 2)}</pre>}
       </AppModal>
+
+      <SideSheet title={`版本历史 · ${verRow?.name ?? ''}`} visible={!!verRow} onCancel={() => setVerRow(null)} width={480}>
+        <List
+          dataSource={versions}
+          emptyContent={<Text type="tertiary">暂无已发布版本</Text>}
+          renderItem={(v) => (
+            <List.Item
+              main={<><Text strong>v{v.version}</Text> <Text type="tertiary" size="small">{v.publishedAt}</Text></>}
+              extra={<><Button size="small" theme="borderless" onClick={() => showDiff(v.version)}>对比当前</Button><Button size="small" theme="borderless" onClick={() => rollback(v.version)}>回滚</Button></>}
+            />
+          )}
+        />
+        {diff && (
+          <pre style={{ marginTop: 12, background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap' }}>
+            {`v${diff.from} → 当前\n` + (diff.changes.length ? diff.changes.map((c) => `[${c.op}] ${c.kind} ${c.ref}: ${c.detail}`).join('\n') : '无差异')}
+          </pre>
+        )}
+      </SideSheet>
     </div>
   );
 }

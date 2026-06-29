@@ -15,3 +15,5 @@ export const mockDecisionTables: RuleDecisionTable[] = SEED_DECISION_TABLES.map(
 
 let seq = mockDecisionTables.length + 1;
 export const getNextTableId = () => seq++;
+
+export const mockDecisionVersions: Record<number, Array<{ version: number; name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown; publishedAt: string }>> = {};

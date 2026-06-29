@@ -66,3 +66,16 @@ export const RuleEvaluateResultDTO = z
     collected: z.array(z.record(z.string(), z.unknown())).optional(),
   })
   .openapi('RuleEvaluateResult');
+
+export const RuleVersionDiffDTO = z
+  .object({
+    from: z.number().int(),
+    to: z.number().int(),
+    changes: z.array(z.object({
+      kind: z.enum(['input', 'output', 'rule', 'meta']),
+      op: z.enum(['added', 'removed', 'changed']),
+      ref: z.string(),
+      detail: z.string(),
+    })),
+  })
+  .openapi('RuleVersionDiff');

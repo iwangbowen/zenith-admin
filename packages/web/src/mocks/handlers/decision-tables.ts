@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { RuleDecisionTable, RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleEvaluateResult } from '@zenith/shared';
-import { mockDecisionTables, getNextTableId } from '@/mocks/data/decision-tables';
+import { mockDecisionTables, getNextTableId, mockDecisionVersions } from '@/mocks/data/decision-tables';
 import { mockDateTime } from '@/mocks/utils/date';
 
 function ok<T>(data: T) { return HttpResponse.json({ code: 0, message: 'ok', data }); }
@@ -36,7 +36,25 @@ export const decisionTablesHandlers = [
     if (kw) list = list.filter((t) => t.name.includes(kw) || t.key.includes(kw));
     return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
   }),
-  http.get('/api/rules/decision-tables/:id/versions', () => ok([])),
+  http.get('/api/rules/decision-tables/:id/versions', ({ params }) => ok(mockDecisionVersions[Number(params.id)] ?? [])),
+  http.get('/api/rules/decision-tables/:id/diff', ({ params, request }) => {
+    const r = mockDecisionTables.find((t) => t.id === Number(params.id));
+    const url = new URL(request.url); const from = Number(url.searchParams.get('from')) || 0;
+    const v = (mockDecisionVersions[Number(params.id)] ?? []).find((x) => x.version === from);
+    const changes: Array<{ kind: string; op: string; ref: string; detail: string }> = [];
+    if (r && v) {
+      if (v.name !== r.name) changes.push({ kind: 'meta', op: 'changed', ref: 'name', detail: `${v.name} → ${r.name}` });
+      if ((v.rules as unknown[]).length !== r.rules.length) changes.push({ kind: 'rule', op: 'changed', ref: 'count', detail: `规则数 ${(v.rules as unknown[]).length} → ${r.rules.length}` });
+    }
+    return ok({ from, to: 0, changes });
+  }),
+  http.post('/api/rules/decision-tables/:id/rollback/:version', ({ params }) => {
+    const r = mockDecisionTables.find((t) => t.id === Number(params.id));
+    const v = (mockDecisionVersions[Number(params.id)] ?? []).find((x) => x.version === Number(params.version));
+    if (!r || !v) return fail('版本不存在', 404);
+    Object.assign(r, { name: v.name, hitPolicy: v.hitPolicy, inputs: v.inputs, outputs: v.outputs, rules: v.rules, status: 'draft' });
+    return ok(r);
+  }),
   http.get('/api/rules/decision-tables/:id', ({ params }) => {
     const row = mockDecisionTables.find((t) => t.id === Number(params.id));
     return row ? ok(row) : fail('决策表不存在', 404);
@@ -57,6 +75,7 @@ export const decisionTablesHandlers = [
   http.post('/api/rules/decision-tables/:id/publish', ({ params }) => {
     const r = mockDecisionTables.find((t) => t.id === Number(params.id));
     if (!r) return fail('决策表不存在', 404);
+    (mockDecisionVersions[r.id] ??= []).unshift({ version: r.version, name: r.name, hitPolicy: r.hitPolicy, inputs: r.inputs, outputs: r.outputs, rules: r.rules, publishedAt: mockDateTime() });
     r.status = 'published'; r.publishedAt = mockDateTime(); r.version += 1;
     return ok(r);
   }),

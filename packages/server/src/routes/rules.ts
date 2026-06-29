@@ -5,12 +5,13 @@ import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody, BatchIdsBody,
 } from '../lib/openapi-schemas';
-import { DecisionTableDTO, DecisionTableVersionDTO, RuleEvaluateResultDTO } from '../lib/openapi-dtos';
+import { DecisionTableDTO, DecisionTableVersionDTO, RuleEvaluateResultDTO, RuleVersionDiffDTO } from '../lib/openapi-dtos';
 import { createDecisionTableSchema, updateDecisionTableSchema } from '@zenith/shared';
 import {
   listDecisionTables, getDecisionTable, getDecisionTableBeforeAudit,
   createDecisionTable, updateDecisionTable, deleteDecisionTable, deleteDecisionTables,
   publishDecisionTable, listDecisionTableVersions, evaluateDecisionTableByKey, testEvaluateDecisionTable,
+  diffDecisionTableVersions, rollbackDecisionTable,
 } from '../services/rules.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -46,6 +47,28 @@ const versionsRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(DecisionTableVersionDTO), 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listDecisionTableVersions(c.req.valid('param').id)), 200),
+});
+
+const diffRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/diff', tags: ['DecisionTables'], summary: '版本对比（0=当前编辑态）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'rule:table:list' })] as const,
+    request: { params: IdParam, query: z.object({ from: z.coerce.number().int(), to: z.coerce.number().int().default(0) }) },
+    responses: { ...commonErrorResponses, ...ok(RuleVersionDiffDTO, 'ok') },
+  }),
+  handler: async (c) => { const { id } = c.req.valid('param'); const { from, to } = c.req.valid('query'); return c.json(okBody(await diffDecisionTableVersions(id, from, to)), 200); },
+});
+
+const rollbackRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/rollback/{version}', tags: ['DecisionTables'], summary: '回滚到历史版本',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'rule:table:update', audit: { description: '回滚决策表版本', module: '规则中心' } })] as const,
+    request: { params: z.object({ id: z.coerce.number().int(), version: z.coerce.number().int() }) },
+    responses: { ...commonErrorResponses, ...ok(DecisionTableDTO, '回滚成功') },
+  }),
+  handler: async (c) => { const { id, version } = c.req.valid('param'); return c.json(okBody(await rollbackDecisionTable(id, version), '回滚成功'), 200); },
 });
 
 const createRouteDef = defineOpenAPIRoute({
@@ -136,6 +159,6 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, getRoute, versionsRoute, createRouteDef, updateRoute, publishRoute, testRoute, evaluateRoute, batchDeleteRoute, deleteRoute] as const);
+router.openapiRoutes([listRoute, getRoute, versionsRoute, diffRoute, rollbackRoute, createRouteDef, updateRoute, publishRoute, testRoute, evaluateRoute, batchDeleteRoute, deleteRoute] as const);
 
 export default router;

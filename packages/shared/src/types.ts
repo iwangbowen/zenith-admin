@@ -7049,3 +7049,16 @@ export interface RuleEvaluateResult {
   hitPolicy: RuleHitPolicy;
   collected?: Array<Record<string, unknown>>;
 }
+
+// ─── 规则中心：版本 diff ─────────────────────────────────────────────────────────
+export interface RuleVersionChange {
+  kind: 'input' | 'output' | 'rule' | 'meta';
+  op: 'added' | 'removed' | 'changed';
+  ref: string;
+  detail: string;
+}
+export interface RuleVersionDiff {
+  from: number;
+  to: number;
+  changes: RuleVersionChange[];
+}
