@@ -7106,3 +7106,18 @@ export interface RuleDecisionExecution {
   matchedRowIds: string[];
   createdAt: string;
 }
+
+// ─── 工作流：运行中实例迁移 ──────────────────────────────────────────────────────
+export interface WorkflowMigrationNode { nodeKey: string; label: string; inNew: boolean; activeTasks: number; activeTokens: number; }
+export interface WorkflowMigrationPreflight {
+  instanceId: number;
+  fromVersion: number;
+  toVersion: number;
+  migratable: boolean;
+  nodes: WorkflowMigrationNode[];
+  blocked: string[];
+}
+export interface WorkflowInstanceMigration {
+  id: number; instanceId: number; fromVersion: number; toVersion: number;
+  status: string; note: string | null; createdAt: string;
+}

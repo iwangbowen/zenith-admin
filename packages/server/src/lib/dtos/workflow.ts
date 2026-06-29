@@ -656,3 +656,13 @@ export const WorkflowOverdueTaskDTO = z
     overdueSec: z.number(),
   })
   .openapi('WorkflowOverdueTask');
+
+export const WorkflowMigrationPreflightDTO = z.object({
+  instanceId: z.number().int(), fromVersion: z.number().int(), toVersion: z.number().int(), migratable: z.boolean(),
+  blocked: z.array(z.string()),
+  nodes: z.array(z.object({ nodeKey: z.string(), label: z.string(), inNew: z.boolean(), activeTasks: z.number().int(), activeTokens: z.number().int() })),
+}).openapi('WorkflowMigrationPreflight');
+export const WorkflowInstanceMigrationDTO = z.object({
+  id: z.number().int(), instanceId: z.number().int(), fromVersion: z.number().int(), toVersion: z.number().int(),
+  status: z.string(), note: z.string().nullable(), createdAt: z.string(),
+}).openapi('WorkflowInstanceMigration');

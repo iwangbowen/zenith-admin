@@ -605,6 +605,17 @@ export default function WorkflowMonitorPage() {
     });
   };
 
+  const handleMigrate = async (record: WorkflowInstance) => {
+    const pre = await request.get<{ migratable: boolean; fromVersion: number; toVersion: number; blocked: string[] }>(`/api/workflows/instances/${record.id}/migrate/preflight`);
+    const p = pre.data;
+    if (!p) return;
+    if (!p.migratable) { Toast.warning(p.blocked.length ? `无法迁移：新版本缺失节点 ${p.blocked.join(', ')}` : '无需迁移或已是最新版本'); return; }
+    Modal.confirm({
+      title: '迁移到最新版本', content: `将实例「${record.title}」从 v${p.fromVersion} 迁移到 v${p.toVersion}？`,
+      onOk: async () => { const r = await request.post(`/api/workflows/instances/${record.id}/migrate`); if (r.code === 0) { Toast.success('迁移成功'); void fetchList(); } },
+    });
+  };
+
   const handleDelete = (record: WorkflowInstance) => {
     Modal.confirm({
       title: '删除流程',
@@ -1138,12 +1149,8 @@ export default function WorkflowMonitorPage() {
             hidden: !canJump,
             onClick: () => void openJump(record),
           },
-          {
-            key: 'reassign',
-            label: '改派处理人',
-            hidden: !canJump,
-            onClick: () => void openReassign(record),
-          },
+          { key: 'reassign', label: '改派处理人', hidden: !canJump, onClick: () => void openReassign(record) },
+          { key: 'migrate', label: '迁移版本', hidden: !canJump, onClick: () => void handleMigrate(record) },
           {
             key: 'cancel',
             label: '取消',

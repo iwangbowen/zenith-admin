@@ -1990,6 +1990,24 @@ export const ruleDecisionExecutions = pgTable('rule_decision_executions', {
 export type RuleDecisionExecutionRow = typeof ruleDecisionExecutions.$inferSelect;
 export type NewRuleDecisionExecution = typeof ruleDecisionExecutions.$inferInsert;
 
+// 运行中实例迁移记录（append-only）：旧版本→新版本，节点映射快照与结果
+export const workflowInstanceMigrations = pgTable('workflow_instance_migrations', {
+  id: serial('id').primaryKey(),
+  instanceId: integer('instance_id').notNull(),
+  definitionId: integer('definition_id').notNull(),
+  fromVersion: integer('from_version').notNull(),
+  toVersion: integer('to_version').notNull(),
+  nodeMap: jsonb('node_map').notNull().default(sql`'{}'::jsonb`),
+  status: varchar('status', { length: 16 }).notNull().default('done'),
+  note: text('note'),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [index('wf_inst_migration_idx').on(t.instanceId)]);
+
+export type WorkflowInstanceMigrationRow = typeof workflowInstanceMigrations.$inferSelect;
+export type NewWorkflowInstanceMigration = typeof workflowInstanceMigrations.$inferInsert;
+
 
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {

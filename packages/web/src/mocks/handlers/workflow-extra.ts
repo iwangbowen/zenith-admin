@@ -616,6 +616,17 @@ export const workflowExtraHandlers = [
   }),
 
   // ── 管理员强制操作 ──
+  http.get('/api/workflows/instances/:id/migrate/preflight', ({ params }) => {
+    const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));
+    if (!inst) return err('流程实例不存在', 404);
+    return ok({ instanceId: inst.id, fromVersion: 1, toVersion: 1, migratable: false, blocked: [], nodes: [] });
+  }),
+  http.post('/api/workflows/instances/:id/migrate', ({ params }) => {
+    const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));
+    if (!inst) return err('流程实例不存在', 404);
+    return ok(null, '迁移成功');
+  }),
+  http.get('/api/workflows/instances/:id/migrations', () => ok([])),
   http.post('/api/workflows/instances/:id/jump', async ({ params, request }) => {
     const body = await request.json() as { targetNodeKey: string };
     const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));
