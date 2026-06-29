@@ -9,6 +9,7 @@ import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import DecisionTableEditor from './DecisionTableEditor';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -55,6 +56,7 @@ export default function RuleTablesPage() {
   const [runRes, setRunRes] = useState<RuleTestRunResult | null>(null);
   const [execRow, setExecRow] = useState<RuleDecisionTable | null>(null);
   const [execs, setExecs] = useState<RuleDecisionExecution[]>([]);
+  const [draft, setDraft] = useState<{ inputs: RuleDecisionTable['inputs']; outputs: RuleDecisionTable['outputs']; rules: RuleDecisionTable['rules'] }>({ inputs: [], outputs: [], rules: [] });
   const formApi = useRef<FormApi | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -69,17 +71,13 @@ export default function RuleTablesPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const openCreate = () => { setEditing(null); setModalVisible(true); };
-  const openEdit = (r: RuleDecisionTable) => { setEditing(r); setModalVisible(true); };
+  const openCreate = () => { setEditing(null); setDraft({ inputs: [], outputs: [], rules: [] }); setModalVisible(true); };
+  const openEdit = (r: RuleDecisionTable) => { setEditing(r); setDraft({ inputs: r.inputs, outputs: r.outputs, rules: r.rules }); setModalVisible(true); };
 
   const handleSubmit = async () => {
     const v = await formApi.current?.validate();
     if (!v) return;
-    let inputs, outputs, rules;
-    try {
-      inputs = JSON.parse(v.inputs || '[]'); outputs = JSON.parse(v.outputs || '[]'); rules = JSON.parse(v.rules || '[]');
-    } catch { Toast.error('inputs/outputs/rules 必须是合法 JSON'); return; }
-    const payload = { name: v.name, description: v.description ?? null, hitPolicy: v.hitPolicy, inputs, outputs, rules };
+    const payload = { name: v.name, description: v.description ?? null, hitPolicy: v.hitPolicy, ...draft };
     setSubmitting(true);
     try {
       if (editing) await request.put(`/api/rules/decision-tables/${editing.id}`, payload);
@@ -173,15 +171,15 @@ export default function RuleTablesPage() {
 
       <AppModal title={editing ? '编辑决策表' : '新增决策表'} visible={modalVisible} onOk={handleSubmit} onCancel={() => setModalVisible(false)} okButtonProps={{ loading: submitting }} width={680} closeOnEsc>
         <Form key={editing?.id ?? 'new'} getFormApi={(a) => { formApi.current = a; }} labelPosition="left" labelWidth={90}
-          initValues={editing ? { ...editing, inputs: sample(editing.inputs, null, 2), outputs: sample(editing.outputs, null, 2), rules: sample(editing.rules, null, 2) } : { hitPolicy: 'first', inputs: '[]', outputs: '[]', rules: '[]' }}>
+          initValues={editing ? { key: editing.key, name: editing.name, description: editing.description, hitPolicy: editing.hitPolicy } : { hitPolicy: 'first' }}>
           <Form.Input field="key" label="Key" disabled={!!editing} rules={[{ required: true, message: 'key 必填' }]} placeholder="如 member_level" />
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '名称必填' }]} />
           <Form.Select field="hitPolicy" label="命中策略" optionList={HIT_POLICIES} style={{ width: '100%' }} />
           <Form.TextArea field="description" label="描述" autosize maxCount={500} />
-          <Form.TextArea field="inputs" label="输入列" placeholder='[{"key":"amt","label":"金额","expr":"form.amount","type":"number"}]' rows={3} />
-          <Form.TextArea field="outputs" label="输出列" placeholder='[{"key":"level","label":"等级","type":"string"}]' rows={3} />
-          <Form.TextArea field="rules" label="规则行" placeholder='[{"id":"r1","when":[">= 100"],"then":{"level":"gold"}}]' rows={4} />
         </Form>
+        <div style={{ marginTop: 16 }}>
+          <DecisionTableEditor inputs={draft.inputs} outputs={draft.outputs} rules={draft.rules} onChange={setDraft} />
+        </div>
       </AppModal>
 
       <AppModal title={`测试求值 · ${testRow?.name ?? ''}`} visible={!!testRow} onOk={runTest} okText="运行" onCancel={() => setTestRow(null)} width={560} closeOnEsc>

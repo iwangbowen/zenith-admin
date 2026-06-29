@@ -1683,6 +1683,16 @@ async function killInstanceTokens(exec: DbExecutor, instanceId: number): Promise
 }
 
 /** 发起前快速校验：流程是否存在可执行入口（token 引擎 seed dry-run，与实际物化同源） */
+/** 后端字段权限强校验：剔除 start 节点标记为 hidden/read 的字段，防止客户端写入隐藏/只读字段 */
+function sanitizeFormByStartPerms(flowData: WorkflowFlowData, formData: Record<string, unknown>): Record<string, unknown> {
+  const start = flowData.nodes?.find((n) => n.data.type === 'start')?.data;
+  const perms = start?.fieldPermissions;
+  if (!perms) return formData;
+  const out: Record<string, unknown> = { ...formData };
+  for (const [k, p] of Object.entries(perms)) if ((p === 'hidden' || p === 'read') && k in out) delete out[k];
+  return out;
+}
+
 function hasExecutableEntry(flowData: WorkflowFlowData, formData: Record<string, unknown>, starter?: WorkflowStarterContext): boolean {
   const preview = advanceTokens({ flowData, formData, starter, liveTokens: [], trigger: { type: 'seed' } });
   return preview.tasksToCreate.length > 0 || preview.finished || preview.rejected;
@@ -2994,7 +3004,7 @@ export async function createInstance(data: { definitionId: number; title: string
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程定义无效' });
   const validation = validateFlowData(flowData);
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
-  const formData: Record<string, unknown> = data.formData ?? {};
+  const formData: Record<string, unknown> = sanitizeFormByStartPerms(flowData, data.formData ?? {});
   const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
 
@@ -4281,7 +4291,7 @@ export async function submitDraftInstance(id: number) {
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程定义无效' });
   const validation = validateFlowData(flowData);
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
-  const formData = (inst.formData ?? {}) as Record<string, unknown>;
+  const formData = sanitizeFormByStartPerms(flowData, (inst.formData ?? {}) as Record<string, unknown>);
   assertLaunchMatchesFormType(def, { bizType: inst.bizType, bizId: inst.bizId });
   const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
