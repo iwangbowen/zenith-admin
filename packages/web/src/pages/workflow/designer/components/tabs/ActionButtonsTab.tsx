@@ -152,8 +152,8 @@ export default function ActionButtonsTab({
             <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 64, whiteSpace: 'nowrap' }}>操作按钮</th>
             <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>显示名称</th>
             <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>意见名称</th>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 120, whiteSpace: 'nowrap' }}>跳转配置</th>
-            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>附件</th>
+            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 104, whiteSpace: 'nowrap' }}>跳转配置</th>
+            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 108, whiteSpace: 'nowrap' }}>附件</th>
             <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 48, whiteSpace: 'nowrap' }}>启用</th>
           </tr>
         </thead>
@@ -209,7 +209,7 @@ export default function ActionButtonsTab({
                     disabled={disabled}
                     onChange={(v) => updateButton(meta.key, { uploadMode: v as ActionUploadMode })}
                     optionList={UPLOAD_MODE_OPTIONS}
-                    style={{ width: 84 }}
+                    style={{ width: '100%', minWidth: 88 }}
                   />
                 </td>
                 <td style={{ padding: '10px 8px', textAlign: 'center' }}>
