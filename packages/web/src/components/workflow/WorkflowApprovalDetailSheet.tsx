@@ -557,7 +557,7 @@ export default function WorkflowApprovalDetailSheet({
           {btnReduceSign.displayName ?? '减签'}
         </Button>
       )}
-      {btnReturn.enabled && returnTargetOptions.length > 0 && (
+      {btnReturn.enabled && (
         <Button onClick={() => setReturnVisible(true)}>
           {btnReturn.displayName ?? '退回'}
         </Button>
