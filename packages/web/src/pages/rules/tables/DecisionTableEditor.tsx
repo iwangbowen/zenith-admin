@@ -38,11 +38,11 @@ export default function DecisionTableEditor({ inputs, outputs, rules, onChange }
       <div>
         <Text strong>输入列</Text>
         {inputs.map((c, i) => (
-          <div key={i} style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            <Input size="small" value={c.key} onChange={(v) => setInput(i, { key: v })} placeholder="key" style={{ width: 110 }} />
-            <Input size="small" value={c.label} onChange={(v) => setInput(i, { label: v })} placeholder="名称" style={{ width: 110 }} />
-            <Input size="small" value={c.expr} onChange={(v) => setInput(i, { expr: v })} placeholder="取值表达式 form.amount" />
-            <Select size="small" value={c.type} onChange={(v) => setInput(i, { type: v as RuleFieldType })} optionList={TYPES} style={{ width: 90 }} />
+          <div key={i} style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+            <Input size="small" value={c.key} onChange={(v) => setInput(i, { key: v })} placeholder="key" style={{ width: 150 }} />
+            <Input size="small" value={c.label} onChange={(v) => setInput(i, { label: v })} placeholder="名称" style={{ width: 150 }} />
+            <Input size="small" value={c.expr} onChange={(v) => setInput(i, { expr: v })} placeholder="取值表达式 form.amount" style={{ flex: 1, minWidth: 160 }} />
+            <Select size="small" value={c.type} onChange={(v) => setInput(i, { type: v as RuleFieldType })} optionList={TYPES} style={{ width: 100, flexShrink: 0 }} />
             <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delInput(i)} />
           </div>
         ))}
@@ -51,10 +51,10 @@ export default function DecisionTableEditor({ inputs, outputs, rules, onChange }
       <div>
         <Text strong>输出列</Text>
         {outputs.map((c, i) => (
-          <div key={i} style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            <Input size="small" value={c.key} onChange={(v) => setOutput(i, { key: v })} placeholder="key" style={{ width: 110 }} />
-            <Input size="small" value={c.label} onChange={(v) => setOutput(i, { label: v })} placeholder="名称" style={{ width: 110 }} />
-            <Select size="small" value={c.type} onChange={(v) => setOutput(i, { type: v as RuleFieldType })} optionList={TYPES} style={{ width: 90 }} />
+          <div key={i} style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+            <Input size="small" value={c.key} onChange={(v) => setOutput(i, { key: v })} placeholder="key" style={{ flex: 1, minWidth: 150 }} />
+            <Input size="small" value={c.label} onChange={(v) => setOutput(i, { label: v })} placeholder="名称" style={{ flex: 1, minWidth: 150 }} />
+            <Select size="small" value={c.type} onChange={(v) => setOutput(i, { type: v as RuleFieldType })} optionList={TYPES} style={{ width: 100, flexShrink: 0 }} />
             <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delOutput(i)} />
           </div>
         ))}
@@ -73,8 +73,8 @@ export default function DecisionTableEditor({ inputs, outputs, rules, onChange }
             <tbody>
               {rules.map((r, ri) => (
                 <tr key={r.id}>
-                  {inputs.map((_, ci) => <td key={ci} style={col}><Input size="small" value={r.when[ci] ?? ''} onChange={(v) => setWhen(ri, ci, v)} style={{ width: 90 }} /></td>)}
-                  {outputs.map((o) => <td key={o.key} style={col}><Input size="small" value={String(r.then[o.key] ?? '')} onChange={(v) => setThen(ri, o.key, v)} style={{ width: 90 }} /></td>)}
+                  {inputs.map((_, ci) => <td key={ci} style={col}><Input size="small" value={r.when[ci] ?? ''} onChange={(v) => setWhen(ri, ci, v)} style={{ width: 110 }} /></td>)}
+                  {outputs.map((o) => <td key={o.key} style={col}><Input size="small" value={String(r.then[o.key] ?? '')} onChange={(v) => setThen(ri, o.key, v)} style={{ width: 110 }} /></td>)}
                   <td style={col}><Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delRow(ri)} /></td>
                 </tr>
               ))}

@@ -143,6 +143,7 @@ export default function RuleTablesPage() {
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (s: string) => <Tag color={STATUS[s]?.color as never}>{STATUS[s]?.text ?? s}</Tag> },
     createdAtColumn,
     createOperationColumn<RuleDecisionTable>({
+      desktopInlineKeys: ['edit', 'publish'],
       actions: (r) => [
         { key: 'test', label: '测试', onClick: () => openTest(r) },
         { key: 'versions', label: '版本', onClick: () => openVersions(r) },
@@ -169,13 +170,13 @@ export default function RuleTablesPage() {
       />
       <ConfigurableTable bordered columns={columns} dataSource={data?.list ?? []} loading={loading} onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small" empty="暂无数据" pagination={buildPagination(data?.total ?? 0, fetchData)} />
 
-      <AppModal title={editing ? '编辑决策表' : '新增决策表'} visible={modalVisible} onOk={handleSubmit} onCancel={() => setModalVisible(false)} okButtonProps={{ loading: submitting }} width={680} closeOnEsc>
+      <AppModal title={editing ? '编辑决策表' : '新增决策表'} visible={modalVisible} onOk={handleSubmit} onCancel={() => setModalVisible(false)} okButtonProps={{ loading: submitting }} width={760} bodyStyle={{ maxHeight: '70vh', overflowY: 'auto' }} closeOnEsc>
         <Form key={editing?.id ?? 'new'} getFormApi={(a) => { formApi.current = a; }} labelPosition="left" labelWidth={90}
           initValues={editing ? { key: editing.key, name: editing.name, description: editing.description, hitPolicy: editing.hitPolicy } : { hitPolicy: 'first' }}>
           <Form.Input field="key" label="Key" disabled={!!editing} rules={[{ required: true, message: 'key 必填' }]} placeholder="如 member_level" />
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '名称必填' }]} />
           <Form.Select field="hitPolicy" label="命中策略" optionList={HIT_POLICIES} style={{ width: '100%' }} />
-          <Form.TextArea field="description" label="描述" autosize maxCount={500} />
+          <Form.TextArea field="description" label="描述" autosize={{ minRows: 2, maxRows: 3 }} maxCount={500} />
         </Form>
         <div style={{ marginTop: 16 }}>
           <DecisionTableEditor inputs={draft.inputs} outputs={draft.outputs} rules={draft.rules} onChange={setDraft} />
