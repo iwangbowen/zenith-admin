@@ -73,6 +73,28 @@ function conditionSignature(e: WorkflowEdge): string {
   return '';
 }
 
+/** 单条件数值区间：用于网关两两重叠检测（仅 form 数值比较）。null=无法判定。 */
+function numericInterval(e: WorkflowEdge): { field: string; lo: number; hi: number } | null {
+  const c = e.condition;
+  if (!c || (c.source ?? 'form') !== 'form' || c.aggregate) return null;
+  const v = Number(c.value);
+  if (Number.isNaN(v)) return null;
+  switch (c.operator) {
+    case 'gt': return { field: c.field, lo: v + 1e-9, hi: Infinity };
+    case 'gte': return { field: c.field, lo: v, hi: Infinity };
+    case 'lt': return { field: c.field, lo: -Infinity, hi: v - 1e-9 };
+    case 'lte': return { field: c.field, lo: -Infinity, hi: v };
+    case 'eq': return { field: c.field, lo: v, hi: v };
+    default: return null;
+  }
+}
+
+function rangesOverlap(a: WorkflowEdge, b: WorkflowEdge): boolean {
+  const x = numericInterval(a), y = numericInterval(b);
+  if (!x || !y || x.field !== y.field) return false;
+  return x.lo <= y.hi && y.lo <= x.hi;
+}
+
 function isApproverResolvable(cfg: WorkflowNodeConfig): boolean {
   if (cfg.assigneeId != null) return true;
   if (Array.isArray(cfg.assigneeIds) && cfg.assigneeIds.length > 0) return true;
@@ -187,6 +209,17 @@ export function analyzeWorkflowHealth(
         gwIssues.push(issue('warning', `网关「${gw.data.label || gw.data.key}」分支「${seen.get(sig)}」与「${tName}」条件完全相同（重叠）`, '合并或区分这两条分支的条件', gw));
       } else {
         seen.set(sig, tName);
+      }
+    }
+    // 排他网关重叠矩阵：两两数值区间相交 → 同一输入可命中多分支（排他语义被破坏）
+    if (gw.data.type === 'exclusiveGateway' || gw.data.type === 'routeGateway') {
+      for (let i = 0; i < conditional.length; i++) {
+        for (let j = i + 1; j < conditional.length; j++) {
+          const a = conditional[i], b = conditional[j];
+          if (conditionSignature(a) !== conditionSignature(b) && rangesOverlap(a, b)) {
+            gwIssues.push(issue('warning', `网关「${gw.data.label || gw.data.key}」分支「${nodeName(a.target)}」与「${nodeName(b.target)}」条件区间重叠`, '排他网关要求条件互斥，请收紧区间或改用包容网关', gw));
+          }
+        }
       }
     }
 

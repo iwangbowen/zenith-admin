@@ -79,3 +79,27 @@ export const RuleVersionDiffDTO = z
     })),
   })
   .openapi('RuleVersionDiff');
+
+export const RuleTestCaseDTO = z
+  .object({
+    id: z.number().int(), tableId: z.number().int(), name: z.string(),
+    input: z.record(z.string(), z.unknown()), expected: z.record(z.string(), z.unknown()),
+    createdAt: z.string(), updatedAt: z.string(),
+  })
+  .openapi('RuleTestCase');
+
+export const RuleTestRunResultDTO = z
+  .object({
+    total: z.number().int(), passed: z.number().int(), failed: z.number().int(),
+    coverage: z.number().int(), uncoveredRowIds: z.array(z.string()),
+    cases: z.array(z.object({ id: z.number().int(), name: z.string(), pass: z.boolean(), expected: z.record(z.string(), z.unknown()), actual: z.record(z.string(), z.unknown()) })),
+  })
+  .openapi('RuleTestRunResult');
+
+export const RuleExecutionDTO = z
+  .object({
+    id: z.number().int(), ruleKey: z.string(), tableId: z.number().int().nullable(), instanceId: z.number().int().nullable(),
+    nodeKey: z.string().nullable(), source: z.enum(['runtime', 'manual', 'test']), matched: z.boolean(), hitPolicy,
+    input: z.record(z.string(), z.unknown()), outputs: z.record(z.string(), z.unknown()), matchedRowIds: z.array(z.string()), createdAt: z.string(),
+  })
+  .openapi('RuleExecution');

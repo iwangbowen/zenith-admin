@@ -1352,6 +1352,20 @@
       "when": 1782698295509,
       "tag": "0192_far_changeling",
       "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1782701001417,
+      "tag": "0193_lonely_mandarin",
+      "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1782705760832,
+      "tag": "0194_lethal_mister_sinister",
+      "breakpoints": true
     }
   ]
 }

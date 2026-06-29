@@ -17,3 +17,9 @@ let seq = mockDecisionTables.length + 1;
 export const getNextTableId = () => seq++;
 
 export const mockDecisionVersions: Record<number, Array<{ version: number; name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown; publishedAt: string }>> = {};
+export const mockTestCases: Record<number, Array<{ id: number; tableId: number; name: string; input: Record<string, unknown>; expected: Record<string, unknown>; createdAt: string; updatedAt: string }>> = {};
+let caseSeq = 1;
+export const getNextCaseId = () => caseSeq++;
+export const mockExecutions: Array<{ id: number; ruleKey: string; tableId: number | null; instanceId: number | null; nodeKey: string | null; source: string; matched: boolean; hitPolicy: string; input: Record<string, unknown>; outputs: Record<string, unknown>; matchedRowIds: string[]; createdAt: string }> = [];
+let execSeq = 1;
+export const getNextExecId = () => execSeq++;

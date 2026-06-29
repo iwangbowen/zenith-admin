@@ -1953,6 +1953,43 @@ export const ruleDecisionTableVersions = pgTable('rule_decision_table_versions',
 export type RuleDecisionTableVersionRow = typeof ruleDecisionTableVersions.$inferSelect;
 export type NewRuleDecisionTableVersion = typeof ruleDecisionTableVersions.$inferInsert;
 
+// 决策表测试用例（输入快照→期望输出），用于回归测试矩阵与发布门禁
+export const ruleTestCases = pgTable('rule_test_cases', {
+  id: serial('id').primaryKey(),
+  tableId: integer('table_id').notNull().references(() => ruleDecisionTables.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 64 }).notNull(),
+  input: jsonb('input').notNull().default(sql`'{}'::jsonb`),
+  expected: jsonb('expected').notNull().default(sql`'{}'::jsonb`),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('rule_test_cases_name_uniq').on(t.tableId, t.name)]);
+
+export type RuleTestCaseRow = typeof ruleTestCases.$inferSelect;
+export type NewRuleTestCase = typeof ruleTestCases.$inferInsert;
+
+// 决策表执行记录（运行时/测试/手动求值，append-only），用于实例 trace 与规则审计
+export const ruleDecisionExecutions = pgTable('rule_decision_executions', {
+  id: serial('id').primaryKey(),
+  ruleKey: varchar('rule_key', { length: 64 }).notNull(),
+  tableId: integer('table_id'),
+  instanceId: integer('instance_id'),
+  nodeKey: varchar('node_key', { length: 64 }),
+  source: varchar('source', { length: 16 }).notNull().default('runtime'),
+  matched: boolean('matched').notNull().default(false),
+  hitPolicy: ruleHitPolicyEnum('hit_policy').default('first').notNull(),
+  input: jsonb('input').notNull().default(sql`'{}'::jsonb`),
+  outputs: jsonb('outputs').notNull().default(sql`'{}'::jsonb`),
+  matchedRowIds: jsonb('matched_row_ids').notNull().default(sql`'[]'::jsonb`),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [index('rule_exec_instance_idx').on(t.instanceId), index('rule_exec_table_idx').on(t.tableId)]);
+
+export type RuleDecisionExecutionRow = typeof ruleDecisionExecutions.$inferSelect;
+export type NewRuleDecisionExecution = typeof ruleDecisionExecutions.$inferInsert;
+
 
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {
@@ -3335,12 +3372,18 @@ export const ruleDecisionTablesRelations = relations(ruleDecisionTables, ({ one,
   category: one(workflowCategories, { fields: [ruleDecisionTables.categoryId], references: [workflowCategories.id] }),
   createdByUser: one(users, { fields: [ruleDecisionTables.createdBy], references: [users.id] }),
   versions: many(ruleDecisionTableVersions),
+  cases: many(ruleTestCases),
 }));
 
 export const ruleDecisionTableVersionsRelations = relations(ruleDecisionTableVersions, ({ one }) => ({
   table: one(ruleDecisionTables, { fields: [ruleDecisionTableVersions.tableId], references: [ruleDecisionTables.id] }),
   publishedByUser: one(users, { fields: [ruleDecisionTableVersions.publishedBy], references: [users.id] }),
   tenant: one(tenants, { fields: [ruleDecisionTableVersions.tenantId], references: [tenants.id] }),
+}));
+
+export const ruleTestCasesRelations = relations(ruleTestCases, ({ one }) => ({
+  table: one(ruleDecisionTables, { fields: [ruleTestCases.tableId], references: [ruleDecisionTables.id] }),
+  tenant: one(tenants, { fields: [ruleTestCases.tenantId], references: [tenants.id] }),
 }));
 
 export const workflowAutomationsRelations = relations(workflowAutomations, ({ one }) => ({

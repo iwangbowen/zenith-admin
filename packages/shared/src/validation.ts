@@ -3142,3 +3142,11 @@ export const evaluateDecisionTableSchema = z.object({
 });
 export type CreateDecisionTableInput = z.input<typeof createDecisionTableSchema>;
 export type UpdateDecisionTableInput = z.input<typeof updateDecisionTableSchema>;
+
+export const createRuleTestCaseSchema = z.object({
+  name: z.string().min(1).max(64),
+  input: z.record(z.string(), z.unknown()).default({}),
+  expected: z.record(z.string(), z.unknown()).default({}),
+});
+export const updateRuleTestCaseSchema = createRuleTestCaseSchema.partial();
+export type CreateRuleTestCaseInput = z.input<typeof createRuleTestCaseSchema>;

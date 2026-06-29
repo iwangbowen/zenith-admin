@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { evaluateDecisionTable } from './rules-engine';
+import { diffDecisionSnapshots } from './rules-version-diff';
 
 const table = {
   hitPolicy: 'first' as const,
@@ -29,5 +30,16 @@ describe('evaluateDecisionTable', () => {
     const t = { ...table, rules: [{ id: 'r', when: ['10-20'], then: { level: 'mid' } }] };
     expect(evaluateDecisionTable(t, { form: { amount: 15 } }).matched).toBe(true);
     expect(evaluateDecisionTable(t, { form: { amount: 99 } }).matched).toBe(false);
+  });
+});
+
+describe('diffDecisionSnapshots', () => {
+  const base = { name: 'A', hitPolicy: 'first', inputs: [{ key: 'amt', label: '金额', type: 'number' }], outputs: [{ key: 'lv', label: '等级', type: 'string' }], rules: [{ id: 'r1', when: ['>= 1'], then: { lv: 'x' } }] };
+  it('detects meta + rule changes', () => {
+    const next = { ...base, name: 'B', rules: [{ id: 'r1', when: ['>= 2'], then: { lv: 'y' } }, { id: 'r2', when: ['-'], then: { lv: 'z' } }] };
+    const d = diffDecisionSnapshots(1, 0, base, next);
+    expect(d.changes.some((c) => c.kind === 'meta' && c.ref === 'name')).toBe(true);
+    expect(d.changes.some((c) => c.op === 'added' && c.ref === 'r2')).toBe(true);
+    expect(d.changes.some((c) => c.op === 'changed' && c.ref === 'r1')).toBe(true);
   });
 });

@@ -21,6 +21,24 @@ function buildFlow(): WorkflowFlowData {
 }
 
 describe('analyzeWorkflowHealth 3D 增强', () => {
+  it('排他网关条件区间重叠时告警', () => {
+    const flow = {
+      nodes: [
+        { id: 'start', type: 'start', data: { key: 'start', type: 'start', label: '开始' } },
+        { id: 'gw', type: 'exclusiveGateway', data: { key: 'gw', type: 'exclusiveGateway', label: '网关' } },
+        { id: 'a', type: 'end', data: { key: 'a', type: 'end', label: 'A' } },
+        { id: 'b', type: 'end', data: { key: 'b', type: 'end', label: 'B' } },
+      ],
+      edges: [
+        { source: 'start', target: 'gw' },
+        { source: 'gw', target: 'a', condition: { field: 'amt', operator: 'gt', value: 100, source: 'form' } },
+        { source: 'gw', target: 'b', condition: { field: 'amt', operator: 'gt', value: 500, source: 'form' } },
+      ],
+    } as unknown as WorkflowFlowData;
+    const report = analyzeWorkflowHealth(flow, new Set(['amt']), {});
+    expect(report.checks.some((c) => c.issues.some((i) => i.message.includes('区间重叠')))).toBe(true);
+  });
+
   it('对文本字段使用数值比较操作符时给出类型兼容性告警', () => {
     const report = analyzeWorkflowHealth(
       buildFlow(),

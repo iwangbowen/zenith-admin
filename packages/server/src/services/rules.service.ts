@@ -1,10 +1,10 @@
 import { and, desc, eq, like, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
-  RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleHitPolicy, RuleEvaluateResult,
+  RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleHitPolicy, RuleEvaluateResult, RuleTestRunResult, RuleCaseResult,
 } from '@zenith/shared';
 import { db } from '../db';
-import { ruleDecisionTables, ruleDecisionTableVersions } from '../db/schema';
+import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases, ruleDecisionExecutions } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { escapeLike } from '../lib/where-helpers';
@@ -168,6 +168,10 @@ export async function publishDecisionTable(id: number) {
   if (!row.inputs || (row.inputs as RuleDecisionInput[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一个输入列' });
   if (!row.outputs || (row.outputs as RuleDecisionOutput[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一个输出列' });
   if (!row.rules || (row.rules as RuleDecisionRow[]).length === 0) throw new HTTPException(400, { message: '决策表至少需要一条规则' });
+  // 发布门禁：用例必须全部通过；存在用例时规则行需 100% 覆盖
+  const run = await runTestCases(id);
+  if (run.failed > 0) throw new HTTPException(400, { message: `发布受阻：${run.failed}/${run.total} 个测试用例未通过` });
+  if (run.total > 0 && run.coverage < 100) throw new HTTPException(400, { message: `发布受阻：规则覆盖率 ${run.coverage}%，未覆盖行 ${run.uncoveredRowIds.join(', ')}` });
   return db.transaction(async (tx) => {
     await tx.insert(ruleDecisionTableVersions).values({
       tableId: row.id,
@@ -220,6 +224,80 @@ export async function testEvaluateDecisionTable(id: number, input: Record<string
     outputs: (row.outputs ?? []) as RuleDecisionOutput[],
     rules: (row.rules ?? []) as RuleDecisionRow[],
   }, input);
+}
+
+/** 运行时按 key 求值，返回输出键值；表不存在/禁用/异常一律返回空对象（不阻断流程）。collect 策略下各输出键聚合为数组；可选写执行记录供 trace/审计。 */
+export async function getDecisionOutputs(key: string, scope: Record<string, unknown>, meta?: { instanceId?: number | null; nodeKey?: string | null; source?: 'runtime' | 'manual' | 'test' }): Promise<Record<string, unknown>> {
+  try {
+    const [row] = await db.select().from(ruleDecisionTables).where(eq(ruleDecisionTables.key, key)).limit(1);
+    if (!row || row.status === 'disabled') return {};
+    const outputs = (row.outputs ?? []) as RuleDecisionOutput[];
+    const res = evaluateDecisionTable({
+      hitPolicy: row.hitPolicy,
+      inputs: (row.inputs ?? []) as RuleDecisionInput[],
+      outputs,
+      rules: (row.rules ?? []) as RuleDecisionRow[],
+    }, scope);
+    // collect：把每个输出键聚合为数组，供包容网关 contains/in 命中多分支
+    const merged = res.hitPolicy === 'collect' && res.collected?.length
+      ? Object.fromEntries(outputs.map((o) => [o.key, res.collected!.map((c) => c[o.key])]))
+      : res.outputs;
+    await db.insert(ruleDecisionExecutions).values({
+      ruleKey: key, tableId: row.id, instanceId: meta?.instanceId ?? null, nodeKey: meta?.nodeKey ?? null,
+      source: meta?.source ?? 'runtime', matched: res.matched, hitPolicy: res.hitPolicy,
+      input: scope, outputs: merged, matchedRowIds: res.matchedRowIds, tenantId: row.tenantId,
+    }).catch(() => undefined);
+    return res.matched ? merged : {};
+  } catch { return {}; }
+}
+
+export async function listDecisionExecutions(q: { instanceId?: number; tableId?: number; limit?: number }) {
+  const conds = [];
+  if (q.instanceId) conds.push(eq(ruleDecisionExecutions.instanceId, q.instanceId));
+  if (q.tableId) conds.push(eq(ruleDecisionExecutions.tableId, q.tableId));
+  const where = conds.length ? and(...conds) : undefined;
+  const rows = await db.select().from(ruleDecisionExecutions).where(where).orderBy(desc(ruleDecisionExecutions.id)).limit(q.limit ?? 50);
+  return rows.map((r) => ({ id: r.id, ruleKey: r.ruleKey, tableId: r.tableId, instanceId: r.instanceId, nodeKey: r.nodeKey, source: r.source as 'runtime' | 'manual' | 'test', matched: r.matched, hitPolicy: r.hitPolicy, input: (r.input ?? {}) as Record<string, unknown>, outputs: (r.outputs ?? {}) as Record<string, unknown>, matchedRowIds: (r.matchedRowIds ?? []) as string[], createdAt: formatDateTime(r.createdAt) }));
+}
+
+/** 测试用例 CRUD + 批跑 + 覆盖率 */
+type CaseRow = typeof ruleTestCases.$inferSelect;
+const mapCase = (r: CaseRow) => ({ id: r.id, tableId: r.tableId, name: r.name, input: (r.input ?? {}) as Record<string, unknown>, expected: (r.expected ?? {}) as Record<string, unknown>, createdAt: formatDateTime(r.createdAt), updatedAt: formatDateTime(r.updatedAt) });
+
+export async function listTestCases(tableId: number) {
+  await ensureDecisionTable(tableId);
+  const rows = await db.select().from(ruleTestCases).where(eq(ruleTestCases.tableId, tableId)).orderBy(desc(ruleTestCases.id));
+  return rows.map(mapCase);
+}
+export async function createTestCase(tableId: number, input: { name: string; input?: Record<string, unknown>; expected?: Record<string, unknown> }) {
+  await ensureDecisionTable(tableId);
+  try {
+    const [row] = await db.insert(ruleTestCases).values({ tableId, name: input.name, input: input.input ?? {}, expected: input.expected ?? {}, tenantId: getCreateTenantId(currentUser()) }).returning();
+    return mapCase(row);
+  } catch (err) { rethrowPgUniqueViolation(err, '用例名称已存在'); }
+}
+export async function deleteTestCase(tableId: number, caseId: number): Promise<void> {
+  await db.delete(ruleTestCases).where(and(eq(ruleTestCases.id, caseId), eq(ruleTestCases.tableId, tableId)));
+}
+
+const deepEqual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** 批跑用例：逐例求值对比 expected，并统计规则行覆盖率 */
+export async function runTestCases(tableId: number): Promise<RuleTestRunResult> {
+  const row = await ensureDecisionTable(tableId);
+  const table = { hitPolicy: row.hitPolicy, inputs: (row.inputs ?? []) as RuleDecisionInput[], outputs: (row.outputs ?? []) as RuleDecisionOutput[], rules: (row.rules ?? []) as RuleDecisionRow[] };
+  const cases = await db.select().from(ruleTestCases).where(eq(ruleTestCases.tableId, tableId));
+  const covered = new Set<string>();
+  const results: RuleCaseResult[] = cases.map((c) => {
+    const res = evaluateDecisionTable(table, (c.input ?? {}) as Record<string, unknown>);
+    res.matchedRowIds.forEach((id) => covered.add(id));
+    return { id: c.id, name: c.name, pass: deepEqual(res.outputs, c.expected), expected: (c.expected ?? {}) as Record<string, unknown>, actual: res.outputs };
+  });
+  const total = results.length, passed = results.filter((r) => r.pass).length;
+  const allRowIds = table.rules.map((r) => r.id);
+  const uncoveredRowIds = allRowIds.filter((id) => !covered.has(id));
+  const coverage = allRowIds.length ? Math.round((allRowIds.length - uncoveredRowIds.length) / allRowIds.length * 100) : 100;
+  return { total, passed, failed: total - passed, coverage, uncoveredRowIds, cases: results };
 }
 
 const toSnapshot = (r: { name: string; hitPolicy: string; inputs: unknown; outputs: unknown; rules: unknown }) => ({

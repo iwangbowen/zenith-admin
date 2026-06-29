@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { RuleDecisionTable, RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleEvaluateResult } from '@zenith/shared';
-import { mockDecisionTables, getNextTableId, mockDecisionVersions } from '@/mocks/data/decision-tables';
+import { mockDecisionTables, getNextTableId, mockDecisionVersions, mockTestCases, getNextCaseId, mockExecutions, getNextExecId } from '@/mocks/data/decision-tables';
 import { mockDateTime } from '@/mocks/utils/date';
 
 function ok<T>(data: T) { return HttpResponse.json({ code: 0, message: 'ok', data }); }
@@ -27,6 +27,17 @@ function evaluate(table: RuleDecisionTable, input: Record<string, unknown>): Rul
   return { matched: true, outputs, matchedRowIds: matched.map((r) => r.id), hitPolicy: table.hitPolicy };
 }
 
+function runCases(id: number) {
+  const r = mockDecisionTables.find((t) => t.id === id);
+  const list = mockTestCases[id] ?? [];
+  const covered = new Set<string>();
+  const cases = list.map((c) => { const res = r ? evaluate(r, c.input) : { matched: false, outputs: {}, matchedRowIds: [] as string[], hitPolicy: 'first' as const }; res.matchedRowIds.forEach((x) => covered.add(x)); return { id: c.id, name: c.name, pass: JSON.stringify(res.outputs) === JSON.stringify(c.expected), expected: c.expected, actual: res.outputs }; });
+  const allIds = (r?.rules ?? []).map((x) => x.id);
+  const uncoveredRowIds = allIds.filter((x) => !covered.has(x));
+  const coverage = allIds.length ? Math.round((allIds.length - uncoveredRowIds.length) / allIds.length * 100) : 100;
+  return { total: cases.length, passed: cases.filter((c) => c.pass).length, failed: cases.filter((c) => !c.pass).length, coverage, uncoveredRowIds, cases };
+}
+
 export const decisionTablesHandlers = [
   http.get('/api/rules/decision-tables', ({ request }) => {
     const url = new URL(request.url);
@@ -35,6 +46,10 @@ export const decisionTablesHandlers = [
     let list = [...mockDecisionTables];
     if (kw) list = list.filter((t) => t.name.includes(kw) || t.key.includes(kw));
     return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  }),
+  http.get('/api/rules/decision-tables/executions', ({ request }) => {
+    const url = new URL(request.url); const tableId = Number(url.searchParams.get('tableId')) || null; const instanceId = Number(url.searchParams.get('instanceId')) || null;
+    return ok(mockExecutions.filter((e) => (!tableId || e.tableId === tableId) && (!instanceId || e.instanceId === instanceId)).slice(0, 50));
   }),
   http.get('/api/rules/decision-tables/:id/versions', ({ params }) => ok(mockDecisionVersions[Number(params.id)] ?? [])),
   http.get('/api/rules/decision-tables/:id/diff', ({ params, request }) => {
@@ -75,15 +90,31 @@ export const decisionTablesHandlers = [
   http.post('/api/rules/decision-tables/:id/publish', ({ params }) => {
     const r = mockDecisionTables.find((t) => t.id === Number(params.id));
     if (!r) return fail('决策表不存在', 404);
+    const run = runCases(r.id);
+    if (run.failed > 0) return fail(`发布受阻：${run.failed}/${run.total} 个用例未通过`);
+    if (run.total > 0 && run.coverage < 100) return fail(`发布受阻：覆盖率 ${run.coverage}%`);
     (mockDecisionVersions[r.id] ??= []).unshift({ version: r.version, name: r.name, hitPolicy: r.hitPolicy, inputs: r.inputs, outputs: r.outputs, rules: r.rules, publishedAt: mockDateTime() });
     r.status = 'published'; r.publishedAt = mockDateTime(); r.version += 1;
     return ok(r);
+  }),
+  http.get('/api/rules/decision-tables/:id/cases', ({ params }) => ok(mockTestCases[Number(params.id)] ?? [])),
+  http.post('/api/rules/decision-tables/:id/cases', async ({ params, request }) => {
+    const id = Number(params.id); const b = (await request.json()) as { name: string; input?: Record<string, unknown>; expected?: Record<string, unknown> };
+    const now = mockDateTime(); const c = { id: getNextCaseId(), tableId: id, name: b.name, input: b.input ?? {}, expected: b.expected ?? {}, createdAt: now, updatedAt: now };
+    (mockTestCases[id] ??= []).unshift(c); return ok(c);
+  }),
+  http.post('/api/rules/decision-tables/:id/cases/run', ({ params }) => ok(runCases(Number(params.id)))),
+  http.delete('/api/rules/decision-tables/:id/cases/:caseId', ({ params }) => {
+    const arr = mockTestCases[Number(params.id)] ?? []; const i = arr.findIndex((c) => c.id === Number(params.caseId));
+    if (i >= 0) arr.splice(i, 1); return ok(null);
   }),
   http.post('/api/rules/decision-tables/:id/test', async ({ params, request }) => {
     const r = mockDecisionTables.find((t) => t.id === Number(params.id));
     if (!r) return fail('决策表不存在', 404);
     const { input } = (await request.json()) as { input: Record<string, unknown> };
-    return ok(evaluate(r, input ?? {}));
+    const res = evaluate(r, input ?? {});
+    mockExecutions.unshift({ id: getNextExecId(), ruleKey: r.key, tableId: r.id, instanceId: null, nodeKey: null, source: 'test', matched: res.matched, hitPolicy: r.hitPolicy, input: input ?? {}, outputs: res.outputs, matchedRowIds: res.matchedRowIds, createdAt: mockDateTime() });
+    return ok(res);
   }),
   http.post('/api/rules/decision-tables/evaluate', async ({ request }) => {
     const { key, input } = (await request.json()) as { key: string; input: Record<string, unknown> };

@@ -228,6 +228,7 @@ import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { resolveAssigneeIds, buildStarterContext } from './workflow-assignee-resolver.service';
+import { getDecisionOutputs } from './rules.service';
 import { resolveFormSnapshot } from './workflow-forms.service';
 import type { DbExecutor } from '../db/types';
 import { createHash, randomBytes } from 'node:crypto';
@@ -1710,6 +1711,13 @@ async function advanceAndMaterialize(
   let finished = false;
   let rejected = false;
   let currentNodeKeys: string[] = [];
+
+  // 决策表→网关注入：routeGateway 配 decisionRuleKey 时，求值并把输出并入 formData，供出边条件选支
+  const decisionNodes = (ctx.flowData.nodes ?? []).filter((n) => n.data.type === 'routeGateway' && n.data.decisionRuleKey);
+  for (const n of decisionNodes) {
+    const outputs = await getDecisionOutputs(n.data.decisionRuleKey!, { form: ctx.formData, starter: ctx.starter }, { instanceId: ctx.instanceId, nodeKey: n.data.key, source: 'runtime' });
+    Object.assign(ctx.formData, outputs);
+  }
 
   // 解析初始引擎触发（并按需先行消费 token）
   const engineTriggers: AdvanceTrigger[] = [];

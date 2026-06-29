@@ -3,7 +3,7 @@ import { Button, Input, TextArea, Tag, Modal, Form, Toast, Typography, SideSheet
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
-import type { RuleDecisionTable, RuleEvaluateResult, RuleVersionDiff, PaginatedResponse } from '@zenith/shared';
+import type { RuleDecisionTable, RuleEvaluateResult, RuleVersionDiff, RuleTestRunResult, RuleDecisionExecution, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -50,6 +50,11 @@ export default function RuleTablesPage() {
   const [verRow, setVerRow] = useState<RuleDecisionTable | null>(null);
   const [versions, setVersions] = useState<Array<{ version: number; name: string; publishedAt: string }>>([]);
   const [diff, setDiff] = useState<RuleVersionDiff | null>(null);
+  const [caseRow, setCaseRow] = useState<RuleDecisionTable | null>(null);
+  const [cases, setCases] = useState<Array<{ id: number; name: string; input: Record<string, unknown>; expected: Record<string, unknown> }>>([]);
+  const [runRes, setRunRes] = useState<RuleTestRunResult | null>(null);
+  const [execRow, setExecRow] = useState<RuleDecisionTable | null>(null);
+  const [execs, setExecs] = useState<RuleDecisionExecution[]>([]);
   const formApi = useRef<FormApi | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -106,6 +111,26 @@ export default function RuleTablesPage() {
     title: `回滚到 v${v}？`, content: '将以该版本快照覆盖当前编辑态并置为草稿',
     onOk: async () => { await request.post(`/api/rules/decision-tables/${verRow!.id}/rollback/${v}`); Toast.success('回滚成功'); setVerRow(null); fetchData(); },
   });
+  const openCases = async (r: RuleDecisionTable) => {
+    setCaseRow(r); setRunRes(null);
+    const res = await request.get<typeof cases>(`/api/rules/decision-tables/${r.id}/cases`);
+    setCases(res.data ?? []);
+  };
+  const addCase = async () => {
+    const name = prompt('用例名称'); if (!name) return;
+    await request.post(`/api/rules/decision-tables/${caseRow!.id}/cases`, { name, input: {}, expected: {} });
+    Toast.success('已新增空用例，可在数据库/接口完善输入输出'); openCases(caseRow!);
+  };
+  const runCases = async () => {
+    const res = await request.post<RuleTestRunResult>(`/api/rules/decision-tables/${caseRow!.id}/cases/run`, {});
+    if (res.data) setRunRes(res.data);
+  };
+  const delCase = async (cid: number) => { await request.delete(`/api/rules/decision-tables/${caseRow!.id}/cases/${cid}`); openCases(caseRow!); };
+  const openExec = async (r: RuleDecisionTable) => {
+    setExecRow(r);
+    const res = await request.get<RuleDecisionExecution[]>(`/api/rules/decision-tables/executions?tableId=${r.id}&limit=50`);
+    setExecs(res.data ?? []);
+  };
   const runTest = async () => {
     let input; try { input = JSON.parse(testInput || '{}'); } catch { Toast.error('input 必须是合法 JSON'); return; }
     const res = await request.post<RuleEvaluateResult>(`/api/rules/decision-tables/${testRow!.id}/test`, { input });
@@ -123,6 +148,8 @@ export default function RuleTablesPage() {
       actions: (r) => [
         { key: 'test', label: '测试', onClick: () => openTest(r) },
         { key: 'versions', label: '版本', onClick: () => openVersions(r) },
+        { key: 'cases', label: '用例', onClick: () => openCases(r) },
+        { key: 'audit', label: '审计', onClick: () => openExec(r) },
         { key: 'edit', label: '编辑', hidden: !canEdit, onClick: () => openEdit(r) },
         { key: 'publish', label: '发布', hidden: !canPublish, onClick: () => handlePublish(r) },
         { key: 'delete', label: '删除', danger: true, hidden: !canDelete, onClick: () => handleDelete(r) },
@@ -179,6 +206,47 @@ export default function RuleTablesPage() {
             {`v${diff.from} → 当前\n` + (diff.changes.length ? diff.changes.map((c) => `[${c.op}] ${c.kind} ${c.ref}: ${c.detail}`).join('\n') : '无差异')}
           </pre>
         )}
+      </SideSheet>
+
+      <SideSheet title={`测试矩阵 · ${caseRow?.name ?? ''}`} visible={!!caseRow} onCancel={() => setCaseRow(null)} width={520}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <Button size="small" onClick={addCase}>新增用例</Button>
+          <Button size="small" type="primary" onClick={runCases}>运行全部</Button>
+        </div>
+        {runRes && (
+          <pre style={{ marginBottom: 12, background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap' }}>
+            {`通过 ${runRes.passed}/${runRes.total} · 覆盖率 ${runRes.coverage}%` + (runRes.uncoveredRowIds.length ? `\n未覆盖行: ${runRes.uncoveredRowIds.join(', ')}` : '')}
+          </pre>
+        )}
+        <List
+          dataSource={cases}
+          emptyContent={<Text type="tertiary">暂无用例</Text>}
+          renderItem={(c) => {
+            const res = runRes?.cases.find((x) => x.id === c.id);
+            return (
+              <List.Item
+                main={<><Text strong>{c.name}</Text> {res && <Tag color={res.pass ? 'green' : 'red'}>{res.pass ? '通过' : '失败'}</Tag>}</>}
+                extra={<Button size="small" theme="borderless" type="danger" onClick={() => delCase(c.id)}>删除</Button>}
+              />
+            );
+          }}
+        />
+      </SideSheet>
+
+      <SideSheet title={`决策审计 · ${execRow?.name ?? ''}`} visible={!!execRow} onCancel={() => setExecRow(null)} width={560}>
+        <List
+          dataSource={execs}
+          emptyContent={<Text type="tertiary">暂无执行记录</Text>}
+          renderItem={(e) => (
+            <List.Item
+              main={<>
+                <Text strong>{e.matched ? '命中' : '未命中'}</Text> <Tag size="small">{e.source}</Tag> {e.instanceId ? <Text type="tertiary" size="small">实例#{e.instanceId}{e.nodeKey ? `·${e.nodeKey}` : ''}</Text> : null}
+                <Text type="tertiary" size="small" style={{ display: 'block' }}>{e.createdAt} · 行 {e.matchedRowIds.join(',') || '-'}</Text>
+                <Text size="small" style={{ display: 'block' }}>out: {JSON.stringify(e.outputs)}</Text>
+              </>}
+            />
+          )}
+        />
       </SideSheet>
     </div>
   );

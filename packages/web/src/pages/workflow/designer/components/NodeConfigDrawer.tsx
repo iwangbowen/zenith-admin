@@ -234,6 +234,13 @@ export default function NodeConfigDrawer({
       .then((res) => { if (res.code === 0) setConnectorOptions((res.data?.list ?? []).map((c) => ({ value: c.id, label: `${c.name}（${c.type}）` }))); });
   }, [visible, node?.type]);
 
+  const [decisionTableOptions, setDecisionTableOptions] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    if (!visible || node?.type !== 'routeBranch') return;
+    void request.get<{ list: Array<{ key: string; name: string }> }>('/api/rules/decision-tables?status=published&pageSize=100')
+      .then((res) => { if (res.code === 0) setDecisionTableOptions((res.data?.list ?? []).map((t) => ({ value: t.key, label: `${t.name}（${t.key}）` }))); });
+  }, [visible, node?.type]);
+
   // 判断哪些 Tab 可用
   const isApprover = node?.type === 'approver';
   const isHandler = node?.type === 'handler';
@@ -963,6 +970,21 @@ export default function NodeConfigDrawer({
                 disabled={routableFields.length === 0}
                 showClear
               />
+            </Form.Slot>
+            <Form.Slot label="决策表（可选）">
+              <Select
+                value={(props.decisionRuleKey as string) ?? undefined}
+                onChange={(v) => handlePropsChange({ decisionRuleKey: v })}
+                placeholder={decisionTableOptions.length === 0 ? '规则中心暂无已发布决策表' : '选择决策表，进网关前求值并并入表单数据'}
+                style={{ width: '100%' }}
+                optionList={decisionTableOptions}
+                filter
+                emptyContent="暂无已发布决策表"
+                showClear
+              />
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 6 }}>
+                配置后，规则中心该决策表的输出字段将合并到表单数据，可在路由字段/出边条件中直接引用其输出键。
+              </Typography.Text>
             </Form.Slot>
           </div>
         );

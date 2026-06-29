@@ -2093,6 +2093,8 @@ export interface WorkflowNodeConfig {
   catchAction?: 'toAdmin' | 'notify' | 'terminate';
   /** catchAction='notify' 时额外通知的用户 ID（默认通知发起人+管理员） */
   catchNotifyUserIds?: number[] | null;
+  /** routeGateway：决策表 key，运行时进入网关前求值并把输出并入 formData，供出边条件选支 */
+  decisionRuleKey?: string | null;
 }
 
 /** 节点监听器触发事件 */
@@ -7061,4 +7063,46 @@ export interface RuleVersionDiff {
   from: number;
   to: number;
   changes: RuleVersionChange[];
+}
+
+// ─── 规则中心：测试矩阵 ──────────────────────────────────────────────────────────
+export interface RuleTestCase {
+  id: number;
+  tableId: number;
+  name: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface RuleCaseResult {
+  id: number;
+  name: string;
+  pass: boolean;
+  expected: Record<string, unknown>;
+  actual: Record<string, unknown>;
+}
+export interface RuleTestRunResult {
+  total: number;
+  passed: number;
+  failed: number;
+  coverage: number;
+  uncoveredRowIds: string[];
+  cases: RuleCaseResult[];
+}
+
+// ─── 规则中心：执行记录 ──────────────────────────────────────────────────────────
+export interface RuleDecisionExecution {
+  id: number;
+  ruleKey: string;
+  tableId: number | null;
+  instanceId: number | null;
+  nodeKey: string | null;
+  source: 'runtime' | 'manual' | 'test';
+  matched: boolean;
+  hitPolicy: RuleHitPolicy;
+  input: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  matchedRowIds: string[];
+  createdAt: string;
 }
