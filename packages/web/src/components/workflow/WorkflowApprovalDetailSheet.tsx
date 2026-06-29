@@ -29,6 +29,11 @@ type AddSignMode = 'and' | 'or';
 
 interface UploadedFile { name: string; url: string; size?: number }
 
+type ActionAttachmentKey = 'approve' | 'reject' | 'transfer' | 'delegate' | 'addSign' | 'return';
+const EMPTY_ACTION_ATTACHMENTS: Record<ActionAttachmentKey, UploadedFile[]> = {
+  approve: [], reject: [], transfer: [], delegate: [], addSign: [], return: [],
+};
+
 interface Props {
   instanceId: number | null;
   taskId: number | null;
@@ -97,13 +102,49 @@ export default function WorkflowApprovalDetailSheet({
   const [rejectInstance, setRejectInstance] = useState<WorkflowInstance | null>(null);
   const [rejectDef, setRejectDef] = useState<WorkflowDefinition | null>(null);
   const [rejectHintLoading, setRejectHintLoading] = useState(false);
-  const [approveAttachments, setApproveAttachments] = useState<UploadedFile[]>([]);
+  const [actionAttachments, setActionAttachments] = useState<Record<ActionAttachmentKey, UploadedFile[]>>(() => ({ ...EMPTY_ACTION_ATTACHMENTS }));
   const [approveSignature, setApproveSignature] = useState('');
   const { userOptions, ensureLoaded: ensureUserOptions } = useUserOptions();
   const [selectedNextApprovers, setSelectedNextApprovers] = useState<number[]>([]);
   const [addSignPosition, setAddSignPosition] = useState<AddSignPosition>('after');
   const [signMode, setSignMode] = useState<AddSignMode>('and');
   const { renderPhraseBar, phraseManageModal } = useQuickPhrases();
+
+  const setAttachmentsFor = useCallback((key: ActionAttachmentKey, files: UploadedFile[]) => {
+    setActionAttachments((prev) => ({ ...prev, [key]: files }));
+  }, []);
+  const resetActionAttachments = useCallback(() => {
+    setActionAttachments({ ...EMPTY_ACTION_ATTACHMENTS });
+  }, []);
+  const ensureUploadSatisfied = (btn: WorkflowActionButtonConfig, key: ActionAttachmentKey): boolean => {
+    if ((btn.uploadMode ?? 'hidden') === 'required' && actionAttachments[key].length === 0) {
+      Toast.error('请上传附件后再提交');
+      return false;
+    }
+    return true;
+  };
+  const attachmentsPayload = (key: ActionAttachmentKey): UploadedFile[] | undefined =>
+    (actionAttachments[key].length > 0 ? actionAttachments[key] : undefined);
+  const renderAttachmentField = (btn: WorkflowActionButtonConfig, key: ActionAttachmentKey) => {
+    const mode = btn.uploadMode ?? 'hidden';
+    if (mode === 'hidden') return null;
+    return (
+      <div style={{ marginTop: 12 }}>
+        <Typography.Text strong>
+          附件{mode === 'required' ? <span style={{ color: 'var(--semi-color-danger)' }}> *</span> : null}
+        </Typography.Text>
+        <div style={{ marginTop: 6 }}>
+          <FileAttachment
+            mode="edit"
+            showTitle={false}
+            limit={5}
+            value={actionAttachments[key].map((a, i) => uploadedFileToAttachment(a, i))}
+            onChange={(items) => setAttachmentsFor(key, items.map((a) => ({ name: a.file.originalName, url: a.file.url, size: a.file.size })))}
+          />
+        </div>
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (visible) setViewId(instanceId);
@@ -122,7 +163,7 @@ export default function WorkflowApprovalDetailSheet({
       setAddSignVisible(false);
       setReduceSignVisible(false);
       setReturnVisible(false);
-      setApproveAttachments([]);
+      resetActionAttachments();
       setApproveSignature('');
       setSelectedNextApprovers([]);
       initialActionKeyRef.current = null;
@@ -239,7 +280,7 @@ export default function WorkflowApprovalDetailSheet({
     if (initialActionKeyRef.current === key) return;
     initialActionKeyRef.current = key;
     if (initialAction === 'approve') {
-      setApproveAttachments([]);
+      setAttachmentsFor('approve', []);
       setApproveSignature('');
       setSelectedNextApprovers([]);
       setApproveVisible(true);
@@ -264,10 +305,7 @@ export default function WorkflowApprovalDetailSheet({
     const needSignature = currentTask?.signatureRequired ?? false;
     try {
       const values = await approveFormApi.current?.validate();
-      if (btnApprove.uploadRequired && approveAttachments.length === 0) {
-        Toast.error('请上传附件后再提交');
-        return;
-      }
+      if (!ensureUploadSatisfied(btnApprove, 'approve')) return;
       if (needSignature && !approveSignature) {
         Toast.error('该节点要求手写签名，请先签名');
         return;
@@ -277,7 +315,7 @@ export default function WorkflowApprovalDetailSheet({
         `/api/workflows/tasks/${taskId}/approve`,
         {
           comment: values?.comment ?? '',
-          attachments: approveAttachments.length > 0 ? approveAttachments : undefined,
+          attachments: attachmentsPayload('approve'),
           signature: approveSignature || undefined,
           selectedNextApprovers: hasApproverSelectDownstream && selectedNextApprovers.length > 0 ? selectedNextApprovers : undefined,
         },
@@ -286,7 +324,7 @@ export default function WorkflowApprovalDetailSheet({
       if (res.code === 0) {
         Toast.success('审批通过');
         setApproveVisible(false);
-        setApproveAttachments([]);
+        setAttachmentsFor('approve', []);
         setApproveSignature('');
         setSelectedNextApprovers([]);
         closeAfterAction();
@@ -303,15 +341,17 @@ export default function WorkflowApprovalDetailSheet({
     if (submitting) return;
     try {
       const values = await rejectFormApi.current?.validate() as Record<string, unknown>;
+      if (!ensureUploadSatisfied(btnReject, 'reject')) return;
       setSubmitting(true);
       const res = await request.post(
         `/api/workflows/tasks/${taskId}/reject`,
-        { comment: values.comment as string },
+        { comment: values.comment as string, attachments: attachmentsPayload('reject') },
         { headers: { 'X-Idempotency-Key': `workflow-reject-${taskId}` } },
       );
       if (res.code === 0) {
         Toast.success('已驳回');
         setRejectVisible(false);
+        setAttachmentsFor('reject', []);
         closeAfterAction();
       }
     } catch {
@@ -349,14 +389,26 @@ export default function WorkflowApprovalDetailSheet({
   const handleTransfer = async () => {
     try {
       const values = await transferFormApi.current?.validate() as { targetUserId: number; comment?: string };
-      await submitSimpleAction('transfer', values, '已转办', () => setTransferVisible(false));
+      if (!ensureUploadSatisfied(btnTransfer, 'transfer')) return;
+      await submitSimpleAction(
+        'transfer',
+        { ...values, attachments: attachmentsPayload('transfer') },
+        '已转办',
+        () => { setTransferVisible(false); setAttachmentsFor('transfer', []); },
+      );
     } catch { /* validation */ }
   };
 
   const handleDelegate = async () => {
     try {
       const values = await delegateFormApi.current?.validate() as { targetUserId: number; comment?: string };
-      await submitSimpleAction('delegate', values, '已委派', () => setDelegateVisible(false));
+      if (!ensureUploadSatisfied(btnDelegate, 'delegate')) return;
+      await submitSimpleAction(
+        'delegate',
+        { ...values, attachments: attachmentsPayload('delegate') },
+        '已委派',
+        () => { setDelegateVisible(false); setAttachmentsFor('delegate', []); },
+      );
     } catch { /* validation */ }
   };
 
@@ -380,18 +432,21 @@ export default function WorkflowApprovalDetailSheet({
         signMode?: AddSignMode;
       };
       const { targetUserIds, position, comment } = values;
+      if (!ensureUploadSatisfied(btnAddSign, 'addSign')) return;
       await submitSimpleAction(
         'add-sign',
         {
           targetUserIds,
           position,
           comment,
+          attachments: attachmentsPayload('addSign'),
           ...(position === 'parallel' ? { signMode } : {}),
         },
         '已加签',
         () => {
           resetAddSignForm();
           setAddSignVisible(false);
+          setAttachmentsFor('addSign', []);
         },
       );
     } catch { /* validation */ }
@@ -407,7 +462,13 @@ export default function WorkflowApprovalDetailSheet({
   const handleReturn = async () => {
     try {
       const values = await returnFormApi.current?.validate() as { targetNodeKeys: string[]; comment: string };
-      await submitSimpleAction('return', values, '已退回', () => setReturnVisible(false));
+      if (!ensureUploadSatisfied(btnReturn, 'return')) return;
+      await submitSimpleAction(
+        'return',
+        { ...values, attachments: attachmentsPayload('return') },
+        '已退回',
+        () => { setReturnVisible(false); setAttachmentsFor('return', []); },
+      );
     } catch { /* validation */ }
   };
 
@@ -424,7 +485,7 @@ export default function WorkflowApprovalDetailSheet({
   const extraActions = taskId != null && detail?.id === instanceId ? (
     <Space wrap>
       {btnApprove.enabled !== false && (
-        <Button type="primary" onClick={() => { setApproveAttachments([]); setApproveSignature(''); setSelectedNextApprovers([]); setApproveVisible(true); }}>
+        <Button type="primary" onClick={() => { setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers([]); setApproveVisible(true); }}>
           {btnApprove.displayName ?? '同意'}
         </Button>
       )}
@@ -486,7 +547,7 @@ export default function WorkflowApprovalDetailSheet({
       <AppModal
         title={btnApprove.displayName ? `${btnApprove.displayName}` : '审批通过'}
         visible={approveVisible}
-        onCancel={() => { setApproveVisible(false); setApproveAttachments([]); setApproveSignature(''); setSelectedNextApprovers([]); if (!detailSheetVisible) onClose(); }}
+        onCancel={() => { setApproveVisible(false); setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers([]); if (!detailSheetVisible) onClose(); }}
         onOk={() => void handleApprove()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
         okText="确认"
@@ -501,20 +562,7 @@ export default function WorkflowApprovalDetailSheet({
           />
         </Form>
         {renderPhraseBar((t) => appendPhrase(approveFormApi.current, t))}
-        <div style={{ marginTop: 12 }}>
-          <Typography.Text strong>
-            附件{btnApprove.uploadRequired ? <span style={{ color: 'var(--semi-color-danger)' }}> *</span> : null}
-          </Typography.Text>
-          <div style={{ marginTop: 6 }}>
-            <FileAttachment
-              mode="edit"
-              showTitle={false}
-              limit={5}
-              value={approveAttachments.map((a, i) => uploadedFileToAttachment(a, i))}
-              onChange={(items) => setApproveAttachments(items.map((a) => ({ name: a.file.originalName, url: a.file.url, size: a.file.size })))}
-            />
-          </div>
-        </div>
+        {renderAttachmentField(btnApprove, 'approve')}
         {(currentTask?.signatureRequired ?? false) && (
           <div style={{ marginTop: 12 }}>
             <Typography.Text strong>
@@ -551,6 +599,7 @@ export default function WorkflowApprovalDetailSheet({
           setRejectVisible(false);
           setRejectInstance(null);
           setRejectDef(null);
+          setAttachmentsFor('reject', []);
           if (!detailSheetVisible) onClose();
         }}
         onOk={() => void handleReject()}
@@ -575,12 +624,13 @@ export default function WorkflowApprovalDetailSheet({
           />
         </Form>
         {renderPhraseBar((t) => appendPhrase(rejectFormApi.current, t))}
+        {renderAttachmentField(btnReject, 'reject')}
       </AppModal>
 
       <AppModal
         title={btnTransfer.displayName ?? '转办'}
         visible={transferVisible}
-        onCancel={() => setTransferVisible(false)}
+        onCancel={() => { setTransferVisible(false); setAttachmentsFor('transfer', []); }}
         onOk={() => void handleTransfer()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
         okText="确认"
@@ -598,12 +648,13 @@ export default function WorkflowApprovalDetailSheet({
           />
           <Form.TextArea field="comment" label={btnTransfer.opinionName ?? '转办说明'} rows={3} />
         </Form>
+        {renderAttachmentField(btnTransfer, 'transfer')}
       </AppModal>
 
       <AppModal
         title={btnDelegate.displayName ?? '委派'}
         visible={delegateVisible}
-        onCancel={() => setDelegateVisible(false)}
+        onCancel={() => { setDelegateVisible(false); setAttachmentsFor('delegate', []); }}
         onOk={() => void handleDelegate()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
         okText="确认"
@@ -621,6 +672,7 @@ export default function WorkflowApprovalDetailSheet({
           />
           <Form.TextArea field="comment" label={btnDelegate.opinionName ?? '委派说明'} rows={3} />
         </Form>
+        {renderAttachmentField(btnDelegate, 'delegate')}
       </AppModal>
 
       <AppModal
@@ -629,6 +681,7 @@ export default function WorkflowApprovalDetailSheet({
         onCancel={() => {
           resetAddSignForm();
           setAddSignVisible(false);
+          setAttachmentsFor('addSign', []);
         }}
         onOk={() => void handleAddSign()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
@@ -667,6 +720,7 @@ export default function WorkflowApprovalDetailSheet({
           )}
           <Form.TextArea field="comment" label={btnAddSign.opinionName ?? '加签说明'} rows={3} />
         </Form>
+        {renderAttachmentField(btnAddSign, 'addSign')}
       </AppModal>
 
       <AppModal
@@ -696,7 +750,7 @@ export default function WorkflowApprovalDetailSheet({
       <AppModal
         title={btnReturn.displayName ?? '退回'}
         visible={returnVisible}
-        onCancel={() => setReturnVisible(false)}
+        onCancel={() => { setReturnVisible(false); setAttachmentsFor('return', []); }}
         onOk={() => void handleReturn()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
         okText="确认"
@@ -723,6 +777,7 @@ export default function WorkflowApprovalDetailSheet({
             rows={3}
           />
         </Form>
+        {renderAttachmentField(btnReturn, 'return')}
       </AppModal>
       {phraseManageModal}
     </>

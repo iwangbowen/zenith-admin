@@ -383,10 +383,10 @@ const rejectRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
-    const { comment } = c.req.valid('json');
+    const { comment, attachments } = c.req.valid('json');
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
-    const r = await rejectTask(taskId, comment);
+    const r = await rejectTask(taskId, comment, attachments);
     return c.json(okBody(r.instance, r.message), 200);
   },
 });
@@ -408,10 +408,10 @@ const transferRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
-    const { targetUserId, comment } = c.req.valid('json');
+    const { targetUserId, comment, attachments } = c.req.valid('json');
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
-    const r = await transferTask(taskId, targetUserId, comment);
+    const r = await transferTask(taskId, targetUserId, comment, attachments);
     const after = await getWorkflowTaskBeforeAudit(taskId);
     if (after) setAuditAfterData(c, after);
     return c.json(okBody(r, '已转办'), 200);
@@ -433,10 +433,10 @@ const delegateRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
-    const { targetUserId, comment } = c.req.valid('json');
+    const { targetUserId, comment, attachments } = c.req.valid('json');
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
-    const r = await delegateTask(taskId, targetUserId, comment);
+    const r = await delegateTask(taskId, targetUserId, comment, attachments);
     const after = await getWorkflowTaskBeforeAudit(taskId);
     if (after) setAuditAfterData(c, after);
     return c.json(okBody(r, '已委派'), 200);
@@ -458,10 +458,10 @@ const addSignRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
-    const { targetUserIds, position, comment, signMode } = c.req.valid('json');
+    const { targetUserIds, position, comment, signMode, attachments } = c.req.valid('json');
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
-    const r = await addSignTask(taskId, targetUserIds, position, comment, signMode);
+    const r = await addSignTask(taskId, targetUserIds, position, comment, signMode, attachments);
     const after = await getWorkflowTaskBeforeAudit(taskId);
     if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, r.message), 200);
@@ -508,10 +508,10 @@ const returnRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { taskId } = c.req.valid('param');
-    const { targetNodeKeys, comment } = c.req.valid('json');
+    const { targetNodeKeys, comment, attachments } = c.req.valid('json');
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
-    const r = await returnTask(taskId, targetNodeKeys, comment);
+    const r = await returnTask(taskId, targetNodeKeys, comment, attachments);
     return c.json(okBody(r.instance, r.message), 200);
   },
 });

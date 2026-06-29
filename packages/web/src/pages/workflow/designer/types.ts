@@ -93,13 +93,21 @@ export type ActionButtonKey =
   | 'addSign'
   | 'return';
 
+/**
+ * 附件配置：执行此动作时的附件上传策略
+ * - hidden：不显示附件上传区（默认）
+ * - optional：显示，选填
+ * - required：显示，必填
+ */
+export type ActionUploadMode = 'hidden' | 'optional' | 'required';
+
 /** 单个操作按钮的配置 */
 export interface ActionButtonConfig {
   enabled: boolean;
   displayName?: string;
   opinionName?: string;
   jumpToNodeKey?: string;
-  uploadRequired?: boolean;
+  uploadMode?: ActionUploadMode;
 }
 
 export type ActionButtonsConfig = Partial<Record<ActionButtonKey, ActionButtonConfig>>;

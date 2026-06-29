@@ -211,7 +211,7 @@ export const WorkflowTaskDTO = z
       displayName: z.string().optional(),
       opinionName: z.string().optional(),
       jumpToNodeKey: z.string().optional(),
-      uploadRequired: z.boolean().optional(),
+      uploadMode: z.enum(['hidden', 'optional', 'required']).optional(),
     })).nullable().optional(),
     createdAt: z.string(),
   })

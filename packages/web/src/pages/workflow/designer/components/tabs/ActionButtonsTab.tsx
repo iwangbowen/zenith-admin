@@ -2,12 +2,18 @@
  * 操作按钮设置 Tab — 表格化配置审批节点支持的动作按钮
  *
  * 按钮：通过 / 拒绝 / 转办 / 委派 / 加签 / 退回
- * 每行可配置：显示名称、意见名称、跳转配置（仅 reject/return）、上传配置、启用
+ * 每行可配置：显示名称、意见名称、跳转配置（仅 reject/return）、附件、启用
  */
 import { useState } from 'react';
 import { Switch, Popover, Input, Button, Select, Empty } from '@douyinfe/semi-ui';
 import { Pencil } from 'lucide-react';
-import type { ActionButtonKey, ActionButtonConfig, ActionButtonsConfig, FlowNodeType } from '../../types';
+import type { ActionButtonKey, ActionButtonConfig, ActionButtonsConfig, ActionUploadMode, FlowNodeType } from '../../types';
+
+const UPLOAD_MODE_OPTIONS: Array<{ value: ActionUploadMode; label: string }> = [
+  { value: 'hidden', label: '不显示' },
+  { value: 'optional', label: '选填' },
+  { value: 'required', label: '必填' },
+];
 
 interface JumpTargetNode {
   id: string;
@@ -147,7 +153,7 @@ export default function ActionButtonsTab({
             <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>显示名称</th>
             <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>意见名称</th>
             <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 120, whiteSpace: 'nowrap' }}>跳转配置</th>
-            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 64, whiteSpace: 'nowrap' }}>上传配置</th>
+            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>附件</th>
             <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 48, whiteSpace: 'nowrap' }}>启用</th>
           </tr>
         </thead>
@@ -197,11 +203,13 @@ export default function ActionButtonsTab({
                   )}
                 </td>
                 <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                  <Switch
+                  <Select
                     size="small"
-                    checked={!!cfg.uploadRequired}
+                    value={cfg.uploadMode ?? 'hidden'}
                     disabled={disabled}
-                    onChange={(v) => updateButton(meta.key, { uploadRequired: v })}
+                    onChange={(v) => updateButton(meta.key, { uploadMode: v as ActionUploadMode })}
+                    optionList={UPLOAD_MODE_OPTIONS}
+                    style={{ width: 84 }}
                   />
                 </td>
                 <td style={{ padding: '10px 8px', textAlign: 'center' }}>

@@ -2047,15 +2047,13 @@ export const workflowHandlers = [
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
 
     const now = mockDateTime();
-    const attachSuffix = body.attachments && body.attachments.length > 0
-      ? `\n[附件]${body.attachments.map(a => a.name).join(', ')}`
-      : '';
+    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : null;
     const current = mockWorkflowTasks[taskIdx];
 
     // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不推进流程
     if (current.delegatedFromId) {
-      const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议同意：${body.comment ?? ''}${attachSuffix}`;
-      mockWorkflowTasks[taskIdx] = { ...current, status: 'approved', comment: receiptComment, actionAt: now };
+      const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议同意：${body.comment ?? ''}`;
+      mockWorkflowTasks[taskIdx] = { ...current, status: 'approved', comment: receiptComment, attachments, actionAt: now };
       const newTask: WorkflowTask = {
         id: getNextTaskId(),
         instanceId: current.instanceId,
@@ -2080,7 +2078,8 @@ export const workflowHandlers = [
     mockWorkflowTasks[taskIdx] = {
       ...current,
       status: 'approved',
-      comment: (body.comment ?? '') + attachSuffix || null,
+      comment: body.comment ?? null,
+      attachments,
       signature: body.signature ?? null,
       actionAt: now,
     };
@@ -2113,18 +2112,19 @@ export const workflowHandlers = [
   http.post('/api/workflows/tasks/:taskId/reject', async ({ params, request }) => {
     const cached = readIdempotentResponse(request);
     if (cached) return cached;
-    const body = await request.json() as { comment?: string };
+    const body = await request.json() as { comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
 
     const now = mockDateTime();
+    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : null;
     const current = mockWorkflowTasks[taskIdx];
 
     // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不驳回流程
     if (current.delegatedFromId) {
       const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} 建议拒绝：${body.comment ?? ''}`;
-      mockWorkflowTasks[taskIdx] = { ...current, status: 'rejected', comment: receiptComment, actionAt: now };
+      mockWorkflowTasks[taskIdx] = { ...current, status: 'rejected', comment: receiptComment, attachments, actionAt: now };
       const newTask: WorkflowTask = {
         id: getNextTaskId(),
         instanceId: current.instanceId,
@@ -2150,6 +2150,7 @@ export const workflowHandlers = [
       ...mockWorkflowTasks[taskIdx],
       status: 'rejected',
       comment: body.comment ?? null,
+      attachments,
       actionAt: now,
     };
 
@@ -2176,7 +2177,7 @@ export const workflowHandlers = [
 
   // 转办
   http.post('/api/workflows/tasks/:taskId/transfer', async ({ params, request }) => {
-    const body = await request.json() as { targetUserId: number; comment?: string };
+    const body = await request.json() as { targetUserId: number; comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     const current = mockWorkflowTasks[taskIdx];
@@ -2192,6 +2193,7 @@ export const workflowHandlers = [
       assigneeId: body.targetUserId,
       assigneeName: `用户${body.targetUserId}`,
       comment: `[转办] ${body.comment ?? ''}`,
+      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : null,
       originalAssigneeId: current.originalAssigneeId ?? current.assigneeId,
       transferChain: current.assigneeId ? [...chain, current.assigneeId] : chain,
     };
@@ -2200,7 +2202,7 @@ export const workflowHandlers = [
 
   // 委派
   http.post('/api/workflows/tasks/:taskId/delegate', async ({ params, request }) => {
-    const body = await request.json() as { targetUserId: number; comment?: string };
+    const body = await request.json() as { targetUserId: number; comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     const current = mockWorkflowTasks[taskIdx];
@@ -2216,6 +2218,7 @@ export const workflowHandlers = [
       assigneeId: body.targetUserId,
       assigneeName: `用户${body.targetUserId}`,
       comment: `[委派] ${body.comment ?? ''}`,
+      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : null,
       originalAssigneeId: current.originalAssigneeId ?? current.assigneeId,
       transferChain: current.assigneeId ? [...chain, current.assigneeId] : chain,
       delegatedFromId: current.delegatedFromId ?? current.assigneeId,
@@ -2225,12 +2228,13 @@ export const workflowHandlers = [
 
   // 加签
   http.post('/api/workflows/tasks/:taskId/add-sign', async ({ params, request }) => {
-    const body = await request.json() as { targetUserIds: number[]; position: 'before' | 'after' | 'parallel'; comment?: string };
+    const body = await request.json() as { targetUserIds: number[]; position: 'before' | 'after' | 'parallel'; comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     const current = mockWorkflowTasks[taskIdx];
     if (current.status !== 'pending') return err('该任务已处理');
     const now = mockDateTime();
+    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : null;
     if (body.position === 'before') {
       mockWorkflowTasks[taskIdx] = { ...current, status: 'waiting' };
     }
@@ -2246,6 +2250,7 @@ export const workflowHandlers = [
         assigneeAvatar: null,
         status: 'pending',
         comment: `[加签] ${body.comment ?? ''}`,
+        attachments,
         actionAt: null,
         actionButtons: null,
         createdAt: now,
@@ -2399,7 +2404,7 @@ export const workflowHandlers = [
 
   // 退回
   http.post('/api/workflows/tasks/:taskId/return', async ({ params, request }) => {
-    const body = await request.json() as { targetNodeKeys: string[]; comment: string };
+    const body = await request.json() as { targetNodeKeys: string[]; comment: string; attachments?: Array<{ name: string; url: string; size?: number }> };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
@@ -2414,6 +2419,7 @@ export const workflowHandlers = [
       ...current,
       status: 'rejected',
       comment: `${tag} ${body.comment}`,
+      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : null,
       actionAt: now,
     };
     const instIdx = mockWorkflowInstances.findIndex(i => i.id === current.instanceId);

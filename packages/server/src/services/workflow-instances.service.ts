@@ -3237,6 +3237,33 @@ export async function getInstanceForAdminAudit(id: number) {
   return inst ? mapInstance(inst) : null;
 }
 
+type WorkflowTaskAttachment = { name: string; url: string; size?: number };
+
+/** 读取节点「操作按钮设置」中指定按钮的配置 */
+function resolveNodeActionButton(
+  inst: typeof workflowInstances.$inferSelect,
+  nodeKey: string,
+  key: WorkflowActionButtonKey,
+): WorkflowActionButtonConfig | undefined {
+  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const nodeCfg = flowData?.nodes.find((n) => n.data.key === nodeKey)?.data;
+  const buttons = nodeCfg?.actionButtons as Partial<Record<WorkflowActionButtonKey, WorkflowActionButtonConfig>> | undefined;
+  return buttons?.[key];
+}
+
+/** 校验「操作按钮设置」中某动作的附件必填要求（uploadMode === 'required'） */
+function assertActionUploadRequirement(
+  inst: typeof workflowInstances.$inferSelect,
+  nodeKey: string,
+  key: WorkflowActionButtonKey,
+  attachments?: WorkflowTaskAttachment[],
+) {
+  const btn = resolveNodeActionButton(inst, nodeKey, key);
+  if (btn?.uploadMode === 'required' && (!attachments || attachments.length === 0)) {
+    throw new HTTPException(400, { message: '请上传附件后再提交' });
+  }
+}
+
 export interface ApproveResult {
   instance: ReturnType<typeof mapInstance>;
   message: string;
@@ -3250,13 +3277,10 @@ export async function approveTask(taskId: number, comment?: string, attachments?
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
-  // 校验“操作按钮设置”中通过按钮的 uploadRequired
+  // 校验"操作按钮设置"中通过按钮的附件必填（uploadMode === 'required'）
   const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
   const nodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
-  const approveBtn = (nodeCfg?.actionButtons as { approve?: { uploadRequired?: boolean } } | undefined)?.approve;
-  if (approveBtn?.uploadRequired && (!attachments || attachments.length === 0)) {
-    throw new HTTPException(400, { message: '请上传附件后再提交' });
-  }
+  assertActionUploadRequirement(inst, task.nodeKey, 'approve', attachments);
   if (nodeCfg?.operations?.includes('opinionRequired') && !comment?.trim()) {
     throw new HTTPException(400, { message: '请填写审批意见后再提交' });
   }
@@ -3426,7 +3450,7 @@ export async function approveTaskCore(
   };
 }
 
-export async function rejectTask(taskId: number, comment: string): Promise<ApproveResult> {
+export async function rejectTask(taskId: number, comment: string, attachments?: WorkflowTaskAttachment[]): Promise<ApproveResult> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
@@ -3435,10 +3459,11 @@ export async function rejectTask(taskId: number, comment: string): Promise<Appro
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
   if (!comment.trim()) throw new HTTPException(400, { message: '请填写拒绝原因' });
+  assertActionUploadRequirement(inst, task.nodeKey, 'reject', attachments);
   if (task.delegatedFromId && task.delegatedFromId !== user.userId) {
-    return processDelegatedReceipt(task, inst, 'rejected', comment, { userId: user.userId, name: user.username });
+    return processDelegatedReceipt(task, inst, 'rejected', comment, { userId: user.userId, name: user.username }, attachments);
   }
-  return rejectTaskCore(task, inst, comment, { userId: user.userId, name: user.username });
+  return rejectTaskCore(task, inst, comment, { userId: user.userId, name: user.username }, attachments);
 }
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并驳回 */
@@ -3471,6 +3496,7 @@ export async function rejectTaskCore(
   inst: typeof workflowInstances.$inferSelect,
   comment: string,
   actor: WorkflowEventActor,
+  attachments?: WorkflowTaskAttachment[],
 ): Promise<ApproveResult> {
   const taskId = task.id;
   // 读取节点驳回策略
@@ -3524,7 +3550,7 @@ export async function rejectTaskCore(
     }
     // 当前任务 → rejected（乐观并发保护：状态变更则中止，防止并发重复驳回）
     const [rejectedTask] = await tx.update(workflowTasks)
-      .set({ status: 'rejected', comment, actionAt: new Date() })
+      .set({ status: 'rejected', comment, attachments: attachments ?? null, actionAt: new Date() })
       .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status)))
       .returning();
     if (!rejectedTask) throw new HTTPException(409, { message: '任务已被处理，请刷新后重试' });
@@ -3755,8 +3781,9 @@ async function processDelegatedReceipt(
 }
 
 /** 转办：将当前任务的处理人改为目标用户 */
-export async function transferTask(taskId: number, targetUserId: number, comment?: string) {
+export async function transferTask(taskId: number, targetUserId: number, comment?: string, attachments?: WorkflowTaskAttachment[]) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
+  assertActionUploadRequirement(inst, task.nodeKey, 'transfer', attachments);
   if (targetUserId === task.assigneeId) {
     throw new HTTPException(400, { message: '转办人不能是当前处理人' });
   }
@@ -3776,6 +3803,7 @@ export async function transferTask(taskId: number, targetUserId: number, comment
     .set({
       assigneeId: targetUserId,
       comment: transferComment,
+      attachments: attachments ?? null,
       transferChain: nextChain,
       originalAssigneeId: task.originalAssigneeId ?? task.assigneeId ?? null,
     })
@@ -3821,8 +3849,9 @@ export async function systemTransferTaskToManager(
 }
 
 /** 委派：与转办类似，但语义为"临时代办"，反馈后原 assignee 会接到回执确认任务 */
-export async function delegateTask(taskId: number, targetUserId: number, comment?: string) {
+export async function delegateTask(taskId: number, targetUserId: number, comment?: string, attachments?: WorkflowTaskAttachment[]) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
+  assertActionUploadRequirement(inst, task.nodeKey, 'delegate', attachments);
   if (targetUserId === task.assigneeId) {
     throw new HTTPException(400, { message: '委派人不能是当前处理人' });
   }
@@ -3843,6 +3872,7 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
     .set({
       assigneeId: targetUserId,
       comment: delegateComment,
+      attachments: attachments ?? null,
       transferChain: nextChain,
       originalAssigneeId: task.originalAssigneeId ?? task.assigneeId ?? null,
       delegatedFromId,
@@ -3862,8 +3892,10 @@ export async function addSignTask(
   position: 'before' | 'after' | 'parallel',
   comment?: string,
   signMode?: 'and' | 'or',
+  attachments?: WorkflowTaskAttachment[],
 ) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
+  assertActionUploadRequirement(inst, task.nodeKey, 'addSign', attachments);
   if (targetUserIds.length === 0) throw new HTTPException(400, { message: '请选择加签人' });
   // 与现有同节点任务共用 approveMethod（保证完成判定一致）
   const [sibling] = await db.select().from(workflowTasks)
@@ -3913,6 +3945,7 @@ export async function addSignTask(
         assigneeId: uid,
         status: 'pending' as const,
         comment: addSignComment,
+        attachments: attachments ?? null,
         approveMethod,
       })),
     ).returning();
@@ -4223,8 +4256,9 @@ export async function addInstanceCc(instanceId: number, nodeKey: string, userIds
 }
 
 /** 退回：将当前任务驳回到一个或多个前序节点（多节点取流程定义中最早出现的节点作为执行目标） */
-export async function returnTask(taskId: number, targetNodeKeys: string[], comment: string) {
+export async function returnTask(taskId: number, targetNodeKeys: string[], comment: string, attachments?: WorkflowTaskAttachment[]) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
+  assertActionUploadRequirement(inst, task.nodeKey, 'return', attachments);
   const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
   if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
   if (!Array.isArray(targetNodeKeys) || targetNodeKeys.length === 0) {
@@ -4256,7 +4290,7 @@ export async function returnTask(taskId: number, targetNodeKeys: string[], comme
   const mergedComment = targets.length > 1
     ? `[退回多节点: ${targets.map((t) => t.data.label ?? t.data.key).join('、')}] ${comment}`
     : comment;
-  return rejectTaskCore(task, instOverridden, mergedComment, actor);
+  return rejectTaskCore(task, instOverridden, mergedComment, actor, attachments);
 }
 
 // ─── 草稿 / 提交 / 重新提交 ──────────────────────────────────────────────────

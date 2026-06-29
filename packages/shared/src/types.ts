@@ -1931,6 +1931,14 @@ export type WorkflowActionButtonKey =
   | 'reduceSign' // 减签
   | 'return';    // 退回
 
+/**
+ * 附件配置（执行此动作时的附件上传策略）：
+ * - hidden：不显示附件上传区（默认）
+ * - optional：显示附件上传区，选填
+ * - required：显示附件上传区，必填
+ */
+export type WorkflowActionUploadMode = 'hidden' | 'optional' | 'required';
+
 /** 单个操作按钮的配置 */
 export interface WorkflowActionButtonConfig {
   /** 是否启用此按钮 */
@@ -1941,8 +1949,8 @@ export interface WorkflowActionButtonConfig {
   opinionName?: string;
   /** 跳转配置：拒绝/退回时跳转到目标节点 key（仅 reject / return 生效） */
   jumpToNodeKey?: string;
-  /** 上传配置：执行此动作时是否强制要求上传附件 */
-  uploadRequired?: boolean;
+  /** 附件配置：执行此动作时的附件上传策略（不显示/选填/必填），默认 hidden */
+  uploadMode?: WorkflowActionUploadMode;
 }
 
 export interface WorkflowTimeoutConfig {

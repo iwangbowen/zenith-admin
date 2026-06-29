@@ -738,7 +738,8 @@ export const workflowActionButtonConfigSchema = z.object({
   displayName: z.string().max(32).optional(),
   opinionName: z.string().max(32).optional(),
   jumpToNodeKey: z.string().optional(),
-  uploadRequired: z.boolean().optional(),
+  /** 附件配置：不显示/选填/必填，默认 hidden */
+  uploadMode: z.enum(['hidden', 'optional', 'required']).optional(),
 });
 export const workflowTimeoutConfigSchema = z.object({
   enabled: z.boolean(),
@@ -1215,31 +1216,38 @@ export const createWorkflowInstanceSchema = z.object({
   ccUserIds: z.array(z.number().int().positive()).max(50).optional(),
 });
 
+/** 审批动作附件（[{name,url,size}]）—— 各动作通用 */
+export const workflowTaskAttachmentSchema = z.object({
+  name: z.string().max(255),
+  url: z.string().max(1024),
+  size: z.number().int().nonnegative().optional(),
+});
+export const workflowTaskAttachmentsSchema = z.array(workflowTaskAttachmentSchema);
+
 export const approveWorkflowTaskSchema = z.object({
   comment: z.string().max(500).optional(),
   /** 手写签名（data URL，节点要求签名时必填） */
   signature: z.string().max(2_000_000).optional(),
-  attachments: z.array(z.object({
-    name: z.string().max(255),
-    url: z.string().max(1024),
-    size: z.number().int().nonnegative().optional(),
-  })).optional(),
+  attachments: workflowTaskAttachmentsSchema.optional(),
   /** 当下一节点为 approverSelect 类型时，由当前审批人指定的下一节点审批人 ID 列表 */
   selectedNextApprovers: z.array(z.number().int().positive()).optional(),
 });
 
 export const rejectWorkflowTaskSchema = z.object({
   comment: z.string().min(1, '驳回原因不能为空').max(500),
+  attachments: workflowTaskAttachmentsSchema.optional(),
 });
 
 export const transferWorkflowTaskSchema = z.object({
   targetUserId: z.number().int().positive('请选择转办人'),
   comment: z.string().max(500).optional(),
+  attachments: workflowTaskAttachmentsSchema.optional(),
 });
 
 export const delegateWorkflowTaskSchema = z.object({
   targetUserId: z.number().int().positive('请选择委派人'),
   comment: z.string().max(500).optional(),
+  attachments: workflowTaskAttachmentsSchema.optional(),
 });
 
 export const addSignWorkflowTaskSchema = z.object({
@@ -1248,6 +1256,7 @@ export const addSignWorkflowTaskSchema = z.object({
   /** 多加签人时的会签/或签模式：and=全部通过(会签), or=任一通过(或签)。仅 parallel 生效 */
   signMode: z.enum(['and', 'or']).optional(),
   comment: z.string().max(500).optional(),
+  attachments: workflowTaskAttachmentsSchema.optional(),
 });
 
 export const reduceSignWorkflowTaskSchema = z.object({
@@ -1258,6 +1267,7 @@ export const reduceSignWorkflowTaskSchema = z.object({
 export const returnWorkflowTaskSchema = z.object({
   targetNodeKeys: z.array(z.string().min(1)).min(1, '请选择退回节点').max(20),
   comment: z.string().min(1, '退回原因不能为空').max(500),
+  attachments: workflowTaskAttachmentsSchema.optional(),
 });
 
 export const urgeWorkflowTaskSchema = z.object({
