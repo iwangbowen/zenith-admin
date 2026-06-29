@@ -1776,19 +1776,13 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                         logo: (
                           <button
                             type="button"
-                            style={{ cursor: 'pointer', border: 0, padding: 0, background: 'transparent', display: 'flex' }}
+                            className="admin-sidebar__brand"
                             onClick={navigateHome}
                             onKeyDown={handleNavigateHomeKey}
-                          ><AppLogo size={28} /></button>
-                        ),
-                        text: (
-                          <button
-                            type="button"
-                            className="admin-sidebar__title"
-                            style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
-                            onClick={navigateHome}
-                            onKeyDown={handleNavigateHomeKey}
-                          >{config.appTitle}</button>
+                          >
+                            <AppLogo size={28} />
+                            <span className="admin-sidebar__title">{config.appTitle}</span>
+                          </button>
                         ),
                       }
                     : undefined
