@@ -1906,6 +1906,53 @@ export const workflowSimulationCases = pgTable('workflow_simulation_cases', {
 
 export type WorkflowSimulationCaseRow = typeof workflowSimulationCases.$inferSelect;
 
+// ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
+// 命中策略：first=首行命中即返回；unique=必须唯一命中；priority=按优先级取最高；
+// collect=收集全部命中；any=允许多命中但输出需一致
+export const ruleHitPolicyEnum = pgEnum('rule_hit_policy', ['first', 'unique', 'priority', 'collect', 'any']);
+
+// 决策表定义：独立规则中心实体，工作流网关/会员等级/优惠券等可调用求值
+export const ruleDecisionTables = pgTable('rule_decision_tables', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 64 }).notNull(),
+  name: varchar('name', { length: 64 }).notNull(),
+  description: text('description'),
+  categoryId: integer('category_id').references(() => workflowCategories.id, { onDelete: 'set null' }),
+  status: workflowDefinitionStatusEnum('status').default('draft').notNull(),
+  hitPolicy: ruleHitPolicyEnum('hit_policy').default('first').notNull(),
+  inputs: jsonb('inputs').notNull().default(sql`'[]'::jsonb`),   // RuleDecisionInput[]
+  outputs: jsonb('outputs').notNull().default(sql`'[]'::jsonb`), // RuleDecisionOutput[]
+  rules: jsonb('rules').notNull().default(sql`'[]'::jsonb`),     // RuleDecisionRow[]
+  version: integer('version').default(1).notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('rule_decision_tables_key_uniq').on(t.tenantId, t.key)]);
+
+export type RuleDecisionTableRow = typeof ruleDecisionTables.$inferSelect;
+export type NewRuleDecisionTable = typeof ruleDecisionTables.$inferInsert;
+
+// 决策表版本快照（发布时写入一行，调用方按版本绑定，防运行中漂移）
+export const ruleDecisionTableVersions = pgTable('rule_decision_table_versions', {
+  id: serial('id').primaryKey(),
+  tableId: integer('table_id').notNull().references(() => ruleDecisionTables.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  name: varchar('name', { length: 64 }).notNull(),
+  description: text('description'),
+  hitPolicy: ruleHitPolicyEnum('hit_policy').default('first').notNull(),
+  inputs: jsonb('inputs').notNull().default(sql`'[]'::jsonb`),
+  outputs: jsonb('outputs').notNull().default(sql`'[]'::jsonb`),
+  rules: jsonb('rules').notNull().default(sql`'[]'::jsonb`),
+  publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow().notNull(),
+  publishedBy: integer('published_by').references(() => users.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+}, (t) => [unique('rule_decision_table_versions_uniq').on(t.tableId, t.version)]);
+
+export type RuleDecisionTableVersionRow = typeof ruleDecisionTableVersions.$inferSelect;
+export type NewRuleDecisionTableVersion = typeof ruleDecisionTableVersions.$inferInsert;
+
 
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {
@@ -3281,6 +3328,19 @@ export const workflowDefinitionsRelations = relations(workflowDefinitions, ({ on
   instances: many(workflowInstances),
   versions: many(workflowDefinitionVersions),
   automations: many(workflowAutomations),
+}));
+
+export const ruleDecisionTablesRelations = relations(ruleDecisionTables, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [ruleDecisionTables.tenantId], references: [tenants.id] }),
+  category: one(workflowCategories, { fields: [ruleDecisionTables.categoryId], references: [workflowCategories.id] }),
+  createdByUser: one(users, { fields: [ruleDecisionTables.createdBy], references: [users.id] }),
+  versions: many(ruleDecisionTableVersions),
+}));
+
+export const ruleDecisionTableVersionsRelations = relations(ruleDecisionTableVersions, ({ one }) => ({
+  table: one(ruleDecisionTables, { fields: [ruleDecisionTableVersions.tableId], references: [ruleDecisionTables.id] }),
+  publishedByUser: one(users, { fields: [ruleDecisionTableVersions.publishedBy], references: [users.id] }),
+  tenant: one(tenants, { fields: [ruleDecisionTableVersions.tenantId], references: [tenants.id] }),
 }));
 
 export const workflowAutomationsRelations = relations(workflowAutomations, ({ one }) => ({

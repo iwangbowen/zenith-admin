@@ -3100,3 +3100,45 @@ export const createAppWebhookSchema = z.object({
 export const updateAppWebhookSchema = createAppWebhookSchema.partial().omit({ clientId: true });
 export type CreateAppWebhookInput = z.input<typeof createAppWebhookSchema>;
 export type UpdateAppWebhookInput = z.input<typeof updateAppWebhookSchema>;
+
+// ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
+const ruleFieldTypeSchema = z.enum(['string', 'number', 'boolean']);
+const ruleHitPolicySchema = z.enum(['first', 'unique', 'priority', 'collect', 'any']);
+const ruleLiteralSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
+export const ruleDecisionInputSchema = z.object({
+  key: z.string().min(1).max(64),
+  label: z.string().min(1).max(64),
+  expr: z.string().min(1).max(500),
+  type: ruleFieldTypeSchema,
+});
+export const ruleDecisionOutputSchema = z.object({
+  key: z.string().min(1).max(64),
+  label: z.string().min(1).max(64),
+  type: ruleFieldTypeSchema,
+  default: ruleLiteralSchema.optional(),
+});
+export const ruleDecisionRowSchema = z.object({
+  id: z.string().min(1).max(64),
+  when: z.array(z.string()).default([]),
+  then: z.record(z.string(), ruleLiteralSchema).default({}),
+  priority: z.number().int().optional(),
+  label: z.string().max(64).optional(),
+});
+
+export const createDecisionTableSchema = z.object({
+  key: z.string().min(1).max(64).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/, 'key 仅限字母开头的字母数字下划线'),
+  name: z.string().min(1).max(64),
+  description: z.string().max(500).nullable().optional(),
+  categoryId: z.number().int().nullable().optional(),
+  hitPolicy: ruleHitPolicySchema.default('first'),
+  inputs: z.array(ruleDecisionInputSchema).default([]),
+  outputs: z.array(ruleDecisionOutputSchema).default([]),
+  rules: z.array(ruleDecisionRowSchema).default([]),
+});
+export const updateDecisionTableSchema = createDecisionTableSchema.partial().omit({ key: true });
+export const evaluateDecisionTableSchema = z.object({
+  input: z.record(z.string(), z.unknown()).default({}),
+});
+export type CreateDecisionTableInput = z.input<typeof createDecisionTableSchema>;
+export type UpdateDecisionTableInput = z.input<typeof updateDecisionTableSchema>;

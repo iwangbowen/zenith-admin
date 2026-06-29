@@ -6983,3 +6983,69 @@ export interface ReportDashboardComment {
   userAvatar?: string | null;
   createdAt: string;
 }
+
+// ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
+export type RuleHitPolicy = 'first' | 'unique' | 'priority' | 'collect' | 'any';
+export type RuleDecisionStatus = 'draft' | 'published' | 'disabled';
+export type RuleFieldType = 'string' | 'number' | 'boolean';
+
+/** 输入列：expr 为取值表达式（复用安全表达式引擎，从 scope 取值，如 form.amount） */
+export interface RuleDecisionInput {
+  key: string;
+  label: string;
+  expr: string;
+  type: RuleFieldType;
+}
+/** 输出列：default 为无命中时回填默认值 */
+export interface RuleDecisionOutput {
+  key: string;
+  label: string;
+  type: RuleFieldType;
+  default?: string | number | boolean | null;
+}
+/** 规则行：when 与 inputs 一一对应，'-' 或空为通配；then 为各 output 字面量 */
+export interface RuleDecisionRow {
+  id: string;
+  when: string[];
+  then: Record<string, string | number | boolean | null>;
+  priority?: number;
+  label?: string;
+}
+export interface RuleDecisionTable {
+  id: number;
+  key: string;
+  name: string;
+  description?: string | null;
+  categoryId?: number | null;
+  status: RuleDecisionStatus;
+  hitPolicy: RuleHitPolicy;
+  inputs: RuleDecisionInput[];
+  outputs: RuleDecisionOutput[];
+  rules: RuleDecisionRow[];
+  version: number;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: number | null;
+  createdByName?: string | null;
+}
+export interface RuleDecisionTableVersion {
+  id: number;
+  tableId: number;
+  version: number;
+  name: string;
+  hitPolicy: RuleHitPolicy;
+  inputs: RuleDecisionInput[];
+  outputs: RuleDecisionOutput[];
+  rules: RuleDecisionRow[];
+  publishedAt: string;
+  publishedBy?: number | null;
+  publishedByName?: string | null;
+}
+export interface RuleEvaluateResult {
+  matched: boolean;
+  outputs: Record<string, unknown>;
+  matchedRowIds: string[];
+  hitPolicy: RuleHitPolicy;
+  collected?: Array<Record<string, unknown>>;
+}

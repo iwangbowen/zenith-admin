@@ -61,3 +61,4 @@ export * from './firewall';
 export * from './report';
 export * from './export-jobs';
 export * from './open-platform';
+export * from './rules';
