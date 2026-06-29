@@ -30,7 +30,7 @@ export default function WorkflowCompensationsView() {
     try {
       const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (status) qs.set('status', status);
-      const res = await request.get<PaginatedResponse<WorkflowCompensation>>(`/api/workflows/instances/compensations?${qs}`);
+      const res = await request.get<PaginatedResponse<WorkflowCompensation>>(`/api/workflows/compensation/list?${qs}`);
       if (res.data) setData(res.data);
     } finally { setLoading(false); }
   }, [page, pageSize, status]);
@@ -41,7 +41,7 @@ export default function WorkflowCompensationsView() {
     title: action === 'resolve' ? '标记修复放行' : '终止流程',
     content: action === 'resolve' ? '确认异常已处理，流程继续？' : '将终止该实例并跳过待办，不可恢复',
     okButtonProps: action === 'terminate' ? { type: 'danger' } : undefined,
-    onOk: async () => { const res = await request.post(`/api/workflows/instances/compensations/${r.id}/resolve`, { action }); if (res.code === 0) { Toast.success('已处理'); fetchList(); } },
+    onOk: async () => {     const res = await request.post(`/api/workflows/compensation/${r.id}/resolve`, { action }); if (res.code === 0) { Toast.success('已处理'); fetchList(); } },
   }); };
 
   const columns: ColumnProps<WorkflowCompensation>[] = [

@@ -975,7 +975,7 @@ const migrateBatchRoute = defineOpenAPIRoute({
 
 const compensationsRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get', path: '/compensations', tags: ['WorkflowInstances'], summary: '补偿/修复工单列表',
+    method: 'get', path: '/compensation/list', tags: ['WorkflowInstances'], summary: '补偿/修复工单列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor' })] as const,
     request: { query: PaginationQuery.extend({ status: z.string().optional(), instanceId: z.coerce.number().int().optional() }) },
@@ -986,7 +986,7 @@ const compensationsRoute = defineOpenAPIRoute({
 
 const compensationResolveRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post', path: '/compensations/{id}/resolve', tags: ['WorkflowInstances'], summary: '处理补偿工单',
+    method: 'post', path: '/compensation/{id}/resolve', tags: ['WorkflowInstances'], summary: '处理补偿工单',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:engine:operate', audit: { description: '处理补偿工单', module: '工作流管理' } })] as const,
     request: { params: IdParam, body: { content: jsonContent(z.object({ action: z.enum(['resolve', 'terminate']), resolution: z.string().optional() })), required: true } },

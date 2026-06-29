@@ -617,7 +617,7 @@ export const workflowExtraHandlers = [
   }),
 
   // ── 管理员强制操作 ──
-  http.get('/api/workflows/instances/compensations', ({ request }) => {
+  http.get('/api/workflows/compensation/list', ({ request }) => {
     const status = new URL(request.url).searchParams.get('status');
     const all = [
       { id: 1, instanceId: 1001, nodeKey: 'catch1', nodeName: '异常捕获', errorMessage: '审批人解析为空', action: 'toAdmin', status: 'pending', resolution: null, resolvedBy: null, resolvedAt: null, createdAt: mockDateTime() },
@@ -626,7 +626,7 @@ export const workflowExtraHandlers = [
     const list = status ? all.filter((c) => c.status === status) : all;
     return ok({ list, total: list.length, page: 1, pageSize: 20 });
   }),
-  http.post('/api/workflows/instances/compensations/:id/resolve', () => ok(null, '已处理')),
+  http.post('/api/workflows/compensation/:id/resolve', () => ok(null, '已处理')),
   http.get('/api/workflows/instances/:id/migrate/preflight', ({ params }) => {
     const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));
     if (!inst) return err('流程实例不存在', 404);
