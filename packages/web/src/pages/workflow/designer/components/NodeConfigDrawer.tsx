@@ -9,10 +9,10 @@
  * - 延迟器/触发器/子流程：基础配置
  */
 import { useEffect, useState } from 'react';
-import { SideSheet, Tabs, TabPane, Input, TextArea, Typography, Form, Select, InputNumber, Switch, RadioGroup, Radio, Button, Banner } from '@douyinfe/semi-ui';
-import { Plus, Trash2 } from 'lucide-react';
+import { SideSheet, Tabs, TabPane, Input, TextArea, Typography, Form, Select, InputNumber, Switch, RadioGroup, Radio, Button } from '@douyinfe/semi-ui';
+import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { request } from '@/utils/request';
-import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy, ActionButtonsConfig, NodeHealthInfo } from '../types';
+import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy, ActionButtonsConfig, NodeHealthInfo, NodeHealthIssue } from '../types';
 import type { NodeListenerConfig } from '@zenith/shared';
 import { ADDABLE_NODE_TYPES, DEFAULT_APPROVER_OPERATIONS, DELAY_UNIT_OPTIONS, TRIGGER_TYPE_OPTIONS } from '../constants';
 import ApproverSettingsTab from './tabs/ApproverSettingsTab';
@@ -138,7 +138,7 @@ function formatFieldKeys(fieldKeys: unknown): string {
 interface NodeConfigDrawerProps {
   visible: boolean;
   node: FlowNode | null;
-  /** 设计态体检：本节点问题（3B 抽屉顶部实时校验 Banner） */
+  /** 设计态体检：本节点问题（严重项内联到对应区域；警告/提示见「流程体检」） */
   health?: NodeHealthInfo;
   users: UserOption[];
   roles: RoleOption[];
@@ -157,6 +157,26 @@ interface NodeConfigDrawerProps {
   readOnly?: boolean;
   /** 抽屉层级；嵌入到其它 SideSheet 内（如只读设计器）时需高于外层，避免被遮挡 */
   zIndex?: number;
+}
+
+/** 节点严重问题内联提示：紧凑红字 + 修复建议，替代抽屉顶部的整块 Banner */
+function InlineCriticalErrors({ issues }: Readonly<{ issues: NodeHealthIssue[] }>) {
+  if (issues.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+      {issues.map((iss, idx) => (
+        <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+          <AlertTriangle size={14} style={{ color: 'var(--semi-color-danger)', flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1 }}>
+            <Typography.Text type="danger" size="small">{iss.message}</Typography.Text>
+            {iss.suggestion && (
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 2 }}>建议：{iss.suggestion}</Typography.Text>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function NodeConfigDrawer({
@@ -254,6 +274,11 @@ export default function NodeConfigDrawer({
   const hasFormPermission = isApprover || isHandler || isCc || isInitiator;
   const hasOperationPermission = isApprover;
 
+  // 节点实时体检：仅展示「严重」级问题并内联到对应区域；警告/提示统一在「流程体检」查看
+  const criticalIssues = (health?.issues ?? []).filter((i) => i.severity === 'critical');
+  const approverCriticalIssues = criticalIssues.filter((i) => i.category === 'approver' || i.category === 'expression');
+  const otherCriticalIssues = criticalIssues.filter((i) => i.category !== 'approver' && i.category !== 'expression');
+
   return (
     <SideSheet
       title={title}
@@ -276,27 +301,8 @@ export default function NodeConfigDrawer({
         </div>
       }
     >
-      {/* 3B 节点实时体检：展示本节点配置问题 + 修复建议 */}
-      {health && (health.error > 0 || health.warn > 0 || health.info > 0) && (
-        <Banner
-          type={health.error > 0 ? 'danger' : health.warn > 0 ? 'warning' : 'info'}
-          fullMode={false}
-          closeIcon={null}
-          style={{ marginBottom: 16 }}
-          description={
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {health.issues.map((iss, idx) => (
-                <div key={idx}>
-                  <Typography.Text size="small" strong>{iss.message}</Typography.Text>
-                  {iss.suggestion && (
-                    <Typography.Text size="small" type="tertiary" style={{ marginLeft: 6 }}>建议：{iss.suggestion}</Typography.Text>
-                  )}
-                </div>
-              ))}
-            </div>
-          }
-        />
-      )}
+      {/* 节点实时体检：严重问题（非审批人/表达式类）兜底内联展示；审批人/表达式类内联到「审批人」Tab */}
+      <InlineCriticalErrors issues={otherCriticalIssues} />
 
       {/* 节点名称（所有节点通用） */}
       <div style={{ marginBottom: 16 }}>
@@ -338,6 +344,7 @@ export default function NodeConfigDrawer({
             const tabLabel = tabLabelMap[node?.type ?? ''] ?? '设置';
             return (
               <TabPane tab={tabLabel} itemKey="assignee">
+                <InlineCriticalErrors issues={approverCriticalIssues} />
                 <ApproverSettingsTab
                   nodeType={node?.type ?? 'approver'}
                   approvalType={(props.approvalType as ApprovalType) ?? 'manual'}

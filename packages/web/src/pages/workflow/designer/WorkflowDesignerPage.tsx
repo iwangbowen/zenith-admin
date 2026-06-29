@@ -3,9 +3,9 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Modal, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Stethoscope, Undo2, Upload } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig, WorkflowDefinitionHealthReport, WorkflowDefinitionHealthIssue } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -564,10 +564,48 @@ export default function WorkflowDesignerPage({
     }
   };
 
+  /** 发布前体检：拉取最新体检并返回严重（critical）问题，用于阻断发布 */
+  const fetchCriticalIssues = async (): Promise<WorkflowDefinitionHealthIssue[]> => {
+    const flowData = buildCurrentFlowData();
+    const fieldPayload = formFields.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
+    const res = await request.post<WorkflowDefinitionHealthReport>(
+      '/api/workflows/definitions/health-check',
+      { flowData, formFields: fieldPayload },
+      { silent: true },
+    );
+    if (res.code !== 0) return [];
+    return res.data.checks.flatMap((c) => c.issues).filter((i) => i.severity === 'critical');
+  };
+
   const handlePublish = async () => {
     if (isNew || !id || !validateBeforeSave()) return;
     setPublishing(true);
     try {
+      // 发布前 gate：存在严重问题则阻断，引导去修复 / 打开流程体检
+      const criticals = await fetchCriticalIssues();
+      if (criticals.length > 0) {
+        Modal.confirm({
+          title: `存在 ${criticals.length} 项严重问题，无法发布`,
+          content: (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+              {criticals.map((iss, idx) => (
+                <div key={idx}>
+                  <Typography.Text strong size="small">
+                    {iss.nodeName ? `「${iss.nodeName}」` : ''}{iss.message}
+                  </Typography.Text>
+                  {iss.suggestion && (
+                    <Typography.Paragraph type="tertiary" size="small" style={{ margin: '2px 0 0' }}>建议：{iss.suggestion}</Typography.Paragraph>
+                  )}
+                </div>
+              ))}
+            </div>
+          ),
+          okText: '打开流程体检',
+          cancelText: '知道了',
+          onOk: () => setHealthVisible(true),
+        });
+        return;
+      }
       const saved = await doSave(buildCurrentMeta(), { showToast: false });
       if (!saved) return;
       const res = await request.post<WorkflowDefinition>(`/api/workflows/definitions/${id}/publish`, {});

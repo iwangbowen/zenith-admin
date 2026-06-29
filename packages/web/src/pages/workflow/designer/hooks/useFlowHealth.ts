@@ -62,7 +62,7 @@ export function useFlowHealth({ enabled, buildFlowData, formFields }: UseFlowHea
         if (severity === 'critical') entry.error += 1;
         else if (severity === 'warning') entry.warn += 1;
         else entry.info += 1;
-        entry.issues.push({ severity, message: iss.message, suggestion: iss.suggestion });
+        entry.issues.push({ severity, message: iss.message, suggestion: iss.suggestion, category: check.key });
         map.set(iss.nodeKey, entry);
       }
     }

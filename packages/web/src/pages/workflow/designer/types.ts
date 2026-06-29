@@ -363,6 +363,8 @@ export interface NodeHealthIssue {
   severity: 'critical' | 'warning' | 'info';
   message: string;
   suggestion: string | null;
+  /** 所属体检维度，用于将问题内联到节点配置的对应区域 */
+  category: 'structure' | 'approver' | 'branch' | 'timeout' | 'expression';
 }
 
 /** 设计态体检：节点级问题聚合（用于画布实时红点/告警角标） */
