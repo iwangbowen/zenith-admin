@@ -296,6 +296,15 @@ export const SEED_MENUS: Menu[] = [
   { id: 485, parentId: 483, title: '编辑定时',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 2, status: 'enabled', visible: true, permission: 'workflow:schedule:edit',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 486, parentId: 483, title: '删除定时',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 3, status: 'enabled', visible: true, permission: 'workflow:schedule:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
+  // ── 规则中心 ─────────────────────────────────────────────────────────────────
+  { id: 940, parentId: 0,   title: '规则中心',   name: 'RuleCenter',     path: undefined,            component: undefined,                          icon: 'Table2',  type: 'directory', sort: 7,  status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 941, parentId: 940, title: '决策表',     name: 'RuleTables',     path: '/rules/tables',      component: 'rules/tables/RuleTablesPage',      icon: 'Grid3x3', type: 'menu',      sort: 1,  status: 'enabled', visible: true,  permission: 'rule:table:list',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 942, parentId: 941, title: '新增决策表', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'rule:table:create',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 943, parentId: 941, title: '编辑决策表', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 2, status: 'enabled', visible: true, permission: 'rule:table:update',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 944, parentId: 941, title: '删除决策表', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 3, status: 'enabled', visible: true, permission: 'rule:table:delete',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 945, parentId: 941, title: '发布决策表', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 4, status: 'enabled', visible: true, permission: 'rule:table:publish',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 946, parentId: 941, title: '求值测试',   name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 5, status: 'enabled', visible: true, permission: 'rule:table:evaluate', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+
   // ── 消息中心 ─────────────────────────────────────────────────────────────────
   { id: 310, parentId: 0,   title: '消息中心',   name: 'ChatCenter',              path: '/chat',                      component: 'chat/ChatPage',                                  icon: 'MessagesSquare',    type: 'menu',      sort: 7,  status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
@@ -1879,4 +1888,22 @@ export const SEED_RATE_PLANS: RatePlan[] = [
   { id: 1, code: 'free',       name: '免费版',   description: '默认套餐，适合接入调试',     qpsLimit: 5,   dailyQuota: 10000,    monthlyQuota: 200000,    isDefault: true,  status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, code: 'pro',        name: '专业版',   description: '适合中小规模生产调用',       qpsLimit: 50,  dailyQuota: 500000,   monthlyQuota: 10000000,  isDefault: false, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 3, code: 'enterprise', name: '企业版',   description: '高并发，配额不限',           qpsLimit: 500, dailyQuota: 0,        monthlyQuota: 0,         isDefault: false, status: 'enabled', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 规则中心：决策表种子 ────────────────────────────────────────────────────────
+export const SEED_DECISION_TABLES = [
+  {
+    id: 1,
+    key: 'member_level',
+    name: '会员等级判定',
+    description: '按累计消费金额判定会员等级',
+    hitPolicy: 'first' as const,
+    inputs: [{ key: 'amount', label: '累计金额', expr: 'form.amount', type: 'number' as const }],
+    outputs: [{ key: 'level', label: '等级', type: 'string' as const }, { key: 'discount', label: '折扣', type: 'number' as const }],
+    rules: [
+      { id: 'r1', when: ['>= 10000'], then: { level: 'gold', discount: 0.8 } },
+      { id: 'r2', when: ['>= 3000'], then: { level: 'silver', discount: 0.9 } },
+      { id: 'r3', when: ['-'], then: { level: 'normal', discount: 1 } },
+    ],
+  },
 ];
