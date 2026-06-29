@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Input, TextArea, Tag, Modal, Form, Toast, Typography, SideSheet, List } from '@douyinfe/semi-ui';
+import { Button, Input, Tag, Modal, Form, Toast, Typography, SideSheet, List } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -46,7 +46,7 @@ export default function RuleTablesPage() {
   const [editing, setEditing] = useState<RuleDecisionTable | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [testRow, setTestRow] = useState<RuleDecisionTable | null>(null);
-  const [testInput, setTestInput] = useState('{}');
+  const [testForm, setTestForm] = useState<Record<string, string>>({});
   const [testResult, setTestResult] = useState<RuleEvaluateResult | null>(null);
   const [verRow, setVerRow] = useState<RuleDecisionTable | null>(null);
   const [versions, setVersions] = useState<Array<{ version: number; name: string; publishedAt: string }>>([]);
@@ -95,7 +95,7 @@ export default function RuleTablesPage() {
     title: '确定删除？', content: '删除后不可恢复', okButtonProps: { type: 'danger' },
     onOk: async () => { await request.delete(`/api/rules/decision-tables/${r.id}`); Toast.success('删除成功'); fetchData(); },
   }); };
-  const openTest = (r: RuleDecisionTable) => { setTestRow(r); setTestInput('{}'); setTestResult(null); };
+  const openTest = (r: RuleDecisionTable) => { setTestRow(r); setTestForm({}); setTestResult(null); };
   const openVersions = async (r: RuleDecisionTable) => {
     setVerRow(r); setDiff(null);
     const res = await request.get<typeof versions>(`/api/rules/decision-tables/${r.id}/versions`);
@@ -130,8 +130,16 @@ export default function RuleTablesPage() {
     setExecs(res.data ?? []);
   };
   const runTest = async () => {
-    let input; try { input = JSON.parse(testInput || '{}'); } catch { Toast.error('input 必须是合法 JSON'); return; }
-    const res = await request.post<RuleEvaluateResult>(`/api/rules/decision-tables/${testRow!.id}/test`, { input });
+    const scope: Record<string, unknown> = {};
+    for (const i of testRow!.inputs) {
+      const v = testForm[i.key] ?? '';
+      const val: unknown = i.type === 'number' ? Number(v) : i.type === 'boolean' ? (v === 'true') : v;
+      i.expr.split('.').reduce((o: Record<string, unknown>, k, idx, arr) => {
+        if (idx === arr.length - 1) { o[k] = val; return o; }
+        o[k] = (o[k] ?? {}) as Record<string, unknown>; return o[k] as Record<string, unknown>;
+      }, scope);
+    }
+    const res = await request.post<RuleEvaluateResult>(`/api/rules/decision-tables/${testRow!.id}/test`, { input: scope });
     if (res.data) setTestResult(res.data);
   };
 
@@ -139,6 +147,7 @@ export default function RuleTablesPage() {
     { title: 'Key', dataIndex: 'key', width: 160, render: (t: string) => <Text code>{t}</Text> },
     { title: '名称', dataIndex: 'name', width: 160, render: renderEllipsis },
     { title: '命中策略', dataIndex: 'hitPolicy', width: 110, render: (p: string) => HIT_POLICIES.find((x) => x.value === p)?.label ?? p },
+    { title: '规模', width: 120, render: (_: unknown, r: RuleDecisionTable) => <Text type="tertiary" size="small">{r.inputs.length}入/{r.outputs.length}出/{r.rules.length}行</Text> },
     { title: '版本', dataIndex: 'version', width: 70 },
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (s: string) => <Tag color={STATUS[s]?.color as never}>{STATUS[s]?.text ?? s}</Tag> },
     createdAtColumn,
@@ -184,9 +193,21 @@ export default function RuleTablesPage() {
       </AppModal>
 
       <AppModal title={`测试求值 · ${testRow?.name ?? ''}`} visible={!!testRow} onOk={runTest} okText="运行" onCancel={() => setTestRow(null)} width={560} closeOnEsc>
-        <Text type="tertiary">输入 scope（JSON），例如 {'{ "form": { "amount": 200 } }'}</Text>
-        <TextArea value={testInput} onChange={setTestInput} rows={4} style={{ marginTop: 8, fontFamily: 'monospace' }} />
-        {testResult && <pre style={{ marginTop: 12, background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 6 }}>{sample(testResult, null, 2)}</pre>}
+        {(testRow?.inputs ?? []).length === 0
+          ? <Text type="tertiary">该表无输入列，无法测试</Text>
+          : (testRow?.inputs ?? []).map((i) => (
+            <div key={i.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Text style={{ width: 120, textAlign: 'right' }}>{i.label}<Text type="tertiary" size="small">（{i.type}）</Text></Text>
+              <Input value={testForm[i.key] ?? ''} onChange={(v) => setTestForm({ ...testForm, [i.key]: v })} placeholder={i.expr} style={{ flex: 1 }} />
+            </div>
+          ))}
+        {testResult && (
+          <div style={{ marginTop: 12, background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 6 }}>
+            <Tag color={testResult.matched ? 'green' : 'red'}>{testResult.matched ? '命中' : '未命中'}</Tag>
+            {testResult.matched && <Text type="tertiary" size="small" style={{ marginLeft: 8 }}>命中行 {testResult.matchedRowIds.join(', ')}</Text>}
+            <pre style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>{sample(testResult.outputs, null, 2)}</pre>
+          </div>
+        )}
       </AppModal>
 
       <SideSheet title={`版本历史 · ${verRow?.name ?? ''}`} visible={!!verRow} onCancel={() => setVerRow(null)} width={480}>

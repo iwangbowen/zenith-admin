@@ -1,4 +1,4 @@
-import { Button, Input, Select, Typography } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Space, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleFieldType } from '@zenith/shared';
 
@@ -27,6 +27,7 @@ export default function DecisionTableEditor({ inputs, outputs, rules, onChange }
   const delInput = (i: number) => emit({ inputs: inputs.filter((_, k) => k !== i), rules: rules.map((r) => ({ ...r, when: r.when.filter((_, k) => k !== i) })) });
   const delOutput = (i: number) => { const key = outputs[i].key; emit({ outputs: outputs.filter((_, k) => k !== i), rules: rules.map((r) => { const t = { ...r.then }; delete t[key]; return { ...r, then: t }; }) }); };
   const addRow = () => emit({ rules: [...rules, { id: newRowId(), when: inputs.map(() => '-'), then: {} }] });
+  const dupRow = (ri: number) => emit({ rules: [...rules.slice(0, ri + 1), { ...rules[ri], id: newRowId() }, ...rules.slice(ri + 1)] });
   const setWhen = (ri: number, ci: number, v: string) => emit({ rules: rules.map((r, k) => k === ri ? { ...r, when: r.when.map((w, j) => j === ci ? v : w) } : r) });
   const setThen = (ri: number, key: string, v: string) => emit({ rules: rules.map((r, k) => k === ri ? { ...r, then: { ...r.then, [key]: v } } : r) });
   const delRow = (ri: number) => emit({ rules: rules.filter((_, k) => k !== ri) });
@@ -63,25 +64,31 @@ export default function DecisionTableEditor({ inputs, outputs, rules, onChange }
       <div>
         <Text strong>规则矩阵</Text>
         <Text type="tertiary" size="small" style={{ display: 'block' }}>条件单元格：<code>{'>= 100'}</code>、<code>10-20</code>、<code>gold</code>，留空/<code>-</code> 为通配</Text>
-        <div style={{ overflowX: 'auto', marginTop: 6 }}>
-          <table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead><tr>
-              {inputs.map((c) => <th key={c.key} style={col}>{c.label}</th>)}
-              {outputs.map((c) => <th key={c.key} style={{ ...col, background: 'var(--semi-color-fill-0)' }}>{c.label}</th>)}
-              <th style={col} />
-            </tr></thead>
-            <tbody>
-              {rules.map((r, ri) => (
-                <tr key={r.id}>
-                  {inputs.map((_, ci) => <td key={ci} style={col}><Input size="small" value={r.when[ci] ?? ''} onChange={(v) => setWhen(ri, ci, v)} style={{ width: 110 }} /></td>)}
-                  {outputs.map((o) => <td key={o.key} style={col}><Input size="small" value={String(r.then[o.key] ?? '')} onChange={(v) => setThen(ri, o.key, v)} style={{ width: 110 }} /></td>)}
-                  <td style={col}><Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delRow(ri)} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <Button size="small" theme="borderless" icon={<Plus size={14} />} onClick={addRow} style={{ marginTop: 6 }}>加规则行</Button>
+        {inputs.length === 0 && outputs.length === 0 ? (
+          <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>请先添加输入列 / 输出列，再添加规则行</Text>
+        ) : (
+          <>
+            <div style={{ overflowX: 'auto', marginTop: 6 }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr>
+                  {inputs.map((c) => <th key={c.key} style={col}>{c.label}</th>)}
+                  {outputs.map((c) => <th key={c.key} style={{ ...col, background: 'var(--semi-color-fill-0)' }}>{c.label}</th>)}
+                  <th style={col} />
+                </tr></thead>
+                <tbody>
+                  {rules.map((r, ri) => (
+                    <tr key={r.id}>
+                      {inputs.map((_, ci) => <td key={ci} style={col}><Input size="small" value={r.when[ci] ?? ''} onChange={(v) => setWhen(ri, ci, v)} style={{ width: 110 }} /></td>)}
+                      {outputs.map((o) => <td key={o.key} style={col}><Input size="small" value={String(r.then[o.key] ?? '')} onChange={(v) => setThen(ri, o.key, v)} style={{ width: 110 }} /></td>)}
+                      <td style={col}><Space spacing={2}><Button size="small" theme="borderless" onClick={() => dupRow(ri)}>复制</Button><Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delRow(ri)} /></Space></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Button size="small" theme="borderless" icon={<Plus size={14} />} onClick={addRow} style={{ marginTop: 6 }}>加规则行</Button>
+          </>
+        )}
       </div>
     </div>
   );
