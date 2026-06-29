@@ -221,7 +221,7 @@ import { pageOffset } from '../lib/pagination';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, workflowTokens, inAppMessages, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
-import { validateFlowData, findReturnPrevTarget, resolveRuntimeApproveMethod, type TaskAction } from '../lib/workflow-engine';
+import { validateFlowData, findReturnPrevTarget, getAncestorNodeKeys, resolveRuntimeApproveMethod, type TaskAction } from '../lib/workflow-engine';
 import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../lib/workflow-token-engine';
 import type { WorkflowResolvedApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowRecoveryBatchResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared';
 import { resolveApproverDedupMode } from '@zenith/shared';
@@ -4264,12 +4264,22 @@ export async function returnTask(taskId: number, targetNodeKeys: string[], comme
   if (!Array.isArray(targetNodeKeys) || targetNodeKeys.length === 0) {
     throw new HTTPException(400, { message: '请选择退回节点' });
   }
+  const ancestorKeys = getAncestorNodeKeys(flowData, task.nodeKey);
+  const approvedRows = await db.select({ nodeKey: workflowTasks.nodeKey }).from(workflowTasks)
+    .where(and(
+      eq(workflowTasks.instanceId, inst.id),
+      inArray(workflowTasks.status, ['approved']),
+    ));
+  const approvedNodeKeys = new Set(approvedRows.map((row) => row.nodeKey));
   const uniqueKeys = Array.from(new Set(targetNodeKeys));
   const targets = uniqueKeys.map((k) => {
     const n = flowData.nodes.find((nd) => nd.data.key === k);
     if (!n) throw new HTTPException(400, { message: `退回目标节点不存在：${k}` });
     if (n.data.type !== 'approve' && n.data.type !== 'handler') {
       throw new HTTPException(400, { message: '只能退回到审批/办理节点' });
+    }
+    if (!ancestorKeys.has(k) || !approvedNodeKeys.has(k)) {
+      throw new HTTPException(400, { message: '只能退回到当前节点之前已通过的审批/办理节点' });
     }
     return n;
   });

@@ -218,12 +218,55 @@ export default function WorkflowApprovalDetailSheet({
   }, [detail, currentTask]);
 
   const returnTargetOptions = useMemo(() => {
-    if (!currentDetailDefinition || !currentTask) return [] as Array<{ label: string; value: string }>;
-    const nodes = currentDetailDefinition.flowData?.nodes ?? [];
-    return nodes
-      .filter((n) => (n.data.type === 'approve' || n.data.type === 'handler') && n.data.key !== currentTask.nodeKey)
+    if (!currentDetailDefinition || !currentTask || !detail) return [] as Array<{ label: string; value: string }>;
+    const flow = currentDetailDefinition.flowData;
+    if (!flow) return [];
+    const currentNode = flow.nodes.find((n) => n.data.key === currentTask.nodeKey);
+    if (!currentNode) return [];
+
+    const nodeById = new Map(flow.nodes.map((n) => [n.id, n]));
+    const inEdges = new Map<string, string[]>();
+    for (const edge of flow.edges ?? []) {
+      const targetNode = nodeById.get(edge.target);
+      if (edge.isException || targetNode?.data.type === 'catchNode') continue;
+      const prev = inEdges.get(edge.target) ?? [];
+      prev.push(edge.source);
+      inEdges.set(edge.target, prev);
+    }
+
+    const ancestorKeys = new Set<string>();
+    const visited = new Set<string>();
+    const queue = [...(inEdges.get(currentNode.id) ?? [])];
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (!id || visited.has(id)) continue;
+      visited.add(id);
+      const node = nodeById.get(id);
+      if (node) ancestorKeys.add(node.data.key);
+      for (const parentId of inEdges.get(id) ?? []) queue.push(parentId);
+    }
+
+    const approvedNodeKeys = new Set(
+      (detail.tasks ?? [])
+        .filter((t) => t.id !== currentTask.id && t.status === 'approved')
+        .map((t) => t.nodeKey),
+    );
+
+    return flow.nodes
+      .filter((n) =>
+        (n.data.type === 'approve' || n.data.type === 'handler')
+        && ancestorKeys.has(n.data.key)
+        && approvedNodeKeys.has(n.data.key),
+      )
       .map((n) => ({ label: n.data.label ?? n.data.key, value: n.data.key }));
-  }, [currentDetailDefinition, currentTask]);
+  }, [currentDetailDefinition, currentTask, detail]);
+
+  const defaultReturnTargetKeys = useMemo(
+    () => (btnReturn.jumpToNodeKey && returnTargetOptions.some((item) => item.value === btnReturn.jumpToNodeKey)
+      ? [btnReturn.jumpToNodeKey]
+      : []),
+    [btnReturn.jumpToNodeKey, returnTargetOptions],
+  );
 
   const hasApproverSelectDownstream = useMemo(() => {
     if (!currentDetailDefinition || !currentTask) return false;
@@ -514,7 +557,7 @@ export default function WorkflowApprovalDetailSheet({
           {btnReduceSign.displayName ?? '减签'}
         </Button>
       )}
-      {btnReturn.enabled && (
+      {btnReturn.enabled && returnTargetOptions.length > 0 && (
         <Button onClick={() => setReturnVisible(true)}>
           {btnReturn.displayName ?? '退回'}
         </Button>
@@ -758,7 +801,7 @@ export default function WorkflowApprovalDetailSheet({
       >
         <Form
           getFormApi={api => { returnFormApi.current = api; }}
-          initValues={{ targetNodeKeys: btnReturn.jumpToNodeKey ? [btnReturn.jumpToNodeKey] : [] }}
+          initValues={{ targetNodeKeys: defaultReturnTargetKeys }}
         >
           <Form.Select
             field="targetNodeKeys"
