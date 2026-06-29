@@ -81,14 +81,14 @@ export default function RuleTablesPage() {
     } finally { setSubmitting(false); }
   };
 
-  const handlePublish = (r: RuleDecisionTable) => Modal.confirm({
+  const handlePublish = (r: RuleDecisionTable) => { Modal.confirm({
     title: `发布「${r.name}」？`, content: '将生成版本快照并置为已发布',
     onOk: async () => { await request.post(`/api/rules/decision-tables/${r.id}/publish`); Toast.success('发布成功'); fetchData(); },
-  });
-  const handleDelete = (r: RuleDecisionTable) => Modal.confirm({
+  }); };
+  const handleDelete = (r: RuleDecisionTable) => { Modal.confirm({
     title: '确定删除？', content: '删除后不可恢复', okButtonProps: { type: 'danger' },
     onOk: async () => { await request.delete(`/api/rules/decision-tables/${r.id}`); Toast.success('删除成功'); fetchData(); },
-  });
+  }); };
   const openTest = (r: RuleDecisionTable) => { setTestRow(r); setTestInput('{}'); setTestResult(null); };
   const runTest = async () => {
     let input; try { input = JSON.parse(testInput || '{}'); } catch { Toast.error('input 必须是合法 JSON'); return; }
@@ -102,7 +102,7 @@ export default function RuleTablesPage() {
     { title: '命中策略', dataIndex: 'hitPolicy', width: 110, render: (p: string) => HIT_POLICIES.find((x) => x.value === p)?.label ?? p },
     { title: '版本', dataIndex: 'version', width: 70 },
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (s: string) => <Tag color={STATUS[s]?.color as never}>{STATUS[s]?.text ?? s}</Tag> },
-    createdAtColumn(),
+    createdAtColumn,
     createOperationColumn<RuleDecisionTable>({
       actions: (r) => [
         { key: 'test', label: '测试', onClick: () => openTest(r) },
