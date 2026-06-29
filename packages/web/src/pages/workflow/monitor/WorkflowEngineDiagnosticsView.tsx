@@ -420,7 +420,6 @@ function ComponentCard({ component, palette }: Readonly<{ component: WorkflowEng
         borderRadius: 8,
         background: 'var(--semi-color-bg-1)',
         border: '1px solid var(--semi-color-border)',
-        borderLeft: `3px solid ${color}`,
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
