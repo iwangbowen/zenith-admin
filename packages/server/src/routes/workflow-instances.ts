@@ -685,7 +685,7 @@ const submitDraftRoute = defineOpenAPIRoute({
     method: 'post', path: '/instances/{id}/submit', tags: ['WorkflowInstances'], summary: '提交草稿',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:instance:create', audit: { description: '提交流程草稿', module: '工作流管理' } })] as const,
-    request: { params: IdParam },
+    request: { params: IdParam, body: { content: jsonContent(submitWorkflowDraftSchema), required: false } },
     responses: {
       ...commonErrorResponses,
       ...ok(WorkflowInstanceDTO, '申请已提交'),
