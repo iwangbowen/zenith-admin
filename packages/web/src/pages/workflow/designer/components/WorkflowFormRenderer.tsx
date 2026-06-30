@@ -14,8 +14,8 @@ import { CURRENCY_OPTIONS, toDateFnsToken } from '../form-types';
 import { evalFormula } from '../form-formula';
 import { request } from '@/utils/request';
 import { rmbUpper } from '@/utils/rmb';
-import { guessMimeTypeFromName } from '@/utils/file-utils';
-import FileAttachment, { type AttachmentItem } from '@/components/FileAttachment';
+import FileAttachment from '@/components/FileAttachment';
+import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import RegionSelect from '@/components/RegionSelect';
 import RichTextEditor from '@/components/RichTextEditor';
 import UserSelect from '@/components/UserSelect';
@@ -321,27 +321,9 @@ interface FileUploadInputProps {
   maxSizeMb?: number;
 }
 
-function fileToAttachment(f: UploadedFileValue, i: number): AttachmentItem {
-  const dot = f.name?.lastIndexOf('.') ?? -1;
-  return {
-    id: i + 1,
-    fileId: f.url,
-    file: {
-      id: f.url,
-      originalName: f.name,
-      size: Number(f.size ?? 0),
-      mimeType: guessMimeTypeFromName(f.name),
-      extension: dot >= 0 ? f.name.slice(dot + 1) : null,
-      url: f.url,
-    },
-    sortOrder: i,
-    createdAt: '',
-  };
-}
-
 function FileUploadInput({ value, onChange, disabled, isImage, limit, accept, maxSizeMb }: Readonly<FileUploadInputProps>) {
   const files = Array.isArray(value) ? value : [];
-  const attachments = files.map(fileToAttachment);
+  const attachments = files.map((f, i) => uploadedFileToAttachment(f, i));
 
   if (disabled) {
     if (files.length === 0) return <Typography.Text type="tertiary">（无附件）</Typography.Text>;
