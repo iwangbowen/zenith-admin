@@ -1,0 +1,43 @@
+/* 工作流抽屉 footer：桌面端「左次要 + 右主操作」；窄屏改为吸底全宽操作条 */
+.wf-sidesheet-footer {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wf-sidesheet-footer__right {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 窄屏（移动端）：主操作整行铺满、按钮等分并加大点击区，次要操作居中置于下方 */
+@media (max-width: 576px) {
+  .wf-sidesheet-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .wf-sidesheet-footer__left {
+    text-align: center;
+  }
+
+  .wf-sidesheet-footer__right {
+    width: 100%;
+  }
+
+  .wf-sidesheet-footer__right .semi-space {
+    display: flex;
+    width: 100%;
+  }
+
+  .wf-sidesheet-footer__right .semi-space > * {
+    flex: 1;
+  }
+
+  .wf-sidesheet-footer .semi-button {
+    min-height: 38px;
+  }
+}

@@ -17,7 +17,7 @@ import { resolveDynamicDefaults } from '@/pages/workflow/designer/form-defaults'
 import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import WorkflowProcessLayout from '@/components/workflow/WorkflowProcessLayout';
-import { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
+import WorkflowPriorityTag, { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
 import WorkflowApprovalChainPanel, {
   compactSelectedInitiatorApprovers,
   firstMissingInitiatorApproverNode,
@@ -207,7 +207,10 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
           />
           <Row gutter={16}>
             <Col span={showCc ? 8 : 24}>
-              <Form.Select field="priority" label="优先级" style={{ width: '100%' }} initValue={initialPriority ?? 'normal'} optionList={WORKFLOW_PRIORITY_OPTIONS} />
+              <Form.Select field="priority" label="优先级" style={{ width: '100%' }} initValue={initialPriority ?? 'normal'} optionList={WORKFLOW_PRIORITY_OPTIONS.map((o) => ({
+                value: o.value,
+                label: (o.value === 'high' || o.value === 'urgent') ? <WorkflowPriorityTag priority={o.value} /> : o.label,
+              }))} />
             </Col>
             {showCc && (
               <Col span={16}>

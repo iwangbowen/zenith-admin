@@ -8,7 +8,6 @@ import {
   Select,
   Space,
   SplitButtonGroup,
-  Spin,
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
@@ -22,7 +21,7 @@ import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import SignaturePad from '@/components/SignaturePad';
 import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
-import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
+import WorkflowInstanceDetailPanel, { WorkflowDetailSkeleton } from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useUserOptions } from '@/hooks/useUserOptions';
 
@@ -646,7 +645,7 @@ export default function WorkflowApprovalDetailSheet({
         footerRight={extraActions}
       >
         {detailLoading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+          <WorkflowDetailSkeleton />
         ) : (
           <WorkflowInstanceDetailPanel
             instance={detail}

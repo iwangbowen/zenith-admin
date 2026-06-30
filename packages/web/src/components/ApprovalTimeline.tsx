@@ -35,10 +35,12 @@ interface ApprovalTimelineProps {
   instanceStatus?: WorkflowInstanceStatus;
   /** 流程结束时间 */
   finishedAt?: string | null;
+  /** 当前登录人 ID：用于高亮「轮到你处理」的待办节点 */
+  currentUserId?: number | null;
 }
 
 /** 审批流时间线，使用 Semi Design Timeline 组件统一渲染 */
-export default function ApprovalTimeline({ tasks, flowNodes, initiator, instanceStatus, finishedAt }: Readonly<ApprovalTimelineProps>) {
+export default function ApprovalTimeline({ tasks, flowNodes, initiator, instanceStatus, finishedAt, currentUserId }: Readonly<ApprovalTimelineProps>) {
   const sorted = [...tasks].sort((a, b) => a.id - b.id);
 
   // 为每个 rejected 任务定位"已回退至"的目标节点：取 id 严格大于当前任务、且非抄送节点的第一条后续任务
@@ -90,6 +92,7 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
         const isCc = task.nodeType === 'ccNode';
         const isRegenerated = regeneratedIds.has(task.id);
         const returnTargetName = returnTargetMap.get(task.id);
+        const isMine = task.status === 'pending' && currentUserId != null && task.assigneeId === currentUserId;
 
         // Semi Design Tokens — 自动适配暗色模式
         let iconColor = 'var(--semi-color-primary)';
@@ -133,9 +136,18 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
 
         return (
           <Timeline.Item key={task.id} dot={dot}>
+            <div style={isMine ? {
+              background: 'color-mix(in srgb, var(--semi-color-warning) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--semi-color-warning) 28%, transparent)',
+              borderRadius: 8,
+              padding: '8px 10px',
+            } : undefined}>
             {/* 节点名称 + 状态 Tag */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <Typography.Text strong style={{ fontSize: 13 }}>{task.nodeName}</Typography.Text>
+              {isMine && (
+                <Tag color="amber" size="small" style={{ flexShrink: 0 }}>待你处理</Tag>
+              )}
               {actionText && (
                 <Tag color={TASK_STATUS_MAP[task.status]?.color ?? 'grey'} size="small" style={{ flexShrink: 0 }}>
                   {actionText}
@@ -248,6 +260,7 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
                 <ExternalCallbackUrl callbackId={task.externalCallbackId} />
               </div>
             )}
+            </div>
           </Timeline.Item>
         );
       })}

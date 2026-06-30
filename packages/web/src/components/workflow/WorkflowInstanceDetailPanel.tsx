@@ -5,7 +5,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import {
-  Descriptions, Empty, Spin, Tabs, TabPane, Tag, Typography, Button,
+  Descriptions, Empty, Skeleton, Tabs, TabPane, Tag, Typography, Button,
   Avatar, TextArea, Select, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
 import { CornerUpLeft, Send, Undo2 } from 'lucide-react';
@@ -18,6 +18,7 @@ import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowF
 import BusinessFormHost from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
 import WorkflowProcessLayout from './WorkflowProcessLayout';
+import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import { linearizeApprovalNodes } from './workflow-runtime';
 import {
   resolveWorkflowCustomForm,
@@ -151,12 +152,25 @@ function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>
   );
 }
 
+/** 流程详情加载骨架屏（替代居中 Spin，减少跳动），发起/审批详情共用 */
+export function WorkflowDetailSkeleton() {
+  const placeholder = (
+    <div style={{ padding: '16px 20px' }}>
+      <Skeleton.Title style={{ width: 260, height: 22, marginBottom: 16 }} />
+      <Skeleton.Paragraph rows={2} style={{ width: '55%', marginBottom: 28 }} />
+      <Skeleton.Title style={{ width: 120, height: 18, marginBottom: 14 }} />
+      <Skeleton.Paragraph rows={6} />
+    </div>
+  );
+  return <Skeleton active loading placeholder={placeholder}><span /></Skeleton>;
+}
+
 export default function WorkflowInstanceDetailPanel({
   instance, definition, loading, extraActions, onOpenInstance, onRecalled,
 }: Readonly<Props>) {
   const { user } = useAuth();
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
+    return <WorkflowDetailSkeleton />;
   }
   if (!instance) {
     return <Empty title="暂无数据" />;
@@ -239,7 +253,10 @@ export default function WorkflowInstanceDetailPanel({
         <Typography.Title heading={5} style={{ margin: 0, lineHeight: 1.4, flex: 1, minWidth: 0 }}>
           {instance.title}
         </Typography.Title>
-        <div style={{ flexShrink: 0, marginTop: 2 }}>
+        <div style={{ flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {(instance.priority === 'high' || instance.priority === 'urgent') && (
+            <WorkflowPriorityTag priority={instance.priority} />
+          )}
           {statusInfo
             ? <Tag color={statusInfo.color}>{statusInfo.text}</Tag>
             : <span style={{ fontSize: 13 }}>{instance.status}</span>}
@@ -302,6 +319,7 @@ export default function WorkflowInstanceDetailPanel({
       initiator={{ name: instance.initiatorName, avatar: instance.initiatorAvatar, submittedAt: instance.createdAt }}
       instanceStatus={instance.status}
       finishedAt={instance.updatedAt}
+      currentUserId={user?.id}
     />
   );
 

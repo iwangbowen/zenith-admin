@@ -9,6 +9,7 @@
  */
 import type { ReactNode } from 'react';
 import { SideSheet } from '@douyinfe/semi-ui';
+import './WorkflowSideSheet.css';
 
 const DEFAULT_WIDTH = 760;
 const SPLIT_WIDTH = 1080;
@@ -48,9 +49,9 @@ export default function WorkflowSideSheet({
         ? { padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
         : { padding: 16 }}
       footer={hasFooter ? (
-        <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>{footerLeft}</div>
-          <div>{footerRight}</div>
+        <div className="wf-sidesheet-footer">
+          <div className="wf-sidesheet-footer__left">{footerLeft}</div>
+          <div className="wf-sidesheet-footer__right">{footerRight}</div>
         </div>
       ) : undefined}
     >

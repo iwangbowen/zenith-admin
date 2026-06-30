@@ -9,7 +9,7 @@
  *   （条件分支展开 / 重新解析候选人），刷新期间保留旧链路避免闪烁。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Empty, Select, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
+import { Button, Empty, Select, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
 import { Clock, Flag, Mail, Send, UserPlus, type LucideIcon } from 'lucide-react';
 import type { WorkflowApproverPreviewNode } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -95,6 +95,7 @@ export default function WorkflowApprovalChainPanel({
   reloadKey,
 }: Readonly<Props>) {
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [nodes, setNodes] = useState<WorkflowApproverPreviewNode[]>([]);
 
   const load = useCallback(async () => {
@@ -110,17 +111,28 @@ export default function WorkflowApprovalChainPanel({
         { formData: getFormData ? getFormData() : null },
         { silent: true },
       );
-      const data = res.code === 0 ? res.data ?? [] : [];
-      setNodes(data);
-      const selectNodes: InitiatorApproverSelectNode[] = data
-        .filter((node) => node.selectionRequired)
-        .map((node) => ({
-          nodeKey: node.nodeKey,
-          nodeName: node.nodeName,
-          selectableApprovers: node.selectableApprovers ?? [],
-          selectionRequired: node.selectionRequired ?? false,
-        }));
-      onNodesChange?.(selectNodes);
+      if (res.code === 0) {
+        const data = res.data ?? [];
+        setNodes(data);
+        setLoadError(false);
+        const selectNodes: InitiatorApproverSelectNode[] = data
+          .filter((node) => node.selectionRequired)
+          .map((node) => ({
+            nodeKey: node.nodeKey,
+            nodeName: node.nodeName,
+            selectableApprovers: node.selectableApprovers ?? [],
+            selectionRequired: node.selectionRequired ?? false,
+          }));
+        onNodesChange?.(selectNodes);
+      } else {
+        setLoadError(true);
+        setNodes([]);
+        onNodesChange?.([]);
+      }
+    } catch {
+      setLoadError(true);
+      setNodes([]);
+      onNodesChange?.([]);
     } finally {
       setLoading(false);
     }
@@ -146,6 +158,17 @@ export default function WorkflowApprovalChainPanel({
   const startNode = nodes.find((n) => n.nodeType === 'start');
   const flowNodes = nodes.filter((n) => n.nodeType !== 'start');
   const initiatorName = startNode?.approvers[0]?.name ?? '发起人';
+
+  // 链路摘要：审批步数 + 去重审批人数（自选节点单列标注）
+  const approvalNodes = flowNodes.filter((n) => n.nodeType === 'approve' || n.nodeType === 'handler');
+  const approverIdSet = new Set<number>();
+  approvalNodes.forEach((n) => n.approvers.forEach((a) => approverIdSet.add(a.id)));
+  const hasSelectNode = approvalNodes.some((n) => n.selectionRequired);
+  const summaryText = [
+    `共 ${approvalNodes.length} 步`,
+    approverIdSet.size > 0 ? `约 ${approverIdSet.size} 人审批` : null,
+    hasSelectNode ? '含自选' : null,
+  ].filter(Boolean).join(' · ');
 
   const handleSelect = (nodeKey: string, next: unknown) => {
     const ids = normalizeSelectedIds(next);
@@ -208,10 +231,23 @@ export default function WorkflowApprovalChainPanel({
     <div>
       {loading && nodes.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
+      ) : loadError ? (
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 8 }}>
+            审批链路预测失败
+          </Typography.Text>
+          <Button size="small" onClick={() => void load()}>重试</Button>
+        </div>
       ) : flowNodes.length === 0 ? (
         <Empty description="该流程无需审批，提交后自动通过" style={{ padding: 24 }} />
       ) : (
-        <Timeline className="wf-approval-timeline" style={{ paddingLeft: 4 }}>
+        <>
+          {approvalNodes.length > 0 && (
+            <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+              {summaryText}
+            </div>
+          )}
+          <Timeline className="wf-approval-timeline" style={{ paddingLeft: 4 }}>
           {/* 开始：发起申请 */}
           <Timeline.Item dot={timelineDot(Send, 'var(--semi-color-primary)')}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -256,6 +292,7 @@ export default function WorkflowApprovalChainPanel({
             <Typography.Text strong style={{ fontSize: 13 }}>流程结束</Typography.Text>
           </Timeline.Item>
         </Timeline>
+        </>
       )}
     </div>
   );
