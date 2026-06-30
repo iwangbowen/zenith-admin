@@ -7,6 +7,7 @@ import {
   Form,
   Select,
   Space,
+  SplitButtonGroup,
   Spin,
   Toast,
   Typography,
@@ -274,8 +275,10 @@ export default function WorkflowApprovalDetailSheet({
 
   // 审批弹窗打开时，向服务端拉取「紧邻下一审批节点」中需当前审批人选人的 approverSelect 候选分组。
   // 候选人已按各节点 selectScope（成员/角色/部门/用户组）在服务端解析收窄，前端无需自行计算范围。
+  // 审批操作可用时（pending 且为当前实例）即预取「下一节点自选审批人」候选：
+  // 既供审批弹窗使用，也用于判断「同意」能否走一键快速通道（无下游自选才允许）。
   useEffect(() => {
-    if (!approveVisible || taskId == null) {
+    if (taskId == null || detail?.id !== instanceId || currentTask?.status !== 'pending') {
       setSelectedNextGroups([]);
       return;
     }
@@ -290,8 +293,20 @@ export default function WorkflowApprovalDetailSheet({
       .catch(() => { if (!cancelled) setSelectedNextGroups([]); })
       .finally(() => { if (!cancelled) setNextApproversLoading(false); });
     return () => { cancelled = true; };
-  }, [approveVisible, taskId]);
+  }, [taskId, detail?.id, instanceId, currentTask?.status]);
   const hasApproverSelectDownstream = selectedNextGroups.length > 0;
+
+  // 一键快速同意的门槛：通过按钮无必填附件、节点无意见必填 / 签名要求、且下一节点无需自选审批人。
+  const currentNodeConfig = useMemo(
+    () => currentDetailDefinition?.flowData?.nodes.find((n) => n.data.key === currentTask?.nodeKey)?.data ?? null,
+    [currentDetailDefinition, currentTask],
+  );
+  const approveNeedsModal =
+    btnApprove.uploadMode === 'required'
+    || (currentNodeConfig?.operations?.includes('opinionRequired') ?? false)
+    || (currentTask?.signatureRequired ?? false)
+    || hasApproverSelectDownstream;
+  const canQuickApprove = !approveNeedsModal && !nextApproversLoading;
 
 
   const openReject = useCallback(async () => {
@@ -533,6 +548,33 @@ export default function WorkflowApprovalDetailSheet({
     openUserPickerModal(() => setAddSignVisible(true));
   };
 
+  const openApproveModal = () => {
+    setAttachmentsFor('approve', []);
+    setApproveSignature('');
+    setSelectedNextApprovers({});
+    setApproveVisible(true);
+  };
+
+  const handleQuickApprove = async () => {
+    if (taskId == null || submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await request.post(
+        `/api/workflows/tasks/${taskId}/approve`,
+        { comment: '' },
+        { headers: { 'X-Idempotency-Key': `workflow-approve-${taskId}` } },
+      );
+      if (res.code === 0) {
+        Toast.success('审批通过');
+        closeAfterAction();
+      } else {
+        Toast.error(res.message || '处理失败');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const moreActions: Array<{ key: string; label: string; onClick: () => void }> = [];
   if (btnTransfer.enabled) moreActions.push({ key: 'transfer', label: btnTransfer.displayName ?? '转办', onClick: () => openUserPickerModal(() => setTransferVisible(true)) });
   if (btnDelegate.enabled) moreActions.push({ key: 'delegate', label: btnDelegate.displayName ?? '委派', onClick: () => openUserPickerModal(() => setDelegateVisible(true)) });
@@ -540,12 +582,33 @@ export default function WorkflowApprovalDetailSheet({
   if (btnAddSign.enabled && reduceSignCandidates.length > 0) moreActions.push({ key: 'reduceSign', label: btnReduceSign.displayName ?? '减签', onClick: () => setReduceSignVisible(true) });
   if (btnReturn.enabled) moreActions.push({ key: 'return', label: btnReturn.displayName ?? '退回', onClick: () => setReturnVisible(true) });
 
+  const approveLabel = btnApprove.displayName ?? '同意';
   const extraActions = taskId != null && detail?.id === instanceId ? (
     <Space>
       {btnApprove.enabled !== false && (
-        <Button type="primary" onClick={() => { setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers({}); setApproveVisible(true); }}>
-          {btnApprove.displayName ?? '同意'}
-        </Button>
+        canQuickApprove ? (
+          <SplitButtonGroup>
+            <Button type="primary" loading={submitting} onClick={() => void handleQuickApprove()}>
+              {approveLabel}
+            </Button>
+            <Dropdown
+              trigger="click"
+              position="topRight"
+              clickToHide
+              render={(
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={openApproveModal}>填写意见后{approveLabel}</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button type="primary" icon={<ChevronDown size={14} />} />
+            </Dropdown>
+          </SplitButtonGroup>
+        ) : (
+          <Button type="primary" onClick={openApproveModal}>
+            {approveLabel}
+          </Button>
+        )
       )}
       {btnReject.enabled !== false && (
         <Button type="danger" onClick={() => { void openReject(); }}>
