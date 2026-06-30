@@ -9,7 +9,7 @@
  * 需要父级提供高度（SideSheet body / page-container--stretch）。
  */
 import { useState, type ReactNode } from 'react';
-import { Button, SideSheet, Typography } from '@douyinfe/semi-ui';
+import { Button, SideSheet, Space, Typography } from '@douyinfe/semi-ui';
 import { Workflow } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -25,6 +25,8 @@ interface Props {
   chain: ReactNode;
   /** 流程图内容（在 SideSheet 中展示） */
   graph: ReactNode;
+  /** 右栏「审批流程」标题栏右侧额外操作（如发起页「刷新」按钮），可选 */
+  headerExtra?: ReactNode;
   /** 右栏宽度持久化 key（localStorage） */
   persistKey?: string;
   sidebarDefault?: number;
@@ -37,6 +39,7 @@ export default function WorkflowProcessLayout({
   left,
   chain,
   graph,
+  headerExtra,
   persistKey,
   sidebarDefault = 340,
   sidebarMin = 280,
@@ -49,14 +52,17 @@ export default function WorkflowProcessLayout({
     <div className={`wf-process-sidebar${stacked ? ' wf-process-sidebar--stacked' : ''}`}>
       <div className="wf-process-sidebar__bar">
         <Typography.Text strong className="wf-process-sidebar__title">审批流程</Typography.Text>
-        <Button
-          size="small"
-          theme="borderless"
-          icon={<Workflow size={14} />}
-          onClick={() => setGraphVisible(true)}
-        >
-          流程图
-        </Button>
+        <Space spacing={4}>
+          {headerExtra}
+          <Button
+            size="small"
+            theme="borderless"
+            icon={<Workflow size={14} />}
+            onClick={() => setGraphVisible(true)}
+          >
+            流程图
+          </Button>
+        </Space>
       </div>
       <div className="wf-process-sidebar__body">{chain}</div>
     </div>

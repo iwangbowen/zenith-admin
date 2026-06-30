@@ -3,6 +3,7 @@ import { AppModal } from '@/components/AppModal';
 import {
   Banner,
   Button,
+  Dropdown,
   Form,
   Select,
   Space,
@@ -10,6 +11,7 @@ import {
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
+import { ChevronDown } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowInstance, WorkflowSelectableNextApproverGroup, WorkflowTask } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -531,8 +533,15 @@ export default function WorkflowApprovalDetailSheet({
     openUserPickerModal(() => setAddSignVisible(true));
   };
 
+  const moreActions: Array<{ key: string; label: string; onClick: () => void }> = [];
+  if (btnTransfer.enabled) moreActions.push({ key: 'transfer', label: btnTransfer.displayName ?? '转办', onClick: () => openUserPickerModal(() => setTransferVisible(true)) });
+  if (btnDelegate.enabled) moreActions.push({ key: 'delegate', label: btnDelegate.displayName ?? '委派', onClick: () => openUserPickerModal(() => setDelegateVisible(true)) });
+  if (btnAddSign.enabled) moreActions.push({ key: 'addSign', label: btnAddSign.displayName ?? '加签', onClick: openAddSignModal });
+  if (btnAddSign.enabled && reduceSignCandidates.length > 0) moreActions.push({ key: 'reduceSign', label: btnReduceSign.displayName ?? '减签', onClick: () => setReduceSignVisible(true) });
+  if (btnReturn.enabled) moreActions.push({ key: 'return', label: btnReturn.displayName ?? '退回', onClick: () => setReturnVisible(true) });
+
   const extraActions = taskId != null && detail?.id === instanceId ? (
-    <Space wrap>
+    <Space>
       {btnApprove.enabled !== false && (
         <Button type="primary" onClick={() => { setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers({}); setApproveVisible(true); }}>
           {btnApprove.displayName ?? '同意'}
@@ -543,30 +552,20 @@ export default function WorkflowApprovalDetailSheet({
           {btnReject.displayName ?? '拒绝'}
         </Button>
       )}
-      {btnTransfer.enabled && (
-        <Button onClick={() => openUserPickerModal(() => setTransferVisible(true))}>
-          {btnTransfer.displayName ?? '转办'}
-        </Button>
-      )}
-      {btnDelegate.enabled && (
-        <Button onClick={() => openUserPickerModal(() => setDelegateVisible(true))}>
-          {btnDelegate.displayName ?? '委派'}
-        </Button>
-      )}
-      {btnAddSign.enabled && (
-        <Button onClick={openAddSignModal}>
-          {btnAddSign.displayName ?? '加签'}
-        </Button>
-      )}
-      {btnAddSign.enabled && reduceSignCandidates.length > 0 && (
-        <Button onClick={() => setReduceSignVisible(true)}>
-          {btnReduceSign.displayName ?? '减签'}
-        </Button>
-      )}
-      {btnReturn.enabled && (
-        <Button onClick={() => setReturnVisible(true)}>
-          {btnReturn.displayName ?? '退回'}
-        </Button>
+      {moreActions.length > 0 && (
+        <Dropdown
+          trigger="click"
+          position="topRight"
+          render={(
+            <Dropdown.Menu>
+              {moreActions.map((a) => (
+                <Dropdown.Item key={a.key} onClick={a.onClick}>{a.label}</Dropdown.Item>
+              ))}
+            </Dropdown.Menu>
+          )}
+        >
+          <Button icon={<ChevronDown size={14} />} iconPosition="right">更多</Button>
+        </Dropdown>
       )}
     </Space>
   ) : undefined;

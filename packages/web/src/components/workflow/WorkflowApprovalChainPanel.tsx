@@ -5,11 +5,12 @@
  * - 仅调用一次 `/preview`，按流转顺序渲染时间线（发起申请 → 审批节点 → 流程结束）。
  * - 对「自选审批人」节点（selectionRequired），直接在该时间线节点内内联渲染多选 Select，
  *   不再放在表单外的独立区块。
- * - 保留「按当前表单刷新」，用当前表单数据重新预测（条件分支展开 / 重新解析候选人）。
+ * - 通过 `reloadKey` 受控刷新：发起页表单变更（防抖）或点击表头「刷新」时重新预测
+ *   （条件分支展开 / 重新解析候选人），刷新期间保留旧链路避免闪烁。
  */
-import { useCallback, useEffect, useState } from 'react';
-import { Button, Empty, Select, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
-import { Clock, Flag, Mail, RefreshCw, Send, UserPlus, type LucideIcon } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Empty, Select, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
+import { Clock, Flag, Mail, Send, UserPlus, type LucideIcon } from 'lucide-react';
 import type { WorkflowApproverPreviewNode } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -79,6 +80,8 @@ interface Props {
   onNodesChange?: (nodes: InitiatorApproverSelectNode[]) => void;
   /** 提交校验失败后，高亮「必填未选」节点 */
   highlightMissing?: boolean;
+  /** 受控刷新信号：变化时按当前表单重新预测链路（发起页防抖 / 手动刷新） */
+  reloadKey?: number;
 }
 
 export default function WorkflowApprovalChainPanel({
@@ -89,6 +92,7 @@ export default function WorkflowApprovalChainPanel({
   onChange,
   onNodesChange,
   highlightMissing = false,
+  reloadKey,
 }: Readonly<Props>) {
   const [loading, setLoading] = useState(false);
   const [nodes, setNodes] = useState<WorkflowApproverPreviewNode[]>([]);
@@ -126,8 +130,15 @@ export default function WorkflowApprovalChainPanel({
   useEffect(() => {
     setNodes([]);
     void load();
-    // 仅在 definitionId 变化时自动加载；表单数据变化由「按当前表单刷新」触发
   }, [load]);
+
+  // reloadKey 变化（发起页表单变更防抖 / 手动刷新）：重新预测，但不清空旧链路，避免闪烁
+  const reloadKeyInitRef = useRef(true);
+  useEffect(() => {
+    if (reloadKeyInitRef.current) { reloadKeyInitRef.current = false; return; }
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey]);
 
   if (!definitionId) return null;
 
@@ -195,12 +206,7 @@ export default function WorkflowApprovalChainPanel({
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <Button size="small" theme="borderless" icon={<RefreshCw size={13} />} onClick={() => void load()}>
-          按当前表单刷新
-        </Button>
-      </div>
-      {loading ? (
+      {loading && nodes.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
       ) : flowNodes.length === 0 ? (
         <Empty description="该流程无需审批，提交后自动通过" style={{ padding: 24 }} />
