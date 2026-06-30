@@ -9,6 +9,13 @@
 
 .wf-process-layout__header {
   flex-shrink: 0;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.wf-process-layout__header--stacked {
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 /* ---- 左栏：表单主体 ---- */

@@ -84,7 +84,7 @@ export default function WorkflowProcessLayout({
 
   return (
     <div className="wf-process-layout">
-      {header ? <div className="wf-process-layout__header">{header}</div> : null}
+      {header ? <div className={`wf-process-layout__header${narrow ? ' wf-process-layout__header--stacked' : ''}`}>{header}</div> : null}
       {body}
       <SideSheet
         title="流程图"
