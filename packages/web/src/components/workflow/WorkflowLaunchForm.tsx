@@ -20,7 +20,6 @@ import { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorit
 import WorkflowInitiatorApproverFields, {
   compactSelectedInitiatorApprovers,
   firstMissingInitiatorApproverNode,
-  selectedInitiatorApproversFromFormValues,
   type InitiatorApproverSelectNode,
   type SelectedInitiatorApprovers,
 } from '@/components/workflow/WorkflowInitiatorApproverFields';
@@ -53,12 +52,19 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
     const businessFormApi = useRef<WorkflowBusinessFormApi | null>(null);
     const { userOptions } = useUserOptions({ immediate: true });
     const [selectedInitiatorApprovers, setSelectedInitiatorApprovers] = useState<SelectedInitiatorApprovers>({});
+    const latestSelectedInitiatorApproversRef = useRef<SelectedInitiatorApprovers>({});
     const [initiatorSelectNodes, setInitiatorSelectNodes] = useState<InitiatorApproverSelectNode[]>([]);
 
     useEffect(() => {
+      latestSelectedInitiatorApproversRef.current = {};
       setSelectedInitiatorApprovers({});
       setInitiatorSelectNodes([]);
     }, [def.id]);
+
+    const handleSelectedInitiatorApproversChange = (next: SelectedInitiatorApprovers) => {
+      latestSelectedInitiatorApproversRef.current = next;
+      setSelectedInitiatorApprovers(next);
+    };
 
     // 当前登录人通过 /api/auth/me 异步加载，标题需等其就绪后再回填，避免出现占位「我」
     const lastDefId = useRef<number | null>(null);
@@ -99,7 +105,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
           } else if (dynamicFormApi.current && def.formFields && def.formFields.length > 0) {
             formData = await dynamicFormApi.current.validate() as Record<string, unknown>;
           }
-          const effectiveSelectedInitiatorApprovers = selectedInitiatorApproversFromFormValues(values, initiatorSelectNodes, def.id);
+          const effectiveSelectedInitiatorApprovers = latestSelectedInitiatorApproversRef.current;
           if (options?.requireInitiatorApprovers !== false) {
             const missing = firstMissingInitiatorApproverNode(effectiveSelectedInitiatorApprovers, initiatorSelectNodes);
             if (missing) {
@@ -200,7 +206,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
           <WorkflowInitiatorApproverFields
             definitionId={def.id}
             value={selectedInitiatorApprovers}
-            onChange={setSelectedInitiatorApprovers}
+            onChange={handleSelectedInitiatorApproversChange}
             onNodesChange={setInitiatorSelectNodes}
           />
         </Form>

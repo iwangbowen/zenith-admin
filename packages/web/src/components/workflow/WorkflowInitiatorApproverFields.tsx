@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Form, Spin, Typography } from '@douyinfe/semi-ui';
+import { Select, Spin, Typography } from '@douyinfe/semi-ui';
 import type { WorkflowApproverPreviewNode } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -21,32 +21,12 @@ interface WorkflowInitiatorApproverFieldsProps {
 
 function pickSelected(value: SelectedInitiatorApprovers, nodeKey: string): number[] {
   const ids = value[nodeKey];
-  return Array.isArray(ids) ? ids : [];
-}
-
-function formFieldSegment(value: string | number): string {
-  return String(value).replace(/[^A-Za-z0-9_]/g, '_');
-}
-
-export function initiatorApproverFieldName(nodeKey: string, definitionId?: number | null): string {
-  return `initiatorApprover__${formFieldSegment(definitionId ?? 'current')}__${formFieldSegment(nodeKey)}`;
+  return normalizeSelectedIds(ids);
 }
 
 function normalizeSelectedIds(value: unknown): number[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
-}
-
-export function selectedInitiatorApproversFromFormValues(
-  values: Record<string, unknown>,
-  nodes: InitiatorApproverSelectNode[],
-  definitionId?: number | null,
-): SelectedInitiatorApprovers {
-  const out: SelectedInitiatorApprovers = {};
-  for (const node of nodes) {
-    out[node.nodeKey] = normalizeSelectedIds(values[initiatorApproverFieldName(node.nodeKey, definitionId)]);
-  }
-  return out;
+  const list = Array.isArray(value) ? value : [value];
+  return [...new Set(list.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
 }
 
 export function compactSelectedInitiatorApprovers(
@@ -56,8 +36,10 @@ export function compactSelectedInitiatorApprovers(
   const allowedKeys = new Set(nodes.map((node) => node.nodeKey));
   const out: SelectedInitiatorApprovers = {};
   for (const [key, ids] of Object.entries(value)) {
-    if (!allowedKeys.has(key) || !Array.isArray(ids) || ids.length === 0) continue;
-    out[key] = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+    if (!allowedKeys.has(key)) continue;
+    const normalized = normalizeSelectedIds(ids);
+    if (normalized.length === 0) continue;
+    out[key] = normalized;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -131,9 +113,7 @@ export default function WorkflowInitiatorApproverFields({
               {node.nodeName}
               {node.selectionRequired && <span style={{ color: 'var(--semi-color-danger)' }}> *</span>}
             </Typography.Text>
-            <Form.Select
-              field={initiatorApproverFieldName(node.nodeKey, definitionId)}
-              noLabel
+            <Select
               multiple
               filter
               showClear
@@ -141,7 +121,7 @@ export default function WorkflowInitiatorApproverFields({
               placeholder="请选择审批人"
               emptyContent="暂无可选审批人"
               optionList={node.selectableApprovers.map((user) => ({ value: user.id, label: user.name }))}
-              initValue={pickSelected(value, node.nodeKey)}
+              value={pickSelected(value, node.nodeKey)}
               onChange={(v) => {
                 const ids = normalizeSelectedIds(v);
                 onChange({ ...value, [node.nodeKey]: ids });

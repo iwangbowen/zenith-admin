@@ -1707,7 +1707,7 @@ function normalizeSelectedApproverMap(input?: SelectedApproverMap | null): Selec
   const out: SelectedApproverMap = {};
   for (const [nodeKey, ids] of Object.entries(input ?? {})) {
     if (!nodeKey || !Array.isArray(ids)) continue;
-    const normalized = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+    const normalized = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
     if (normalized.length > 0) out[nodeKey] = normalized;
   }
   return out;

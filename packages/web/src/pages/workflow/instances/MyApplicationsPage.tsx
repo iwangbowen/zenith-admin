@@ -36,7 +36,6 @@ import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPrevi
 import WorkflowInitiatorApproverFields, {
   compactSelectedInitiatorApprovers,
   firstMissingInitiatorApproverNode,
-  selectedInitiatorApproversFromFormValues,
   type InitiatorApproverSelectNode,
   type SelectedInitiatorApprovers,
 } from '@/components/workflow/WorkflowInitiatorApproverFields';
@@ -423,6 +422,7 @@ export default function MyApplicationsPage() {
   const [dynamicFormInitValues, setDynamicFormInitValues] = useState<Record<string, unknown>>({});
   const [formKey, setFormKey] = useState(0);
   const [selectedInitiatorApprovers, setSelectedInitiatorApprovers] = useState<SelectedInitiatorApprovers>({});
+  const latestSelectedInitiatorApproversRef = useRef<SelectedInitiatorApprovers>({});
   const [initiatorSelectNodes, setInitiatorSelectNodes] = useState<InitiatorApproverSelectNode[]>([]);
   const priorityFilterRef = useRef('');
   priorityFilterRef.current = priorityFilter;
@@ -490,6 +490,7 @@ export default function MyApplicationsPage() {
     businessFormApi.current = null;
     setApplyCategoryId(null);
     setDynamicFormInitValues({});
+    latestSelectedInitiatorApproversRef.current = {};
     setSelectedInitiatorApprovers({});
     setInitiatorSelectNodes([]);
     businessFormApi.current = null;
@@ -498,6 +499,7 @@ export default function MyApplicationsPage() {
   const openApply = async () => {
     setEditingDraft(null);
     setDynamicFormInitValues({});
+    latestSelectedInitiatorApproversRef.current = {};
     setSelectedInitiatorApprovers({});
     setInitiatorSelectNodes([]);
     setFormKey(k => k + 1);
@@ -512,6 +514,7 @@ export default function MyApplicationsPage() {
     setSelectedDef(def);
     setApplyCategoryId(def?.categoryId ?? null);
     setDynamicFormInitValues((record.formData as Record<string, unknown>) ?? {});
+    latestSelectedInitiatorApproversRef.current = {};
     setSelectedInitiatorApprovers({});
     setInitiatorSelectNodes([]);
     setFormKey(k => k + 1);
@@ -536,7 +539,7 @@ export default function MyApplicationsPage() {
       } else if (dynamicFormApi.current && selectedDef?.formFields && selectedDef.formFields.length > 0) {
         formData = await dynamicFormApi.current.validate() as Record<string, unknown>;
       }
-      const effectiveSelectedInitiatorApprovers = selectedInitiatorApproversFromFormValues(values, initiatorSelectNodes, selectedDef?.id);
+      const effectiveSelectedInitiatorApprovers = latestSelectedInitiatorApproversRef.current;
       if (options?.requireInitiatorApprovers !== false) {
         const missing = firstMissingInitiatorApproverNode(effectiveSelectedInitiatorApprovers, initiatorSelectNodes);
         if (missing) {
@@ -552,6 +555,11 @@ export default function MyApplicationsPage() {
     } catch {
       return null;
     }
+  };
+
+  const handleSelectedInitiatorApproversChange = (next: SelectedInitiatorApprovers) => {
+    latestSelectedInitiatorApproversRef.current = next;
+    setSelectedInitiatorApprovers(next);
   };
 
   const handleSubmitApply = async () => {
@@ -1038,7 +1046,7 @@ export default function MyApplicationsPage() {
             <WorkflowInitiatorApproverFields
               definitionId={selectedDef.id}
               value={selectedInitiatorApprovers}
-              onChange={setSelectedInitiatorApprovers}
+              onChange={handleSelectedInitiatorApproversChange}
               onNodesChange={setInitiatorSelectNodes}
             />
           )}
