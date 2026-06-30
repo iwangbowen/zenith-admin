@@ -1,0 +1,67 @@
+/* 流程「发起 / 详情」两栏布局壳 */
+
+.wf-process-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.wf-process-layout__header {
+  flex-shrink: 0;
+}
+
+/* ---- 左栏：表单主体 ---- */
+.wf-process-form {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px;
+}
+
+/* ---- 右栏：审批侧栏 ---- */
+.wf-process-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.wf-process-sidebar__bar {
+  flex-shrink: 0;
+  padding: 4px 12px 0;
+}
+
+.wf-process-sidebar__bar .semi-tabs-bar {
+  margin-bottom: 0;
+}
+
+.wf-process-sidebar__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* ---- 窄屏单栏堆叠回退 ---- */
+.wf-process-stack {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.wf-process-form--stacked {
+  height: auto;
+  overflow: visible;
+  padding: 16px;
+}
+
+.wf-process-sidebar--stacked {
+  height: auto;
+  border-top: 1px solid var(--semi-color-border);
+  margin-top: 4px;
+}
+
+.wf-process-sidebar--stacked .wf-process-sidebar__body {
+  overflow: visible;
+}

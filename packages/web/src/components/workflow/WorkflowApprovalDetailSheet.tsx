@@ -588,6 +588,7 @@ export default function WorkflowApprovalDetailSheet({
         title={title}
         visible={detailSheetVisible}
         onCancel={onClose}
+        variant="split"
         footerRight={extraActions}
       >
         {detailLoading ? (

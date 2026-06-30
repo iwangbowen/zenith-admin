@@ -5,7 +5,7 @@
  * 及取数校验逻辑，通过 ref 暴露 collectFormData 供外层提交/存草稿调用。
  */
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Banner, Col, Form, Row, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Col, Form, Row, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import dayjs from 'dayjs';
 import type { WorkflowDefinition } from '@zenith/shared';
@@ -15,14 +15,14 @@ import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowF
 import { resolveDynamicDefaults } from '@/pages/workflow/designer/form-defaults';
 import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
-import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPreview';
+import WorkflowProcessLayout from '@/components/workflow/WorkflowProcessLayout';
 import { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
-import WorkflowInitiatorApproverFields, {
+import WorkflowApprovalChainPanel, {
   compactSelectedInitiatorApprovers,
   firstMissingInitiatorApproverNode,
   type InitiatorApproverSelectNode,
   type SelectedInitiatorApprovers,
-} from '@/components/workflow/WorkflowInitiatorApproverFields';
+} from '@/components/workflow/WorkflowApprovalChainPanel';
 
 export interface WorkflowLaunchFormData {
   values: Record<string, unknown>;
@@ -42,10 +42,14 @@ interface WorkflowLaunchFormProps {
   initialFormData?: Record<string, unknown>;
   /** 申请标题初始值（草稿/编辑回填，留空则自动生成） */
   initialTitle?: string;
+  /** 优先级初始值（草稿/编辑回填，留空默认 normal） */
+  initialPriority?: string;
+  /** 是否显示抄送人字段（草稿编辑场景下抄送不持久化，可隐藏） */
+  showCc?: boolean;
 }
 
 const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFormProps>(
-  function WorkflowLaunchForm({ def, container, initialFormData, initialTitle }, ref) {
+  function WorkflowLaunchForm({ def, container, initialFormData, initialTitle, initialPriority, showCc = true }, ref) {
     const { user } = useAuth();
     const formApi = useRef<FormApi | null>(null);
     const dynamicFormApi = useRef<FormApi | null>(null);
@@ -54,16 +58,19 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
     const [selectedInitiatorApprovers, setSelectedInitiatorApprovers] = useState<SelectedInitiatorApprovers>({});
     const latestSelectedInitiatorApproversRef = useRef<SelectedInitiatorApprovers>({});
     const [initiatorSelectNodes, setInitiatorSelectNodes] = useState<InitiatorApproverSelectNode[]>([]);
+    const [highlightMissing, setHighlightMissing] = useState(false);
 
     useEffect(() => {
       latestSelectedInitiatorApproversRef.current = {};
       setSelectedInitiatorApprovers({});
       setInitiatorSelectNodes([]);
+      setHighlightMissing(false);
     }, [def.id]);
 
     const handleSelectedInitiatorApproversChange = (next: SelectedInitiatorApprovers) => {
       latestSelectedInitiatorApproversRef.current = next;
       setSelectedInitiatorApprovers(next);
+      setHighlightMissing(false);
     };
 
     // 当前登录人通过 /api/auth/me 异步加载，标题需等其就绪后再回填，避免出现占位「我」
@@ -109,10 +116,12 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
           if (options?.requireInitiatorApprovers !== false) {
             const missing = firstMissingInitiatorApproverNode(effectiveSelectedInitiatorApprovers, initiatorSelectNodes);
             if (missing) {
+              setHighlightMissing(true);
               Toast.error(`请选择「${missing.nodeName}」的审批人`);
               return null;
             }
           }
+          setHighlightMissing(false);
           return {
             values,
             formData,
@@ -177,7 +186,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
       return <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>;
     };
 
-    return (
+    const leftContent = (
       <>
         <Form getFormApi={(api) => { formApi.current = api; }}>
           <Form.Input
@@ -187,44 +196,50 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
             rules={[{ required: true, message: '请填写申请标题' }]}
           />
           <Row gutter={16}>
-            <Col span={8}>
-              <Form.Select field="priority" label="优先级" style={{ width: '100%' }} initValue="normal" optionList={WORKFLOW_PRIORITY_OPTIONS} />
+            <Col span={showCc ? 8 : 24}>
+              <Form.Select field="priority" label="优先级" style={{ width: '100%' }} initValue={initialPriority ?? 'normal'} optionList={WORKFLOW_PRIORITY_OPTIONS} />
             </Col>
-            <Col span={16}>
-              <Form.Select
-                field="ccUserIds"
-                label="抄送人"
-                placeholder="可选，提交后立即抄送给所选成员"
-                multiple
-                filter
-                showClear
-                style={{ width: '100%' }}
-                optionList={userOptions}
-              />
-            </Col>
+            {showCc && (
+              <Col span={16}>
+                <Form.Select
+                  field="ccUserIds"
+                  label="抄送人"
+                  placeholder="可选，提交后立即抄送给所选成员"
+                  multiple
+                  filter
+                  showClear
+                  style={{ width: '100%' }}
+                  optionList={userOptions}
+                />
+              </Col>
+            )}
           </Row>
-          <WorkflowInitiatorApproverFields
+        </Form>
+
+        <div style={{ marginTop: 4, borderTop: '1px solid var(--semi-color-border)', paddingTop: 16 }}>
+          <Typography.Title heading={6} style={{ marginBottom: 12 }}>表单内容</Typography.Title>
+          {renderFormBody()}
+        </div>
+      </>
+    );
+
+    return (
+      <WorkflowProcessLayout
+        persistKey="workflow-launch"
+        left={leftContent}
+        chain={(
+          <WorkflowApprovalChainPanel
             definitionId={def.id}
+            getFormData={getPreviewFormData}
+            selectable
             value={selectedInitiatorApprovers}
             onChange={handleSelectedInitiatorApproversChange}
             onNodesChange={setInitiatorSelectNodes}
+            highlightMissing={highlightMissing}
           />
-        </Form>
-
-        <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 12 }}>
-          <Tabs type="line" defaultActiveKey="form">
-            <TabPane tab="表单" itemKey="form">
-              {renderFormBody()}
-            </TabPane>
-            <TabPane tab="审批流程" itemKey="chain">
-              <WorkflowApproverPreview definitionId={def.id} getFormData={getPreviewFormData} />
-            </TabPane>
-            <TabPane tab="流程图" itemKey="graph">
-              <WorkflowGraphView flowData={def.flowData} />
-            </TabPane>
-          </Tabs>
-        </div>
-      </>
+        )}
+        graph={<WorkflowGraphView flowData={def.flowData} />}
+      />
     );
   },
 );

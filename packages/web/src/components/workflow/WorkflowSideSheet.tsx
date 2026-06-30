@@ -11,12 +11,15 @@ import type { ReactNode } from 'react';
 import { SideSheet } from '@douyinfe/semi-ui';
 
 const DEFAULT_WIDTH = 760;
+const SPLIT_WIDTH = 1080;
 
 interface Props {
   title: ReactNode;
   visible: boolean;
   onCancel: () => void;
   width?: number;
+  /** 'split'：两栏布局——body 去内边距并撑满高度，供 WorkflowProcessLayout 使用 */
+  variant?: 'default' | 'split';
   footerLeft?: ReactNode;
   footerRight?: ReactNode;
   children: ReactNode;
@@ -26,19 +29,24 @@ export default function WorkflowSideSheet({
   title,
   visible,
   onCancel,
-  width = DEFAULT_WIDTH,
+  width,
+  variant = 'default',
   footerLeft,
   footerRight,
   children,
 }: Readonly<Props>) {
   const hasFooter = footerLeft != null || footerRight != null;
+  const isSplit = variant === 'split';
+  const resolvedWidth = width ?? (isSplit ? SPLIT_WIDTH : DEFAULT_WIDTH);
   return (
     <SideSheet
       title={title}
       visible={visible}
       onCancel={onCancel}
-      width={width}
-      bodyStyle={{ padding: 16 }}
+      width={resolvedWidth}
+      bodyStyle={isSplit
+        ? { padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+        : { padding: 16 }}
       footer={hasFooter ? (
         <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>{footerLeft}</div>
@@ -46,7 +54,9 @@ export default function WorkflowSideSheet({
         </div>
       ) : undefined}
     >
-      {children}
+      {isSplit
+        ? <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{children}</div>
+        : children}
     </SideSheet>
   );
 }

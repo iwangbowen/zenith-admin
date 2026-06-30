@@ -217,6 +217,7 @@ export default function WorkflowLaunchpadPage() {
         title={selectedDef ? `发起：${selectedDef.name}` : '发起申请'}
         visible={applyVisible}
         onCancel={closeApply}
+        variant="split"
         footerLeft={
           <Button
             theme="borderless"

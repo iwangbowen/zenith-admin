@@ -1,44 +1,30 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
-  Form,
+  Empty,
   Modal,
   Popconfirm,
   Select,
   SideSheet,
   Space,
   Spin,
-  Tabs,
-  TabPane,
   Tag,
   TextArea,
   Toast,
   Typography,
 } from '@douyinfe/semi-ui';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import dayjs from 'dayjs';
-import { FileInput, ExternalLink, Megaphone, Plus, RotateCcw, Search, Undo2 } from 'lucide-react';
+import { ExternalLink, Megaphone, Plus, RotateCcw, Search, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowDefinition, WorkflowInstance, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
-import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
-import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
-import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
-import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPreview';
-import WorkflowInitiatorApproverFields, {
-  compactSelectedInitiatorApprovers,
-  firstMissingInitiatorApproverNode,
-  type InitiatorApproverSelectNode,
-  type SelectedInitiatorApprovers,
-} from '@/components/workflow/WorkflowInitiatorApproverFields';
+import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
 import WorkflowPriorityTag, { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
@@ -307,8 +293,8 @@ function InstanceDetailDrawer({
       title="申请详情"
       visible={visible}
       onCancel={onClose}
-      width={760}
-      bodyStyle={{ padding: 16 }}
+      width={1080}
+      bodyStyle={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       footer={
         data?.status === 'running' ? (
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
@@ -323,17 +309,19 @@ function InstanceDetailDrawer({
         ) : null
       }
     >
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
-      ) : (
-        <WorkflowInstanceDetailPanel
-          instance={data}
-          definition={definition}
-          loading={loading}
-          onOpenInstance={(id) => setViewId(id)}
-          extraActions={printAction}
-        />
-      )}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        ) : (
+          <WorkflowInstanceDetailPanel
+            instance={data}
+            definition={definition}
+            loading={loading}
+            onOpenInstance={(id) => setViewId(id)}
+            extraActions={printAction}
+          />
+        )}
+      </div>
       <AppModal
         title="催办"
         visible={urgeVisible}
@@ -389,10 +377,7 @@ function InstanceDetailDrawer({
 }
 
 export default function MyApplicationsPage() {
-  const { user } = useAuth();
-  const formApi = useRef<FormApi | null>(null);
-  const dynamicFormApi = useRef<FormApi | null>(null);
-  const businessFormApi = useRef<WorkflowBusinessFormApi | null>(null);
+  const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -421,9 +406,6 @@ export default function MyApplicationsPage() {
   const [editingDraft, setEditingDraft] = useState<WorkflowInstance | null>(null);
   const [dynamicFormInitValues, setDynamicFormInitValues] = useState<Record<string, unknown>>({});
   const [formKey, setFormKey] = useState(0);
-  const [selectedInitiatorApprovers, setSelectedInitiatorApprovers] = useState<SelectedInitiatorApprovers>({});
-  const latestSelectedInitiatorApproversRef = useRef<SelectedInitiatorApprovers>({});
-  const [initiatorSelectNodes, setInitiatorSelectNodes] = useState<InitiatorApproverSelectNode[]>([]);
   const priorityFilterRef = useRef('');
   priorityFilterRef.current = priorityFilter;
 
@@ -487,21 +469,15 @@ export default function MyApplicationsPage() {
     setApplyVisible(false);
     setEditingDraft(null);
     setSelectedDef(null);
-    businessFormApi.current = null;
     setApplyCategoryId(null);
     setDynamicFormInitValues({});
-    latestSelectedInitiatorApproversRef.current = {};
-    setSelectedInitiatorApprovers({});
-    setInitiatorSelectNodes([]);
-    businessFormApi.current = null;
   };
 
   const openApply = async () => {
     setEditingDraft(null);
+    setSelectedDef(null);
+    setApplyCategoryId(null);
     setDynamicFormInitValues({});
-    latestSelectedInitiatorApproversRef.current = {};
-    setSelectedInitiatorApprovers({});
-    setInitiatorSelectNodes([]);
     setFormKey(k => k + 1);
     await loadDefinitions();
     setApplyVisible(true);
@@ -514,62 +490,19 @@ export default function MyApplicationsPage() {
     setSelectedDef(def);
     setApplyCategoryId(def?.categoryId ?? null);
     setDynamicFormInitValues((record.formData as Record<string, unknown>) ?? {});
-    latestSelectedInitiatorApproversRef.current = {};
-    setSelectedInitiatorApprovers({});
-    setInitiatorSelectNodes([]);
     setFormKey(k => k + 1);
     setApplyVisible(true);
   };
 
-  const collectFormData = async (options?: { requireInitiatorApprovers?: boolean }) => {
-    if (!formApi.current) return null;
-    try {
-      const values = await formApi.current.validate() as Record<string, unknown>;
-      let formData: Record<string, unknown> = {};
-      if (selectedDef?.formType === 'external') {
-        Toast.error('业务系统主导流程请从对应业务模块发起');
-        return null;
-      }
-      if (selectedDef?.formType === 'custom') {
-        if (!businessFormApi.current) {
-          Toast.error('业务表单尚未就绪，请稍候重试');
-          return null;
-        }
-        formData = await businessFormApi.current.validate();
-      } else if (dynamicFormApi.current && selectedDef?.formFields && selectedDef.formFields.length > 0) {
-        formData = await dynamicFormApi.current.validate() as Record<string, unknown>;
-      }
-      const effectiveSelectedInitiatorApprovers = latestSelectedInitiatorApproversRef.current;
-      if (options?.requireInitiatorApprovers !== false) {
-        const missing = firstMissingInitiatorApproverNode(effectiveSelectedInitiatorApprovers, initiatorSelectNodes);
-        if (missing) {
-          Toast.error(`请选择「${missing.nodeName}」的审批人`);
-          return null;
-        }
-      }
-      return {
-        values,
-        formData,
-        selectedInitiatorApprovers: compactSelectedInitiatorApprovers(effectiveSelectedInitiatorApprovers, initiatorSelectNodes),
-      };
-    } catch {
-      return null;
-    }
-  };
-
-  const handleSelectedInitiatorApproversChange = (next: SelectedInitiatorApprovers) => {
-    latestSelectedInitiatorApproversRef.current = next;
-    setSelectedInitiatorApprovers(next);
-  };
-
   const handleSubmitApply = async () => {
-    const result = await collectFormData({ requireInitiatorApprovers: true });
+    if (!selectedDef) { Toast.error('请先选择流程'); return; }
+    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: true });
     if (!result) return;
     const { values, formData } = result;
     setSubmitting(true);
     try {
       const res = await request.post('/api/workflows/instances', {
-        definitionId: values.definitionId,
+        definitionId: selectedDef.id,
         title: values.title,
         formData,
         priority: values.priority ?? 'normal',
@@ -587,13 +520,14 @@ export default function MyApplicationsPage() {
   };
 
   const handleSaveDraft = async () => {
-    const result = await collectFormData({ requireInitiatorApprovers: false });
+    if (!selectedDef) { Toast.error('请先选择流程'); return; }
+    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: false });
     if (!result) return;
     const { values, formData } = result;
     setSavingDraft(true);
     try {
       const res = await request.post('/api/workflows/instances', {
-        definitionId: values.definitionId,
+        definitionId: selectedDef.id,
         title: values.title,
         formData,
         priority: values.priority ?? 'normal',
@@ -612,7 +546,7 @@ export default function MyApplicationsPage() {
 
   const handleUpdateDraft = async () => {
     if (!editingDraft) return;
-    const result = await collectFormData({ requireInitiatorApprovers: false });
+    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: false });
     if (!result) return;
     const { values, formData } = result;
     setSavingDraft(true);
@@ -633,7 +567,7 @@ export default function MyApplicationsPage() {
 
   const handleSaveAndSubmitDraft = async () => {
     if (!editingDraft) return;
-    const result = await collectFormData({ requireInitiatorApprovers: true });
+    const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: true });
     if (!result) return;
     const { values, formData } = result;
     setSubmitting(true);
@@ -969,137 +903,80 @@ export default function MyApplicationsPage() {
         title={applySheetTitle}
         visible={applyVisible}
         onCancel={closeApply}
-        size="large"
-        bodyStyle={{ padding: 16 }}
+        width={1080}
+        bodyStyle={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         footer={applySheetFooter}
       >
-        <Form key={formKey} getFormApi={api => { formApi.current = api; }}>
-          <Form.Select
-            field="categoryId"
-            label="流程分类"
-            placeholder="全部分类"
-            showClear
-            style={{ width: '100%' }}
-            initValue={applyCategoryId ?? undefined}
-            disabled={editingDraft !== null}
-            onChange={v => {
-              const next = typeof v === 'number' ? v : null;
-              setApplyCategoryId(next);
-              if (!editingDraft) {
-                setSelectedDef(null);
-                formApi.current?.setValue('definitionId', undefined);
-                formApi.current?.setValue('title', '');
-              }
-            }}
-            optionList={categories.map(c => ({ value: c.id, label: c.name }))}
-          />
-          <Form.Select
-            field="definitionId"
-            label="选择流程"
-            placeholder="请选择要发起的流程"
-            rules={[{ required: true, message: '请选择流程' }]}
-            style={{ width: '100%' }}
-            initValue={editingDraft?.definitionId}
-            disabled={editingDraft !== null}
-            optionList={definitions
-              .filter(d => applyCategoryId === null || d.categoryId === applyCategoryId)
-              .map(d => ({ value: d.id, label: d.name }))}
-            onChange={v => {
-              const def = definitions.find(d => d.id === v) ?? null;
-              setSelectedDef(def);
-              setDynamicFormInitValues({});
-              businessFormApi.current = null;
-              if (def) {
-                const who = user?.nickname || user?.username || '我';
-                const auto = `${def.name} - ${who} - ${formatDateTime(new Date())}`;
-                formApi.current?.setValue('title', auto);
-              }
-            }}
-          />
-          <Form.Input
-            field="title"
-            label="申请标题"
-            placeholder="选择流程后自动生成，可手动修改"
-            rules={[{ required: true, message: '请填写申请标题' }]}
-            initValue={editingDraft?.title}
-          />
-          <Form.Select
-            field="priority"
-            label="优先级"
-            style={{ width: '100%' }}
-            initValue={editingDraft?.priority ?? 'normal'}
-            optionList={WORKFLOW_PRIORITY_OPTIONS}
-          />
-          {!editingDraft && (
-            <Form.Select
-              field="ccUserIds"
-              label="抄送人"
-              placeholder="可选，提交后立即抄送给所选成员"
-              multiple
-              filter
+        <div
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            gap: 12,
+            alignItems: 'flex-end',
+            padding: '12px 16px',
+            borderBottom: '1px solid var(--semi-color-border)',
+          }}
+        >
+          <div style={{ width: 220 }}>
+            <div style={{ fontSize: 13, color: 'var(--semi-color-text-1)', marginBottom: 4 }}>流程分类</div>
+            <Select
+              placeholder="全部分类"
+              value={applyCategoryId ?? undefined}
               showClear
+              disabled={editingDraft !== null}
               style={{ width: '100%' }}
-              optionList={userOptions}
+              optionList={categories.map(c => ({ value: c.id, label: c.name }))}
+              onChange={v => {
+                const next = typeof v === 'number' ? v : null;
+                setApplyCategoryId(next);
+                if (!editingDraft) {
+                  setSelectedDef(null);
+                  setDynamicFormInitValues({});
+                  setFormKey(k => k + 1);
+                }
+              }}
             />
-          )}
-          {selectedDef && (
-            <WorkflowInitiatorApproverFields
-              definitionId={selectedDef.id}
-              value={selectedInitiatorApprovers}
-              onChange={handleSelectedInitiatorApproversChange}
-              onNodesChange={setInitiatorSelectNodes}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: 'var(--semi-color-text-1)', marginBottom: 4 }}>
+              选择流程 <span style={{ color: 'var(--semi-color-danger)' }}>*</span>
+            </div>
+            <Select
+              placeholder="请选择要发起的流程"
+              value={selectedDef?.id}
+              filter
+              disabled={editingDraft !== null}
+              style={{ width: '100%' }}
+              optionList={definitions
+                .filter(d => applyCategoryId === null || d.categoryId === applyCategoryId)
+                .map(d => ({ value: d.id, label: d.name }))}
+              onChange={v => {
+                const def = definitions.find(d => d.id === v) ?? null;
+                setSelectedDef(def);
+                setDynamicFormInitValues({});
+                setFormKey(k => k + 1);
+              }}
             />
-          )}
-          {selectedDef?.description && (
-            <div style={{ padding: '8px 0', color: 'var(--semi-color-text-2)', fontSize: 13 }}>
-              <FileInput size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-              {selectedDef.description}
+          </div>
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          {selectedDef ? (
+            <WorkflowLaunchForm
+              key={`launch-${selectedDef.id}-${formKey}`}
+              ref={launchFormRef}
+              def={selectedDef}
+              container="sheet"
+              initialTitle={editingDraft?.title}
+              initialFormData={editingDraft ? dynamicFormInitValues : undefined}
+              initialPriority={editingDraft?.priority ?? undefined}
+              showCc={!editingDraft}
+            />
+          ) : (
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Empty title="请选择要发起的流程" description="从上方选择流程分类与流程后填写申请表单" />
             </div>
           )}
-        </Form>
-        {selectedDef && (
-          <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 12 }}>
-            <Tabs type="line" defaultActiveKey="form">
-              <TabPane tab="表单" itemKey="form">
-                {selectedDef.formType === 'custom' ? (
-                  <BusinessFormHost
-                    key={`biz-${formKey}-${selectedDef.id}`}
-                    customForm={selectedDef.customForm}
-                    mode="create"
-                    container="sheet"
-                    definitionId={selectedDef.id}
-                    value={dynamicFormInitValues}
-                    getFormApi={api => { businessFormApi.current = api; }}
-                  />
-                ) : selectedDef.formType === 'external' ? (
-                  <Typography.Text type="tertiary">业务系统主导流程请从对应业务模块发起。</Typography.Text>
-                ) : selectedDef.formFields && selectedDef.formFields.length > 0 ? (
-                  <WorkflowFormRenderer
-                    key={`form-${formKey}-${selectedDef.id}`}
-                    fields={selectedDef.formFields}
-                    initValues={dynamicFormInitValues}
-                    getFormApi={api => { dynamicFormApi.current = api; }}
-                  />
-                ) : (
-                  <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>
-                )}
-              </TabPane>
-              <TabPane tab="审批流程" itemKey="chain">
-                <WorkflowApproverPreview
-                  definitionId={selectedDef.id}
-                getFormData={() => (
-                  selectedDef.formType === 'custom'
-                    ? (businessFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
-                    : (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
-                )}
-                />
-              </TabPane>
-              <TabPane tab="流程图" itemKey="graph">
-                <WorkflowGraphView flowData={selectedDef.flowData} />
-              </TabPane>
-            </Tabs>
-          </div>
-        )}
+        </div>
       </SideSheet>
 
       <AppModal

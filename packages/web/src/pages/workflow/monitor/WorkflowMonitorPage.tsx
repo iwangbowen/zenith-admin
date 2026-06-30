@@ -1351,14 +1351,16 @@ export default function WorkflowMonitorPage() {
         title="流程详情"
         visible={detailVisible}
         onCancel={() => { setDetailVisible(false); setDetail(null); setDetailDef(null); }}
-        width={760}
-        bodyStyle={{ padding: 16 }}
+        width={1080}
+        bodyStyle={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
-        {detailLoading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
-        ) : (
-          <WorkflowInstanceDetailPanel instance={detail} definition={detailDef} loading={detailLoading} onOpenInstance={loadDetail} />
-        )}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {detailLoading ? (
+            <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+          ) : (
+            <WorkflowInstanceDetailPanel instance={detail} definition={detailDef} loading={detailLoading} onOpenInstance={loadDetail} />
+          )}
+        </div>
       </SideSheet>
 
       <SideSheet

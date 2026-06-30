@@ -6,7 +6,7 @@
  */
 import { useContext, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Empty, Space, Spin, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Empty, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared';
 import { request } from '@/utils/request';
 import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
@@ -82,18 +82,20 @@ export default function WorkflowLaunchPage() {
   }
 
   return (
-    <div className="page-container" style={{ padding: 16, maxWidth: 880, margin: '0 auto' }}>
-      <Typography.Title heading={5} style={{ marginTop: 0, marginBottom: 16 }}>
+    <div className="page-container page-container--stretch">
+      <Typography.Title heading={5} style={{ margin: 0 }}>
         {def ? `发起：${def.name}` : '发起申请'}
       </Typography.Title>
 
-      {def && <WorkflowLaunchForm ref={launchFormRef} def={def} container="tab" />}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {def && <WorkflowLaunchForm ref={launchFormRef} def={def} container="tab" />}
+      </div>
 
-      <Space style={{ marginTop: 20, width: '100%', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <Button onClick={() => navigate('/workflow/launchpad')}>取消</Button>
         <Button loading={savingDraft} disabled={submitting || isExternal} onClick={() => void handleSubmit(true)}>保存草稿</Button>
         <Button type="primary" loading={submitting} disabled={savingDraft || isExternal} onClick={() => void handleSubmit(false)}>提交</Button>
-      </Space>
+      </div>
     </div>
   );
 }

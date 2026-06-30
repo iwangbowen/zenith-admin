@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { SideSheet, Spin } from '@douyinfe/semi-ui';
+import { Spin } from '@douyinfe/semi-ui';
 import type { WorkflowInstance, WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
+import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 
 /**
  * 只读流程实例详情抽屉（抄送我的 / 我已办 等场景复用）。
@@ -53,12 +54,11 @@ export default function WorkflowInstanceDetailSheet({
   }, [visible, viewId]);
 
   return (
-    <SideSheet
+    <WorkflowSideSheet
       title={title}
       visible={visible}
       onCancel={onClose}
-      width={760}
-      bodyStyle={{ padding: 16 }}
+      variant="split"
     >
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
@@ -70,6 +70,6 @@ export default function WorkflowInstanceDetailSheet({
           onOpenInstance={(id) => setViewId(id)}
         />
       )}
-    </SideSheet>
+    </WorkflowSideSheet>
   );
 }

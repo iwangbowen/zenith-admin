@@ -52,14 +52,16 @@ export default function WorkflowInstancePage() {
   }
 
   return (
-    <div className="page-container" style={{ padding: 16, maxWidth: 980, margin: '0 auto' }}>
-      <WorkflowInstanceDetailPanel
-        instance={data}
-        definition={definition}
-        loading={loading}
-        onOpenInstance={(nextId) => navigate(`/workflow/instance/${nextId}`)}
-        onRecalled={load}
-      />
+    <div className="page-container page-container--stretch">
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <WorkflowInstanceDetailPanel
+          instance={data}
+          definition={definition}
+          loading={loading}
+          onOpenInstance={(nextId) => navigate(`/workflow/instance/${nextId}`)}
+          onRecalled={load}
+        />
+      </div>
     </div>
   );
 }

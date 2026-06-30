@@ -1,6 +1,6 @@
 /**
  * 审批时间线统一圆点：圆形浅色底 + 居中图标。
- * 供 ApprovalTimeline（运行态）与 WorkflowApproverPreview（预测态）共用，保证两处视觉一致。
+ * 供 ApprovalTimeline（运行态）与 WorkflowApprovalChainPanel（预测态）共用，保证两处视觉一致。
  */
 import type { LucideIcon } from 'lucide-react';
 import './timeline.css';

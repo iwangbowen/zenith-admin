@@ -17,6 +17,7 @@ import ApprovalTimeline from '@/components/ApprovalTimeline';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import BusinessFormHost from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
+import WorkflowProcessLayout from './WorkflowProcessLayout';
 import { linearizeApprovalNodes } from './workflow-runtime';
 import {
   resolveWorkflowCustomForm,
@@ -232,89 +233,97 @@ export default function WorkflowInstanceDetailPanel({
     return <Empty title="无表单数据" />;
   };
 
-  return (
-    <div>
-      {/* 顶部紧凑信息条 */}
-      <div style={{ marginBottom: 8 }}>
-        {/* 标题行：申请标题 + 状态 */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          <Typography.Title heading={5} style={{ margin: 0, lineHeight: 1.4, flex: 1, minWidth: 0 }}>
-            {instance.title}
-          </Typography.Title>
-          <div style={{ flexShrink: 0, marginTop: 2 }}>
-            {statusInfo
-              ? <Tag color={statusInfo.color}>{statusInfo.text}</Tag>
-              : <span style={{ fontSize: 13 }}>{instance.status}</span>}
-          </div>
-        </div>
-        {/* 元信息行：流程 · 发起人 · 时间 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--semi-color-text-2)', flexWrap: 'wrap' }}>
-          {instance.serialNo && (
-            <>
-              <Tag size="small" color="grey" style={{ cursor: 'default' }}>{instance.serialNo}</Tag>
-              <span>·</span>
-            </>
-          )}
-          <span>{instance.definitionName ?? '—'}</span>
-          {effectiveDefinition?.categoryName && (
-            <>
-              <span>·</span>
-              <Tag size="small" color="blue" style={{ cursor: 'default' }}>{effectiveDefinition.categoryName}</Tag>
-            </>
-          )}
-          <span>·</span>
-          <span>{instance.initiatorName ?? '—'}</span>
-          <span>·</span>
-          <span>{formatDateTime(instance.createdAt)}</span>
-          {activeNodeNames.length > 0 && (
-            <>
-              <span>·</span>
-              <span>当前节点</span>
-              {activeNodeNames.map((name) => <Tag key={name} size="small" color="cyan" style={{ cursor: 'default' }}>{name}</Tag>)}
-            </>
-          )}
+  const header = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+        <Typography.Title heading={5} style={{ margin: 0, lineHeight: 1.4, flex: 1, minWidth: 0 }}>
+          {instance.title}
+        </Typography.Title>
+        <div style={{ flexShrink: 0, marginTop: 2 }}>
+          {statusInfo
+            ? <Tag color={statusInfo.color}>{statusInfo.text}</Tag>
+            : <span style={{ fontSize: 13 }}>{instance.status}</span>}
         </div>
       </div>
-
-      {instance.parentInstanceId ? (
-        <div style={{ marginBottom: 8 }}>
-          <Button
-            theme="borderless"
-            size="small"
-            icon={<CornerUpLeft size={14} />}
-            disabled={!onOpenInstance}
-            onClick={() => onOpenInstance?.(instance.parentInstanceId as number)}
-          >
-            来自父流程实例 #{instance.parentInstanceId}
-          </Button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--semi-color-text-2)', flexWrap: 'wrap' }}>
+        {instance.serialNo && (
+          <>
+            <Tag size="small" color="grey" style={{ cursor: 'default' }}>{instance.serialNo}</Tag>
+            <span>·</span>
+          </>
+        )}
+        <span>{instance.definitionName ?? '—'}</span>
+        {effectiveDefinition?.categoryName && (
+          <>
+            <span>·</span>
+            <Tag size="small" color="blue" style={{ cursor: 'default' }}>{effectiveDefinition.categoryName}</Tag>
+          </>
+        )}
+        <span>·</span>
+        <span>{instance.initiatorName ?? '—'}</span>
+        <span>·</span>
+        <span>{formatDateTime(instance.createdAt)}</span>
+        {activeNodeNames.length > 0 && (
+          <>
+            <span>·</span>
+            <span>当前节点</span>
+            {activeNodeNames.map((name) => <Tag key={name} size="small" color="cyan" style={{ cursor: 'default' }}>{name}</Tag>)}
+          </>
+        )}
+      </div>
+      {(instance.parentInstanceId || extraActions || myRecallableTask) ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          {instance.parentInstanceId ? (
+            <Button
+              theme="borderless"
+              size="small"
+              icon={<CornerUpLeft size={14} />}
+              disabled={!onOpenInstance}
+              onClick={() => onOpenInstance?.(instance.parentInstanceId as number)}
+            >
+              来自父流程实例 #{instance.parentInstanceId}
+            </Button>
+          ) : null}
+          {extraActions}
+          {myRecallableTask ? (
+            <Popconfirm title="撤回我刚做的处理？" content="后续节点已处理时无法撤回。" onConfirm={() => void handleRecall()}>
+              <Button theme="borderless" size="small" type="warning" icon={<Undo2 size={14} />}>撤回我的处理</Button>
+            </Popconfirm>
+          ) : null}
         </div>
       ) : null}
+    </>
+  );
 
-      {extraActions ? (
-        <div style={{ marginBottom: 8 }}>{extraActions}</div>
-      ) : null}
+  const chainContent = (
+    <ApprovalTimeline
+      tasks={instance.tasks ?? []}
+      flowNodes={linearizeApprovalNodes(flowData)}
+      initiator={{ name: instance.initiatorName, avatar: instance.initiatorAvatar, submittedAt: instance.createdAt }}
+      instanceStatus={instance.status}
+      finishedAt={instance.updatedAt}
+    />
+  );
 
-      {myRecallableTask ? (
-        <div style={{ marginBottom: 8 }}>
-          <Popconfirm title="撤回我刚做的处理？" content="后续节点已处理时无法撤回。" onConfirm={() => void handleRecall()}>
-            <Button theme="borderless" size="small" type="warning" icon={<Undo2 size={14} />}>撤回我的处理</Button>
-          </Popconfirm>
-        </div>
-      ) : null}
+  const graphContent = (
+    <WorkflowGraphView flowData={flowData} tasks={instance.tasks ?? []} instanceStatus={instance.status} />
+  );
 
-      <Tabs type="line" style={{ marginTop: 8 }}>
-        <TabPane tab="表单" itemKey="form">{renderFormData()}</TabPane>
-        <TabPane tab="审批流程" itemKey="approvals">
-          <ApprovalTimeline
-            tasks={instance.tasks ?? []}
-            flowNodes={linearizeApprovalNodes(flowData)}
-            initiator={{ name: instance.initiatorName, avatar: instance.initiatorAvatar, submittedAt: instance.createdAt }}
-            instanceStatus={instance.status}
-            finishedAt={instance.updatedAt}
-          />
-        </TabPane>
-        <TabPane tab="流程图" itemKey="graph">
-          <WorkflowGraphView flowData={flowData} tasks={instance.tasks ?? []} instanceStatus={instance.status} />
+  return (
+    <WorkflowProcessLayout
+      persistKey="workflow-detail"
+      header={header}
+      chain={chainContent}
+      graph={graphContent}
+      left={(
+        <Tabs type="line">
+        <TabPane tab="表单" itemKey="form">
+          {renderFormData()}
+          {effectiveDefinition?.description ? (
+            <div style={{ marginTop: 16, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+              <Typography.Text type="tertiary">流程说明：{effectiveDefinition.description}</Typography.Text>
+            </div>
+          ) : null}
         </TabPane>
         <TabPane tab={`沟通${instance.comments && instance.comments.length > 0 ? ` (${instance.comments.length})` : ''}`} itemKey="comments">
           <InstanceComments key={instance.id} instance={instance} />
@@ -373,13 +382,8 @@ export default function WorkflowInstanceDetailPanel({
             </div>
           </TabPane>
         )}
-      </Tabs>
-
-      {effectiveDefinition?.description ? (
-        <div style={{ marginTop: 16, color: 'var(--semi-color-text-2)', fontSize: 13 }}>
-          <Typography.Text type="tertiary">流程说明：{effectiveDefinition.description}</Typography.Text>
-        </div>
-      ) : null}
-    </div>
+        </Tabs>
+      )}
+    />
   );
 }
