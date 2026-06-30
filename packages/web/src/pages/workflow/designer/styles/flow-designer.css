@@ -1805,7 +1805,7 @@ button.fd-node-card {
 
 .fd-action-button-table {
   width: 100%;
-  min-width: 516px;
+  min-width: 560px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 13px;
@@ -1847,7 +1847,7 @@ td.fd-action-button-table__action {
 }
 
 .fd-action-button-table__upload {
-  width: 94px;
+  width: 120px;
   text-align: center;
 }
 
