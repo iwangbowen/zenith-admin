@@ -11,7 +11,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowInstance, WorkflowTask } from '@zenith/shared';
+import type { WorkflowActionButtonConfig, WorkflowActionButtonKey, WorkflowDefinition, WorkflowInstance, WorkflowSelectableNextApproverGroup, WorkflowTask } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
@@ -105,7 +105,9 @@ export default function WorkflowApprovalDetailSheet({
   const [actionAttachments, setActionAttachments] = useState<Record<ActionAttachmentKey, UploadedFile[]>>(() => ({ ...EMPTY_ACTION_ATTACHMENTS }));
   const [approveSignature, setApproveSignature] = useState('');
   const { userOptions, ensureLoaded: ensureUserOptions } = useUserOptions();
-  const [selectedNextApprovers, setSelectedNextApprovers] = useState<number[]>([]);
+  const [selectedNextGroups, setSelectedNextGroups] = useState<WorkflowSelectableNextApproverGroup[]>([]);
+  const [nextApproversLoading, setNextApproversLoading] = useState(false);
+  const [selectedNextApprovers, setSelectedNextApprovers] = useState<Record<string, number[]>>({});
   const [addSignPosition, setAddSignPosition] = useState<AddSignPosition>('after');
   const [signMode, setSignMode] = useState<AddSignMode>('and');
   const { renderPhraseBar, phraseManageModal } = useQuickPhrases();
@@ -165,7 +167,7 @@ export default function WorkflowApprovalDetailSheet({
       setReturnVisible(false);
       resetActionAttachments();
       setApproveSignature('');
-      setSelectedNextApprovers([]);
+      setSelectedNextApprovers({});
       initialActionKeyRef.current = null;
     }
   }, [visible]);
@@ -268,41 +270,27 @@ export default function WorkflowApprovalDetailSheet({
     [btnReturn.jumpToNodeKey, returnTargetOptions],
   );
 
-  const approverSelectDownstreamNodes = useMemo(() => {
-    if (!currentDetailDefinition || !currentTask) return [];
-    const flow = currentDetailDefinition.flowData;
-    if (!flow) return [];
-    const startNode = flow.nodes.find((n) => n.data.key === currentTask.nodeKey);
-    if (!startNode) return [];
-    const nodes: Array<(typeof flow.nodes)[number]> = [];
-    const visited = new Set<string>([startNode.id]);
-    const queue = [startNode.id];
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      for (const e of flow.edges) {
-        if (e.source !== cur || e.isException || visited.has(e.target)) continue;
-        visited.add(e.target);
-        const targetNode = flow.nodes.find((n) => n.id === e.target);
-        if (!targetNode || targetNode.data.type === 'catchNode') continue;
-        if (targetNode.data.assigneeType === 'approverSelect') nodes.push(targetNode);
-        queue.push(e.target);
-      }
-    }
-    return nodes;
-  }, [currentDetailDefinition, currentTask]);
-  const hasApproverSelectDownstream = approverSelectDownstreamNodes.length > 0;
-  const selectedNextApproverOptions = useMemo(() => {
-    const userScopeIds = approverSelectDownstreamNodes
-      .filter((node) => (node.data.selectScopeType ?? 'user') === 'user' && Array.isArray(node.data.selectScopeIds) && node.data.selectScopeIds.length > 0)
-      .flatMap((node) => node.data.selectScopeIds ?? []);
-    if (userScopeIds.length === 0) return userOptions;
-    const allow = new Set(userScopeIds);
-    return userOptions.filter((option) => allow.has(option.value));
-  }, [approverSelectDownstreamNodes, userOptions]);
-
+  // 审批弹窗打开时，向服务端拉取「紧邻下一审批节点」中需当前审批人选人的 approverSelect 候选分组。
+  // 候选人已按各节点 selectScope（成员/角色/部门/用户组）在服务端解析收窄，前端无需自行计算范围。
   useEffect(() => {
-    if (approveVisible && hasApproverSelectDownstream) void ensureUserOptions();
-  }, [approveVisible, hasApproverSelectDownstream, ensureUserOptions]);
+    if (!approveVisible || taskId == null) {
+      setSelectedNextGroups([]);
+      return;
+    }
+    let cancelled = false;
+    setNextApproversLoading(true);
+    request
+      .get<WorkflowSelectableNextApproverGroup[]>(`/api/workflows/tasks/${taskId}/selectable-next-approvers`)
+      .then((res) => {
+        if (cancelled) return;
+        setSelectedNextGroups(res.code === 0 && Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => { if (!cancelled) setSelectedNextGroups([]); })
+      .finally(() => { if (!cancelled) setNextApproversLoading(false); });
+    return () => { cancelled = true; };
+  }, [approveVisible, taskId]);
+  const hasApproverSelectDownstream = selectedNextGroups.length > 0;
+
 
   const openReject = useCallback(async () => {
     if (!instanceId) return;
@@ -336,7 +324,7 @@ export default function WorkflowApprovalDetailSheet({
     if (initialAction === 'approve') {
       setAttachmentsFor('approve', []);
       setApproveSignature('');
-      setSelectedNextApprovers([]);
+      setSelectedNextApprovers({});
       setApproveVisible(true);
     } else if (initialAction === 'reject') {
       void openReject();
@@ -364,9 +352,12 @@ export default function WorkflowApprovalDetailSheet({
         Toast.error('该节点要求手写签名，请先签名');
         return;
       }
-      if (hasApproverSelectDownstream && selectedNextApprovers.length === 0) {
-        Toast.error('请选择下一节点审批人');
-        return;
+      if (hasApproverSelectDownstream) {
+        const missing = selectedNextGroups.find((g) => (selectedNextApprovers[g.nodeKey]?.length ?? 0) === 0);
+        if (missing) {
+          Toast.error(`请选择「${missing.label}」的审批人`);
+          return;
+        }
       }
       setSubmitting(true);
       const res = await request.post(
@@ -375,7 +366,7 @@ export default function WorkflowApprovalDetailSheet({
           comment: values?.comment ?? '',
           attachments: attachmentsPayload('approve'),
           signature: approveSignature || undefined,
-          selectedNextApprovers: hasApproverSelectDownstream && selectedNextApprovers.length > 0 ? selectedNextApprovers : undefined,
+          selectedNextApprovers: hasApproverSelectDownstream ? selectedNextApprovers : undefined,
         },
         { headers: { 'X-Idempotency-Key': `workflow-approve-${taskId}` } },
       );
@@ -384,7 +375,7 @@ export default function WorkflowApprovalDetailSheet({
         setApproveVisible(false);
         setAttachmentsFor('approve', []);
         setApproveSignature('');
-        setSelectedNextApprovers([]);
+        setSelectedNextApprovers({});
         closeAfterAction();
       }
     } catch {
@@ -543,7 +534,7 @@ export default function WorkflowApprovalDetailSheet({
   const extraActions = taskId != null && detail?.id === instanceId ? (
     <Space wrap>
       {btnApprove.enabled !== false && (
-        <Button type="primary" onClick={() => { setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers([]); setApproveVisible(true); }}>
+        <Button type="primary" onClick={() => { setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers({}); setApproveVisible(true); }}>
           {btnApprove.displayName ?? '同意'}
         </Button>
       )}
@@ -606,7 +597,7 @@ export default function WorkflowApprovalDetailSheet({
       <AppModal
         title={btnApprove.displayName ? `${btnApprove.displayName}` : '审批通过'}
         visible={approveVisible}
-        onCancel={() => { setApproveVisible(false); setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers([]); if (!detailSheetVisible) onClose(); }}
+        onCancel={() => { setApproveVisible(false); setAttachmentsFor('approve', []); setApproveSignature(''); setSelectedNextApprovers({}); if (!detailSheetVisible) onClose(); }}
         onOk={() => void handleApprove()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
         okText="确认"
@@ -636,17 +627,26 @@ export default function WorkflowApprovalDetailSheet({
           <div style={{ marginTop: 12 }}>
             <Typography.Text strong>下一节点审批人</Typography.Text>
             <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 6 }}>
-              后续存在“前一审批人选择”节点，请选择审批人（可多选）
+              后续存在“前一审批人选择”节点，请为每个节点选择审批人（可多选）
             </Typography.Text>
-            <Select
-              multiple
-              filter
-              style={{ width: '100%' }}
-              placeholder="请选择下一节点审批人"
-              optionList={selectedNextApproverOptions}
-              value={selectedNextApprovers}
-              onChange={(v) => setSelectedNextApprovers((v as number[]) ?? [])}
-            />
+            {selectedNextGroups.map((group) => (
+              <div key={group.nodeKey} style={{ marginBottom: 10 }}>
+                <Typography.Text size="small" style={{ display: 'block', marginBottom: 4 }}>
+                  {group.label}<span style={{ color: 'var(--semi-color-danger)' }}> *</span>
+                </Typography.Text>
+                <Select
+                  multiple
+                  filter
+                  loading={nextApproversLoading}
+                  style={{ width: '100%' }}
+                  placeholder="请选择审批人"
+                  emptyContent="暂无可选审批人"
+                  optionList={group.selectableApprovers.map((u) => ({ value: u.id, label: u.name }))}
+                  value={selectedNextApprovers[group.nodeKey] ?? []}
+                  onChange={(v) => setSelectedNextApprovers((prev) => ({ ...prev, [group.nodeKey]: (v as number[]) ?? [] }))}
+                />
+              </div>
+            ))}
           </div>
         )}
       </AppModal>

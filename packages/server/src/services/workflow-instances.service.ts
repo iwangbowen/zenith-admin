@@ -224,10 +224,10 @@ import { getDataScopeCondition } from '../lib/data-scope';
 import { validateFlowData, findReturnPrevTarget, getAncestorNodeKeys, resolveRuntimeApproveMethod, type TaskAction } from '../lib/workflow-engine';
 import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../lib/workflow-token-engine';
 import type { WorkflowResolvedApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowRecoveryBatchResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared';
-import { resolveApproverDedupMode } from '@zenith/shared';
+import { resolveApproverDedupMode, findNextApproverSelectNodes } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
-import { filterSelectedApproverIds, resolveAssigneeIds, buildStarterContext } from './workflow-assignee-resolver.service';
+import { filterSelectedApproverIds, resolveAssigneeIds, buildStarterContext, listSelectableApprovers } from './workflow-assignee-resolver.service';
 import { getDecisionOutputs } from './rules.service';
 import { recordCompensation } from './workflow-compensations.service';
 import { resolveFormSnapshot } from './workflow-forms.service';
@@ -236,6 +236,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { enqueueJob, cancelJobs } from '../lib/workflow-jobs/engine';
 import { computeTimeoutAt } from '../lib/workflow-timeout';
 import type { WorkflowTriggerNodeConfig } from '@zenith/shared';
+import type { WorkflowSelectableNextApproverGroup } from '@zenith/shared';
 import { workflowEventBus } from '../lib/workflow-event-bus';
 import { generateSerialNo } from './workflow-serial.service';
 import { resolveActiveDelegate } from './workflow-delegations.service';
@@ -1334,7 +1335,7 @@ export async function handleNodeExecutionError(input: {
 
 async function expandTasksToRows(
   tasks: TaskAction[],
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: number[]; flowData?: WorkflowFlowData },
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: Record<string, number[]>; flowData?: WorkflowFlowData },
 ): Promise<ExpandedTaskRows> {
   const rows: Array<typeof workflowTasks.$inferInsert> = [];
   const autoApprovedNodeKeys: string[] = [];
@@ -1488,7 +1489,7 @@ async function expandTasksToRows(
       executor: ctx.executor,
       formData: ctx.formData,
       instanceId: ctx.instanceId,
-      selectedNextApprovers: ctx.selectedNextApprovers,
+      selectedNextApprovers: ctx.selectedNextApprovers?.[t.nodeKey],
     });
 
     const userIds = await applyAssigneeRuntimeStrategies(t, resolvedUserIds, ctx);
@@ -1749,41 +1750,18 @@ async function applyInitiatorSelectedApprovers(
   };
 }
 
-function findReachableNodes(
-  flowData: WorkflowFlowData,
-  fromNodeKey: string,
-  predicate: (node: WorkflowFlowData['nodes'][number]) => boolean,
-): WorkflowFlowData['nodes'] {
-  const startNode = flowData.nodes.find((node) => node.data.key === fromNodeKey);
-  if (!startNode) return [];
-  const nodeById = new Map(flowData.nodes.map((node) => [node.id, node]));
-  const result: WorkflowFlowData['nodes'] = [];
-  const visited = new Set<string>([startNode.id]);
-  const queue = [startNode.id];
-  while (queue.length > 0) {
-    const currentId = queue.shift()!;
-    for (const edge of flowData.edges ?? []) {
-      if (edge.source !== currentId || edge.isException || visited.has(edge.target)) continue;
-      const target = nodeById.get(edge.target);
-      if (!target || target.data.type === 'catchNode') continue;
-      visited.add(edge.target);
-      if (predicate(target)) result.push(target);
-      queue.push(edge.target);
-    }
-  }
-  return result;
-}
-
 async function assertSelectedNextApprovers(
   flowData: WorkflowFlowData,
   fromNodeKey: string,
-  selectedNextApprovers: number[] | undefined,
+  selectedNextApprovers: Record<string, number[]> | undefined,
   executor: DbExecutor,
 ): Promise<void> {
-  const selectNodes = findReachableNodes(flowData, fromNodeKey, (node) => node.data.assigneeType === 'approverSelect');
+  // 仅校验「紧邻的下一审批节点」中的 approverSelect（穿过网关/抄送，遇到人工节点即停），
+  // 与引擎本次推进实际物化的任务一致，避免对更下游 approverSelect 的过早强制选人。
+  const selectNodes = findNextApproverSelectNodes(flowData, fromNodeKey);
   if (selectNodes.length === 0) return;
   for (const node of selectNodes) {
-    const picked = await filterSelectedApproverIds(node.data, selectedNextApprovers ?? [], executor);
+    const picked = await filterSelectedApproverIds(node.data, selectedNextApprovers?.[node.data.key] ?? [], executor);
     if (picked.length === 0) {
       throw new HTTPException(400, { message: `请选择节点「${node.data.label || node.data.key}」的审批人` });
     }
@@ -1806,7 +1784,7 @@ type MaterializeTrigger =
  */
 async function advanceAndMaterialize(
   trigger: MaterializeTrigger,
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: number[]; starter?: WorkflowStarterContext; tenantId?: number | null; scopeKey?: string | null },
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: Record<string, number[]>; starter?: WorkflowStarterContext; tenantId?: number | null; scopeKey?: string | null },
 ): Promise<{ createdTasks: typeof workflowTasks.$inferSelect[]; finished: boolean; rejected: boolean; currentNodeKeys: string[] }> {
   const exec = ctx.executor;
   const createdTasks: typeof workflowTasks.$inferSelect[] = [];
@@ -3363,7 +3341,29 @@ export interface ApproveResult {
   message: string;
 }
 
-export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>, selectedNextApprovers?: number[], signature?: string): Promise<ApproveResult> {
+/**
+ * 列出「我作为当前审批人」时，紧邻的下一审批节点中需要我为其选人的 approverSelect 节点及候选人。
+ * 候选人已按各节点 selectScope（成员/角色/部门/用户组）在服务端解析收窄；无下游 approverSelect 时返回空数组。
+ */
+export async function listTaskSelectableNextApprovers(taskId: number): Promise<WorkflowSelectableNextApproverGroup[]> {
+  const user = currentUser();
+  const [task] = await db.select().from(workflowTasks)
+    .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId), eq(workflowTasks.status, 'pending')))
+    .limit(1);
+  if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  if (!flowData) return [];
+  const nodes = findNextApproverSelectNodes(flowData, task.nodeKey);
+  return Promise.all(nodes.map(async (node) => ({
+    nodeKey: node.data.key,
+    label: node.data.label || node.data.key,
+    selectableApprovers: await listSelectableApprovers(node.data),
+  })));
+}
+
+export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>, selectedNextApprovers?: Record<string, number[]>, signature?: string): Promise<ApproveResult> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
@@ -3421,7 +3421,7 @@ export async function approveTaskCore(
   inst: typeof workflowInstances.$inferSelect,
   comment: string | undefined,
   actor: WorkflowEventActor,
-  options?: { selectedNextApprovers?: number[]; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }> },
+  options?: { selectedNextApprovers?: Record<string, number[]>; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }> },
 ): Promise<ApproveResult> {
   const taskId = task.id;
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData };

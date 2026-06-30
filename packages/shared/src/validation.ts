@@ -1235,8 +1235,8 @@ export const approveWorkflowTaskSchema = z.object({
   /** 手写签名（data URL，节点要求签名时必填） */
   signature: z.string().max(2_000_000).optional(),
   attachments: workflowTaskAttachmentsSchema.optional(),
-  /** 当下一节点为 approverSelect 类型时，由当前审批人指定的下一节点审批人 ID 列表 */
-  selectedNextApprovers: z.array(z.number().int().positive()).max(50).optional(),
+  /** 当紧邻的下一节点为 approverSelect 类型时，由当前审批人按节点指定审批人：{ [nodeKey]: userIds } */
+  selectedNextApprovers: workflowSelectedApproversSchema.optional(),
 });
 
 export const rejectWorkflowTaskSchema = z.object({

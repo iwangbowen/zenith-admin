@@ -2770,6 +2770,19 @@ export interface WorkflowApproverPreviewNode {
   empty?: boolean;
 }
 
+/**
+ * 审批时「下一节点审批人自选」的候选分组：
+ * 每个紧邻的下一 approverSelect 节点一组，候选人已按节点配置的范围（成员/角色/部门/用户组）在服务端解析收窄。
+ */
+export interface WorkflowSelectableNextApproverGroup {
+  /** approverSelect 节点 key */
+  nodeKey: string;
+  /** 节点显示名 */
+  label: string;
+  /** 该节点可供当前审批人挑选的候选人（已按 selectScope 收窄） */
+  selectableApprovers: Array<{ id: number; name: string }>;
+}
+
 /** 流程仿真中对指定节点预设的处理动作 */
 export interface WorkflowSimulationDecision {
   nodeKey: string;

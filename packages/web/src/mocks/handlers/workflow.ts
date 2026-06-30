@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
+import { findNextApproverSelectNodes } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -11,6 +12,7 @@ import {
   getNextDefinitionVersionId,
 } from '@/mocks/data/workflow';
 import { mockWorkflowForms } from '@/mocks/data/workflow-forms';
+import { mockUsers } from '@/mocks/data/users';
 import { mockWorkflowJobs, mockWorkflowJobExecutions } from '@/mocks/data/workflow-jobs';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import dayjs from 'dayjs';
@@ -2038,10 +2040,34 @@ export const workflowHandlers = [
   // ─── 审批任务 Handler ──────────────────────────────────────────────────────
 
   // 审批通过
+  http.get('/api/workflows/tasks/:taskId/selectable-next-approvers', ({ params }) => {
+    const task = mockWorkflowTasks.find(t => t.id === Number(params.taskId));
+    if (!task) return err('任务不存在', 404);
+    const inst = mockWorkflowInstances.find(i => i.id === task.instanceId);
+    if (!inst) return err('流程实例不存在', 404);
+    const def = mockWorkflowDefinitions.find(d => d.id === inst.definitionId);
+    const flowData = (def?.flowData ?? null) as WorkflowFlowData | null;
+    if (!flowData) return ok([]);
+    const groups = findNextApproverSelectNodes(flowData, task.nodeKey).map((node) => {
+      const scopeType = node.data.selectScopeType ?? 'user';
+      const scopeIds = node.data.selectScopeIds ?? [];
+      const enabled = mockUsers.filter((u) => u.status === 'enabled');
+      const inScope = scopeType === 'user' && scopeIds.length > 0
+        ? enabled.filter((u) => scopeIds.includes(u.id))
+        : enabled;
+      return {
+        nodeKey: node.data.key,
+        label: node.data.label || node.data.key,
+        selectableApprovers: inScope.map((u) => ({ id: u.id, name: u.nickname ?? u.username })),
+      };
+    });
+    return ok(groups);
+  }),
+
   http.post('/api/workflows/tasks/:taskId/approve', async ({ params, request }) => {
     const cached = readIdempotentResponse(request);
     if (cached) return cached;
-    const body = await request.json() as { comment?: string; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }>; selectedNextApprovers?: number[] };
+    const body = await request.json() as { comment?: string; signature?: string; attachments?: Array<{ name: string; url: string; size?: number }>; selectedNextApprovers?: Record<string, number[]> };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');

@@ -453,6 +453,14 @@ export const WorkflowApproverPreviewNodeDTO = z
   })
   .openapi('WorkflowApproverPreviewNode');
 
+export const WorkflowSelectableNextApproverGroupDTO = z
+  .object({
+    nodeKey: z.string(),
+    label: z.string(),
+    selectableApprovers: z.array(z.object({ id: z.number().int(), name: z.string() })),
+  })
+  .openapi('WorkflowSelectableNextApproverGroup');
+
 export const WorkflowSimulationTimelineItemDTO = z
   .object({
     step: z.number().int(),
