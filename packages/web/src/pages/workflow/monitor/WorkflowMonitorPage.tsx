@@ -26,6 +26,7 @@ import dayjs from 'dayjs';
 import type { WorkflowApproveMethod, WorkflowAssigneeType, WorkflowCategory, WorkflowDefinition, WorkflowExecutionToken, WorkflowFlowData, WorkflowInstance, WorkflowNodeConfig, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
+import AppModal from '@/components/AppModal';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
@@ -1388,7 +1389,7 @@ export default function WorkflowMonitorPage() {
       </SideSheet>
 
       {/* 管理员：强制跳转节点 */}
-      <Modal
+      <AppModal
         title="强制跳转节点"
         visible={!!jumpRecord}
         onCancel={() => setJumpRecord(null)}
@@ -1405,10 +1406,10 @@ export default function WorkflowMonitorPage() {
           <Form.Select field="targetNodeKey" label="目标节点" placeholder="请选择要跳转到的审批节点" optionList={jumpNodes} rules={[{ required: true, message: '请选择目标节点' }]} style={{ width: '100%' }} />
           <Form.TextArea field="comment" label="说明" placeholder="可选，记录跳转原因" rows={2} />
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* 管理员：改派处理人 */}
-      <Modal
+      <AppModal
         title="改派处理人"
         visible={!!reassignRecord}
         onCancel={() => setReassignRecord(null)}
@@ -1423,7 +1424,7 @@ export default function WorkflowMonitorPage() {
           <Form.Select field="targetUserId" label="新处理人" placeholder="请选择新的处理人" filter optionList={userOptions} rules={[{ required: true, message: '请选择新处理人' }]} style={{ width: '100%' }} />
           <Form.TextArea field="comment" label="说明" placeholder="可选" rows={2} />
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

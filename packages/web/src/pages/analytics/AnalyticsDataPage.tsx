@@ -29,6 +29,7 @@ import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
+import AppModal from '@/components/AppModal';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { request } from '@/utils/request';
 import type {
@@ -1101,7 +1102,7 @@ export default function AnalyticsDataPage() {
             empty="暂无数据"
           />
 
-          <Modal
+          <AppModal
             title={editingMeta ? '编辑事件字典' : '新增事件字典'}
             visible={metaModalVisible}
             onCancel={() => { setMetaModalVisible(false); setEditingMeta(null); }}
@@ -1130,7 +1131,7 @@ export default function AnalyticsDataPage() {
                 autosize={{ minRows: 3, maxRows: 8 }}
               />
             </Form>
-          </Modal>
+          </AppModal>
         </TabPane>
         <TabPane tab="数据聚合" itemKey="rollup">
           <SearchToolbar

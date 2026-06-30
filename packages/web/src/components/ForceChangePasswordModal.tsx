@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Modal, Form, Button, Notification } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { User } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { PasswordStrengthMeter } from './PasswordStrengthMeter';
@@ -18,6 +19,7 @@ interface FormValues {
 export default function ForceChangePasswordModal({ user, onLogout }: Props) {
   const [loading, setLoading] = useState(false);
   const [newPwdVal, setNewPwdVal] = useState('');
+  const formApi = useRef<FormApi | null>(null);
 
   // We show the modal if requirePasswordChange is true.
   const visible = !!user.requirePasswordChange;
@@ -44,6 +46,17 @@ export default function ForceChangePasswordModal({ user, onLogout }: Props) {
     }
   };
 
+  const handleOk = async () => {
+    if (!formApi.current) return;
+    let values: FormValues;
+    try {
+      values = await formApi.current.validate() as FormValues;
+    } catch {
+      return;
+    }
+    await handleSubmit(values);
+  };
+
   return (
     <Modal
       title="登录密码已过期，请修改密码"
@@ -52,9 +65,18 @@ export default function ForceChangePasswordModal({ user, onLogout }: Props) {
       closable={false}
       maskClosable={false}
       hasCancel={false}
-      footer={null}
+      footer={(
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button onClick={onLogout} disabled={loading}>
+            退出登录
+          </Button>
+          <Button type="primary" loading={loading} onClick={() => void handleOk()}>
+            确认修改
+          </Button>
+        </div>
+      )}
     >
-      <Form onSubmit={handleSubmit} labelPosition="left" labelWidth={80}>
+      <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={80}>
         <Form.Input
           field="oldPassword"
           label="原密码"
@@ -78,14 +100,6 @@ export default function ForceChangePasswordModal({ user, onLogout }: Props) {
           type="password"
           rules={[{ required: true, message: '请确认新密码' }]}
         />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24 }}>
-          <Button onClick={onLogout} disabled={loading}>
-            退出登录
-          </Button>
-          <Button type="primary" htmlType="submit" loading={loading}>
-            确认修改
-          </Button>
-        </div>
       </Form>
     </Modal>
   );

@@ -52,6 +52,7 @@ import {
   makePieSpec,
   useChartPalette,
 } from '@/components/charts';
+import AppModal from '@/components/AppModal';
 import type {
   ErrorAlertCondition,
   ErrorAlertRule,
@@ -1410,7 +1411,7 @@ export default function FrontendErrorsPage() {
         ) : <Empty title="正在加载错误详情..." />}
       </SideSheet>
 
-      <Modal
+      <AppModal
         title={eventDetail ? `事件 #${eventDetail.id}` : '事件详情'}
         visible={!!eventDetail}
         onCancel={() => setEventDetail(null)}
@@ -1443,9 +1444,9 @@ export default function FrontendErrorsPage() {
             </Space>
           </div>
         )}
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         title="上传 Source Map"
         visible={uploadVisible}
         onCancel={() => setUploadVisible(false)}
@@ -1483,9 +1484,9 @@ export default function FrontendErrorsPage() {
             {uploadForm.content && <Text type="success" size="small">已读取 {formatBytes(uploadForm.content.length)} 内容</Text>}
           </Form.Slot>
         </Form>
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         title={editingAlert ? '编辑告警规则' : '新增告警规则'}
         visible={alertModalVisible}
         onCancel={() => setAlertModalVisible(false)}
@@ -1559,7 +1560,7 @@ export default function FrontendErrorsPage() {
             <Switch checked={alertForm.enabled} onChange={(checked) => setAlertForm((prev) => ({ ...prev, enabled: checked }))} />
           </Form.Slot>
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }
