@@ -289,7 +289,7 @@ export default function NodeConfigDrawer({
       visible={visible}
       onCancel={onCancel}
       placement="right"
-      width={480}
+      width="min(560px, 96vw)"
       zIndex={zIndex}
       className={`fd-config-drawer${readOnly ? ' fd-config-drawer--readonly' : ''}`}
       footer={

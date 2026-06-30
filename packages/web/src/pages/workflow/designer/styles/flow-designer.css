@@ -1797,6 +1797,65 @@ button.fd-node-card {
   padding: 16px 0;
 }
 
+.fd-action-button-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.fd-action-button-table {
+  width: 100%;
+  min-width: 516px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.fd-action-button-table th,
+.fd-action-button-table td {
+  border-bottom: 1px solid var(--semi-color-border);
+  box-sizing: border-box;
+}
+
+.fd-action-button-table th {
+  padding: 10px 6px;
+  font-weight: 500;
+  color: var(--semi-color-text-2);
+  white-space: nowrap;
+  text-align: left;
+}
+
+.fd-action-button-table__cell {
+  padding: 10px 6px;
+}
+
+.fd-action-button-table__action {
+  width: 64px;
+  white-space: nowrap;
+}
+
+td.fd-action-button-table__action {
+  color: var(--semi-color-text-0);
+}
+
+.fd-action-button-table__text {
+  width: 86px;
+}
+
+.fd-action-button-table__jump {
+  width: 104px;
+}
+
+.fd-action-button-table__upload {
+  width: 94px;
+  text-align: center;
+}
+
+.fd-action-button-table__enabled {
+  width: 64px;
+  text-align: center;
+}
+
 .fd-drawer-btn {
   padding: 6px 20px;
   border-radius: 6px;

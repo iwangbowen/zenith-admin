@@ -91,9 +91,10 @@ function EditableTextCell({
           alignItems: 'center',
           gap: 4,
           fontSize: 13,
+          maxWidth: '100%',
         }}
       >
-        <span>{value || placeholder}</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || placeholder}</span>
         {!disabled && <Pencil size={12} style={{ color: 'var(--semi-color-text-2)' }} />}
       </button>
     </Popover>
@@ -124,85 +125,87 @@ export default function ActionButtonsTab({
   return (
     <div className="fd-drawer-tab-content">
       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>操作按钮</div>
-      <table className="fd-action-button-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 64, whiteSpace: 'nowrap' }}>操作按钮</th>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>显示名称</th>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 96, whiteSpace: 'nowrap' }}>意见名称</th>
-            <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 104, whiteSpace: 'nowrap' }}>跳转配置</th>
-            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 108, whiteSpace: 'nowrap' }}>附件</th>
-            <th style={{ textAlign: 'center', padding: '10px 8px', fontWeight: 500, color: 'var(--semi-color-text-2)', width: 48, whiteSpace: 'nowrap' }}>启用</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ACTION_BUTTON_META.map(meta => {
-            const cfg = getActionButtonConfig(value, meta);
-            const disabled = !cfg.enabled;
-            // approve / reject 不允许整体关闭（流程必须可决策）
-            const lockEnabled = meta.key === 'approve' || meta.key === 'reject';
-            return (
-              <tr key={meta.key} style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
-                <td style={{ padding: '10px 8px', color: 'var(--semi-color-text-0)', whiteSpace: 'nowrap' }}>{meta.label}</td>
-                <td style={{ padding: '10px 8px' }}>
-                  <EditableTextCell
-                    value={cfg.displayName ?? meta.defaultDisplayName}
-                    placeholder={meta.defaultDisplayName}
-                    disabled={disabled}
-                    onChange={(v) => updateButton(meta.key, { displayName: v || undefined })}
-                  />
-                </td>
-                <td style={{ padding: '10px 8px' }}>
-                  <EditableTextCell
-                    value={cfg.opinionName ?? meta.defaultOpinionName}
-                    placeholder={meta.defaultOpinionName}
-                    disabled={disabled}
-                    onChange={(v) => updateButton(meta.key, { opinionName: v || undefined })}
-                  />
-                </td>
-                <td style={{ padding: '10px 8px' }}>
-                  {meta.supportsJump ? (
-                    jumpOptions.length > 0 ? (
-                      <Select
-                        size="small"
-                        placeholder="默认策略"
-                        value={cfg.jumpToNodeKey}
-                        onChange={(v) => updateButton(meta.key, { jumpToNodeKey: (v as string) || undefined })}
-                        optionList={jumpOptions}
-                        showClear
-                        disabled={disabled}
-                        style={{ width: '100%' }}
-                      />
+      <div className="fd-action-button-table-wrap">
+        <table className="fd-action-button-table">
+          <thead>
+            <tr>
+              <th className="fd-action-button-table__action">操作按钮</th>
+              <th className="fd-action-button-table__text">显示名称</th>
+              <th className="fd-action-button-table__text">意见名称</th>
+              <th className="fd-action-button-table__jump">跳转配置</th>
+              <th className="fd-action-button-table__upload">附件</th>
+              <th className="fd-action-button-table__enabled">启用</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ACTION_BUTTON_META.map(meta => {
+              const cfg = getActionButtonConfig(value, meta);
+              const disabled = !cfg.enabled;
+              // approve / reject 不允许整体关闭（流程必须可决策）
+              const lockEnabled = meta.key === 'approve' || meta.key === 'reject';
+              return (
+                <tr key={meta.key}>
+                  <td className="fd-action-button-table__cell fd-action-button-table__action">{meta.label}</td>
+                  <td className="fd-action-button-table__cell">
+                    <EditableTextCell
+                      value={cfg.displayName ?? meta.defaultDisplayName}
+                      placeholder={meta.defaultDisplayName}
+                      disabled={disabled}
+                      onChange={(v) => updateButton(meta.key, { displayName: v || undefined })}
+                    />
+                  </td>
+                  <td className="fd-action-button-table__cell">
+                    <EditableTextCell
+                      value={cfg.opinionName ?? meta.defaultOpinionName}
+                      placeholder={meta.defaultOpinionName}
+                      disabled={disabled}
+                      onChange={(v) => updateButton(meta.key, { opinionName: v || undefined })}
+                    />
+                  </td>
+                  <td className="fd-action-button-table__cell">
+                    {meta.supportsJump ? (
+                      jumpOptions.length > 0 ? (
+                        <Select
+                          size="small"
+                          placeholder="默认策略"
+                          value={cfg.jumpToNodeKey}
+                          onChange={(v) => updateButton(meta.key, { jumpToNodeKey: (v as string) || undefined })}
+                          optionList={jumpOptions}
+                          showClear
+                          disabled={disabled}
+                          style={{ width: '100%' }}
+                        />
+                      ) : (
+                        <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>
+                      )
                     ) : (
                       <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>
-                    )
-                  ) : (
-                    <Switch size="small" disabled checked={false} />
-                  )}
-                </td>
-                <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                  <Select
-                    size="small"
-                    value={cfg.uploadMode ?? 'hidden'}
-                    disabled={disabled}
-                    onChange={(v) => updateButton(meta.key, { uploadMode: v as ActionUploadMode })}
-                    optionList={UPLOAD_MODE_OPTIONS}
-                    style={{ width: '100%', minWidth: 88 }}
-                  />
-                </td>
-                <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                  <Switch
-                    size="small"
-                    checked={cfg.enabled}
-                    disabled={lockEnabled}
-                    onChange={(v) => updateButton(meta.key, { enabled: v })}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                    )}
+                  </td>
+                  <td className="fd-action-button-table__cell fd-action-button-table__upload">
+                    <Select
+                      size="small"
+                      value={cfg.uploadMode ?? 'hidden'}
+                      disabled={disabled}
+                      onChange={(v) => updateButton(meta.key, { uploadMode: v as ActionUploadMode })}
+                      optionList={UPLOAD_MODE_OPTIONS}
+                      style={{ width: '100%' }}
+                    />
+                  </td>
+                  <td className="fd-action-button-table__cell fd-action-button-table__enabled">
+                    <Switch
+                      size="small"
+                      checked={cfg.enabled}
+                      disabled={lockEnabled}
+                      onChange={(v) => updateButton(meta.key, { enabled: v })}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       {jumpTargetNodes.length === 0 && (
         <div style={{ marginTop: 12, color: 'var(--semi-color-text-2)', fontSize: 12 }}>
           <Empty
