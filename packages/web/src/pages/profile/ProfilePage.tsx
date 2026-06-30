@@ -3,6 +3,7 @@ import {
   Form, Button, Typography, Toast, Tag, Space, Spin,
   Modal, Cropper, Input, Tabs, DatePicker, List as SemiList, Descriptions,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle, RotateCcw, RotateCw, Smartphone } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -183,6 +184,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [newTokenExpiresAt, setNewTokenExpiresAt] = useState<Date | null>(null);
   const [newTokenCreating, setNewTokenCreating] = useState(false);
   const [createdToken, setCreatedToken] = useState<UserApiTokenCreated | null>(null);
+  const newTokenFormApi = useRef<FormApi | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
 
   useEffect(() => {
@@ -386,20 +388,39 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     if (res.code === 0) { Toast.success('已退出该设备'); setSessions((prev) => prev.filter((s) => s.tokenId !== tokenId)); }
   }
 
-  async function handleCreateToken() {
-    if (!newTokenName.trim()) { Toast.error('请填写 Token 名称'); return; }
+  function closeNewTokenModal() {
+    setNewTokenVisible(false);
+    setNewTokenName('');
+    setNewTokenExpiresAt(null);
+    newTokenFormApi.current = null;
+  }
+
+  async function handleCreateToken(values: { name: string; expiresAt?: Date | string | null }) {
+    if (!values.name.trim()) { Toast.error('请填写 Token 名称'); return; }
     setNewTokenCreating(true);
-    const body: { name: string; expiresAt?: string } = { name: newTokenName.trim() };
-    if (newTokenExpiresAt) body.expiresAt = formatDateTimeForApi(newTokenExpiresAt);
-    const res = await request.post<UserApiTokenCreated>('/api/api-tokens', body);
-    setNewTokenCreating(false);
-    if (res.code === 0) {
-      setCreatedToken(res.data);
-      setNewTokenName('');
-      setNewTokenExpiresAt(null);
-      setNewTokenVisible(false);
-      void fetchApiTokens();
+    try {
+      const body: { name: string; expiresAt?: string } = { name: values.name.trim() };
+      if (values.expiresAt) body.expiresAt = formatDateTimeForApi(values.expiresAt);
+      const res = await request.post<UserApiTokenCreated>('/api/api-tokens', body);
+      if (res.code === 0) {
+        setCreatedToken(res.data);
+        closeNewTokenModal();
+        void fetchApiTokens();
+      }
+    } finally {
+      setNewTokenCreating(false);
     }
+  }
+
+  async function handleCreateTokenOk() {
+    if (!newTokenFormApi.current) return;
+    let values: { name: string; expiresAt?: Date | string | null };
+    try {
+      values = await newTokenFormApi.current.validate() as { name: string; expiresAt?: Date | string | null };
+    } catch {
+      return;
+    }
+    await handleCreateToken(values);
   }
 
   async function handleDeleteToken(id: number) {
@@ -977,35 +998,35 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       <AppModal
         title="新建 API Token"
         visible={newTokenVisible}
-        onCancel={() => { setNewTokenVisible(false); setNewTokenName(''); setNewTokenExpiresAt(null); }}
-        footer={
-          <Space>
-            <Button onClick={() => { setNewTokenVisible(false); setNewTokenName(''); setNewTokenExpiresAt(null); }}>取消</Button>
-            <Button type="primary" loading={newTokenCreating} onClick={handleCreateToken}>创建</Button>
-          </Space>
-        }
+        onCancel={closeNewTokenModal}
+        onOk={handleCreateTokenOk}
+        okText="创建"
+        cancelText="取消"
+        okButtonProps={{ loading: newTokenCreating }}
         width={480}
         centered
       >
-        <Form labelPosition="left" labelWidth={90}>
-          <Form.Slot label="Token 名称">
-            <Input
-              value={newTokenName}
-              onChange={setNewTokenName}
-              placeholder="如：本地开发、CI/CD 环境"
-              style={{ width: '100%' }}
-            />
-          </Form.Slot>
-          <Form.Slot label="过期时间">
-            <DatePicker
-              type="dateTime"
-              value={newTokenExpiresAt ?? undefined}
-              onChange={(v) => setNewTokenExpiresAt(v ? new Date(v as Date) : null)}
-              placeholder="不填则永久有效"
-              style={{ width: '100%' }}
-              disabledDate={(date) => !!date && date < new Date()}
-            />
-          </Form.Slot>
+        <Form
+          key={newTokenVisible ? 'new-token-open' : 'new-token-closed'}
+          getFormApi={(api) => { newTokenFormApi.current = api; }}
+          labelPosition="left"
+          labelWidth={90}
+        >
+          <Form.Input
+            field="name"
+            label="Token 名称"
+            placeholder="如：本地开发、CI/CD 环境"
+            rules={[{ required: true, message: '请填写 Token 名称' }]}
+            style={{ width: '100%' }}
+          />
+          <Form.DatePicker
+            field="expiresAt"
+            label="过期时间"
+            type="dateTime"
+            placeholder="不填则永久有效"
+            style={{ width: '100%' }}
+            disabledDate={(date) => !!date && date < new Date()}
+          />
         </Form>
       </AppModal>
 

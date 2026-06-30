@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Tag, Select, Modal, Toast, Form } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, RotateCcw, Plus } from 'lucide-react';
 import type { DbBackup, BackupType, BackupStatus } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -21,6 +22,7 @@ export default function DbBackupsPage() {
   searchParamsRef.current = searchParams;
   const [createVisible, setCreateVisible] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const createFormApi = useRef<FormApi | null>(null);
   const { hasPermission } = usePermission();
 
   const fetchList = useCallback(async (p = page, ps = pageSize, overrideParams?: { status: string; type: string }) => {
@@ -47,15 +49,34 @@ export default function DbBackupsPage() {
     void fetchList(1, pageSize, { status: '', type: '' });
   };
 
+  const closeCreateModal = () => {
+    setCreateVisible(false);
+    createFormApi.current = null;
+  };
+
   const handleCreate = async (values: { type: BackupType; name?: string }) => {
     setCreateLoading(true);
-    const res = await request.post('/api/db-backups', values);
-    setCreateLoading(false);
-    if (res.code === 0) {
-      Toast.success('备份任务已创建');
-      setCreateVisible(false);
-      fetchList(1);
+    try {
+      const res = await request.post('/api/db-backups', values);
+      if (res.code === 0) {
+        Toast.success('备份任务已创建');
+        closeCreateModal();
+        fetchList(1);
+      }
+    } finally {
+      setCreateLoading(false);
     }
+  };
+
+  const handleCreateOk = async () => {
+    if (!createFormApi.current) return;
+    let values: { type: BackupType; name?: string };
+    try {
+      values = await createFormApi.current.validate() as { type: BackupType; name?: string };
+    } catch {
+      return;
+    }
+    await handleCreate(values);
   };
 
   const handleDelete = async (id: number) => {
@@ -237,10 +258,20 @@ export default function DbBackupsPage() {
       <AppModal
         title="创建备份"
         visible={createVisible}
-        onCancel={() => setCreateVisible(false)}
-        footer={null}
+        onCancel={closeCreateModal}
+        onOk={handleCreateOk}
+        okText="确定"
+        cancelText="取消"
+        okButtonProps={{ loading: createLoading }}
+        closeOnEsc
       >
-        <Form onSubmit={handleCreate} allowEmpty labelPosition="left" labelWidth={90}>
+        <Form
+          key={createVisible ? 'create-backup-open' : 'create-backup-closed'}
+          getFormApi={(api) => { createFormApi.current = api; }}
+          allowEmpty
+          labelPosition="left"
+          labelWidth={90}
+        >
           <Form.Select
             field="type"
             label="备份类型"
@@ -254,12 +285,6 @@ export default function DbBackupsPage() {
             placeholder="请选择备份类型"
           />
           <Form.Input field="name" label="备份名称" placeholder="可选，默认自动生成" style={{ width: '100%' }} />
-          <Form.Slot>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <Button onClick={() => setCreateVisible(false)}>取消</Button>
-              <Button htmlType="submit" type="primary" loading={createLoading}>确定</Button>
-            </div>
-          </Form.Slot>
         </Form>
       </AppModal>
     </div>

@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Form, Button, Toast, Typography, Tabs, TabPane, Divider, Modal } from '@douyinfe/semi-ui';
+import { Form, Button, Toast, Typography, Tabs, TabPane, Divider } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { User, Lock, Mail, AtSign, Building2, ShieldCheck, BriefcaseBusiness } from 'lucide-react';
 import { Icon } from '@iconify/react';
 import { REFRESH_TOKEN_KEY, TOKEN_KEY, type RegisterInput, type OAuthProviderType, type LoginResult, type LoginResponse, type EnterpriseIdentityDiscovery, type TenantIdentityProviderSummary } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
 import AppLogo from '@/components/AppLogo';
+import AppModal from '@/components/AppModal';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import './LoginPage.css';
 
@@ -52,6 +54,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   const [enterpriseProviders, setEnterpriseProviders] = useState<TenantIdentityProviderSummary[]>([]);
   const [directoryProvider, setDirectoryProvider] = useState<TenantIdentityProviderSummary | null>(null);
   const [directoryLoginLoading, setDirectoryLoginLoading] = useState(false);
+  const directoryFormApi = useRef<FormApi | null>(null);
 
   const fetchCaptcha = useCallback(async () => {
     try {
@@ -401,6 +404,22 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
     }
   };
 
+  const closeDirectoryLogin = () => {
+    setDirectoryProvider(null);
+    directoryFormApi.current = null;
+  };
+
+  const handleDirectoryLoginOk = async () => {
+    if (!directoryFormApi.current) return;
+    let values: Record<string, string>;
+    try {
+      values = await directoryFormApi.current.validate() as Record<string, string>;
+    } catch {
+      return;
+    }
+    await handleDirectoryLogin(values);
+  };
+
   if (mfaChallenge) {
     formSubtitle = '请完成多因素认证以进入工作台';
   } else if (isDemoMode) {
@@ -543,17 +562,25 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
         visible={forgotPasswordVisible}
         onClose={() => setForgotPasswordVisible(false)}
       />
-      <Modal
+      <AppModal
         title={directoryProvider ? `${directoryProvider.name} 登录` : '目录账号登录'}
         visible={!!directoryProvider}
-        footer={null}
-        onCancel={() => setDirectoryProvider(null)}
+        onCancel={closeDirectoryLogin}
+        onOk={handleDirectoryLoginOk}
+        okText="登录"
+        cancelText="取消"
+        okButtonProps={{ loading: directoryLoginLoading }}
         closeOnEsc
       >
-        <Form onSubmit={handleDirectoryLogin}>
+        <Form
+          key={directoryProvider?.id ?? 'directory-login'}
+          getFormApi={(api) => { directoryFormApi.current = api; }}
+          labelPosition="left"
+          labelWidth={72}
+        >
           <Form.Input
             field="username"
-            noLabel
+            label="账号"
             placeholder="目录账号 / 邮箱"
             prefix={<User />}
             rules={[{ required: true, message: '请输入目录账号' }]}
@@ -561,26 +588,15 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
           />
           <Form.Input
             field="password"
-            noLabel
+            label="密码"
             type="password"
             placeholder="目录密码"
             prefix={<Lock />}
             rules={[{ required: true, message: '请输入目录密码' }]}
             size="large"
           />
-          <Button
-            htmlType="submit"
-            type="primary"
-            theme="solid"
-            loading={directoryLoginLoading}
-            block
-            size="large"
-            style={{ marginTop: 8, borderRadius: 8, height: 42 }}
-          >
-            登录
-          </Button>
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

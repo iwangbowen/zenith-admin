@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Form, Button, Toast } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import AppModal from '@/components/AppModal';
 import { Mail } from 'lucide-react';
 import { request } from '@/utils/request';
@@ -12,6 +13,7 @@ interface ForgotPasswordModalProps {
 export default function ForgotPasswordModal({ visible, onClose }: Readonly<ForgotPasswordModalProps>) {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const formApi = useRef<FormApi | null>(null);
 
   const handleSubmit = async (values: { email: string }) => {
     setLoading(true);
@@ -29,7 +31,23 @@ export default function ForgotPasswordModal({ visible, onClose }: Readonly<Forgo
 
   const handleClose = () => {
     setSent(false);
+    formApi.current = null;
     onClose();
+  };
+
+  const handleOk = async () => {
+    if (sent) {
+      handleClose();
+      return;
+    }
+    if (!formApi.current) return;
+    let values: { email: string };
+    try {
+      values = await formApi.current.validate() as { email: string };
+    } catch {
+      return;
+    }
+    await handleSubmit(values);
   };
 
   return (
@@ -37,7 +55,11 @@ export default function ForgotPasswordModal({ visible, onClose }: Readonly<Forgo
       title="找回密码"
       visible={visible}
       onCancel={handleClose}
-      footer={null}
+      onOk={handleOk}
+      okText={sent ? '我知道了' : '发送重置链接'}
+      cancelText="取消"
+      hasCancel={!sent}
+      okButtonProps={{ loading }}
       width={400}
     >
       {sent ? (
@@ -47,12 +69,14 @@ export default function ForgotPasswordModal({ visible, onClose }: Readonly<Forgo
           <p style={{ color: 'var(--semi-color-text-2)', fontSize: 13 }}>
             如邮箱已注册，重置链接已发送至您的邮箱，请在 30 分钟内完成重置。
           </p>
-          <Button type="primary" style={{ marginTop: 20 }} onClick={handleClose}>
-            我知道了
-          </Button>
         </div>
       ) : (
-        <Form<{ email: string }> onSubmit={handleSubmit}>
+        <Form<{ email: string }>
+          key={visible ? 'forgot-password-open' : 'forgot-password-closed'}
+          getFormApi={(api) => { formApi.current = api; }}
+          labelPosition="left"
+          labelWidth={72}
+        >
           <p style={{ color: 'var(--semi-color-text-2)', fontSize: 13, marginBottom: 16 }}>
             请输入注册时使用的邮箱地址，我们将向该邮箱发送密码重置链接。
           </p>
@@ -67,17 +91,6 @@ export default function ForgotPasswordModal({ visible, onClose }: Readonly<Forgo
               { type: 'email', message: '邮箱格式不正确' },
             ]}
           />
-          <Button
-            htmlType="submit"
-            type="primary"
-            theme="solid"
-            block
-            size="large"
-            loading={loading}
-            style={{ marginTop: 8 }}
-          >
-            发送重置链接
-          </Button>
         </Form>
       )}
     </AppModal>

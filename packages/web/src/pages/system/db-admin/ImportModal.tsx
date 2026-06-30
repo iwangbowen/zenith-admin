@@ -150,7 +150,10 @@ export function ImportModal(props: Readonly<Props>) {
       title={`导入数据 · ${schema}.${table}`}
       visible={open}
       onCancel={() => { reset(); onClose(); }}
-      footer={null}
+      onOk={() => void handleImport()}
+      okText={rawRows.length > 0 ? `导入 ${rawRows.length} 行` : '导入'}
+      cancelText="取消"
+      okButtonProps={{ loading: importing, disabled: mappedCount === 0 || rawRows.length === 0 }}
       width={860}
     >
       <Space vertical align="start" style={{ width: '100%' }} spacing={12}>
@@ -199,12 +202,6 @@ export function ImportModal(props: Readonly<Props>) {
               />
             </div>
             {rawRows.length > 8 && <Text type="tertiary" size="small">仅预览前 8 行</Text>}
-            <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-              <Button onClick={() => { reset(); onClose(); }}>取消</Button>
-              <Button type="primary" loading={importing} onClick={handleImport} disabled={mappedCount === 0}>
-                导入 {rawRows.length} 行
-              </Button>
-            </Space>
           </>
         )}
       </Space>

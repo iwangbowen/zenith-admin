@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Button, Form, Toast, Typography, Tag, Space, Popconfirm,
   Select, Row, Col, Collapse, Input, Tooltip,
 } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { AppModal } from '@/components/AppModal';
 import { Plus, Pencil, Trash2, Server, ChevronUp, ChevronDown, Search, FolderOpen } from 'lucide-react';
 import { request } from '@/utils/request';
@@ -61,6 +62,7 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
   const [formAuthType, setFormAuthType] = useState<'password' | 'key_path' | 'key_content' | 'agent'>('password');
   const [keyword, setKeyword] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const profileFormApi = useRef<FormApi | null>(null);
 
   const fetchProfiles = useCallback(async () => {
     setLoading(true);
@@ -81,6 +83,11 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
     setEditingProfile(profile);
     setFormAuthType(profile.authType);
     setModalVisible(true);
+  };
+
+  const closeModal = () => {
+    setModalVisible(false);
+    profileFormApi.current = null;
   };
 
   const handleSave = async (values: SshProfileFormData) => {
@@ -108,18 +115,32 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
       tags: (values.tags ?? []).map((t) => t.trim()).filter(Boolean),
     };
     setSaving(true);
-    let res;
-    if (editingProfile) {
-      res = await request.put(`/api/ssh-profiles/${editingProfile.id}`, body);
-    } else {
-      res = await request.post('/api/ssh-profiles', body);
+    try {
+      let res;
+      if (editingProfile) {
+        res = await request.put(`/api/ssh-profiles/${editingProfile.id}`, body);
+      } else {
+        res = await request.post('/api/ssh-profiles', body);
+      }
+      if (res.code === 0) {
+        Toast.success(editingProfile ? '更新成功' : '创建成功');
+        closeModal();
+        void fetchProfiles();
+      }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    if (res.code === 0) {
-      Toast.success(editingProfile ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      void fetchProfiles();
+  };
+
+  const handleModalOk = async () => {
+    if (!profileFormApi.current) return;
+    let values: SshProfileFormData;
+    try {
+      values = await profileFormApi.current.validate() as SshProfileFormData;
+    } catch {
+      return;
     }
+    await handleSave(values);
   };
 
   const handleDelete = async (id: number) => {
@@ -343,19 +364,23 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
       <AppModal
         title={editingProfile ? '编辑 SSH 配置' : '新建 SSH 配置'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        footer={null}
+        onCancel={closeModal}
+        onOk={handleModalOk}
+        okText="保存"
+        cancelText="取消"
+        okButtonProps={{ loading: saving }}
         fullscreenable={false}
         width={680}
         style={{ top: '5vh' }}
         keepDOM={false}
       >
         <Form
+          key={editingProfile?.id ?? 'new'}
           initValues={getInitialValues(editingProfile)}
-          onSubmit={(v) => void handleSave(v as SshProfileFormData)}
+          getFormApi={(api) => { profileFormApi.current = api; }}
           labelPosition="left"
           labelWidth={90}
-          style={{ padding: '0 8px 8px' }}
+          style={{ padding: '0 8px' }}
         >
           <Form.Input field="name" label="名称" placeholder="我的服务器" rules={[{ required: true, message: '请输入连接名称' }]} />
           <Row gutter={16}>
@@ -444,11 +469,6 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12, marginLeft: 90 }}>
             每行一个，格式：KEY=VALUE
           </Typography.Text>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <Button onClick={() => setModalVisible(false)}>取消</Button>
-            <Button type="primary" htmlType="submit" loading={saving}>保存</Button>
-          </div>
         </Form>
       </AppModal>
     </div>
