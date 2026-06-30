@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Form, Button, Toast } from '@douyinfe/semi-ui';
+import { Form, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import AppModal from '@/components/AppModal';
 import { Mail } from 'lucide-react';
