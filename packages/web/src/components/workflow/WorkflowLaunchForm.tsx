@@ -238,7 +238,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
             highlightMissing={highlightMissing}
           />
         )}
-        graph={<WorkflowGraphView flowData={def.flowData} />}
+        graph={<WorkflowGraphView flowData={def.flowData} height="calc(100vh - 160px)" />}
       />
     );
   },

@@ -29,11 +29,18 @@
 
 .wf-process-sidebar__bar {
   flex-shrink: 0;
-  padding: 4px 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 40px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--semi-color-border);
 }
 
-.wf-process-sidebar__bar .semi-tabs-bar {
-  margin-bottom: 0;
+.wf-process-sidebar__title {
+  font-size: 13px;
 }
 
 .wf-process-sidebar__body {
