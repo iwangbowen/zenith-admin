@@ -954,7 +954,8 @@ export default function DbAdminPage() {
       const tableName = editable.table;
       const pkCols = editable.primaryKey;
       result.push(createOperationColumn<Record<string, unknown>>({
-        width: 180,
+        width: 120,
+        desktopInlineKeys: ['edit'],
         actions: (record) => [
           {
             key: 'edit',
