@@ -255,7 +255,7 @@ const createInstanceRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/instances', tags: ['WorkflowInstances'], summary: '发起流程',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'workflow:instance:create', audit: { description: '发起流程申请', module: '工作流管理' } })] as const,
+    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 }), guard({ permission: 'workflow:instance:create', audit: { description: '发起流程申请', module: '工作流管理' } })] as const,
     request: { body: { content: jsonContent(createWorkflowInstanceWithDraftSchema), required: true } },
     responses: {
       ...commonErrorResponses,

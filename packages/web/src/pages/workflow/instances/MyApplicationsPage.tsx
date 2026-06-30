@@ -494,6 +494,7 @@ export default function MyApplicationsPage() {
     setApplyVisible(true);
   };
 
+  const launchSubmitNonceRef = useRef<string>('');
   const handleSubmitApply = async () => {
     if (!selectedDef) { Toast.error('请先选择流程'); return; }
     const result = await launchFormRef.current?.collectFormData({ requireInitiatorApprovers: true });
@@ -501,6 +502,7 @@ export default function MyApplicationsPage() {
     const { values, formData } = result;
     setSubmitting(true);
     try {
+      if (!launchSubmitNonceRef.current) launchSubmitNonceRef.current = crypto.randomUUID();
       const res = await request.post('/api/workflows/instances', {
         definitionId: selectedDef.id,
         title: values.title,
@@ -508,8 +510,9 @@ export default function MyApplicationsPage() {
         priority: values.priority ?? 'normal',
         ccUserIds: Array.isArray(values.ccUserIds) ? values.ccUserIds : undefined,
         selectedInitiatorApprovers: result.selectedInitiatorApprovers,
-      });
+      }, { headers: { 'X-Idempotency-Key': `workflow-launch-${launchSubmitNonceRef.current}` } });
       if (res.code === 0) {
+        launchSubmitNonceRef.current = '';
         Toast.success('申请已提交');
         closeApply();
         void fetchList();

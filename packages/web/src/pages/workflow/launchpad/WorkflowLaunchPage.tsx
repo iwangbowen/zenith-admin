@@ -24,6 +24,7 @@ export default function WorkflowLaunchPage() {
   const [savingDraft, setSavingDraft] = useState(false);
 
   const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
+  const submitNonceRef = useRef<string>('');
 
   useEffect(() => {
     if (!Number.isFinite(defId)) return;
@@ -49,6 +50,7 @@ export default function WorkflowLaunchPage() {
     const setBusy = asDraft ? setSavingDraft : setSubmitting;
     setBusy(true);
     try {
+      if (!asDraft && !submitNonceRef.current) submitNonceRef.current = crypto.randomUUID();
       const res = await request.post<WorkflowInstance>('/api/workflows/instances', {
         definitionId: def.id,
         title: values.title,
@@ -57,8 +59,9 @@ export default function WorkflowLaunchPage() {
         ccUserIds: Array.isArray(values.ccUserIds) ? values.ccUserIds : undefined,
         selectedInitiatorApprovers: result.selectedInitiatorApprovers,
         ...(asDraft ? { asDraft: true } : {}),
-      });
+      }, asDraft ? undefined : { headers: { 'X-Idempotency-Key': `workflow-launch-${submitNonceRef.current}` } });
       if (res.code === 0) {
+        if (!asDraft) submitNonceRef.current = '';
         Toast.success(asDraft ? '草稿已保存' : '申请已提交');
         const newId = res.data?.id;
         if (!asDraft && newId) {

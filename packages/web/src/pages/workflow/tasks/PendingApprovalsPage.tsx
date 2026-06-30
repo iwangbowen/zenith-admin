@@ -32,7 +32,7 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', definitionId: null };
 
-type PendingItem = WorkflowInstance & { pendingTaskId: number; pendingSignatureRequired?: boolean; slaLevel?: WorkflowSlaLevel; slaOverdueSec?: number | null; slaDeadline?: string | null };
+type PendingItem = WorkflowInstance & { pendingTaskId: number; pendingSignatureRequired?: boolean; requiresIndividual?: boolean; slaLevel?: WorkflowSlaLevel; slaOverdueSec?: number | null; slaDeadline?: string | null };
 type SheetState = { instanceId: number; taskId: number; action: 'approve' | 'reject' | null };
 
 export default function PendingApprovalsPage() {
@@ -214,8 +214,15 @@ export default function PendingApprovalsPage() {
     {
       title: '申请标题',
       dataIndex: 'title',
-      width: 200,
-      render: renderEllipsis,
+      width: 220,
+      render: (v: string, record: PendingItem) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{v}</Typography.Text>
+          {record.requiresIndividual && (
+            <Tag size="small" color="amber" style={{ flexShrink: 0 }}>需单独审批</Tag>
+          )}
+        </div>
+      ),
     },
     {
       title: '优先级',
@@ -364,6 +371,7 @@ export default function PendingApprovalsPage() {
         pagination={buildPagination(data?.total ?? 0, fetchList)}
         rowSelection={{
           selectedRowKeys,
+          getCheckboxProps: (record: PendingItem) => ({ disabled: !!record.requiresIndividual }),
           onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
         }}
       />

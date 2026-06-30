@@ -327,6 +327,7 @@ export const WorkflowInstanceListItemDTO = WorkflowInstanceDTO.omit({
 }).extend({
   pendingTaskId: z.number().int().optional(),
   pendingSignatureRequired: z.boolean().optional(),
+  requiresIndividual: z.boolean().optional(),
   slaLevel: z.enum(['none', 'safe', 'warning', 'overdue']).optional(),
   slaDeadline: z.string().nullable().optional(),
   slaOverdueSec: z.number().int().nullable().optional(),
