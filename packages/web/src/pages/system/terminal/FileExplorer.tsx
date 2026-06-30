@@ -21,6 +21,7 @@ import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { getFileIcon, getFolderIcon } from './fileIcons';
+import AppModal from '@/components/AppModal';
 
 interface FileEntry {
   name: string;
@@ -818,7 +819,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         </div>
       )}
 
-      <Modal
+      <AppModal
         title={dialogTitle}
         visible={!!dialog}
         onCancel={() => setDialog(null)}
@@ -832,7 +833,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
           onEnterPress={() => void confirmDialog()}
           placeholder="请输入名称"
         />
-      </Modal>
+      </AppModal>
 
       {/* 右键菜单上传：隐藏 file input */}
       <input

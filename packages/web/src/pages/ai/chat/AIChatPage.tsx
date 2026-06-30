@@ -5,6 +5,7 @@ import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/
 import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
+import AppModal from '@/components/AppModal';
 import { useAuth } from '@/hooks/useAuth';
 import { PDFPreviewPanel } from './PDFPreviewPanel';
 import UserAiConfigModal from '../components/UserAiConfigModal';
@@ -1018,12 +1019,11 @@ export default function AIChatPage() {
         }}
       />
     )}
-    <Modal
+    <AppModal
       title="重命名会话"
       visible={renameConvId !== null}
       onOk={() => void handleRenameConv()}
       onCancel={() => setRenameConvId(null)}
-      confirmLoading={false}
       closeOnEsc
       width={360}
     >
@@ -1036,7 +1036,7 @@ export default function AIChatPage() {
         onEnterPress={() => void handleRenameConv()}
         autoFocus
       />
-    </Modal>
+    </AppModal>
     <Modal
       title="可以告诉我们哪里需要改进吗？"
       visible={dislikeMsgId !== null}

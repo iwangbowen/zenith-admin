@@ -334,24 +334,26 @@ export default function MembersPage() {
       </AppModal>
 
       {/* 批量更改状态确认 Modal */}
-      <Modal
+      <AppModal
         title="批量更改状态"
         visible={batchStatusVisible}
-        confirmLoading={batchLoading}
+        okButtonProps={{ loading: batchLoading }}
         onOk={handleBatchStatus}
         onCancel={() => { setBatchStatusVisible(false); setBatchStatus(''); }}
+        width={460}
       >
         <p>确认将 <strong>{selectedRowKeys.length}</strong> 名会员状态更改为「{MEMBER_STATUS_LABELS[batchStatus as keyof typeof MEMBER_STATUS_LABELS]}」吗？</p>
         {batchStatus !== 'active' && <p style={{ color: '#fa5151', fontSize: 13 }}>注意：非正常状态的会员将被强制下线。</p>}
-      </Modal>
+      </AppModal>
 
       {/* 批量调整等级 Modal */}
-      <Modal
+      <AppModal
         title="批量调整等级"
         visible={batchLevelVisible}
-        confirmLoading={batchLoading}
+        okButtonProps={{ loading: batchLoading }}
         onOk={handleBatchLevel}
         onCancel={() => { setBatchLevelVisible(false); setBatchLevelId(undefined); }}
+        width={460}
       >
         <p>将 <strong>{selectedRowKeys.length}</strong> 名会员等级调整为：</p>
         <Select
@@ -361,7 +363,7 @@ export default function MembersPage() {
           style={{ width: '100%', marginTop: 8 }}
           placeholder="请选择等级"
         />
-      </Modal>
+      </AppModal>
 
       {/* 会员详情侧滑 */}
       <MemberDetailDrawer memberId={detailMemberId} onClose={() => setDetailMemberId(null)} />

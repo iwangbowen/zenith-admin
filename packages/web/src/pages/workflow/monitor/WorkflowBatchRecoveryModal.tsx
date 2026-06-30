@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Modal, Select, Input, InputNumber, Toast, Typography, Space } from '@douyinfe/semi-ui';
+import { Select, Input, InputNumber, Toast, Typography, Space } from '@douyinfe/semi-ui';
 import type { WorkflowDefinition, WorkflowFlowData, WorkflowRecoveryBatchResult } from '@zenith/shared';
 import { request } from '@/utils/request';
+import AppModal from '@/components/AppModal';
 
 interface Props {
   visible: boolean;
@@ -70,7 +71,7 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
   };
 
   return (
-    <Modal
+    <AppModal
       title="批量推进卡死实例"
       visible={visible}
       onCancel={onClose}
@@ -128,6 +129,6 @@ export default function WorkflowBatchRecoveryModal({ visible, onClose }: Readonl
           />
         </div>
       </Space>
-    </Modal>
+    </AppModal>
   );
 }

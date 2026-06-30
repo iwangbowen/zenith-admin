@@ -35,6 +35,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { formatDateTime } from '@/utils/date';
+import AppModal from '@/components/AppModal';
 
 // ─── Prune（清理）辅助 ──────────────────────────────────────────────────────────
 interface PruneResultData {
@@ -712,14 +713,14 @@ function ImagesTab() {
         }
       />
 
-      <Modal title="拉取镜像" visible={pullVisible} onCancel={() => { setPullVisible(false); setPullTag(''); }}
+      <AppModal title="拉取镜像" visible={pullVisible} onCancel={() => { setPullVisible(false); setPullTag(''); }}
         onOk={() => void handlePull()} okText="开始拉取" okButtonProps={{ loading: pulling }} width={440}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <Typography.Text>镜像标签（如 nginx:latest）</Typography.Text>
           <Input placeholder="nginx:latest" value={pullTag} onChange={(v) => setPullTag(v)} style={{ width: '100%' }} />
           <Typography.Text type="tertiary" size="small">格式：&lt;镜像名&gt;:&lt;标签&gt;，留空标签默认 latest</Typography.Text>
         </div>
-      </Modal>
+      </AppModal>
     </>
   );
 }
@@ -833,7 +834,7 @@ function NetworksTab() {
         onRefresh={() => void fetchNetworks()} refreshLoading={loading}
         empty="未检测到 Docker 网络" pagination={false} />
 
-      <Modal title="创建网络" visible={createVisible} onCancel={() => setCreateVisible(false)}
+      <AppModal title="创建网络" visible={createVisible} onCancel={() => setCreateVisible(false)}
         onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: creating }} width={440}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
@@ -855,7 +856,7 @@ function NetworksTab() {
             <Typography.Text>内部网络（无外网访问）</Typography.Text>
           </div>
         </div>
-      </Modal>
+      </AppModal>
     </>
   );
 }
@@ -957,7 +958,7 @@ function VolumesTab() {
         onRefresh={() => void fetchVolumes()} refreshLoading={loading}
         empty="未检测到 Docker 存储卷" pagination={false} />
 
-      <Modal title="创建存储卷" visible={createVisible} onCancel={() => setCreateVisible(false)}
+      <AppModal title="创建存储卷" visible={createVisible} onCancel={() => setCreateVisible(false)}
         onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: creating }} width={400}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
@@ -971,7 +972,7 @@ function VolumesTab() {
               onChange={(v) => setCreateForm((f) => ({ ...f, driver: v }))} style={{ width: '100%' }} />
           </div>
         </div>
-      </Modal>
+      </AppModal>
     </>
   );
 }

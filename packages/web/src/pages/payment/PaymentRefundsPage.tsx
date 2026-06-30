@@ -280,7 +280,7 @@ export default function PaymentRefundsPage() {
         )}
       </AppModal>
 
-      <Modal title="驳回退款" visible={!!rejectTarget} onOk={submitReject} onCancel={() => setRejectTarget(null)} okButtonProps={{ loading: rejectSubmitting, type: 'danger' }} width={460} closeOnEsc>
+      <AppModal title="驳回退款" visible={!!rejectTarget} onOk={submitReject} onCancel={() => setRejectTarget(null)} okButtonProps={{ loading: rejectSubmitting, type: 'danger' }} width={460} closeOnEsc>
         {rejectTarget && (
           <Form labelPosition="left" labelWidth={90}>
             <Form.Slot label="退款单号">{rejectTarget.refundNo}</Form.Slot>
@@ -290,7 +290,7 @@ export default function PaymentRefundsPage() {
             </Form.Slot>
           </Form>
         )}
-      </Modal>
+      </AppModal>
     </div>
   );
 }

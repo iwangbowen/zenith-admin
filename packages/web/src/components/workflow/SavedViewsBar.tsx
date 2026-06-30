@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Input, Modal, Space, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Input, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import { Bookmark } from 'lucide-react';
 import type { WorkflowSavedView } from '@zenith/shared';
 import { request } from '@/utils/request';
+import AppModal from '@/components/AppModal';
 
 /**
  * 列表保存视图条（T1-3）。用于在列表页保存/应用/删除命名筛选条件。
@@ -76,16 +77,17 @@ export default function SavedViewsBar({
       <Button size="small" theme="borderless" icon={<Bookmark size={13} />} onClick={() => { setName(''); setSaveVisible(true); }}>
         保存当前为视图
       </Button>
-      <Modal
+      <AppModal
         title="保存筛选视图"
         visible={saveVisible}
         onCancel={() => setSaveVisible(false)}
         onOk={() => void handleSave()}
-        confirmLoading={saving}
+        okButtonProps={{ loading: saving }}
         closeOnEsc
+        width={420}
       >
         <Input value={name} onChange={setName} placeholder="视图名称（最多 64 字）" maxLength={64} showClear />
-      </Modal>
+      </AppModal>
     </Space>
   );
 }

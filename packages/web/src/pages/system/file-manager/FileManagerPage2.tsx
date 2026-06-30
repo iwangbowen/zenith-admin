@@ -1268,7 +1268,7 @@ export default function FileManagerPage() {
             </>
           )}
 
-          <Modal
+          <AppModal
             title={dialogTitle(dialog?.mode)}
             visible={!!dialog}
             onCancel={() => setDialog(null)}
@@ -1295,7 +1295,7 @@ export default function FileManagerPage() {
                 将压缩到当前目录下，输入 ZIP 文件名（含 .zip 扩展名）
               </Typography.Text>
             )}
-          </Modal>
+          </AppModal>
 
           {/* ── 图片画廊预览 ── */}
           <ImagePreview

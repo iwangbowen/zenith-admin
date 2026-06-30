@@ -19,6 +19,7 @@ import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { getFileIcon } from './fileIcons';
 import type { SshProfile } from './SshProfilesManager';
+import AppModal from '@/components/AppModal';
 
 interface SftpEntry {
   name: string;
@@ -301,7 +302,7 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
       />
 
       {/* 新建 / 重命名对话框 */}
-      <Modal
+      <AppModal
         title={dialog?.mode === 'rename' ? '重命名' : dialog?.mode === 'chmod' ? '修改权限（八进制）' : dialog?.mode === 'createDir' ? '新建文件夹' : '新建文件'}
         visible={!!dialog}
         onCancel={() => setDialog(null)}
@@ -316,7 +317,7 @@ export default function SftpExplorer({ profile, onOpenFile }: SftpExplorerProps)
           onChange={(v) => setDialog((d) => (d ? { ...d, value: v } : d))}
           onEnterPress={() => void submitDialog()}
         />
-      </Modal>
+      </AppModal>
     </div>
   );
 }
