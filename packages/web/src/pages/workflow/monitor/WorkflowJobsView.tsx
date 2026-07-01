@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Button,
+  Col,
   Descriptions,
   Empty,
+  Form,
   Input,
-  InputNumber,
   JsonViewer,
   Modal,
   Popconfirm,
   Radio,
   RadioGroup,
+  Row,
   Select,
   SideSheet,
   Space,
@@ -102,8 +104,6 @@ const REPLAY_STATUS_OPTIONS = [
   { value: 'dead', label: '死信 (dead)' },
   { value: 'failed', label: '失败 (failed)' },
 ];
-const REPLAY_ROW: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, width: '100%' };
-const REPLAY_LABEL: CSSProperties = { width: 76, textAlign: 'right', flexShrink: 0 };
 
 const JOB_STATUS_META: Record<WorkflowJobStatus, { text: string; color: TagColor }> = {
   pending: { text: '待处理', color: 'grey' },
@@ -225,7 +225,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [replayPreview, setReplayPreview] = useState<number | null>(null);
   const [replayFilter, setReplayFilter] = useState<ReplayFilterState>({ status: 'dead', jobType, ratePerSecond: 20, limit: 500 });
-  const setF = (patch: Partial<ReplayFilterState>) => { setReplayFilter((s) => ({ ...s, ...patch })); setReplayPreview(null); };
+  const [replayFormKey, setReplayFormKey] = useState(0);
 
   const openClusters = async (dim: ClusterDimension = clusterDim) => {
     setClusterDim(dim);
@@ -242,6 +242,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   const openReplay = (prefill?: Partial<ReplayFilterState>) => {
     setReplayFilter({ status: 'dead', jobType, ratePerSecond: 20, limit: 500, ...prefill });
     setReplayPreview(null);
+    setReplayFormKey((k) => k + 1);
     setReplayOpen(true);
   };
 
@@ -801,42 +802,51 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
         cancelText="取消"
         onOk={() => void doReplay()}
         okButtonProps={{ loading: replayLoading, type: 'warning' }}
-        width={560}
+        width={640}
       >
-        <Space vertical align="start" spacing="loose" style={{ width: '100%' }}>
-          <div style={REPLAY_ROW}>
-            <Typography.Text style={REPLAY_LABEL} type="tertiary">目标状态</Typography.Text>
-            <Select style={{ flex: 1 }} value={replayFilter.status} optionList={REPLAY_STATUS_OPTIONS} onChange={(v) => setF({ status: v as 'dead' | 'failed' })} />
-          </div>
-          <div style={REPLAY_ROW}>
-            <Typography.Text style={REPLAY_LABEL} type="tertiary">作业类型</Typography.Text>
-            <Select style={{ flex: 1 }} placeholder="全部类型" value={replayFilter.jobType} optionList={JOB_TYPE_OPTIONS} showClear onChange={(v) => setF({ jobType: v as WorkflowJobType | undefined })} />
-          </div>
-          <div style={REPLAY_ROW}>
-            <Typography.Text style={REPLAY_LABEL} type="tertiary">实例 ID</Typography.Text>
-            <InputNumber style={{ flex: 1 }} placeholder="不限" min={1} value={replayFilter.instanceId} onChange={(v) => setF({ instanceId: typeof v === 'number' ? v : undefined })} />
-          </div>
-          <div style={REPLAY_ROW}>
-            <Typography.Text style={REPLAY_LABEL} type="tertiary">TraceId</Typography.Text>
-            <Input style={{ flex: 1 }} placeholder="不限" showClear value={replayFilter.traceId} onChange={(v) => setF({ traceId: v })} />
-          </div>
-          <div style={REPLAY_ROW}>
-            <Typography.Text style={REPLAY_LABEL} type="tertiary">错误关键字</Typography.Text>
-            <Input style={{ flex: 1 }} placeholder="按 lastError 模糊匹配" showClear value={replayFilter.reasonKeyword} onChange={(v) => setF({ reasonKeyword: v })} />
-          </div>
-          <div style={REPLAY_ROW}>
-            <Typography.Text style={REPLAY_LABEL} type="tertiary">入库超过</Typography.Text>
-            <InputNumber style={{ flex: 1 }} placeholder="不限" min={0} suffix="分钟" value={replayFilter.olderThanMinutes} onChange={(v) => setF({ olderThanMinutes: typeof v === 'number' ? v : undefined })} />
-          </div>
-          <div style={REPLAY_ROW}>
-            <Typography.Text style={REPLAY_LABEL} type="tertiary">限流速率</Typography.Text>
-            <InputNumber style={{ flex: 1 }} min={1} max={200} suffix="条/秒" value={replayFilter.ratePerSecond} onChange={(v) => setReplayFilter((s) => ({ ...s, ratePerSecond: typeof v === 'number' ? v : 20 }))} />
-          </div>
-          <div style={REPLAY_ROW}>
-            <Typography.Text style={REPLAY_LABEL} type="tertiary">单次上限</Typography.Text>
-            <InputNumber style={{ flex: 1 }} min={1} max={500} suffix="条" value={replayFilter.limit} onChange={(v) => setReplayFilter((s) => ({ ...s, limit: typeof v === 'number' ? v : 500 }))} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+        <Form
+          key={replayFormKey}
+          labelPosition="left"
+          labelWidth={100}
+          initValues={replayFilter}
+          onValueChange={(values, changed) => {
+            setReplayFilter((s) => ({
+              ...s,
+              ...values,
+              ratePerSecond: typeof values.ratePerSecond === 'number' ? values.ratePerSecond : s.ratePerSecond,
+              limit: typeof values.limit === 'number' ? values.limit : s.limit,
+            }));
+            const key = Object.keys(changed ?? {})[0];
+            if (key && key !== 'ratePerSecond' && key !== 'limit') setReplayPreview(null);
+          }}
+        >
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select field="status" label="目标状态" style={{ width: '100%' }} optionList={REPLAY_STATUS_OPTIONS} />
+            </Col>
+            <Col span={12}>
+              <Form.Select field="jobType" label="作业类型" placeholder="全部类型" showClear style={{ width: '100%' }} optionList={JOB_TYPE_OPTIONS} />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="instanceId" label="实例 ID" placeholder="不限" min={1} style={{ width: '100%' }} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="traceId" label="TraceId" placeholder="不限" showClear />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="reasonKeyword" label="错误关键字" placeholder="按 lastError 模糊匹配" showClear />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="olderThanMinutes" label="入库超过" placeholder="不限" min={0} suffix="分钟" style={{ width: '100%' }} />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="ratePerSecond" label="限流速率" min={1} max={200} suffix="条/秒" style={{ width: '100%' }} />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="limit" label="单次上限" min={1} max={500} suffix="条" style={{ width: '100%' }} />
+            </Col>
+          </Row>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
             <Button size="small" theme="light" loading={previewLoading} onClick={() => void doPreview()}>预览匹配数</Button>
             {replayPreview !== null && (
               <Typography.Text type="tertiary" size="small">
@@ -845,7 +855,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
               </Typography.Text>
             )}
           </div>
-        </Space>
+        </Form>
       </Modal>
     </>
   );
