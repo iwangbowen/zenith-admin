@@ -28,7 +28,10 @@ VALUES
 ON CONFLICT ("id") DO NOTHING;
 --> statement-breakpoint
 INSERT INTO "role_menus" ("role_id", "menu_id")
-SELECT 1, "id" FROM "menus" WHERE "id" IN (535, 536)
+SELECT r."id", m."id"
+FROM "roles" r
+JOIN "menus" m ON m."id" IN (535, 536)
+WHERE r."code" = 'super_admin'
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 SELECT setval('menus_id_seq', GREATEST((SELECT MAX("id") FROM "menus"), 1));

@@ -1,6 +1,8 @@
 -- 添加「定时发布」字典项到公告发布状态字典 (dictId: 7)
+-- 仅当目标字典 (id=7) 已存在时插入，避免在全新数据库（迁移先于种子执行）上触发外键约束
 INSERT INTO "dict_items" ("dict_id", "label", "value", "color", "sort", "status", "created_at", "updated_at")
-VALUES (7, '定时发布', 'scheduled', 'blue', 4, 'enabled', NOW(), NOW())
+SELECT 7, '定时发布', 'scheduled', 'blue', 4, 'enabled', NOW(), NOW()
+WHERE EXISTS (SELECT 1 FROM "dicts" WHERE "id" = 7)
 ON CONFLICT DO NOTHING;
 
 -- 添加「定时公告自动发布」cron job
