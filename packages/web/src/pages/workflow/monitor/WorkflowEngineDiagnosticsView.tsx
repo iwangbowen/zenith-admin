@@ -576,6 +576,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const [batchRecoveryVisible, setBatchRecoveryVisible] = useState(false);
 
   // 运维动作：筛选 + 预览 + 执行（参考作业账本「条件重放」）
+  const [actionMenuVisible, setActionMenuVisible] = useState(false);
   const [actionModal, setActionModal] = useState<{ key: WorkflowEngineActionKey; label: string } | null>(null);
   const [actionFilter, setActionFilter] = useState<{ instanceId?: number; olderThanMinutes?: number; limit: number }>({ limit: 200 });
   const [actionFormKey, setActionFormKey] = useState(0);
@@ -583,6 +584,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const [actionPreviewLoading, setActionPreviewLoading] = useState(false);
 
   const openActionModal = useCallback((key: WorkflowEngineActionKey, label: string) => {
+    setActionMenuVisible(false);
     setActionModal({ key, label });
     setActionFilter({ limit: 200 });
     setActionPreview(null);
@@ -882,6 +884,8 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
           <Dropdown
             trigger="click"
             position="bottomRight"
+            visible={actionMenuVisible}
+            onVisibleChange={setActionMenuVisible}
             render={(
               <Dropdown.Menu>
                 {ACTION_ITEMS.map((item) => (
@@ -936,13 +940,13 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             }}
           >
             <Row gutter={16}>
-              <Col span={8}>
+              <Col span={12}>
                 <Form.InputNumber field="instanceId" label="实例 ID" placeholder="不限" min={1} style={{ width: '100%' }} />
               </Col>
-              <Col span={8}>
+              <Col span={12}>
                 <Form.InputNumber field="olderThanMinutes" label="入库超过" placeholder="不限" min={0} suffix="分钟" style={{ width: '100%' }} />
               </Col>
-              <Col span={8}>
+              <Col span={12}>
                 <Form.InputNumber field="limit" label="单次上限" min={1} max={500} suffix="条" style={{ width: '100%' }} />
               </Col>
             </Row>
