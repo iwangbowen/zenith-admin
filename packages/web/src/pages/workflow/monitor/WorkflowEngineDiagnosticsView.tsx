@@ -870,10 +870,6 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             alignItems: 'center',
             gap: 8,
             height: 32,
-            padding: '0 12px',
-            borderRadius: 6,
-            border: '1px solid var(--semi-color-border)',
-            background: data.healthy ? 'var(--semi-color-success-light-default)' : 'var(--semi-color-danger-light-default)',
           }}
         >
           {data.healthy ? <CheckCircle2 size={16} color="var(--semi-color-success)" /> : <AlertTriangle size={16} color="var(--semi-color-danger)" />}
