@@ -331,8 +331,12 @@ export const systemSchedulerHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: run });
   }),
 
-  http.get('/api/system-scheduler/nodes', () => {
-    return HttpResponse.json({ code: 0, message: 'ok', data: nodes });
+  http.get('/api/system-scheduler/nodes', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page')) || 1;
+    const pageSize = Number(url.searchParams.get('pageSize')) || 10;
+    const list = nodes.slice((page - 1) * pageSize, page * pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: nodes.length, page, pageSize } });
   }),
 
   http.post('/api/system-scheduler/tasks/:name/run', ({ params }) => {

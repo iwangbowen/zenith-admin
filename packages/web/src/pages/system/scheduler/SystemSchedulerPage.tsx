@@ -134,6 +134,7 @@ export default function SystemSchedulerPage() {
   const [runsLoading, setRunsLoading] = useState(false);
   const [runSearch, setRunSearch] = useState<RunSearchParams>(defaultRunSearch);
   const [nodes, setNodes] = useState<SystemSchedulerNode[]>([]);
+  const [nodesTotal, setNodesTotal] = useState(0);
   const [nodesLoading, setNodesLoading] = useState(false);
   const [runningTaskName, setRunningTaskName] = useState<string | null>(null);
   const [configTask, setConfigTask] = useState<SystemSchedulerTask | null>(null);
@@ -144,6 +145,7 @@ export default function SystemSchedulerPage() {
   const [ackLoading, setAckLoading] = useState(false);
   const configFormApi = useRef<FormApi | null>(null);
   const { page, pageSize, setPage, buildPagination } = usePagination(20);
+  const { page: nodesPage, pageSize: nodesPageSize, buildPagination: buildNodesPagination } = usePagination(10);
 
   const canRun = hasPermission('system:scheduler:run');
   const canConfig = hasPermission('system:scheduler:config');
@@ -184,15 +186,18 @@ export default function SystemSchedulerPage() {
     }
   }, [page, pageSize, runSearch]);
 
-  const fetchNodes = useCallback(async () => {
+  const fetchNodes = useCallback(async (p = nodesPage, ps = nodesPageSize) => {
     setNodesLoading(true);
     try {
-      const res = await request.get<SystemSchedulerNode[]>('/api/system-scheduler/nodes');
-      if (res.code === 0) setNodes(res.data);
+      const res = await request.get<PaginatedResponse<SystemSchedulerNode>>(`/api/system-scheduler/nodes?page=${p}&pageSize=${ps}`);
+      if (res.code === 0) {
+        setNodes(res.data.list);
+        setNodesTotal(res.data.total);
+      }
     } finally {
       setNodesLoading(false);
     }
-  }, []);
+  }, [nodesPage, nodesPageSize]);
 
   useEffect(() => {
     void fetchTasks();
@@ -731,7 +736,7 @@ export default function SystemSchedulerPage() {
 
         <TabPane tab="执行节点" itemKey="nodes">
           <SearchToolbar>
-            <Button type="primary" icon={<RefreshCw size={14} />} onClick={fetchNodes} loading={nodesLoading}>刷新</Button>
+            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void fetchNodes()} loading={nodesLoading}>刷新</Button>
           </SearchToolbar>
 
           <ConfigurableTable
@@ -740,10 +745,10 @@ export default function SystemSchedulerPage() {
             columns={nodeColumns}
             dataSource={nodes}
             loading={nodesLoading}
-            pagination={false}
+            pagination={buildNodesPagination(nodesTotal, fetchNodes)}
             scroll={{ x: 1160 }}
             columnSettingsKey="system-scheduler-nodes"
-            onRefresh={fetchNodes}
+            onRefresh={() => void fetchNodes()}
             refreshLoading={nodesLoading}
           />
         </TabPane>

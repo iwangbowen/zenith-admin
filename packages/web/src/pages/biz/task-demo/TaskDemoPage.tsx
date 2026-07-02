@@ -142,7 +142,7 @@ export default function TaskDemoPage() {
     },
     { title: '进度', dataIndex: 'processedCount', width: 220, render: (_: number, record: AsyncTask) => <AsyncTaskProgress task={record} /> },
     { title: '执行次数', dataIndex: 'attempts', width: 90 },
-    { title: '提交时间', dataIndex: 'createdAt', width: 170, render: (value: string) => formatDateTime(value) },
+    { title: '提交时间', dataIndex: 'createdAt', width: 190, render: (value: string) => formatDateTime(value) },
     {
       title: '状态',
       dataIndex: 'status',
@@ -252,7 +252,7 @@ export default function TaskDemoPage() {
         rowKey="id"
         size="small"
         empty="暂无任务，先在上方提交一个演示任务"
-        scroll={{ x: 1220 }}
+        scroll={{ x: 1240 }}
       />
 
       <Collapse style={{ marginTop: 16 }}>

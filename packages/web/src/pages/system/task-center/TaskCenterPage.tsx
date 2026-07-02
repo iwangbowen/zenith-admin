@@ -228,8 +228,8 @@ export default function TaskCenterPage() {
     },
     { title: '执行次数', dataIndex: 'attempts', width: 90 },
     { title: '提交人', dataIndex: 'createdByName', width: 120, render: (value: string | null) => value ?? '-' },
-    { title: '提交时间', dataIndex: 'createdAt', width: 170, render: (value: string) => formatDateTime(value) },
-    { title: '完成时间', dataIndex: 'completedAt', width: 170, render: (value: string | null) => (value ? formatDateTime(value) : '-') },
+    { title: '提交时间', dataIndex: 'createdAt', width: 190, render: (value: string) => formatDateTime(value) },
+    { title: '完成时间', dataIndex: 'completedAt', width: 190, render: (value: string | null) => (value ? formatDateTime(value) : '-') },
     {
       title: '错误信息',
       dataIndex: 'errorMessage',
@@ -251,7 +251,7 @@ export default function TaskCenterPage() {
       },
     },
     createOperationColumn<AsyncTask>({
-      width: 200,
+      width: 150,
       desktopInlineKeys: ['detail', 'cancel'],
       actions: (record) => [
         {
@@ -343,7 +343,7 @@ export default function TaskCenterPage() {
         rowKey="id"
         size="small"
         empty="暂无异步任务"
-        scroll={{ x: 1810 }}
+        scroll={{ x: 1800 }}
       />
 
       <SideSheet

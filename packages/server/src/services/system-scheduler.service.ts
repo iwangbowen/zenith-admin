@@ -269,9 +269,19 @@ export async function acknowledgeSystemSchedulerRunAlert(id: number, note?: stri
   return mapRun(updated);
 }
 
-export async function listSystemSchedulerNodes() {
-  const rows = await db.select().from(systemSchedulerNodes).orderBy(desc(systemSchedulerNodes.active), desc(systemSchedulerNodes.lastHeartbeatAt));
-  return rows.map(mapNode);
+export async function listSystemSchedulerNodes(query: { page?: number; pageSize?: number } = {}) {
+  const page = Number(query.page ?? 1);
+  const pageSize = Number(query.pageSize ?? 10);
+  const [total, rows] = await Promise.all([
+    db.$count(systemSchedulerNodes),
+    withPagination(
+      db.select().from(systemSchedulerNodes)
+        .orderBy(desc(systemSchedulerNodes.active), desc(systemSchedulerNodes.lastHeartbeatAt))
+        .$dynamic(),
+      page, pageSize,
+    ),
+  ]);
+  return { list: rows.map(mapNode), total, page, pageSize };
 }
 
 export async function runSystemSchedulerTask(name: string) {

@@ -102,9 +102,10 @@ const nodesRoute = defineOpenAPIRoute({
     method: 'get', path: '/nodes', tags: ['SystemScheduler'], summary: '系统调度节点列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:scheduler:view' })] as const,
-    responses: { ...commonErrorResponses, ...ok(z.array(SystemSchedulerNodeDTO), '系统调度节点列表') },
+    request: { query: PaginationQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(SystemSchedulerNodeDTO, '系统调度节点列表') },
   }),
-  handler: async (c) => c.json(okBody(await listSystemSchedulerNodes()), 200),
+  handler: async (c) => c.json(okBody(await listSystemSchedulerNodes(c.req.valid('query'))), 200),
 });
 
 const runRoute = defineOpenAPIRoute({
