@@ -16,14 +16,22 @@ interface KeyboardOptions {
   visibleRowCount: () => number;
   onCopy: () => void;
   onOpenDetail?: (pos: CellPos) => void;
+  /** 正在内联编辑时跳过网格快捷键（编辑器自行处理按键） */
+  isEditing?: () => boolean;
+  /** 尝试进入编辑（Enter / F2 / 直接打字）；返回 true 表示已进入编辑 */
+  onStartEdit?: (pos: CellPos, initialText?: string) => boolean;
 }
 
-/** 网格键盘交互：方向键导航 / Shift 扩选 / Ctrl+C / Ctrl+A / Enter 详情 / Esc 清除 */
+/** 网格键盘交互：方向键导航 / Shift 扩选 / Ctrl+C / Ctrl+A / Enter 编辑或详情 / Esc 清除 */
 export function useGridKeyboard(opts: KeyboardOptions): (e: React.KeyboardEvent) => void {
-  const { rowCount, colCount, state, dispatch, ensureCellVisible, visibleRowCount, onCopy, onOpenDetail } = opts;
+  const {
+    rowCount, colCount, state, dispatch, ensureCellVisible,
+    visibleRowCount, onCopy, onOpenDetail, isEditing, onStartEdit,
+  } = opts;
 
   return useCallback((e: React.KeyboardEvent) => {
     if (rowCount === 0 || colCount === 0) return;
+    if (isEditing?.()) return;
     const ctrl = e.ctrlKey || e.metaKey;
 
     if (ctrl && (e.key === 'c' || e.key === 'C')) {
@@ -41,10 +49,20 @@ export function useGridKeyboard(opts: KeyboardOptions): (e: React.KeyboardEvent)
       return;
     }
     if (e.key === 'Enter') {
-      if (state.anchor && onOpenDetail) {
-        e.preventDefault();
-        onOpenDetail(state.anchor);
-      }
+      if (!state.anchor) return;
+      e.preventDefault();
+      // Enter 优先进入编辑；Shift+Enter 或不可编辑时打开详情
+      if (!e.shiftKey && onStartEdit?.(state.anchor)) return;
+      onOpenDetail?.(state.anchor);
+      return;
+    }
+    if (e.key === 'F2') {
+      if (state.anchor && onStartEdit?.(state.anchor)) e.preventDefault();
+      return;
+    }
+    // 直接打字进入编辑并替换内容（Excel/dbx 风格）
+    if (e.key.length === 1 && !ctrl && !e.altKey) {
+      if (state.anchor && onStartEdit?.(state.anchor, e.key)) e.preventDefault();
       return;
     }
 
@@ -89,5 +107,5 @@ export function useGridKeyboard(opts: KeyboardOptions): (e: React.KeyboardEvent)
     };
     dispatch({ type: 'moveTo', pos, shift: e.shiftKey });
     ensureCellVisible(pos);
-  }, [rowCount, colCount, state, dispatch, ensureCellVisible, visibleRowCount, onCopy, onOpenDetail]);
+  }, [rowCount, colCount, state, dispatch, ensureCellVisible, visibleRowCount, onCopy, onOpenDetail, isEditing, onStartEdit]);
 }

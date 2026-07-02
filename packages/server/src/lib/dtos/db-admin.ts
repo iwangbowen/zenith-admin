@@ -54,6 +54,7 @@ export const DbAdminColumnDTO = z
     isPrimaryKey: z.boolean(),
     comment: z.string().nullable(),
     maxLength: z.number().nullable(),
+    enumValues: z.array(z.string()).nullable(),
   })
   .openapi('DbAdminColumn');
 

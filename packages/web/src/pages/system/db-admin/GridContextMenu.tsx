@@ -34,6 +34,8 @@ interface GridContextMenuProps {
   onOpenDetail: (pos: CellPos) => void;
   onEditRow: (rowIndex: number, focusField?: string) => void;
   onDeleteRows: (rowIndexes: number[]) => void;
+  /** 暂存「设为 NULL」（内联编辑启用时提供） */
+  onSetNull?: (rowIndex: number, columnName: string) => void;
 }
 
 async function copyAndToast(text: string, msg: string): Promise<void> {
@@ -46,7 +48,7 @@ async function copyAndToast(text: string, msg: string): Promise<void> {
 export function GridContextMenu(props: GridContextMenuProps) {
   const {
     menu, onClose, rows, schema, table, primaryKey,
-    canEditRows, onFilterByValue, onOpenDetail, onEditRow, onDeleteRows,
+    canEditRows, onFilterByValue, onOpenDetail, onEditRow, onDeleteRows, onSetNull,
   } = props;
 
   const menuContent = useMemo(() => {
@@ -165,6 +167,14 @@ export function GridContextMenu(props: GridContextMenuProps) {
         {canEditRows && (
           <>
             <Dropdown.Divider />
+            {onSetNull && column && !column.isPrimaryKey && column.nullable !== false && (
+              <Dropdown.Item
+                disabled={cellIsNull}
+                onClick={() => { onSetNull(pos.row, column.name); onClose(); }}
+              >
+                设为 NULL（暂存）
+              </Dropdown.Item>
+            )}
             <Dropdown.Item onClick={() => { onEditRow(pos.row, column?.name); onClose(); }}>
               编辑行
             </Dropdown.Item>
@@ -181,7 +191,7 @@ export function GridContextMenu(props: GridContextMenuProps) {
         )}
       </Dropdown.Menu>
     );
-  }, [menu, rows, schema, table, primaryKey, canEditRows, onFilterByValue, onOpenDetail, onEditRow, onDeleteRows, onClose]);
+  }, [menu, rows, schema, table, primaryKey, canEditRows, onFilterByValue, onOpenDetail, onEditRow, onDeleteRows, onSetNull, onClose]);
 
   if (!menu) return null;
 

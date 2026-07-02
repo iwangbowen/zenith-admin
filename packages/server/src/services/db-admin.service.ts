@@ -45,6 +45,8 @@ export interface ColumnInfo {
   isPrimaryKey: boolean;
   comment: string | null;
   maxLength: number | null;
+  /** PG 枚举列的取值列表（非枚举列为 null），供前端渲染枚举下拉编辑器 */
+  enumValues: string[] | null;
 }
 
 export interface IndexInfo {
@@ -349,7 +351,7 @@ export async function getTableStructure(schema: string, name: string): Promise<T
   assertIdent(schema, 'schema');
   assertIdent(name, 'table');
 
-  const [columnsRows, indexesRows, fkRows, pkRows] = await Promise.all([
+  const [columnsRows, indexesRows, fkRows, pkRows, enumRows] = await Promise.all([
     db.execute(sql`
       SELECT a.attname AS name,
              format_type(a.atttypid, a.atttypmod) AS data_type,
@@ -421,11 +423,30 @@ export async function getTableStructure(schema: string, name: string): Promise<T
       WHERE con.contype = 'p' AND ns.nspname = ${schema} AND cls.relname = ${name}
       LIMIT 1
     `),
+    db.execute(sql`
+      SELECT a.attname AS name,
+             ARRAY(
+               SELECT e.enumlabel FROM pg_enum e
+               WHERE e.enumtypid = t.oid
+               ORDER BY e.enumsortorder
+             ) AS enum_values
+      FROM pg_attribute a
+      JOIN pg_type t ON t.oid = a.atttypid
+      WHERE a.attrelid = (${`${schema}.${name}`}::regclass)
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        AND t.typtype = 'e'
+    `),
   ]);
 
   const pkArr = (pkRows as unknown as Array<{ columns: string[] }>)[0];
   const primaryKey = pkArr?.columns ?? [];
   const pkSet = new Set(primaryKey);
+  const enumByColumn = new Map(
+    (enumRows as unknown as Array<{ name: string; enum_values: string[] }>).map(
+      (r) => [r.name, r.enum_values ?? []],
+    ),
+  );
 
   const columns: ColumnInfo[] = (columnsRows as unknown as Array<{
     name: string; data_type: string; is_nullable: boolean;
@@ -438,6 +459,7 @@ export async function getTableStructure(schema: string, name: string): Promise<T
     isPrimaryKey: pkSet.has(r.name),
     comment: r.comment,
     maxLength: r.max_length == null ? null : Number(r.max_length),
+    enumValues: enumByColumn.get(r.name) ?? null,
   }));
 
   const indexes: IndexInfo[] = (indexesRows as unknown as Array<{
@@ -756,6 +778,77 @@ export async function getTableRowBeforeAudit(
   `);
   const row = (rows as unknown as Array<Record<string, unknown>>)[0];
   return row ? serializeRow(row) : null;
+}
+
+export interface BatchUpdateItem {
+  pk: Record<string, unknown>;
+  changes: Record<string, unknown>;
+}
+
+/**
+ * 批量更新（事务，全部成功或全部回滚）。
+ * 供内联编辑「暂存 → 统一保存」流程调用；任意一条未命中记录即整体回滚。
+ */
+export async function batchMutateTableRows(
+  schema: string, name: string, updates: BatchUpdateItem[],
+): Promise<{ updated: number }> {
+  assertIdent(schema, 'schema');
+  assertIdent(name, 'table');
+  assertWritable(schema, name);
+
+  const struct = await getTableStructure(schema, name);
+  if (struct.primaryKey.length === 0) {
+    throw new HTTPException(400, { message: '该表没有主键，无法编辑' });
+  }
+  const colMap = new Map(struct.columns.map((c) => [c.name, c]));
+  const pkCols = struct.primaryKey;
+  for (const pk of pkCols) assertIdent(pk, '主键列');
+
+  // 事务前统一预校验，避免执行到一半才发现结构性错误
+  const prepared = updates.map((u, i) => {
+    for (const pk of pkCols) {
+      if (!(pk in u.pk)) {
+        throw new HTTPException(400, { message: `第 ${i + 1} 条缺少主键值：${pk}` });
+      }
+    }
+    const changeEntries = Object.entries(u.changes).filter(
+      ([col]) => colMap.has(col) && !pkCols.includes(col),
+    );
+    if (changeEntries.length === 0) {
+      throw new HTTPException(400, { message: `第 ${i + 1} 条没有可更新的字段` });
+    }
+    for (const [col] of changeEntries) assertIdent(col, '列名');
+    return { pk: u.pk, changeEntries };
+  });
+
+  const full = sql.raw(`${quoteIdent(schema)}.${quoteIdent(name)}`);
+  try {
+    await db.transaction(async (tx) => {
+      for (const [i, item] of prepared.entries()) {
+        const sets = item.changeEntries.map(
+          ([c, v]) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(v, colMap.get(c)!.dataType)}`,
+        );
+        const wheres = pkCols.map(
+          (c) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(item.pk[c], colMap.get(c)!.dataType)}`,
+        );
+        const updated = await tx.execute(sql`
+          UPDATE ${full} SET ${sql.join(sets, sql.raw(', '))}
+          WHERE ${sql.join(wheres, sql.raw(' AND '))}
+          RETURNING 1
+        `);
+        if ((updated as unknown as Array<unknown>).length === 0) {
+          throw new HTTPException(404, {
+            message: `第 ${i + 1} 条更新未命中记录（可能已被删除或主键变更），已回滚全部变更`,
+          });
+        }
+      }
+    });
+  } catch (err) {
+    if (err instanceof HTTPException) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HTTPException(400, { message: `批量更新失败（已回滚全部变更）：${msg}` });
+  }
+  return { updated: prepared.length };
 }
 
 export async function deleteTableRow(

@@ -51,6 +51,7 @@ import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
 import { ErDiagram, type ErSchema } from './ErDiagram';
+import MonacoEditor from '@monaco-editor/react';
 import { buildInsertSql, buildUpdateSql, generateCreateTableDdl } from './sql-format';
 import { OverviewPanel, KindTag } from './OverviewPanel';
 import { SqlConsole, type SqlConsoleHandle } from './SqlConsole';
@@ -90,6 +91,7 @@ interface ColumnInfo {
   isPrimaryKey: boolean;
   comment: string | null;
   maxLength: number | null;
+  enumValues?: string[] | null;
 }
 
 interface IndexInfo {
@@ -170,6 +172,10 @@ export default function DbAdminPage() {
   const gridRef = useRef<DataGridHandle | null>(null);
   const [gridMenu, setGridMenu] = useState<GridMenuState | null>(null);
   const [detailState, setDetailState] = useState<{ rowIndex: number; columnName: string | null } | null>(null);
+  // 内联编辑暂存
+  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingSaving, setPendingSaving] = useState(false);
+  const [sqlPreview, setSqlPreview] = useState<string | null>(null);
 
   // 历史
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -277,15 +283,29 @@ export default function DbAdminPage() {
   }, [activeTab, erSchema, erLoading, loadEr]);
 
   const handleSelectTable = (item: TableItem) => {
-    setSelected(item);
-    setStructure(null);
-    setRowsOrderBy(undefined);
-    setRowsOrderDir(undefined);
-    setRowsFilters({});
-    setRowsSearch('');
-    setRowsSearchInput('');
-    setSelectedRowIndexes(new Set());
-    gridRef.current?.clearSelection();
+    const doSelect = () => {
+      setSelected(item);
+      setStructure(null);
+      setRowsOrderBy(undefined);
+      setRowsOrderDir(undefined);
+      setRowsFilters({});
+      setRowsSearch('');
+      setRowsSearchInput('');
+      setSelectedRowIndexes(new Set());
+      setPendingCount(0);
+      gridRef.current?.discardPending();
+      gridRef.current?.clearSelection();
+    };
+    if (pendingCount > 0 && selected && (selected.schema !== item.schema || selected.name !== item.name)) {
+      Modal.confirm({
+        title: '有未保存的修改',
+        content: `当前表有 ${pendingCount} 处暂存修改，切换表将全部放弃，确定继续？`,
+        okButtonProps: { type: 'danger', theme: 'solid' },
+        onOk: doSelect,
+      });
+      return;
+    }
+    doSelect();
   };
 
   const handleRowsSort = (col: string, dir: 'asc' | 'desc' | undefined) => {
@@ -688,6 +708,7 @@ export default function DbAdminPage() {
         pinned: isPk,
         nullable: info?.isNullable,
         comment: info?.comment ?? null,
+        enumValues: info?.enumValues ?? null,
         fk: fk
           ? { schema: fk.referencedSchema, table: fk.referencedTable, columns: fk.referencedColumns }
           : null,
@@ -715,14 +736,54 @@ export default function DbAdminPage() {
   }, []);
 
   const handleGridDoubleClick = useCallback((rowIndex: number, columnName: string) => {
-    const row = rowsData.rows[rowIndex];
-    if (!row) return;
-    if (canEditRows) {
-      openEditRow(row, columnName);
-    } else {
-      setDetailState({ rowIndex, columnName });
+    // 可编辑列的双击已由 DataGrid 内联编辑消费；此处兜底打开详情（只读列 / 主键列）
+    setDetailState({ rowIndex, columnName });
+  }, []);
+
+  // ─── 内联编辑：保存 / 预览 / 放弃 ────────────────────────────────────────────
+  const handleSavePending = useCallback(async () => {
+    if (!selected) return;
+    const updates = gridRef.current?.getPendingUpdates() ?? [];
+    if (updates.length === 0) return;
+    setPendingSaving(true);
+    const res = await request.post<{ updated: number }>(
+      `/api/db-admin/tables/${encodeURIComponent(selected.schema)}/${encodeURIComponent(selected.name)}/batch-mutate`,
+      { updates: updates.map(({ pk, changes }) => ({ pk, changes })) },
+    );
+    setPendingSaving(false);
+    if (res.code === 0) {
+      Toast.success(`已保存 ${res.data?.updated ?? updates.length} 行变更`);
+      gridRef.current?.discardPending();
+      setSqlPreview(null);
+      await rowsData.refresh();
     }
-  }, [rowsData.rows, canEditRows]);
+  }, [selected, rowsData]);
+
+  const handleDiscardPending = useCallback(() => {
+    gridRef.current?.discardPending();
+    setSqlPreview(null);
+  }, []);
+
+  const handleOpenSqlPreview = useCallback(() => {
+    if (!selected) return;
+    const updates = gridRef.current?.getPendingUpdates() ?? [];
+    if (updates.length === 0) return;
+    const sqls = updates.map((u) => buildUpdateSql(selected.schema, selected.name, u.pk, u.changes));
+    setSqlPreview(sqls.join('\n'));
+  }, [selected]);
+
+  const handleStageNull = useCallback((rowIndex: number, columnName: string) => {
+    gridRef.current?.stageCellValue(rowIndex, columnName, null);
+  }, []);
+
+  const pendingBar = pendingCount > 0 ? (
+    <Space spacing={4}>
+      <Text type="warning" size="small" strong>{pendingCount} 处修改</Text>
+      <Button size="small" theme="borderless" onClick={handleOpenSqlPreview}>预览 SQL</Button>
+      <Button size="small" theme="solid" type="primary" loading={pendingSaving} onClick={() => void handleSavePending()}>保存</Button>
+      <Button size="small" theme="borderless" onClick={handleDiscardPending}>放弃</Button>
+    </Space>
+  ) : undefined;
 
   const handleGridDeleteRows = useCallback((rowIndexes: number[]) => {
     if (!canEditRows) return;
@@ -1069,6 +1130,9 @@ export default function DbAdminPage() {
                               )}
                               onFkClick={handleGridFkClick}
                               onSelectedRowsChange={setSelectedRowIndexes}
+                              editable={canEditRows}
+                              onPendingCountChange={setPendingCount}
+                              statusExtra={pendingBar}
                               storageKey={selected ? `db-admin:grid:${selected.schema}.${selected.name}` : undefined}
                               emptyText="无数据"
                             />
@@ -1231,7 +1295,9 @@ export default function DbAdminPage() {
         visible={detailState !== null}
         onClose={() => setDetailState(null)}
         columns={gridColumns}
-        row={detailState !== null ? (rowsData.rows[detailState.rowIndex] ?? null) : null}
+        row={detailState !== null
+          ? ((gridRef.current?.getEffectiveRows() ?? rowsData.rows)[detailState.rowIndex] ?? null)
+          : null}
         rowNumber={detailState !== null ? detailState.rowIndex + 1 : null}
         columnName={detailState?.columnName ?? null}
       />
@@ -1239,7 +1305,7 @@ export default function DbAdminPage() {
       <GridContextMenu
         menu={gridMenu}
         onClose={() => setGridMenu(null)}
-        rows={rowsData.rows}
+        rows={gridMenu !== null ? (gridRef.current?.getEffectiveRows() ?? rowsData.rows) : rowsData.rows}
         schema={selected?.schema}
         table={selected?.name}
         primaryKey={structure?.primaryKey ?? []}
@@ -1251,7 +1317,46 @@ export default function DbAdminPage() {
           if (row) openEditRow(row, focusField);
         }}
         onDeleteRows={handleGridDeleteRows}
+        onSetNull={handleStageNull}
       />
+
+      <Modal
+        title={`SQL 预览（${pendingCount} 处修改）`}
+        visible={sqlPreview !== null}
+        onCancel={() => setSqlPreview(null)}
+        width={720}
+        footer={
+          <Space>
+            <Button
+              icon={<Copy size={14} />}
+              onClick={() => { if (sqlPreview) void copyToClipboard(sqlPreview, '已复制 SQL'); }}
+            >复制</Button>
+            <Button onClick={() => setSqlPreview(null)}>关闭</Button>
+            <Button theme="solid" type="primary" loading={pendingSaving} onClick={() => void handleSavePending()}>
+              确认保存
+            </Button>
+          </Space>
+        }
+      >
+        <div style={{ height: 360, border: '1px solid var(--semi-color-border)', borderRadius: 4, overflow: 'hidden' }}>
+          <MonacoEditor
+            value={sqlPreview ?? ''}
+            language="sql"
+            theme={monacoTheme}
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              wordWrap: 'on',
+              fontSize: 12,
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+            }}
+          />
+        </div>
+        <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>
+          以上语句将在同一事务中执行，任意一条失败即整体回滚。
+        </Text>
+      </Modal>
     </div>
   );
 }

@@ -222,6 +222,41 @@
   pointer-events: none;
 }
 
+/* ── 内联编辑：暂存脏标记 ─────────────────────────── */
+.dg-cell--dirty,
+.dg-row:hover .dg-cell--dirty,
+.dg-row--odd .dg-cell--dirty {
+  background-image: linear-gradient(var(--semi-color-warning-light-default), var(--semi-color-warning-light-default));
+}
+
+.dg-cell--dirty::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-style: solid;
+  border-width: 0 7px 7px 0;
+  border-color: transparent var(--semi-color-warning) transparent transparent;
+  pointer-events: none;
+}
+
+/* 编辑器面板（多行 / 日期） */
+.dg-editor-panel {
+  background: var(--semi-color-bg-3);
+  border: 1px solid var(--semi-color-primary);
+  border-radius: 4px;
+  padding: 6px;
+  box-shadow: var(--semi-shadow-elevated);
+}
+
+.dg-editor-error {
+  margin-top: 2px;
+  background: var(--semi-color-bg-3);
+  border-radius: 3px;
+  padding: 2px 6px;
+  box-shadow: var(--semi-shadow-elevated);
+}
+
 /* ── 类型化内容 ───────────────────────────────────── */
 .dg-null {
   color: var(--semi-color-text-3);

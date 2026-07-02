@@ -12,6 +12,7 @@ interface MockColumn {
   isPrimaryKey: boolean;
   comment: string | null;
   maxLength: number | null;
+  enumValues: string[] | null;
 }
 
 interface MockTableDef {
@@ -38,6 +39,7 @@ function col(
     isPrimaryKey: opts.isPrimaryKey ?? false,
     comment: opts.comment ?? null,
     maxLength: opts.maxLength ?? null,
+    enumValues: opts.enumValues ?? null,
   };
 }
 
@@ -99,7 +101,7 @@ const tables: MockTableDef[] = [
       col('username', 'character varying', { maxLength: 64, comment: '用户名' }),
       col('nickname', 'character varying', { maxLength: 64, isNullable: true, comment: '昵称' }),
       col('email', 'character varying', { maxLength: 128, isNullable: true, comment: '邮箱' }),
-      col('status', 'character varying', { maxLength: 16, defaultValue: "'enabled'::character varying", comment: '状态' }),
+      col('status', 'user_status', { defaultValue: "'enabled'::user_status", comment: '状态（枚举）', enumValues: ['enabled', 'disabled'] }),
       col('department_id', 'integer', { isNullable: true, comment: '部门ID' }),
       col('created_at', 'timestamp with time zone', { defaultValue: 'now()', comment: '创建时间' }),
     ],
@@ -418,6 +420,27 @@ export const dbAdminHandlers = [
     if (!target) return HttpResponse.json({ code: 404, message: '记录不存在', data: null }, { status: 404 });
     Object.assign(target, body.changes);
     return ok(target);
+  }),
+
+  // 批量更新行（事务语义：mock 中先全量校验再统一应用）
+  http.post(`${API}/api/db-admin/tables/:schema/:name/batch-mutate`, async ({ params, request }) => {
+    const t = findTable(String(params.schema), String(params.name));
+    if (!t) return HttpResponse.json({ code: 404, message: '表不存在', data: null }, { status: 404 });
+    const body = await request.json() as { updates: Array<{ pk: Record<string, unknown>; changes: Record<string, unknown> }> };
+    const updates = Array.isArray(body.updates) ? body.updates : [];
+    const targets: Array<{ row: Record<string, unknown>; changes: Record<string, unknown> }> = [];
+    for (const [i, u] of updates.entries()) {
+      const row = t.rows.find((r) => Object.entries(u.pk).every(([k, v]) => String(r[k]) === String(v)));
+      if (!row) {
+        return HttpResponse.json(
+          { code: 404, message: `第 ${i + 1} 条更新未命中记录（可能已被删除或主键变更），已回滚全部变更`, data: null },
+          { status: 404 },
+        );
+      }
+      targets.push({ row, changes: u.changes });
+    }
+    for (const { row, changes } of targets) Object.assign(row, changes);
+    return ok({ updated: targets.length });
   }),
 
   // 删除行

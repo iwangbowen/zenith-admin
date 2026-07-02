@@ -16,6 +16,8 @@ export interface DataGridColumn {
   pinned?: boolean;
   /** 列注释（表头 tooltip） */
   comment?: string | null;
+  /** 枚举列取值（渲染下拉编辑器） */
+  enumValues?: string[] | null;
 }
 
 /** 单元格坐标（均为可见坐标系：row = 行下标，col = 可见列下标） */
@@ -77,6 +79,14 @@ export interface DataGridHandle {
   scrollToTop: () => void;
   /** 复制当前选区为 TSV（返回是否成功） */
   copySelection: () => Promise<boolean>;
+  /** 导出内联编辑暂存变更（batch-mutate / SQL 预览用） */
+  getPendingUpdates: () => Array<{ pk: Record<string, unknown>; changes: Record<string, unknown>; originals: Record<string, unknown> }>;
+  /** 放弃所有暂存变更 */
+  discardPending: () => void;
+  /** 程序化暂存一个单元格值（右键「设为 NULL」等） */
+  stageCellValue: (rowIndex: number, columnName: string, value: unknown) => void;
+  /** 应用暂存后的有效行数据（右键菜单复制等场景使用） */
+  getEffectiveRows: () => Array<Record<string, unknown>>;
 }
 
 export interface DataGridProps {
@@ -105,6 +115,12 @@ export interface DataGridProps {
   onFkClick?: (columnName: string, value: unknown, rowIndex: number) => void;
   /** 行选择变化（供批量操作条） */
   onSelectedRowsChange?: (rows: Set<number>) => void;
+  /** 启用内联编辑（需存在主键列；PK 列默认只读） */
+  editable?: boolean;
+  /** 覆盖默认的列可编辑判断（默认：非主键列可编辑） */
+  isColumnEditable?: (col: DataGridColumn) => boolean;
+  /** 暂存变更单元格数变化（供保存操作条） */
+  onPendingCountChange?: (count: number) => void;
   /** 行高，默认 32 */
   rowHeight?: number;
   /** 列宽 / 列隐藏持久化 key（localStorage） */

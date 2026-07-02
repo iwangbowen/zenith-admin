@@ -22,3 +22,18 @@ export {
   writeClipboard,
 } from './clipboard-format';
 export type { SnapshotSerializeContext } from './clipboard-format';
+export {
+  coerceCellInput,
+  editorTextForValue,
+  normalizeSmartQuotes,
+  valuesEqual,
+} from './cell-coercion';
+export type { CoercionResult } from './cell-coercion';
+export {
+  pendingCellCount,
+  pendingToUpdates,
+  pkKeyOf,
+  pkOfRow,
+  stagePendingCell,
+} from './useGridEditor';
+export type { PendingMap, PendingRowChange, PendingUpdateItem } from './useGridEditor';
