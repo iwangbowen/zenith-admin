@@ -149,7 +149,7 @@ export default function TaskCenterPage() {
   const [itemsTotal, setItemsTotal] = useState(0);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemStatusFilter, setItemStatusFilter] = useState('');
-  const { page: itemsPage, pageSize: itemsPageSize, setPage: setItemsPage, buildPagination: buildItemsPagination } = usePagination(10);
+  const { pageSize: itemsPageSize, setPage: setItemsPage, buildPagination: buildItemsPagination } = usePagination(10);
 
   // 类型策略弹窗
   const [configType, setConfigType] = useState<AsyncTaskTypeMeta | null>(null);

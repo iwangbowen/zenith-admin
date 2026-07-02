@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { AsyncTaskItemStatus, AsyncTaskStats, AsyncTaskStatus } from '@zenith/shared';
 import { db } from '../db';
@@ -42,20 +42,21 @@ function buildConditions(query: ListAsyncTasksQuery): SQL[] {
     const kw = `%${escapeLike(query.keyword)}%`;
     conditions.push(or(ilike(asyncTasks.title, kw), ilike(asyncTasks.taskType, kw))!);
   }
-  if (query.createdBy) {
-    const kw = `%${escapeLike(query.createdBy)}%`;
-    conditions.push(exists(
-      db.select({ one: sql`1` }).from(users).where(and(
-        eq(users.id, asyncTasks.createdBy),
-        or(ilike(users.username, kw), ilike(users.nickname, kw)),
-      )),
-    ));
-  }
   const startTime = parseDateTimeInput(query.startTime);
   const endTime = parseDateTimeInput(query.endTime);
   if (startTime) conditions.push(gte(asyncTasks.createdAt, startTime));
   if (endTime) conditions.push(lte(asyncTasks.createdAt, endTime));
   return conditions;
+}
+
+/** 提交人筛选：先按用户名/昵称匹配用户，再按 createdBy 过滤；无匹配返回 null（调用方直接返回空列表） */
+async function creatorCondition(createdBy: string): Promise<SQL | null> {
+  const kw = `%${escapeLike(createdBy)}%`;
+  const matched = await db.select({ id: users.id }).from(users)
+    .where(or(ilike(users.username, kw), ilike(users.nickname, kw)))
+    .limit(500);
+  if (matched.length === 0) return null;
+  return inArray(asyncTasks.createdBy, matched.map((row) => row.id));
 }
 
 async function queryTasks(conditions: SQL[], page: number, pageSize: number) {
@@ -77,7 +78,13 @@ async function queryTasks(conditions: SQL[], page: number, pageSize: number) {
 export async function listAsyncTasks(query: ListAsyncTasksQuery) {
   const page = Number(query.page ?? 1);
   const pageSize = Number(query.pageSize ?? 10);
-  return queryTasks(buildConditions(query), page, pageSize);
+  const conditions = buildConditions(query);
+  if (query.createdBy) {
+    const cond = await creatorCondition(query.createdBy);
+    if (!cond) return { list: [], total: 0, page, pageSize };
+    conditions.push(cond);
+  }
+  return queryTasks(conditions, page, pageSize);
 }
 
 /** 当前用户自己的任务列表（业务页面进度展示） */
