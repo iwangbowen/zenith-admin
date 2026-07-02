@@ -1394,6 +1394,13 @@
       "when": 1782895258591,
       "tag": "0198_gigantic_misty_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1782996817981,
+      "tag": "0199_illegal_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

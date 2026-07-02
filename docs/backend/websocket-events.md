@@ -105,6 +105,12 @@ WebRTC 通话（1v1 语音 / 视频、群语音、屏幕共享）的信令复用
 | `payment:success` | 支付事件总线收到 `payment.succeeded` | 支付用户 | `{ orderNo, bizType, bizId, amount }` |
 | `payment:refunded` | 支付事件总线收到 `refund.succeeded` | 支付用户 | `{ orderNo, refundNo, refundAmount }` |
 
+### 任务中心（task）
+
+| 事件 | 触发场景 | 推送范围 | Payload |
+| --- | --- | --- | --- |
+| `task:progress` | 异步任务状态或进度变更（领取执行、progress 上报、成功/失败/取消，进度上报有 300ms 节流） | 任务创建者 | `AsyncTask` |
+
 ### Web 终端（terminal）
 
 Web 终端不走 `/api/ws` 主连接，而是使用独立端点：

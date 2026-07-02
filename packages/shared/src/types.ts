@@ -1478,6 +1478,44 @@ export interface RtcConfig {
 }
 
 // ─── WebSocket 消息类型 ──────────────────────────────────────────────────────
+// ─── 任务中心（通用异步任务）────────────────────────────────────────────
+export type AsyncTaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+
+export interface AsyncTask {
+  id: number;
+  taskType: string;
+  title: string;
+  module: string | null;
+  status: AsyncTaskStatus;
+  payload: Record<string, unknown>;
+  /** 总量；不可枚举的任务为 null（前端显示不定进度条） */
+  totalCount: number | null;
+  processedCount: number;
+  failedCount: number;
+  progressNote: string | null;
+  result: Record<string, unknown> | null;
+  errorMessage: string | null;
+  cancelRequested: boolean;
+  attempts: number;
+  createdBy: number | null;
+  createdByName: string | null;
+  tenantId: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 任务类型元信息（注册表） */
+export interface AsyncTaskTypeMeta {
+  taskType: string;
+  title: string;
+  module: string;
+  description: string | null;
+  /** false：同一用户存在未结束任务时禁止重复提交 */
+  allowConcurrent: boolean;
+}
+
 export type WsMessage =
   | { type: 'announcement:new'; payload: Announcement }
   | { type: 'announcement:updated'; payload: Announcement }
@@ -1522,6 +1560,7 @@ export type WsMessage =
   | { type: 'payment:failed'; payload: { orderNo: string; bizType: string; bizId: string } }
   | { type: 'payment:refunded'; payload: { orderNo: string; refundNo: string; refundAmount: number } }
   | { type: 'payment:refund-failed'; payload: { orderNo: string; refundNo: string; refundAmount: number } }
+  | { type: 'task:progress'; payload: AsyncTask }
   | { type: 'mp-kf:session-new'; payload: MpKfSession }
   | { type: 'mp-kf:session-update'; payload: MpKfSession }
   | { type: 'mp-kf:session-message'; payload: { sessionId: number; accountId: number; openid: string; direction: MpMessageDirection; msgType: MpMessageType; content: string | null; createdAt: string } };

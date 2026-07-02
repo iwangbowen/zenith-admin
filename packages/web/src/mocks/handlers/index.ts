@@ -12,6 +12,7 @@ import { identityProvidersHandlers } from './identity-providers';
 import { announcementsHandlers } from './announcements';
 import { filesHandlers } from './files';
 import { exportJobsHandlers } from './export-jobs';
+import { asyncTasksHandlers } from './async-tasks';
 import { systemSchedulerHandlers } from './system-scheduler';
 import { cronJobsHandlers } from './cron-jobs';
 import { monitorHandlers } from './monitor';
@@ -120,6 +121,7 @@ export const handlers = [
   ...announcementsHandlers,
   ...filesHandlers,
   ...exportJobsHandlers,
+  ...asyncTasksHandlers,
   ...systemSchedulerHandlers,
   ...cronJobsHandlers,
   ...monitorHandlers,

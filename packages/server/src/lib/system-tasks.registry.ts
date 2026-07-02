@@ -119,4 +119,31 @@ export async function registerSystemTasks(): Promise<void> {
     allowManualRun: true,
     run: runWorkflowEngineHealthCapture,
   });
+
+  const { registerAsyncTaskWorker, drainAsyncTasks, cleanupAsyncTasks } = await import('./task-center');
+  await registerAsyncTaskWorker();
+  await registerSystemRecurringJob({
+    name: 'async-tasks-drain',
+    title: '异步任务兜底扫描',
+    module: '任务中心',
+    cronExpression: '* * * * *',
+    description: '每分钟回收心跳超时的卡死任务（崩溃/重启恢复，从断点续跑），并重投长时间未被领取的待执行任务。',
+    allowManualRun: true,
+    run: async () => {
+      const r = await drainAsyncTasks();
+      return `异步任务兜底：回收卡死 ${r.recovered}，重投待执行 ${r.redispatched}`;
+    },
+  });
+  await registerSystemRecurringJob({
+    name: 'async-tasks-cleanup',
+    title: '异步任务记录清理',
+    module: '任务中心',
+    cronExpression: '30 3 * * *',
+    description: '每天清理超过 30 天保留期的已结束任务记录（成功/失败/已取消）。',
+    allowManualRun: true,
+    run: async () => {
+      const cleaned = await cleanupAsyncTasks();
+      return `清理了 ${cleaned} 条已结束任务记录`;
+    },
+  });
 }

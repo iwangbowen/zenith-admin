@@ -13,6 +13,7 @@ export const exportJobFormatEnum = pgEnum('export_job_format', ['xlsx', 'csv']);
 export const exportJobStatusEnum = pgEnum('export_job_status', ['pending', 'running', 'success', 'failed', 'cancelled', 'expired']);
 export const exportJobExecutionModeEnum = pgEnum('export_job_execution_mode', ['sync', 'async']);
 export const exportJobDeleteReasonEnum = pgEnum('export_job_delete_reason', ['expired', 'manual', 'file_missing']);
+export const asyncTaskStatusEnum = pgEnum('async_task_status', ['pending', 'running', 'success', 'failed', 'cancelled']);
 export const systemSchedulerTaskTypeEnum = pgEnum('system_scheduler_task_type', ['recurring', 'queue']);
 export const systemSchedulerRunStatusEnum = pgEnum('system_scheduler_run_status', ['running', 'success', 'failed']);
 export const systemSchedulerTriggerTypeEnum = pgEnum('system_scheduler_trigger_type', ['schedule', 'manual', 'queue']);
@@ -454,6 +455,48 @@ export const exportJobs = pgTable('export_jobs', {
 
 export type ExportJobRow = typeof exportJobs.$inferSelect;
 export type NewExportJob = typeof exportJobs.$inferInsert;
+
+// ─── 任务中心（通用异步任务）────────────────────────────────────────────────────
+export const asyncTasks = pgTable('async_tasks', {
+  id: serial('id').primaryKey(),
+  /** 任务类型标识，对应 lib/task-center 注册表中的 handler */
+  taskType: varchar('task_type', { length: 64 }).notNull(),
+  title: varchar('title', { length: 128 }).notNull(),
+  status: asyncTaskStatusEnum('status').notNull().default('pending'),
+  /** 任务入参（handler 自定义结构） */
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  /** 总量；不可枚举的任务为 null（前端显示不定进度） */
+  totalCount: integer('total_count'),
+  processedCount: integer('processed_count').notNull().default(0),
+  failedCount: integer('failed_count').notNull().default(0),
+  /** 当前进度说明（如「已处理 30/100 条」「阶段 2/3：汇总统计」） */
+  progressNote: varchar('progress_note', { length: 256 }),
+  /** 断点状态（handler 自定义结构），中断恢复时从这里续跑 */
+  checkpoint: jsonb('checkpoint').$type<Record<string, unknown>>(),
+  /** 任务产出（handler 自定义结构） */
+  result: jsonb('result').$type<Record<string, unknown>>(),
+  errorMessage: text('error_message'),
+  /** 协作式取消标记：running 任务由 handler 在处理间隙检查 */
+  cancelRequested: boolean('cancel_requested').notNull().default(false),
+  /** 已领取执行次数（断点恢复不清零，重新开始清零） */
+  attempts: integer('attempts').notNull().default(0),
+  /** 执行心跳（progress 更新时刷新），兜底扫描据此回收卡死任务 */
+  heartbeatAt: timestamp('heartbeat_at'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('async_tasks_type_idx').on(t.taskType),
+  index('async_tasks_status_idx').on(t.status),
+  index('async_tasks_created_by_idx').on(t.createdBy),
+  index('async_tasks_created_at_idx').on(t.createdAt),
+]);
+
+export type AsyncTaskRow = typeof asyncTasks.$inferSelect;
+export type NewAsyncTask = typeof asyncTasks.$inferInsert;
 
 export const exportJobDownloads = pgTable('export_job_downloads', {
   id: serial('id').primaryKey(),
@@ -3328,6 +3371,11 @@ export const exportJobDownloadsRelations = relations(exportJobDownloads, ({ one 
   job: one(exportJobs, { fields: [exportJobDownloads.jobId], references: [exportJobs.id] }),
   user: one(users, { fields: [exportJobDownloads.downloadedBy], references: [users.id] }),
   tenant: one(tenants, { fields: [exportJobDownloads.tenantId], references: [tenants.id] }),
+}));
+
+export const asyncTasksRelations = relations(asyncTasks, ({ one }) => ({
+  tenant: one(tenants, { fields: [asyncTasks.tenantId], references: [tenants.id] }),
+  createdByUser: one(users, { fields: [asyncTasks.createdBy], references: [users.id] }),
 }));
 
 export const cronJobsRelations = relations(cronJobs, ({ many }) => ({

@@ -97,6 +97,8 @@ import workflowFormsRoutes from './routes/workflow-forms';
 import workflowInstancesRoutes from './routes/workflow-instances';
 import bizLeaveRoutes from './routes/biz-leave';
 import bizPayDemoRoutes from './routes/biz-pay-demo';
+import asyncTasksRoutes from './routes/async-tasks';
+import taskDemoRoutes, { registerTaskDemoHandlers } from './routes/task-demo';
 import workflowAutomationsRoutes from './routes/workflow-automations';
 import workflowSchedulesRoutes from './routes/workflow-schedules';
 import workflowDataSourcesRoutes from './routes/workflow-data-sources';
@@ -351,6 +353,7 @@ app.route('/api/file-storage-configs', fileStorageConfigsRoutes);
 app.route('/api/files', filesRoutes);
 app.route('/api/business-files', businessFilesRoutes);
 app.route('/api/export-jobs', exportJobsRoutes);
+app.route('/api/async-tasks', asyncTasksRoutes);
 app.route('/api/system-scheduler', systemSchedulerRoutes);
 app.route('/api/monitor', monitorRoutes);
 app.route('/api/monitor-alerts', monitorAlertsRoutes);
@@ -428,6 +431,7 @@ app.route('/api/public/mp/oauth', mpOAuthPublicRoutes);
 app.route('/api/workflows', workflowInstancesRoutes);
 app.route('/api/biz/leaves', bizLeaveRoutes);
 app.route('/api/biz/pay-demos', bizPayDemoRoutes);
+app.route('/api/task-demo', taskDemoRoutes);
 app.route('/api/chat', chatRoutes);
 app.route('/api/channels', channelsRoutes);
 app.route('/api/chat-bots', chatBotsRoutes);
@@ -565,6 +569,7 @@ try {
   await initCronScheduler();
   const { registerExportJobWorker } = await import('./services/export-jobs.service');
   const { registerSystemTasks } = await import('./lib/system-tasks.registry');
+  registerTaskDemoHandlers(); // 演示任务类型需在任务中心 Worker 启动前注册
   await registerExportJobWorker();
   await registerSystemTasks();
 } catch (err) {

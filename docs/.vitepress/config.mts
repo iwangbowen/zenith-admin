@@ -41,6 +41,7 @@ export default defineConfig({
         items: [
           { text: '后端 API 规范', link: '/backend/api-conventions' },
           { text: '导出中心', link: '/backend/export-center' },
+          { text: '任务中心', link: '/backend/task-center' },
           { text: '前端 UI 规范', link: '/frontend/ui-conventions' },
           { text: 'AI 辅助开发', link: '/ai/' },
         ],
@@ -112,6 +113,7 @@ export default defineConfig({
         items: [
           { text: 'API 规范', link: '/backend/api-conventions' },
           { text: '导出中心', link: '/backend/export-center' },
+          { text: '任务中心', link: '/backend/task-center' },
           { text: '请求上下文与当前用户', link: '/backend/request-context' },
           { text: '数据库与迁移', link: '/backend/database' },
           { text: '数据库事务', link: '/backend/database-transactions' },
