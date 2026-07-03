@@ -422,25 +422,56 @@ export const dbAdminHandlers = [
     return ok(target);
   }),
 
-  // 批量更新行（事务语义：mock 中先全量校验再统一应用）
+  // 批量变更行（事务语义：mock 中先全量校验再统一应用，顺序 INSERT → UPDATE → DELETE）
   http.post(`${API}/api/db-admin/tables/:schema/:name/batch-mutate`, async ({ params, request }) => {
     const t = findTable(String(params.schema), String(params.name));
     if (!t) return HttpResponse.json({ code: 404, message: '表不存在', data: null }, { status: 404 });
-    const body = await request.json() as { updates: Array<{ pk: Record<string, unknown>; changes: Record<string, unknown> }> };
+    const body = await request.json() as {
+      inserts?: Array<Record<string, unknown>>;
+      updates?: Array<{ pk: Record<string, unknown>; changes: Record<string, unknown> }>;
+      deletes?: Array<{ pk: Record<string, unknown> }>;
+    };
+    const inserts = Array.isArray(body.inserts) ? body.inserts : [];
     const updates = Array.isArray(body.updates) ? body.updates : [];
-    const targets: Array<{ row: Record<string, unknown>; changes: Record<string, unknown> }> = [];
+    const deletes = Array.isArray(body.deletes) ? body.deletes : [];
+    const matchPk = (r: Record<string, unknown>, pk: Record<string, unknown>) =>
+      Object.entries(pk).every(([k, v]) => String(r[k]) === String(v));
+
+    const updateTargets: Array<{ row: Record<string, unknown>; changes: Record<string, unknown> }> = [];
     for (const [i, u] of updates.entries()) {
-      const row = t.rows.find((r) => Object.entries(u.pk).every(([k, v]) => String(r[k]) === String(v)));
+      const row = t.rows.find((r) => matchPk(r, u.pk));
       if (!row) {
         return HttpResponse.json(
           { code: 404, message: `第 ${i + 1} 条更新未命中记录（可能已被删除或主键变更），已回滚全部变更`, data: null },
           { status: 404 },
         );
       }
-      targets.push({ row, changes: u.changes });
+      updateTargets.push({ row, changes: u.changes });
     }
-    for (const { row, changes } of targets) Object.assign(row, changes);
-    return ok({ updated: targets.length });
+    const deleteIdxs: number[] = [];
+    for (const [i, d] of deletes.entries()) {
+      const idx = t.rows.findIndex((r) => matchPk(r, d.pk));
+      if (idx === -1) {
+        return HttpResponse.json(
+          { code: 404, message: `第 ${i + 1} 条删除未命中记录（可能已被删除），已回滚全部变更`, data: null },
+          { status: 404 },
+        );
+      }
+      deleteIdxs.push(idx);
+    }
+
+    const pkCol = t.columns.find((c) => c.isPrimaryKey)?.name;
+    for (const values of inserts) {
+      const row: Record<string, unknown> = { ...values };
+      if (pkCol && (row[pkCol] === undefined || row[pkCol] === null)) {
+        const maxId = t.rows.reduce((m, r) => Math.max(m, Number(r[pkCol]) || 0), 0);
+        row[pkCol] = maxId + 1;
+      }
+      t.rows.push(row);
+    }
+    for (const { row, changes } of updateTargets) Object.assign(row, changes);
+    for (const idx of deleteIdxs.sort((a, b) => b - a)) t.rows.splice(idx, 1);
+    return ok({ inserted: inserts.length, updated: updateTargets.length, deleted: deleteIdxs.length });
   }),
 
   // 删除行

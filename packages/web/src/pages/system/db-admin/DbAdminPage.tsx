@@ -52,7 +52,7 @@ import { formatDateTime } from '@/utils/date';
 import { RowEditModal } from './RowEditModal';
 import { ErDiagram, type ErSchema } from './ErDiagram';
 import MonacoEditor from '@monaco-editor/react';
-import { buildInsertSql, buildUpdateSql, generateCreateTableDdl } from './sql-format';
+import { buildDeleteSql, buildInsertSql, buildUpdateSql, generateCreateTableDdl } from './sql-format';
 import { OverviewPanel, KindTag } from './OverviewPanel';
 import { SqlConsole, type SqlConsoleHandle } from './SqlConsole';
 import { OpsPanel } from './OpsPanel';
@@ -166,8 +166,6 @@ export default function DbAdminPage() {
   const [rowsSearch, setRowsSearch] = useState('');
   const [rowsSearchInput, setRowsSearchInput] = useState('');
   const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set());
-  const [batchDeleting, setBatchDeleting] = useState(false);
-
   // 数据网格
   const gridRef = useRef<DataGridHandle | null>(null);
   const [gridMenu, setGridMenu] = useState<GridMenuState | null>(null);
@@ -573,31 +571,11 @@ export default function DbAdminPage() {
     void rowsData.refresh();
   }, [rowsData]);
 
-  const handleBatchDelete = useCallback(async () => {
-    if (!selected || !structure || structure.primaryKey.length === 0) return;
-    const pkCols = structure.primaryKey;
-    const targets = Array.from(selectedRowIndexes)
-      .map((i) => rowsData.rows[i])
-      .filter((r): r is Record<string, unknown> => Boolean(r));
-    if (targets.length === 0) return;
-    setBatchDeleting(true);
-    let ok = 0;
-    let fail = 0;
-    for (const row of targets) {
-      const pk: Record<string, unknown> = {};
-      for (const k of pkCols) pk[k] = row[k];
-      const res = await request.delete<{ deleted: number }>(
-        `/api/db-admin/tables/${encodeURIComponent(selected.schema)}/${encodeURIComponent(selected.name)}/rows`,
-        { pk },
-      );
-      if (res.code === 0) ok++;
-      else fail++;
-    }
-    setBatchDeleting(false);
-    if (fail === 0) Toast.success(`已删除 ${ok} 行`);
-    else Toast.warning(`删除完成：成功 ${ok}，失败 ${fail}`);
-    refreshRows();
-  }, [selected, structure, selectedRowIndexes, rowsData.rows, refreshRows]);
+  const handleBatchDelete = useCallback(() => {
+    // 暂存删除标记（红色删除线），随「保存」统一事务提交
+    gridRef.current?.stageDeleteRows(Array.from(selectedRowIndexes));
+    setSelectedRowIndexes(new Set());
+  }, [selectedRowIndexes]);
 
   const selectedRowsData = useCallback((): Array<Record<string, unknown>> => {
     return Array.from(selectedRowIndexes)
@@ -752,18 +730,35 @@ export default function DbAdminPage() {
   }, []);
 
   // ─── 内联编辑：保存 / 预览 / 放弃 ────────────────────────────────────────────
+  const [pendingCounts, setPendingCounts] = useState({ modified: 0, added: 0, deleted: 0, total: 0 });
+
+  const handleCountsChange = useCallback((counts: { modified: number; added: number; deleted: number; total: number }) => {
+    setPendingCounts(counts);
+    setPendingCount(counts.total);
+  }, []);
+
   const handleSavePending = useCallback(async () => {
     if (!selected) return;
-    const updates = gridRef.current?.getPendingUpdates() ?? [];
-    if (updates.length === 0) return;
+    const m = gridRef.current?.getMutations();
+    if (!m || (m.inserts.length + m.updates.length + m.deletes.length === 0)) return;
     setPendingSaving(true);
-    const res = await request.post<{ updated: number }>(
+    const res = await request.post<{ inserted: number; updated: number; deleted: number }>(
       `/api/db-admin/tables/${encodeURIComponent(selected.schema)}/${encodeURIComponent(selected.name)}/batch-mutate`,
-      { updates: updates.map(({ pk, changes }) => ({ pk, changes })) },
+      {
+        inserts: m.inserts.length > 0 ? m.inserts : undefined,
+        updates: m.updates.length > 0 ? m.updates.map(({ pk, changes }) => ({ pk, changes })) : undefined,
+        deletes: m.deletes.length > 0 ? m.deletes : undefined,
+      },
     );
     setPendingSaving(false);
     if (res.code === 0) {
-      Toast.success(`已保存 ${res.data?.updated ?? updates.length} 行变更`);
+      const d = res.data;
+      const parts = [
+        d?.inserted ? `新增 ${d.inserted}` : '',
+        d?.updated ? `更新 ${d.updated}` : '',
+        d?.deleted ? `删除 ${d.deleted}` : '',
+      ].filter(Boolean);
+      Toast.success(`已保存：${parts.join('，') || '完成'}`);
       gridRef.current?.discardPending();
       setSqlPreview(null);
       await rowsData.refresh();
@@ -777,9 +772,14 @@ export default function DbAdminPage() {
 
   const handleOpenSqlPreview = useCallback(() => {
     if (!selected) return;
-    const updates = gridRef.current?.getPendingUpdates() ?? [];
-    if (updates.length === 0) return;
-    const sqls = updates.map((u) => buildUpdateSql(selected.schema, selected.name, u.pk, u.changes));
+    const m = gridRef.current?.getMutations();
+    if (!m) return;
+    const sqls = [
+      ...m.inserts.map((values) => buildInsertSql(selected.schema, selected.name, values)),
+      ...m.updates.map((u) => buildUpdateSql(selected.schema, selected.name, u.pk, u.changes)),
+      ...m.deletes.map((d) => buildDeleteSql(selected.schema, selected.name, d.pk)),
+    ];
+    if (sqls.length === 0) return;
     setSqlPreview(sqls.join('\n'));
   }, [selected]);
 
@@ -787,9 +787,15 @@ export default function DbAdminPage() {
     gridRef.current?.stageCellValue(rowIndex, columnName, null);
   }, []);
 
+  const pendingBarText = [
+    pendingCounts.added > 0 ? `新增 ${pendingCounts.added} 行` : '',
+    pendingCounts.modified > 0 ? `修改 ${pendingCounts.modified} 格` : '',
+    pendingCounts.deleted > 0 ? `删除 ${pendingCounts.deleted} 行` : '',
+  ].filter(Boolean).join(' · ');
+
   const pendingBar = pendingCount > 0 ? (
     <Space spacing={4}>
-      <Text type="warning" size="small" strong>{pendingCount} 处修改</Text>
+      <Text type="warning" size="small" strong>{pendingBarText}</Text>
       <Button size="small" theme="borderless" onClick={handleOpenSqlPreview}>预览 SQL</Button>
       <Button size="small" theme="solid" type="primary" loading={pendingSaving} onClick={() => void handleSavePending()}>保存</Button>
       <Button size="small" theme="borderless" onClick={handleDiscardPending}>放弃</Button>
@@ -798,32 +804,9 @@ export default function DbAdminPage() {
 
   const handleGridDeleteRows = useCallback((rowIndexes: number[]) => {
     if (!canEditRows) return;
-    Modal.confirm({
-      title: `确定要删除选中的 ${rowIndexes.length} 行吗？`,
-      content: '此操作不可恢复',
-      okButtonProps: { type: 'danger', theme: 'solid' },
-      onOk: async () => {
-        if (!selected || !structure) return;
-        let ok = 0;
-        let fail = 0;
-        for (const idx of rowIndexes) {
-          const row = rowsData.rows[idx];
-          if (!row) continue;
-          const pk: Record<string, unknown> = {};
-          for (const k of structure.primaryKey) pk[k] = row[k];
-          const res = await request.delete<{ deleted: number }>(
-            `/api/db-admin/tables/${encodeURIComponent(selected.schema)}/${encodeURIComponent(selected.name)}/rows`,
-            { pk },
-          );
-          if (res.code === 0) ok++;
-          else fail++;
-        }
-        if (fail === 0) Toast.success(`已删除 ${ok} 行`);
-        else Toast.warning(`删除完成：成功 ${ok}，失败 ${fail}`);
-        refreshRows();
-      },
-    });
-  }, [canEditRows, selected, structure, rowsData.rows, refreshRows]);
+    // 暂存删除标记（红色删除线），随「保存」统一事务提交，可撤销
+    gridRef.current?.stageDeleteRows(rowIndexes);
+  }, [canEditRows]);
 
   /** 可见列顺序（pinned 优先，与 DataGrid 内部一致），供菜单/详情按 col 下标取列 */
   const orderedGridColumns = useMemo(() => {
@@ -1070,7 +1053,11 @@ export default function DbAdminPage() {
                                 theme="solid"
                                 type="primary"
                                 icon={<Plus size={14} />}
-                                onClick={openCreateRow}
+                                onClick={() => {
+                                  // 有主键走内联新增（绿色草稿行）；无主键回退表单弹窗
+                                  if (canEditRows) gridRef.current?.addNewRow();
+                                  else openCreateRow();
+                                }}
                                 disabled={!structure}
                               >新增行</Button>
                             )}
@@ -1092,12 +1079,13 @@ export default function DbAdminPage() {
                             <Text size="small">已选 <Text strong>{selectedRowIndexes.size}</Text> 行</Text>
                             <Space>
                               {canEditRows && (
-                                <Popconfirm
-                                  title={`确认删除选中的 ${selectedRowIndexes.size} 行？`}
-                                  onConfirm={() => void handleBatchDelete()}
-                                >
-                                  <Button size="small" type="danger" theme="solid" loading={batchDeleting} icon={<Trash2 size={14} />}>批量删除</Button>
-                                </Popconfirm>
+                                <Button
+                                  size="small"
+                                  type="danger"
+                                  theme="solid"
+                                  icon={<Trash2 size={14} />}
+                                  onClick={handleBatchDelete}
+                                >标记删除</Button>
                               )}
                               <Button size="small" icon={<Copy size={14} />} onClick={() => void handleBatchCopyInsert()}>复制为 INSERT SQL</Button>
                               {hasPrimaryKey && (
@@ -1142,7 +1130,7 @@ export default function DbAdminPage() {
                               onFkClick={handleGridFkClick}
                               onSelectedRowsChange={setSelectedRowIndexes}
                               editable={canEditRows}
-                              onPendingCountChange={setPendingCount}
+                              onPendingCountChange={handleCountsChange}
                               statusExtra={pendingBar}
                               storageKey={selected ? `db-admin:grid:${selected.schema}.${selected.name}` : undefined}
                               emptyText="无数据"

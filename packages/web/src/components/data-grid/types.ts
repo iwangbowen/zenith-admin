@@ -79,14 +79,27 @@ export interface DataGridHandle {
   scrollToTop: () => void;
   /** 复制当前选区为 TSV（返回是否成功） */
   copySelection: () => Promise<boolean>;
-  /** 导出内联编辑暂存变更（batch-mutate / SQL 预览用） */
-  getPendingUpdates: () => Array<{ pk: Record<string, unknown>; changes: Record<string, unknown>; originals: Record<string, unknown> }>;
+  /** 导出内联编辑暂存变更集（batch-mutate / SQL 预览用） */
+  getMutations: () => {
+    inserts: Array<Record<string, unknown>>;
+    updates: Array<{ pk: Record<string, unknown>; changes: Record<string, unknown>; originals: Record<string, unknown> }>;
+    deletes: Array<{ pk: Record<string, unknown> }>;
+  };
   /** 放弃所有暂存变更 */
   discardPending: () => void;
-  /** 程序化暂存一个单元格值（右键「设为 NULL」等） */
+  /** 程序化暂存一个单元格值（右键「设为 NULL」等）；rowIndex 支持新增行区间 */
   stageCellValue: (rowIndex: number, columnName: string, value: unknown) => void;
-  /** 应用暂存后的有效行数据（右键菜单复制等场景使用） */
+  /** 应用暂存后的有效行数据（含新增行拼接在尾部） */
   getEffectiveRows: () => Array<Record<string, unknown>>;
+  /** 追加一个新增行草稿并进入编辑（返回其行下标） */
+  addNewRow: (initial?: Record<string, unknown>) => number;
+  /** 标记删除（已有行）或移除（新增行草稿）指定行 */
+  stageDeleteRows: (rowIndexes: number[]) => void;
+  /** 取消删除标记 */
+  unstageDeleteRows: (rowIndexes: number[]) => void;
+  /** 撤销 / 重做暂存变更 */
+  undo: () => boolean;
+  redo: () => boolean;
 }
 
 export interface DataGridProps {
@@ -119,8 +132,8 @@ export interface DataGridProps {
   editable?: boolean;
   /** 覆盖默认的列可编辑判断（默认：非主键列可编辑） */
   isColumnEditable?: (col: DataGridColumn) => boolean;
-  /** 暂存变更单元格数变化（供保存操作条） */
-  onPendingCountChange?: (count: number) => void;
+  /** 暂存变更计数变化（供保存操作条）：modified=修改格数 added=新增行数 deleted=删除行数 */
+  onPendingCountChange?: (counts: { modified: number; added: number; deleted: number; total: number }) => void;
   /** 行高，默认 32 */
   rowHeight?: number;
   /** 列宽 / 列隐藏持久化 key（localStorage） */

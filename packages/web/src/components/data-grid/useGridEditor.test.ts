@@ -1,16 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EMPTY_EDITOR_STATE,
+  editorCounts,
+  editorMutations,
   pendingCellCount,
   pendingToUpdates,
   pkKeyOf,
   pkOfRow,
   stagePendingCell,
+  stateAddNewRow,
+  stateRemoveNewRows,
+  stateStageCell,
+  stateToggleDeleteRows,
+  stateUpdateNewRowCell,
+  type EditorState,
   type PendingMap,
 } from './useGridEditor';
 
 const PK = ['id'];
 const row1 = { id: 1, name: 'Alice', age: 30 };
 const row2 = { id: 2, name: 'Bob', age: 25 };
+
+function fresh(): EditorState {
+  return { pending: new Map(), newRows: [], deletedKeys: new Set() };
+}
 
 describe('stagePendingCell', () => {
   it('暂存新值并记录原值', () => {
@@ -85,5 +98,81 @@ describe('pkKeyOf', () => {
   it('复合主键序列化稳定', () => {
     expect(pkKeyOf({ a: 1, b: 'x' }, ['a', 'b'])).toBe(pkKeyOf({ b: 'x', a: 1 }, ['a', 'b']));
     expect(pkKeyOf({ a: 1 }, ['a'])).not.toBe(pkKeyOf({ a: 2 }, ['a']));
+  });
+});
+
+describe('删除标记（stateToggleDeleteRows）', () => {
+  it('标记与取消删除', () => {
+    let s = stateToggleDeleteRows(fresh(), [row1, row2], PK, true);
+    expect(s.deletedKeys.size).toBe(2);
+    s = stateToggleDeleteRows(s, [row1], PK, false);
+    expect(s.deletedKeys.size).toBe(1);
+    expect(s.deletedKeys.has(pkKeyOf({ id: 2 }, PK))).toBe(true);
+  });
+
+  it('重复标记无变化（返回原引用）', () => {
+    const s1 = stateToggleDeleteRows(fresh(), [row1], PK, true);
+    const s2 = stateToggleDeleteRows(s1, [row1], PK, true);
+    expect(s2).toBe(s1);
+  });
+});
+
+describe('新增行草稿', () => {
+  it('添加 / 编辑 / 移除', () => {
+    let s = stateAddNewRow(fresh(), 1, { name: 'init' });
+    expect(s.newRows).toHaveLength(1);
+    s = stateUpdateNewRowCell(s, 1, 'age', 20);
+    expect(s.newRows[0].values).toEqual({ name: 'init', age: 20 });
+    s = stateRemoveNewRows(s, [1]);
+    expect(s.newRows).toHaveLength(0);
+  });
+
+  it('等值更新返回原引用', () => {
+    const s1 = stateAddNewRow(fresh(), 1, { name: 'x' });
+    const s2 = stateUpdateNewRowCell(s1, 1, 'name', 'x');
+    expect(s2).toBe(s1);
+  });
+});
+
+describe('editorMutations', () => {
+  it('导出完整变更集：inserts + updates + deletes', () => {
+    let s = fresh();
+    s = stateStageCell(s, row1, PK, 'name', 'X');
+    s = stateToggleDeleteRows(s, [row2], PK, true);
+    s = stateAddNewRow(s, 1, {});
+    s = stateUpdateNewRowCell(s, 1, 'name', 'New');
+    const m = editorMutations(s, [row1, row2], PK);
+    expect(m.inserts).toEqual([{ name: 'New' }]);
+    expect(m.updates).toHaveLength(1);
+    expect(m.updates[0].changes).toEqual({ name: 'X' });
+    expect(m.deletes).toEqual([{ pk: { id: 2 } }]);
+  });
+
+  it('已标记删除的行剔除其 update 暂存', () => {
+    let s = fresh();
+    s = stateStageCell(s, row1, PK, 'name', 'X');
+    s = stateToggleDeleteRows(s, [row1], PK, true);
+    const m = editorMutations(s, [row1], PK);
+    expect(m.updates).toHaveLength(0);
+    expect(m.deletes).toEqual([{ pk: { id: 1 } }]);
+  });
+
+  it('空值新增行不导出（全 undefined 过滤）', () => {
+    let s = fresh();
+    s = stateAddNewRow(s, 1, {});
+    const m = editorMutations(s, [], PK);
+    expect(m.inserts).toHaveLength(0);
+  });
+});
+
+describe('editorCounts', () => {
+  it('分类计数', () => {
+    let s = fresh();
+    s = stateStageCell(s, row1, PK, 'name', 'X');
+    s = stateStageCell(s, row1, PK, 'age', 1);
+    s = stateToggleDeleteRows(s, [row2], PK, true);
+    s = stateAddNewRow(s, 1, {});
+    expect(editorCounts(s)).toEqual({ modified: 2, added: 1, deleted: 1, total: 4 });
+    expect(editorCounts(EMPTY_EDITOR_STATE).total).toBe(0);
   });
 });

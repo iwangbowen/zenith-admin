@@ -241,6 +241,29 @@
   pointer-events: none;
 }
 
+/* 新增行草稿（绿）与删除标记行（红 + 删除线） */
+.dg-row--new .dg-cell,
+.dg-row--new:hover .dg-cell,
+.dg-row--new .dg-rownum {
+  background-image: linear-gradient(var(--semi-color-success-light-default), var(--semi-color-success-light-default));
+}
+
+.dg-row--new .dg-rownum {
+  color: var(--semi-color-success);
+  font-weight: 700;
+}
+
+.dg-row--deleted .dg-cell,
+.dg-row--deleted:hover .dg-cell,
+.dg-row--deleted .dg-rownum {
+  background-image: linear-gradient(var(--semi-color-danger-light-default), var(--semi-color-danger-light-default));
+}
+
+.dg-row--deleted .dg-cell-text {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
 /* 编辑器面板（多行 / 日期） */
 .dg-editor-panel {
   background: var(--semi-color-bg-3);

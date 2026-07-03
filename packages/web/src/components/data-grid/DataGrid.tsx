@@ -22,6 +22,7 @@ import type {
   SelectionState,
 } from './types';
 import { columnKind, isNumericKind, shortTypeName, type CellKind } from './grid-format';
+import { coerceCellInput } from './cell-coercion';
 import { COL_MIN_WIDTH, ROW_NUMBER_WIDTH, estimateColumnWidths } from './column-width';
 import {
   EMPTY_SELECTION,
@@ -93,6 +94,8 @@ interface GridRowProps {
   selSig: string;
   /** 暂存脏列签名（\u0001 分隔的列名），变化触发重渲染 */
   dirtySig: string;
+  /** 行状态：新增行（绿）/ 删除标记行（红删除线） */
+  rowStatus: 'clean' | 'new' | 'deleted';
   selectionRef: React.RefObject<SelectionState>;
   hasDetailHandler: boolean;
   hasFkHandler: boolean;
@@ -102,7 +105,7 @@ interface GridRowProps {
 const GridRow = memo(function GridRow(props: GridRowProps) {
   const {
     rowIndex, row, columns, kinds, widths, pinnedLefts, rowHeight,
-    dirtySig, selectionRef, hasDetailHandler, hasFkHandler, cb,
+    dirtySig, rowStatus, selectionRef, hasDetailHandler, hasFkHandler, cb,
   } = props;
   const sel = selectionRef.current ?? EMPTY_SELECTION;
   const rowSelected = sel.rows.has(rowIndex);
@@ -111,9 +114,14 @@ const GridRow = memo(function GridRow(props: GridRowProps) {
     [dirtySig],
   );
 
+  let rowCls = 'dg-row';
+  if (rowIndex % 2 === 1) rowCls += ' dg-row--odd';
+  if (rowStatus === 'new') rowCls += ' dg-row--new';
+  else if (rowStatus === 'deleted') rowCls += ' dg-row--deleted';
+
   return (
     <div
-      className={`dg-row${rowIndex % 2 === 1 ? ' dg-row--odd' : ''}`}
+      className={rowCls}
       style={{ transform: `translateY(${rowIndex * rowHeight}px)`, height: rowHeight }}
       data-row={rowIndex}
     >
@@ -127,7 +135,7 @@ const GridRow = memo(function GridRow(props: GridRowProps) {
         }}
         onContextMenu={(e) => cb.rowNumContextMenu(e, rowIndex)}
       >
-        {rowIndex + 1}
+        {rowStatus === 'new' ? '+' : rowIndex + 1}
       </div>
       {columns.map((col, ci) => {
         const value = row[col.name];
@@ -139,7 +147,7 @@ const GridRow = memo(function GridRow(props: GridRowProps) {
         if (pinned) cls += ' dg-cell--pinned';
         if (selected) cls += ' dg-cell--selected';
         if (active) cls += ' dg-cell--active';
-        if (dirtyCols?.has(col.name)) cls += ' dg-cell--dirty';
+        if (rowStatus === 'clean' && dirtyCols?.has(col.name)) cls += ' dg-cell--dirty';
         return (
           <div
             key={col.name}
@@ -174,6 +182,7 @@ const GridRow = memo(function GridRow(props: GridRowProps) {
   && prev.pinnedLefts === next.pinnedLefts
   && prev.selSig === next.selSig
   && prev.dirtySig === next.dirtySig
+  && prev.rowStatus === next.rowStatus
   && prev.rowHeight === next.rowHeight
   && prev.hasDetailHandler === next.hasDetailHandler
   && prev.hasFkHandler === next.hasFkHandler
@@ -303,7 +312,7 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
     () => columns.filter((c) => c.isPrimaryKey).map((c) => c.name),
     [columns],
   );
-  const gridEditor = useGridEditor({ pkColumns, onPendingCountChange });
+  const gridEditor = useGridEditor({ pkColumns, onCountsChange: onPendingCountChange });
   const [editing, setEditing] = useState<{ pos: CellPos; initialText?: string } | null>(null);
   const editingRef = useRef(editing);
   editingRef.current = editing;
@@ -330,15 +339,29 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
     if (!isAppend) setEditing(null);
   }, [rows]);
 
-  /** 应用暂存后的有效行（干净行保持引用）：渲染与复制统一使用 */
-  const effectiveRows = useMemo(
-    () => gridEditor.effectiveRows(rows),
-    // gridEditor.pending 驱动重算
+  /** 应用暂存后的有效行（含新增行草稿拼接在尾部）：渲染 / 选区 / 复制统一坐标系 */
+  const displayRows = useMemo(() => {
+    const base = gridEditor.effectiveRows(rows);
+    if (gridEditor.state.newRows.length === 0) return base;
+    return [...base, ...gridEditor.state.newRows.map((d) => d.values)];
+    // gridEditor.state 驱动重算
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, gridEditor.pending],
-  );
-  const effectiveRowsRef = useRef(effectiveRows);
-  effectiveRowsRef.current = effectiveRows;
+  }, [rows, gridEditor.state]);
+  const displayRowsRef = useRef(displayRows);
+  displayRowsRef.current = displayRows;
+  /** 数据行数（新增行区间起点） */
+  const dataRowCount = rows.length;
+  const dataRowCountRef = useRef(dataRowCount);
+  dataRowCountRef.current = dataRowCount;
+  const totalRowCount = displayRows.length;
+
+  /** 行下标 → 新增行草稿（不在新增区间返回 undefined） */
+  const newRowAt = useCallback((rowIndex: number): { clientId: number; values: Record<string, unknown> } | undefined => {
+    const idx = rowIndex - dataRowCountRef.current;
+    return idx >= 0 ? gridEditor.state.newRows[idx] : undefined;
+  }, [gridEditor.state.newRows]);
+  const newRowAtRef = useRef(newRowAt);
+  newRowAtRef.current = newRowAt;
 
   const canEditColumn = useCallback((col: DataGridColumn | undefined): boolean => {
     if (!editable || !col || pkColumns.length === 0) return false;
@@ -348,7 +371,7 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
 
   // ── 虚拟滚动 ──
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
+    count: totalRowCount,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
     overscan: 10,
@@ -388,7 +411,7 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
       Toast.warning('选区过大，请缩小选择范围后复制');
       return false;
     }
-    const text = snapshotToTsv({ snapshot: snap, rows: effectiveRowsRef.current, columns: visibleColumns });
+    const text = snapshotToTsv({ snapshot: snap, rows: displayRowsRef.current, columns: visibleColumns });
     const ok = await writeClipboard(text);
     if (ok) Toast.success(`已复制 ${snap.cellCount} 个单元格`);
     else Toast.warning('复制失败');
@@ -398,16 +421,32 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
   // ── 编辑生命周期 ──
   const canEditColumnRef = useRef(canEditColumn);
   canEditColumnRef.current = canEditColumn;
+  const gridEditorRef = useRef(gridEditor);
+  gridEditorRef.current = gridEditor;
 
   const startEdit = useCallback((pos: CellPos, initialText?: string): boolean => {
+    if (!editable) return false;
     const col = visibleColumnsRef.current[pos.col];
-    if (!canEditColumnRef.current(col)) return false;
-    if (!rowsRef.current[pos.row]) return false;
+    if (!col) return false;
+    const isNewRow = pos.row >= dataRowCountRef.current;
+    if (isNewRow) {
+      // 新增行草稿：所有列可编辑（含主键，留空由 DB 默认值生成）
+      if (!newRowAtRef.current(pos.row)) return false;
+    } else {
+      if (!canEditColumnRef.current(col)) return false;
+      const row = rowsRef.current[pos.row];
+      if (!row) return false;
+      // 已标记删除的行不可编辑
+      if (gridEditorRef.current.isRowDeleted(row)) return false;
+    }
     ensureCellVisible(pos);
     dispatchSel({ type: 'moveTo', pos, shift: false });
     setEditing({ pos, initialText });
     return true;
-  }, [ensureCellVisible]);
+  }, [ensureCellVisible, editable]);
+
+  const totalRowCountRef = useRef(totalRowCount);
+  totalRowCountRef.current = totalRowCount;
 
   const finishEdit = useCallback((move: CommitMove) => {
     setEditing(null);
@@ -417,7 +456,7 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
     const cur = selectionRef.current.anchor;
     if (!cur) return;
     const next: CellPos = move === 'down'
-      ? { row: Math.min(cur.row + 1, rowsRef.current.length - 1), col: cur.col }
+      ? { row: Math.min(cur.row + 1, totalRowCountRef.current - 1), col: cur.col }
       : { row: cur.row, col: Math.min(cur.col + 1, visibleColCountRef.current - 1) };
     dispatchSel({ type: 'moveTo', pos: next, shift: false });
     ensureCellVisible(next);
@@ -427,11 +466,15 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
     const cur = editingRef.current;
     if (cur) {
       const col = visibleColumnsRef.current[cur.pos.col];
-      const row = rowsRef.current[cur.pos.row];
-      if (col && row) gridEditor.stageCell(row, col.name, value);
+      const draft = newRowAtRef.current(cur.pos.row);
+      if (col && draft) {
+        gridEditorRef.current.updateNewRowCell(draft.clientId, col.name, value);
+      } else if (col) {
+        const row = rowsRef.current[cur.pos.row];
+        if (row) gridEditorRef.current.stageCell(row, col.name, value);
+      }
     }
     finishEdit(move);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finishEdit]);
 
   const handleEditorCancel = useCallback(() => {
@@ -439,8 +482,8 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
   }, [finishEdit]);
 
   // ── 键盘 ──
-  const handleKeyDown = useGridKeyboard({
-    rowCount: rows.length,
+  const gridKeyDown = useGridKeyboard({
+    rowCount: totalRowCount,
     colCount: visibleColumns.length,
     state: selection,
     dispatch: dispatchSel,
@@ -454,6 +497,91 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
     isEditing: () => editingRef.current !== null,
     onStartEdit: startEdit,
   });
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // 撤销 / 重做（编辑器打开时交给编辑器）
+    if (editable && !editingRef.current && (e.ctrlKey || e.metaKey)) {
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (gridEditorRef.current.undo()) Toast.success('已撤销');
+        return;
+      }
+      if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        if (gridEditorRef.current.redo()) Toast.success('已重做');
+        return;
+      }
+    }
+    gridKeyDown(e);
+  }, [editable, gridKeyDown]);
+
+  // ── 粘贴：TSV → 选区（Excel 往返；逐格类型 coercion） ──
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (!editable || editingRef.current) return;
+    const anchor = selectionRef.current.anchor;
+    if (!anchor) return;
+    const text = e.clipboardData.getData('text/plain');
+    if (!text) return;
+    e.preventDefault();
+
+    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    if (lines.length === 0) return;
+    const matrix = lines.map((l) => l.split('\t'));
+
+    // 单格粘贴 + 多格选区 → 填充整个选区（Excel 行为）
+    let targets: CellPos[] = [];
+    const snap = buildSelectionSnapshot(selectionRef.current, visibleColCountRef.current);
+    if (matrix.length === 1 && matrix[0].length === 1 && snap.cellCount > 1) {
+      targets = snap.matrix.flat();
+    } else {
+      for (let r = 0; r < matrix.length; r++) {
+        for (let c = 0; c < matrix[r].length; c++) {
+          targets.push({ row: anchor.row + r, col: anchor.col + c });
+        }
+      }
+    }
+    if (targets.length > 5000) {
+      Toast.warning('粘贴区域过大（上限 5000 格）');
+      return;
+    }
+
+    const cols = visibleColumnsRef.current;
+    const editor = gridEditorRef.current;
+    const batch: Array<
+      { kind: 'existing'; row: Record<string, unknown>; columnName: string; value: unknown }
+      | { kind: 'new'; clientId: number; columnName: string; value: unknown }
+    > = [];
+    let skipped = 0;
+    for (const pos of targets) {
+      if (pos.row >= totalRowCountRef.current || pos.col >= cols.length) { skipped++; continue; }
+      const col = cols[pos.col];
+      const srcR = matrix.length === 1 && matrix[0].length === 1 ? 0 : pos.row - anchor.row;
+      const srcC = matrix.length === 1 && matrix[0].length === 1 ? 0 : pos.col - anchor.col;
+      const textValue = matrix[srcR]?.[srcC];
+      if (textValue === undefined) { skipped++; continue; }
+      const draft = newRowAtRef.current(pos.row);
+      if (!draft && !canEditColumnRef.current(col)) { skipped++; continue; }
+      const row = draft ? draft.values : rowsRef.current[pos.row];
+      if (!row) { skipped++; continue; }
+      if (!draft && editor.isRowDeleted(row)) { skipped++; continue; }
+      const result = coerceCellInput(textValue, {
+        kind: columnKind(col.dataType),
+        original: row[col.name],
+        nullable: col.nullable,
+      });
+      if (!result.ok) { skipped++; continue; }
+      if (draft) batch.push({ kind: 'new', clientId: draft.clientId, columnName: col.name, value: result.value });
+      else batch.push({ kind: 'existing', row: rowsRef.current[pos.row], columnName: col.name, value: result.value });
+    }
+    // 单快照提交：一次 Ctrl+Z 撤销整次粘贴
+    if (batch.length > 0) editor.stageCellsBatch(batch);
+    const staged = batch.length;
+    if (staged > 0 && skipped === 0) Toast.success(`已粘贴 ${staged} 格（暂存）`);
+    else if (staged > 0) Toast.warning(`已粘贴 ${staged} 格，跳过 ${skipped} 格（只读列 / 类型不符）`);
+    else Toast.warning('没有可粘贴的目标（检查列类型与只读限制）');
+  }, [editable]);
 
   // ── 行内回调（stable） ──
   const onOpenDetailRef = useRef(onOpenDetail);
@@ -599,18 +727,55 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
     clearSelection: () => dispatchSel({ type: 'clear' }),
     scrollToTop: () => { scrollRef.current?.scrollTo({ top: 0 }); },
     copySelection: doCopySelection,
-    getPendingUpdates: () => gridEditor.getUpdates(),
+    getMutations: () => gridEditorRef.current.getMutations(rowsRef.current),
     discardPending: () => {
-      gridEditor.discardAll();
+      gridEditorRef.current.discardAll();
       setEditing(null);
     },
     stageCellValue: (rowIndex: number, columnName: string, value: unknown) => {
+      const draft = newRowAtRef.current(rowIndex);
+      if (draft) {
+        gridEditorRef.current.updateNewRowCell(draft.clientId, columnName, value);
+        return;
+      }
       const row = rowsRef.current[rowIndex];
-      if (row) gridEditor.stageCell(row, columnName, value);
+      if (row) gridEditorRef.current.stageCell(row, columnName, value);
     },
-    getEffectiveRows: () => effectiveRowsRef.current,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [doCopySelection]);
+    getEffectiveRows: () => displayRowsRef.current,
+    addNewRow: (initial?: Record<string, unknown>) => {
+      // 新行追加在尾部：其行下标 = 数据行数 + 追加前的草稿数（state 更新前读取恰为该值）
+      const targetRow = dataRowCountRef.current + gridEditorRef.current.state.newRows.length;
+      gridEditorRef.current.addNewRow(initial ?? {});
+      requestAnimationFrame(() => {
+        const firstEditable = visibleColumnsRef.current.findIndex((c) => !c.isPrimaryKey);
+        const pos = { row: targetRow, col: Math.max(0, firstEditable) };
+        rowVirtualizer.scrollToIndex(targetRow);
+        dispatchSel({ type: 'moveTo', pos, shift: false });
+        setEditing({ pos });
+      });
+      return targetRow;
+    },
+    stageDeleteRows: (rowIndexes: number[]) => {
+      const existing: Array<Record<string, unknown>> = [];
+      const draftIds: number[] = [];
+      for (const idx of rowIndexes) {
+        const draft = newRowAtRef.current(idx);
+        if (draft) draftIds.push(draft.clientId);
+        else if (rowsRef.current[idx]) existing.push(rowsRef.current[idx]);
+      }
+      if (draftIds.length > 0) gridEditorRef.current.removeNewRows(draftIds);
+      if (existing.length > 0) gridEditorRef.current.stageDeleteRows(existing);
+      dispatchSel({ type: 'clear' });
+    },
+    unstageDeleteRows: (rowIndexes: number[]) => {
+      const existing = rowIndexes
+        .map((idx) => rowsRef.current[idx])
+        .filter((r): r is Record<string, unknown> => Boolean(r));
+      if (existing.length > 0) gridEditorRef.current.unstageDeleteRows(existing);
+    },
+    undo: () => gridEditorRef.current.undo(),
+    redo: () => gridEditorRef.current.redo(),
+  }), [doCopySelection, rowVirtualizer]);
 
   // ── 渲染 ──
   const totalWidth = pinnedTotalWidth + widths.reduce(
@@ -626,16 +791,17 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
         className="dg-scroll"
         tabIndex={0}
         role="grid"
-        aria-rowcount={totalRows ?? rows.length}
+        aria-rowcount={totalRows ?? totalRowCount}
         aria-colcount={visibleColumns.length}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
       >
         <div className="dg-header" style={{ width: totalWidth }}>
           <div
             className="dg-rownum"
             style={{ width: ROW_NUMBER_WIDTH, height: 34, cursor: 'pointer' }}
             title="全选"
-            onClick={() => dispatchSel({ type: 'selectAll', rowCount: rows.length })}
+            onClick={() => dispatchSel({ type: 'selectAll', rowCount: totalRowCount })}
           >
             #
           </div>
@@ -675,18 +841,22 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
           })}
         </div>
 
-        {rows.length === 0 && !loadingMore ? (
+        {totalRowCount === 0 && !loadingMore ? (
           <div className="dg-empty">{emptyText}</div>
         ) : (
           <div className="dg-body" style={{ height: bodyHeight, width: totalWidth }}>
             {virtualItems.map((vi) => {
-              const rawRow = rows[vi.index];
-              const dirtyCols = gridEditor.dirtyColumnsOfRow(rawRow);
+              const isNew = vi.index >= dataRowCount;
+              const rawRow = isNew ? undefined : rows[vi.index];
+              const dirtyCols = rawRow ? gridEditor.dirtyColumnsOfRow(rawRow) : undefined;
+              let rowStatus: 'clean' | 'new' | 'deleted' = 'clean';
+              if (isNew) rowStatus = 'new';
+              else if (rawRow && gridEditor.isRowDeleted(rawRow)) rowStatus = 'deleted';
               return (
                 <GridRow
                   key={vi.index}
                   rowIndex={vi.index}
-                  row={effectiveRows[vi.index]}
+                  row={displayRows[vi.index]}
                   columns={visibleColumns}
                   kinds={kinds}
                   widths={widths}
@@ -694,6 +864,7 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
                   rowHeight={rowHeight}
                   selSig={rowSelectionSignature(selection, vi.index, visibleColumns.length)}
                   dirtySig={dirtyCols ? Array.from(dirtyCols).sort((a, b) => a.localeCompare(b)).join('\u0001') : ''}
+                  rowStatus={rowStatus}
                   selectionRef={selectionRef}
                   hasDetailHandler={Boolean(onOpenDetail)}
                   hasFkHandler={Boolean(onFkClick)}
@@ -703,19 +874,18 @@ export const DataGrid = forwardRef<DataGridHandle, DataGridProps>(function DataG
             })}
             {editing && (() => {
               const col = visibleColumns[editing.pos.col];
-              const rawRow = rows[editing.pos.row];
-              if (!col || !rawRow) return null;
+              const displayRow = displayRows[editing.pos.row];
+              if (!col || !displayRow) return null;
               const pinned = pinnedLefts[editing.pos.col] !== undefined;
               const left = pinned
                 ? (scrollRef.current?.scrollLeft ?? 0) + (pinnedLefts[editing.pos.col] ?? 0)
                 : colOffsets[editing.pos.col];
-              const entryValue = effectiveRows[editing.pos.row]?.[col.name];
               return (
                 <CellEditorOverlay
                   key={`${editing.pos.row}:${col.name}`}
                   column={col}
                   kind={kinds[editing.pos.col]}
-                  value={entryValue}
+                  value={displayRow[col.name]}
                   rect={{
                     left,
                     top: editing.pos.row * rowHeight,

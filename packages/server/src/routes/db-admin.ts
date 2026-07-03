@@ -415,31 +415,38 @@ const erSchemaRoute = defineOpenAPIRoute({
 
 const batchMutateRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post', path: '/tables/{schema}/{name}/batch-mutate', tags: ['DbAdmin'], summary: '批量更新行（事务）',
+    method: 'post', path: '/tables/{schema}/{name}/batch-mutate', tags: ['DbAdmin'], summary: '批量变更行（事务：插入/更新/删除）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({
       permission: 'system:db-admin:write',
-      audit: { description: '批量更新表数据行', module: '数据库管理' },
+      audit: { description: '批量变更表数据行', module: '数据库管理' },
     })] as const,
     request: {
       params: TableNameParam,
       body: {
         content: jsonContent(z.object({
+          inserts: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
           updates: z.array(z.object({
             pk: z.record(z.string(), z.unknown()),
             changes: z.record(z.string(), z.unknown()),
-          })).min(1).max(500),
+          })).max(500).optional(),
+          deletes: z.array(z.object({
+            pk: z.record(z.string(), z.unknown()),
+          })).max(500).optional(),
         })),
         required: true,
       },
     },
-    responses: { ...commonErrorResponses, ...ok(z.object({ updated: z.number() }), '更新统计') },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.object({ inserted: z.number(), updated: z.number(), deleted: z.number() }), '变更统计'),
+    },
   }),
   handler: async (c) => {
     const { schema, name } = c.req.valid('param');
-    const { updates } = c.req.valid('json');
-    const result = await batchMutateTableRows(schema, name, updates);
-    setAuditAfterData(c, { schema, name, updated: result.updated });
+    const { inserts, updates, deletes } = c.req.valid('json');
+    const result = await batchMutateTableRows(schema, name, { inserts, updates, deletes });
+    setAuditAfterData(c, { schema, name, ...result });
     return c.json(okBody(result), 200);
   },
 });

@@ -185,7 +185,7 @@ export function GridContextMenu(props: GridContextMenuProps) {
                 onClose();
               }}
             >
-              删除行{selRowIndexes.length > 1 ? `（${selRowIndexes.length} 行）` : ''}
+              标记删除{selRowIndexes.length > 1 ? `（${selRowIndexes.length} 行）` : ''}
             </Dropdown.Item>
           </>
         )}

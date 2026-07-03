@@ -785,55 +785,100 @@ export interface BatchUpdateItem {
   changes: Record<string, unknown>;
 }
 
+export interface BatchMutations {
+  inserts?: Array<Record<string, unknown>>;
+  updates?: BatchUpdateItem[];
+  deletes?: Array<{ pk: Record<string, unknown> }>;
+}
+
 /**
- * 批量更新（事务，全部成功或全部回滚）。
- * 供内联编辑「暂存 → 统一保存」流程调用；任意一条未命中记录即整体回滚。
+ * 批量变更（单事务，全部成功或全部回滚）。
+ * 供内联编辑「暂存 → 统一保存」流程调用；执行顺序 INSERT → UPDATE → DELETE，
+ * 任意一条失败或未命中记录即整体回滚。
  */
 export async function batchMutateTableRows(
-  schema: string, name: string, updates: BatchUpdateItem[],
-): Promise<{ updated: number }> {
+  schema: string, name: string, mutations: BatchMutations,
+): Promise<{ inserted: number; updated: number; deleted: number }> {
   assertIdent(schema, 'schema');
   assertIdent(name, 'table');
   assertWritable(schema, name);
 
+  const inserts = mutations.inserts ?? [];
+  const updates = mutations.updates ?? [];
+  const deletes = mutations.deletes ?? [];
+  if (inserts.length + updates.length + deletes.length === 0) {
+    throw new HTTPException(400, { message: '没有需要执行的变更' });
+  }
+
   const struct = await getTableStructure(schema, name);
-  if (struct.primaryKey.length === 0) {
-    throw new HTTPException(400, { message: '该表没有主键，无法编辑' });
+  if ((updates.length > 0 || deletes.length > 0) && struct.primaryKey.length === 0) {
+    throw new HTTPException(400, { message: '该表没有主键，无法更新或删除' });
   }
   const colMap = new Map(struct.columns.map((c) => [c.name, c]));
   const pkCols = struct.primaryKey;
   for (const pk of pkCols) assertIdent(pk, '主键列');
 
-  // 事务前统一预校验，避免执行到一半才发现结构性错误
-  const prepared = updates.map((u, i) => {
+  // ── 事务前统一预校验，避免执行到一半才发现结构性错误 ──
+  const preparedInserts = inserts.map((values, i) => {
+    const entries = Object.entries(values).filter(([col]) => colMap.has(col));
+    if (entries.length === 0) {
+      throw new HTTPException(400, { message: `第 ${i + 1} 条插入没有有效字段` });
+    }
+    for (const [col] of entries) assertIdent(col, '列名');
+    return entries;
+  });
+
+  const preparedUpdates = updates.map((u, i) => {
     for (const pk of pkCols) {
       if (!(pk in u.pk)) {
-        throw new HTTPException(400, { message: `第 ${i + 1} 条缺少主键值：${pk}` });
+        throw new HTTPException(400, { message: `第 ${i + 1} 条更新缺少主键值：${pk}` });
       }
     }
     const changeEntries = Object.entries(u.changes).filter(
       ([col]) => colMap.has(col) && !pkCols.includes(col),
     );
     if (changeEntries.length === 0) {
-      throw new HTTPException(400, { message: `第 ${i + 1} 条没有可更新的字段` });
+      throw new HTTPException(400, { message: `第 ${i + 1} 条更新没有可更新的字段` });
     }
     for (const [col] of changeEntries) assertIdent(col, '列名');
     return { pk: u.pk, changeEntries };
   });
 
+  for (const [i, d] of deletes.entries()) {
+    for (const pk of pkCols) {
+      if (!(pk in d.pk)) {
+        throw new HTTPException(400, { message: `第 ${i + 1} 条删除缺少主键值：${pk}` });
+      }
+    }
+  }
+
   const full = sql.raw(`${quoteIdent(schema)}.${quoteIdent(name)}`);
+  const pkWheres = (pk: Record<string, unknown>) => pkCols.map(
+    (c) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(pk[c], colMap.get(c)!.dataType)}`,
+  );
+
   try {
     await db.transaction(async (tx) => {
-      for (const [i, item] of prepared.entries()) {
+      for (const [i, entries] of preparedInserts.entries()) {
+        const cols = entries.map(([c]) => sql.raw(quoteIdent(c)));
+        const vals = entries.map(([c, v]) => toBoundSql(v, colMap.get(c)!.dataType));
+        try {
+          await tx.execute(sql`
+            INSERT INTO ${full} (${sql.join(cols, sql.raw(', '))})
+            VALUES (${sql.join(vals, sql.raw(', '))})
+          `);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new HTTPException(400, { message: `第 ${i + 1} 条插入失败：${msg}` });
+        }
+      }
+      for (const [i, item] of preparedUpdates.entries()) {
         const sets = item.changeEntries.map(
           ([c, v]) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(v, colMap.get(c)!.dataType)}`,
         );
-        const wheres = pkCols.map(
-          (c) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(item.pk[c], colMap.get(c)!.dataType)}`,
-        );
         const updated = await tx.execute(sql`
           UPDATE ${full} SET ${sql.join(sets, sql.raw(', '))}
-          WHERE ${sql.join(wheres, sql.raw(' AND '))}
+          WHERE ${sql.join(pkWheres(item.pk), sql.raw(' AND '))}
           RETURNING 1
         `);
         if ((updated as unknown as Array<unknown>).length === 0) {
@@ -842,13 +887,25 @@ export async function batchMutateTableRows(
           });
         }
       }
+      for (const [i, d] of deletes.entries()) {
+        const deleted = await tx.execute(sql`
+          DELETE FROM ${full}
+          WHERE ${sql.join(pkWheres(d.pk), sql.raw(' AND '))}
+          RETURNING 1
+        `);
+        if ((deleted as unknown as Array<unknown>).length === 0) {
+          throw new HTTPException(404, {
+            message: `第 ${i + 1} 条删除未命中记录（可能已被删除），已回滚全部变更`,
+          });
+        }
+      }
     });
   } catch (err) {
     if (err instanceof HTTPException) throw err;
     const msg = err instanceof Error ? err.message : String(err);
-    throw new HTTPException(400, { message: `批量更新失败（已回滚全部变更）：${msg}` });
+    throw new HTTPException(400, { message: `批量变更失败（已回滚全部变更）：${msg}` });
   }
-  return { updated: prepared.length };
+  return { inserted: preparedInserts.length, updated: preparedUpdates.length, deleted: deletes.length };
 }
 
 export async function deleteTableRow(

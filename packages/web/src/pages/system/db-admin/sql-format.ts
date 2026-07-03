@@ -50,6 +50,20 @@ export function buildInsertSql(
   );
 }
 
+export function buildDeleteSql(
+  schema: string,
+  table: string,
+  pk: Record<string, unknown>,
+): string {
+  const whereExpr = Object.entries(pk)
+    .map(([k, v]) => quoteSqlIdent(k) + ' = ' + sqlLiteral(v))
+    .join(' AND ');
+  return (
+    'DELETE FROM ' + quoteSqlIdent(schema) + '.' + quoteSqlIdent(table) +
+    ' WHERE ' + whereExpr + ';'
+  );
+}
+
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
