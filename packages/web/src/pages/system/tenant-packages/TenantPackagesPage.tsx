@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Input,
@@ -12,14 +12,23 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, Plus, RotateCcw, Trash2 } from 'lucide-react';
-import type { TenantPackage, Menu } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { TenantPackage } from '@zenith/shared';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
+import { useMenuTree } from '@/hooks/queries/menus';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  tenantPackageKeys,
+  useAssignTenantPackageMenus,
+  useDeleteTenantPackages,
+  useSaveTenantPackage,
+  useTenantPackageDetail,
+  useTenantPackageList,
+} from '@/hooks/queries/tenant-packages';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 
@@ -33,76 +42,70 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 export default function TenantPackagesPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
+  const queryClient = useQueryClient();
 
-  const [data, setData] = useState<TenantPackage[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  // draft：搜索区输入中的条件；submitted：点击查询后实际生效的条件（进入 query key）
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+
+  const listQuery = useTenantPackageList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
   // 新增/编辑弹窗
   const [modalVisible, setModalVisible] = useState(false);
-  const [editing, setEditing] = useState<TenantPackage | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<TenantPackage | null>(null);
+  const detailQuery = useTenantPackageDetail(editingRecord?.id, modalVisible);
+  const editing = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
 
   // 分配菜单弹窗
   const [menuModalVisible, setMenuModalVisible] = useState(false);
   const [menuPackage, setMenuPackage] = useState<TenantPackage | null>(null);
-  const [allMenus, setAllMenus] = useState<Menu[]>([]);
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([]);
-  const [menuLoading, setMenuLoading] = useState(false);
+  const menuTreeQuery = useMenuTree({ enabled: menuModalVisible });
+  const menuDetailQuery = useTenantPackageDetail(menuPackage?.id, menuModalVisible);
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+  useEffect(() => {
+    if (menuModalVisible) setCheckedMenuIds(menuDetailQuery.data?.menuIds ?? []);
+  }, [menuModalVisible, menuDetailQuery.data]);
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-      }).toString();
-      const res = await request.get<{ list: TenantPackage[]; total: number }>(`/api/tenant-packages?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const saveMutation = useSaveTenantPackage();
+  const toggleStatusMutation = useSaveTenantPackage();
+  const deleteMutation = useDeleteTenantPackages();
+  const assignMenusMutation = useAssignTenantPackageMenus();
 
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    // 条件未变化时 query key 不变，显式失效以保证点击「查询」必定回源刷新
+    void queryClient.invalidateQueries({ queryKey: tenantPackageKeys.lists });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: tenantPackageKeys.lists });
   }
 
   function openCreate() {
-    setEditing(null);
+    setEditingRecord(null);
     setModalVisible(true);
   }
 
-  async function openEdit(record: TenantPackage) {
-    setEditing(record);
+  function openEdit(record: TenantPackage) {
+    setEditingRecord(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<TenantPackage>(`/api/tenant-packages/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) setEditing(res.data);
-    else Toast.error(res.message || '获取套餐信息失败');
   }
 
   const handleModalOk = async () => {
@@ -112,25 +115,15 @@ export default function TenantPackagesPage() {
     } catch {
       throw new Error('validation');
     }
-    const res = editing
-      ? await request.put(`/api/tenant-packages/${editing.id}`, values)
-      : await request.post('/api/tenant-packages', values);
-    if (res.code === 0) {
-      Toast.success(editing ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditing(null);
-      void fetchData();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/tenant-packages/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchData();
-    }
+    await deleteMutation.mutateAsync([id]);
+    Toast.success('删除成功');
   };
 
   const handleBatchDelete = () => {
@@ -139,57 +132,30 @@ export default function TenantPackagesPage() {
       content: '删除后无法恢复，已绑定该套餐的租户将解除关联。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>('/api/tenant-packages/batch', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success('批量删除成功');
-          setSelectedRowKeys([]);
-          void fetchData();
-        }
+        await deleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success('批量删除成功');
+        setSelectedRowKeys([]);
       },
     });
   };
 
-  const handleToggleStatus = useCallback(async (pkg: TenantPackage, newStatus: 'enabled' | 'disabled') => {
-    setTogglingStatusId(pkg.id);
-    try {
-      const res = await request.put(`/api/tenant-packages/${pkg.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchData();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchData]);
+  const handleToggleStatus = (pkg: TenantPackage, newStatus: 'enabled' | 'disabled') => {
+    toggleStatusMutation.mutate(
+      { id: pkg.id, values: { status: newStatus } },
+      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
+    );
+  };
 
-  const openMenuModal = async (pkg: TenantPackage) => {
+  function openMenuModal(pkg: TenantPackage) {
     setMenuPackage(pkg);
     setMenuModalVisible(true);
-    setMenuLoading(true);
-    try {
-      const [menusRes, pkgRes] = await Promise.all([
-        request.get<Menu[]>('/api/menus'),
-        request.get<TenantPackage>(`/api/tenant-packages/${pkg.id}`),
-      ]);
-      if (menusRes.code === 0) setAllMenus(menusRes.data);
-      if (pkgRes.code === 0) setCheckedMenuIds(pkgRes.data.menuIds ?? []);
-    } finally {
-      setMenuLoading(false);
-    }
-  };
+  }
 
   const handleAssignMenus = async () => {
     if (!menuPackage) return;
-    const res = await request.put(`/api/tenant-packages/${menuPackage.id}/menus`, { menuIds: checkedMenuIds });
-    if (res.code === 0) {
-      Toast.success('套餐菜单已更新');
-      setMenuModalVisible(false);
-      void fetchData();
-    } else {
-      throw new Error(res.message);
-    }
+    await assignMenusMutation.mutateAsync({ id: menuPackage.id, menuIds: checkedMenuIds });
+    Toast.success('套餐菜单已更新');
+    setMenuModalVisible(false);
   };
 
   const columns: ColumnProps<TenantPackage>[] = [
@@ -209,7 +175,7 @@ export default function TenantPackagesPage() {
           checked={v === 'enabled'}
           loading={togglingStatusId === record.id}
           disabled={!hasPermission('system:tenant-package:update')}
-          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+          onChange={(checked: boolean) => handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
         />
       ),
     },
@@ -221,13 +187,13 @@ export default function TenantPackagesPage() {
           key: 'edit',
           label: '编辑',
           hidden: !hasPermission('system:tenant-package:update'),
-          onClick: () => { void openEdit(row); },
+          onClick: () => openEdit(row),
         },
         {
           key: 'menus',
           label: '分配菜单',
           hidden: !hasPermission('system:tenant-package:assign'),
-          onClick: () => { void openMenuModal(row); },
+          onClick: () => openMenuModal(row),
         },
         {
           key: 'delete',
@@ -251,8 +217,8 @@ export default function TenantPackagesPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索套餐名称"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
       onEnterPress={handleSearch}
       style={{ width: 220, maxWidth: '100%' }}
       showClear
@@ -262,8 +228,8 @@ export default function TenantPackagesPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="请选择状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 140, maxWidth: '100%' }}
       optionList={[
         { value: '', label: '全部状态' },
@@ -317,20 +283,20 @@ export default function TenantPackagesPage() {
         columns={columns}
         dataSource={data}
         rowKey="id"
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys((keys as number[]) ?? []),
         }}
-        pagination={buildPagination(total, fetchData)}
+        pagination={buildPagination(total)}
       />
 
       <AppModal
         title={editing ? '编辑套餐' : '新增套餐'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
+        onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={520}
@@ -367,10 +333,10 @@ export default function TenantPackagesPage() {
         width={480}
       >
         <MenuPermissionPanel
-          allMenus={allMenus}
+          allMenus={menuTreeQuery.data ?? []}
           checkedMenuIds={checkedMenuIds}
           onChange={setCheckedMenuIds}
-          loading={menuLoading}
+          loading={menuTreeQuery.isFetching || menuDetailQuery.isFetching}
         />
       </AppModal>
     </div>

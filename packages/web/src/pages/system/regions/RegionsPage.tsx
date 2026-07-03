@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Form,
@@ -15,7 +16,6 @@ import { Search, Plus, RotateCcw, ChevronsDownUp, ChevronsUpDown } from 'lucide-
 import type { Region } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -23,6 +23,7 @@ import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { regionKeys, useDeleteRegion, useFlatRegions, useRegionDetail, useRegionTree, useSaveRegion } from '@/hooks/queries/regions';
 
 const LEVEL_LABELS: Record<string, string> = {
   province: '省级',
@@ -46,26 +47,35 @@ const defaultSearchParams: SearchParams = { keyword: '', status: '', level: '' }
 
 export default function RegionsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<Region[]>([]);
-  const [flatData, setFlatData] = useState<Region[]>([]);
-  const [flatLoading, setFlatLoading] = useState(false);
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRegion, setEditingRegion] = useState<Region | null>(null);
   const [editingLevel, setEditingLevel] = useState<string>('province');
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
   const [tableHeight, setTableHeight] = useState(500);
   const [tableWidth, setTableWidth] = useState(0);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
 
   const { items: statusItems } = useDictItems('common_status');
+  const treeQuery = useRegionTree({
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    level: submittedParams.level || undefined,
+  });
+  const data = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
+  const flatQuery = useFlatRegions({ enabled: modalVisible });
+  const flatData = useMemo(() => flatQuery.data ?? [], [flatQuery.data]);
+  const detailQuery = useRegionDetail(editingRegion?.id, modalVisible && !!editingRegion);
+  const activeRegion = editingRegion ? (detailQuery.data ?? editingRegion) : null;
+  const modalDetailLoading = !!editingRegion && detailQuery.isFetching;
+  const saveMutation = useSaveRegion();
+  const toggleStatusMutation = useSaveRegion();
+  const deleteMutation = useDeleteRegion();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
     const el = tableWrapperRef.current;
@@ -82,46 +92,22 @@ export default function RegionsPage() {
     return () => observer.disconnect();
   }, []);
 
-  const fetchRegions = useCallback(async (params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const queryObj: Record<string, string> = {};
-      if (activeParams.keyword) queryObj.keyword = activeParams.keyword;
-      if (activeParams.status) queryObj.status = activeParams.status;
-      if (activeParams.level) queryObj.level = activeParams.level;
-
-      const query = new URLSearchParams(queryObj).toString();
-      const res = await request.get<Region[]>(query ? `/api/regions?${query}` : '/api/regions');
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchFlatData = useCallback(async () => {
-    setFlatLoading(true);
-    try {
-      const res = await request.get<Region[]>('/api/regions/flat');
-      if (res.code === 0) setFlatData(res.data);
-    } finally {
-      setFlatLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void fetchRegions();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const detail = detailQuery.data;
+    if (!detail || !modalVisible || !editingRegion || detail.id !== editingRegion.id) return;
+    setEditingRegion(detail);
+    setEditingLevel(detail.level);
+  }, [detailQuery.data, editingRegion, modalVisible]);
 
   function handleSearch() {
-    void fetchRegions(searchParamsRef.current);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: regionKeys.trees });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
-    void fetchRegions(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: regionKeys.trees });
   }
 
   // 递归收集所有节点 ID
@@ -143,34 +129,22 @@ export default function RegionsPage() {
     setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
   }
 
-  async function openCreate() {
+  function openCreate() {
     setEditingRegion(null);
     setEditingLevel('province');
     setModalVisible(true);
-    void fetchFlatData();
   }
 
-  async function openEdit(record: Region) {
+  function openEdit(record: Region) {
     setEditingRegion(record);
     setEditingLevel(record.level);
     setModalVisible(true);
-    void fetchFlatData();
-    setModalDetailLoading(true);
-    const res = await request.get<Region>(`/api/regions/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingRegion(res.data);
-      setEditingLevel(res.data.level);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   }
 
   function closeModal() {
     setModalVisible(false);
     setEditingRegion(null);
     setEditingLevel('province');
-    setModalDetailLoading(false);
   }
 
   // 构建 Cascader 树数据：省→市 两级
@@ -204,14 +178,14 @@ export default function RegionsPage() {
     return [parentCode];
   }
 
-  const formInitValues = editingRegion
+  const formInitValues = activeRegion
     ? {
-        code: editingRegion.code,
-        name: editingRegion.name,
-        level: editingRegion.level,
-        parentCode: buildCascaderPath(editingRegion.parentCode),
-        sort: editingRegion.sort,
-        status: editingRegion.status,
+        code: activeRegion.code,
+        name: activeRegion.name,
+        level: activeRegion.level,
+        parentCode: buildCascaderPath(activeRegion.parentCode),
+        sort: activeRegion.sort,
+        status: activeRegion.status,
       }
     : { level: 'province', sort: 0, status: 'enabled' };
 
@@ -230,25 +204,14 @@ export default function RegionsPage() {
       parentCode: values.level === 'province' ? null : (parentCodeArr.at(-1) ?? null),
     };
 
-    const res = editingRegion
-      ? await request.put(`/api/regions/${editingRegion.id}`, payload)
-      : await request.post('/api/regions', payload);
-
-    if (res.code === 0) {
-      Toast.success(editingRegion ? '更新成功' : '创建成功');
-      closeModal();
-      void fetchRegions();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingRegion?.id, values: payload });
+    Toast.success(editingRegion ? '更新成功' : '创建成功');
+    closeModal();
   }
 
   async function handleDelete(id: number) {
-    const res = await request.delete(`/api/regions/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchRegions();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   }
 
   const handleToggleStatus = useCallback(async (region: Region, newStatus: 'enabled' | 'disabled') => {
@@ -265,19 +228,11 @@ export default function RegionsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(region.id);
-    try {
-      const res = await request.put(`/api/regions/${region.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchRegions();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchRegions]);
+    toggleStatusMutation.mutate(
+      { id: region.id, values: { status: newStatus } },
+      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
+    );
+  }, [toggleStatusMutation]);
 
   const FIXED_COLS_WIDTH = 140 + 90 + 120 + 70 + 180 + 90 + 160; // 其他列总宽
   // 地区名列宽度：不动态自适应容器，保持固定最小宽度，这样内容宽度 (total) 能超出容器，使 fixed:right 生效
@@ -362,8 +317,8 @@ export default function RegionsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索名称或代码..."
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((p) => ({ ...p, keyword: v }))}
       showClear
       style={{ width: 220, maxWidth: '100%' }}
       onEnterPress={handleSearch}
@@ -373,8 +328,8 @@ export default function RegionsPage() {
   const renderLevelFilter = () => (
     <Select
       placeholder="全部级别"
-      value={searchParams.level || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, level: (v as string) ?? '' }))}
+      value={draftParams.level || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, level: (v as string) ?? '' }))}
       showClear
       style={{ width: 110, maxWidth: '100%' }}
       optionList={LEVEL_OPTIONS}
@@ -384,8 +339,8 @@ export default function RegionsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="全部状态"
-      value={searchParams.status || undefined}
-      onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(v) => setDraftParams((p) => ({ ...p, status: (v as string) ?? '' }))}
       showClear
       style={{ width: 110, maxWidth: '100%' }}
       optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
@@ -404,9 +359,9 @@ export default function RegionsPage() {
     </Button>
   );
   const buildExportQuery = () => ({
-    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
-    ...(searchParams.status ? { status: searchParams.status } : {}),
-    ...(searchParams.level ? { level: searchParams.level } : {}),
+    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
+    ...(submittedParams.status ? { status: submittedParams.status } : {}),
+    ...(submittedParams.level ? { level: submittedParams.level } : {}),
   });
   const renderExportButtons = () => hasPermission('system:region:export') ? (
     <ExportButton entity="system.regions" query={buildExportQuery()} />
@@ -465,9 +420,9 @@ export default function RegionsPage() {
           bordered
           columns={columns}
           dataSource={data}
-          loading={loading}
-          onRefresh={() => void fetchRegions()}
-          refreshLoading={loading}
+          loading={treeQuery.isFetching}
+          onRefresh={() => void treeQuery.refetch()}
+          refreshLoading={treeQuery.isFetching}
           rowKey="id"
           size="small"
         expandedRowKeys={expandedRowKeys}
@@ -508,12 +463,12 @@ export default function RegionsPage() {
             <Form.Cascader
               field="parentCode"
               label="父级地区"
-              placeholder={flatLoading ? '加载父级地区中...' : '请选择父级地区'}
+              placeholder={flatQuery.isFetching ? '加载父级地区中...' : '请选择父级地区'}
               treeData={parentTreeData}
               changeOnSelect
               filterTreeNode
               showClear
-              disabled={flatLoading}
+              disabled={flatQuery.isFetching}
               rules={[{ required: true, message: '请选择父级地区' }]}
               style={{ width: '100%' }}
             />

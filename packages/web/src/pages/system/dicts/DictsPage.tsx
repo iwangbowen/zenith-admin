@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentProps } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Dropdown,
@@ -18,8 +20,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Pencil, Trash2 } from 'lucide-react';
-import type { Dict, DictItem, PaginatedResponse } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { Dict, DictItem } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
@@ -34,9 +35,21 @@ import { usePermission } from '@/hooks/usePermission';
 import './DictsPage.css';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import {
+  dictKeys,
+  useDeleteDict,
+  useDeleteDictItem,
+  useDictDetail,
+  useDictItemDetail,
+  useDictItemsById,
+  useDictList,
+  useSaveDict,
+  useSaveDictItem,
+} from '@/hooks/queries/dicts';
 
 export default function DictsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const dictFormApi = useRef<FormApi | null>(null);
   const itemFormApi = useRef<FormApi | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,84 +57,70 @@ export default function DictsPage() {
 
   // ─── 字典列表 ──────────────────────────────────────────────────────────────
   const [dicts, setDicts] = useState<Dict[]>([]);
-  const [dictsLoading, setDictsLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const { page, pageSize, setPage, setPageSize } = usePagination();
-  const [total, setTotal] = useState(0);
   const [dictModalVisible, setDictModalVisible] = useState(false);
-  const [editingDict, setEditingDict] = useState<Dict | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
+  const [editingDictRecord, setEditingDictRecord] = useState<Dict | null>(null);
 
   // ─── 字典项列表 ────────────────────────────────────────────────────────────
   const [selectedDict, setSelectedDict] = useState<Dict | null>(null);
-  const [items, setItems] = useState<DictItem[]>([]);
-  const [itemsLoading, setItemsLoading] = useState(false);
   const [itemModalVisible, setItemModalVisible] = useState(false);
-  const [editingItem, setEditingItem] = useState<DictItem | null>(null);
+  const [editingItemRecord, setEditingItemRecord] = useState<DictItem | null>(null);
   const [pendingItemKeyword, setPendingItemKeyword] = useState('');
   const [pendingItemStatus, setPendingItemStatus] = useState('');
   const [itemKeyword, setItemKeyword] = useState('');
   const [itemStatusFilter, setItemStatusFilter] = useState('');  const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
   const [itemParentId, setItemParentId] = useState<number | null>(null);
   const [itemColor, setItemColor] = useState<string | null>(null);
-  const [itemDetailLoading, setItemDetailLoading] = useState(false);
-  const [togglingItemStatusId, setTogglingItemStatusId] = useState<number | null>(null);
-  const [togglingDictStatusId, setTogglingDictStatusId] = useState<number | null>(null);
   // metadataStr 仅用于 JsonViewer 的初始值（非受控），提交时通过 ref.getValue() 读取
   const [metadataStr, setMetadataStr] = useState<string>('{}');
   const { items: statusItems } = useDictItems('common_status');
+  const tagColor = (color: string) => color as ComponentProps<typeof Tag>['color'];
 
   // ─── 数据获取 ──────────────────────────────────────────────────────────────
-  const fetchItems = useCallback(async (dictId: number) => {
-    setItemsLoading(true);
-    try {
-      const res = await request.get<DictItem[]>(`/api/dicts/${dictId}/items`);
-      if (res.code === 0) {
-        setItems(res.data);
-        // 默认展开所有节点
-        setExpandedRowKeys(res.data.map((i) => i.id));
-      }
-    } finally {
-      setItemsLoading(false);
-    }
-  }, []);
+  const dictListQuery = useDictList({
+    page,
+    pageSize,
+    keyword: submittedKeyword || undefined,
+  });
+  const total = dictListQuery.data?.total ?? 0;
+  const dictDetailQuery = useDictDetail(editingDictRecord?.id, dictModalVisible);
+  const editingDict = editingDictRecord ? (dictDetailQuery.data ?? editingDictRecord) : null;
+  const itemsQuery = useDictItemsById(selectedDict?.id);
+  const items = useMemo(() => itemsQuery.data ?? [], [itemsQuery.data]);
+  const itemDetailQuery = useDictItemDetail(selectedDict?.id, editingItemRecord?.id, itemModalVisible);
+  const editingItem = editingItemRecord ? (itemDetailQuery.data ?? editingItemRecord) : null;
 
-  const fetchDicts = useCallback(async () => {
-    setDictsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (submittedKeyword) params.set('keyword', submittedKeyword);
-      params.set('page', String(page));
-      params.set('pageSize', String(pageSize));
-      const res = await request.get<PaginatedResponse<Dict>>(`/api/dicts?${params.toString()}`);
-      if (res.code === 0) {
-        const nextList = res.data.list;
-        setDicts(nextList);
-        setTotal(res.data.total);
-        setSelectedDict((prev) => {
-          if (nextList.length === 0) {
-            setItems([]);
-            return null;
-          }
-          const current = prev ? nextList.find((d) => d.id === prev.id) : null;
-          if (current) return current;
-          void fetchItems(nextList[0].id);
-          return nextList[0];
-        });
-      }
-    } finally {
-      setDictsLoading(false);
-    }
-  }, [submittedKeyword, page, pageSize, fetchItems]);
+  const saveDictMutation = useSaveDict();
+  const toggleDictStatusMutation = useSaveDict();
+  const deleteDictMutation = useDeleteDict();
+  const saveItemMutation = useSaveDictItem();
+  const toggleItemStatusMutation = useSaveDictItem();
+  const deleteItemMutation = useDeleteDictItem();
+  const togglingItemStatusId = toggleItemStatusMutation.isPending ? (toggleItemStatusMutation.variables?.itemId ?? null) : null;
+  const togglingDictStatusId = toggleDictStatusMutation.isPending ? (toggleDictStatusMutation.variables?.id ?? null) : null;
 
-  const refreshCurrentItems = useCallback(() => {
-    if (selectedDict) {
-      void fetchItems(selectedDict.id);
-    } else {
-      setItems([]);
-    }
-  }, [fetchItems, selectedDict]);
+  useEffect(() => {
+    const nextList = dictListQuery.data?.list ?? [];
+    setDicts(nextList);
+    setSelectedDict((prev) => {
+      if (nextList.length === 0) return null;
+      const current = prev ? nextList.find((d) => d.id === prev.id) : null;
+      return current ?? nextList[0];
+    });
+  }, [dictListQuery.data]);
+
+  useEffect(() => {
+    setExpandedRowKeys(items.map((i) => i.id));
+  }, [items]);
+
+  useEffect(() => {
+    if (!itemModalVisible || !itemDetailQuery.data) return;
+    setItemParentId(itemDetailQuery.data.parentId ?? null);
+    setItemColor(itemDetailQuery.data.color ?? null);
+    setMetadataStr(itemDetailQuery.data.metadata ? JSON.stringify(itemDetailQuery.data.metadata, null, 2) : '{}');
+  }, [itemModalVisible, itemDetailQuery.data]);
 
   const handleDictPageChange = (nextPage: number) => {
     setPage(nextPage);
@@ -132,14 +131,13 @@ export default function DictsPage() {
     setPageSize(nextPageSize);
   };
 
-  const selectDict = useCallback((dict: Dict) => {
+  const selectDict = (dict: Dict) => {
     setSelectedDict(dict);
-    void fetchItems(dict.id);
     setPendingItemKeyword('');
     setPendingItemStatus('');
     setItemKeyword('');
     setItemStatusFilter('');
-  }, [fetchItems]);
+  };
 
   const allItemIds = useMemo(() => items.map((i) => i.id), [items]);
   const isAllExpanded = allItemIds.length > 0 && expandedRowKeys.length >= allItemIds.length;
@@ -147,12 +145,10 @@ export default function DictsPage() {
     setExpandedRowKeys(isAllExpanded ? [] : allItemIds);
   }
 
-  useEffect(() => { void fetchDicts(); }, [fetchDicts]);
-
   function handleItemSearch() {
     setItemKeyword(pendingItemKeyword);
     setItemStatusFilter(pendingItemStatus);
-    refreshCurrentItems();
+    if (selectedDict) void queryClient.invalidateQueries({ queryKey: dictKeys.items(selectedDict.id) });
   }
 
   function handleItemReset() {
@@ -160,12 +156,13 @@ export default function DictsPage() {
     setPendingItemStatus('');
     setItemKeyword('');
     setItemStatusFilter('');
-    refreshCurrentItems();
+    if (selectedDict) void queryClient.invalidateQueries({ queryKey: dictKeys.items(selectedDict.id) });
   }
 
   function handleSearch() {
     setPage(1);
     setSubmittedKeyword(keyword);
+    void queryClient.invalidateQueries({ queryKey: dictKeys.lists });
   }
 
   const filteredItems = useMemo(() => {
@@ -236,40 +233,22 @@ export default function DictsPage() {
     } catch {
       throw new Error('validation');
     }
-    const res = editingDict
-      ? await request.put(`/api/dicts/${editingDict.id}`, values)
-      : await request.post('/api/dicts', values);
-    if (res.code === 0) {
-      Toast.success(editingDict ? '更新成功' : '创建成功');
-      setDictModalVisible(false);
-      void fetchDicts();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveDictMutation.mutateAsync({ id: editingDictRecord?.id, values });
+    Toast.success(editingDictRecord ? '更新成功' : '创建成功');
+    setDictModalVisible(false);
+    setEditingDictRecord(null);
   };
 
-  const openEditDict = async (row: Dict) => {
-    setEditingDict(row);
+  const openEditDict = (row: Dict) => {
+    setEditingDictRecord(row);
     setDictModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<Dict>(`/api/dicts/${row.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingDict(res.data);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleDictDelete = async (id: number) => {
-    const res = await request.delete(`/api/dicts/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      if (selectedDict?.id === id) {
-        setSelectedDict(null);
-        setItems([]);
-      }
-      void fetchDicts();
+    await deleteDictMutation.mutateAsync(id);
+    Toast.success('删除成功');
+    if (selectedDict?.id === id) {
+      setSelectedDict(null);
     }
   };
 
@@ -293,29 +272,20 @@ export default function DictsPage() {
       }
     }
     const payload = { ...values, parentId: itemParentId ?? undefined, color: itemColor ?? null, metadata };
-    const res = editingItem
-      ? await request.put(`/api/dicts/${selectedDict.id}/items/${editingItem.id}`, payload)
-      : await request.post(`/api/dicts/${selectedDict.id}/items`, payload);
-    if (res.code === 0) {
-      Toast.success(editingItem ? '更新成功' : '创建成功');
-      setItemModalVisible(false);
-      void fetchItems(selectedDict.id);
-    } else {
-      throw new Error(res.message);
-    }
+    await saveItemMutation.mutateAsync({ dictId: selectedDict.id, itemId: editingItemRecord?.id, values: payload as Partial<DictItem> });
+    Toast.success(editingItemRecord ? '更新成功' : '创建成功');
+    setItemModalVisible(false);
+    setEditingItemRecord(null);
   };
 
   const handleItemDelete = async (id: number) => {
     if (!selectedDict) return;
-    const res = await request.delete(`/api/dicts/${selectedDict.id}/items/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchItems(selectedDict.id);
-    }
+    await deleteItemMutation.mutateAsync({ dictId: selectedDict.id, itemId: id });
+    Toast.success('删除成功');
   };
 
   const openCreateChildItem = (row: DictItem) => {
-    setEditingItem(null);
+    setEditingItemRecord(null);
     setItemParentId(row.id);
     setItemColor(null);
     setMetadataStr('{}');
@@ -324,23 +294,14 @@ export default function DictsPage() {
 
   const openEditItem = (row: DictItem) => {
     if (!selectedDict) return;
-    setEditingItem(row);
+    setEditingItemRecord(row);
     setItemParentId(row.parentId ?? null);
     setItemColor(row.color ?? null);
     setMetadataStr(row.metadata ? JSON.stringify(row.metadata, null, 2) : '{}');
     setItemModalVisible(true);
-    setItemDetailLoading(true);
-    void request.get<DictItem>(`/api/dicts/${selectedDict.id}/items/${row.id}`).then((res) => {
-      if (res.code === 0 && res.data) {
-        setEditingItem(res.data);
-        setItemParentId(res.data.parentId ?? null);
-        setItemColor(res.data.color ?? null);
-        setMetadataStr(res.data.metadata ? JSON.stringify(res.data.metadata, null, 2) : '{}');
-      }
-    }).finally(() => setItemDetailLoading(false));
   };
 
-  const handleToggleItemStatus = useCallback(async (item: DictItem, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleItemStatus = async (item: DictItem, newStatus: 'enabled' | 'disabled') => {
     if (!selectedDict) return;
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
@@ -355,21 +316,11 @@ export default function DictsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingItemStatusId(item.id);
-    try {
-      const res = await request.put(`/api/dicts/${selectedDict.id}/items/${item.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchItems(selectedDict.id);
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingItemStatusId(null);
-    }
-  }, [selectedDict, fetchItems]);
+    await toggleItemStatusMutation.mutateAsync({ dictId: selectedDict.id, itemId: item.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
-  const handleToggleDictStatus = useCallback(async (dict: Dict, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleDictStatus = async (dict: Dict, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -383,19 +334,9 @@ export default function DictsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingDictStatusId(dict.id);
-    try {
-      const res = await request.put(`/api/dicts/${dict.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchDicts();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingDictStatusId(null);
-    }
-  }, [fetchDicts]);
+    await toggleDictStatusMutation.mutateAsync({ id: dict.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const renderDictListItem = (dict: Dict) => {
     const active = selectedDict?.id === dict.id;
@@ -469,13 +410,13 @@ export default function DictsPage() {
             clickToHide
             render={
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => void fetchDicts()}>
+                <Dropdown.Item onClick={() => void dictListQuery.refetch()}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <RefreshCw size={14} /> 刷新
                   </span>
                 </Dropdown.Item>
                 {hasPermission('system:dict:create') && (
-                  <Dropdown.Item onClick={() => { setEditingDict(null); setDictModalVisible(true); }}>
+                  <Dropdown.Item onClick={() => { setEditingDictRecord(null); setDictModalVisible(true); }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Plus size={14} /> 新增字典
                     </span>
@@ -498,7 +439,7 @@ export default function DictsPage() {
         placeholder: '名称/编码',
         onEnterPress: handleSearch,
       }}
-      loading={dictsLoading}
+      loading={dictListQuery.isFetching}
       emptyText="暂无字典"
       footer={
         <Pagination
@@ -520,7 +461,7 @@ export default function DictsPage() {
 
   const itemColumns: ColumnProps<DictItem>[] = [
     { title: '标签', dataIndex: 'label', width: 160, render: (v: string, record: DictItem) =>
-      record.color ? <Tag color={record.color as any} size="small">{v}</Tag> : renderEllipsis(v)
+      record.color ? <Tag color={tagColor(record.color)} size="small">{v}</Tag> : renderEllipsis(v)
     },
     { title: '键值', dataIndex: 'value', width: 160, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 70, align: 'center' },
@@ -626,7 +567,7 @@ export default function DictsPage() {
     <Button
       type="primary"
       icon={<Plus size={14} />}
-      onClick={() => { setEditingItem(null); setItemParentId(null); setItemColor(null); setMetadataStr('{}'); setItemModalVisible(true); }}
+      onClick={() => { setEditingItemRecord(null); setItemParentId(null); setItemColor(null); setMetadataStr('{}'); setItemModalVisible(true); }}
       disabled={!selectedDict}
     >
       新增
@@ -686,9 +627,9 @@ export default function DictsPage() {
           columns={itemColumns}
           dataSource={treeItems}
           rowKey="id"
-          loading={itemsLoading}
-          onRefresh={selectedDict ? () => void fetchItems(selectedDict.id) : undefined}
-          refreshLoading={itemsLoading}
+          loading={itemsQuery.isFetching}
+          onRefresh={selectedDict ? () => void itemsQuery.refetch() : undefined}
+          refreshLoading={itemsQuery.isFetching}
           pagination={false}
           size="small"
           empty={selectedDict ? '暂无数据' : '请选择字典'}
@@ -720,13 +661,13 @@ export default function DictsPage() {
       <AppModal
         title={editingDict ? '编辑字典' : '新增字典'}
         visible={dictModalVisible}
-        onCancel={() => { setDictModalVisible(false); setModalDetailLoading(false); }}
+        onCancel={() => { setDictModalVisible(false); setEditingDictRecord(null); }}
         onOk={handleDictModalOk}
-        okButtonProps={{ disabled: modalDetailLoading }}
+        okButtonProps={{ disabled: !!editingDictRecord && dictDetailQuery.isFetching }}
         width={480}
 
       >
-        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
+        <Spin spinning={!!editingDictRecord && dictDetailQuery.isFetching} wrapperClassName="modal-spin-wrapper">
         <Form
           getFormApi={(api) => dictFormApi.current = api}
           key={editingDict?.id ?? 'new-dict'}
@@ -754,7 +695,7 @@ export default function DictsPage() {
         onOk={handleItemModalOk}
         width={600}
       >
-        <Spin spinning={itemDetailLoading}>
+        <Spin spinning={!!editingItemRecord && itemDetailQuery.isFetching}>
           <Form
             getFormApi={(api) => itemFormApi.current = api}
             key={editingItem?.id ?? 'new-item'}
@@ -819,7 +760,7 @@ export default function DictsPage() {
                         onClear={() => setItemColor(null)}
                         style={{ width: '100%' }}
                         renderSelectedItem={(option: { value?: unknown; label?: unknown }) => (
-                          <Tag color={(option.value as string) as any} size="small" style={{ margin: '2px 0' }}>
+                          <Tag color={tagColor(option.value as string)} size="small" style={{ margin: '2px 0' }}>
                             {option.label as string}
                           </Tag>
                         )}
@@ -840,13 +781,13 @@ export default function DictsPage() {
                               textAlign: 'left',
                             }}
                           >
-                            <Tag color={(value as string) as any} size="small">{label as string}</Tag>
+                            <Tag color={tagColor(value as string)} size="small">{label as string}</Tag>
                           </button>
                         )}
                       >
                         {TAG_COLORS.map((c) => (
                           <Select.Option key={c} value={c} label={COLOR_LABELS[c] ?? c}>
-                            <Tag color={c as any} size="small">{COLOR_LABELS[c] ?? c}</Tag>
+                            <Tag color={tagColor(c)} size="small">{COLOR_LABELS[c] ?? c}</Tag>
                           </Select.Option>
                         ))}
                       </Select>

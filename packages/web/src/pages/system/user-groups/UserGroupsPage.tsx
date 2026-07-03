@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Form,
@@ -21,8 +22,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import type { UserGroup, PaginatedResponse, User, Department } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { User, UserGroup } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
@@ -32,6 +32,17 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
+import { useFlatDepartments } from '@/hooks/queries/departments';
+import {
+  useAssignUserGroupMembers,
+  useDeleteUserGroups,
+  useSaveUserGroup,
+  userGroupKeys,
+  useUserGroupDetail,
+  useUserGroupList,
+  useUserGroupMembers,
+} from '@/hooks/queries/user-groups';
+import { useAllUsers } from '@/hooks/queries/users';
 
 interface SearchParams {
   keyword: string;
@@ -43,36 +54,54 @@ type SimpleUser = UserTransferUser & {
   departmentId?: number | null;
 };
 
-interface GroupMember extends SimpleUser {
-  joinedAt: string;
-}
-
 const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function UserGroupsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<UserGroup[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = useUserGroupList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
   const [modalVisible, setModalVisible] = useState(false);
-  const [editing, setEditing] = useState<UserGroup | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<UserGroup | null>(null);
+  const detailQuery = useUserGroupDetail(editingRecord?.id, modalVisible);
+  const editing = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
   // 选项数据
-  const [allUsers, setAllUsers] = useState<SimpleUser[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const allUsersQuery = useAllUsers();
+  const departmentsQuery = useFlatDepartments();
+  const allUsers: SimpleUser[] = (allUsersQuery.data ?? []).map((u: User) => ({
+    id: u.id,
+    username: u.username,
+    nickname: u.nickname,
+    avatar: u.avatar,
+    email: u.email,
+    departmentId: u.departmentId,
+    departmentName: u.departmentName,
+  }));
+  const departments = useMemo(() => departmentsQuery.data ?? [], [departmentsQuery.data]);
 
   // 成员管理
   const [memberSheetVisible, setMemberSheetVisible] = useState(false);
   const [memberGroup, setMemberGroup] = useState<UserGroup | null>(null);
   const [memberIds, setMemberIds] = useState<number[]>([]);
-  const [memberSaving, setMemberSaving] = useState(false);
+  const membersQuery = useUserGroupMembers(memberGroup?.id, memberSheetVisible);
+  const saveMutation = useSaveUserGroup();
+  const toggleStatusMutation = useSaveUserGroup();
+  const deleteMutation = useDeleteUserGroups();
+  const assignMembersMutation = useAssignUserGroupMembers();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   const departmentTreeData = useMemo<TreeNodeData[]>(() => {
     const nodeMap = new Map<number, TreeNodeData>();
@@ -103,82 +132,41 @@ export default function UserGroupsPage() {
     return rootNodes;
   }, [departments]);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<UserGroup>>(`/api/user-groups?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchList(); }, [fetchList]);
-
   useEffect(() => {
-    void (async () => {
-      const [uRes, dRes] = await Promise.all([
-        request.get<User[]>('/api/users/all'),
-        request.get<Department[]>('/api/departments/flat'),
-      ]);
-      if (uRes.code === 0) {
-        setAllUsers(uRes.data.map(u => ({
-          id: u.id, username: u.username, nickname: u.nickname,
-          avatar: u.avatar, email: u.email, departmentId: u.departmentId, departmentName: u.departmentName,
-        })));
-      }
-      if (dRes.code === 0) setDepartments(Array.isArray(dRes.data) ? dRes.data : []);
-    })();
-  }, []);
+    if (memberSheetVisible) setMemberIds((membersQuery.data ?? []).map((m) => m.id));
+  }, [memberSheetVisible, membersQuery.data]);
 
-  const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
-  const handleReset = () => {
-    setSearchParams(defaultSearchParams);
+  const handleSearch = () => {
     setPage(1);
-    void fetchList(1, pageSize, defaultSearchParams);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: userGroupKeys.lists });
+  };
+  const handleReset = () => {
+    setPage(1);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: userGroupKeys.lists });
   };
 
   const handleModalOk = async () => {
     let values;
     try {
-      values = await formApi.current?.validate();
+      values = await formApi.current!.validate();
     } catch {
       throw new Error('validation');
     }
-    const res = editing
-      ? await request.put(`/api/user-groups/${editing.id}`, values)
-      : await request.post('/api/user-groups', values);
-    if (res.code === 0) {
-      Toast.success(editing ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditing(null);
-      void fetchList();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/user-groups/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchList();
-    }
+    await deleteMutation.mutateAsync([id]);
+    Toast.success('删除成功');
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (group: UserGroup, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (group: UserGroup, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -193,19 +181,11 @@ export default function UserGroupsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(group.id);
-    try {
-      const res = await request.put(`/api/user-groups/${group.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchList();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchList]);
+    toggleStatusMutation.mutate(
+      { id: group.id, values: { status: newStatus } },
+      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
+    );
+  };
 
   const handleBatchDelete = () => {
     Modal.confirm({
@@ -213,51 +193,28 @@ export default function UserGroupsPage() {
       content: '删除后无法恢复，请确认操作',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>('/api/user-groups/batch', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success(res.message ?? '删除成功');
-          setSelectedRowKeys([]);
-          void fetchList();
-        }
+        await deleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success('删除成功');
+        setSelectedRowKeys([]);
       },
     });
   };
 
-  const openMembers = async (group: UserGroup) => {
+  const openMembers = (group: UserGroup) => {
     setMemberGroup(group);
     setMemberSheetVisible(true);
-    const res = await request.get<GroupMember[]>(`/api/user-groups/${group.id}/members`);
-    if (res.code === 0) {
-      setMemberIds((res.data || []).map(m => m.id));
-    }
   };
 
-  const openEdit = async (record: UserGroup) => {
-    setEditing(record);
+  const openEdit = (record: UserGroup) => {
+    setEditingRecord(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<UserGroup>(`/api/user-groups/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditing(res.data);
-    } else {
-      Toast.error(res.message || '获取用户组信息失败');
-    }
   };
 
   const handleSaveMembers = async () => {
     if (!memberGroup) return;
-    setMemberSaving(true);
-    try {
-      const res = await request.put(`/api/user-groups/${memberGroup.id}/members`, { userIds: memberIds });
-      if (res.code === 0) {
-        Toast.success('保存成功');
-        setMemberSheetVisible(false);
-        void fetchList();
-      }
-    } finally {
-      setMemberSaving(false);
-    }
+    await assignMembersMutation.mutateAsync({ id: memberGroup.id, userIds: memberIds });
+    Toast.success('保存成功');
+    setMemberSheetVisible(false);
   };
 
   const columns: ColumnProps<UserGroup>[] = [
@@ -363,8 +320,8 @@ export default function UserGroupsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索名称/编码"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
       onEnterPress={handleSearch}
       style={{ width: 240, maxWidth: '100%' }}
       showClear
@@ -374,8 +331,8 @@ export default function UserGroupsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="请选择状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 140, maxWidth: '100%' }}
       optionList={[
         { value: '', label: '全部状态' },
@@ -393,7 +350,7 @@ export default function UserGroupsPage() {
     </Button>
   ) : null;
   const renderCreateButton = () => hasPermission('system:user-groups:create') ? (
-    <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditing(null); setModalVisible(true); }}>新增</Button>
+    <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingRecord(null); setModalVisible(true); }}>新增</Button>
   ) : null;
 
   return (
@@ -428,12 +385,12 @@ export default function UserGroupsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchList}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         scroll={{ x: 'max-content' }}
-        pagination={buildPagination(total, fetchList)}
+        pagination={buildPagination(total)}
         empty="暂无数据"
         rowSelection={{
           selectedRowKeys,
@@ -444,7 +401,7 @@ export default function UserGroupsPage() {
       <AppModal
         title={editing ? '编辑用户组' : '新增用户组'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditing(null); setModalDetailLoading(false); }}
+        onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={660}
@@ -515,7 +472,7 @@ export default function UserGroupsPage() {
         footer={
           <Space>
             <Button onClick={() => setMemberSheetVisible(false)}>取消</Button>
-            <Button type="primary" loading={memberSaving} onClick={handleSaveMembers}>保存</Button>
+            <Button type="primary" loading={assignMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
           </Space>
         }
       >

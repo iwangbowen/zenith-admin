@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Input,
@@ -17,8 +18,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw } from 'lucide-react';
-import type { Tenant, TenantStats } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { Tenant } from '@zenith/shared';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
@@ -29,73 +29,68 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { useAllTenantPackages } from '@/hooks/queries/tenant-packages';
+import {
+  useDeleteTenant,
+  useSaveTenant,
+  useTenantDetail,
+  tenantKeys,
+  useTenantList,
+  useTenantStats,
+} from '@/hooks/queries/tenants';
+
+interface SearchParams {
+  keyword: string;
+  status: string;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '', status: '' };
 
 export default function TenantsPage() {
   const { hasPermission } = usePermission();
-
-  interface SearchParams {
-    keyword: string;
-    status: string;
-  }
-
-  const defaultSearchParams: SearchParams = { keyword: '', status: '' };
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<Tenant[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+
+  const listQuery = useTenantList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
+
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [packageOptions, setPackageOptions] = useState<{ value: number; label: string }[]>([]);
+  const [editingRecord, setEditingRecord] = useState<Tenant | null>(null);
+  const detailQuery = useTenantDetail(editingRecord?.id, modalVisible);
+  const editingTenant = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
+  const packageOptionsQuery = useAllTenantPackages();
+  const packageOptions = (packageOptionsQuery.data ?? []).map((p) => ({ value: p.id, label: p.name }));
   const [statsVisible, setStatsVisible] = useState(false);
   const [statsTenant, setStatsTenant] = useState<Tenant | null>(null);
-  const [stats, setStats] = useState<TenantStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
+  const statsQuery = useTenantStats(statsTenant?.id, statsVisible);
+  const stats = statsQuery.data ?? null;
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-      }).toString();
-      const res = await request.get<{ list: Tenant[]; total: number }>(`/api/tenants?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    void (async () => {
-      const res = await request.get<{ id: number; name: string; status: string }[]>('/api/tenant-packages/all');
-      if (res.code === 0) {
-        setPackageOptions(res.data.map((p) => ({ value: p.id, label: p.name })));
-      }
-    })();
-  }, []);
+  const saveMutation = useSaveTenant();
+  const toggleStatusMutation = useSaveTenant();
+  const deleteMutation = useDeleteTenant();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: tenantKeys.lists });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchData(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: tenantKeys.lists });
   }
 
   const handleModalOk = async () => {
@@ -110,29 +105,18 @@ export default function TenantsPage() {
       expireAt: values.expireAt ? formatDateTimeForApi(values.expireAt) : null,
       packageId: values.packageId ?? null,
     };
-    const res = editingTenant
-      ? await request.put(`/api/tenants/${editingTenant.id}`, payload)
-      : await request.post('/api/tenants', payload);
-    if (res.code === 0) {
-      Toast.success(editingTenant ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      fetchData();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/tenants/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      fetchData();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (tenant: Tenant, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (tenant: Tenant, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -147,44 +131,20 @@ export default function TenantsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(tenant.id);
-    try {
-      const res = await request.put(`/api/tenants/${tenant.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        fetchData();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchData]);
-
-  const openStats = async (tenant: Tenant) => {
-    setStatsTenant(tenant);
-    setStats(null);
-    setStatsVisible(true);
-    setStatsLoading(true);
-    try {
-      const res = await request.get<TenantStats>(`/api/tenants/${tenant.id}/stats`);
-      if (res.code === 0) setStats(res.data);
-    } finally {
-      setStatsLoading(false);
-    }
+    toggleStatusMutation.mutate(
+      { id: tenant.id, values: { status: newStatus } },
+      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
+    );
   };
 
-  const openEdit = async (tenant: Tenant) => {
-    setEditingTenant(tenant);
+  const openStats = (tenant: Tenant) => {
+    setStatsTenant(tenant);
+    setStatsVisible(true);
+  };
+
+  const openEdit = (tenant: Tenant) => {
+    setEditingRecord(tenant);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<Tenant>(`/api/tenants/${tenant.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingTenant(res.data);
-    } else {
-      Toast.error(res.message || '获取租户信息失败');
-    }
   };
 
   function renderExpiry(days: number | null, expireAt: string | null) {
@@ -274,8 +234,8 @@ export default function TenantsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索租户名称/编码"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
       onEnterPress={handleSearch}
       style={{ width: 220, maxWidth: '100%' }}
       showClear
@@ -285,8 +245,8 @@ export default function TenantsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="请选择状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 140, maxWidth: '100%' }}
       optionList={[
         { value: '', label: '全部状态' },
@@ -299,8 +259,8 @@ export default function TenantsPage() {
   const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
   const buildExportQuery = () => ({
-    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
-    ...(searchParams.status ? { status: searchParams.status } : {}),
+    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
+    ...(submittedParams.status ? { status: submittedParams.status } : {}),
   });
   const renderExportButtons = () => <ExportButton entity="system.tenants" query={buildExportQuery()} />;
   const renderMobileExportActions = () => <ExportButton entity="system.tenants" query={buildExportQuery()} variant="flat" />;
@@ -308,7 +268,7 @@ export default function TenantsPage() {
     <Button
       type="primary"
       icon={<Plus size={14} />}
-      onClick={() => { setEditingTenant(null); setModalVisible(true); }}
+      onClick={() => { setEditingRecord(null); setModalVisible(true); }}
     >
       新增
     </Button>
@@ -347,16 +307,16 @@ export default function TenantsPage() {
         columns={columns}
         dataSource={data}
         rowKey="id"
-        loading={loading}
-        onRefresh={fetchData}
-        refreshLoading={loading}
-        pagination={buildPagination(total, fetchData)}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(total)}
       />
 
       <AppModal
         title={editingTenant ? '编辑租户' : '新增租户'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingTenant(null); setModalDetailLoading(false); }}
+        onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={660}
@@ -434,7 +394,7 @@ export default function TenantsPage() {
         onCancel={() => setStatsVisible(false)}
         width={420}
       >
-        <Spin spinning={statsLoading} wrapperClassName="modal-spin-wrapper">
+        <Spin spinning={statsQuery.isFetching} wrapperClassName="modal-spin-wrapper">
           {stats ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>

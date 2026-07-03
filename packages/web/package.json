@@ -23,6 +23,7 @@
 		"@emoji-mart/react": "^1.1.1",
 		"@iconify/react": "^6.0.2",
 		"@monaco-editor/react": "^4.7.0",
+		"@tanstack/react-query": "^5.101.2",
 		"@tanstack/react-virtual": "^3.14.3",
 		"@types/dagre": "^0.7.54",
 		"@types/dompurify": "^3.2.0",
@@ -69,6 +70,7 @@
 	"devDependencies": {
 		"@csstools/postcss-global-data": "^4.0.0",
 		"@eslint/js": "^10.0.1",
+		"@tanstack/react-query-devtools": "^5.101.2",
 		"@testing-library/dom": "^10.4.1",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",

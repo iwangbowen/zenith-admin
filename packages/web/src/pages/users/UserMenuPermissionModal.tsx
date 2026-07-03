@@ -8,18 +8,9 @@
 import { useState, useEffect } from 'react';
 import { Tabs, TabPane, Toast, Tag } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
-import type { Menu } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
-
-interface UserMenuPermissions {
-  directMenuIds: number[];
-  roleMenuIds: number[];
-}
-
-interface UserEffectivePermissions extends UserMenuPermissions {
-  effectiveMenuIds: number[];
-}
+import { useMenuTree } from '@/hooks/queries/menus';
+import { useSaveUserMenus, useUserEffectivePermissions } from '@/hooks/queries/users';
 
 type Props = Readonly<{
   userId: number;
@@ -29,50 +20,32 @@ type Props = Readonly<{
 }>;
 
 export function UserMenuPermissionModal({ userId, userName, visible, onClose }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [allMenus, setAllMenus] = useState<Menu[]>([]);
   const [directMenuIds, setDirectMenuIds] = useState<number[]>([]);
   const [roleMenuIds, setRoleMenuIds] = useState<number[]>([]);
   const [effectiveMenuIds, setEffectiveMenuIds] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState('direct');
+  const menuTreeQuery = useMenuTree({ enabled: visible });
+  const permissionsQuery = useUserEffectivePermissions(userId, visible);
+  const saveMenusMutation = useSaveUserMenus();
 
   useEffect(() => {
     if (!visible) return;
     setActiveTab('direct');
-    void (async () => {
-      setLoading(true);
-      try {
-        const [menusRes, permRes] = await Promise.all([
-          request.get<Menu[]>('/api/menus'),
-          request.get<UserEffectivePermissions>(`/api/users/${userId}/effective-permissions`),
-        ]);
-        if (menusRes.code === 0) setAllMenus(menusRes.data);
-        if (permRes.code === 0) {
-          setDirectMenuIds(permRes.data.directMenuIds);
-          setRoleMenuIds(permRes.data.roleMenuIds);
-          setEffectiveMenuIds(permRes.data.effectiveMenuIds);
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
   }, [visible, userId]);
 
+  useEffect(() => {
+    if (!visible || !permissionsQuery.data) return;
+    setDirectMenuIds(permissionsQuery.data.directMenuIds);
+    setRoleMenuIds(permissionsQuery.data.roleMenuIds);
+    setEffectiveMenuIds(permissionsQuery.data.effectiveMenuIds);
+  }, [visible, permissionsQuery.data]);
+
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      const res = await request.put(`/api/users/${userId}/menus`, { menuIds: directMenuIds });
-      if (res.code === 0) {
-        Toast.success('菜单权限已更新');
-        // 更新有效权限预览
-        const effectiveSet = new Set([...directMenuIds, ...roleMenuIds]);
-        setEffectiveMenuIds([...effectiveSet]);
-        onClose();
-      }
-    } finally {
-      setSaving(false);
-    }
+    await saveMenusMutation.mutateAsync({ userId, menuIds: directMenuIds });
+    Toast.success('菜单权限已更新');
+    const effectiveSet = new Set([...directMenuIds, ...roleMenuIds]);
+    setEffectiveMenuIds([...effectiveSet]);
+    onClose();
   };
 
   /** 构造有效权限 Tab 里的来源 Tag */
@@ -102,16 +75,16 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
       onOk={activeTab === 'direct' ? handleSave : undefined}
       okText={activeTab === 'direct' ? '保存' : undefined}
       footer={activeTab === 'effective' ? null : undefined}
-      confirmLoading={saving}
+      confirmLoading={saveMenusMutation.isPending}
       width={520}
     >
       <Tabs activeKey={activeTab} onChange={setActiveTab}>
         <TabPane tab="直接授权" itemKey="direct">
           <MenuPermissionPanel
-            allMenus={allMenus}
+            allMenus={menuTreeQuery.data ?? []}
             checkedMenuIds={directMenuIds}
             onChange={setDirectMenuIds}
-            loading={loading}
+            loading={menuTreeQuery.isFetching || permissionsQuery.isFetching}
           />
         </TabPane>
         <TabPane tab="最终有效权限" itemKey="effective">
@@ -119,9 +92,9 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
             最终权限 = 角色权限 ∪ 用户直接授权，仅供预览
           </div>
           <MenuPermissionPanel
-            allMenus={allMenus}
+            allMenus={menuTreeQuery.data ?? []}
             checkedMenuIds={effectiveMenuIds}
-            loading={loading}
+            loading={menuTreeQuery.isFetching || permissionsQuery.isFetching}
             readonly
             labelSuffix={buildLabelSuffix()}
           />

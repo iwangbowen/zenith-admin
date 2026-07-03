@@ -9,6 +9,9 @@ import { PermissionContext } from '@/hooks/usePermission';
 import { PreferencesProvider } from '@/hooks/PreferencesProvider';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { request } from '@/utils/request';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { queryClient } from '@/lib/query';
 import MaintenanceOverlay from '@/components/MaintenanceOverlay';
 import { config } from '@/config';
 import { resolvePageLoader } from '@/utils/page-registry';
@@ -240,6 +243,12 @@ export default function App() {
 
   const isSuperAdmin = user?.roles?.some((r) => r.code === 'super_admin') ?? false;
 
+  // 退出登录 / 切换用户时清空服务端状态缓存，避免跨账号数据泄漏
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) queryClient.clear();
+  }, [userId]);
+
   // 初始化埋点 SDK（自动采集 / Web Vitals / API 监控）
   useEffect(() => { initTracker(); }, []);
   // 登录身份合并（匿名 → 登录），退出时重置
@@ -293,6 +302,7 @@ export default function App() {
   // Electron file:// 协议不支持 BrowserRouter，需使用 HashRouter
   const RouterComponent = import.meta.env.VITE_ELECTRON === 'true' ? HashRouter : BrowserRouter;
   return (
+    <QueryClientProvider client={queryClient}>
     <PageErrorBoundary>
     {maintenanceInfo && (
       <MaintenanceOverlay info={maintenanceInfo} onResolved={handleMaintenanceResolved} />
@@ -324,5 +334,7 @@ export default function App() {
       )}
     </RouterComponent>
     </PageErrorBoundary>
+    {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+    </QueryClientProvider>
   );
 }

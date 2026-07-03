@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Col,
@@ -23,6 +24,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
+import { toQueryString, unwrap } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ExportButton from '@/components/ExportButton';
@@ -30,6 +32,14 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import {
+  departmentKeys,
+  useDeleteDepartment,
+  useDepartmentDetail,
+  useDepartmentTreeSearch,
+  useFlatDepartments,
+  useSaveDepartment,
+} from '@/hooks/queries/departments';
 
 interface SearchParams {
   keyword: string;
@@ -108,40 +118,42 @@ function buildDepartmentTreeData(items: Department[], excludedIds: Set<number>):
 
 export default function DepartmentsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<Department[]>([]);
-  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const { items: statusItems } = useDictItems('common_status');
   const { items: categoryItems } = useDictItems('department_category');
 
-  const [leaderOptions, setLeaderOptions] = useState<Array<{ value: number; label: string }>>([]);
-  const [leaderSearchLoading, setLeaderSearchLoading] = useState(false);
-
-  const fetchLeaderOptions = useCallback(async (keyword = '') => {
-    setLeaderSearchLoading(true);
-    try {
-      const params = new URLSearchParams({ pageSize: '50' });
-      if (keyword) params.set('keyword', keyword);
-      const res = await request.get<PaginatedResponse<User>>(`/api/users?${params.toString()}`);
-      if (res.code === 0) {
-        setLeaderOptions(
-          res.data.list.map((u) => ({
-            value: u.id,
-            label: u.departmentName ? `${u.nickname}-${u.departmentName}` : u.nickname,
-          }))
-        );
-      }
-    } finally {
-      setLeaderSearchLoading(false);
-    }
-  }, []);
+  const treeQuery = useDepartmentTreeSearch({
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+  });
+  const data = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
+  const flatDepartmentsQuery = useFlatDepartments();
+  const allDepartments = useMemo(() => flatDepartmentsQuery.data ?? [], [flatDepartmentsQuery.data]);
+  const detailQuery = useDepartmentDetail(editingDepartment?.id, modalVisible && !!editingDepartment);
+  const activeDepartment = editingDepartment ? (detailQuery.data ?? editingDepartment) : null;
+  const modalDetailLoading = !!editingDepartment && detailQuery.isFetching;
+  const saveMutation = useSaveDepartment();
+  const toggleStatusMutation = useSaveDepartment();
+  const deleteMutation = useDeleteDepartment();
+  const [leaderKeyword, setLeaderKeyword] = useState('');
+  const leaderOptionsQuery = useQuery({
+    queryKey: ['users', 'options', leaderKeyword],
+    queryFn: () =>
+      request
+        .get<PaginatedResponse<User>>(`/api/users${toQueryString({ pageSize: 50, keyword: leaderKeyword || undefined })}`)
+        .then(unwrap),
+    enabled: modalVisible,
+    staleTime: 30_000,
+  });
+  const leaderOptions = (leaderOptionsQuery.data?.list ?? []).map((u) => ({
+    value: u.id,
+    label: u.departmentName ? `${u.nickname}-${u.departmentName}` : u.nickname,
+  }));
 
   const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
 
@@ -163,29 +175,11 @@ export default function DepartmentsPage() {
     setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
   }
 
-  const fetchDepartments = useCallback(async (params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-      }).toString();
-      const [treeRes, flatRes] = await Promise.all([
-        request.get<Department[]>(query ? `/api/departments?${query}` : '/api/departments'),
-        request.get<Department[]>('/api/departments/flat'),
-      ]);
-      if (treeRes.code === 0) setData(treeRes.data);
-      if (flatRes.code === 0) setAllDepartments(flatRes.data);
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
-    void fetchDepartments();
-  }, [fetchDepartments]);
+    const detail = detailQuery.data;
+    if (!detail || !modalVisible || !editingDepartment || detail.id !== editingDepartment.id) return;
+    setEditingDepartment(detail);
+  }, [detailQuery.data, editingDepartment, modalVisible]);
 
   const parentTreeData = useMemo(() => {
     const excludedIds = editingDepartment
@@ -202,17 +196,17 @@ export default function DepartmentsPage() {
     ];
   }, [allDepartments, editingDepartment]);
 
-  const formInitValues = editingDepartment
+  const formInitValues = activeDepartment
     ? {
-        parentId: editingDepartment.parentId,
-        name: editingDepartment.name,
-        code: editingDepartment.code,
-        category: editingDepartment.category ?? 'department',
-        leaderId: editingDepartment.leaderId ?? undefined,
-        phone: editingDepartment.phone,
-        email: editingDepartment.email,
-        sort: editingDepartment.sort,
-        status: editingDepartment.status,
+        parentId: activeDepartment.parentId,
+        name: activeDepartment.name,
+        code: activeDepartment.code,
+        category: activeDepartment.category ?? 'department',
+        leaderId: activeDepartment.leaderId ?? undefined,
+        phone: activeDepartment.phone,
+        email: activeDepartment.email,
+        sort: activeDepartment.sort,
+        status: activeDepartment.status,
       }
     : {
         parentId: 0,
@@ -221,23 +215,20 @@ export default function DepartmentsPage() {
         status: 'enabled',
       };
 
-  const openEdit = async (record: Department) => {
+  const openEdit = (record: Department) => {
     setEditingDepartment(record);
     setModalVisible(true);
-    void fetchLeaderOptions();
-    setModalDetailLoading(true);
-    const res = await request.get<Department>(`/api/departments/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingDepartment(res.data);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
-    void fetchDepartments(defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: departmentKeys.tree });
+  };
+
+  const handleSearch = () => {
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: departmentKeys.tree });
   };
 
   const handleModalOk = async () => {
@@ -247,30 +238,20 @@ export default function DepartmentsPage() {
     } catch {
       throw new Error('validation');
     }
+    if (!values) throw new Error('validation');
 
-    const res = editingDepartment
-      ? await request.put(`/api/departments/${editingDepartment.id}`, values)
-      : await request.post('/api/departments', values);
-
-    if (res.code === 0) {
-      Toast.success(editingDepartment ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditingDepartment(null);
-      void fetchDepartments();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingDepartment?.id, values });
+    Toast.success(editingDepartment ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingDepartment(null);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/departments/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchDepartments();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   const handleToggleStatus = useCallback(async (dept: Department, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
@@ -287,19 +268,11 @@ export default function DepartmentsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(dept.id);
-    try {
-      const res = await request.put(`/api/departments/${dept.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已停用');
-        void fetchDepartments();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchDepartments]);
+    toggleStatusMutation.mutate(
+      { id: dept.id, values: { status: newStatus } },
+      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已停用') },
+    );
+  }, [toggleStatusMutation]);
 
   const columns: ColumnProps<Department>[] = [
     { title: '部门名称', dataIndex: 'name', width: 220 },
@@ -382,9 +355,9 @@ export default function DepartmentsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索部门名称/编码"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-      onEnterPress={() => void fetchDepartments()}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
+      onEnterPress={handleSearch}
       style={{ width: 240, maxWidth: '100%' }}
       showClear
     />
@@ -393,8 +366,8 @@ export default function DepartmentsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="请选择状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 140, maxWidth: '100%' }}
       optionList={[
         { value: '', label: '全部状态' },
@@ -403,7 +376,7 @@ export default function DepartmentsPage() {
     />
   );
 
-  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchDepartments()}>查询</Button>;
+  const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
   const renderExpandButton = (flat = false) => (
     <Button
@@ -416,8 +389,8 @@ export default function DepartmentsPage() {
     </Button>
   );
   const buildExportQuery = () => ({
-    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
-    ...(searchParams.status ? { status: searchParams.status } : {}),
+    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
+    ...(submittedParams.status ? { status: submittedParams.status } : {}),
   });
   const renderExportButtons = () => <ExportButton entity="system.departments" query={buildExportQuery()} />;
   const renderMobileExportActions = () => <ExportButton entity="system.departments" query={buildExportQuery()} variant="flat" />;
@@ -428,7 +401,7 @@ export default function DepartmentsPage() {
       onClick={() => {
         setEditingDepartment(null);
         setModalVisible(true);
-        void fetchLeaderOptions();
+        setLeaderKeyword('');
       }}
     >
       新增
@@ -465,7 +438,7 @@ export default function DepartmentsPage() {
         )}
         filterTitle="部门筛选"
         actionTitle="部门操作"
-        onFilterApply={() => void fetchDepartments()}
+        onFilterApply={handleSearch}
         onFilterReset={handleReset}
       />
 
@@ -473,9 +446,9 @@ export default function DepartmentsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchDepartments}
-        refreshLoading={loading}
+        loading={treeQuery.isFetching}
+        onRefresh={() => void treeQuery.refetch()}
+        refreshLoading={treeQuery.isFetching}
         rowKey="id"
         pagination={false}
         empty="暂无数据"
@@ -489,7 +462,6 @@ export default function DepartmentsPage() {
         onCancel={() => {
           setModalVisible(false);
           setEditingDepartment(null);
-          setModalDetailLoading(false);
         }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
@@ -540,9 +512,9 @@ export default function DepartmentsPage() {
                 showClear
                 filter
                 remote
-                loading={leaderSearchLoading}
+                loading={leaderOptionsQuery.isFetching}
                 optionList={leaderOptions}
-                onSearch={(keyword) => void fetchLeaderOptions(keyword)}
+                onSearch={setLeaderKeyword}
                 style={{ width: '100%' }}
               />
             </Col>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Input,
@@ -18,7 +19,6 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Plus, ChevronsDownUp, ChevronsUpDown, Search, RotateCcw } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -30,15 +30,14 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { menuKeys, useDeleteMenu, useMenuDetail, useMenuTree, useSaveMenu } from '@/hooks/queries/menus';
 
 export default function MenusPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<Menu[]>([]);
-  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [parentId, setParentId] = useState<number | null>(null);
   const [iconValue, setIconValue] = useState('');
   const [menuType, setMenuType] = useState<string>('menu');
@@ -54,17 +53,23 @@ export default function MenusPage() {
   const { items: statusItems } = useDictItems('common_status');
   const { items: menuVisibleItems } = useDictItems('menu_visible');
 
-  const fetchMenus = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await request.get<Menu[]>('/api/menus');
-      if (res.code === 0) setData(res.data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const menuTreeQuery = useMenuTree();
+  const data = useMemo(() => menuTreeQuery.data ?? [], [menuTreeQuery.data]);
+  const detailQuery = useMenuDetail(editingMenu?.id, modalVisible && !!editingMenu);
+  const modalDetailLoading = !!editingMenu && detailQuery.isFetching;
+  const saveMutation = useSaveMenu();
+  const toggleStatusMutation = useSaveMenu();
+  const deleteMutation = useDeleteMenu();
 
-  useEffect(() => { fetchMenus(); }, [fetchMenus]);
+  useEffect(() => {
+    const detail = detailQuery.data;
+    if (!detail || !modalVisible || !editingMenu || detail.id !== editingMenu.id) return;
+    setEditingMenu(detail);
+    setParentId(detail.parentId ?? 0);
+    setIconValue(detail.icon ?? '');
+    setMenuType(detail.type);
+    setIsExternalVal(detail.isExternal ?? false);
+  }, [detailQuery.data, editingMenu, modalVisible]);
 
   // 递归收集所有节点 ID
   const allRowKeys = useMemo(() => {
@@ -128,7 +133,7 @@ export default function MenusPage() {
   const handleSearch = () => {
     setKeyword(pendingKeyword);
     setStatusFilter(pendingStatus);
-    fetchMenus();
+    void queryClient.invalidateQueries({ queryKey: menuKeys.tree });
   };
 
   const handleReset = () => {
@@ -137,7 +142,7 @@ export default function MenusPage() {
     setKeyword('');
     setStatusFilter('');
     setExpandedRowKeys([]);
-    fetchMenus();
+    void queryClient.invalidateQueries({ queryKey: menuKeys.tree });
   };
 
   function toggleExpandAll() {
@@ -172,25 +177,13 @@ export default function MenusPage() {
     setModalVisible(true);
   };
 
-  const openEdit = async (menu: Menu) => {
+  const openEdit = (menu: Menu) => {
     setEditingMenu(menu);
     setParentId(menu.parentId ?? 0);
     setIconValue(menu.icon ?? '');
     setMenuType(menu.type);
     setIsExternalVal(menu.isExternal ?? false);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<Menu>(`/api/menus/${menu.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingMenu(res.data);
-      setParentId(res.data.parentId ?? 0);
-      setIconValue(res.data.icon ?? '');
-      setMenuType(res.data.type);
-      setIsExternalVal(res.data.isExternal ?? false);
-    } else {
-      Toast.error(res.message || '获取菜单信息失败');
-    }
   };
 
   const handleMenuModalOk = async () => {
@@ -206,27 +199,18 @@ export default function MenusPage() {
       icon: iconValue || undefined,
       visible: values.visible === undefined ? true : values.visible === 'show',
     };
-    const res = editingMenu
-      ? await request.put(`/api/menus/${editingMenu.id}`, payload)
-      : await request.post('/api/menus', payload);
-    if (res.code === 0) {
-      Toast.success(editingMenu ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      fetchMenus();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingMenu?.id, values: payload });
+    Toast.success(editingMenu ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingMenu(null);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/menus/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      fetchMenus();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   const handleToggleStatus = useCallback(async (menu: Menu, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
@@ -243,19 +227,11 @@ export default function MenusPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(menu.id);
-    try {
-      const res = await request.put(`/api/menus/${menu.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        fetchMenus();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchMenus]);
+    toggleStatusMutation.mutate(
+      { id: menu.id, values: { status: newStatus } },
+      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用') },
+    );
+  }, [toggleStatusMutation]);
 
   const columns: ColumnProps<Menu>[] = [
     {
@@ -349,7 +325,7 @@ export default function MenusPage() {
           key: 'edit',
           label: '编辑',
           hidden: !hasPermission('system:menu:update'),
-          onClick: () => { void openEdit(row); },
+          onClick: () => openEdit(row),
         },
         {
           key: 'delete',
@@ -450,9 +426,9 @@ export default function MenusPage() {
         columns={columns}
         dataSource={filteredData}
         rowKey="id"
-        loading={loading}
-        onRefresh={fetchMenus}
-        refreshLoading={loading}
+        loading={menuTreeQuery.isFetching}
+        onRefresh={() => void menuTreeQuery.refetch()}
+        refreshLoading={menuTreeQuery.isFetching}
         pagination={false}
         expandedRowKeys={expandedRowKeys}
         onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Menu => 'id' in r).map((r) => r.id) ?? [])}
@@ -461,7 +437,7 @@ export default function MenusPage() {
       <AppModal
         title={editingMenu ? '编辑菜单' : '新增菜单'}
         visible={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingMenu(null); setModalDetailLoading(false); }}
+        onCancel={() => { setModalVisible(false); setEditingMenu(null); }}
         onOk={handleMenuModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
         width={680}

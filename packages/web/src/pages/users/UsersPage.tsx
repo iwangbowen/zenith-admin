@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Table,
   Button,
@@ -20,7 +21,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, Building2, ArrowLeft, KeyRound, ToggleLeft, ToggleRight } from 'lucide-react';
-import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
+import type { User, Role, Department, Position } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -43,6 +44,25 @@ import { UserMenuPermissionModal } from './UserMenuPermissionModal';
 import { UserDataScopeModal } from './UserDataScopeModal';
 import { UserAvatarModal } from './UserAvatarModal';
 import ExportButton from '@/components/ExportButton';
+import { useAllRoles } from '@/hooks/queries/roles';
+import { useFlatDepartments } from '@/hooks/queries/departments';
+import { useAllPositions } from '@/hooks/queries/positions';
+import { useSystemPasswordPolicy } from '@/hooks/queries/system-configs';
+import {
+  useAssignUserRoles,
+  useBatchDeleteUsers,
+  useBatchUserPassword,
+  useBatchUserStatus,
+  useDeleteUser,
+  useImportUsers,
+  useKickUserSessions,
+  useResetUserPassword,
+  useSaveUser,
+  useUnlockUser,
+  useUserDetail,
+  useUserList,
+  userKeys,
+} from '@/hooks/queries/users';
 
 interface SearchParams {
   keyword: string;
@@ -53,27 +73,28 @@ interface SearchParams {
 }
 
 const defaultSearchParams: SearchParams = { keyword: '', phone: '', status: '', timeRange: null, departmentId: null };
+const EMPTY_USERS: User[] = [];
+const EMPTY_ROLES: Role[] = [];
+const EMPTY_DEPARTMENTS: Department[] = [];
+const EMPTY_POSITIONS: Position[] = [];
 
 function isAdminUser(user: Pick<User, 'username'>) {
   return user.username.trim().toLowerCase() === 'admin';
 }
 
 export default function UsersPage() {
+  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const passwordFormApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<PaginatedResponse<User> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const [modalVisible, setModalVisible] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingRecord, setEditingRecord] = useState<User | null>(null);
   const [passwordUser, setPasswordUser] = useState<User | null>(null);
   const [batchPasswordModalVisible, setBatchPasswordModalVisible] = useState(false);
-  const [batchPasswordSubmitting, setBatchPasswordSubmitting] = useState(false);
   const batchPasswordFormApi = useRef<FormApi | null>(null);
   const [menuPermUser, setMenuPermUser] = useState<User | null>(null);
   const [menuPermVisible, setMenuPermVisible] = useState(false);
@@ -82,13 +103,8 @@ export default function UsersPage() {
   const [roleAssignUser, setRoleAssignUser] = useState<User | null>(null);
   const [roleAssignVisible, setRoleAssignVisible] = useState(false);
   const [roleAssignIds, setRoleAssignIds] = useState<number[]>([]);
-  const [roleAssignSubmitting, setRoleAssignSubmitting] = useState(false);
   const [avatarUser, setAvatarUser] = useState<User | null>(null);
   const [avatarModalVisible, setAvatarModalVisible] = useState(false);
-  const [allRoles, setAllRoles] = useState<Role[]>([]);
-  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
-  const [allPositions, setAllPositions] = useState<Position[]>([]);
-  const [passwordPolicy, setPasswordPolicy] = useState<PasswordPolicy | null>(null);
   const [createPwdVal, setCreatePwdVal] = useState('');
   const [editPwdVal, setEditPwdVal] = useState('');
   const [batchPwdVal, setBatchPwdVal] = useState('');
@@ -96,9 +112,7 @@ export default function UsersPage() {
   const { items: statusItems } = useDictItems('common_status');
   const { items: genderItems } = useDictItems('user_gender');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
-
   const [importModalVisible, setImportModalVisible] = useState(false);
-  const [importLoading, setImportLoading] = useState(false);
   const [deptTreeExpandedKeys, setDeptTreeExpandedKeys] = useState<string[]>([]);
 
   interface ImportResult {
@@ -110,21 +124,56 @@ export default function UsersPage() {
 
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const importFileRef = useRef<File | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
+  const allRolesQuery = useAllRoles();
+  const allDepartmentsQuery = useFlatDepartments();
+  const allPositionsQuery = useAllPositions();
+  const passwordPolicyQuery = useSystemPasswordPolicy();
+  const allRoles = allRolesQuery.data ?? EMPTY_ROLES;
+  const allDepartments = allDepartmentsQuery.data ?? EMPTY_DEPARTMENTS;
+  const allPositions = allPositionsQuery.data ?? EMPTY_POSITIONS;
+  const passwordPolicy: PasswordPolicy | null = passwordPolicyQuery.data ?? null;
+
+  const listQuery = useUserList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    phone: submittedParams.phone || undefined,
+    departmentId: submittedParams.departmentId ?? undefined,
+    status: submittedParams.status || undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  });
+  const data = listQuery.data ?? null;
+  const userList = data?.list ?? EMPTY_USERS;
+  const total = data?.total ?? 0;
+  const detailQuery = useUserDetail(editingRecord?.id, modalVisible);
+  const editingUser = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
+  const saveMutation = useSaveUser();
+  const resetPasswordMutation = useResetUserPassword();
+  const importUsersMutation = useImportUsers();
+  const deleteMutation = useDeleteUser();
+  const unlockMutation = useUnlockUser();
+  const batchDeleteMutation = useBatchDeleteUsers();
+  const batchStatusMutation = useBatchUserStatus();
+  const toggleStatusMutation = useBatchUserStatus();
+  const batchPasswordMutation = useBatchUserPassword();
+  const assignRolesMutation = useAssignUserRoles();
+  const kickSessionsMutation = useKickUserSessions();
 
   const selectedDeletableCount = useMemo(() => {
-    if (!data?.list?.length) return 0;
+    if (!userList.length) return 0;
     const selectedSet = new Set(selectedRowKeys);
-    return data.list.filter((item) => selectedSet.has(item.id) && !isAdminUser(item)).length;
-  }, [data?.list, selectedRowKeys]);
+    return userList.filter((item) => selectedSet.has(item.id) && !isAdminUser(item)).length;
+  }, [userList, selectedRowKeys]);
 
   const selectedNonAdminIds = useMemo(() => {
-    if (!data?.list?.length) return [];
+    if (!userList.length) return [];
     const selectedSet = new Set(selectedRowKeys);
-    return data.list.filter((item) => selectedSet.has(item.id) && !isAdminUser(item)).map((item) => item.id);
-  }, [data?.list, selectedRowKeys]);
+    return userList.filter((item) => selectedSet.has(item.id) && !isAdminUser(item)).map((item) => item.id);
+  }, [userList, selectedRowKeys]);
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   const handleBatchStatus = (status: 'enabled' | 'disabled') => {
     if (selectedNonAdminIds.length === 0) return;
@@ -134,20 +183,15 @@ export default function UsersPage() {
       content: status === 'disabled' ? '停用后该用户将无法登录。' : '启用后该用户可正常登录。',
       okButtonProps: { type: status === 'disabled' ? 'danger' : 'primary', theme: 'solid' },
       onOk: async () => {
-        const res = await request.put<null>('/api/users/batch-status', { ids: selectedNonAdminIds, status });
-        if (res.code === 0) {
-          Toast.success(`批量${label}成功`);
-          setSelectedRowKeys([]);
-          void fetchUsers();
-        } else {
-          Toast.error(res.message || '操作失败');
-        }
+        await batchStatusMutation.mutateAsync({ ids: selectedNonAdminIds, status });
+        Toast.success(`批量${label}成功`);
+        setSelectedRowKeys([]);
       },
     });
   };
 
   const handleBatchDelete = () => {
-    const deletableIds = (data?.list ?? [])
+    const deletableIds = userList
       .filter((item) => selectedRowKeys.includes(item.id) && !isAdminUser(item))
       .map((item) => item.id);
 
@@ -161,30 +205,12 @@ export default function UsersPage() {
       content: '删除后无法恢复，请谨慎操作。',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>('/api/users/batch', { ids: deletableIds });
-        if (res.code === 0) {
-          Toast.success('批量删除成功');
-          setSelectedRowKeys([]);
-          void fetchUsers();
-        }
+        await batchDeleteMutation.mutateAsync(deletableIds);
+        Toast.success('批量删除成功');
+        setSelectedRowKeys([]);
       },
     });
   };
-
-  useEffect(() => {
-    Promise.all([
-      request.get<Role[]>('/api/roles/all'),
-      request.get<Department[]>('/api/departments/flat'),
-      request.get<Position[]>('/api/positions/all'),
-    ]).then(([rolesRes, departmentsRes, positionsRes]) => {
-      if (rolesRes.code === 0) setAllRoles(rolesRes.data);
-      if (departmentsRes.code === 0) setAllDepartments(departmentsRes.data);
-      if (positionsRes.code === 0) setAllPositions(positionsRes.data);
-    });
-    request.get<PasswordPolicy>('/api/system-configs/password-policy').then((res) => {
-      if (res.code === 0) setPasswordPolicy(res.data);
-    });
-  }, []);
 
   const departmentTreeData = useMemo<TreeNodeData[]>(
     () => {
@@ -261,37 +287,7 @@ export default function UsersPage() {
         status: 'enabled',
       };
 
-  const fetchUsers = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.phone ? { phone: activeParams.phone } : {}),
-        ...(activeParams.departmentId ? { departmentId: String(activeParams.departmentId) } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-        ...(activeParams.timeRange
-          ? {
-              startTime: formatDateTimeForApi(activeParams.timeRange[0]),
-              endTime: formatDateTimeForApi(activeParams.timeRange[1]),
-            }
-          : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<User>>(`/api/users?${query}`);
-      if (res.code === 0) {
-        setData(res.data);
-        setPage(res.data.page);
-        setPageSize(res.data.pageSize);
-      }
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
-
-  const handleToggleStatus = useCallback(async (user: User, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (user: User, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -306,36 +302,26 @@ export default function UsersPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(user.id);
-    try {
-      const res = await request.put<null>('/api/users/batch-status', { ids: [user.id], status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已停用');
-        void fetchUsers();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchUsers]);
-
-  useEffect(() => {
-    void fetchUsers();
-  }, [fetchUsers]);
+    toggleStatusMutation.mutate(
+      { id: user.id, ids: [user.id], status: newStatus },
+      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已停用') },
+    );
+  };
 
   function handleSearch() {
     setPage(1);
-    void fetchUsers(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: userKeys.lists });
   }
 
   function handleReset() {
-    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchUsers(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: userKeys.lists });
   }
 
-  const buildExportQuery = useCallback((params: SearchParams = searchParamsRef.current) => ({
+  const buildExportQuery = useCallback((params: SearchParams = submittedParams) => ({
     ...(params.keyword ? { keyword: params.keyword } : {}),
     ...(params.phone ? { phone: params.phone } : {}),
     ...(params.departmentId ? { departmentId: params.departmentId } : {}),
@@ -346,7 +332,7 @@ export default function UsersPage() {
           endTime: formatDateTimeForApi(params.timeRange[1]),
         }
       : {}),
-  }), []);
+  }), [submittedParams]);
 
   const handleModalOk = async () => {
     let values;
@@ -371,17 +357,10 @@ export default function UsersPage() {
       throw new Error('admin_status_forbidden');
     }
 
-    const res = editingUser
-      ? await request.put(`/api/users/${editingUser.id}`, payload)
-      : await request.post('/api/users', payload);
-    if (res.code === 0) {
-      Toast.success(editingUser ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditingUser(null);
-      void fetchUsers();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values: payload });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
   const handlePasswordModalOk = async () => {
@@ -402,15 +381,11 @@ export default function UsersPage() {
       throw new Error('missing_user');
     }
 
-    const res = await request.put(`/api/users/${passwordUser.id}/password`, { password: values.password });
-    if (res.code === 0) {
-      Toast.success('密码修改成功');
-      setPasswordModalVisible(false);
-      setPasswordUser(null);
-      setEditPwdVal('');
-    } else {
-      throw new Error(res.message);
-    }
+    await resetPasswordMutation.mutateAsync({ id: passwordUser.id, password: values.password });
+    Toast.success('密码修改成功');
+    setPasswordModalVisible(false);
+    setPasswordUser(null);
+    setEditPwdVal('');
   };
 
   const handleImportTemplate = async () => {
@@ -426,26 +401,18 @@ export default function UsersPage() {
       Toast.warning('请先选择文件');
       return;
     }
-    setImportLoading(true);
     const formData = new FormData();
     formData.append('file', importFileRef.current);
     try {
-      const res = await request.postForm<ImportResult>('/api/users/import', formData);
-      if (res.code === 0) {
-        setImportResult(res.data);
-        if (res.data.success > 0) void fetchUsers();
-      } else {
-        Toast.error(res.message);
-      }
+      const result = await importUsersMutation.mutateAsync({ formData });
+      setImportResult(result);
     } catch {
-      Toast.error('导入请求失败');
-    } finally {
-      setImportLoading(false);
+      // request 层已提示错误
     }
   };
 
   const openCreate = () => {
-    setEditingUser(null);
+    setEditingRecord(null);
     setModalVisible(true);
   };
 
@@ -456,19 +423,13 @@ export default function UsersPage() {
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/users/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchUsers();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
   const handleUnlock = async (id: number) => {
-    const res = await request.post(`/api/users/${id}/unlock`, {});
-    if (res.code === 0) {
-      Toast.success('解锁成功');
-      void fetchUsers();
-    }
+    await unlockMutation.mutateAsync(id);
+    Toast.success('解锁成功');
   };
 
   const columns: ColumnProps<User>[] = [
@@ -584,17 +545,9 @@ export default function UsersPage() {
             key: 'edit',
             label: '编辑',
             hidden: !hasPermission('system:user:update'),
-            onClick: async () => {
-              setEditingUser(record);
+            onClick: () => {
+              setEditingRecord(record);
               setModalVisible(true);
-              setModalDetailLoading(true);
-              const res = await request.get<User>(`/api/users/${record.id}`);
-              setModalDetailLoading(false);
-              if (res.code === 0) {
-                setEditingUser(res.data);
-              } else {
-                Toast.error(res.message || '获取用户信息失败');
-              }
             },
           },
           {
@@ -676,11 +629,9 @@ export default function UsersPage() {
                 content: `确定要强制下线用户「${record.nickname}（${record.username}）」的全部会话吗？`,
                 okButtonProps: { type: 'danger', theme: 'solid' },
                 onOk: async () => {
-                  const res = await request.delete(`/api/sessions/user/${record.id}`);
-                  if (res.code === 0) {
-                    Toast.success('已强制下线');
-                    void fetchUsers(page, pageSize);
-                  }
+                  await kickSessionsMutation.mutateAsync(record.id);
+                  Toast.success('已强制下线');
+                  void listQuery.refetch();
                 },
               });
             },
@@ -718,7 +669,7 @@ export default function UsersPage() {
       <Tree
         treeData={deptTreeData}
         expandedKeys={deptTreeExpandedKeys}
-        value={searchParams.departmentId == null ? '__all__' : String(searchParams.departmentId)}
+      value={draftParams.departmentId == null ? '__all__' : String(draftParams.departmentId)}
         filterTreeNode
         showFilteredOnly
         searchPlaceholder="搜索部门"
@@ -728,10 +679,11 @@ export default function UsersPage() {
         onSelect={(selectedKey) => {
           const key = selectedKey;
           const newDeptId = !key || key === '__all__' ? null : Number(key);
-          const newParams = { ...searchParams, departmentId: newDeptId };
-          setSearchParams(newParams);
+          const newParams = { ...draftParams, departmentId: newDeptId };
+          setDraftParams(newParams);
+          setSubmittedParams(newParams);
           setPage(1);
-          void fetchUsers(1, pageSize, newParams);
+          void queryClient.invalidateQueries({ queryKey: userKeys.lists });
           setShowDeptTree(false);
         }}
         style={{ width: '100%' }}
@@ -754,8 +706,8 @@ export default function UsersPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索用户名/昵称/邮箱"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
       onEnterPress={handleSearch}
       style={{ width: 260, maxWidth: '100%' }}
       showClear
@@ -766,8 +718,8 @@ export default function UsersPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索手机号码"
-      value={searchParams.phone}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, phone: value }))}
+      value={draftParams.phone}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, phone: value }))}
       onEnterPress={handleSearch}
       style={{ width: 180, maxWidth: '100%' }}
       showClear
@@ -777,8 +729,8 @@ export default function UsersPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="请选择状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 140, maxWidth: '100%' }}
       optionList={[
         { value: '', label: '全部状态' },
@@ -791,8 +743,8 @@ export default function UsersPage() {
     <DatePicker
       type="dateTimeRange"
       placeholder={["开始时间", "结束时间"]}
-      value={searchParams.timeRange ?? undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
       style={{ width: 360, maxWidth: '100%' }}
     />
   );
@@ -893,11 +845,11 @@ export default function UsersPage() {
       <ConfigurableTable
         bordered
         columns={columns}
-        dataSource={data?.list || []}
-        loading={loading}
-        onRefresh={() => void fetchUsers()}
-        refreshLoading={loading}
-        pagination={buildPagination(data?.total ?? 0, fetchUsers)}
+        dataSource={userList}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(total)}
         rowKey="id"
         size="small"
         empty="暂无数据"
@@ -906,7 +858,7 @@ export default function UsersPage() {
           onChange: (keys) => {
             const nextKeys = (keys as (string | number)[]).map(Number);
             const nextKeySet = new Set(nextKeys);
-            const adminIds = (data?.list ?? []).filter((item) => isAdminUser(item)).map((item) => item.id);
+            const adminIds = userList.filter((item) => isAdminUser(item)).map((item) => item.id);
             const filtered = nextKeys.filter((id) => !adminIds.includes(id));
             if (filtered.length < nextKeys.length && adminIds.some((id) => nextKeySet.has(id))) {
               Toast.warning('admin 账号不支持批量删除');
@@ -931,8 +883,7 @@ export default function UsersPage() {
         visible={modalVisible}
         onCancel={() => {
           setModalVisible(false);
-          setEditingUser(null);
-          setModalDetailLoading(false);
+          setEditingRecord(null);
         }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
@@ -1118,7 +1069,7 @@ export default function UsersPage() {
           ) : (
             <Space>
               <Button onClick={() => setImportModalVisible(false)}>取消</Button>
-              <Button type="primary" loading={importLoading} onClick={handleImportSubmit}>开始导入</Button>
+              <Button type="primary" loading={importUsersMutation.isPending} onClick={handleImportSubmit}>开始导入</Button>
             </Space>
           )
         }
@@ -1173,7 +1124,7 @@ export default function UsersPage() {
         title={`批量修改密码（共 ${selectedNonAdminIds.length} 个用户）`}
         visible={batchPasswordModalVisible}
         onCancel={() => { setBatchPasswordModalVisible(false); batchPasswordFormApi.current?.setValues({ password: '', confirmPassword: '' }); setBatchPwdVal(''); }}
-        confirmLoading={batchPasswordSubmitting}
+        confirmLoading={batchPasswordMutation.isPending}
         onOk={async () => {
           if (!batchPasswordFormApi.current) return;
           try {
@@ -1182,21 +1133,14 @@ export default function UsersPage() {
               batchPasswordFormApi.current.setError('confirmPassword', '两次密码输入不一致');
               return;
             }
-            setBatchPasswordSubmitting(true);
-            const res = await request.put<null>('/api/users/batch-password', { ids: selectedNonAdminIds, password: values.password });
-            if (res.code === 0) {
-              Toast.success('密码修改成功');
-              setBatchPasswordModalVisible(false);
-              batchPasswordFormApi.current.setValues({ password: '', confirmPassword: '' });
-              setBatchPwdVal('');
-              setSelectedRowKeys([]);
-            } else {
-              Toast.error(res.message || '操作失败');
-            }
+            await batchPasswordMutation.mutateAsync({ ids: selectedNonAdminIds, password: values.password });
+            Toast.success('密码修改成功');
+            setBatchPasswordModalVisible(false);
+            batchPasswordFormApi.current.setValues({ password: '', confirmPassword: '' });
+            setBatchPwdVal('');
+            setSelectedRowKeys([]);
           } catch {
             // validation failed
-          } finally {
-            setBatchPasswordSubmitting(false);
           }
         }}
       >
@@ -1231,7 +1175,7 @@ export default function UsersPage() {
           user={avatarUser}
           onClose={() => setAvatarModalVisible(false)}
           onUpdated={(updated) => {
-            setData((prev) => prev ? { ...prev, list: prev.list.map((u) => (u.id === updated.id ? updated : u)) } : prev);
+            void listQuery.refetch();
             setAvatarUser(updated);
             globalThis.dispatchEvent(new CustomEvent('auth:user-updated', { detail: updated }));
           }}
@@ -1264,22 +1208,12 @@ export default function UsersPage() {
         title={`分配角色——${roleAssignUser?.nickname || roleAssignUser?.username || ''}`}
         visible={roleAssignVisible}
         onCancel={() => setRoleAssignVisible(false)}
-        confirmLoading={roleAssignSubmitting}
+        confirmLoading={assignRolesMutation.isPending}
         onOk={async () => {
           if (!roleAssignUser) return;
-          setRoleAssignSubmitting(true);
-          try {
-            const res = await request.put(`/api/users/${roleAssignUser.id}/roles`, { roleIds: roleAssignIds });
-            if (res.code === 0) {
-              Toast.success('角色分配成功');
-              setRoleAssignVisible(false);
-              fetchUsers();
-            } else {
-              Toast.error(res.message || '操作失败');
-            }
-          } finally {
-            setRoleAssignSubmitting(false);
-          }
+          await assignRolesMutation.mutateAsync({ id: roleAssignUser.id, roleIds: roleAssignIds });
+          Toast.success('角色分配成功');
+          setRoleAssignVisible(false);
         }}
         okText="保存"
         cancelText="取消"

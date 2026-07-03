@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Input,
@@ -17,8 +18,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw } from 'lucide-react';
-import type { Role, Menu, Department, PaginatedResponse, User } from '@zenith/shared';
-import { request } from '@/utils/request';
+import type { Role, Department } from '@zenith/shared';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -34,9 +34,24 @@ import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPane
 import { DataScopePanel } from '@/components/permissions/DataScopePanel';
 import { usePagination } from '@/hooks/usePagination';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { useDepartmentTree } from '@/hooks/queries/departments';
+import { useMenuTree } from '@/hooks/queries/menus';
+import { useAllUsers } from '@/hooks/queries/users';
+import {
+  roleKeys,
+  useAssignRoleMenus,
+  useAssignRoleUsers,
+  useDeleteRole,
+  useRoleDetail,
+  useRoleList,
+  useRoleUsers,
+  useSaveRole,
+  useUpdateRoleDataScope,
+} from '@/hooks/queries/roles';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   interface SearchParams {
     keyword: string;
     status: string;
@@ -45,69 +60,65 @@ export default function RolesPage() {
 
   const defaultSearchParams: SearchParams = { keyword: '', status: '', timeRange: null };
   const formApi = useRef<FormApi | null>(null);
-  const [data, setData] = useState<Role[]>([]);
   const { items: statusItems } = useDictItems('common_status');
-  const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [total, setTotal] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [editingRecord, setEditingRecord] = useState<Role | null>(null);
   const [menuModalVisible, setMenuModalVisible] = useState(false);
   const [menuRole, setMenuRole] = useState<Role | null>(null);
-  const [allMenus, setAllMenus] = useState<Menu[]>([]);
   const [checkedMenuIds, setCheckedMenuIds] = useState<number[]>([]);
-  const [menuLoading, setMenuLoading] = useState(false);
   const [userModalVisible, setUserModalVisible] = useState(false);
   const [userRole, setUserRole] = useState<Role | null>(null);
-  const [allUsers, setAllUsers] = useState<UserTransferUser[]>([]);
   const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
-  const [userModalLoading, setUserModalLoading] = useState(false);
   const [dataScopeModalVisible, setDataScopeModalVisible] = useState(false);
   const [dataScopeRole, setDataScopeRole] = useState<Role | null>(null);
   const [selectedDataScope, setSelectedDataScope] = useState<string>('all');
   const [selectedDeptScopeIds, setSelectedDeptScopeIds] = useState<number[]>([]);
-  const [dataScopeLoading, setDataScopeLoading] = useState(false);
-  const [deptTree, setDeptTree] = useState<Department[]>([]);
 
-  const fetchRoles = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-        ...(activeParams.timeRange
-          ? {
-            startTime: formatDateTimeForApi(activeParams.timeRange[0]),
-            endTime: formatDateTimeForApi(activeParams.timeRange[1]),
-          }
-          : {}),
-        page: String(p),
-        pageSize: String(ps),
-      }).toString();
-      const url = query ? `/api/roles?${query}` : '/api/roles';
-      const res = await request.get<PaginatedResponse<Role>>(url);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const listQuery = useRoleList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
 
-  useEffect(() => { void fetchRoles(); }, [fetchRoles]);
+  const editDetailQuery = useRoleDetail(editingRecord?.id, modalVisible);
+  const editingRole = editingRecord ? (editDetailQuery.data ?? editingRecord) : null;
+  const menuTreeQuery = useMenuTree({ enabled: menuModalVisible });
+  const menuRoleDetailQuery = useRoleDetail(menuRole?.id, menuModalVisible);
+  const allUsersQuery = useAllUsers({ enabled: userModalVisible });
+  const roleUsersQuery = useRoleUsers(userRole?.id, userModalVisible);
+  const dataScopeRoleDetailQuery = useRoleDetail(dataScopeRole?.id, dataScopeModalVisible);
+  const deptTreeQuery = useDepartmentTree();
+  const deptTree = useMemo(() => deptTreeQuery.data ?? [], [deptTreeQuery.data]);
 
-  // 加载部门树（用于管理范围选择）
+  const saveMutation = useSaveRole();
+  const toggleStatusMutation = useSaveRole();
+  const deleteMutation = useDeleteRole();
+  const assignMenusMutation = useAssignRoleMenus();
+  const assignUsersMutation = useAssignRoleUsers();
+  const updateDataScopeMutation = useUpdateRoleDataScope();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
+
   useEffect(() => {
-    void (async () => {
-      const res = await request.get<Department[]>('/api/departments');
-      if (res.code === 0) setDeptTree(res.data);
-    })();
-  }, []);
+    if (menuModalVisible) setCheckedMenuIds(menuRoleDetailQuery.data?.menuIds ?? []);
+  }, [menuModalVisible, menuRoleDetailQuery.data]);
+
+  useEffect(() => {
+    if (userModalVisible) setAssignedUserIds((roleUsersQuery.data ?? []).map((u) => u.id));
+  }, [userModalVisible, roleUsersQuery.data]);
+
+  useEffect(() => {
+    if (dataScopeModalVisible && dataScopeRoleDetailQuery.data) {
+      setSelectedDeptScopeIds(dataScopeRoleDetailQuery.data.deptScopeIds ?? []);
+    }
+  }, [dataScopeModalVisible, dataScopeRoleDetailQuery.data]);
 
   function deptsToTreeData(items: Department[]): object[] {
     return items.map((d) => ({
@@ -120,41 +131,27 @@ export default function RolesPage() {
 
   function handleSearch() {
     setPage(1);
-    void fetchRoles(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: roleKeys.lists });
   }
 
   function handleReset() {
     setPage(1);
-    setSearchParams(defaultSearchParams);
-    void fetchRoles(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: roleKeys.lists });
   }
 
-  // 拉取菜单树（用于分配权限）
-  const openMenuModal = async (role: Role) => {
+  const openMenuModal = (role: Role) => {
     setMenuRole(role);
     setMenuModalVisible(true);
-    setMenuLoading(true);
-    try {
-      const [menusRes, roleRes] = await Promise.all([
-        request.get<Menu[]>('/api/menus'),
-        request.get<Role>(`/api/roles/${role.id}`),
-      ]);
-      if (menusRes.code === 0) {
-        setAllMenus(menusRes.data);
-      }
-      if (roleRes.code === 0) setCheckedMenuIds(roleRes.data.menuIds ?? []);
-    } finally {
-      setMenuLoading(false);
-    }
   };
 
   const handleAssignMenus = async () => {
     if (!menuRole) return;
-    const res = await request.put(`/api/roles/${menuRole.id}/menus`, { menuIds: checkedMenuIds });
-    if (res.code === 0) {
-      Toast.success('菜单权限已更新');
-      setMenuModalVisible(false);
-    }
+    await assignMenusMutation.mutateAsync({ id: menuRole.id, menuIds: checkedMenuIds });
+    Toast.success('菜单权限已更新');
+    setMenuModalVisible(false);
   };
 
   // 扁平化部门列表（供分配用户组件的树形视图使用）
@@ -170,44 +167,25 @@ export default function RolesPage() {
     return result;
   }, [deptTree]);
 
-  const openUserModal = async (role: Role) => {
+  const allUsers = useMemo<UserTransferUser[]>(() => allUsersQuery.data ?? [], [allUsersQuery.data]);
+
+  const openUserModal = (role: Role) => {
     setUserRole(role);
     setUserModalVisible(true);
-    setUserModalLoading(true);
-    try {
-      const [usersRes, assignedRes] = await Promise.all([
-        request.get<User[]>('/api/users/all'),
-        request.get<User[]>(`/api/roles/${role.id}/users`),
-      ]);
-      if (usersRes.code === 0) setAllUsers(usersRes.data);
-      if (assignedRes.code === 0) setAssignedUserIds(assignedRes.data.map((u) => u.id));
-    } finally {
-      setUserModalLoading(false);
-    }
   };
 
   const handleAssignUsers = async () => {
     if (!userRole) return;
-    const res = await request.put(`/api/roles/${userRole.id}/users`, { userIds: assignedUserIds });
-    if (res.code === 0) {
-      Toast.success('用户分配已更新');
-      setUserModalVisible(false);
-      void fetchRoles();
-    }
+    await assignUsersMutation.mutateAsync({ id: userRole.id, userIds: assignedUserIds });
+    Toast.success('用户分配已更新');
+    setUserModalVisible(false);
   };
 
-  const openDataScopeModal = async (role: Role) => {
+  const openDataScopeModal = (role: Role) => {
     setDataScopeRole(role);
     setSelectedDataScope(role.dataScope);
     setSelectedDeptScopeIds([]);
     setDataScopeModalVisible(true);
-    setDataScopeLoading(true);
-    try {
-      const res = await request.get<Role>(`/api/roles/${role.id}`);
-      if (res.code === 0) setSelectedDeptScopeIds(res.data.deptScopeIds ?? []);
-    } finally {
-      setDataScopeLoading(false);
-    }
   };
 
   const handleSaveDataScope = async () => {
@@ -216,12 +194,9 @@ export default function RolesPage() {
     if (selectedDataScope === 'custom') {
       body.deptScopeIds = selectedDeptScopeIds;
     }
-    const res = await request.put(`/api/roles/${dataScopeRole.id}`, body);
-    if (res.code === 0) {
-      Toast.success('数据权限已更新');
-      setDataScopeModalVisible(false);
-      void fetchRoles();
-    }
+    await updateDataScopeMutation.mutateAsync({ id: dataScopeRole.id, values: body as Partial<Role> });
+    Toast.success('数据权限已更新');
+    setDataScopeModalVisible(false);
   };
 
   const handleRoleModalOk = async () => {
@@ -231,36 +206,23 @@ export default function RolesPage() {
     } catch {
       throw new Error('validation');
     }
-    const res = editingRole
-      ? await request.put(`/api/roles/${editingRole.id}`, values)
-      : await request.post('/api/roles', values);
-    if (res.code === 0) {
-      Toast.success(editingRole ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      fetchRoles();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
-  const openEditRoleModal = async (role: Role) => {
-    // 拉取含 deptScopeIds 的详情
-    const res = await request.get<Role>(`/api/roles/${role.id}`);
-    setEditingRole(res.code === 0 ? res.data : role);
+  const openEditRoleModal = (role: Role) => {
+    setEditingRecord(role);
     setModalVisible(true);
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/roles/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      fetchRoles();
-    }
+    await deleteMutation.mutateAsync(id);
+    Toast.success('删除成功');
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (role: Role, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (role: Role, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -275,19 +237,9 @@ export default function RolesPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(role.id);
-    try {
-      const res = await request.put(`/api/roles/${role.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchRoles();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchRoles]);
+    await toggleStatusMutation.mutateAsync({ id: role.id, values: { status: newStatus } });
+    Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+  };
 
   const columns: ColumnProps<Role>[] = [
     { title: '角色名称', dataIndex: 'name', width: 160, render: renderEllipsis },
@@ -357,13 +309,13 @@ export default function RolesPage() {
           key: 'edit',
           label: '编辑',
           hidden: !hasPermission('system:role:update'),
-          onClick: () => { void openEditRoleModal(row); },
+          onClick: () => openEditRoleModal(row),
         },
         {
           key: 'menu',
           label: '菜单权限',
           hidden: !hasPermission('system:role:assign'),
-          onClick: () => { void openMenuModal(row); },
+          onClick: () => openMenuModal(row),
         },
         {
           key: 'delete',
@@ -384,13 +336,13 @@ export default function RolesPage() {
           key: 'users',
           label: '分配用户',
           hidden: !hasPermission('system:role:assign'),
-          onClick: () => { void openUserModal(row); },
+          onClick: () => openUserModal(row),
         },
         {
           key: 'dataScope',
           label: '数据权限',
           hidden: !hasPermission('system:role:update'),
-          onClick: () => { void openDataScopeModal(row); },
+          onClick: () => openDataScopeModal(row),
         },
       ],
     }),
@@ -400,8 +352,8 @@ export default function RolesPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索角色名称/编码"
-      value={searchParams.keyword}
-      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      value={draftParams.keyword}
+      onChange={(v) => setDraftParams((prev) => ({ ...prev, keyword: v }))}
       onEnterPress={handleSearch}
       style={{ width: 220, maxWidth: '100%' }}
       showClear
@@ -411,8 +363,8 @@ export default function RolesPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="请选择状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 140, maxWidth: '100%' }}
       optionList={[
         { value: '', label: '全部状态' },
@@ -425,19 +377,19 @@ export default function RolesPage() {
     <DatePicker
       type="dateTimeRange"
       placeholder={["开始时间", "结束时间"]}
-      value={searchParams.timeRange ?? undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
       style={{ width: 360, maxWidth: '100%' }}
     />
   );
 
   const buildExportQuery = () => ({
-    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
-    ...(searchParams.status ? { status: searchParams.status } : {}),
-    ...(searchParams.timeRange
+    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
+    ...(submittedParams.status ? { status: submittedParams.status } : {}),
+    ...(submittedParams.timeRange
       ? {
-          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
-          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+          startTime: formatDateTimeForApi(submittedParams.timeRange[0]),
+          endTime: formatDateTimeForApi(submittedParams.timeRange[1]),
         }
       : {}),
   });
@@ -450,7 +402,7 @@ export default function RolesPage() {
     <Button
       type="primary"
       icon={<Plus size={14} />}
-      onClick={() => { setEditingRole(null); setModalVisible(true); }}
+      onClick={() => { setEditingRecord(null); setModalVisible(true); }}
     >
       新增
     </Button>
@@ -495,24 +447,26 @@ export default function RolesPage() {
         columns={columns}
         dataSource={data}
         rowKey="id"
-        loading={loading}
-        onRefresh={fetchRoles}
-        refreshLoading={loading}
-        pagination={buildPagination(total, (p, ps) => void fetchRoles(p, ps))}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
+        pagination={buildPagination(total)}
       />
 
       {/* 创建/编辑 Modal */}
       <AppModal
         title={editingRole ? '编辑角色' : '新增角色'}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => { setModalVisible(false); setEditingRecord(null); }}
         onOk={handleRoleModalOk}
+        okButtonProps={{ disabled: !!editingRecord && editDetailQuery.isFetching }}
         width={480}
 
       >
         <Form
           getFormApi={(api) => formApi.current = api}
           allowEmpty
+          key={editingRole?.id ?? 'new-role'}
           initValues={editingRole ?? { status: 'enabled' }}
           labelPosition="left"
           labelWidth={90}
@@ -546,10 +500,10 @@ export default function RolesPage() {
         width={480}
       >
         <MenuPermissionPanel
-          allMenus={allMenus}
+          allMenus={menuTreeQuery.data ?? []}
           checkedMenuIds={checkedMenuIds}
           onChange={setCheckedMenuIds}
-          loading={menuLoading}
+          loading={menuTreeQuery.isFetching || menuRoleDetailQuery.isFetching}
         />
       </AppModal>
 
@@ -567,7 +521,7 @@ export default function RolesPage() {
           deptTree={deptTree}
           onScopeChange={(v) => setSelectedDataScope(v ?? 'all')}
           onDeptIdsChange={setSelectedDeptScopeIds}
-          loading={dataScopeLoading}
+          loading={deptTreeQuery.isFetching || dataScopeRoleDetailQuery.isFetching}
         />
       </AppModal>
 
@@ -580,11 +534,11 @@ export default function RolesPage() {
         footer={
           <Space>
             <Button onClick={() => setUserModalVisible(false)}>取消</Button>
-            <Button type="primary" loading={userModalLoading} onClick={handleAssignUsers}>保存</Button>
+            <Button type="primary" loading={assignUsersMutation.isPending} onClick={handleAssignUsers}>保存</Button>
           </Space>
         }
       >
-        {userModalLoading ? (
+        {allUsersQuery.isFetching || roleUsersQuery.isFetching ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
             <Spin />
           </div>

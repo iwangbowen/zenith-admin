@@ -19,9 +19,10 @@ export interface UsePaginationReturn {
   /**
    * 生成传给 ConfigurableTable 的 pagination 对象。
    * @param total   数据总条数
-   * @param onFetch 翻页/换尺寸时调用的拉取函数，接收 (page, pageSize) 两个参数
+   * @param onFetch 翻页/换尺寸时调用的拉取函数，接收 (page, pageSize) 两个参数。
+   *                使用 TanStack Query（page/pageSize 进入 query key）时无需传入，状态变化自动触发请求
    */
-  buildPagination: (total: number, onFetch: (page: number, pageSize: number) => void) => PaginationConfig;
+  buildPagination: (total: number, onFetch?: (page: number, pageSize: number) => void) => PaginationConfig;
 }
 
 /**
@@ -48,18 +49,18 @@ export function usePagination(overrideDefaultPageSize?: number): UsePaginationRe
   const resetPage = useCallback(() => setPage(1), []);
 
   const buildPagination = useCallback(
-    (total: number, onFetch: (page: number, pageSize: number) => void): PaginationConfig => ({
+    (total: number, onFetch?: (page: number, pageSize: number) => void): PaginationConfig => ({
       currentPage: page,
       pageSize,
       total,
       onPageChange: (p: number) => {
         setPage(p);
-        onFetch(p, pageSize);
+        onFetch?.(p, pageSize);
       },
       onPageSizeChange: (size: number) => {
         setPageSize(size);
         setPage(1);
-        onFetch(1, size);
+        onFetch?.(1, size);
       },
     }),
     [page, pageSize],

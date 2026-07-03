@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   DatePicker,
@@ -18,10 +19,9 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
-import type { Position, PaginatedResponse, Department } from '@zenith/shared';
+import type { Position } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useDictItems } from '@/hooks/useDictItems';
-import { request } from '@/utils/request';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -33,6 +33,17 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { useFlatDepartments } from '@/hooks/queries/departments';
+import {
+  useAssignPositionMembers,
+  useDeletePositions,
+  positionKeys,
+  usePositionDetail,
+  usePositionList,
+  usePositionMembers,
+  useSavePosition,
+} from '@/hooks/queries/positions';
+import { useAllUsers } from '@/hooks/queries/users';
 
 interface SearchParams {
   keyword: string;
@@ -48,68 +59,47 @@ const defaultSearchParams: SearchParams = {
 
 export default function PositionsPage() {
   const { hasPermission } = usePermission();
+  const queryClient = useQueryClient();
   const formApi = useRef<FormApi | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<Position[]>([]);
-  const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
-  searchParamsRef.current = searchParams;
+  const [draftParams, setDraftParams] = useState<SearchParams>(defaultSearchParams);
+  const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
+  const listQuery = usePositionList({
+    page,
+    pageSize,
+    keyword: submittedParams.keyword || undefined,
+    status: submittedParams.status || undefined,
+    startTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[0]) : undefined,
+    endTime: submittedParams.timeRange ? formatDateTimeForApi(submittedParams.timeRange[1]) : undefined,
+  });
+  const data = listQuery.data?.list ?? [];
+  const total = listQuery.data?.total ?? 0;
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingPosition, setEditingPosition] = useState<Position | null>(null);
-  const [modalDetailLoading, setModalDetailLoading] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<Position | null>(null);
+  const detailQuery = usePositionDetail(editingRecord?.id, modalVisible);
+  const editingPosition = editingRecord ? (detailQuery.data ?? editingRecord) : null;
+  const modalDetailLoading = !!editingRecord && detailQuery.isFetching;
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems } = useDictItems('common_status');
 
   // 成员管理
-  const [allUsers, setAllUsers] = useState<UserTransferUser[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const allUsersQuery = useAllUsers();
+  const departmentsQuery = useFlatDepartments();
+  const allUsers: UserTransferUser[] = allUsersQuery.data ?? [];
+  const departments = departmentsQuery.data ?? [];
   const [memberSheetVisible, setMemberSheetVisible] = useState(false);
   const [memberPosition, setMemberPosition] = useState<Position | null>(null);
   const [memberIds, setMemberIds] = useState<number[]>([]);
-  const [memberSaving, setMemberSaving] = useState(false);
-
-  const fetchPositions = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
-    const activeParams = params ?? searchParamsRef.current;
-    setLoading(true);
-    try {
-      const query = new URLSearchParams({
-        page: String(p),
-        pageSize: String(ps),
-        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
-        ...(activeParams.status ? { status: activeParams.status } : {}),
-        ...(activeParams.timeRange
-          ? {
-              startTime: formatDateTimeForApi(activeParams.timeRange[0]),
-              endTime: formatDateTimeForApi(activeParams.timeRange[1]),
-            }
-          : {}),
-      }).toString();
-      const res = await request.get<PaginatedResponse<Position>>(`/api/positions?${query}`);
-      if (res.code === 0) {
-        setData(res.data.list);
-        setTotal(res.data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize]);
+  const membersQuery = usePositionMembers(memberPosition?.id, memberSheetVisible);
+  const saveMutation = useSavePosition();
+  const toggleStatusMutation = useSavePosition();
+  const deleteMutation = useDeletePositions();
+  const assignMembersMutation = useAssignPositionMembers();
+  const togglingStatusId = toggleStatusMutation.isPending ? (toggleStatusMutation.variables?.id ?? null) : null;
 
   useEffect(() => {
-    void fetchPositions();
-  }, [fetchPositions]);
-
-  useEffect(() => {
-    void (async () => {
-      const [uRes, dRes] = await Promise.all([
-        request.get<UserTransferUser[]>('/api/users/all'),
-        request.get<Department[]>('/api/departments/flat'),
-      ]);
-      if (uRes.code === 0) setAllUsers(uRes.data);
-      if (dRes.code === 0) setDepartments(Array.isArray(dRes.data) ? dRes.data : []);
-    })();
-  }, []);
+    if (memberSheetVisible) setMemberIds((membersQuery.data ?? []).map((m) => m.id));
+  }, [memberSheetVisible, membersQuery.data]);
 
   const formInitValues = editingPosition
     ? {
@@ -126,66 +116,47 @@ export default function PositionsPage() {
 
   const handleSearch = () => {
     setPage(1);
-    void fetchPositions(1, pageSize);
+    setSubmittedParams(draftParams);
+    void queryClient.invalidateQueries({ queryKey: positionKeys.lists });
   };
 
   const handleReset = () => {
-    setSearchParams(defaultSearchParams);
     setPage(1);
-    void fetchPositions(1, pageSize, defaultSearchParams);
+    setDraftParams(defaultSearchParams);
+    setSubmittedParams(defaultSearchParams);
+    void queryClient.invalidateQueries({ queryKey: positionKeys.lists });
   };
 
   const openCreate = () => {
-    setEditingPosition(null);
+    setEditingRecord(null);
     setModalVisible(true);
   };
 
   const handleModalOk = async () => {
     let values;
     try {
-      values = await formApi.current?.validate();
+      values = await formApi.current!.validate();
     } catch {
       throw new Error('validation');
     }
 
-    const res = editingPosition
-      ? await request.put(`/api/positions/${editingPosition.id}`, values)
-      : await request.post('/api/positions', values);
-
-    if (res.code === 0) {
-      Toast.success(editingPosition ? '更新成功' : '创建成功');
-      setModalVisible(false);
-      setEditingPosition(null);
-      void fetchPositions();
-    } else {
-      throw new Error(res.message);
-    }
+    await saveMutation.mutateAsync({ id: editingRecord?.id, values });
+    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    setModalVisible(false);
+    setEditingRecord(null);
   };
 
-  const openEdit = async (record: Position) => {
-    setEditingPosition(record);
+  const openEdit = (record: Position) => {
+    setEditingRecord(record);
     setModalVisible(true);
-    setModalDetailLoading(true);
-    const res = await request.get<Position>(`/api/positions/${record.id}`);
-    setModalDetailLoading(false);
-    if (res.code === 0 && res.data) {
-      setEditingPosition(res.data);
-    } else {
-      Toast.error(res.message || '获取信息失败');
-    }
   };
 
   const handleDelete = async (id: number) => {
-    const res = await request.delete(`/api/positions/${id}`);
-    if (res.code === 0) {
-      Toast.success('删除成功');
-      void fetchPositions();
-    }
+    await deleteMutation.mutateAsync([id]);
+    Toast.success('删除成功');
   };
 
-  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
-
-  const handleToggleStatus = useCallback(async (pos: Position, newStatus: 'enabled' | 'disabled') => {
+  const handleToggleStatus = async (pos: Position, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled') {
       const confirmed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
@@ -200,19 +171,11 @@ export default function PositionsPage() {
       });
       if (!confirmed) return;
     }
-    setTogglingStatusId(pos.id);
-    try {
-      const res = await request.put(`/api/positions/${pos.id}`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已停用');
-        void fetchPositions();
-      } else {
-        Toast.error(res.message || '操作失败');
-      }
-    } finally {
-      setTogglingStatusId(null);
-    }
-  }, [fetchPositions]);
+    toggleStatusMutation.mutate(
+      { id: pos.id, values: { status: newStatus } },
+      { onSuccess: () => Toast.success(newStatus === 'enabled' ? '已启用' : '已停用') },
+    );
+  };
 
   const handleBatchDelete = () => {
     Modal.confirm({
@@ -220,38 +183,23 @@ export default function PositionsPage() {
       content: '删除后无法恢复，请确认操作',
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
-        const res = await request.delete<null>('/api/positions/batch', { ids: selectedRowKeys });
-        if (res.code === 0) {
-          Toast.success(res.message ?? '删除成功');
-          setSelectedRowKeys([]);
-          void fetchPositions();
-        }
+        await deleteMutation.mutateAsync(selectedRowKeys);
+        Toast.success('删除成功');
+        setSelectedRowKeys([]);
       },
     });
   };
 
-  const openMembers = async (pos: Position) => {
+  const openMembers = (pos: Position) => {
     setMemberPosition(pos);
     setMemberSheetVisible(true);
-    const res = await request.get<Array<{ id: number }>>(`/api/positions/${pos.id}/members`);
-    if (res.code === 0) {
-      setMemberIds((res.data || []).map(m => m.id));
-    }
   };
 
   const handleSaveMembers = async () => {
     if (!memberPosition) return;
-    setMemberSaving(true);
-    try {
-      const res = await request.put(`/api/positions/${memberPosition.id}/members`, { userIds: memberIds });
-      if (res.code === 0) {
-        Toast.success('保存成功');
-        setMemberSheetVisible(false);
-        void fetchPositions();
-      }
-    } finally {
-      setMemberSaving(false);
-    }
+    await assignMembersMutation.mutateAsync({ id: memberPosition.id, userIds: memberIds });
+    Toast.success('保存成功');
+    setMemberSheetVisible(false);
   };
 
   const columns: ColumnProps<Position>[] = [
@@ -343,8 +291,8 @@ export default function PositionsPage() {
     <Input
       prefix={<Search size={14} />}
       placeholder="搜索岗位名称/编码"
-      value={searchParams.keyword}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+      value={draftParams.keyword}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, keyword: value }))}
       onEnterPress={handleSearch}
       style={{ width: 240 }}
       showClear
@@ -354,8 +302,8 @@ export default function PositionsPage() {
   const renderStatusFilter = () => (
     <Select
       placeholder="请选择状态"
-      value={searchParams.status || undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+      value={draftParams.status || undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
       style={{ width: 140 }}
       optionList={[
         { value: '', label: '全部状态' },
@@ -368,8 +316,8 @@ export default function PositionsPage() {
     <DatePicker
       type="dateTimeRange"
       placeholder={['开始时间', '结束时间']}
-      value={searchParams.timeRange ?? undefined}
-      onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+      value={draftParams.timeRange ?? undefined}
+      onChange={(value) => setDraftParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
       style={{ width: 360 }}
     />
   );
@@ -381,12 +329,12 @@ export default function PositionsPage() {
   ) : null;
 
   const buildExportQuery = () => ({
-    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
-    ...(searchParams.status ? { status: searchParams.status } : {}),
-    ...(searchParams.timeRange
+    ...(submittedParams.keyword ? { keyword: submittedParams.keyword } : {}),
+    ...(submittedParams.status ? { status: submittedParams.status } : {}),
+    ...(submittedParams.timeRange
       ? {
-          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
-          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+          startTime: formatDateTimeForApi(submittedParams.timeRange[0]),
+          endTime: formatDateTimeForApi(submittedParams.timeRange[1]),
         }
       : {}),
   });
@@ -448,12 +396,12 @@ export default function PositionsPage() {
         bordered
         columns={columns}
         dataSource={data}
-        loading={loading}
-        onRefresh={fetchPositions}
-        refreshLoading={loading}
+        loading={listQuery.isFetching}
+        onRefresh={() => void listQuery.refetch()}
+        refreshLoading={listQuery.isFetching}
         rowKey="id"
         size="small"
-        pagination={buildPagination(total, fetchPositions)}
+        pagination={buildPagination(total)}
         empty="暂无数据"
         rowSelection={{
           selectedRowKeys,
@@ -466,8 +414,7 @@ export default function PositionsPage() {
         visible={modalVisible}
         onCancel={() => {
           setModalVisible(false);
-          setEditingPosition(null);
-          setModalDetailLoading(false);
+          setEditingRecord(null);
         }}
         onOk={handleModalOk}
         okButtonProps={{ disabled: modalDetailLoading }}
@@ -511,7 +458,7 @@ export default function PositionsPage() {
         footer={
           <Space>
             <Button onClick={() => setMemberSheetVisible(false)}>取消</Button>
-            <Button type="primary" loading={memberSaving} onClick={handleSaveMembers}>保存</Button>
+            <Button type="primary" loading={assignMembersMutation.isPending} onClick={handleSaveMembers}>保存</Button>
           </Space>
         }
       >

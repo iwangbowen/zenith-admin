@@ -10,17 +10,10 @@ import { useState, useEffect } from 'react';
 import { Typography, Divider, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import type { Department } from '@zenith/shared';
-import { request } from '@/utils/request';
 import { DataScopePanel, DATA_SCOPE_OPTIONS } from '@/components/permissions/DataScopePanel';
+import { useSaveUserDataPermission, useUserDataPermission } from '@/hooks/queries/users';
 
 const { Text } = Typography;
-
-interface UserDataPermission {
-  userDataScope: string | null;
-  deptScopeIds: number[];
-  roleDataScope: string | null;
-  roleDeptScopeIds: number[];
-}
 
 type Props = Readonly<{
   userId: number;
@@ -45,45 +38,29 @@ function getMostPermissive(a: string | null, b: string | null): string {
 }
 
 export function UserDataScopeModal({ userId, userName, visible, deptTree, onClose }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [userDataScope, setUserDataScope] = useState<string | null>(null);
   const [deptScopeIds, setDeptScopeIds] = useState<number[]>([]);
   const [roleDataScope, setRoleDataScope] = useState<string | null>(null);
   const [roleDeptScopeIds, setRoleDeptScopeIds] = useState<number[]>([]);
+  const permissionQuery = useUserDataPermission(userId, visible);
+  const saveMutation = useSaveUserDataPermission();
 
   useEffect(() => {
-    if (!visible) return;
-    void (async () => {
-      setLoading(true);
-      try {
-        const res = await request.get<UserDataPermission>(`/api/users/${userId}/data-permission`);
-        if (res.code === 0) {
-          setUserDataScope(res.data.userDataScope);
-          setDeptScopeIds(res.data.deptScopeIds);
-          setRoleDataScope(res.data.roleDataScope);
-          setRoleDeptScopeIds(res.data.roleDeptScopeIds);
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [visible, userId]);
+    if (!visible || !permissionQuery.data) return;
+    setUserDataScope(permissionQuery.data.userDataScope);
+    setDeptScopeIds(permissionQuery.data.deptScopeIds);
+    setRoleDataScope(permissionQuery.data.roleDataScope);
+    setRoleDeptScopeIds(permissionQuery.data.roleDeptScopeIds);
+  }, [visible, permissionQuery.data]);
 
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      const res = await request.put(`/api/users/${userId}/data-permission`, {
-        dataScope: userDataScope,
-        deptScopeIds: userDataScope === 'custom' ? deptScopeIds : [],
-      });
-      if (res.code === 0) {
-        Toast.success('数据权限已更新');
-        onClose();
-      }
-    } finally {
-      setSaving(false);
-    }
+    await saveMutation.mutateAsync({
+      userId,
+      dataScope: userDataScope,
+      deptScopeIds: userDataScope === 'custom' ? deptScopeIds : [],
+    });
+    Toast.success('数据权限已更新');
+    onClose();
   };
 
   const effectiveScope = getMostPermissive(userDataScope, roleDataScope);
@@ -98,7 +75,7 @@ export function UserDataScopeModal({ userId, userName, visible, deptTree, onClos
       visible={visible}
       onCancel={onClose}
       onOk={handleSave}
-      confirmLoading={saving}
+      confirmLoading={saveMutation.isPending}
       width={440}
     >
       {/* 角色数据权限（只读） */}
@@ -108,7 +85,7 @@ export function UserDataScopeModal({ userId, userName, visible, deptTree, onClos
           dataScope={roleDataScope ?? 'self'}
           deptScopeIds={roleDeptScopeIds}
           deptTree={deptTree}
-          loading={loading}
+          loading={permissionQuery.isFetching}
           readonly
         />
       </div>
@@ -124,7 +101,7 @@ export function UserDataScopeModal({ userId, userName, visible, deptTree, onClos
           deptTree={deptTree}
           onScopeChange={setUserDataScope}
           onDeptIdsChange={setDeptScopeIds}
-          loading={loading}
+          loading={permissionQuery.isFetching}
           nullable
         />
       </div>
@@ -143,7 +120,7 @@ export function UserDataScopeModal({ userId, userName, visible, deptTree, onClos
           dataScope={effectiveScope}
           deptScopeIds={effectiveDeptIds}
           deptTree={deptTree}
-          loading={loading}
+          loading={permissionQuery.isFetching}
           readonly
         />
       </div>

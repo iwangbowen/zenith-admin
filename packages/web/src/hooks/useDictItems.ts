@@ -1,39 +1,34 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { DictItem } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
 
-// 简单内存缓存，避免同一 code 重复请求
-const cache = new Map<string, DictItem[]>();
-
+/**
+ * 按字典编码获取字典项。
+ * 基于 TanStack Query：同一 code 全局共享缓存、自动去重并发请求。
+ */
 export function useDictItems(code: string) {
-  const [items, setItems] = useState<DictItem[]>(() => cache.get(code) ?? []);
-  const [loading, setLoading] = useState(!cache.has(code));
+  const { data, isPending } = useQuery({
+    queryKey: ['dicts', 'code-items', code],
+    queryFn: () => request.get<DictItem[]>(`/api/dicts/code/${code}/items`).then(unwrap),
+    enabled: !!code,
+    staleTime: LOOKUP_STALE_TIME,
+  });
 
-  useEffect(() => {
-    if (!code) return;
-    if (cache.has(code)) {
-      setItems(cache.get(code)!);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    request.get<DictItem[]>(`/api/dicts/code/${code}/items`).then((res) => {
-      if (cancelled) return;
-      if (res.code === 0) {
-        cache.set(code, res.data);
-        setItems(res.data);
-      }
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [code]);
+  const items = useMemo(() => data ?? [], [data]);
 
   /** 根据 value 查找 label */
-  const getLabel = (value: string) => items.find((i) => i.value === value)?.label ?? value;
+  const getLabel = useCallback(
+    (value: string) => items.find((i) => i.value === value)?.label ?? value,
+    [items],
+  );
 
   /** 根据 value 查找 color */
-  const getColor = (value: string) => items.find((i) => i.value === value)?.color;
+  const getColor = useCallback(
+    (value: string) => items.find((i) => i.value === value)?.color,
+    [items],
+  );
 
-  return { items, loading, getLabel, getColor };
+  return { items, loading: !!code && isPending, getLabel, getColor };
 }
